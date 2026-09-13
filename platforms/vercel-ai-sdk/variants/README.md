@@ -1,4 +1,4 @@
-# Vercel AI SDK platform variants
+# Vercel AI SDK harness variants
 
 Variants are deliberate alternatives to the Vercel AI SDK baseline. Record the
 architectural question being tested, the changed assumptions, and the expected effect

@@ -2,34 +2,41 @@
 status: accepted
 ---
 
-# Use Python for the laboratory core and TypeScript for native TypeScript platforms
+# Use TypeScript for the laboratory core and platform-native languages for variants
 
-Agent Harness Lab will use Python for the laboratory control plane, runner, scenarios,
-experiments, and default implementations of platforms with strong Python support. The
-React/Vite application will use TypeScript. Platforms that are TypeScript-native, such
-as Mastra and the Vercel AI SDK, will be implemented in their native TypeScript and
-Node.js runtime rather than rewritten in Python.
+Agent Harness Lab will use TypeScript for the laboratory control plane, runner, CLI,
+local-development services, and initial standalone harness. The React/Vite application
+uses the same TypeScript workspace. Scenarios and experiments are language-neutral
+definitions wherever practical, rather than being owned by the control-plane language.
 
-The repository will connect Python and TypeScript components through explicit process,
-HTTP, or other wire contracts. JSON Schema remains the source of truth for shared run
-records and telemetry; generated language-specific types must not replace those
-schemas. Language and runtime versions must be recorded in each run when they can
-affect the result.
+Each platform variant uses its most representative supported language. The initial
+TypeScript variants are the standalone baseline, OpenAI Agents SDK, Temporal, Restate,
+Mastra, and Vercel AI SDK. LangGraph begins with a Python variant. A second language
+variant is added only when its SDK/runtime differences are themselves the subject of an
+experiment; it is not created merely to duplicate an implementation.
+
+Python variants connect to the TypeScript laboratory through explicit process, HTTP, or
+other wire contracts. JSON Schema remains the source of truth for shared run records
+and telemetry; generated language-specific types must not replace those schemas.
+Language and runtime versions must be recorded in each run when they can affect the
+result.
 
 ## Considered options
 
 - **Python everywhere:** rejected because it would require non-native reimplementations
   of TypeScript-first platforms and would prevent the lab from testing their actual
   runtime behaviour.
-- **TypeScript everywhere:** rejected for the initial laboratory because Python has
-  stronger fit with the surrounding agent ecosystem and the project already includes
-  Python-oriented harness subjects.
+- **Python for the laboratory core:** rejected because it would split the initial
+  control plane, CLI, and UI across toolchains without improving the first platform
+  comparisons. Python remains the native choice for platform variants where it is the
+  most faithful implementation, beginning with LangGraph.
 - **Unrestricted polyglot development:** rejected because language and runtime costs
   would become an uncontrolled source of comparison noise.
 
 ## Consequences
 
-The project owns two application toolchains. Cross-language contract tests, pinned
-runtime versions, and separate measurements for process and orchestration overhead are
-required. A platform may still receive an explicit implementation variant in another
-language when language or runtime behaviour is the subject of an experiment.
+The project initially owns a TypeScript application toolchain and introduces a Python
+toolchain only with the first Python-native platform variant. Cross-language contract
+tests, pinned runtime versions, and separate measurements for process and orchestration
+overhead are then required. A platform may receive another language variant when
+language or runtime behaviour is the subject of an experiment.

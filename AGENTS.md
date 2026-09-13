@@ -60,6 +60,9 @@ Common interfaces should describe genuine shared semantics, not force every fram
 
 Documentation is a deliverable, not an afterthought. A change is incomplete when a reader cannot understand how to use it, why it exists, and what assumptions or limitations it has.
 
+For document placement, required content, diagrams, and review expectations, use
+[`docs/contributing/documentation.md`](docs/contributing/documentation.md).
+
 Update documentation when a change affects:
 
 - public commands, configuration, interfaces, schemas, or file formats
@@ -77,6 +80,9 @@ Use the appropriate document for the job:
 - Experiment documentation: hypothesis, variables, controls, procedure, expected observations, and limitations.
 - ADRs or decision records: important choices, alternatives considered, and consequences.
 - Code documentation: local contracts, invariants, edge cases, and non-obvious reasons.
+- Development playground: small, hands-on walkthroughs for inspecting one real
+  implementation slice. These belong in `development/playground/`; they are not test
+  cases, scenarios, experiments, or published evidence.
 
 Write for a technically capable contributor who has not seen the code before. Explain terminology when it is project-specific. Include runnable examples where they reduce ambiguity. Keep documentation near the code or experiment it describes, while maintaining a clear index from the main documentation entry points.
 
@@ -97,6 +103,19 @@ Comments should explain information that is not obvious from the code, especiall
 Do not use comments to restate what straightforward code already says. Prefer clear names, small functions, and explicit types first. Keep comments accurate as part of the change; stale comments are defects.
 
 Public modules, interfaces, schemas, commands, and non-trivial algorithms should have focused documentation or docstrings. Include a short example when the correct usage is not obvious. Document error behaviour and lifecycle expectations, not only the happy path.
+
+## User-interface clarity
+
+The laboratory UI should make complex systems legible without turning every screen into
+documentation. Prefer a small number of clear choices, short labels, strong visual
+hierarchy, and progressive disclosure. Do not add explanatory copy, cards, metrics, or
+controls unless they help a contributor decide, configure, inspect, or act.
+
+Show unavailable or unimplemented capabilities honestly. Do not simulate run data,
+infrastructure health, benchmark results, or operational controls merely to make the
+interface look complete. Platform-specific detail belongs behind the relevant platform
+or environment view, while documentation remains available through the separate Docs
+experience.
 
 ## Experiments and reproducibility
 

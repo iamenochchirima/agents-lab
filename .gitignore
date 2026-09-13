@@ -1,0 +1,27 @@
+# JavaScript and Vite outputs
+node_modules/
+dist/
+.vite/
+/coverage/
+apps/web/coverage/
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Generated frontend content
+apps/web/src/generated/document-catalog.ts
+*.tsbuildinfo
+
+# Logs and local editor state
+*.log
+.DS_Store

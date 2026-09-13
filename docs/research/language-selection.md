@@ -25,7 +25,7 @@ The question “what do most serious agents use?” cannot be answered defensibl
 | LangGraph | The official Python repository installs with `pip install -U langgraph` and describes LangGraph as a low-level framework for long-running, stateful agents. ([repository](https://github.com/langchain-ai/langgraph)) | The official LangGraph.js repository installs with `npm install @langchain/langgraph @langchain/core` and points to an equivalent Python library. ([repository](https://github.com/langchain-ai/langgraphjs)) | Both languages are directly relevant to a graph-platform comparison. The project should test the actual platform versions rather than assume the ports behave identically. |
 | Temporal | Temporal’s Python SDK supports workflow and activity authoring in Python, with `async def`, threaded activities, multiprocess activities, and a custom `asyncio` event loop. ([Python SDK README](https://github.com/temporalio/sdk-python)) | Temporal’s TypeScript SDK authors workflows and activities in TypeScript or JavaScript. Its worker-level features rely on Node-specific APIs including Node-API modules, `worker_threads`, `vm`, `AsyncLocalStorage`, and `async_hooks`; the repository lists official support for Node 20, 22, and 24 on the current branch. ([TypeScript SDK README](https://github.com/temporalio/sdk-typescript)) | TypeScript is not merely a browser choice for Temporal, but its worker runtime is specifically Node-oriented. Python exposes a different concurrency and determinism surface. |
 | Restate | The official Python SDK requires Python 3.10 or newer and describes Restate as distributed durable async/await. ([Python SDK README](https://github.com/restatedev/sdk-python)) | The official TypeScript SDK targets Node.js/TypeScript, supports Node.js 22 or Bun or Deno, and models applications as durably executed, stateful RPC handlers. ([TypeScript SDK README](https://github.com/restatedev/sdk-typescript)) | Both languages can be used for a Restate platform implementation. Version compatibility is explicit in both SDK repositories and should be captured for reproducibility. |
-| React/Vite UI | Python is not the planned browser/UI language. | React documents TypeScript components and `.tsx` files; Vite describes fully typed APIs. ([React TypeScript guide](https://react.dev/learn/typescript), [Vite repository](https://github.com/vitejs/vite)) | The UI can be a TypeScript application even if the run controller is Python. |
+| React/Vite UI | Python is not the planned browser/UI language. | React documents TypeScript components and `.tsx` files; Vite describes fully typed APIs. ([React TypeScript guide](https://react.dev/learn/typescript), [Vite repository](https://github.com/vitejs/vite)) | The UI and initial laboratory control plane can share a TypeScript workspace without making run evidence TypeScript-specific. |
 
 ## Evidence by decision dimension
 
@@ -71,7 +71,7 @@ Hermes also illustrates the operational cost of a deliberately split stack: its 
 
 React documents TypeScript component props and the use of `.tsx` for JSX-containing TypeScript files. ([React TypeScript guide](https://react.dev/learn/typescript)) Vite provides typed APIs for the build-tool boundary. ([Vite repository](https://github.com/vitejs/vite))
 
-If the experiment runner is also TypeScript, domain types can potentially be shared directly within a TypeScript workspace. If the runner is Python, the UI and runner should instead share an explicit wire contract such as JSON Schema or generated OpenAPI/TypeScript types. This is a project-design consequence, not evidence that one language is intrinsically better.
+The TypeScript control plane can share implementation types with the UI where that is useful. Python variants still need an explicit wire contract such as JSON Schema; shared TypeScript types alone cannot validate their output. This is a project-design consequence, not evidence that one language is intrinsically better.
 
 The lab should not make the UI’s TypeScript types the source of truth for run evidence. The standardized run records and event schemas should remain language-neutral so that Python and TypeScript platform implementations can produce comparable evidence.
 
@@ -92,15 +92,14 @@ Rust is relevant mainly at infrastructure boundaries. Temporal’s SDK core repo
 1. **Feature parity must be checked per platform and version.** Official language support is evidence of availability, not parity. Capture exact package and runtime versions in every run. ([OpenAI Python](https://github.com/openai/openai-agents-python), [OpenAI JS/TS](https://github.com/openai/openai-agents-js), [LangGraph Python](https://github.com/langchain-ai/langgraph), [LangGraph.js](https://github.com/langchain-ai/langgraphjs), [Temporal Python](https://github.com/temporalio/sdk-python), [Temporal TypeScript](https://github.com/temporalio/sdk-typescript), [Restate Python](https://github.com/restatedev/sdk-python), [Restate TypeScript](https://github.com/restatedev/sdk-typescript))
 2. **Do not mix language overhead with harness overhead.** A Python worker, a Node worker, a container, or a durable runtime can each add different startup and orchestration costs. The run record should separate process/runtime startup, model latency, tool latency, and platform overhead.
 3. **Compare concurrency semantics, not only throughput.** Relevant measurements include cancellation, duplicate work, queueing, subprocess behavior, worker crashes, CPU-bound tool isolation, and event-loop blockage. The Python and Node documentation describes different runtime mechanisms for these concerns. ([Python `asyncio`](https://docs.python.org/3/library/asyncio.html), [Node event loop](https://nodejs.org/learn/asynchronous-work/event-loop-timers-and-nexttick), [Node worker threads](https://nodejs.org/api/worker_threads.html))
-4. **Test cross-language contracts early if the runner and UI differ.** The standardized event and run schemas should be validated independently by both sides; a shared TypeScript type alone would not validate Python output.
+4. **Test cross-language contracts when Python variants arrive.** The standardized event and run schemas should be validated independently by both sides; a shared TypeScript type alone would not validate Python output.
 5. **Treat prevalence claims as an open research question.** The official repositories establish that both languages are used by substantial first-party projects and by at least one representative open-source harness in this source set, but they do not establish what “most serious agents” use.
 
 ## Evidence boundary
 
 This note does not make the decision by itself. It records what the primary sources
-demonstrate and which differences appear worth measuring. ADR 0002 records the initial
-language boundary: Python for the laboratory core and default platform implementations,
-TypeScript for the UI and TypeScript-native platforms. The boundary can be revisited
-using first-vertical-slice evidence, platform implementation friction, contributor
-experience, contract-testing cost, and benchmark evidence rather than a language
-popularity claim.
+demonstrate and which differences appear worth measuring. ADR 0002 records the current
+language boundary: TypeScript for the laboratory core and each platform's representative
+native language for its variants. The boundary can be revisited using first-vertical-slice
+evidence, platform implementation friction, contributor experience, contract-testing
+cost, and benchmark evidence rather than a language popularity claim.

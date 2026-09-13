@@ -1,5 +1,5 @@
-# LangGraph baseline platform
+# LangGraph baseline harness variant
 
-Placeholder for the first explicit graph platform implementation.
+Placeholder for the first harness variant built with LangGraph.
 
 The initial implementation should document its state model before it is used by the laboratory harness.

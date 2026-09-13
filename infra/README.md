@@ -4,6 +4,11 @@ Contains local and experimental infrastructure definitions.
 
 Infrastructure should be optional when possible, explicit when required, and documented with startup, shutdown, persistence, and failure behaviour.
 
+Harness variants declare their required or optional infrastructure. Keep the actual
+infrastructure definition here even when the UI displays it beneath a platform or
+harness variant. This prevents separate copies of the same database, workflow runtime,
+or telemetry collector for every platform that uses it.
+
 Current infrastructure integrations include:
 
 - `compose/`: shared local service composition.

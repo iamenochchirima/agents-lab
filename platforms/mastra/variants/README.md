@@ -1,4 +1,4 @@
-# Mastra platform variants
+# Mastra harness variants
 
 Variants are deliberate alternatives to the Mastra baseline. Record the architectural
 question being tested, the changed assumptions, and the expected effect on telemetry,

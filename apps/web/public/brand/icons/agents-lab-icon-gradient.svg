@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="leftArm" x1="147" y1="363" x2="245" y2="174" gradientUnits="userSpaceOnUse"><stop stop-color="#5DDCFF"/><stop offset="0.48" stop-color="#7B4DFF"/><stop offset="1" stop-color="#8B00FF"/></linearGradient>
+    <linearGradient id="rightArm" x1="267" y1="174" x2="365" y2="344" gradientUnits="userSpaceOnUse"><stop stop-color="#8B00FF"/><stop offset="0.48" stop-color="#2EA8FF"/><stop offset="1" stop-color="#00D7E8"/></linearGradient>
+    <radialGradient id="leftNode" cx="0" cy="0" r="1" gradientTransform="translate(121 329) rotate(44) scale(112)" gradientUnits="userSpaceOnUse"><stop stop-color="#8A00FF"/><stop offset="0.58" stop-color="#6A4CFF"/><stop offset="1" stop-color="#58D7FF"/></radialGradient>
+    <linearGradient id="topNode" x1="218" y1="118" x2="293" y2="193" gradientUnits="userSpaceOnUse"><stop stop-color="#9810FF"/><stop offset="1" stop-color="#7600ED"/></linearGradient>
+  </defs>
+  <path d="M169 355L246 210" stroke="url(#leftArm)" stroke-width="30" stroke-linecap="round"/>
+  <path d="M266 210L343 339" stroke="url(#rightArm)" stroke-width="30" stroke-linecap="round"/>
+  <circle cx="256" cy="166" r="66" fill="url(#topNode)"/>
+  <circle cx="141" cy="374" r="66" fill="url(#leftNode)"/>
+  <circle cx="371" cy="355" r="66" fill="#08D4E7"/>
+</svg>

@@ -1,6 +1,8 @@
 # Platform implementations
 
-Each directory contains a platform implementation used by an Agent Harness Lab harness.
+Each directory contains one platform integration and the harness variants built with
+that platform. Platform-specific agent definitions belong inside the harness variant
+that constructs them.
 
 The initial implementation direction is deliberately mixed by platform. Python is the
 default language for the laboratory and for platforms with strong Python support.
@@ -24,5 +26,13 @@ language SDKs are unsupported. A platform may later receive an explicit variant 
 another language when language/runtime behaviour is itself part of an experiment.
 
 Some entries use one platform. Entries under compositions combine multiple platforms.
-A platform can be paired with any compatible environment. Keep platform-specific
-assumptions, dependencies, telemetry, and tests local to the platform implementation.
+A harness variant declares which environment variants it supports and which
+infrastructure it requires. Those environment and infrastructure implementations stay
+in their top-level directories so other platforms can reuse them. Keep
+platform-specific assumptions, agent definitions, dependencies, telemetry, and tests
+local to the platform integration and its harness variants.
+
+When implementation starts, a harness variant may add an `agents/` directory for its
+platform-specific agent definitions. Create it only when the first concrete agent
+definition exists. Research, coding, transactional work, and other reusable workloads
+remain scenarios rather than agent definitions.

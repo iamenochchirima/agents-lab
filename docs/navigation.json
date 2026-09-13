@@ -1,0 +1,72 @@
+{
+  "sections": [
+    {
+      "title": "Start here",
+      "documents": [
+        "docs/start-here.md",
+        "docs/concepts/vocabulary.md",
+        "docs/guides/local-development.md"
+      ]
+    },
+    {
+      "title": "Architecture",
+      "documents": [
+        "docs/architecture/system-overview.md",
+        "docs/architecture/repository-map.md",
+        "docs/architecture/ui-and-docs.md"
+      ]
+    },
+    {
+      "title": "Platforms",
+      "documents": [
+        "docs/platforms.md"
+      ]
+    },
+    {
+      "title": "Scenarios",
+      "documents": [
+        "docs/scenarios.md"
+      ]
+    },
+    {
+      "title": "Experiments",
+      "documents": [
+        "docs/experiments.md"
+      ]
+    },
+    {
+      "title": "Environments and infrastructure",
+      "documents": [
+        "docs/environments-and-infrastructure.md"
+      ]
+    },
+    {
+      "title": "Reference",
+      "documents": [
+        "docs/adr/README.md"
+      ]
+    },
+    {
+      "title": "Contributing",
+      "documents": [
+        "docs/contributing/README.md",
+        "docs/contributing/documentation.md",
+        "docs/contributing/adding-harness.md",
+        "docs/contributing/adding-scenario.md",
+        "docs/contributing/adding-experiment.md",
+        "docs/contributing/adding-environment.md"
+      ]
+    },
+    {
+      "title": "Initial development",
+      "documents": [
+        "docs/architecture/agent-harness-lab.md",
+        "docs/research/harness-code-maps/README.md",
+        "docs/research/harness-code-maps/hermes.md",
+        "docs/research/harness-code-maps/openclaw.md",
+        "docs/research/harness-code-maps/waku.md",
+        "docs/research/language-selection.md"
+      ]
+    }
+  ]
+}
