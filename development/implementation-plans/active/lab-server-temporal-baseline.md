@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T01:39:52+02:00
+**Last updated:** 2026-09-15T01:49:17+02:00
 **Status:** Active
 
 ## Start here
@@ -278,11 +278,11 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Define a named local Temporal profile in committed example configuration; do not
       commit machine-specific paths, credentials, or production endpoints.
 - [x] Add `server/.env.example` only for actual supported configuration values.
-- [ ] Update `scripts/run_local_stack.sh` to start the web app, control API, and Temporal
+- [x] Update `scripts/run_local_stack.sh` to start the web app, control API, and Temporal
       worker, with clear health checks and separate readable logs.
-- [ ] Make the script detect an unavailable Temporal endpoint and fail with a useful
+- [x] Make the script detect an unavailable Temporal endpoint and fail with a useful
       instruction rather than silently starting a non-functional stack.
-- [ ] Document how to start Temporal separately if the Lab deliberately does not own its
+- [x] Document how to start Temporal separately if the Lab deliberately does not own its
       lifecycle.
 
 ### 2. Server package and Fastify bootstrap

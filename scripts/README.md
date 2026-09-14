@@ -6,23 +6,30 @@ Scripts should state their inputs, side effects, required tools, and safe cleanu
 
 ## Local stack
 
-Run the currently available local services from the repository root:
+Run the local UI, control API, and Temporal worker from the repository root. Start
+Temporal separately first:
 
 ```bash
+temporal server start-dev
 ./scripts/run_local_stack.sh
 ```
 
-The launcher currently starts only the React/Vite frontend. Services can be
-selected explicitly, which leaves the command ready to grow as local APIs,
-workers, or infrastructure are added:
+The launcher checks Temporal, starts each Lab process with separate temporary logs,
+waits for the API, web app, and worker readiness checks, and stops only the processes
+it started when interrupted. Temporal remains separately managed. Services can also be
+selected explicitly:
 
 ```bash
 ./scripts/run_local_stack.sh frontend
+./scripts/run_local_stack.sh api
+./scripts/run_local_stack.sh worker
+./scripts/run_local_stack.sh check-temporal
 ./scripts/run_local_stack.sh --help
 ```
 
-The launcher checks for the frontend's installed Vite and Tailwind packages before
-starting. Run the install command it prints after changing frontend dependencies.
+The launcher checks for installed frontend/server dependencies and prints the temporary
+log directory when the stack stops. If Temporal is unavailable, it exits with the exact
+local start command instead of starting a non-functional worker.
 
 The frontend defaults to `127.0.0.1:5173`. Override the bind address or port
 without editing the script:
