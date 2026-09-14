@@ -8,6 +8,8 @@ once. `PlatformRunnerPage.tsx` owns the task surface and compact run controls. I
 receives the selected platform through outlet context. `CompareRunModal.tsx` owns the
 in-context multi-platform selection flow; it deliberately has no execution behavior.
 
-The runner view collects configuration only. It must not simulate execution, run state,
-or metrics before a real runner exists. Environment, infrastructure, and variant choices
-stay compact because they affect a run but should not displace the task itself.
+The Temporal baseline is the first runnable path. `platformApi.ts` is the only browser
+module that knows the control-plane endpoints, and `RunStatusPanel.tsx` renders the
+server-derived lifecycle and evidence summary. The browser never connects to Temporal
+or reads the local run directory. Other platform actions remain unavailable until a
+runner and contract exist.

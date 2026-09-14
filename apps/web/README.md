@@ -44,6 +44,10 @@ settings at the document root. IBM Plex Sans Variable is the current interface f
 and IBM Plex Mono is used for code and technical values; both are bundled locally.
 Settings are available at `/settings`.
 
+The Temporal runner calls the Fastify API through `VITE_AGENTLAB_API_URL`. It
+defaults to `http://127.0.0.1:4318` for local development. The browser never
+receives a provider credential.
+
 The web application remains a consumer of laboratory data and documentation. It does
 not execute harness logic or become a second metrics implementation. When deployed
 behind a static web server, the server must serve `index.html` for these application
