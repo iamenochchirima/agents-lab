@@ -8,6 +8,7 @@ export const DEFAULTS = {
   temporalNamespace: "default",
   temporalTaskQueue: "agentlab-temporal-baseline",
   activityTimeoutMs: 30_000,
+  queryTimeoutMs: 1_000,
   preDispatchRetryLimit: 2,
   preDispatchRetryBackoffMs: 100,
   allowedModelProviders: ["fake"] as const,
@@ -26,6 +27,7 @@ export interface ServerConfig {
     readonly namespace: string;
     readonly taskQueue: string;
     readonly activityTimeoutMs: number;
+    readonly queryTimeoutMs: number;
     readonly preDispatchRetryLimit: number;
     readonly preDispatchRetryBackoffMs: number;
   };
@@ -82,6 +84,11 @@ export function loadServerConfig(
         "AGENTLAB_TEMPORAL_ACTIVITY_TIMEOUT_MS",
         environment.AGENTLAB_TEMPORAL_ACTIVITY_TIMEOUT_MS,
         DEFAULTS.activityTimeoutMs,
+      ),
+      queryTimeoutMs: parsePositiveInteger(
+        "AGENTLAB_TEMPORAL_QUERY_TIMEOUT_MS",
+        environment.AGENTLAB_TEMPORAL_QUERY_TIMEOUT_MS,
+        DEFAULTS.queryTimeoutMs,
       ),
       preDispatchRetryLimit: parseNonNegativeInteger(
         "AGENTLAB_TEMPORAL_PRE_DISPATCH_RETRY_LIMIT",

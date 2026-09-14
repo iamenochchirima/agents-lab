@@ -11,6 +11,7 @@ test("configuration has safe local defaults and resolves the run root", () => {
   assert.equal(config.temporal.endpoint, "localhost:7233");
   assert.equal(config.temporal.namespace, "default");
   assert.equal(config.temporal.taskQueue, "agentlab-temporal-baseline");
+  assert.equal(config.temporal.queryTimeoutMs, 1000);
   assert.deepEqual(config.allowedModelProviders, ["fake"]);
   assert.equal(config.runsRoot, "/repo/lab/runs");
 });
@@ -23,6 +24,7 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
       AGENTLAB_TEMPORAL_ENDPOINT: "127.0.0.1:7233",
       AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake, openrouter, fake",
       AGENTLAB_TEMPORAL_PRE_DISPATCH_RETRY_LIMIT: "0",
+      AGENTLAB_TEMPORAL_QUERY_TIMEOUT_MS: "750",
     },
     "/repo",
   );
@@ -31,6 +33,7 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   assert.equal(config.runsRoot, "/repo/var/runs");
   assert.deepEqual(config.allowedModelProviders, ["fake", "openrouter"]);
   assert.equal(config.temporal.preDispatchRetryLimit, 0);
+  assert.equal(config.temporal.queryTimeoutMs, 750);
 });
 
 test("invalid or missing explicit configuration fails before startup", () => {

@@ -1,5 +1,6 @@
 export const BASELINE_WORKFLOW_TYPE = "temporalBaselineWorkflow";
 export const BASELINE_QUERY_NAME = "baselineSnapshot";
+export const BASELINE_CANCEL_SIGNAL = "baselineCancel";
 
 export type TemporalModelProvider = "fake" | "openrouter";
 export type TemporalFailureKind =

@@ -186,6 +186,7 @@ function referenceFor(manifest: RunManifest): WorkflowExecutionReference {
     workflowId: `agentlab:${manifest.runId}`,
     workflowRunId: `workflow-run-${manifest.runId}`,
     workflowType: "temporalBaselineWorkflow",
+    activityTypes: ["requestModel"],
   };
 }
 

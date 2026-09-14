@@ -47,6 +47,9 @@ export interface RunManifest {
     readonly kind: "prompt";
     readonly prompt: string;
   };
+  readonly context: {
+    readonly systemInstruction: string;
+  };
   readonly model: {
     readonly provider: ModelProvider;
     readonly model: string;
@@ -57,6 +60,7 @@ export interface RunManifest {
     readonly endpoint: string;
     readonly activityTimeoutMs: number;
     readonly preDispatchRetryLimit: number;
+    readonly preDispatchRetryBackoffMs: number;
   };
 }
 
@@ -67,6 +71,7 @@ export interface WorkflowExecutionReference {
   readonly workflowId: string;
   readonly workflowRunId: string;
   readonly workflowType: string;
+  readonly activityTypes: readonly string[];
 }
 
 export interface RunEvent<TPayload = Record<string, unknown>> {
@@ -74,6 +79,15 @@ export interface RunEvent<TPayload = Record<string, unknown>> {
   readonly eventId: string;
   readonly recordedSequence: number;
   readonly source: "control-plane" | "temporal-workflow";
+  readonly sourceSequence: number;
+  readonly kind: string;
+  readonly runId: string;
+  readonly occurredAt: string;
+  readonly payload: TPayload;
+}
+
+export interface RunEventIntent<TPayload = Record<string, unknown>> {
+  readonly source: RunEvent["source"];
   readonly sourceSequence: number;
   readonly kind: string;
   readonly runId: string;

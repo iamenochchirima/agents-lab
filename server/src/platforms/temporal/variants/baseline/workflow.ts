@@ -1,6 +1,8 @@
 import {
   ActivityFailure,
+  CancellationScope,
   TimeoutFailure,
+  defineSignal,
   defineQuery,
   isCancellation,
   proxyActivities,
@@ -12,6 +14,7 @@ import {
 import type { baselineActivities } from "./activities.js";
 import {
   BASELINE_QUERY_NAME,
+  BASELINE_CANCEL_SIGNAL,
   type ModelCallResult,
   type TemporalEventIntent,
   type TemporalRunError,
@@ -23,11 +26,13 @@ import {
 
 const { requestModel } = proxyActivities<typeof baselineActivities>({
   startToCloseTimeout: "30s",
+  heartbeatTimeout: "1s",
   retry: { maximumAttempts: 1 },
   cancellationType: "WAIT_CANCELLATION_COMPLETED",
 });
 
 export const baselineSnapshotQuery = defineQuery<TemporalWorkflowSnapshot>(BASELINE_QUERY_NAME);
+export const baselineCancelSignal = defineSignal<[string]>(BASELINE_CANCEL_SIGNAL);
 
 /**
  * One Temporal execution owns one model-backed turn. Event intents live in
@@ -46,6 +51,8 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   let eventSequence = 0;
   const eventIntents: TemporalEventIntent[] = [];
   const phases: { name: string; startedAt: string; finishedAt: string | null }[] = [];
+  let cancellationRequested = false;
+  let currentActivityScope: CancellationScope | null = null;
 
   const snapshot = (): TemporalWorkflowSnapshot => ({
     runId: input.runId,
@@ -100,30 +107,53 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     return terminal("failed");
   };
 
+  const cancel = (attempt: number): TemporalWorkflowResult => {
+    error = {
+      code: "RUN_CANCELLED",
+      message: "The Temporal workflow was cancelled.",
+      failureKind: "cancelled",
+      retryable: false,
+    };
+    finishPhase(executionPhase);
+    record("AgentCancelled", { attempt });
+    record("RunCancelled", { attempt });
+    return terminal("cancelled");
+  };
+
   status = "running";
   const executionPhase = { name: "agent_execution", startedAt, finishedAt: null as string | null };
   phases.push(executionPhase);
   record("AgentStarted", { workflowId: workflowInfo().workflowId });
+  setHandler(baselineCancelSignal, () => {
+    cancellationRequested = true;
+    currentActivityScope?.cancel();
+  });
 
   try {
     for (let attempt = 1; attempt <= input.preDispatchRetryLimit + 1; attempt += 1) {
       attemptCount = attempt;
+      if (cancellationRequested) {
+        return cancel(attempt);
+      }
       const attemptId = `${input.runId}:model:${attempt}`;
       const modelPhase = { name: `model_request_${attempt}`, startedAt: timestamp(), finishedAt: null as string | null };
       phases.push(modelPhase);
       record("ModelRequested", {
         attempt,
         attemptId,
+        activityType: "requestModel",
         model: input.model.model,
         provider: input.model.provider,
       });
 
       let result: ModelCallResult;
+      currentActivityScope = new CancellationScope();
       try {
-        result = await requestModel.executeWithOptions(
+        result = await currentActivityScope.run(() => requestModel.executeWithOptions(
           {
             activityId: attemptId,
             startToCloseTimeout: `${input.activityTimeoutMs}ms`,
+            heartbeatTimeout: "1s",
             retry: { maximumAttempts: 1 },
             cancellationType: "WAIT_CANCELLATION_COMPLETED",
           },
@@ -138,19 +168,17 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               attemptNumber: attempt,
             },
           ],
-        );
+        ));
       } catch (activityError) {
         finishPhase(modelPhase);
         const failure = classifyActivityFailure(activityError);
-        record("ModelFailed", { attempt, attemptId, ...failure });
-        if (failure.failureKind === "cancelled") {
-          error = failure;
-          finishPhase(executionPhase);
-          record("AgentCancelled", { attempt });
-          record("RunCancelled", { attempt });
-          return terminal("cancelled");
+        record("ModelFailed", { attempt, attemptId, activityType: "requestModel", ...failure });
+        if (cancellationRequested || failure.failureKind === "cancelled") {
+          return cancel(attempt);
         }
         return fail(failure, attempt);
+      } finally {
+        currentActivityScope = null;
       }
       finishPhase(modelPhase);
 
@@ -160,6 +188,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         record("ModelCompleted", {
           attempt,
           attemptId,
+          activityType: "requestModel",
           providerRequestId: result.providerRequestId,
         });
         record("AgentCompleted", { attempt });
@@ -205,16 +234,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     );
   } catch (workflowError) {
     if (isCancellation(workflowError)) {
-      finishPhase(executionPhase);
-      error = {
-        code: "RUN_CANCELLED",
-        message: "The Temporal workflow was cancelled.",
-        failureKind: "cancelled",
-        retryable: false,
-      };
-      record("AgentCancelled", { attempt: attemptCount });
-      record("RunCancelled", { attempt: attemptCount });
-      return terminal("cancelled");
+      return cancel(attemptCount);
     }
 
     finishPhase(executionPhase);

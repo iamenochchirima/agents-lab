@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 
@@ -189,5 +191,5 @@ function isRecord(value: unknown): value is Record<string, any> {
 }
 
 function cryptoRandomRequestId(): string {
-  return `req-${Math.random().toString(36).slice(2, 12)}`;
+  return `req-${randomUUID()}`;
 }

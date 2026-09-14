@@ -46,6 +46,7 @@ export interface RunEvidenceSnapshotReference {
   readonly workflowId: string;
   readonly workflowRunId: string;
   readonly workflowType: string;
+  readonly activityTypes: readonly string[];
 }
 
 export interface RunServiceDependencies {

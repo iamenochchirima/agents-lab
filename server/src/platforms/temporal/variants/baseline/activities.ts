@@ -1,4 +1,4 @@
-import { cancellationSignal } from "@temporalio/activity";
+import { cancellationSignal, heartbeat } from "@temporalio/activity";
 
 import type { ModelCallResult, ModelRequestInput } from "./contracts.js";
 import { createModelAdapter } from "./models/factory.js";
@@ -9,7 +9,13 @@ import { createModelAdapter } from "./models/factory.js";
  * safe to retry.
  */
 export async function requestModel(input: ModelRequestInput): Promise<ModelCallResult> {
-  return createModelAdapter(input.provider).complete(input, cancellationSignal());
+  const heartbeatTimer = setInterval(() => heartbeat({ attemptId: input.attemptId }), 250);
+  try {
+    heartbeat({ attemptId: input.attemptId });
+    return await createModelAdapter(input.provider).complete(input, cancellationSignal());
+  } finally {
+    clearInterval(heartbeatTimer);
+  }
 }
 
 export const baselineActivities = { requestModel };

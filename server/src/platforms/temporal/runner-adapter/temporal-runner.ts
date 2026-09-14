@@ -15,7 +15,7 @@ import type {
   RunnerInspection,
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
-import { baselineSnapshotQuery, temporalBaselineWorkflow } from "../variants/baseline/workflow.js";
+import { baselineCancelSignal, baselineSnapshotQuery, temporalBaselineWorkflow } from "../variants/baseline/workflow.js";
 import type {
   TemporalEventIntent,
   TemporalWorkflowInput,
@@ -27,9 +27,17 @@ import { BASELINE_WORKFLOW_TYPE } from "../variants/baseline/contracts.js";
 const WORKFLOW_ID_PREFIX = "agentlab:";
 
 export interface TemporalBaselineRunnerOptions {
-  readonly client: Client;
+  readonly client: Client | null;
   readonly connection?: Connection;
   readonly config: ServerConfig;
+  readonly unavailableMessage?: string;
+}
+
+export class TemporalRunnerUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TemporalRunnerUnavailableError";
+  }
 }
 
 /**
@@ -52,6 +60,10 @@ export class TemporalBaselineRunner implements PlatformRunner {
     return new TemporalBaselineRunner(options);
   }
 
+  static unavailable(config: ServerConfig, message: string): TemporalBaselineRunner {
+    return new TemporalBaselineRunner({ client: null, config, unavailableMessage: message });
+  }
+
   validate(manifest: RunManifest): RunnerValidationResult {
     if (manifest.platform !== this.platform || manifest.variant !== this.variant) {
       return { valid: false, reason: "The Temporal baseline runner only accepts temporal/baseline manifests." };
@@ -66,6 +78,9 @@ export class TemporalBaselineRunner implements PlatformRunner {
   }
 
   async checkConnection(): Promise<RunnerConnectivity> {
+    if (!this.options.client) {
+      return { reachable: false, message: this.options.unavailableMessage ?? "Temporal is unavailable." };
+    }
     try {
       const executions = this.options.client.workflow.list({ pageSize: 1 });
       await executions[Symbol.asyncIterator]().next();
@@ -76,6 +91,7 @@ export class TemporalBaselineRunner implements PlatformRunner {
   }
 
   async start(manifest: RunManifest): Promise<WorkflowExecutionReference> {
+    const client = this.requireClient();
     const validation = this.validate(manifest);
     if (!validation.valid) {
       throw new Error(validation.reason ?? "Temporal manifest validation failed.");
@@ -83,7 +99,7 @@ export class TemporalBaselineRunner implements PlatformRunner {
 
     const workflowId = workflowIdForRun(manifest.runId);
     try {
-      const handle = await this.options.client.workflow.start(temporalBaselineWorkflow, {
+      const handle = await client.workflow.start(temporalBaselineWorkflow, {
         args: [toWorkflowInput(manifest)],
         taskQueue: manifest.temporal.taskQueue,
         workflowId,
@@ -97,7 +113,7 @@ export class TemporalBaselineRunner implements PlatformRunner {
 
       // A lost start acknowledgement must be reconciled by the deterministic
       // business ID, never by starting a second workflow.
-      const existing = this.options.client.workflow.getHandle(workflowId);
+      const existing = client.workflow.getHandle(workflowId);
       const description = await existing.describe();
       return {
         platform: "temporal",
@@ -106,6 +122,7 @@ export class TemporalBaselineRunner implements PlatformRunner {
         workflowId,
         workflowRunId: description.runId,
         workflowType: description.type,
+        activityTypes: ["requestModel"],
       };
     }
   }
@@ -117,7 +134,7 @@ export class TemporalBaselineRunner implements PlatformRunner {
       return { accepted: false, alreadyTerminal: true, message: `Workflow is already ${description.status.name.toLowerCase()}.` };
     }
 
-    await handle.cancel();
+    await handle.signal(baselineCancelSignal, reason || "Cancellation requested.");
     return { accepted: true, alreadyTerminal: false, message: reason || "Cancellation requested." };
   }
 
@@ -127,7 +144,15 @@ export class TemporalBaselineRunner implements PlatformRunner {
     const status = mapStatus(description.status.name);
 
     if (status === "queued" || status === "running") {
-      const snapshot = await handle.query<TemporalWorkflowSnapshot>(baselineSnapshotQuery);
+      const snapshot = await queryWithTimeout(
+        handle.query<TemporalWorkflowSnapshot>(baselineSnapshotQuery),
+        this.options.config.temporal.queryTimeoutMs,
+      );
+      if (snapshot === null) {
+        // A live workflow query needs a worker task. When the worker is down,
+        // return the last Lab projection instead of making the API request hang.
+        return inspectionFromReference(reference, status);
+      }
       if (snapshot.status === "completed" || snapshot.status === "failed" || snapshot.status === "cancelled") {
         // Visibility can briefly report RUNNING after the workflow has already
         // recorded its terminal state. Fetch the durable result when the query
@@ -147,7 +172,14 @@ export class TemporalBaselineRunner implements PlatformRunner {
   }
 
   private handle(reference: WorkflowExecutionReference): WorkflowHandle<typeof temporalBaselineWorkflow> {
-    return this.options.client.workflow.getHandle<typeof temporalBaselineWorkflow>(reference.workflowId, reference.workflowRunId);
+    return this.requireClient().workflow.getHandle<typeof temporalBaselineWorkflow>(reference.workflowId, reference.workflowRunId);
+  }
+
+  private requireClient(): Client {
+    if (!this.options.client) {
+      throw new TemporalRunnerUnavailableError(this.options.unavailableMessage ?? "Temporal is unavailable.");
+    }
+    return this.options.client;
   }
 }
 
@@ -175,6 +207,7 @@ function referenceFromHandle(handle: { workflowId: string; firstExecutionRunId: 
     workflowId: handle.workflowId,
     workflowRunId: handle.firstExecutionRunId,
     workflowType: BASELINE_WORKFLOW_TYPE,
+    activityTypes: ["requestModel"],
   };
 }
 
@@ -183,6 +216,20 @@ function inspectionFromSnapshot(reference: WorkflowExecutionReference, snapshot:
     status: snapshot.status,
     reference,
     eventIntents: snapshot.eventIntents as readonly TemporalEventIntent[],
+    result: null,
+    trajectory: null,
+    metrics: null,
+  };
+}
+
+function inspectionFromReference(
+  reference: WorkflowExecutionReference,
+  status: "queued" | "running",
+): RunnerInspection {
+  return {
+    status,
+    reference,
+    eventIntents: [],
     result: null,
     trajectory: null,
     metrics: null,
@@ -238,4 +285,16 @@ function isTerminalStatus(status: WorkflowExecutionStatusName): boolean {
 
 function safeMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+async function queryWithTimeout<T>(query: Promise<T>, timeoutMs: number): Promise<T | null> {
+  let timeout: NodeJS.Timeout | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => resolve(null), timeoutMs);
+  });
+  try {
+    return await Promise.race([query, deadline]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }

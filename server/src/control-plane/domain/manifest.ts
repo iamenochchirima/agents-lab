@@ -8,6 +8,9 @@ const DEFAULT_TEMPORAL_NAMESPACE = "default";
 const DEFAULT_TEMPORAL_TASK_QUEUE = "agentlab-temporal-baseline";
 const DEFAULT_ACTIVITY_TIMEOUT_MS = 30_000;
 const DEFAULT_PRE_DISPATCH_RETRY_LIMIT = 2;
+const DEFAULT_PRE_DISPATCH_RETRY_BACKOFF_MS = 100;
+const DEFAULT_SYSTEM_INSTRUCTION =
+  "You are the Agent Harness Lab Temporal baseline agent. Answer the user's prompt directly and concisely.";
 
 export class InvalidRunRequestError extends Error {
   constructor(message: string) {
@@ -25,6 +28,7 @@ export interface ManifestOptions {
   readonly temporalTaskQueue?: string;
   readonly activityTimeoutMs?: number;
   readonly preDispatchRetryLimit?: number;
+  readonly preDispatchRetryBackoffMs?: number;
 }
 
 export function buildRunManifest(request: RunRequest, options: ManifestOptions = {}): Readonly<RunManifest> {
@@ -38,6 +42,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     platform: "temporal",
     variant: "baseline",
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
+    context: { systemInstruction: DEFAULT_SYSTEM_INSTRUCTION },
     model: {
       provider: request.model.provider as ModelProvider,
       model: request.model.model.trim(),
@@ -48,6 +53,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
       endpoint: options.temporalEndpoint ?? DEFAULT_TEMPORAL_ENDPOINT,
       activityTimeoutMs: options.activityTimeoutMs ?? DEFAULT_ACTIVITY_TIMEOUT_MS,
       preDispatchRetryLimit: options.preDispatchRetryLimit ?? DEFAULT_PRE_DISPATCH_RETRY_LIMIT,
+      preDispatchRetryBackoffMs: options.preDispatchRetryBackoffMs ?? DEFAULT_PRE_DISPATCH_RETRY_BACKOFF_MS,
     },
   };
 

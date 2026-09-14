@@ -10,7 +10,8 @@
     "dev:worker": "tsx watch src/platforms/temporal/runner-adapter/worker-entry.ts",
     "start": "node dist/src/control-plane/bootstrap/server.js",
     "start:worker": "node dist/src/platforms/temporal/runner-adapter/worker-entry.js",
-    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "test": "npm run build && find dist/tests -type f -name '*.test.js' -print0 | xargs -0 node --test",
+    "test:temporal": "npm run build && node --test dist/integration-tests/temporal-baseline.test.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
