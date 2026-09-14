@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "../src/config/config.js";
+import { loadLocalEnvironment } from "../src/config/local-env.js";
 import { buildInitialContext } from "../src/context/context.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { OpenRouterModelProvider } from "../src/models/openrouter.js";
@@ -54,6 +55,19 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
     () => config(tempDirectory(), { provider: "openrouter", model: "openai/example" }),
     (error: unknown) => error instanceof ComputerNativeError && error.code === "configuration",
   );
+});
+
+test("local environment loading preserves explicit variables and reads development settings", async () => {
+  const envPath = path.join(tempDirectory(), ".env");
+  await writeFile(envPath, "COMPUTER_NATIVE_PROVIDER=openrouter\nOPENROUTER_MODEL='openrouter/free'\nLOCAL_ONLY=from-file\n", "utf8");
+  const environment = await loadLocalEnvironment(envPath, {
+    COMPUTER_NATIVE_PROVIDER: "deterministic",
+    EXISTING: "preserved",
+  });
+  assert.equal(environment.COMPUTER_NATIVE_PROVIDER, "deterministic");
+  assert.equal(environment.OPENROUTER_MODEL, "openrouter/free");
+  assert.equal(environment.LOCAL_ONLY, "from-file");
+  assert.equal(environment.EXISTING, "preserved");
 });
 
 test("initial context is bounded to the declared instruction and prompt", () => {
@@ -296,7 +310,7 @@ test("OpenRouter adapter parses streamed text and usage without exposing credent
 test("non-interactive CLI runs against the deterministic local provider", async () => {
   const stateDir = tempDirectory();
   const cli = path.resolve("dist/src/cli/main.js");
-  const result = await execFileAsync(process.execPath, [cli, "chat", "--state-dir", stateDir, "--message", "cli test"]);
+  const result = await execFileAsync(process.execPath, [cli, "chat", "--provider", "deterministic", "--state-dir", stateDir, "--message", "cli test"]);
   assert.match(result.stdout, /Deterministic response to: cli test/);
   assert.match(result.stdout, /Ready for your next message/);
 });

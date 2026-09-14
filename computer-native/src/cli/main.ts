@@ -1,5 +1,6 @@
 import readline from "node:readline";
 import { loadConfig } from "../config/config.js";
+import { loadLocalEnvironment } from "../config/local-env.js";
 import { safeErrorMessage, ComputerNativeError } from "../runtime/errors.js";
 import type { TurnResult } from "../runtime/contracts.js";
 import type { ChatApplication } from "../runtime/application.js";
@@ -36,7 +37,7 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
       process.stdout.write(HELP_TEXT);
       return 0;
     }
-    const config = loadConfig(options);
+    const config = loadConfig(options, await loadLocalEnvironment());
     const application = await openChatApplication(config, options.sessionId);
     try {
       const recovered = await application.recoverInterruptedTurns();

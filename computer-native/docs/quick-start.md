@@ -57,14 +57,19 @@ Failure turns retain the user message and do not append an assistant message.
 ## Use OpenRouter
 
 OpenRouter is the first real provider adapter. It is opt-in so a test or local learning
-run never spends money or sends a prompt without an explicit choice.
+run never spends money or sends a prompt without an explicit choice. For repeated local
+development, store the choice in the ignored `computer-native/.env` file:
 
 ```bash
-export OPENROUTER_API_KEY="your-local-key"
-export OPENROUTER_MODEL="your-model-id"
-npm run chat -- --provider openrouter --state-dir "$STATE_DIR"
+cp .env.example .env
+# Set these values in .env:
+# COMPUTER_NATIVE_PROVIDER=openrouter
+# OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+# OPENROUTER_API_KEY=your-local-key
+npm run chat -- --state-dir "$STATE_DIR"
 ```
 
-The key is never included in the manifest, transcript, events, result, terminal error,
-or browser-facing output. If the key or model is missing, the command reports a
-configuration error before creating a model request.
+The local `.env` file is not committed. Explicit environment variables and command-line
+flags take precedence over it. The key is never included in the manifest, transcript,
+events, result, terminal error, or browser-facing output. If the key or model is missing,
+the command reports a configuration error before creating a model request.
