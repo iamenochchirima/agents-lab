@@ -8,9 +8,21 @@ This context defines the project's working language. It describes the things the
 A technology or runtime used to build or operate an agent, such as LangGraph, Temporal, Restate, Mastra, or the Vercel AI SDK.
 _Avoid_: using "platform" when the subject is the complete runnable agent.
 
+**External integration**:
+A Lab-side boundary for starting and observing an independently owned runnable system.
+Computer Native is the initial integration. Its temporary top-level project owns the
+runtime; the Lab records evidence through `integrations/computer-native/`.
+
 **Environment**:
-The capabilities, resources, and restrictions available to a harness while it runs, such as files, processes, shell access, network access, permissions, and isolation.
-_Avoid_: using "environment" for the specific workspace data supplied to one run.
+For Computer Native, the computer in which the harness operates: local workspace
+process, sandboxed container, or VM/remote computer.
+_Avoid_: using "environment" for backend deployment architecture or browser tooling.
+
+**Backend deployment profile**:
+The service topology used by a backend-oriented platform implementation, including its
+agent service or worker, persistence, durable runtime where applicable, networking,
+secrets, and observability.
+_Avoid_: calling a backend deployment profile a computer environment.
 
 **Harness**:
 A runnable implementation of an agent's surrounding engineering system. A harness may use one platform or several platforms.

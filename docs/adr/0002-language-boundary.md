@@ -5,12 +5,12 @@ status: accepted
 # Use TypeScript for the laboratory core and platform-native languages for variants
 
 Agent Harness Lab will use TypeScript for the laboratory control plane, runner, CLI,
-local-development services, and initial standalone harness. The React/Vite application
+local-development services, and the Computer Native Lab integration. The React/Vite application
 uses the same TypeScript workspace. Scenarios and experiments are language-neutral
 definitions wherever practical, rather than being owned by the control-plane language.
 
 Each platform variant uses its most representative supported language. The initial
-TypeScript variants are the standalone baseline, OpenAI Agents SDK, Temporal, Restate,
+TypeScript variants are OpenAI Agents SDK, Temporal, Restate,
 Mastra, and Vercel AI SDK. LangGraph begins with a Python variant. A second language
 variant is added only when its SDK/runtime differences are themselves the subject of an
 experiment; it is not created merely to duplicate an implementation.

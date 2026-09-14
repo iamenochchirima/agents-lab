@@ -1,4 +1,6 @@
 import { capabilityCatalog, capabilityGroups } from "./capabilityCatalog";
+import { platformCatalog } from "../platforms/platformCatalog";
+import { environmentCatalog } from "../environments/environmentCatalog";
 import type {
   CoverageCatalog,
   CoverageLink,
@@ -9,14 +11,6 @@ import type {
   StrategyCoverage,
   WorkloadCoverage,
 } from "./coverageTypes";
-
-const environmentNames = [
-  ["api-native", "API-native"],
-  ["browser", "Browser"],
-  ["filesystem-native", "Filesystem-native"],
-  ["remote-computer", "Remote computer"],
-  ["sandboxed-container", "Sandboxed container"],
-] as const;
 
 const scenarioNames = [
   ["research", "Research"],
@@ -53,10 +47,10 @@ function documentLink(documentId: string, label: string): CoverageLink {
   return { documentId, label };
 }
 
-function unassessedEnvironments(): readonly EnvironmentCoverage[] {
-  return environmentNames.map(([id, name]) => ({
-    id,
-    name,
+function unassessedEnvironments(environmentIds: readonly string[]): readonly EnvironmentCoverage[] {
+  return environmentCatalog.filter((environment) => environmentIds.includes(environment.id)).map((environment) => ({
+    id: environment.id,
+    name: environment.name,
     notes: "No environment adapter has been selected for this harness variant.",
     status: "not-assessed",
   }));
@@ -100,13 +94,15 @@ interface BaselineOptions {
   agentName: string;
   agentNotes: string;
   agentTopology: string;
+  environmentIds: readonly string[];
   infrastructure?: readonly InfrastructureCoverage[];
   platformId: string;
   platformName: string;
+  variantDocumentId?: string;
 }
 
 function baselineVariant(options: BaselineOptions): HarnessVariantCoverage {
-  const variantDocumentId = `platforms/${options.platformId}/variants/baseline/README.md`;
+  const variantDocumentId = options.variantDocumentId ?? `platforms/${options.platformId}/variants/baseline/README.md`;
 
   return {
     id: "baseline",
@@ -123,7 +119,7 @@ function baselineVariant(options: BaselineOptions): HarnessVariantCoverage {
         topology: options.agentTopology,
       },
     ],
-    environments: unassessedEnvironments(),
+    environments: unassessedEnvironments(options.environmentIds),
     infrastructure: [...(options.infrastructure ?? []), ...commonInfrastructure()],
     strategies: unassessedStrategies(),
     scenarios: unassessedWorkloads(scenarioNames),
@@ -134,147 +130,31 @@ function baselineVariant(options: BaselineOptions): HarnessVariantCoverage {
   };
 }
 
-function platform(
-  id: string,
-  name: string,
-  role: string,
-  language: string,
-  runtime: string,
-  description: string,
-  baseline: Omit<BaselineOptions, "platformId" | "platformName">,
-): PlatformCoverage {
-  return {
-    id,
-    name,
-    role,
-    language,
-    runtime,
-    description,
-    evidence: [documentLink(`platforms/${id}/README.md`, `${name} platform notes`)],
-    variants: [baselineVariant({ ...baseline, platformId: id, platformName: name })],
-  };
-}
-
-const platforms: readonly PlatformCoverage[] = [
-  platform(
-    "standalone",
-    "Standalone",
-    "Independent control implementation",
-    "TypeScript",
-    "Node.js",
-    "Owns the execution loop directly and provides a baseline for understanding framework value.",
-    {
-      agentName: "Standalone single-agent loop",
-      agentNotes: "A direct model/tool loop with no external agent framework.",
-      agentTopology: "single agent",
-    },
-  ),
-  platform(
-    "openai-agents",
-    "OpenAI Agents SDK",
-    "Lightweight agent SDK",
-    "TypeScript",
-    "Node.js",
-    "Examines code-first agent primitives without adopting a separate workflow runtime.",
-    {
-      agentName: "OpenAI SDK baseline agent",
-      agentNotes: "A single SDK agent using the shared lab contracts at its boundaries.",
-      agentTopology: "single agent",
-    },
-  ),
-  platform(
-    "langgraph",
-    "LangGraph",
-    "Graph and state-machine orchestration",
-    "Python",
-    "Python process",
-    "Examines explicit nodes, transitions, state, and graph-level control.",
-    {
-      agentName: "LangGraph baseline graph",
-      agentNotes: "A single-agent graph whose state and transitions remain inspectable.",
-      agentTopology: "single graph agent",
-    },
-  ),
-  platform(
-    "temporal",
-    "Temporal",
-    "Durable workflow execution",
-    "TypeScript",
-    "Node.js worker + Temporal",
-    "Treats agent execution as a durable workflow with histories, retries, timers, and signals.",
-    {
-      agentName: "Temporal workflow-hosted agent",
-      agentNotes: "An agent loop divided across deterministic workflow code and side-effecting activities.",
-      agentTopology: "single agent in one workflow",
-      infrastructure: [
-        {
-          id: "temporal",
-          name: "Temporal development server",
-          notes: "Required for workflow execution, event history, timers, and recovery.",
-          requirement: "required",
-          status: "planned",
-        },
-      ],
-    },
-  ),
-  platform(
-    "restate",
-    "Restate",
-    "Durable application runtime",
-    "TypeScript",
-    "Node.js service + Restate",
-    "Examines durable state and communication through a service-oriented runtime model.",
-    {
-      agentName: "Restate durable service agent",
-      agentNotes: "An agent exposed through durable service handlers with explicit state ownership.",
-      agentTopology: "single durable service agent",
-      infrastructure: [
-        {
-          id: "restate",
-          name: "Restate runtime",
-          notes: "Required for durable invocation, state, and communication.",
-          requirement: "required",
-          status: "planned",
-        },
-      ],
-    },
-  ),
-  platform(
-    "mastra",
-    "Mastra",
-    "TypeScript agent platform",
-    "TypeScript",
-    "Node.js",
-    "Provides a TypeScript-native implementation for studying higher-level agent primitives.",
-    {
-      agentName: "Mastra baseline agent",
-      agentNotes: "A single Mastra agent with platform-native details preserved in telemetry.",
-      agentTopology: "single agent",
-    },
-  ),
-  platform(
-    "vercel-ai-sdk",
-    "Vercel AI SDK",
-    "TypeScript model and tool primitives",
-    "TypeScript",
-    "Node.js",
-    "Examines a TypeScript-native tool loop and its relationship to optional hosted services.",
-    {
-      agentName: "Vercel AI SDK tool-loop agent",
-      agentNotes: "A code-first tool loop built from Vercel AI SDK primitives.",
-      agentTopology: "single agent",
-      infrastructure: [
-        {
-          id: "vercel",
-          name: "Vercel services",
-          notes: "Optional hosted infrastructure; the baseline must document whether it is used.",
-          requirement: "optional",
-          status: "not-assessed",
-        },
-      ],
-    },
-  ),
-];
+const platforms: readonly PlatformCoverage[] = platformCatalog.map((descriptor) => ({
+  id: descriptor.id,
+  name: descriptor.name,
+  role: descriptor.role,
+  language: descriptor.language,
+  runtime: descriptor.runtime,
+  description: descriptor.description,
+  evidence: [documentLink(descriptor.implementationDocumentId, `${descriptor.name} platform notes`)],
+  variants: [baselineVariant({
+    agentName: `${descriptor.name} baseline agent`,
+    agentNotes: descriptor.description,
+    agentTopology: "single agent",
+    infrastructure: descriptor.infrastructure.map((item) => ({
+      id: item.id,
+      name: item.name,
+      notes: item.description,
+      requirement: item.requirement,
+      status: item.status === "ready" ? "implemented" : item.status === "in-progress" ? "in-progress" : "planned",
+    })),
+    platformId: descriptor.id,
+    platformName: descriptor.name,
+    environmentIds: descriptor.computerEnvironmentIds,
+    variantDocumentId: descriptor.kind === "computer-native" ? descriptor.implementationDocumentId : undefined,
+  })],
+}));
 
 export const coverageCatalog: CoverageCatalog = {
   capabilityGroups,

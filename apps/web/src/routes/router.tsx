@@ -44,10 +44,44 @@ export const router = createBrowserRouter([
       {
         path: "platforms",
         lazy: async () => {
-          const { PlatformsPage } = await import("../features/workspace/WorkspacePages");
-          return { Component: PlatformsPage };
+          const { PlatformIndexPage } = await import("../features/platforms/PlatformIndexPage");
+          return { Component: PlatformIndexPage };
         },
         handle: { label: "Platforms" },
+      },
+      {
+        path: "platforms/:platformId",
+        lazy: async () => {
+          const { PlatformWorkspaceLayout } = await import("../features/platforms/PlatformWorkspaceLayout");
+          return { Component: PlatformWorkspaceLayout };
+        },
+        handle: { label: "Platform workspace" },
+        children: [
+          {
+            index: true,
+            lazy: async () => {
+              const { PlatformRunnerPage } = await import("../features/platforms/PlatformRunnerPage");
+              return { Component: PlatformRunnerPage };
+            },
+            handle: { label: "Platform runner" },
+          },
+        ],
+      },
+      {
+        path: "environments",
+        lazy: async () => {
+          const { EnvironmentsPage } = await import("../features/environments/EnvironmentPages");
+          return { Component: EnvironmentsPage };
+        },
+        handle: { label: "Environments" },
+      },
+      {
+        path: "environments/:environmentId",
+        lazy: async () => {
+          const { EnvironmentDetailPage } = await import("../features/environments/EnvironmentPages");
+          return { Component: EnvironmentDetailPage };
+        },
+        handle: { label: "Environment profile" },
       },
       {
         path: "scenarios",

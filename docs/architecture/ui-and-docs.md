@@ -23,7 +23,13 @@ application destinations:
 - **Coverage:** an expandable implementation map that traces platforms and layered compositions through harness variants, agent definitions, environments, infrastructure, strategies, core capabilities, scenarios, experiments, and evidence.
 - **Runs:** the future home for concrete executions and their evidence.
 - **Experiments:** the future home for hypotheses, variables, controls, and failure conditions.
-- **Platforms:** the future home for the isolated platform implementations.
+- **Platforms:** the main operational workspace. Platform tabs select the runtime;
+  Computer Native exposes a computer-environment choice, while backend platforms expose
+  a backend deployment profile alongside their infrastructure, variant, model, and
+  experiment controls.
+- **Compare:** opens from a platform task surface. It configures one shared scenario,
+  model, and experiment for multiple platforms. Computer environments and backend
+  profiles remain implementation-specific while runners are unavailable.
 - **Scenarios:** the future home for canonical workloads.
 - **Docs:** a conventional documentation view with its own document navigation on the left and a reading column on the right.
 
@@ -40,6 +46,14 @@ This does not replace the documentation source: coverage entries link to the Mar
 documents and run evidence that justify a claim. Missing assessment means not assessed,
 and verified status requires every checklist gate plus linked evidence. The first
 version is deliberately read-only so status changes remain inspectable in source control.
+
+The platform UI also uses typed catalogues. `platformCatalog.ts` owns the platform facts
+used by the platform workspace and coverage screen. `environmentCatalog.ts` owns
+computer-environment profiles and their operational facts. The UI keeps Computer
+Native's computer environment separate from the backend deployment profiles required by
+other platform implementations. The runner can collect configuration before an
+execution API exists, but its start controls remain unavailable until they can create
+real evidence.
 
 The frontend uses a browser-history route tree rather than a custom hash router. The
 route composition is kept in `apps/web/src/routes/router.tsx`; layout modules render

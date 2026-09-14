@@ -11,8 +11,10 @@ interface RouteHandle {
 
 export function MainLayout() {
   const matches = useMatches();
-  const currentRoute = matches.at(-1);
-  const handle = currentRoute?.handle as RouteHandle | undefined;
+  const handle = [...matches]
+    .reverse()
+    .map((match) => match.handle as RouteHandle | undefined)
+    .find((candidate) => candidate?.label);
 
   return (
     <div className="app-shell">

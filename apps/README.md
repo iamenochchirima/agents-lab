@@ -2,4 +2,6 @@
 
 This directory contains runnable applications that interact with the laboratory.
 
-Applications may depend on the laboratory's published interfaces and schemas. They must not reach into harness implementations or duplicate run-processing rules.
+`lab-server/` is the Fastify control plane and `web/` is the React/Vite application.
+Applications may depend on versioned contracts. They must not reach into Computer Native
+or backend platform implementations, or duplicate run-processing rules.

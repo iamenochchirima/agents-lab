@@ -23,6 +23,15 @@
       ]
     },
     {
+      "title": "External integrations",
+      "documents": [
+        "integrations/README.md",
+        "integrations/computer-native/README.md",
+        "computer-native/README.md",
+        "computer-native/docs/README.md"
+      ]
+    },
+    {
       "title": "Scenarios",
       "documents": [
         "docs/scenarios.md"
@@ -37,7 +46,13 @@
     {
       "title": "Environments and infrastructure",
       "documents": [
-        "docs/environments-and-infrastructure.md"
+        "docs/environments-and-infrastructure.md",
+        "deployments/README.md",
+        "deployments/shared/local/README.md",
+        "deployments/shared/observability/README.md",
+        "deployments/platforms/temporal/README.md",
+        "deployments/platforms/restate/README.md",
+        "deployments/platforms/vercel/README.md"
       ]
     },
     {

@@ -9,13 +9,14 @@ flowchart TD
   Root[Agent Harness Lab]
   Root --> Apps[apps\nuser-facing applications]
   Root --> Docs[docs\narchitecture and contributor guidance]
-  Root --> Platforms[platforms\nplatform implementations]
-  Root --> Environments[environments\nexecution capabilities and restrictions]
+  Root --> ComputerNative[computer-native\nextraction-ready agent harness]
+  Root --> Integrations[integrations\nLab-side external adapters]
+  Root --> Platforms[platforms\nbackend platform implementations]
   Root --> Scenarios[scenarios\nreusable workloads]
   Root --> Experiments[experiments\nfailure and comparison protocols]
-  Root --> Source[src/agentlab\ncontrol plane]
-  Root --> Schemas[schemas\nlanguage-neutral contracts]
-  Root --> Infra[infra\nlocal and hosted services]
+  Root --> Server[apps/lab-server\nFastify control plane]
+  Root --> Contracts[contracts\nversioned Lab seams]
+  Root --> Deployments[deployments\nbackend topology]
   Root --> Runs[runs\ndurable experiment evidence]
   Root --> Tests[tests\nshared behavioural checks]
 ```
@@ -24,20 +25,20 @@ flowchart TD
 
 | Directory | Responsibility |
 | --- | --- |
-| `apps/` | Applications that present or expose laboratory data. |
+| `apps/` | The React/Vite web application and Fastify Lab server. |
+| `computer-native/` | Temporary standalone Computer Native project, structured for later repository extraction. |
+| `integrations/` | Lab-side adapters for independently runnable systems. |
 | `docs/` | Architecture, concepts, guides, research notes, and decision records. |
-| `platforms/` | Platform integrations, compositions, harness variants, and their platform-specific agent definitions. |
-| `environments/` | Capabilities and restrictions surrounding a running harness. |
+| `platforms/` | Backend platform integrations, compositions, variants, and platform-specific agent definitions. |
 | `scenarios/` | Workloads that can be executed across compatible harnesses. |
 | `experiments/` | Hypotheses, controls, fault injection, and analysis procedures. |
-| `src/agentlab/` | Generic control-plane code such as the runner, registry, telemetry, and storage interfaces. |
-| `schemas/` | Canonical run, event, configuration, and result schemas. |
-| `infra/` | Services and deployment support needed by selected experiments. |
+| `contracts/` | Versioned run, event, artifact, result, and runner-protocol contracts. |
+| `deployments/` | Shared and platform-specific backend deployment profiles. |
 | `runs/` | Generated run records and artifacts. Generated contents are ignored by Git. |
 | `tests/` | Contract and integration tests that cross implementation areas. |
 
-Scenarios and experiments describe work and tests. Platform integrations and harness
-variants provide the runtime that performs the work. A harness variant declares its
-compatible environment variants and required infrastructure without absorbing those
-reusable implementations into its directory. The common control plane coordinates a
-run and records evidence. It does not own a platform's reasoning loop.
+Scenarios and experiments describe work and tests. Computer Native operates within the
+computer host selected for a run without carrying a separate environment-adapter tree.
+Backend platform implementations declare a backend deployment profile and required
+services. The Lab server coordinates a run and records evidence; it does not own a
+platform's reasoning loop.

@@ -1,5 +1,9 @@
 # Environments
 
-Displays environment capabilities, restrictions, workspace rules, isolation, required infrastructure, and supported combinations with platforms.
+`environmentCatalog.ts` defines the initial environment profiles and their isolation,
+workspace, network, resource-control, lifecycle, and platform-compatibility facts.
+`EnvironmentPages.tsx` renders the global catalogue and each profile route.
 
-The UI should make it clear which facts describe the environment and which describe the platform running the harness.
+An environment describes where an agent works. It does not describe the services needed
+to operate a platform such as Temporal or Restate. Provisioning adapters will connect to
+these views later; until then the UI must show a planned profile, not fake health data.

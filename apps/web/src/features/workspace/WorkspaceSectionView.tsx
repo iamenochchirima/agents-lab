@@ -4,7 +4,7 @@ interface WorkspaceSectionViewProps {
   view: WorkspaceSectionId;
 }
 
-export type WorkspaceSectionId = "runs" | "experiments" | "platforms" | "scenarios";
+export type WorkspaceSectionId = "runs" | "experiments" | "scenarios";
 
 const sectionContent = {
   runs: {
@@ -22,14 +22,6 @@ const sectionContent = {
     emptyTitle: "No experiments yet",
     emptyDescription: "Experiment definitions will appear here as the lab begins measuring real behaviour.",
     columns: ["Experiment", "Question", "Failure injection", "Status"],
-  },
-  platforms: {
-    label: "Implementations",
-    title: "Platforms",
-    description: "Keep the platform implementations separate while comparing their architecture and behaviour.",
-    emptyTitle: "No platforms registered",
-    emptyDescription: "Platform adapters will appear here when the first executable implementations are added.",
-    columns: ["Platform", "Language", "Execution", "Durability", "Status"],
   },
   scenarios: {
     label: "Workloads",

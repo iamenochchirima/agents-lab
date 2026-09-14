@@ -33,8 +33,8 @@ export function OverviewView({ documents }: OverviewViewProps) {
         </div>
         <div className="overview-hero-note">
           <span className="eyebrow">Current focus</span>
-          <strong>Planning the comparison surface</strong>
-          <p>The repository map and documentation explorer are ready. Execution work comes next.</p>
+          <strong>Platform workspaces are ready</strong>
+          <p>Configure platforms, environments, and comparisons. Execution work comes next.</p>
         </div>
       </section>
 
@@ -61,10 +61,10 @@ export function OverviewView({ documents }: OverviewViewProps) {
             <Link className="inline-link" to={appPaths.architecture}>View architecture <ArrowRight aria-hidden="true" size={15} /></Link>
           </article>
           <article className="status-card">
-            <div className="status-card-heading"><span className="status-icon status-icon-planned"><CircleDashed aria-hidden="true" size={15} /></span><span>Runs</span></div>
-            <strong>No runs yet</strong>
-            <p>The execution layer will turn a harness, scenario, and experiment into evidence.</p>
-            <span className="status-card-note">Planned</span>
+            <div className="status-card-heading"><span className="status-icon status-icon-ready"><CircleCheck aria-hidden="true" size={15} /></span><span>Platform workspace</span></div>
+            <strong>Configuration ready</strong>
+            <p>Inspect each platform, choose an environment, and prepare a comparison.</p>
+            <Link className="inline-link" to={appPaths.platform("computer-native")}>Open platforms <ArrowRight aria-hidden="true" size={15} /></Link>
           </article>
         </div>
       </section>
@@ -89,9 +89,9 @@ export function OverviewView({ documents }: OverviewViewProps) {
 
         <article className="content-panel next-panel">
           <div className="panel-label">Project state</div>
-          <h2>The lab is still being laid out.</h2>
+          <h2>Execution is the next slice.</h2>
           <p>
-            This screen will become the home for runs and comparisons. For now it gives the architecture and its source documents a clear place to live.
+            The UI can now describe and validate a platform configuration without pretending that a run has happened.
           </p>
           <div className="state-line"><span className="status-dot" /> Local development</div>
         </article>

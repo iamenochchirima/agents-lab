@@ -4,11 +4,11 @@ The laboratory has one control plane and several replaceable implementation area
 
 ## What makes a runnable harness
 
-A platform alone is not a harness. A harness configuration selects a harness variant,
-one of its agent definitions, an environment variant, required infrastructure, a
-model, and the context, memory, tool, and observability strategies needed for that
-run. Some choices may use platform-native behaviour. Others may come from shared lab
-code or another platform in a composition.
+A platform alone is not a runnable implementation. A backend-platform configuration
+selects a variant, agent definition, backend deployment profile, required services,
+model, and the context, memory, tool, and observability strategies needed for that run.
+Computer Native receives a resolved Lab run through an integration seam and operates
+within the selected computer host without a dedicated environment-adapter subtree.
 
 Agent definitions stay local to their harness variant because their construction uses
 platform-specific concepts. Scenarios remain separate. A single-agent LangGraph
@@ -20,8 +20,8 @@ flowchart TD
   Platform[Platform integration or composition]
   Variant[Harness variant]
   Agent[Agent definition and topology]
-  Environment[Environment variant]
-  Infrastructure[Infrastructure requirements]
+  Deployment[Backend deployment profile]
+  Infrastructure[Required services]
   Model[Model configuration]
   Strategies[Context, memory, tool, and observability strategies]
   Configuration[Harness configuration]
@@ -31,37 +31,35 @@ flowchart TD
   Variant --> Agent
   Variant --> Configuration
   Agent --> Configuration
-  Environment --> Configuration
+  Deployment --> Configuration
   Infrastructure --> Configuration
   Model --> Configuration
   Strategies --> Configuration
   Configuration --> Harness
 ```
 
-The platform directory owns the platform integration and its harness variants. An
-environment and an infrastructure service remain reusable even when the interface
-shows them under a platform for easier inspection. The harness variant declares which
-combinations it supports and which combinations have actually been tested.
+The platform directory owns backend-platform integrations and their variants.
+`computer-native/` owns the computer-native runtime, while
+`integrations/computer-native/` owns only the Lab-facing adapter. Backend variants
+declare which deployment profiles and service combinations they support.
 
 ## How the laboratory runs it
 
-The command-line interface selects a harness configuration, scenario, and experiment.
-The registry resolves and validates that combination. The runner creates the run
-context, chooses the execution mode, supervises lifecycle events, and starts the
-runnable harness. Telemetry and the run store record what happened. Evaluation reads
-the recorded evidence and produces metrics. The API exposes recorded data to the web
-application.
+The UI or command line selects an implementation, scenario, and experiment. The Lab
+server resolves and validates that combination, creates an immutable run manifest,
+dispatches to the selected runner, and records evidence. The runner may be a backend
+platform service or Computer Native through its integration adapter. Evaluation reads
+the recorded evidence and produces metrics.
 
 ```mermaid
 flowchart LR
   User[Contributor or operator]
   UI[React/Vite UI]
   CLI[CLI]
-  API[API]
-  Registry[Registry]
-  Runner[TypeScript laboratory runner]
-  Config[Harness configuration]
-  Harness[Runnable harness]
+  Server[Fastify Lab server]
+  Config[Resolved run manifest]
+  Runner[Registered runner adapter]
+  Implementation[Backend platform or Computer Native]
   Scenario[Scenario]
   Experiment[Experiment]
   Telemetry[Telemetry]
@@ -69,26 +67,25 @@ flowchart LR
   Evaluation[Evaluation]
 
   User --> UI
-  UI --> API
+  UI --> Server
   User --> CLI
-  CLI --> Registry
-  API --> Store
-  Registry --> Config
+  CLI --> Server
+  Server --> Config
   Config --> Runner
-  Runner --> Harness
+  Runner --> Implementation
   Runner --> Scenario
   Runner --> Experiment
-  Harness --> Telemetry
+  Implementation --> Telemetry
   Telemetry --> Store
   Store --> Evaluation
-  Evaluation --> API
+  Evaluation --> Server
 ```
 
 The main flow is:
 
-CLI -> registry -> harness configuration -> runner -> harness
-runner -> telemetry -> run store
-run store -> evaluation -> API -> web application
+UI or CLI -> Lab server -> resolved run manifest -> runner adapter -> implementation
+implementation -> telemetry -> run store
+run store -> evaluation -> Lab server -> web application
 
 The control plane must not implement a platform's reasoning loop. A harness must not
 decide how the laboratory names or stores every run. The common interfaces are the

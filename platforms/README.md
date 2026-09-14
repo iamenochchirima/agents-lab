@@ -12,7 +12,6 @@ Python.
 
 | Directory | Initial implementation direction | Role |
 | --- | --- | --- |
-| `standalone/` | Project-owned runtime | An independently controlled agent runtime and execution loop. |
 | `openai-agents/` | Python by default | OpenAI Agents SDK primitives and runtime behaviour. |
 | `langgraph/` | Python by default | Explicit graph and state-machine orchestration. |
 | `temporal/` | Python by default | Durable workflow execution. |
@@ -26,11 +25,13 @@ language SDKs are unsupported. A platform may later receive an explicit variant 
 another language when language/runtime behaviour is itself part of an experiment.
 
 Some entries use one platform. Entries under compositions combine multiple platforms.
-A harness variant declares which environment variants it supports and which
-infrastructure it requires. Those environment and infrastructure implementations stay
-in their top-level directories so other platforms can reuse them. Keep
-platform-specific assumptions, agent definitions, dependencies, telemetry, and tests
-local to the platform integration and its harness variants.
+A backend platform variant declares its deployment profile and infrastructure
+requirements. Keep platform-specific assumptions, agent definitions, dependencies,
+telemetry, and tests local to the platform integration and its harness variants.
+
+Computer Native is intentionally absent from this table. It is an extraction-ready
+standalone project under [`computer-native/`](../computer-native/README.md), connected
+to the Lab through [`integrations/computer-native/`](../integrations/computer-native/README.md).
 
 When implementation starts, a harness variant may add an `agents/` directory for its
 platform-specific agent definitions. Create it only when the first concrete agent

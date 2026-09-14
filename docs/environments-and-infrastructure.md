@@ -1,8 +1,14 @@
 # Environments and infrastructure
 
-An environment defines where an agent may act, such as a local workspace,
-sandboxed container, browser, or remote computer. Infrastructure defines the
-services a run needs, such as a database, workflow service, or queue.
+Computer Native environments define the computer in which that external harness may
+act: a local workspace process, sandboxed container, or VM/remote computer. Browser
+automation is a tool capability within one of those environments.
 
-Environment and infrastructure choices are recorded in a run because they can
-change reliability, permissions, latency, cost, and recovery behaviour.
+Backend deployment profiles define how Temporal, Restate, LangGraph, and SDK-based
+implementations are hosted: their application service or worker, persistence, durable
+runtime where applicable, networking, secrets, and observability. Infrastructure names
+the individual services a profile needs, such as a database, workflow service, or queue.
+
+Computer-environment, deployment-profile, and infrastructure choices are recorded in a
+run because they can change reliability, permissions, latency, cost, and recovery
+behaviour.

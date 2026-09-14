@@ -7,12 +7,14 @@ implementation built with one platform or a composition. Use harness configurati
 the concrete assembly selected for a run. An agent definition describes the identity,
 instructions, roles, topology, and platform-owned orchestration inside that variant.
 
-Use environment for the capabilities and restrictions surrounding the running agent.
-Use infrastructure for deployable services and operational resources. Use scenario for
-the workload and experiment for the test protocol. Use run for one execution and run
-record for its durable evidence.
+Use computer environment for the local workspace process, sandboxed container, or VM
+used by Computer Native. Use backend deployment profile for the service topology of
+Temporal, Restate, LangGraph, and SDK-based implementations. Use infrastructure for
+deployable services and operational resources. Use scenario for the workload and
+experiment for the test protocol. Use run for one execution and run record for its
+durable evidence.
 
-Do not use these terms interchangeably. A filesystem-native environment can be paired
-with a standalone, graph, SDK, workflow, or durable-runtime platform. Research and
-coding are scenarios, not agent topologies. A single-agent or supervisor-and-subagents
-topology may be tested against either workload.
+Do not use these terms interchangeably. Browser automation is a tool capability, not a
+computer environment. Computer Native is an external integration, not a project-owned
+platform implementation. Research and coding are scenarios, not agent topologies. A
+single-agent or supervisor-and-subagents topology may be tested against either workload.
