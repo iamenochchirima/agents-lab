@@ -1,6 +1,6 @@
 # Temporal baseline harness variant
 
-Status: implementation in progress.
+Status: first local baseline is runnable and covered by unit and local integration tests.
 
 The baseline is the first narrow, comparable agent workload built on Temporal.
 It is not intended to represent the complete professional agent planned for the
@@ -72,8 +72,10 @@ runtime capability exists.
 
 ## Validation status
 
-No baseline Temporal workflow has been validated end to end yet. A completed
-implementation must show a real local Temporal execution, durable evidence,
-model failure classification, cancellation behaviour, and one controlled worker
-restart recovery check. See the [Temporal local-development notes](../../docs/local-development.md)
-and the [active implementation plan](../../../../../../development/implementation-plans/active/lab-server-temporal-baseline.md).
+The baseline has been validated against a real local Temporal server and worker
+for success, pre-dispatch retry, ambiguous failure, timeout, cancellation, and
+control-plane reconciliation. The controlled worker restart exercise is
+documented in the [development playground](../../../../../../development/playground/temporal-baseline/README.md).
+See the [Temporal local-development notes](../../docs/local-development.md)
+and the [active implementation plan](../../../../../../development/implementation-plans/active/lab-server-temporal-baseline.md)
+for current evidence and limits.

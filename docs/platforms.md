@@ -11,8 +11,9 @@ OpenAI Agents SDK is an agent SDK, not a platform. Its first home is a Temporal 
 We will add a more detailed orchestration taxonomy only when it makes an implemented
 comparison clearer.
 
-Platform implementation notes remain close to their code in `server/src/platforms/`. They
-will enter this curated documentation area once an implementation is usable.
+Platform implementation notes remain close to their code in `server/src/platforms/`.
+The first usable notes are the [Temporal local-development guide](../server/src/platforms/temporal/docs/local-development.md)
+and [Temporal architecture notes](../server/src/platforms/temporal/docs/architecture.md).
 
 Computer Native is not a platform implementation. It is an extraction-ready standalone
 project under `computer-native/`, with its Lab-side integration documented under

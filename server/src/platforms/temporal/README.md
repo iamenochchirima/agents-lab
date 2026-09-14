@@ -1,6 +1,6 @@
 # Temporal platform
 
-Status: implementation in progress.
+Status: first local baseline is runnable.
 
 This directory contains the Lab's Temporal integration. Temporal is the durable
 execution platform for this slice; it is not the agent definition itself and it
@@ -67,8 +67,9 @@ temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
 ```
 
 The Lab's server configuration, worker command, and local stack launcher are
-still being implemented. This README does not imply that the API or worker can
-already be started successfully.
+implemented. Use the [local development guide](docs/local-development.md) for
+the exact commands and the [architecture notes](docs/architecture.md) for the
+ownership boundary.
 
 ## Related locations
 

@@ -49,10 +49,10 @@ development/playground/<slice-name>/
   notes.md        # Maintainer observations, questions, and content ideas
 ```
 
-The first slice is `computer-native-terminal-turn`. It makes one text-only terminal turn
-observable from input through persisted session evidence. A later tool-loop slice can
-build on the same playground conventions once the Computer Native terminal lifecycle is
-stable.
+The first slices are `computer-native-terminal-turn` and `temporal-baseline`. The former
+makes one text-only terminal turn observable from input through persisted session
+evidence. The latter makes one durable Temporal run observable across the API, worker,
+workflow, model activity, and Lab evidence projection.
 
 ## Expectations for every slice
 

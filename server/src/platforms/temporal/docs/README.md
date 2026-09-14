@@ -1,39 +1,35 @@
 # Temporal implementation notes
 
-Status: implementation in progress.
+These notes describe the first Temporal-backed path in Agent Harness Lab. They
+complement the [server boundary](../../../../README.md) and the [run API contract](../../../../contracts/run-api/README.md).
 
-These notes describe decisions that are specific to the Temporal platform
-integration. They are not a replacement for the server boundary documentation
-or for Temporal's own operational documentation.
+## Read in this order
 
-## Current notes
+- [Architecture](architecture.md): which process owns each decision and how data moves.
+- [Semantics](semantics.md): durability, evidence, retries, cancellation, and restart behaviour.
+- [Local development](local-development.md): start the dependency, run the stack, and inspect evidence.
 
-- [`local-development.md`](local-development.md) — local Temporal prerequisite,
-  persistence caveat, and the current implementation status.
+The [active implementation plan](../../../../../development/implementation-plans/active/lab-server-temporal-baseline.md)
+records the promised scope, tests, and known limits of this first slice.
 
-## Intended boundary
+## Current boundary
 
-The Fastify control plane accepts and records a Lab run. It does not execute
-Temporal workflow code. The Temporal runner adapter starts, cancels, and
-inspects a workflow through the Temporal client. The worker registers the
-workflow and its activities. The baseline variant defines the first single-turn
-agent workload.
+The Fastify control plane accepts a run request, writes the immutable Lab
+manifest, dispatches `temporal/baseline`, and projects workflow event intents
+into `lab/runs/<run-id>/`. The Temporal worker owns workflow execution and
+model activity execution. The browser talks only to Fastify.
 
-Temporal owns durable workflow history and recovery for an in-flight execution.
-The control plane owns the Lab's normalized evidence files. A workflow may
-retain ordered event intents for reconciliation, but it must not write
-`lab/runs/` directly.
+Temporal workflow history remains the source of truth for an in-flight workflow.
+The Lab files are a separate, normalized evidence projection. A workflow never
+writes those files directly.
 
-## What is not implemented yet
+## Current implementation
 
-The directory currently contains documentation scaffolding for the platform and
-its variants. The following remain implementation work:
+The runnable path is a single-turn prompt completion using either:
 
-- the typed runner adapter and Temporal client connection;
-- the registered worker and deterministic workflow;
-- the model activity and its failure classification;
-- control-plane evidence reconciliation; and
-- the API/UI path that submits and observes a real run.
+- `fake`, which is deterministic and supports controlled failure fixtures; or
+- `openrouter`, which is disabled unless explicitly enabled in server configuration.
 
-The active implementation plan is the source of truth for that work:
-[`lab-server-temporal-baseline.md`](../../../../../development/implementation-plans/active/lab-server-temporal-baseline.md).
+The baseline has no tools, skills, memory, integrations, side effects, or
+multi-agent execution. Those capabilities belong to later variants and must not
+be inferred from this slice.
