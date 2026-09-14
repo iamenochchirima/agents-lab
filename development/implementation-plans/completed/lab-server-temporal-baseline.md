@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T01:46:55+02:00
+**Last updated:** 2026-09-15T01:49:08+02:00
 **Status:** Completed
 
 ## Start here
@@ -609,5 +609,5 @@ All applicable gate items are satisfied:
 - [x] Add the completion timestamp and all implementation commit hashes, or their range,
       before archiving this plan.
 
-**Completed:** 2026-09-15T01:46:55+02:00
-**Implementation commits:** `8c1c469`, `d02da76`, `3ddec7e`
+**Completed:** 2026-09-15T01:49:08+02:00
+**Implementation commits:** `8c1c469`, `d02da76`, `3ddec7e`, `409f507`
