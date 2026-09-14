@@ -40,7 +40,7 @@ flowchart TD
 
 The platform directory owns backend-platform integrations and their variants.
 `computer-native/` owns the computer-native runtime, while
-`integrations/computer-native/` owns only the Lab-facing adapter. Backend variants
+`server/src/integrations/computer-native/` owns only the Lab-facing adapter. Backend variants
 declare which deployment profiles and service combinations they support.
 
 ## How the laboratory runs it

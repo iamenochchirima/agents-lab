@@ -5,13 +5,21 @@ This context defines the project's working language. It describes the things the
 ## Core concepts
 
 **Platform**:
-A technology or runtime used to build or operate an agent, such as LangGraph, Temporal, Restate, Mastra, or the Vercel AI SDK.
+A durable-execution runtime used to build or operate an agent, such as Temporal,
+Restate, LangGraph, Mastra, Vercel Workflow / AI SDK, Inngest, Trigger.dev, DBOS,
+Hatchet, or AWS Step Functions. OpenAI Agents SDK is an agent SDK used by a platform
+variant, not a platform itself.
 _Avoid_: using "platform" when the subject is the complete runnable agent.
 
 **External integration**:
 A Lab-side boundary for starting and observing an independently owned runnable system.
 Computer Native is the initial integration. Its temporary top-level project owns the
-runtime; the Lab records evidence through `integrations/computer-native/`.
+runtime; the Lab records evidence through `server/src/integrations/computer-native/`.
+
+**Reusable capability**:
+A portable definition used by more than one platform variant, such as a skill, MCP or
+OAuth connection, plugin manifest, tool schema, policy, or artifact type. Capabilities
+do not own an agent loop or a platform's durability model.
 
 **Environment**:
 For Computer Native, the computer in which the harness operates: local workspace

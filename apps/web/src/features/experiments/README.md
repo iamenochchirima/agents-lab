@@ -5,4 +5,4 @@ Compare configuration views. They describe future fault plans and do not inject 
 from the browser.
 
 Experiment implementations, analyzers, and tests continue to belong under the
-repository root `experiments/` directory.
+`lab/experiments/` directory.

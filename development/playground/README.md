@@ -28,8 +28,8 @@ by the real dependency.
 ## What does not belong here
 
 - Regression assertions that must run in continuous integration: put those in `tests/`.
-- Reusable agent workloads: put those in `scenarios/`.
-- Controlled, comparable hypotheses or fault studies: put those in `experiments/`.
+- Reusable agent workloads: put those in `lab/scenarios/`.
+- Controlled, comparable hypotheses or fault studies: put those in `lab/experiments/`.
 - Production modules that lack a proper platform, environment, or shared-package home.
 - Secrets, personal data, live production credentials, or unbounded generated output.
 

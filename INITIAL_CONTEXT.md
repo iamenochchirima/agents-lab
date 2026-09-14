@@ -441,7 +441,7 @@ Every experiment should produce standardized records independent of the harness 
 A run should eventually resemble:
 
 ```text
-runs/<run-id>/
+lab/runs/<run-id>/
   config.json
   events.jsonl
   trajectory.json

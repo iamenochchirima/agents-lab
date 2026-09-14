@@ -16,7 +16,7 @@ const stepsByDocument: Record<string, readonly MentalModelStep[]> = {
     { title: "Policy and action", files: ["environment adapter", "permission policy", "approval boundary", "idempotency boundary", "external integration adapter"] },
     { title: "Tool results, checkpoints, and recovery", files: ["tool or subagent dispatcher", "platform checkpoint or workflow state", "retry policy", "failure-injection hook", "resumption contract"] },
     { title: "Native telemetry and result delivery", files: ["native platform telemetry adapter", "result delivery adapter", "logs", "artifacts"] },
-    { title: "Lab evidence and run record", files: ["apps/lab-server/src/observability/", "runs/<run-id>/events.jsonl", "runs/<run-id>/metrics.json", "runs/<run-id>/result.json", "runs/<run-id>/artifacts/"] },
+    { title: "Lab evidence and run record", files: ["server/src/control-plane/observability/", "lab/runs/<run-id>/events.jsonl", "lab/runs/<run-id>/metrics.json", "lab/runs/<run-id>/result.json", "lab/runs/<run-id>/artifacts/"] },
   ],
   "docs/research/harness-code-maps/hermes.md": [
     { title: "Entry surfaces and facade", files: ["run_agent.py", "gateway/", "tui_gateway/", "apps/desktop/", "agent/turn_facade.py"] },

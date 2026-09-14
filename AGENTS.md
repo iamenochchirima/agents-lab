@@ -124,7 +124,7 @@ Every experiment should make its hypothesis and comparison meaningful. Record, a
 Runs should produce durable evidence in a standardized structure such as:
 
 ```text
-runs/<run-id>/
+lab/runs/<run-id>/
   config.json
   events.jsonl
   trajectory.json

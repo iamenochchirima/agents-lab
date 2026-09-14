@@ -9,9 +9,9 @@ reader who has not seen the code or the experiment before.
 | --- | --- |
 | Project orientation and first reading path | `docs/` curated pages and root README |
 | Stable boundaries, lifecycle, data flow, and diagrams | `docs/architecture/` |
-| A platform variant's implementation decisions | Its `platforms/<platform>/variants/<variant>/README.md` and curated platform page when usable |
-| A scenario's goal and grading rules | `scenarios/<scenario>/README.md` |
-| An experiment's hypothesis and procedure | `experiments/<experiment>/README.md` |
+| A platform variant's implementation decisions | Its `server/src/platforms/<platform>/variants/<variant>/README.md` and curated platform page when usable |
+| A scenario's goal and grading rules | `lab/scenarios/<scenario>/README.md` |
+| An experiment's hypothesis and procedure | `lab/experiments/<experiment>/README.md` |
 | A decision and its alternatives | `docs/adr/` |
 | Local contract, invariant, ordering, or recovery rule | Code docstring or focused comment beside the code |
 | Working study notes and temporary mental models | `docs/research/` or **Initial development** |

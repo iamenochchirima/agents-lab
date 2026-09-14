@@ -5,4 +5,4 @@ platform Run and Compare configuration views. These are configuration choices, n
 executable scenario implementations.
 
 Scenario code, fixtures, graders, and tests continue to belong under the repository
-root `scenarios/` directory. Do not move that implementation into the web app.
+`lab/scenarios/` directory. Do not move that implementation into the web app.

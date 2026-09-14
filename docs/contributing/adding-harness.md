@@ -16,6 +16,6 @@ Before adding code:
 9. Add documentation and a reproducible example.
 
 Keep backend platform integrations, harness variants, and platform-specific agent
-definitions inside `platforms/`. An independently owned harness such as Computer Native
+definitions inside `server/src/platforms/`. An independently owned harness such as Computer Native
 belongs in its own extraction-ready top-level project and integrates through
-`integrations/`. Do not make scenarios depend on internal types.
+`server/src/integrations/`. Do not make scenarios depend on internal types.

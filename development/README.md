@@ -9,3 +9,6 @@ this directory as an unreviewed alternative home for production implementation c
 
 - [`playground/`](playground/): small, observable walkthroughs of real implementation
   slices, maintained primarily as a learning and inspection environment.
+- [`implementation-plans/`](implementation-plans/): dated execution plans and their
+  completion records. Plans remain here while they guide active work, then move to the
+  completed archive with their completion date and validation evidence.

@@ -102,7 +102,7 @@ interface BaselineOptions {
 }
 
 function baselineVariant(options: BaselineOptions): HarnessVariantCoverage {
-  const variantDocumentId = options.variantDocumentId ?? `platforms/${options.platformId}/variants/baseline/README.md`;
+  const variantDocumentId = options.variantDocumentId ?? `server/src/platforms/${options.platformId}/variants/baseline/README.md`;
 
   return {
     id: "baseline",
@@ -167,15 +167,7 @@ export const coverageCatalog: CoverageCatalog = {
       layers: ["LangGraph orchestration", "Temporal durable execution"],
       notes: "Planned composition for separating graph reasoning from workflow durability.",
       status: "planned",
-      evidence: [documentLink("platforms/compositions/langgraph-temporal/README.md", "Composition notes")],
-    },
-    {
-      id: "openai-agents-restate",
-      name: "OpenAI Agents SDK + Restate",
-      layers: ["OpenAI Agents SDK orchestration", "Restate durable runtime"],
-      notes: "Planned composition for combining lightweight agent primitives with durable services.",
-      status: "planned",
-      evidence: [documentLink("platforms/compositions/openai-agents-restate/README.md", "Composition notes")],
+      evidence: [documentLink("server/src/platforms/compositions/langgraph-temporal/README.md", "Composition notes")],
     },
   ],
   currentFocus: {
