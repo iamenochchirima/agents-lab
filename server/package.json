@@ -2,5 +2,27 @@
   "name": "@agent-harness-lab/lab-server",
   "version": "0.0.0",
   "private": true,
-  "description": "Fastify control plane for Agent Harness Lab."
+  "type": "module",
+  "description": "Fastify control plane for Agent Harness Lab.",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/control-plane/bootstrap/server.ts",
+    "dev:worker": "tsx watch src/platforms/temporal/runner-adapter/worker-entry.ts",
+    "start": "node dist/src/control-plane/bootstrap/server.js",
+    "start:worker": "node dist/src/platforms/temporal/runner-adapter/worker-entry.js",
+    "test": "npm run build && node --test dist/tests/**/*.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@temporalio/client": "^1.23.0",
+    "@temporalio/worker": "^1.23.0",
+    "@temporalio/workflow": "^1.23.0",
+    "fastify": "^5.12.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
 }

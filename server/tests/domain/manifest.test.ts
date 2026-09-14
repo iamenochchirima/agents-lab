@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { buildRunManifest, InvalidRunRequestError } from "../../src/control-plane/domain/manifest.js";
+import type { RunRequest } from "../../src/control-plane/domain/types.js";
+
+const validRequest: RunRequest = {
+  platform: "temporal",
+  variant: "baseline",
+  task: { kind: "prompt", prompt: "Explain durable execution." },
+  model: { provider: "fake", model: "fake-success" },
+};
+
+test("manifest contains immutable safe run configuration", () => {
+  const manifest = buildRunManifest(validRequest, {
+    now: "2026-09-15T08:00:00.000Z",
+    runId: "run-test-1",
+    serverVersion: "test-version",
+  });
+
+  assert.equal(manifest.runId, "run-test-1");
+  assert.equal(manifest.createdAt, "2026-09-15T08:00:00.000Z");
+  assert.equal(manifest.model.provider, "fake");
+  assert.equal("apiKey" in manifest, false);
+  assert.equal(Object.isFrozen(manifest), true);
+  assert.equal(Object.isFrozen(manifest.task), true);
+  assert.equal(Object.isFrozen(manifest.model), true);
+  assert.equal(Object.isFrozen(manifest.temporal), true);
+  assert.throws(() => {
+    (manifest.temporal as { taskQueue: string }).taskQueue = "changed";
+  }, TypeError);
+});
+
+test("unsupported platforms and empty prompts are rejected", () => {
+  assert.throws(
+    () => buildRunManifest({ ...validRequest, platform: "restate" }, { runId: "run-test-2" }),
+    (error: unknown) => error instanceof InvalidRunRequestError,
+  );
+
+  assert.throws(
+    () => buildRunManifest({ ...validRequest, task: { kind: "prompt", prompt: "  " } }, { runId: "run-test-3" }),
+    (error: unknown) => error instanceof InvalidRunRequestError,
+  );
+});
+
+test("only supported model adapters are accepted", () => {
+  assert.throws(
+    () => buildRunManifest({ ...validRequest, model: { provider: "unknown", model: "x" } }, { runId: "run-test-4" }),
+    (error: unknown) => error instanceof InvalidRunRequestError,
+  );
+});

@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:04:36+02:00
+**Last updated:** 2026-09-15T00:32:35+02:00
 **Status:** Active
 
 ## Start here
@@ -203,6 +203,26 @@ The first concrete implementation is `TemporalBaselineRunner`. Do not create bro
 interfaces for tools, memory, context, agent messages, or durability until an actual
 second implementation needs them.
 
+## Delivery sequence and parallel work
+
+The existing Platform UI is ready as a configuration shell, but its Run action must stay
+unavailable until the server contract exists. Implement this slice in the following
+order:
+
+1. Commit the typed run request, run status, event, result, and error contract.
+2. Commit Fastify bootstrap, validation, manifest creation, and local evidence ownership.
+3. Commit the real Temporal client, worker, baseline workflow, and deterministic model
+   path.
+4. After step 1 is committed, a UI agent may add the API client and run-state views in a
+   separate commit. It must use the committed contract and must not invent mock run
+   responses or connect directly to Temporal.
+5. Complete the end-to-end UI/server/worker acceptance checks after all three processes
+   are running together.
+
+Each step should produce a reviewable commit with its relevant tests and documentation.
+The UI can be developed in parallel after the contract commit, but it cannot be declared
+complete until it has been exercised against the real Fastify API and Temporal worker.
+
 ### Evidence contract
 
 The control plane writes normalized events such as:
@@ -267,9 +287,9 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 2. Server package and Fastify bootstrap
 
-- [ ] Add purposeful server dependencies: Fastify, schema validation, Temporal client and
+- [x] Add purposeful server dependencies: Fastify, schema validation, Temporal client and
       worker SDK, and a test runner. Record why each dependency is needed.
-- [ ] Add `dev`, `build`, `start`, `typecheck`, and `test` scripts to `server/package.json`.
+- [x] Add `dev`, `build`, `start`, `typecheck`, and `test` scripts to `server/package.json`.
 - [ ] Create a typed server configuration module with API host/port, run-root path,
       Temporal endpoint/namespace/task queue, allowed model adapters, and timeouts.
 - [ ] Implement a Fastify bootstrap with structured startup/shutdown handling.
@@ -281,10 +301,10 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 3. Run domain, manifest, and local evidence store
 
-- [ ] Define opaque `RunId`, run status, terminal result, event, and manifest types.
-- [ ] Define legal run transitions: `created → queued → running → completed|failed|cancelled`.
+- [x] Define opaque `RunId`, run status, terminal result, event, and manifest types.
+- [x] Define legal run transitions: `created → queued → running → completed|failed|cancelled`.
 - [ ] Reject illegal or duplicate terminal transitions.
-- [ ] Validate the initial request: Temporal/baseline only, non-empty bounded prompt,
+- [x] Validate the initial request: Temporal/baseline only, non-empty bounded prompt,
       allowed model provider/model, and no unsupported scenario or experiment fields.
 - [ ] Resolve and atomically write `config.json` before any workflow starts.
 - [ ] Create append-only `events.jsonl` with deterministic serialization and correlation
@@ -416,9 +436,9 @@ unavailable measurements are `null`, never invented as zero.
 ### Server and domain unit tests
 
 - [ ] configuration validation, safe defaults, and missing Temporal configuration errors
-- [ ] run request validation and rejection of unsupported platform/variant combinations
-- [ ] manifest construction, immutability, and secret exclusion
-- [ ] legal and illegal run status transitions
+- [x] run request validation and rejection of unsupported platform/variant combinations
+- [x] manifest construction, immutability, and secret exclusion
+- [x] legal and illegal run status transitions
 - [ ] event schema, ordering, correlation, and JSONL serialization
 - [ ] stable event identities, source ordering, recorded ordering, and reconciliation
       deduplication
