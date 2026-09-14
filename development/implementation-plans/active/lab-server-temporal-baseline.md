@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:40:04+02:00
+**Last updated:** 2026-09-15T00:47:28+02:00
 **Status:** Active
 
 ## Start here
@@ -290,7 +290,7 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Add purposeful server dependencies: Fastify, schema validation, Temporal client and
       worker SDK, and a test runner. Record why each dependency is needed.
 - [x] Add `dev`, `build`, `start`, `typecheck`, and `test` scripts to `server/package.json`.
-- [ ] Create a typed server configuration module with API host/port, run-root path,
+- [x] Create a typed server configuration module with API host/port, run-root path,
       Temporal endpoint/namespace/task queue, allowed model adapters, and timeouts.
 - [ ] Implement a Fastify bootstrap with structured startup/shutdown handling.
 - [ ] Implement `GET /health` that reports only control-plane readiness and safe Temporal
@@ -322,7 +322,7 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 4. Platform registry and Temporal runner adapter
 
-- [ ] Implement an explicit registry that exposes only `temporal/baseline` as runnable.
+- [x] Implement an explicit registry that exposes only `temporal/baseline` as runnable.
 - [ ] Return honest unavailable status for all other planned platform variants.
 - [ ] Implement `TemporalBaselineRunner` behind the small runner contract.
 - [ ] Generate deterministic, traceable Temporal workflow IDs from the Lab run ID.
@@ -372,13 +372,13 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 7. Model adapters
 
-- [ ] Implement a deterministic fake adapter first, including controlled chunk delay,
+- [x] Implement a deterministic fake adapter first, including controlled chunk delay,
       pre-dispatch failure, ambiguous-after-dispatch failure, timeout, and cancellation
       fixtures for tests.
-- [ ] Guarantee that the fake adapter never makes a network request.
-- [ ] Implement one optional OpenRouter adapter behind the same platform-local model
+- [x] Guarantee that the fake adapter never makes a network request.
+- [x] Implement one optional OpenRouter adapter behind the same platform-local model
       boundary.
-- [ ] Read the OpenRouter API key only from local environment configuration and redact it
+- [x] Read the OpenRouter API key only from local environment configuration and redact it
       from errors, logs, manifests, events, and results.
 - [ ] Make real-provider execution opt-in; automated tests must always use the fake model.
 - [ ] Record only safe provider/model metadata and available usage data.
