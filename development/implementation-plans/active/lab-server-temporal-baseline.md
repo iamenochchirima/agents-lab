@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:47:28+02:00
+**Last updated:** 2026-09-15T00:58:46+02:00
 **Status:** Active
 
 ## Start here
@@ -94,13 +94,13 @@ history, or evidence may be fabricated.
 ## Fixed scope
 
 - [ ] Run a Fastify control plane locally from `server/`.
-- [ ] Add a real Temporal baseline worker and workflow that connect to local Temporal.
-- [ ] Register the Temporal baseline as a runnable platform variant.
+- [x] Add a real Temporal baseline worker and workflow that connect to local Temporal.
+- [x] Register the Temporal baseline as a runnable platform variant.
 - [ ] Validate a run request and create an immutable effective manifest before dispatch.
-- [ ] Start one Temporal workflow per accepted run and retain its workflow identity.
-- [ ] Execute one small, model-backed agent turn inside the Temporal implementation.
-- [ ] Provide a deterministic model adapter for automated tests and local learning.
-- [ ] Provide one opt-in OpenRouter adapter for manual real-model verification.
+- [x] Start one Temporal workflow per accepted run and retain its workflow identity.
+- [x] Execute one small, model-backed agent turn inside the Temporal implementation.
+- [x] Provide a deterministic model adapter for automated tests and local learning.
+- [x] Provide one opt-in OpenRouter adapter for manual real-model verification.
 - [ ] Persist normalized run events and a final result under `lab/runs/`.
 - [ ] Preserve safe Temporal-native identifiers and diagnostics alongside normalized
       evidence.
@@ -338,37 +338,37 @@ unavailable measurements are `null`, never invented as zero.
 ### 5. Temporal worker, workflow, and activities
 
 - [ ] Define a single named task queue for the initial local Temporal baseline.
-- [ ] Implement a worker process with explicit graceful drain and shutdown behaviour.
-- [ ] Implement one workflow per Lab run with durable workflow state limited to inputs,
+- [x] Implement a worker process with explicit graceful drain and shutdown behaviour.
+- [x] Implement one workflow per Lab run with durable workflow state limited to inputs,
       execution phase, and safe references needed for recovery.
-- [ ] Implement a model-request activity with explicit timeout and retry policy.
-- [ ] Make retry policy visible in the manifest and native evidence.
-- [ ] Classify failures as pre-dispatch, provider-declared, or ambiguous-after-dispatch.
-- [ ] Permit automatic retry only when the adapter proves no provider request was sent.
+- [x] Implement a model-request activity with explicit timeout and retry policy.
+- [x] Make retry policy visible in the manifest and workflow event evidence.
+- [x] Classify failures as pre-dispatch, provider-declared, or ambiguous-after-dispatch.
+- [x] Permit automatic retry only when the adapter proves no provider request was sent.
       An ambiguous timeout, connection loss, or lost acknowledgement is terminal for this
       slice and records `failureKind: outcome_unknown` rather than sending the prompt
       again.
-- [ ] Use a stable provider-attempt ID for diagnostics. Do not claim exactly-once model
+- [x] Use a stable provider-attempt ID for diagnostics. Do not claim exactly-once model
       execution; provider idempotency may be introduced only after it is verified for the
       selected provider.
 - [ ] Emit native lifecycle detail at workflow/activity boundaries without duplicating
       normalized event-writing responsibilities unpredictably.
-- [ ] Handle workflow cancellation and ensure it reaches an in-flight model activity when
+- [x] Handle workflow cancellation and ensure it reaches an in-flight model activity when
       the SDK/provider permits it.
 - [ ] Choose and document a controlled recovery point for the first restart test—for
       example, after workflow start but before activity completion.
-- [ ] Ensure workflow code is deterministic and does not perform direct network/model I/O.
+- [x] Ensure workflow code is deterministic and does not perform direct network/model I/O.
 
 ### 6. Baseline single-turn agent definition
 
-- [ ] Implement the baseline definition in
+- [x] Implement the baseline definition in
       `server/src/platforms/temporal/variants/baseline/` using its existing ownership
       directories.
-- [ ] Define the initial context precisely: declared system instruction plus user prompt.
-- [ ] Keep the model/action loop to one model request and one text response for this slice.
-- [ ] Record response text and safe usage metadata as the terminal run result.
-- [ ] Define clear provider, timeout, cancellation, and invalid-response error categories.
-- [ ] Do not add tools, skills, workspace access, memory, integrations, or side effects.
+- [x] Define the initial context precisely: declared system instruction plus user prompt.
+- [x] Keep the model/action loop to one model request and one text response for this slice.
+- [x] Record response text and safe usage metadata as the terminal run result.
+- [x] Define clear provider, timeout, cancellation, and invalid-response error categories.
+- [x] Do not add tools, skills, workspace access, memory, integrations, or side effects.
 
 ### 7. Model adapters
 
