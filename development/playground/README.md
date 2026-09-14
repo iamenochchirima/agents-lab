@@ -49,8 +49,10 @@ development/playground/<slice-name>/
   notes.md        # Maintainer observations, questions, and content ideas
 ```
 
-The first slice will be `standalone-tool-loop`. It will make one complete tool-using
-turn observable from resolved run configuration through standardized evidence on disk.
+The first slice is `computer-native-terminal-turn`. It makes one text-only terminal turn
+observable from input through persisted session evidence. A later tool-loop slice can
+build on the same playground conventions once the Computer Native terminal lifecycle is
+stable.
 
 ## Expectations for every slice
 

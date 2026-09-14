@@ -2,5 +2,20 @@
   "name": "@agent-harness-lab/computer-native",
   "version": "0.0.0",
   "private": true,
-  "description": "Extraction-ready computer-native agent harness."
+  "description": "Extraction-ready computer-native agent harness.",
+  "type": "module",
+  "bin": {
+    "computer-native": "./dist/src/cli/main.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "chat": "npm run build && node dist/src/cli/main.js chat",
+    "start": "node dist/src/cli/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
 }

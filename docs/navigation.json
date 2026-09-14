@@ -28,7 +28,9 @@
         "server/src/integrations/README.md",
         "server/src/integrations/computer-native/README.md",
         "computer-native/README.md",
-        "computer-native/docs/README.md"
+        "computer-native/docs/README.md",
+        "computer-native/docs/quick-start.md",
+        "computer-native/docs/turn-lifecycle.md"
       ]
     },
     {

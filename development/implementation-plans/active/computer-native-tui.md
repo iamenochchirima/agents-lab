@@ -1,7 +1,7 @@
 # Computer Native terminal agent — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:13:11+02:00
+**Last updated:** 2026-09-15T00:40:58+02:00
 **Status:** Active
 
 ## Start here
@@ -42,27 +42,29 @@ without the TUI:
 
 ```text
 <state-directory>/sessions/<session-id>/
+  session.json
   transcript.jsonl
   turns/<turn-id>/
+    turn.json
     events.jsonl
     result.json
 ```
 
 The first release is complete only when the same turn lifecycle is exercised by unit
-tests, integration tests using a deterministic fake model, and an opt-in manual test
-against one real configured provider.
+tests, integration tests using a deterministic local provider, and an opt-in manual test
+against the configured OpenRouter provider.
 
 ## Fixed scope
 
-- [ ] Launch an interactive terminal user interface from the Computer Native package.
-- [ ] Accept a message, submit it, and display a streamed assistant response.
-- [ ] Create or resume one local session identified by a stable session ID.
-- [ ] Persist ordered user and assistant messages in a transcript.
-- [ ] Emit durable lifecycle events for the turn and model request.
-- [ ] Support one configured model-provider adapter.
-- [ ] Support a deterministic fake-model adapter for automated tests.
-- [ ] Surface cancellation, timeout, configuration, and provider failures clearly.
-- [ ] Exit cleanly without corrupting an in-progress transcript.
+- [x] Launch an interactive terminal user interface from the Computer Native package.
+- [x] Accept a message, submit it, and display a streamed assistant response.
+- [x] Create or resume one local session identified by a stable session ID.
+- [x] Persist ordered user and assistant messages in a transcript.
+- [x] Emit durable lifecycle events for the turn and model request.
+- [x] Support one configured real model-provider adapter through OpenRouter.
+- [x] Support a deterministic local model adapter for automated tests and reproducible local runs.
+- [x] Surface cancellation, timeout, configuration, and provider failures clearly.
+- [x] Exit cleanly without corrupting an in-progress transcript.
 
 ## Explicitly out of scope
 
@@ -111,7 +113,7 @@ computer-native/src/
 ├── cli/             # command entry point and terminal interface
 ├── runtime/         # one turn lifecycle and terminal state transitions
 ├── context/         # bounded initial instruction and user-prompt assembly
-├── models/          # provider contract, real adapter, fake adapter, streaming
+├── models/          # provider contract, real adapter, deterministic local adapter, streaming
 ├── sessions/        # session identity and ordered transcript semantics
 ├── persistence/     # atomic local record storage and recovery on restart
 ├── telemetry/       # native lifecycle events and redacted diagnostics
@@ -128,19 +130,19 @@ depend on Agent Harness Lab implementation code.
 
 ## Invariants
 
-- [ ] Every turn has a unique turn ID and belongs to exactly one session ID.
-- [ ] A user message is persisted before a model request starts.
-- [ ] An assistant message is committed only after its stream completes successfully.
-- [ ] A failed, timed-out, or cancelled model request creates a terminal event and result;
+- [x] Every turn has a unique turn ID and belongs to exactly one session ID.
+- [x] A user message is persisted before a model request starts.
+- [x] An assistant message is committed only after its stream completes successfully.
+- [x] A failed, timed-out, or cancelled model request creates a terminal event and result;
       it must not create a completed assistant message.
-- [ ] Each terminal turn has its own `turns/<turn-id>/result.json`; a later turn must never
+- [x] Each terminal turn has its own `turns/<turn-id>/result.json`; a later turn must never
       overwrite a prior turn's outcome.
-- [ ] Transcript message order matches turn order, including after restart.
-- [ ] Event records have a stable schema, timestamp, session ID, and turn ID.
-- [ ] Provider secrets and raw authorization headers never appear in terminal output,
+- [x] Transcript message order matches turn order, including after restart.
+- [x] Event records have a stable schema, timestamp, session ID, and turn ID.
+- [x] Provider secrets and raw authorization headers never appear in terminal output,
       transcripts, events, errors, or result records.
-- [ ] The fake model is deterministic and does not use the network.
-- [ ] The real provider path is opt-in and fails with an actionable configuration error
+- [x] The deterministic local provider is repeatable and does not use the network.
+- [x] The real provider path is opt-in and fails with an actionable configuration error
       when credentials are unavailable.
 
 ### Crash recovery rule
@@ -160,120 +162,125 @@ with a repairable incomplete-record error rather than inventing a message.
 
 ### 1. Package and local configuration
 
-- [ ] Add executable and development scripts to `computer-native/package.json`.
-- [ ] Select and document the terminal UI dependency or native terminal approach before
+- [x] Add executable and development scripts to `computer-native/package.json`.
+- [x] Select and document the terminal UI dependency or native terminal approach before
       adding it; record why it is suitable for streaming, keyboard input, tests, and
       long-lived sessions.
-- [ ] Define a typed, validated local configuration shape for state directory, provider,
-      model, timeout, and session selection.
-- [ ] Define safe defaults that never require a secret in a test run.
-- [ ] Add `.env.example` only if environment variables are actually supported; do not
+- [x] Define a typed, validated local configuration shape for state directory, provider,
+      model, timeout, session selection, and the OpenRouter credential source.
+- [x] Define safe defaults that never require a secret in a test run.
+- [x] Add `.env.example` only if environment variables are actually supported; do not
       commit credentials or local paths.
 
 ### 2. Domain contracts
 
-- [ ] Define focused types for `SessionId`, `TurnId`, transcript messages, turn result,
+- [x] Define focused types for `SessionId`, `TurnId`, transcript messages, turn result,
       model request, streamed model event, and native telemetry event.
-- [ ] Define the minimal context builder for the declared initial instruction and user
+- [x] Define the minimal context builder for the declared initial instruction and user
       prompt; keep later context sources out of this slice.
-- [ ] Define the model-provider interface without leaking one provider's response shape
+- [x] Define the model-provider interface without leaking one provider's response shape
       into runtime or TUI code.
-- [ ] Define a finite turn state model: idle, submitting, streaming, completed, failed,
+- [x] Define a finite turn state model: idle, submitting, streaming, completed, failed,
       cancelled, interrupted.
-- [ ] Document error and cancellation semantics on public types and modules.
+- [x] Document error and cancellation semantics on public types and modules.
 
 ### 3. Local session and evidence store
 
-- [ ] Create a session when no session ID is supplied.
-- [ ] Resume an existing valid session when its ID is supplied.
-- [ ] Create a recoverable non-terminal turn record before persisting its user message.
-- [ ] Persist transcript messages as append-only JSONL with deterministic serialization.
-- [ ] Persist lifecycle events separately from transcript messages under the owning turn.
-- [ ] Write `turns/<turn-id>/result.json` atomically after every terminal turn outcome.
-- [ ] Detect malformed or interrupted local records and fail safely with a repairable,
+- [x] Create a session when no session ID is supplied.
+- [x] Resume an existing valid session when its ID is supplied.
+- [x] Create a recoverable non-terminal turn record before persisting its user message.
+- [x] Persist transcript messages as append-only JSONL with deterministic serialization.
+- [x] Persist lifecycle events separately from transcript messages under the owning turn.
+- [x] Write `turns/<turn-id>/result.json` atomically after every terminal turn outcome.
+- [x] Detect malformed or interrupted local records and fail safely with a repairable,
       actionable error rather than silently overwriting evidence.
 
 ### 4. Turn runtime
 
-- [ ] Admit one user message into the selected session.
-- [ ] Persist the user message before model invocation.
-- [ ] Emit `TurnStarted` and `ModelRequested` before streaming begins.
-- [ ] Forward stream chunks to the caller without letting the TUI own provider state.
-- [ ] Accumulate a successful complete response and commit it once.
-- [ ] Emit `ModelCompleted` and `TurnCompleted` on success.
-- [ ] Emit terminal failure or cancellation events and a failed/cancelled result when
+- [x] Admit one user message into the selected session.
+- [x] Persist the user message before model invocation.
+- [x] Emit `TurnStarted` and `ModelRequested` before streaming begins.
+- [x] Forward stream chunks to the caller without letting the TUI own provider state.
+- [x] Accumulate a successful complete response and commit it once.
+- [x] Emit `ModelCompleted` and `TurnCompleted` on success.
+- [x] Emit terminal failure or cancellation events and a failed/cancelled result when
       streaming does not complete.
-- [ ] On startup, locate non-terminal turns and finalize them as `interrupted` without
+- [x] On startup, locate non-terminal turns and finalize them as `interrupted` without
       creating an assistant message or reissuing a model request.
-- [ ] Enforce one configured timeout and one cancellation signal.
+- [x] Enforce one configured timeout and one cancellation signal.
 
 ### 5. Model adapters
 
-- [ ] Implement the deterministic fake model first for repeatable automated tests.
-- [ ] Implement exactly one real provider adapter behind the same interface.
-- [ ] Support streamed text only; defer tools, structured output, and provider fallback.
-- [ ] Normalize provider failures into documented runtime error categories.
-- [ ] Capture safe model metadata and token/usage information when the provider returns it.
+- [x] Implement the deterministic local provider first for repeatable automated tests.
+- [x] Implement exactly one real provider adapter, OpenRouter, behind the same interface.
+- [x] Support streamed text only; defer tools, structured output, and provider fallback.
+- [x] Normalize provider failures into documented runtime error categories.
+- [x] Capture safe model metadata and token/usage information when the provider returns it.
 
 ### 6. Terminal interface
 
-- [ ] Add `computer-native chat` as the initial command.
-- [ ] Render session identity, selected model, user messages, streamed text, and final
+- [x] Add `computer-native chat` as the initial command.
+- [x] Render session identity, selected model, user messages, streamed text, and final
       terminal status.
-- [ ] Disable duplicate submission while a turn is active.
-- [ ] Bind an interrupt to runtime cancellation and show the terminal outcome.
-- [ ] Render configuration and persistence errors without a stack trace by default.
-- [ ] Preserve a non-interactive path or test driver so automated tests do not require a
+- [x] Disable duplicate submission while a turn is active.
+- [x] Bind an interrupt to runtime cancellation and show the terminal outcome.
+- [x] Render configuration and persistence errors without a stack trace by default.
+- [x] Preserve a non-interactive path or test driver so automated tests do not require a
       real terminal emulator.
-- [ ] Keep terminal components free of model-provider, persistence-format, and Lab logic.
+- [x] Keep terminal components free of model-provider, persistence-format, and Lab logic.
 
 ### 7. Documentation and learning evidence
 
-- [ ] Add a Computer Native quick-start document with install, configuration, launch,
-      fake-model test, and real-provider manual-test commands.
-- [ ] Document the session record layout and event meanings.
-- [ ] Document the turn state model, persistence ordering, and known limitations.
-- [ ] Add a dedicated `development/playground/` exercise that demonstrates a successful,
+- [x] Add a Computer Native quick-start document with install, configuration, launch,
+      deterministic-provider test, and real-provider manual-test commands.
+- [x] Document the session record layout and event meanings.
+- [x] Document the turn state model, persistence ordering, and known limitations.
+- [x] Add a dedicated `development/playground/` exercise that demonstrates a successful,
       failed, timed-out, and cancelled turn and explains what to inspect.
-- [ ] Update Computer Native architecture docs and relevant `README.md` ownership notes.
+- [x] Update Computer Native architecture docs and relevant `README.md` ownership notes.
 
 ## Automated tests
 
 ### Unit tests
 
-- [ ] configuration validation and safe defaults
-- [ ] session ID and turn ID generation
-- [ ] turn-state transitions, including invalid transitions
-- [ ] transcript serialization and ordered append behaviour
-- [ ] event serialization and required correlation fields
-- [ ] result-record success, failure, and cancellation shapes
-- [ ] fake-model deterministic chunks and deterministic failures
-- [ ] secret-redaction behaviour
+- [x] configuration validation and safe defaults
+- [x] session ID and turn ID generation
+- [x] turn-state transitions, including invalid transitions
+- [x] transcript serialization and ordered append behaviour
+- [x] event serialization and required correlation fields
+- [x] result-record success, failure, and cancellation shapes
+- [x] deterministic-provider chunks and deterministic failures
+- [x] secret-redaction behaviour
 
 ### Integration tests
 
-- [ ] successful fake-model turn produces the expected transcript, events, and result
-- [ ] resumed session appends a second ordered turn correctly
-- [ ] fake-model failure records the user message and failed result without an assistant
+- [x] successful deterministic-provider turn produces the expected transcript, events, and result
+- [x] resumed session appends a second ordered turn correctly
+- [x] deterministic-provider failure records the user message and failed result without an assistant
       message
-- [ ] timeout records a timed-out result and leaves the transcript valid
-- [ ] cancellation records a cancelled result and leaves the transcript valid
-- [ ] crash after user-message persistence but before model invocation records an
+- [x] timeout records a timed-out result and leaves the transcript valid
+- [x] cancellation records a cancelled result and leaves the transcript valid
+- [x] crash after user-message persistence but before model invocation records an
       interrupted turn on restart without a model call
-- [ ] crash after model-request dispatch records an interrupted/unknown-outcome turn on
+- [x] crash after model-request dispatch records an interrupted/unknown-outcome turn on
       restart without a duplicate model call
-- [ ] simulated write interruption is detected on next session load
-- [ ] terminal command can run non-interactively against the fake model
+- [x] simulated write interruption is detected on next session load
+- [x] terminal command can run non-interactively against the deterministic local provider
 
 ### Manual acceptance checks
 
-- [ ] launch the TUI and complete a fake-model turn
-- [ ] restart the process and resume the same session
-- [ ] interrupt a streaming fake-model turn
-- [ ] inspect raw `transcript.jsonl` and one turn's `events.jsonl` and `result.json`
-- [ ] run one real-provider turn using local credentials
-- [ ] disconnect or invalidate credentials and verify the user sees an actionable failure
-- [ ] inspect all saved evidence to confirm no secret is present
+- [x] launch the TUI and complete a deterministic-provider turn
+- [x] restart the process and resume the same session
+- [x] interrupt a streaming deterministic-provider turn
+- [x] inspect raw `transcript.jsonl` and one turn's `events.jsonl` and `result.json`
+- [ ] run one OpenRouter turn using local credentials
+- [x] disconnect or invalidate credentials and verify the user sees an actionable failure
+- [x] inspect all saved evidence to confirm no secret is present
+
+The successful OpenRouter check remains pending because no usable local OpenRouter
+credential was present in the validation environment. The invalid-credential path was
+run separately and produced an actionable provider failure without exposing the supplied
+credential in terminal output or saved evidence.
 
 ## Required validation commands
 
@@ -300,26 +307,50 @@ Also run:
 git diff --check
 ```
 
+## Current handoff
+
+Implemented the initial Computer Native slice in `computer-native/`, including the
+readline terminal command, runtime lifecycle, deterministic local provider, OpenRouter
+adapter, local JSON/JSONL evidence store, restart recovery, redaction, tests, quick-start
+documentation, and the dedicated playground exercise. The documentation catalogue was
+updated for the two new Computer Native guides.
+
+Validation recorded for this slice:
+
+- `cd computer-native && npm run typecheck` — passed.
+- `cd computer-native && npm test` — passed; 15 tests.
+- `cd computer-native && npm run build` — passed.
+- `npm --prefix apps/web run typecheck` — passed.
+- `git diff --check` — passed.
+- Playground success, provider failure, timeout, and cancellation runs — passed.
+- Interactive deterministic run, session resume, and Ctrl-C cancellation — passed.
+- Invalid OpenRouter credential run — produced an actionable 401/provider failure with
+  no credential in terminal output or saved evidence.
+
+The only unverified acceptance check is a successful OpenRouter turn with a valid local
+credential. No usable credential was present, so this remains an opt-in follow-up rather
+than being represented by a local substitute.
+
 ## Completion gate
 
 Before marking every item complete, verify all of the following:
 
-- [ ] The TUI executes a real turn lifecycle rather than displaying simulated output.
-- [ ] Fake-model tests cover normal completion, provider failure, timeout, cancellation,
+- [x] The TUI executes a real turn lifecycle rather than displaying simulated output.
+- [x] Deterministic-provider tests cover normal completion, provider failure, timeout, cancellation,
       persistence/restart, and event/result evidence.
-- [ ] The real provider remains optional and is never used by automated tests.
-- [ ] Evidence records are inspectable and correlated by session and turn ID.
-- [ ] The implementation has no tools, filesystem access, or external side effects.
-- [ ] Documentation, examples, commands, and directory ownership match the code.
-- [ ] All validation commands pass and their results are recorded in the handoff.
+- [x] The real provider remains optional and is never used by automated tests.
+- [x] Evidence records are inspectable and correlated by session and turn ID.
+- [x] The implementation has no tools, filesystem access, or external side effects.
+- [x] Documentation, examples, commands, and directory ownership match the code.
+- [x] All validation commands pass and their results are recorded in the handoff.
 
 ## Commit discipline and handoff
 
-- [ ] Commit each coherent, validated implementation section rather than accumulating one
+- [x] Commit each coherent, validated implementation section rather than accumulating one
       large end-of-plan commit.
-- [ ] Include the section's relevant tests and documentation in the same commit when they
+- [x] Include the section's relevant tests and documentation in the same commit when they
       change together.
-- [ ] Review `git status` and each diff; preserve unrelated user changes.
-- [ ] Record changed files, validation results, and known limitations in the handoff.
+- [x] Review `git status` and each diff; preserve unrelated user changes.
+- [x] Record changed files, validation results, and known limitations in the handoff.
 - [ ] Add the completion timestamp and all implementation commit hashes, or their range,
       before archiving this plan.
