@@ -26,5 +26,5 @@ the dependency failure. It does not fabricate a run result; a submission made du
 that condition is retained as a failed dispatch record.
 
 See the [Temporal local development guide](src/platforms/temporal/docs/local-development.md)
-and the [active implementation plan](../development/implementation-plans/active/lab-server-temporal-baseline.md)
+and the [completed implementation plan](../development/implementation-plans/completed/lab-server-temporal-baseline.md)
 for the current scope and recovery semantics.
