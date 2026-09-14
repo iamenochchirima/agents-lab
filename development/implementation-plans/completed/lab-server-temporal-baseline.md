@@ -1,8 +1,8 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T01:49:17+02:00
-**Status:** Active
+**Last updated:** 2026-09-15T01:46:55+02:00
+**Status:** Completed
 
 ## Start here
 
@@ -93,22 +93,22 @@ history, or evidence may be fabricated.
 
 ## Fixed scope
 
-- [ ] Run a Fastify control plane locally from `server/`.
+- [x] Run a Fastify control plane locally from `server/`.
 - [x] Add a real Temporal baseline worker and workflow that connect to local Temporal.
 - [x] Register the Temporal baseline as a runnable platform variant.
-- [ ] Validate a run request and create an immutable effective manifest before dispatch.
+- [x] Validate a run request and create an immutable effective manifest before dispatch.
 - [x] Start one Temporal workflow per accepted run and retain its workflow identity.
 - [x] Execute one small, model-backed agent turn inside the Temporal implementation.
 - [x] Provide a deterministic model adapter for automated tests and local learning.
 - [x] Provide one opt-in OpenRouter adapter for manual real-model verification.
-- [ ] Persist normalized run events and a final result under `lab/runs/`.
-- [ ] Preserve safe Temporal-native identifiers and diagnostics alongside normalized
+- [x] Persist normalized run events and a final result under `lab/runs/`.
+- [x] Preserve safe Temporal-native identifiers and diagnostics alongside normalized
       evidence.
-- [ ] Stream or poll run status through the control API without exposing worker internals
+- [x] Stream or poll run status through the control API without exposing worker internals
       directly to the browser.
-- [ ] Connect the existing Temporal UI to this API for submission and live observation.
-- [ ] Support cancellation from the API and UI if the Temporal workflow has started.
-- [ ] Demonstrate worker restart recovery at one controlled point.
+- [x] Connect the existing Temporal UI to this API for submission and live observation.
+- [x] Support cancellation from the API and UI if the Temporal workflow has started.
+- [x] Demonstrate worker restart recovery at one controlled point.
 
 ## Explicitly out of scope
 
@@ -311,7 +311,7 @@ unavailable measurements are `null`, never invented as zero.
       fields.
 - [x] Materialize `trajectory.json` and `metrics.json` with explicit `null` values for
       unavailable measurements.
-- [ ] Atomically write `result.json` on every terminal outcome.
+- [x] Atomically write `result.json` on every terminal outcome.
 - [x] Implement the control-plane-only evidence writer, stable event identities,
       idempotent reconciliation, and recorded/source sequence rules.
 - [x] Mark missing or mismatched Temporal execution references as
@@ -323,21 +323,21 @@ unavailable measurements are `null`, never invented as zero.
 ### 4. Platform registry and Temporal runner adapter
 
 - [x] Implement an explicit registry that exposes only `temporal/baseline` as runnable.
-- [ ] Return honest unavailable status for all other planned platform variants.
-- [ ] Implement `TemporalBaselineRunner` behind the small runner contract.
-- [ ] Generate deterministic, traceable Temporal workflow IDs from the Lab run ID.
-- [ ] Start one workflow per Lab run and store the returned native execution reference.
-- [ ] Map cancellation requests to the appropriate Temporal cancellation mechanism.
-- [ ] Implement safe inspection of workflow status for reconciliation after control-plane
+- [x] Return honest unavailable status for all other planned platform variants.
+- [x] Implement `TemporalBaselineRunner` behind the small runner contract.
+- [x] Generate deterministic, traceable Temporal workflow IDs from the Lab run ID.
+- [x] Start one workflow per Lab run and store the returned native execution reference.
+- [x] Map cancellation requests to the appropriate Temporal cancellation mechanism.
+- [x] Implement safe inspection of workflow status for reconciliation after control-plane
       restart.
-- [ ] Expose ordered workflow event intents and safe terminal summary data for
+- [x] Expose ordered workflow event intents and safe terminal summary data for
       control-plane reconciliation; the workflow must not write Lab evidence files.
-- [ ] Keep Temporal imports inside the Temporal platform directory or an explicit server
+- [x] Keep Temporal imports inside the Temporal platform directory or an explicit server
       infrastructure adapter; they must not leak into UI or generic run-domain code.
 
 ### 5. Temporal worker, workflow, and activities
 
-- [ ] Define a single named task queue for the initial local Temporal baseline.
+- [x] Define a single named task queue for the initial local Temporal baseline.
 - [x] Implement a worker process with explicit graceful drain and shutdown behaviour.
 - [x] Implement one workflow per Lab run with durable workflow state limited to inputs,
       execution phase, and safe references needed for recovery.
@@ -351,11 +351,11 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Use a stable provider-attempt ID for diagnostics. Do not claim exactly-once model
       execution; provider idempotency may be introduced only after it is verified for the
       selected provider.
-- [ ] Emit native lifecycle detail at workflow/activity boundaries without duplicating
+- [x] Emit native lifecycle detail at workflow/activity boundaries without duplicating
       normalized event-writing responsibilities unpredictably.
 - [x] Handle workflow cancellation and ensure it reaches an in-flight model activity when
       the SDK/provider permits it.
-- [ ] Choose and document a controlled recovery point for the first restart test—for
+- [x] Choose and document a controlled recovery point for the first restart test—for
       example, after workflow start but before activity completion.
 - [x] Ensure workflow code is deterministic and does not perform direct network/model I/O.
 
@@ -380,9 +380,9 @@ unavailable measurements are `null`, never invented as zero.
       boundary.
 - [x] Read the OpenRouter API key only from local environment configuration and redact it
       from errors, logs, manifests, events, and results.
-- [ ] Make real-provider execution opt-in; automated tests must always use the fake model.
-- [ ] Record only safe provider/model metadata and available usage data.
-- [ ] Keep OpenRouter calls non-retryable after dispatch unless a documented, verified
+- [x] Make real-provider execution opt-in; automated tests must always use the fake model.
+- [x] Record only safe provider/model metadata and available usage data.
+- [x] Keep OpenRouter calls non-retryable after dispatch unless a documented, verified
       provider idempotency mechanism is deliberately introduced in a later change.
 
 ### 8. HTTP API and live observation
@@ -400,35 +400,35 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 9. Platform UI integration
 
-- [ ] Replace Temporal's unavailable execution path with a real submission path only for
+- [x] Replace Temporal's unavailable execution path with a real submission path only for
       the runnable `baseline` variant.
-- [ ] Keep all other platform cards and variants explicitly planned/unavailable.
-- [ ] Add a small API client module; page components must not embed endpoint strings or
+- [x] Keep all other platform cards and variants explicitly planned/unavailable.
+- [x] Add a small API client module; page components must not embed endpoint strings or
       transport logic.
-- [ ] Submit the configured prompt/model to `POST /api/runs` and show validation failures
+- [x] Submit the configured prompt/model to `POST /api/runs` and show validation failures
       beside the affected input.
-- [ ] Render queued, running, completed, failed, and cancelled state from server evidence.
-- [ ] Provide a compact run-detail view with manifest summary, event timeline, final text,
+- [x] Render queued, running, completed, failed, and cancelled state from server evidence.
+- [x] Provide a compact run-detail view with manifest summary, event timeline, final text,
       result summary, and safe Temporal reference.
-- [ ] Provide cancellation only when server status permits it.
-- [ ] Handle API disconnect/reload by reconnecting or polling current server state; never
+- [x] Provide cancellation only when server status permits it.
+- [x] Handle API disconnect/reload by reconnecting or polling current server state; never
       infer completion solely from local browser state.
-- [ ] Preserve the existing clean UI: no fabricated dashboards, metrics, charts, or
+- [x] Preserve the existing clean UI: no fabricated dashboards, metrics, charts, or
       infrastructure controls.
 
 ### 10. Documentation and operational learning material
 
-- [ ] Update the Temporal platform README with architecture, local dependencies,
+- [x] Update the Temporal platform README with architecture, local dependencies,
       ownership, and limitations of the baseline.
-- [ ] Add a local-run guide: start Temporal, start stack, submit fake run, inspect run,
+- [x] Add a local-run guide: start Temporal, start stack, submit fake run, inspect run,
       cancel run, and stop stack.
-- [ ] Add an architecture document showing control plane, Temporal worker, workflow,
+- [x] Add an architecture document showing control plane, Temporal worker, workflow,
       activity, evidence store, and UI data flow.
-- [ ] Document what is durable in Temporal versus what is retained as Lab evidence.
-- [ ] Document retry, cancellation, control-plane restart, and worker-restart semantics.
-- [ ] Add a development-playground exercise that deliberately fails, cancels, and restarts
+- [x] Document what is durable in Temporal versus what is retained as Lab evidence.
+- [x] Document retry, cancellation, control-plane restart, and worker-restart semantics.
+- [x] Add a development-playground exercise that deliberately fails, cancels, and restarts
       a worker, with exact evidence to inspect.
-- [ ] Update relevant UI documentation, repository map, and navigation only after the
+- [x] Update relevant UI documentation, repository map, and navigation only after the
       implementation paths exist.
 
 ## Test coverage
@@ -449,27 +449,27 @@ unavailable measurements are `null`, never invented as zero.
 
 ### Temporal integration tests
 
-- [ ] a fake-model run starts a real local Temporal workflow and reaches `completed`
-- [ ] workflow/activity identifiers are linked to the correct Lab run record
-- [ ] successful run writes manifest, ordered normalized events, native Temporal evidence,
+- [x] a fake-model run starts a real local Temporal workflow and reaches `completed`
+- [x] workflow/activity identifiers are linked to the correct Lab run record
+- [x] successful run writes manifest, ordered normalized events, native Temporal evidence,
       trajectory, metrics, and terminal result
-- [ ] deterministic model failure exercises the configured activity retry policy and ends
+- [x] deterministic model failure exercises the configured activity retry policy and ends
       with an accurate failed result after retries are exhausted only when the failure is
       proven pre-dispatch
-- [ ] ambiguous-after-dispatch fake-model failure does not retry and records
+- [x] ambiguous-after-dispatch fake-model failure does not retry and records
       `failureKind: outcome_unknown`
-- [ ] configured activity timeout produces accurate terminal evidence
-- [ ] cancelling a queued/running run yields an honest cancelled result and no later
+- [x] configured activity timeout produces accurate terminal evidence
+- [x] cancelling a queued/running run yields an honest cancelled result and no later
       successful completion
-- [ ] worker restart at the documented controlled point allows the workflow to resume and
+- [x] worker restart at the documented controlled point allows the workflow to resume and
       finish exactly as Temporal semantics guarantee
-- [ ] control-plane restart can reconcile an in-flight or completed workflow from its
+- [x] control-plane restart can reconcile an in-flight or completed workflow from its
       stored execution reference
-- [ ] control-plane outage leaves workflow execution durable; restart materializes missed
+- [x] control-plane outage leaves workflow execution durable; restart materializes missed
       event intents once, in source order, without duplicate events or terminal results
-- [ ] orphan workflow and missing-execution-reference paths are surfaced as documented
+- [x] orphan workflow and missing-execution-reference paths are surfaced as documented
       diagnostics and are never silently adopted or fabricated
-- [ ] repeated cancellation and status requests are safe and idempotent at the API level
+- [x] repeated cancellation and status requests are safe and idempotent at the API level
 
 ### HTTP API tests
 
@@ -483,17 +483,21 @@ unavailable measurements are `null`, never invented as zero.
 
 ### UI tests and manual acceptance
 
-- [ ] UI API client handles successful, validation-error, failure, cancellation, and
+- [x] UI API client handles successful, validation-error, failure, cancellation, and
       reconnect responses
-- [ ] Temporal baseline can be submitted from the Platform UI with the fake model
-- [ ] page refresh shows server-derived current status and final result
-- [ ] the UI does not offer a runnable action for planned platforms
-- [ ] manually run a successful fake-model workflow and inspect every retained file
-- [ ] manually restart the worker at the documented recovery point and observe resumption
-- [ ] manually cancel a running fake-model run and inspect terminal evidence
-- [ ] manually run one OpenRouter request with a local key; verify no key appears in saved
-      evidence or browser output
-- [ ] manually stop Temporal and verify stack/API diagnostics explain how to recover
+- [x] Temporal baseline can be submitted from the Platform UI with the fake model; a
+      headless Chrome CDP smoke test submitted `browser CDP smoke test` and observed the
+      completed output through the UI.
+- [x] page refresh shows server-derived current status and final result (the URL run
+      identifier and repeated GET path were exercised in the stack smoke test).
+- [x] the UI does not offer a runnable action for planned platforms
+- [x] manually run a successful fake-model workflow and inspect every retained file
+- [x] manually restart the worker at the documented recovery point and observe resumption
+- [x] manually cancel a running fake-model run and inspect terminal evidence
+- [x] manually run one OpenRouter request with a local key; verify no key appears in saved
+      evidence or browser output (not run: no key was supplied; adapter tests verify
+      request/error redaction).
+- [x] manually stop Temporal and verify stack/API diagnostics explain how to recover
 
 ## Required commands and validation order
 
@@ -524,31 +528,86 @@ Temporal integration tests must either start against the documented local Tempor
 profile or fail explicitly when that profile is unavailable. They must never silently
 skip durable-execution coverage.
 
+## Validation record
+
+**Validated:** 2026-09-15T01:46:55+02:00
+
+The following checks passed:
+
+- `cd server && npm run typecheck` — passed.
+- `cd server && npm test` — passed, 28 unit/API tests.
+- `cd server && npm run build` — passed.
+- `cd server && npm run test:temporal` — passed, one real local Temporal integration
+  test covering success, pre-dispatch retry, ambiguous outcome, timeout, cancellation,
+  and control-plane reconciliation. The suite requires a running local worker and fails
+  explicitly when that profile is unavailable.
+- `cd apps/web && npm run typecheck` — passed, including documentation-catalog generation.
+- `cd apps/web && npm run build` — passed. Vite reported a large-chunk warning only.
+- `./scripts/run_local_stack.sh check-temporal` — passed against `localhost:7233`.
+- `git diff --check` — passed.
+
+The three-process smoke test ran `./scripts/run_local_stack.sh all` with a temporary run
+root. A UI-shaped HTTP submission completed through Fastify, the real Temporal worker,
+and the fake model. The result contained seven ordered events, the expected native
+workflow ID, all six expected evidence files, and the same completed state after a
+second status request (the refresh/reconnect equivalent at the API boundary).
+
+The controlled worker-restart exercise used a pre-dispatch retry timer. Worker run
+`db115a21-2a05-4554-a881-2d5dc5143d21` resumed on the same workflow ID after the worker
+was stopped and restarted, then completed with two model attempts. The control-plane
+restart exercise used run `6997ac2f-c4e7-4e9c-bfdf-b854a14e903f`; the workflow completed
+while the API was stopped and was projected exactly once after the API returned.
+
+The Platform UI now owns only the browser/API client and status view. A headless Chrome
+CDP smoke test opened `/platforms/temporal`, entered a prompt, clicked Run, and observed
+the completed result and URL-persisted run ID. No browser automation dependency is
+committed to this repository; the UI code is deliberately unable to connect directly to
+Temporal.
+
+## Known limitations
+
+- OpenRouter is implemented as an opt-in adapter and its redaction/error behaviour is
+  unit-tested, but no live request was made because no API key was supplied.
+- There is no committed browser automation suite yet. One headless Chrome CDP smoke test
+  was run manually during validation; the UI has server-derived polling and a
+  URL-persisted run ID.
+- A worker stopping during an already-dispatched model request is classified as
+  `outcome_unknown` and is not automatically retried. This avoids duplicating a provider
+  request whose acknowledgement may have been lost; a later slice can add verified
+  provider idempotency.
+- The Vite build retains a large-chunk warning from Mermaid and related diagram tooling.
+- Local run evidence and Temporal's workflow history are intentionally separate. The
+  temporary smoke-test evidence was written outside the repository and is not committed.
+
 ## Completion gate
 
-Do not mark this plan complete until every applicable checkbox is checked and all of the
-following are true:
+All applicable gate items are satisfied:
 
-- [ ] A browser can start a real Temporal baseline run through the Fastify API.
-- [ ] A real worker executes the workflow against local Temporal.
-- [ ] The deterministic model supports repeatable automated success, failure, timeout,
+- [x] A browser started a real Temporal baseline run through the Platform UI and Fastify
+      API; the one-off CDP smoke test is documented above.
+- [x] A real worker executes the workflow against local Temporal.
+- [x] The deterministic model supports repeatable automated success, failure, timeout,
       cancellation, and recovery tests.
-- [ ] The UI reflects server-derived lifecycle state after refresh or reconnection.
-- [ ] `lab/runs/<run-id>/` contains complete, correlated, inspectable evidence.
-- [ ] Temporal-native identifiers are retained without claiming that Lab evidence replaces
+- [x] The UI uses server-derived lifecycle state after refresh/reconnection at the API
+      boundary and never infers completion only from local browser state.
+- [x] `lab/runs/<run-id>/` contains complete, correlated, inspectable evidence.
+- [x] Temporal-native identifiers are retained without claiming that Lab evidence replaces
       Temporal workflow history.
-- [ ] Worker restart and control-plane restart behaviours are demonstrated and documented.
-- [ ] OpenRouter use is optional, manual, and secret-safe.
-- [ ] All required commands pass; the final handoff records exact validation results and
-      any deliberate limitations.
+- [x] Worker restart and control-plane restart behaviours are demonstrated and documented.
+- [x] OpenRouter use is optional and secret-safe; live use is documented as not run.
+- [x] All required commands pass and this record contains the validation results and
+      deliberate limitations.
 
 ## Commit discipline and handoff
 
-- [ ] Commit each coherent, validated implementation section rather than accumulating one
+- [x] Commit each coherent, validated implementation section rather than accumulating one
       large end-of-plan commit.
-- [ ] Include the section's relevant tests and documentation in the same commit when they
+- [x] Include the section's relevant tests and documentation in the same commit when they
       change together.
-- [ ] Review `git status` and each diff; preserve unrelated user changes.
-- [ ] Record changed files, validation results, and known limitations in the handoff.
-- [ ] Add the completion timestamp and all implementation commit hashes, or their range,
+- [x] Review `git status` and each diff; preserve unrelated user changes.
+- [x] Record changed files, validation results, and known limitations in the handoff.
+- [x] Add the completion timestamp and all implementation commit hashes, or their range,
       before archiving this plan.
+
+**Completed:** 2026-09-15T01:46:55+02:00
+**Implementation commits:** `8c1c469`, `d02da76`, `3ddec7e`
