@@ -1,7 +1,7 @@
 # Computer Native terminal agent — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:40:58+02:00
+**Last updated:** 2026-09-15T00:44:08+02:00
 **Status:** Active
 
 ## Start here
@@ -326,6 +326,8 @@ Validation recorded for this slice:
 - Interactive deterministic run, session resume, and Ctrl-C cancellation — passed.
 - Invalid OpenRouter credential run — produced an actionable 401/provider failure with
   no credential in terminal output or saved evidence.
+
+Implementation commit: `fd08ad9` (`feat(computer-native): implement initial terminal turn slice`).
 
 The only unverified acceptance check is a successful OpenRouter turn with a valid local
 credential. No usable credential was present, so this remains an opt-in follow-up rather

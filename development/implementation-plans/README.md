@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-15T00:40:58+02:00
+**Last updated:** 2026-09-15T00:44:08+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
