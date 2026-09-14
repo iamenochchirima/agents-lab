@@ -1,8 +1,9 @@
 # Computer Native terminal agent — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:44:08+02:00
-**Status:** Active
+**Last updated:** 2026-09-15T00:54:57+02:00
+**Status:** Completed
+**Completed:** 2026-09-15T00:54:57+02:00
 
 ## Start here
 
@@ -273,14 +274,15 @@ with a repairable incomplete-record error rather than inventing a message.
 - [x] restart the process and resume the same session
 - [x] interrupt a streaming deterministic-provider turn
 - [x] inspect raw `transcript.jsonl` and one turn's `events.jsonl` and `result.json`
-- [ ] run one OpenRouter turn using local credentials
+- [x] run one OpenRouter turn using local credentials
 - [x] disconnect or invalidate credentials and verify the user sees an actionable failure
 - [x] inspect all saved evidence to confirm no secret is present
 
-The successful OpenRouter check remains pending because no usable local OpenRouter
-credential was present in the validation environment. The invalid-credential path was
-run separately and produced an actionable provider failure without exposing the supplied
-credential in terminal output or saved evidence.
+The successful OpenRouter check used the free `openrouter/free` model. It completed a
+real streamed turn with session `session_7be8ccea650a4b88b3216a2317fd840c` and turn
+`turn_68333852da2b489c89aa2e7714a289d7`. The saved evidence contained the expected
+user/assistant transcript, lifecycle events, completed result, and usage metadata, with
+no credential or authorization field present.
 
 ## Required validation commands
 
@@ -326,12 +328,14 @@ Validation recorded for this slice:
 - Interactive deterministic run, session resume, and Ctrl-C cancellation — passed.
 - Invalid OpenRouter credential run — produced an actionable 401/provider failure with
   no credential in terminal output or saved evidence.
+- Valid OpenRouter run with `openrouter/free` — completed; evidence was inspected and
+  the supplied credential was absent from all saved records.
 
-Implementation commit: `fd08ad9` (`feat(computer-native): implement initial terminal turn slice`).
+Implementation commits: `fd08ad9` (`feat(computer-native): implement initial terminal turn slice`)
+and `ab238e6` (`docs(computer-native): record initial slice handoff`).
 
-The only unverified acceptance check is a successful OpenRouter turn with a valid local
-credential. No usable credential was present, so this remains an opt-in follow-up rather
-than being represented by a local substitute.
+Known limitations remain those declared in the fixed scope: no tools, workspace access,
+skills, memory, plugins, gateway channels, or Lab runner integration.
 
 ## Completion gate
 
@@ -354,5 +358,10 @@ Before marking every item complete, verify all of the following:
       change together.
 - [x] Review `git status` and each diff; preserve unrelated user changes.
 - [x] Record changed files, validation results, and known limitations in the handoff.
-- [ ] Add the completion timestamp and all implementation commit hashes, or their range,
+- [x] Add the completion timestamp and all implementation commit hashes, or their range,
       before archiving this plan.
+
+## Completion record
+
+Completed `2026-09-15T00:54:57+02:00`. The implementation and handoff commits are
+`fd08ad9` and `ab238e6`; this plan is ready to move to `completed/`.

@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-15T00:44:08+02:00
+**Last updated:** 2026-09-15T00:54:57+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -33,8 +33,6 @@ mandatory whenever the work has state or external effects.
 
 ## Active plans
 
-- [Computer Native terminal agent](active/computer-native-tui.md) — first local,
-  streamed, evidence-producing terminal turn.
 - [Lab server + Temporal baseline](active/lab-server-temporal-baseline.md) — first
   end-to-end Platform UI, Fastify, local Temporal, worker, and evidence path.
 
@@ -43,6 +41,9 @@ mandatory whenever the work has state or external effects.
 - [Platform UI](completed/platform-ui.md) — completed 2026-09-14T17:24:17+02:00;
   established the first clean Platform workspace and configuration surface before runner
   execution existed.
+- [Computer Native terminal agent](completed/computer-native-tui.md) — completed
+  2026-09-15T00:54:57+02:00; delivered the first streamed, evidence-producing local
+  terminal turn.
 
 Completed plans are retained rather than deleted because their scope, trade-offs, and
 validation results remain useful project history.
