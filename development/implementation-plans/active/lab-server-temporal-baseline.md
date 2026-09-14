@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:58:46+02:00
+**Last updated:** 2026-09-15T01:12:33+02:00
 **Status:** Active
 
 ## Start here
@@ -303,7 +303,7 @@ unavailable measurements are `null`, never invented as zero.
 
 - [x] Define opaque `RunId`, run status, terminal result, event, and manifest types.
 - [x] Define legal run transitions: `created → queued → running → completed|failed|cancelled`.
-- [ ] Reject illegal or duplicate terminal transitions.
+- [x] Reject illegal or duplicate terminal transitions.
 - [x] Validate the initial request: Temporal/baseline only, non-empty bounded prompt,
       allowed model provider/model, and no unsupported scenario or experiment fields.
 - [x] Resolve and atomically write `config.json` before any workflow starts.
@@ -314,9 +314,9 @@ unavailable measurements are `null`, never invented as zero.
 - [ ] Atomically write `result.json` on every terminal outcome.
 - [x] Implement the control-plane-only evidence writer, stable event identities,
       idempotent reconciliation, and recorded/source sequence rules.
-- [ ] Mark missing or mismatched Temporal execution references as
+- [x] Mark missing or mismatched Temporal execution references as
       `reconciliation_required`; never auto-adopt orphan workflows.
-- [ ] Create `native/temporal.json` without treating it as the workflow's source of truth.
+- [x] Create `native/temporal.json` without treating it as the workflow's source of truth.
 - [x] Detect incomplete/corrupt local evidence and report an actionable diagnostic; do not
       overwrite it silently.
 
