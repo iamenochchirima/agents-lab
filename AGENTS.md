@@ -30,6 +30,17 @@ Before making a non-trivial change:
 
 When a design choice is uncertain, record the alternatives, trade-offs, and reason for the choice rather than silently choosing one.
 
+## Parallel agent usage
+
+When implementation work can be decomposed into independent workstreams, use subagents to
+execute those workstreams in parallel.
+
+If parallel delegation could meaningfully reduce wall-clock time, prefer delegation over
+doing the work sequentially.
+
+Keep architectural decisions and integration with the primary agent. Avoid delegating
+trivial tasks where coordination overhead exceeds the benefit.
+
 ## Architectural boundaries
 
 The repository should keep these concepts distinct wherever practical:
