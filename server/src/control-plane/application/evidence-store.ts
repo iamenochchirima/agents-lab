@@ -191,6 +191,18 @@ export class RunEvidenceStore {
     };
   }
 
+  async readAllowlistedFile(runId: string, fileName: EvidenceFileName): Promise<string> {
+    const path = join(this.runDirectory(runId), fileName);
+    try {
+      return await readFile(path, "utf8");
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) {
+        throw new EvidenceNotFoundError(path);
+      }
+      throw error;
+    }
+  }
+
   private async appendEventNow<TPayload extends Record<string, unknown>>(
     intent: RunEventIntent<TPayload>,
   ): Promise<RunEvent<TPayload>> {
@@ -262,6 +274,14 @@ export class RunEvidenceStore {
     }
   }
 }
+
+export type EvidenceFileName =
+  | "config.json"
+  | "events.jsonl"
+  | "trajectory.json"
+  | "metrics.json"
+  | "result.json"
+  | "native/temporal.json";
 
 function assertSafeRunId(runId: string): void {
   if (!RUN_ID_PATTERN.test(runId)) {

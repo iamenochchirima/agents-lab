@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T01:12:33+02:00
+**Last updated:** 2026-09-15T01:39:52+02:00
 **Status:** Active
 
 ## Start here
@@ -273,11 +273,11 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 1. Local development contract
 
-- [ ] Inspect the existing local Temporal installation and document its endpoint,
+- [x] Inspect the existing local Temporal installation and document its endpoint,
       namespace, UI availability, and the exact command required when it is not running.
-- [ ] Define a named local Temporal profile in committed example configuration; do not
+- [x] Define a named local Temporal profile in committed example configuration; do not
       commit machine-specific paths, credentials, or production endpoints.
-- [ ] Add `server/.env.example` only for actual supported configuration values.
+- [x] Add `server/.env.example` only for actual supported configuration values.
 - [ ] Update `scripts/run_local_stack.sh` to start the web app, control API, and Temporal
       worker, with clear health checks and separate readable logs.
 - [ ] Make the script detect an unavailable Temporal endpoint and fail with a useful
@@ -292,11 +292,11 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Add `dev`, `build`, `start`, `typecheck`, and `test` scripts to `server/package.json`.
 - [x] Create a typed server configuration module with API host/port, run-root path,
       Temporal endpoint/namespace/task queue, allowed model adapters, and timeouts.
-- [ ] Implement a Fastify bootstrap with structured startup/shutdown handling.
-- [ ] Implement `GET /health` that reports only control-plane readiness and safe Temporal
+- [x] Implement a Fastify bootstrap with structured startup/shutdown handling.
+- [x] Implement `GET /health` that reports only control-plane readiness and safe Temporal
       connectivity; it must not claim a worker is healthy without evidence.
-- [ ] Implement structured error handling, request IDs, and safe error responses.
-- [ ] Keep Fastify routes thin; route handlers call application services rather than
+- [x] Implement structured error handling, request IDs, and safe error responses.
+- [x] Keep Fastify routes thin; route handlers call application services rather than
       filesystem or Temporal SDK code directly.
 
 ### 3. Run domain, manifest, and local evidence store
@@ -387,16 +387,16 @@ unavailable measurements are `null`, never invented as zero.
 
 ### 8. HTTP API and live observation
 
-- [ ] Add `POST /api/runs` to validate, manifest, create, and dispatch a run.
-- [ ] Add `GET /api/runs/:runId` to return current safe run status, manifest summary, and
+- [x] Add `POST /api/runs` to validate, manifest, create, and dispatch a run.
+- [x] Add `GET /api/runs/:runId` to return current safe run status, manifest summary, and
       terminal result when present.
-- [ ] Add `GET /api/runs/:runId/events` as a bounded, reconnectable event stream or
+- [x] Add `GET /api/runs/:runId/events` as a bounded, reconnectable event stream or
       polling-compatible event endpoint; choose one and document the reconnection model.
-- [ ] Add `POST /api/runs/:runId/cancel` with idempotent user-facing semantics.
-- [ ] Add evidence read endpoints that expose only allowlisted files from the selected
+- [x] Add `POST /api/runs/:runId/cancel` with idempotent user-facing semantics.
+- [x] Add evidence read endpoints that expose only allowlisted files from the selected
       run directory; never accept arbitrary filesystem paths from the browser.
-- [ ] Define CORS and local-development origin behaviour explicitly.
-- [ ] Publish an API contract document and example requests/responses.
+- [x] Define CORS and local-development origin behaviour explicitly.
+- [x] Publish an API contract document and example requests/responses.
 
 ### 9. Platform UI integration
 
@@ -435,7 +435,7 @@ unavailable measurements are `null`, never invented as zero.
 
 ### Server and domain unit tests
 
-- [ ] configuration validation, safe defaults, and missing Temporal configuration errors
+- [x] configuration validation, safe defaults, and missing Temporal configuration errors
 - [x] run request validation and rejection of unsupported platform/variant combinations
 - [x] manifest construction, immutability, and secret exclusion
 - [x] legal and illegal run status transitions
@@ -444,8 +444,8 @@ unavailable measurements are `null`, never invented as zero.
       deduplication
 - [x] atomic result/evidence writing and corrupt-record diagnostics
 - [x] trajectory and metrics serialization, including unavailable metric values
-- [ ] platform registry runnable versus planned/unavailable status
-- [ ] OpenRouter configuration redaction and fake-adapter network isolation
+- [x] platform registry runnable versus planned/unavailable status
+- [x] OpenRouter configuration redaction and fake-adapter network isolation
 
 ### Temporal integration tests
 
@@ -473,13 +473,13 @@ unavailable measurements are `null`, never invented as zero.
 
 ### HTTP API tests
 
-- [ ] health endpoint distinguishes server-ready from Temporal-unreachable
-- [ ] valid submission returns run ID and initial queued/running status
-- [ ] invalid input returns structured, actionable validation errors
-- [ ] run detail returns only allowlisted safe evidence fields
-- [ ] events endpoint preserves order and supports the selected reconnect/poll model
-- [ ] cancellation endpoint reports accepted, already-terminal, and unknown-run cases
-- [ ] arbitrary path traversal or unapproved evidence-file access is rejected
+- [x] health endpoint distinguishes server-ready from Temporal-unreachable
+- [x] valid submission returns run ID and initial queued/running status
+- [x] invalid input returns structured, actionable validation errors
+- [x] run detail returns only allowlisted safe evidence fields
+- [x] events endpoint preserves order and supports the selected reconnect/poll model
+- [x] cancellation endpoint reports accepted, already-terminal, and unknown-run cases
+- [x] arbitrary path traversal or unapproved evidence-file access is rejected
 
 ### UI tests and manual acceptance
 
