@@ -1,7 +1,7 @@
 # Lab server + Temporal baseline — implementation plan
 
 **Created:** 2026-09-14T23:37:30+02:00
-**Last updated:** 2026-09-15T00:32:35+02:00
+**Last updated:** 2026-09-15T00:40:04+02:00
 **Status:** Active
 
 ## Start here
@@ -306,18 +306,18 @@ unavailable measurements are `null`, never invented as zero.
 - [ ] Reject illegal or duplicate terminal transitions.
 - [x] Validate the initial request: Temporal/baseline only, non-empty bounded prompt,
       allowed model provider/model, and no unsupported scenario or experiment fields.
-- [ ] Resolve and atomically write `config.json` before any workflow starts.
-- [ ] Create append-only `events.jsonl` with deterministic serialization and correlation
+- [x] Resolve and atomically write `config.json` before any workflow starts.
+- [x] Create append-only `events.jsonl` with deterministic serialization and correlation
       fields.
-- [ ] Materialize `trajectory.json` and `metrics.json` with explicit `null` values for
+- [x] Materialize `trajectory.json` and `metrics.json` with explicit `null` values for
       unavailable measurements.
 - [ ] Atomically write `result.json` on every terminal outcome.
-- [ ] Implement the control-plane-only evidence writer, stable event identities,
+- [x] Implement the control-plane-only evidence writer, stable event identities,
       idempotent reconciliation, and recorded/source sequence rules.
 - [ ] Mark missing or mismatched Temporal execution references as
       `reconciliation_required`; never auto-adopt orphan workflows.
 - [ ] Create `native/temporal.json` without treating it as the workflow's source of truth.
-- [ ] Detect incomplete/corrupt local evidence and report an actionable diagnostic; do not
+- [x] Detect incomplete/corrupt local evidence and report an actionable diagnostic; do not
       overwrite it silently.
 
 ### 4. Platform registry and Temporal runner adapter
@@ -439,11 +439,11 @@ unavailable measurements are `null`, never invented as zero.
 - [x] run request validation and rejection of unsupported platform/variant combinations
 - [x] manifest construction, immutability, and secret exclusion
 - [x] legal and illegal run status transitions
-- [ ] event schema, ordering, correlation, and JSONL serialization
-- [ ] stable event identities, source ordering, recorded ordering, and reconciliation
+- [x] event schema, ordering, correlation, and JSONL serialization
+- [x] stable event identities, source ordering, recorded ordering, and reconciliation
       deduplication
-- [ ] atomic result/evidence writing and corrupt-record diagnostics
-- [ ] trajectory and metrics serialization, including unavailable metric values
+- [x] atomic result/evidence writing and corrupt-record diagnostics
+- [x] trajectory and metrics serialization, including unavailable metric values
 - [ ] platform registry runnable versus planned/unavailable status
 - [ ] OpenRouter configuration redaction and fake-adapter network isolation
 
