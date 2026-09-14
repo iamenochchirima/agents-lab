@@ -364,4 +364,4 @@ Before marking every item complete, verify all of the following:
 ## Completion record
 
 Completed `2026-09-15T00:54:57+02:00`. The implementation and handoff commits are
-`fd08ad9` and `ab238e6`; this plan is ready to move to `completed/`.
+`fd08ad9` and `ab238e6`; the plan is archived under `completed/`.
