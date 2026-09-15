@@ -22,7 +22,7 @@ Read these before changing code:
 - [`server architecture`](../../../server/src/control-plane/README.md)
 - [`platform ownership`](../../../server/src/platforms/README.md)
 - [`runner interfaces`](../../../server/src/control-plane/ports/README.md)
-- [`server platform foundation`](../active/server-platform-foundation.md)
+- [`server platform foundation`](../completed/server-platform-foundation.md)
 - `[platform-specific SDK or service documentation]`
 
 Reference harnesses, upstream repositories, and framework examples are design input,
