@@ -20,7 +20,6 @@ const PLANNED_PLATFORM_VARIANTS = [
   ["trigger-dev", "baseline"],
   ["dbos", "baseline"],
   ["hatchet", "baseline"],
-  ["aws-step-functions", "baseline"],
 ] as const;
 
 /**
