@@ -16,9 +16,9 @@
     "start:worker": "node dist/src/platforms/temporal/runner-adapter/worker-entry.js",
     "start:restate": "node dist/src/platforms/restate/service-entry.js",
     "test": "npm run build && find dist/tests -type f -name '*.test.js' -print0 | xargs -0 node --test",
-    "test:langgraph": "npm run build && find dist/tests/platforms/langgraph -type f -name '*.test.js' -print0 | xargs -0 node --test",
-    "test:mastra": "npm run build && node --test dist/tests/platforms/mastra/mastra-runner.test.js",
-    "test:restate": "npm run build && find dist/tests/platforms/restate -type f -name '*.test.js' -print0 | xargs -0 node --test",
+    "test:langgraph": "npm run build && find dist/tests/platforms/langgraph -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/langgraph-baseline.test.js",
+    "test:mastra": "npm run build && node --test dist/tests/platforms/mastra/mastra-runner.test.js dist/integration-tests/mastra-baseline.test.js",
+    "test:restate": "npm run build && find dist/tests/platforms/restate -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/restate-baseline.test.js",
     "test:temporal": "npm run build && node --test dist/integration-tests/temporal-baseline.test.js",
     "typecheck": "tsc --noEmit"
   },
