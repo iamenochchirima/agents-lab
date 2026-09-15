@@ -9,7 +9,7 @@ import { RunEvidenceStore } from "../../src/control-plane/application/evidence-s
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
 import { buildControlPlaneServer } from "../../src/control-plane/http/server.js";
-import type { RunManifest, RunResult, WorkflowExecutionReference } from "../../src/control-plane/domain/types.js";
+import type { PlatformExecutionReference, RunManifest, RunResult } from "../../src/control-plane/domain/types.js";
 import type { PlatformRunner, RunnerInspection } from "../../src/control-plane/ports/runner.js";
 
 class HttpRunner implements PlatformRunner {
@@ -18,12 +18,16 @@ class HttpRunner implements PlatformRunner {
   reachable = true;
   cancelled = false;
 
+  manifestConfiguration(): Readonly<Record<string, unknown>> {
+    return { profile: "http-test" };
+  }
+
   validate() { return { valid: true, reason: null } as const; }
   async checkConnection() { return { reachable: this.reachable, message: this.reachable ? "ok" : "offline" }; }
-  async start(manifest: RunManifest): Promise<WorkflowExecutionReference> { return referenceFor(manifest); }
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> { return referenceFor(manifest); }
   async cancel() { this.cancelled = true; return { accepted: true, alreadyTerminal: false, message: "accepted" }; }
-  async inspect(reference: WorkflowExecutionReference): Promise<RunnerInspection> {
-    const runId = reference.workflowId.replace("agentlab:", "");
+  async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
+    const runId = reference.executionId.replace("agentlab:", "");
     const result: RunResult | null = this.cancelled ? {
       schemaVersion: 1, runId, status: "cancelled", startedAt: "2026-09-15T08:00:00.000Z", finishedAt: "2026-09-15T08:00:01.000Z", output: null,
       error: { code: "RUN_CANCELLED", message: "cancelled", failureKind: "cancelled", retryable: false }, attemptCount: 1,
@@ -46,15 +50,12 @@ class HttpRunner implements PlatformRunner {
   }
 }
 
-function referenceFor(manifest: RunManifest): WorkflowExecutionReference {
+function referenceFor(manifest: RunManifest): PlatformExecutionReference {
   return {
-    platform: "temporal",
-    namespace: manifest.temporal.namespace,
-    taskQueue: manifest.temporal.taskQueue,
-    workflowId: `agentlab:${manifest.runId}`,
-    workflowRunId: `workflow-run-${manifest.runId}`,
-    workflowType: "temporalBaselineWorkflow",
-    activityTypes: ["requestModel"],
+    platform: manifest.platform,
+    variant: manifest.variant,
+    executionId: `agentlab:${manifest.runId}`,
+    native: { executionId: `agentlab:${manifest.runId}` },
   };
 }
 
@@ -65,7 +66,7 @@ async function withApp(run: (app: ReturnType<typeof buildControlPlaneServer>, ru
     const evidence = new RunEvidenceStore(root);
     const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
     const service = new RunService({ config, evidence, registry: new PlatformRegistry([runner]) });
-    const app = buildControlPlaneServer({ config, service, evidence, runner });
+    const app = buildControlPlaneServer({ config, service, evidence, registry: new PlatformRegistry([runner]) });
     await app.ready();
     try {
       await run(app, runner);
@@ -113,11 +114,12 @@ test("HTTP API returns structured validation and health responses", async () => 
     const health = await app.inject({ method: "GET", url: "/health" });
     assert.equal(health.statusCode, 200);
     assert.equal(health.json().controlPlane.ready, true);
+    assert.equal(health.json().platforms[0].platform, "temporal");
 
     runner.reachable = false;
     const degraded = await app.inject({ method: "GET", url: "/health" });
     assert.equal(degraded.statusCode, 503);
-    assert.equal(degraded.json().temporal.reachable, false);
+    assert.equal(degraded.json().platforms[0].reachable, false);
   });
 });
 

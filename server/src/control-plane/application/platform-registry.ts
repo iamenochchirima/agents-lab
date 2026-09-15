@@ -1,5 +1,5 @@
 import type { RunManifest } from "../domain/types.js";
-import type { PlatformRunner } from "../ports/runner.js";
+import type { PlatformRunner, RunnerConnectivity } from "../ports/runner.js";
 
 export type PlatformRegistrationStatus = "runnable" | "planned";
 
@@ -51,11 +51,25 @@ export class PlatformRegistry {
     return this.registrations.find((registration) => registration.platform === platform && registration.variant === variant) ?? null;
   }
 
-  runnable(manifest: RunManifest): PlatformRunner | null {
-    const registration = this.find(manifest.platform, manifest.variant);
+  runnableFor(platform: string, variant: string): PlatformRunner | null {
+    const registration = this.find(platform, variant);
     return registration?.status === "runnable" ? registration.runner : null;
   }
+
+  runnable(manifest: RunManifest): PlatformRunner | null {
+    return this.runnableFor(manifest.platform, manifest.variant);
+  }
+
+  async checkConnections(): Promise<readonly (PlatformRegistration & { readonly connectivity: RunnerConnectivity })[]> {
+    const results = [];
+    for (const registration of this.registrations) {
+      if (!registration.runner) continue;
+      results.push({ ...registration, connectivity: await registration.runner.checkConnection() });
+    }
+    return results;
+  }
 }
+
 
 function key(platform: string, variant: string): string {
   return `${platform}/${variant}`;

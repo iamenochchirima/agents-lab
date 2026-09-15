@@ -3,14 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { ModelProvider, RunManifest, RunRequest } from "./types.js";
 
 const MAX_PROMPT_LENGTH = 20_000;
-const DEFAULT_TEMPORAL_ENDPOINT = "localhost:7233";
-const DEFAULT_TEMPORAL_NAMESPACE = "default";
-const DEFAULT_TEMPORAL_TASK_QUEUE = "agentlab-temporal-baseline";
-const DEFAULT_ACTIVITY_TIMEOUT_MS = 30_000;
-const DEFAULT_PRE_DISPATCH_RETRY_LIMIT = 2;
-const DEFAULT_PRE_DISPATCH_RETRY_BACKOFF_MS = 100;
 const DEFAULT_SYSTEM_INSTRUCTION =
-  "You are the Agent Harness Lab Temporal baseline agent. Answer the user's prompt directly and concisely.";
+  "You are the Agent Harness Lab baseline agent. Answer the user's prompt directly and concisely.";
 
 export class InvalidRunRequestError extends Error {
   constructor(message: string) {
@@ -23,12 +17,7 @@ export interface ManifestOptions {
   readonly now?: string;
   readonly runId?: string;
   readonly serverVersion?: string;
-  readonly temporalEndpoint?: string;
-  readonly temporalNamespace?: string;
-  readonly temporalTaskQueue?: string;
-  readonly activityTimeoutMs?: number;
-  readonly preDispatchRetryLimit?: number;
-  readonly preDispatchRetryBackoffMs?: number;
+  readonly platformConfig?: Readonly<Record<string, unknown>>;
 }
 
 export function buildRunManifest(request: RunRequest, options: ManifestOptions = {}): Readonly<RunManifest> {
@@ -39,21 +28,14 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     runId: options.runId ?? randomUUID(),
     createdAt: options.now ?? new Date().toISOString(),
     serverVersion: options.serverVersion ?? "0.0.0-dev",
-    platform: "temporal",
-    variant: "baseline",
+    platform: request.platform.trim(),
+    variant: request.variant.trim(),
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
     context: { systemInstruction: DEFAULT_SYSTEM_INSTRUCTION },
+    platformConfig: options.platformConfig ?? {},
     model: {
       provider: request.model.provider as ModelProvider,
       model: request.model.model.trim(),
-    },
-    temporal: {
-      namespace: options.temporalNamespace ?? DEFAULT_TEMPORAL_NAMESPACE,
-      taskQueue: options.temporalTaskQueue ?? DEFAULT_TEMPORAL_TASK_QUEUE,
-      endpoint: options.temporalEndpoint ?? DEFAULT_TEMPORAL_ENDPOINT,
-      activityTimeoutMs: options.activityTimeoutMs ?? DEFAULT_ACTIVITY_TIMEOUT_MS,
-      preDispatchRetryLimit: options.preDispatchRetryLimit ?? DEFAULT_PRE_DISPATCH_RETRY_LIMIT,
-      preDispatchRetryBackoffMs: options.preDispatchRetryBackoffMs ?? DEFAULT_PRE_DISPATCH_RETRY_BACKOFF_MS,
     },
   };
 
@@ -63,7 +45,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
 /**
  * A manifest is the run's audit boundary: once dispatch starts, every effective
  * setting must remain the setting that was approved for that run. Freezing only
- * the outer object would leave nested task/model/Temporal settings mutable.
+ * the outer object would leave nested task/model/platform settings mutable.
  */
 function deepFreeze<T>(value: T): Readonly<T> {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -78,8 +60,8 @@ function deepFreeze<T>(value: T): Readonly<T> {
 }
 
 function validateRequest(request: RunRequest): void {
-  if (request.platform !== "temporal" || request.variant !== "baseline") {
-    throw new InvalidRunRequestError("Only the temporal/baseline runner is available.");
+  if (!isIdentifier(request.platform, "platform") || !isIdentifier(request.variant, "variant")) {
+    throw new InvalidRunRequestError("platform and variant must use lowercase letters, numbers, and hyphens.");
   }
 
   if (request.task?.kind !== "prompt") {
@@ -98,4 +80,11 @@ function validateRequest(request: RunRequest): void {
   if (request.model.model.trim().length === 0 || request.model.model.trim().length > 200) {
     throw new InvalidRunRequestError("Model name must contain between 1 and 200 characters.");
   }
+}
+
+function isIdentifier(value: string, name: string): boolean {
+  if (typeof value !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(value)) {
+    throw new InvalidRunRequestError(`${name} must use lowercase letters, numbers, and hyphens.`);
+  }
+  return true;
 }

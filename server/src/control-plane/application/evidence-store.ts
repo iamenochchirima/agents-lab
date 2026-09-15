@@ -7,9 +7,9 @@ import type {
   RunEventIntent,
   RunManifest,
   RunMetrics,
+  PlatformExecutionReference,
   RunResult,
   RunTrajectory,
-  WorkflowExecutionReference,
 } from "../domain/types.js";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -52,16 +52,16 @@ export class CorruptEvidenceError extends Error {
 export interface RunEvidenceSnapshot {
   readonly manifest: RunManifest;
   readonly events: readonly RunEvent[];
-  readonly temporalReference: WorkflowExecutionReference | null;
+  readonly executionReference: PlatformExecutionReference | null;
   readonly trajectory: RunTrajectory | null;
   readonly metrics: RunMetrics | null;
   readonly result: RunResult | null;
 }
 
 /**
- * Owns the Lab's retained evidence files. Temporal workflow code must not use
- * this class: workflow state is durable in Temporal, while this store is a
- * restart-safe projection of that state for inspection and comparison.
+ * Owns the Lab's retained evidence files. Platform execution code must not use
+ * this class directly. Platform state remains in the selected platform, while
+ * this store is a restart-safe projection for inspection and comparison.
  */
 export class RunEvidenceStore {
   private readonly eventQueues = new Map<string, Promise<unknown>>();
@@ -163,8 +163,8 @@ export class RunEvidenceStore {
     return events;
   }
 
-  async writeTemporalReference(runId: string, reference: WorkflowExecutionReference): Promise<void> {
-    await this.writeIdempotent(join(this.runDirectory(runId), "native", "temporal.json"), reference);
+  async writeExecutionReference(runId: string, reference: PlatformExecutionReference): Promise<void> {
+    await this.writeIdempotent(join(this.runDirectory(runId), nativeReferenceFile(reference.platform)), reference);
   }
 
   async writeResult(result: RunResult): Promise<void> {
@@ -181,10 +181,12 @@ export class RunEvidenceStore {
 
   async readSnapshot(runId: string): Promise<RunEvidenceSnapshot> {
     const runDirectory = this.runDirectory(runId);
+    const manifest = await this.readManifest(runId);
+    const storedReference = await this.readOptionalJson<unknown>(join(runDirectory, nativeReferenceFile(manifest.platform)));
     return {
-      manifest: await this.readManifest(runId),
+      manifest,
       events: await this.readEvents(runId),
-      temporalReference: await this.readOptionalJson<WorkflowExecutionReference>(join(runDirectory, "native", "temporal.json")),
+      executionReference: storedReference === null ? null : normalizeExecutionReference(storedReference, manifest),
       trajectory: await this.readOptionalJson<RunTrajectory>(join(runDirectory, "trajectory.json")),
       metrics: await this.readOptionalJson<RunMetrics>(join(runDirectory, "metrics.json")),
       result: await this.readOptionalJson<RunResult>(join(runDirectory, "result.json")),
@@ -281,7 +283,55 @@ export type EvidenceFileName =
   | "trajectory.json"
   | "metrics.json"
   | "result.json"
-  | "native/temporal.json";
+  | `native/${string}.json`;
+
+export function isAllowlistedEvidenceFile(fileName: string, platform: string): fileName is EvidenceFileName {
+  return fileName === "config.json" ||
+    fileName === "events.jsonl" ||
+    fileName === "trajectory.json" ||
+    fileName === "metrics.json" ||
+    fileName === "result.json" ||
+    fileName === nativeReferenceFile(platform);
+}
+
+function nativeReferenceFile(platform: string): `native/${string}.json` {
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(platform)) {
+    throw new Error("Platform identifier is not safe for a native evidence path.");
+  }
+  return `native/${platform}.json`;
+}
+
+function normalizeExecutionReference(value: unknown, manifest: RunManifest): PlatformExecutionReference {
+  if (!isRecord(value)) {
+    throw new CorruptEvidenceError(`native/${manifest.platform}.json`);
+  }
+
+  if (typeof value.executionId === "string" && isRecord(value.native)) {
+    return {
+      platform: typeof value.platform === "string" ? value.platform : manifest.platform,
+      variant: typeof value.variant === "string" ? value.variant : manifest.variant,
+      executionId: value.executionId,
+      native: value.native,
+    };
+  }
+
+  // Schema-v1 Temporal evidence predates the generic execution reference. Keep
+  // it readable so a server upgrade does not discard the only native identity.
+  if (manifest.platform === "temporal" && typeof value.workflowId === "string") {
+    return {
+      platform: "temporal",
+      variant: manifest.variant,
+      executionId: value.workflowId,
+      native: value,
+    };
+  }
+
+  throw new CorruptEvidenceError(`native/${manifest.platform}.json`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 function assertSafeRunId(runId: string): void {
   if (!RUN_ID_PATTERN.test(runId)) {
@@ -358,7 +408,7 @@ function validateStoredEvent(event: RunEvent, path: string, line: number): void 
     typeof event.kind !== "string" ||
     typeof event.runId !== "string" ||
     typeof event.occurredAt !== "string" ||
-    (event.source !== "control-plane" && event.source !== "temporal-workflow")
+    !/^[a-z0-9][a-z0-9-]{0,63}$/.test(event.source)
   ) {
     throw new CorruptEvidenceError(path, line);
   }

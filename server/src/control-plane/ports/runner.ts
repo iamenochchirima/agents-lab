@@ -2,9 +2,9 @@ import type {
   RunEventIntent,
   RunManifest,
   RunMetrics,
+  PlatformExecutionReference,
   RunResult,
   RunTrajectory,
-  WorkflowExecutionReference,
 } from "../domain/types.js";
 
 export type RunnerExecutionStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -27,7 +27,7 @@ export interface RunnerCancellationResult {
 
 export interface RunnerInspection {
   readonly status: RunnerExecutionStatus;
-  readonly reference: WorkflowExecutionReference;
+  readonly reference: PlatformExecutionReference;
   readonly eventIntents: readonly RunEventIntent[];
   readonly result: RunResult | null;
   readonly trajectory: RunTrajectory | null;
@@ -41,9 +41,11 @@ export interface RunnerInspection {
 export interface PlatformRunner {
   readonly platform: RunManifest["platform"];
   readonly variant: RunManifest["variant"];
+  /** Returns safe, immutable settings to include in the run manifest. */
+  manifestConfiguration(): Readonly<Record<string, unknown>>;
   validate(manifest: RunManifest): RunnerValidationResult;
   checkConnection(): Promise<RunnerConnectivity>;
-  start(manifest: RunManifest): Promise<WorkflowExecutionReference>;
-  cancel(reference: WorkflowExecutionReference, reason: string): Promise<RunnerCancellationResult>;
-  inspect(reference: WorkflowExecutionReference): Promise<RunnerInspection>;
+  start(manifest: RunManifest): Promise<PlatformExecutionReference>;
+  cancel(reference: PlatformExecutionReference, reason: string): Promise<RunnerCancellationResult>;
+  inspect(reference: PlatformExecutionReference): Promise<RunnerInspection>;
 }

@@ -7,7 +7,7 @@ import {
 } from "@temporalio/client";
 
 import type { ServerConfig } from "../../../control-plane/bootstrap/config.js";
-import type { RunManifest, RunResult, WorkflowExecutionReference } from "../../../control-plane/domain/types.js";
+import type { PlatformExecutionReference, RunManifest, RunResult } from "../../../control-plane/domain/types.js";
 import type {
   PlatformRunner,
   RunnerCancellationResult,
@@ -64,15 +64,32 @@ export class TemporalBaselineRunner implements PlatformRunner {
     return new TemporalBaselineRunner({ client: null, config, unavailableMessage: message });
   }
 
+  manifestConfiguration(): Readonly<Record<string, unknown>> {
+    const { temporal } = this.options.config;
+    return {
+      endpoint: temporal.endpoint,
+      namespace: temporal.namespace,
+      taskQueue: temporal.taskQueue,
+      activityTimeoutMs: temporal.activityTimeoutMs,
+      preDispatchRetryLimit: temporal.preDispatchRetryLimit,
+      preDispatchRetryBackoffMs: temporal.preDispatchRetryBackoffMs,
+    };
+  }
+
   validate(manifest: RunManifest): RunnerValidationResult {
     if (manifest.platform !== this.platform || manifest.variant !== this.variant) {
       return { valid: false, reason: "The Temporal baseline runner only accepts temporal/baseline manifests." };
     }
-    if (manifest.temporal.namespace !== this.options.config.temporal.namespace) {
-      return { valid: false, reason: "The run namespace does not match the configured Temporal profile." };
-    }
-    if (manifest.temporal.taskQueue !== this.options.config.temporal.taskQueue) {
-      return { valid: false, reason: "The run task queue does not match the configured Temporal profile." };
+    try {
+      const configuration = temporalConfigurationFromManifest(manifest);
+      if (configuration.namespace !== this.options.config.temporal.namespace) {
+        return { valid: false, reason: "The run namespace does not match the configured Temporal profile." };
+      }
+      if (configuration.taskQueue !== this.options.config.temporal.taskQueue) {
+        return { valid: false, reason: "The run task queue does not match the configured Temporal profile." };
+      }
+    } catch (error) {
+      return { valid: false, reason: safeMessage(error, "The Temporal platform configuration is invalid.") };
     }
     return { valid: true, reason: null };
   }
@@ -90,18 +107,19 @@ export class TemporalBaselineRunner implements PlatformRunner {
     }
   }
 
-  async start(manifest: RunManifest): Promise<WorkflowExecutionReference> {
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
     const client = this.requireClient();
     const validation = this.validate(manifest);
     if (!validation.valid) {
       throw new Error(validation.reason ?? "Temporal manifest validation failed.");
     }
 
+    const configuration = temporalConfigurationFromManifest(manifest);
     const workflowId = workflowIdForRun(manifest.runId);
     try {
       const handle = await client.workflow.start(temporalBaselineWorkflow, {
         args: [toWorkflowInput(manifest)],
-        taskQueue: manifest.temporal.taskQueue,
+        taskQueue: configuration.taskQueue,
         workflowId,
         workflowIdReusePolicy: "REJECT_DUPLICATE",
       });
@@ -115,19 +133,11 @@ export class TemporalBaselineRunner implements PlatformRunner {
       // business ID, never by starting a second workflow.
       const existing = client.workflow.getHandle(workflowId);
       const description = await existing.describe();
-      return {
-        platform: "temporal",
-        namespace: manifest.temporal.namespace,
-        taskQueue: manifest.temporal.taskQueue,
-        workflowId,
-        workflowRunId: description.runId,
-        workflowType: description.type,
-        activityTypes: ["requestModel"],
-      };
+      return referenceFromExecution(workflowId, description.runId, description.type, manifest, configuration);
     }
   }
 
-  async cancel(reference: WorkflowExecutionReference, reason: string): Promise<RunnerCancellationResult> {
+  async cancel(reference: PlatformExecutionReference, reason: string): Promise<RunnerCancellationResult> {
     const handle = this.handle(reference);
     const description = await handle.describe();
     if (isTerminalStatus(description.status.name)) {
@@ -138,7 +148,7 @@ export class TemporalBaselineRunner implements PlatformRunner {
     return { accepted: true, alreadyTerminal: false, message: reason || "Cancellation requested." };
   }
 
-  async inspect(reference: WorkflowExecutionReference): Promise<RunnerInspection> {
+  async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const handle = this.handle(reference);
     const description = await handle.describe();
     const status = mapStatus(description.status.name);
@@ -171,8 +181,12 @@ export class TemporalBaselineRunner implements PlatformRunner {
     await this.options.connection?.close();
   }
 
-  private handle(reference: WorkflowExecutionReference): WorkflowHandle<typeof temporalBaselineWorkflow> {
-    return this.requireClient().workflow.getHandle<typeof temporalBaselineWorkflow>(reference.workflowId, reference.workflowRunId);
+  private handle(reference: PlatformExecutionReference): WorkflowHandle<typeof temporalBaselineWorkflow> {
+    const temporalReference = temporalExecutionFromReference(reference);
+    return this.requireClient().workflow.getHandle<typeof temporalBaselineWorkflow>(
+      temporalReference.workflowId,
+      temporalReference.workflowRunId,
+    );
   }
 
   private requireClient(): Client {
@@ -188,30 +202,70 @@ export function workflowIdForRun(runId: string): string {
 }
 
 function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
+  const configuration = temporalConfigurationFromManifest(manifest);
   return {
     runId: manifest.runId,
     prompt: manifest.task.prompt,
     systemInstruction: manifest.context.systemInstruction,
     model: manifest.model,
-    activityTimeoutMs: manifest.temporal.activityTimeoutMs,
-    preDispatchRetryLimit: manifest.temporal.preDispatchRetryLimit,
-    preDispatchRetryBackoffMs: manifest.temporal.preDispatchRetryBackoffMs,
+    activityTimeoutMs: configuration.activityTimeoutMs,
+    preDispatchRetryLimit: configuration.preDispatchRetryLimit,
+    preDispatchRetryBackoffMs: configuration.preDispatchRetryBackoffMs,
   };
 }
 
-function referenceFromHandle(handle: { workflowId: string; firstExecutionRunId: string }, manifest: RunManifest): WorkflowExecutionReference {
-  return {
-    platform: "temporal",
-    namespace: manifest.temporal.namespace,
-    taskQueue: manifest.temporal.taskQueue,
-    workflowId: handle.workflowId,
-    workflowRunId: handle.firstExecutionRunId,
-    workflowType: BASELINE_WORKFLOW_TYPE,
+interface TemporalManifestConfiguration {
+  readonly endpoint: string;
+  readonly namespace: string;
+  readonly taskQueue: string;
+  readonly activityTimeoutMs: number;
+  readonly preDispatchRetryLimit: number;
+  readonly preDispatchRetryBackoffMs: number;
+}
+
+interface TemporalExecutionReference {
+  readonly namespace: string;
+  readonly taskQueue: string;
+  readonly workflowId: string;
+  readonly workflowRunId: string;
+  readonly workflowType: string;
+  readonly activityTypes: readonly string[];
+}
+
+function referenceFromHandle(handle: { workflowId: string; firstExecutionRunId: string }, manifest: RunManifest): PlatformExecutionReference {
+  return referenceFromExecution(
+    handle.workflowId,
+    handle.firstExecutionRunId,
+    BASELINE_WORKFLOW_TYPE,
+    manifest,
+    temporalConfigurationFromManifest(manifest),
+  );
+}
+
+function referenceFromExecution(
+  workflowId: string,
+  workflowRunId: string,
+  workflowType: string,
+  manifest: RunManifest,
+  configuration: TemporalManifestConfiguration,
+): PlatformExecutionReference {
+  const native: TemporalExecutionReference = {
+    namespace: configuration.namespace,
+    taskQueue: configuration.taskQueue,
+    workflowId,
+    workflowRunId,
+    workflowType,
     activityTypes: ["requestModel"],
   };
+  return {
+    platform: manifest.platform,
+    variant: manifest.variant,
+    executionId: workflowId,
+    native: native as unknown as Readonly<Record<string, unknown>>,
+  };
 }
 
-function inspectionFromSnapshot(reference: WorkflowExecutionReference, snapshot: TemporalWorkflowSnapshot): RunnerInspection {
+function inspectionFromSnapshot(reference: PlatformExecutionReference, snapshot: TemporalWorkflowSnapshot): RunnerInspection {
   return {
     status: snapshot.status,
     reference,
@@ -223,7 +277,7 @@ function inspectionFromSnapshot(reference: WorkflowExecutionReference, snapshot:
 }
 
 function inspectionFromReference(
-  reference: WorkflowExecutionReference,
+  reference: PlatformExecutionReference,
   status: "queued" | "running",
 ): RunnerInspection {
   return {
@@ -236,7 +290,7 @@ function inspectionFromReference(
   };
 }
 
-function inspectionFromResult(reference: WorkflowExecutionReference, result: TemporalWorkflowResult): RunnerInspection {
+function inspectionFromResult(reference: PlatformExecutionReference, result: TemporalWorkflowResult): RunnerInspection {
   const runResult: RunResult = {
     schemaVersion: 1,
     runId: result.runId,
@@ -260,6 +314,61 @@ function inspectionFromResult(reference: WorkflowExecutionReference, result: Tem
     },
     metrics: null,
   };
+}
+
+function temporalConfigurationFromManifest(manifest: RunManifest): TemporalManifestConfiguration {
+  const configuration = manifest.platformConfig;
+  return {
+    endpoint: readString(configuration, "endpoint"),
+    namespace: readString(configuration, "namespace"),
+    taskQueue: readString(configuration, "taskQueue"),
+    activityTimeoutMs: readPositiveInteger(configuration, "activityTimeoutMs"),
+    preDispatchRetryLimit: readNonNegativeInteger(configuration, "preDispatchRetryLimit"),
+    preDispatchRetryBackoffMs: readPositiveInteger(configuration, "preDispatchRetryBackoffMs"),
+  };
+}
+
+function temporalExecutionFromReference(reference: PlatformExecutionReference): TemporalExecutionReference {
+  if (reference.platform !== "temporal" || reference.variant !== "baseline") {
+    throw new Error("The execution reference does not belong to the Temporal baseline runner.");
+  }
+  const native = reference.native;
+  const activityTypes = native.activityTypes;
+  if (!Array.isArray(activityTypes) || activityTypes.some((value) => typeof value !== "string")) {
+    throw new Error("The Temporal execution reference has invalid activity metadata.");
+  }
+  return {
+    namespace: readString(native, "namespace"),
+    taskQueue: readString(native, "taskQueue"),
+    workflowId: readString(native, "workflowId"),
+    workflowRunId: readString(native, "workflowRunId"),
+    workflowType: readString(native, "workflowType"),
+    activityTypes,
+  };
+}
+
+function readString(configuration: Readonly<Record<string, unknown>>, key: string): string {
+  const value = configuration[key];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Temporal platform configuration is missing ${key}.`);
+  }
+  return value;
+}
+
+function readPositiveInteger(configuration: Readonly<Record<string, unknown>>, key: string): number {
+  const value = configuration[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`Temporal platform configuration has an invalid ${key}.`);
+  }
+  return value;
+}
+
+function readNonNegativeInteger(configuration: Readonly<Record<string, unknown>>, key: string): number {
+  const value = configuration[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Temporal platform configuration has an invalid ${key}.`);
+  }
+  return value;
 }
 
 function mapStatus(status: WorkflowExecutionStatusName): "queued" | "running" | "completed" | "failed" | "cancelled" {

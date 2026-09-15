@@ -4,16 +4,16 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 
 import type { ServerConfig } from "../bootstrap/config.js";
-import { EvidenceNotFoundError, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
+import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError } from "../application/run-service.js";
+import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunRequest } from "../domain/types.js";
-import type { PlatformRunner } from "../ports/runner.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
   readonly service: RunService;
   readonly evidence: RunEvidenceStore;
-  readonly runner: PlatformRunner;
+  readonly registry: PlatformRegistry;
 }
 
 export class InvalidApiRequestError extends Error {
@@ -22,15 +22,6 @@ export class InvalidApiRequestError extends Error {
     this.name = "InvalidApiRequestError";
   }
 }
-
-const ALLOWED_EVIDENCE_FILES = new Set<EvidenceFileName>([
-  "config.json",
-  "events.jsonl",
-  "trajectory.json",
-  "metrics.json",
-  "result.json",
-  "native/temporal.json",
-]);
 
 export function buildControlPlaneServer(dependencies: ControlPlaneServerDependencies): FastifyInstance {
   const app = Fastify({
@@ -48,11 +39,17 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   });
 
   app.get("/health", async (_request, reply) => {
-    const temporal = await dependencies.runner.checkConnection();
-    return reply.code(temporal.reachable ? 200 : 503).send({
-      status: temporal.reachable ? "ok" : "degraded",
+    const platforms = await dependencies.registry.checkConnections();
+    const healthy = platforms.every((platform) => platform.connectivity.reachable);
+    return reply.code(healthy ? 200 : 503).send({
+      status: healthy ? "ok" : "degraded",
       controlPlane: { ready: true },
-      temporal: { reachable: temporal.reachable, message: temporal.message },
+      platforms: platforms.map((platform) => ({
+        platform: platform.platform,
+        variant: platform.variant,
+        reachable: platform.connectivity.reachable,
+        message: platform.connectivity.message,
+      })),
     });
   });
 
@@ -104,7 +101,8 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   app.get<{ Params: { runId: string; "*": string } }>("/api/runs/:runId/evidence/*", async (request, reply) => {
     try {
       const fileName = request.params["*"];
-      if (!ALLOWED_EVIDENCE_FILES.has(fileName as EvidenceFileName)) {
+      const manifest = await dependencies.evidence.readManifest(request.params.runId);
+      if (!isAllowlistedEvidenceFile(fileName, manifest.platform)) {
         throw new InvalidApiRequestError("Evidence file is not allowlisted.");
       }
       const contents = await dependencies.evidence.readAllowlistedFile(request.params.runId, fileName as EvidenceFileName);

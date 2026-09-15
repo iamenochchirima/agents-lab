@@ -16,6 +16,7 @@ test("manifest contains immutable safe run configuration", () => {
     now: "2026-09-15T08:00:00.000Z",
     runId: "run-test-1",
     serverVersion: "test-version",
+    platformConfig: { namespace: "default", taskQueue: "test" },
   });
 
   assert.equal(manifest.runId, "run-test-1");
@@ -25,20 +26,25 @@ test("manifest contains immutable safe run configuration", () => {
   assert.equal(Object.isFrozen(manifest), true);
   assert.equal(Object.isFrozen(manifest.task), true);
   assert.equal(Object.isFrozen(manifest.model), true);
-  assert.equal(Object.isFrozen(manifest.temporal), true);
+  assert.equal(Object.isFrozen(manifest.platformConfig), true);
   assert.throws(() => {
-    (manifest.temporal as { taskQueue: string }).taskQueue = "changed";
+    (manifest.platformConfig as { taskQueue: string }).taskQueue = "changed";
   }, TypeError);
 });
 
-test("unsupported platforms and empty prompts are rejected", () => {
-  assert.throws(
-    () => buildRunManifest({ ...validRequest, platform: "restate" }, { runId: "run-test-2" }),
-    (error: unknown) => error instanceof InvalidRunRequestError,
-  );
+test("platform identifiers are accepted by the domain and empty prompts are rejected", () => {
+  const manifest = buildRunManifest({ ...validRequest, platform: "restate" }, { runId: "run-test-2" });
+  assert.equal(manifest.platform, "restate");
 
   assert.throws(
     () => buildRunManifest({ ...validRequest, task: { kind: "prompt", prompt: "  " } }, { runId: "run-test-3" }),
+    (error: unknown) => error instanceof InvalidRunRequestError,
+  );
+});
+
+test("invalid platform identifiers are rejected before persistence", () => {
+  assert.throws(
+    () => buildRunManifest({ ...validRequest, platform: "Temporal" }, { runId: "run-test-invalid-platform" }),
     (error: unknown) => error instanceof InvalidRunRequestError,
   );
 });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -128,6 +128,27 @@ test("writes terminal evidence idempotently and preserves unknown measurements a
 
     assert.deepEqual((await store.readSnapshot(manifest.runId)).result, result);
     assert.equal((await store.readSnapshot(manifest.runId)).metrics?.costUsd, null);
+  });
+});
+
+test("reads schema-v1 Temporal native references through the generic execution field", async () => {
+  await withStore(async (store, root) => {
+    await writeFile(
+      join(root, manifest.runId, "native/temporal.json"),
+      JSON.stringify({
+        platform: "temporal",
+        namespace: "default",
+        taskQueue: "agentlab-temporal-baseline",
+        workflowId: "agentlab:legacy-run",
+        workflowRunId: "legacy-workflow-run",
+        workflowType: "temporalBaselineWorkflow",
+        activityTypes: ["requestModel"],
+      }),
+    );
+
+    const snapshot = await store.readSnapshot(manifest.runId);
+    assert.equal(snapshot.executionReference?.executionId, "agentlab:legacy-run");
+    assert.equal(snapshot.executionReference?.native.workflowRunId, "legacy-workflow-run");
   });
 });
 

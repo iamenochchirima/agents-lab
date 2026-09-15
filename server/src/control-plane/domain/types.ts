@@ -41,8 +41,8 @@ export interface RunManifest {
   readonly runId: string;
   readonly createdAt: string;
   readonly serverVersion: string;
-  readonly platform: "temporal";
-  readonly variant: "baseline";
+  readonly platform: string;
+  readonly variant: string;
   readonly task: {
     readonly kind: "prompt";
     readonly prompt: string;
@@ -50,35 +50,30 @@ export interface RunManifest {
   readonly context: {
     readonly systemInstruction: string;
   };
+  readonly platformConfig: Readonly<Record<string, unknown>>;
   readonly model: {
     readonly provider: ModelProvider;
     readonly model: string;
   };
-  readonly temporal: {
-    readonly namespace: string;
-    readonly taskQueue: string;
-    readonly endpoint: string;
-    readonly activityTimeoutMs: number;
-    readonly preDispatchRetryLimit: number;
-    readonly preDispatchRetryBackoffMs: number;
-  };
 }
 
-export interface WorkflowExecutionReference {
-  readonly platform: "temporal";
-  readonly namespace: string;
-  readonly taskQueue: string;
-  readonly workflowId: string;
-  readonly workflowRunId: string;
-  readonly workflowType: string;
-  readonly activityTypes: readonly string[];
+/**
+ * The server keeps only the identity needed to call the selected runner again.
+ * Native details are retained for inspection, but the common server must not
+ * interpret their platform-specific shape.
+ */
+export interface PlatformExecutionReference {
+  readonly platform: string;
+  readonly variant: string;
+  readonly executionId: string;
+  readonly native: Readonly<Record<string, unknown>>;
 }
 
 export interface RunEvent<TPayload = Record<string, unknown>> {
   readonly schemaVersion: 1;
   readonly eventId: string;
   readonly recordedSequence: number;
-  readonly source: "control-plane" | "temporal-workflow";
+  readonly source: string;
   readonly sourceSequence: number;
   readonly kind: string;
   readonly runId: string;
@@ -87,7 +82,7 @@ export interface RunEvent<TPayload = Record<string, unknown>> {
 }
 
 export interface RunEventIntent<TPayload = Record<string, unknown>> {
-  readonly source: RunEvent["source"];
+  readonly source: string;
   readonly sourceSequence: number;
   readonly kind: string;
   readonly runId: string;

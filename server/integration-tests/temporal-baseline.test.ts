@@ -8,7 +8,7 @@ import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { RunEvidenceStore } from "../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
 import { RunService, type RunView } from "../src/control-plane/application/run-service.js";
-import type { WorkflowExecutionReference } from "../src/control-plane/domain/types.js";
+import type { PlatformExecutionReference } from "../src/control-plane/domain/types.js";
 import { TemporalBaselineRunner } from "../src/platforms/temporal/runner-adapter/temporal-runner.js";
 
 const BASE_REQUEST = {
@@ -58,7 +58,8 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
       completed.events.map((event) => event.kind),
       ["RunCreated", "RunDispatched", "AgentStarted", "ModelRequested", "ModelCompleted", "AgentCompleted", "RunCompleted"],
     );
-    assert.ok(completed.temporalReference?.workflowId.endsWith(completed.runId));
+    assert.ok(typeof completed.executionReference?.native.workflowId === "string");
+    assert.ok(String(completed.executionReference?.native.workflowId).endsWith(completed.runId));
     assert.equal(completed.metrics?.modelCallCount, 1);
 
     const retry = await service.createRun({
@@ -114,7 +115,7 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
       task: { kind: "prompt", prompt: "reconciliation integration test" },
       model: { provider: "fake", model: "fake-timeout" },
     });
-    await waitForTemporalTerminal(runner, outageRun.temporalReference);
+    await waitForTemporalTerminal(runner, outageRun.executionReference);
     const restartedRunner = await connectRunner(config);
     runners.push(restartedRunner);
     const restartedService = createService(config, store, restartedRunner);
@@ -168,7 +169,7 @@ async function waitForEvent(service: RunService, runId: string, kind: string): P
   throw new Error(`Event ${kind} was not observed for ${runId} within 10 seconds.`);
 }
 
-async function waitForTemporalTerminal(runner: TemporalBaselineRunner, reference: WorkflowExecutionReference | null): Promise<void> {
+async function waitForTemporalTerminal(runner: TemporalBaselineRunner, reference: PlatformExecutionReference | null): Promise<void> {
   if (!reference) throw new Error("The outage test did not retain a Temporal execution reference.");
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
@@ -176,14 +177,14 @@ async function waitForTemporalTerminal(runner: TemporalBaselineRunner, reference
     if (inspection.status === "completed" || inspection.status === "failed" || inspection.status === "cancelled") return;
     await delay(Math.min(100, Math.max(0, deadline - Date.now())));
   }
-  throw new Error(`Temporal workflow ${reference.workflowId} did not finish while the server projection was idle.`);
+  throw new Error(`Temporal workflow ${reference.executionId} did not finish while the server projection was idle.`);
 }
 
 async function assertCompleteEvidence(root: string, run: RunView, expectedFiles: readonly string[]): Promise<void> {
   assert.ok(run.result);
   assert.ok(run.trajectory);
   assert.ok(run.metrics);
-  assert.ok(run.temporalReference);
+  assert.ok(run.executionReference);
   assert.deepEqual(run.metrics?.status, run.result?.status);
   await readEvidenceFiles(root, run.runId, expectedFiles);
 }

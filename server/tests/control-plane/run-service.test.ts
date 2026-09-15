@@ -7,10 +7,10 @@ import test from "node:test";
 import { loadServerConfig } from "../../src/control-plane/bootstrap/config.js";
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
 import type {
+  PlatformExecutionReference,
   RunEventIntent,
   RunManifest,
   RunResult,
-  WorkflowExecutionReference,
 } from "../../src/control-plane/domain/types.js";
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
@@ -29,6 +29,10 @@ class FakeRunner implements PlatformRunner {
   state: "running" | "completed" | "cancelled" = "completed";
   unavailable = false;
 
+  manifestConfiguration(): Readonly<Record<string, unknown>> {
+    return { profile: "test" };
+  }
+
   validate(_manifest: RunManifest): RunnerValidationResult {
     return { valid: true, reason: null };
   }
@@ -37,22 +41,23 @@ class FakeRunner implements PlatformRunner {
     return { reachable: !this.unavailable, message: this.unavailable ? "unavailable" : "reachable" };
   }
 
-  async start(manifest: RunManifest): Promise<WorkflowExecutionReference> {
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
     return referenceFor(manifest);
   }
 
-  async cancel(_reference: WorkflowExecutionReference, _reason: string): Promise<RunnerCancellationResult> {
+  async cancel(_reference: PlatformExecutionReference, _reason: string): Promise<RunnerCancellationResult> {
     this.state = "cancelled";
     return { accepted: true, alreadyTerminal: false, message: "accepted" };
   }
 
-  async inspect(reference: WorkflowExecutionReference): Promise<RunnerInspection> {
+  async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     if (this.unavailable) {
       throw new Error("Temporal unavailable");
     }
 
-    const events = eventsFor(reference.workflowId.replace("agentlab:", ""), this.state);
-    const result = this.state === "running" ? null : resultFor(reference.workflowId.replace("agentlab:", ""), this.state);
+    const runId = reference.executionId.replace("agentlab:", "");
+    const events = eventsFor(runId, this.state);
+    const result = this.state === "running" ? null : resultFor(runId, this.state);
     return {
       status: this.state,
       reference,
@@ -89,7 +94,7 @@ test("creates a run before dispatch and projects a completed runner result", asy
     assert.equal(view.status, "completed");
     assert.equal(view.result?.output, "fake output");
     assert.equal(view.events.map((event) => event.kind).join(","), "RunCreated,RunDispatched,AgentStarted,ModelRequested,ModelCompleted,AgentCompleted,RunCompleted");
-    assert.ok(view.temporalReference);
+    assert.ok(view.executionReference);
     assert.ok(view.metrics);
     assert.equal((await store.readSnapshot(view.runId)).trajectory?.runId, view.runId);
   });
@@ -110,7 +115,7 @@ test("reconciliation projects workflow intents once after a server restart", asy
     await store.createRun(manifest);
     await store.appendEvent({ source: "control-plane", sourceSequence: 1, kind: "RunCreated", runId: manifest.runId, occurredAt: manifest.createdAt, payload: {} });
     await store.appendEvent({ source: "control-plane", sourceSequence: 2, kind: "RunDispatched", runId: manifest.runId, occurredAt: manifest.createdAt, payload: {} });
-    await store.writeTemporalReference(manifest.runId, reference);
+    await store.writeExecutionReference(manifest.runId, reference);
     runner.state = "completed";
 
     const first = await service.getRun(manifest.runId);
@@ -170,7 +175,7 @@ test("missing execution references are explicit and Temporal outages do not fabr
     await store.createRun(unavailableManifest);
     await store.appendEvent({ source: "control-plane", sourceSequence: 1, kind: "RunCreated", runId: unavailableManifest.runId, occurredAt: unavailableManifest.createdAt, payload: {} });
     await store.appendEvent({ source: "control-plane", sourceSequence: 2, kind: "RunDispatched", runId: unavailableManifest.runId, occurredAt: unavailableManifest.createdAt, payload: {} });
-    await store.writeTemporalReference(unavailableManifest.runId, referenceFor(unavailableManifest));
+    await store.writeExecutionReference(unavailableManifest.runId, referenceFor(unavailableManifest));
     runner.unavailable = true;
     const stale = await service.getRun(unavailableManifest.runId);
     assert.equal(stale.status, "queued");
@@ -178,15 +183,16 @@ test("missing execution references are explicit and Temporal outages do not fabr
   });
 });
 
-function referenceFor(manifest: RunManifest): WorkflowExecutionReference {
+function referenceFor(manifest: RunManifest): PlatformExecutionReference {
   return {
-    platform: "temporal",
-    namespace: manifest.temporal.namespace,
-    taskQueue: manifest.temporal.taskQueue,
-    workflowId: `agentlab:${manifest.runId}`,
-    workflowRunId: `workflow-run-${manifest.runId}`,
-    workflowType: "temporalBaselineWorkflow",
-    activityTypes: ["requestModel"],
+    platform: manifest.platform,
+    variant: manifest.variant,
+    executionId: `agentlab:${manifest.runId}`,
+    native: {
+      workflowId: `agentlab:${manifest.runId}`,
+      workflowRunId: `workflow-run-${manifest.runId}`,
+      workflowType: "testRunner",
+    },
   };
 }
 

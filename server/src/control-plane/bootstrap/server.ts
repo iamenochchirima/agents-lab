@@ -33,7 +33,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const evidence = new RunEvidenceStore(config.runsRoot);
   const registry = new PlatformRegistry([runner]);
   const service = new RunService({ config, evidence, registry });
-  const app = buildControlPlaneServer({ config, service, evidence, runner });
+  const app = buildControlPlaneServer({ config, service, evidence, registry });
 
   return {
     app,

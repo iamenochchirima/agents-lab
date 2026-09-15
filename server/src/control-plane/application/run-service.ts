@@ -1,5 +1,6 @@
 import { buildRunManifest } from "../domain/manifest.js";
 import type {
+  PlatformExecutionReference,
   RunEvent,
   RunEventIntent,
   RunManifest,
@@ -33,20 +34,10 @@ export interface RunView {
   readonly status: RunStatus;
   readonly manifest: RunManifest;
   readonly events: readonly RunEvent[];
-  readonly temporalReference: RunEvidenceSnapshotReference | null;
+  readonly executionReference: PlatformExecutionReference | null;
   readonly trajectory: RunTrajectory | null;
   readonly metrics: RunMetrics | null;
   readonly result: RunResult | null;
-}
-
-export interface RunEvidenceSnapshotReference {
-  readonly platform: "temporal";
-  readonly namespace: string;
-  readonly taskQueue: string;
-  readonly workflowId: string;
-  readonly workflowRunId: string;
-  readonly workflowType: string;
-  readonly activityTypes: readonly string[];
 }
 
 export interface RunServiceDependencies {
@@ -57,30 +48,26 @@ export interface RunServiceDependencies {
 
 /**
  * Coordinates a Lab run without owning platform execution. The runner is the
- * only component allowed to know how to start or inspect Temporal; this service
+ * only component allowed to know how to start or inspect a platform; this service
  * owns the durable Lab projection and its recovery rules.
  */
 export class RunService {
   constructor(private readonly dependencies: RunServiceDependencies) {}
 
   async createRun(request: RunRequest): Promise<RunView> {
+    const runner = this.dependencies.registry.runnableFor(request.platform, request.variant);
+    if (!runner) {
+      throw new RunnerUnavailableError(request.platform, request.variant);
+    }
+
     const manifest = buildRunManifest(request, {
       serverVersion: this.dependencies.config.serverVersion,
-      temporalEndpoint: this.dependencies.config.temporal.endpoint,
-      temporalNamespace: this.dependencies.config.temporal.namespace,
-      temporalTaskQueue: this.dependencies.config.temporal.taskQueue,
-      activityTimeoutMs: this.dependencies.config.temporal.activityTimeoutMs,
-      preDispatchRetryLimit: this.dependencies.config.temporal.preDispatchRetryLimit,
-      preDispatchRetryBackoffMs: this.dependencies.config.temporal.preDispatchRetryBackoffMs,
+      platformConfig: runner.manifestConfiguration(),
     });
     if (!this.dependencies.config.allowedModelProviders.includes(manifest.model.provider)) {
       throw new Error(`Model provider is not enabled in the local server profile: ${manifest.model.provider}.`);
     }
 
-    const runner = this.dependencies.registry.runnable(manifest);
-    if (!runner) {
-      throw new RunnerUnavailableError(manifest.platform, manifest.variant);
-    }
     const validation = runner.validate(manifest);
     if (!validation.valid) {
       throw new Error(validation.reason ?? "Runner rejected the run manifest.");
@@ -92,13 +79,11 @@ export class RunService {
     let reference;
     try {
       reference = await runner.start(manifest);
-      await this.dependencies.evidence.writeTemporalReference(manifest.runId, reference);
+      await this.dependencies.evidence.writeExecutionReference(manifest.runId, reference);
       await this.appendControlEvent(manifest.runId, "RunDispatched", {
-        workflowId: reference.workflowId,
-        workflowRunId: reference.workflowRunId,
-        workflowType: reference.workflowType,
-        namespace: reference.namespace,
-        taskQueue: reference.taskQueue,
+        executionId: reference.executionId,
+        platform: reference.platform,
+        variant: reference.variant,
       });
     } catch (error) {
       await this.recordDispatchFailure(manifest, error);
@@ -123,24 +108,24 @@ export class RunService {
     if (!runner) {
       return toRunView(snapshot, deriveStatus(snapshot.events, snapshot.result));
     }
-    if (!snapshot.temporalReference) {
+    if (!snapshot.executionReference) {
       if (!snapshot.result) {
-        await this.recordReconciliationRequired(snapshot.manifest, "No Temporal execution reference was retained.");
+        await this.recordReconciliationRequired(snapshot.manifest, "No platform execution reference was retained.");
         snapshot = await this.dependencies.evidence.readSnapshot(runId);
       }
       return toRunView(snapshot, deriveStatus(snapshot.events, snapshot.result));
     }
 
     try {
-      return await this.reconcile(runId, runner, snapshot.temporalReference);
+      return await this.reconcile(runId, runner, snapshot.executionReference);
     } catch (error) {
-      if (isWorkflowNotFoundError(error)) {
-        await this.recordReconciliationRequired(snapshot.manifest, "The retained Temporal execution could not be found.");
+      if (isExecutionNotFoundError(error)) {
+        await this.recordReconciliationRequired(snapshot.manifest, "The retained platform execution could not be found.");
         const reconciled = await this.dependencies.evidence.readSnapshot(runId);
         return toRunView(reconciled, "reconciliation_required");
       }
 
-      // A server read must not turn a temporary Temporal outage into a
+      // A server read must not turn a temporary platform outage into a
       // fabricated terminal result. Return the last durable Lab projection.
       return toRunView(snapshot, deriveStatus(snapshot.events, snapshot.result));
     }
@@ -151,8 +136,8 @@ export class RunService {
     if (snapshot.result) {
       return toRunView(snapshot, snapshot.result.status);
     }
-    if (!snapshot.temporalReference) {
-      await this.recordReconciliationRequired(snapshot.manifest, "Cannot cancel without a retained Temporal execution reference.");
+    if (!snapshot.executionReference) {
+      await this.recordReconciliationRequired(snapshot.manifest, "Cannot cancel without a retained platform execution reference.");
       return this.getRun(runId);
     }
 
@@ -160,7 +145,7 @@ export class RunService {
     if (!runner) {
       throw new RunnerUnavailableError(snapshot.manifest.platform, snapshot.manifest.variant);
     }
-    const cancellation = await runner.cancel(snapshot.temporalReference, reason);
+    const cancellation = await runner.cancel(snapshot.executionReference, reason);
     if (cancellation.alreadyTerminal) {
       return this.getRun(runId);
     }
@@ -173,7 +158,7 @@ export class RunService {
   private async reconcile(
     runId: string,
     runner: PlatformRunner,
-    reference: RunEvidenceSnapshotReference,
+    reference: PlatformExecutionReference,
   ): Promise<RunView> {
     const inspection = await runner.inspect(reference);
     for (const intent of inspection.eventIntents) {
@@ -221,7 +206,7 @@ export class RunService {
       output: null,
       error: {
         code: "DISPATCH_FAILED",
-        message: "The Temporal workflow could not be started.",
+        message: "The platform execution could not be started.",
         failureKind: "internal",
         retryable: true,
       },
@@ -234,7 +219,7 @@ export class RunService {
   }
 
   private async recordReconciliationRequired(manifest: RunManifest, message: string): Promise<void> {
-    await this.appendControlEvent(manifest.runId, "RunReconciliationRequired", { code: "TEMPORAL_REFERENCE_MISSING" });
+    await this.appendControlEvent(manifest.runId, "RunReconciliationRequired", { code: "PLATFORM_REFERENCE_MISSING" });
     const result: RunResult = {
       schemaVersion: 1,
       runId: manifest.runId,
@@ -242,7 +227,7 @@ export class RunService {
       startedAt: null,
       finishedAt: new Date().toISOString(),
       output: null,
-      error: { code: "TEMPORAL_REFERENCE_MISSING", message, failureKind: "reconciliation", retryable: false },
+      error: { code: "PLATFORM_REFERENCE_MISSING", message, failureKind: "reconciliation", retryable: false },
       attemptCount: 0,
       usage: { inputTokens: null, outputTokens: null, totalTokens: null },
     };
@@ -269,7 +254,7 @@ function toRunView(snapshot: Awaited<ReturnType<RunEvidenceStore["readSnapshot"]
     status,
     manifest: snapshot.manifest,
     events: snapshot.events,
-    temporalReference: snapshot.temporalReference,
+    executionReference: snapshot.executionReference,
     trajectory: snapshot.trajectory,
     metrics: snapshot.metrics,
     result: snapshot.result,
@@ -305,6 +290,6 @@ function calculateMetrics(result: RunResult, events: readonly RunEventIntent[]):
   };
 }
 
-function isWorkflowNotFoundError(error: unknown): boolean {
+function isExecutionNotFoundError(error: unknown): boolean {
   return error instanceof Error && (error.name === "WorkflowNotFoundError" || error.message.includes("not found"));
 }
