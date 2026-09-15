@@ -25,4 +25,4 @@ failure record without exposing the provider response body.
 
 The local World is a reproducible development backend, not Vercel's managed hosted
 World. Hosted deployment, Vercel deployment identity, managed retention, and hosted
-observability still need a separate profile and primary-server integration.
+observability still need a separate hosted profile.

@@ -62,6 +62,9 @@ required local service being available.
 | Inngest | TypeScript event/function service | Inngest Dev Server and function service |
 | Trigger.dev | TypeScript task and worker boundary | Trigger server and local task worker |
 | DBOS | TypeScript workflow host | PostgreSQL and DBOS service |
+| Hatchet | TypeScript task and worker boundary | Hatchet server and registered worker |
+| AWS Step Functions | Standard state machine and Activity worker | Step Functions Local or an AWS profile |
+| Vercel Workflows | Local Workflow SDK service and model step | Workflow local World or a hosted Vercel profile |
 
 The UI uses this distinction directly: a platform can be selectable while its run
 control remains disabled until the server reports that its required dependency is

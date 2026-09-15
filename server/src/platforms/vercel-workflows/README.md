@@ -17,9 +17,10 @@ npm install
 npm run dev
 ```
 
-The default readiness endpoint is `http://127.0.0.1:9093/ready`. The runner adapter
-is exported from `index.ts`; the shared server does not register it until the primary
-integration work adds the platform wiring.
+The default readiness endpoint is `http://127.0.0.1:9094/ready`. The runner adapter
+is exported from `index.ts` and registered by the shared server bootstrap. The local
+Workflow service remains an optional process because it is not part of the default Lab
+stack.
 
 Further reading:
 

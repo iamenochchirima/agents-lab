@@ -6,7 +6,9 @@ export const VERCEL_WORKFLOW_SDK_VERSION = "5.0.0-beta.52" as const;
 export const VERCEL_WORKFLOW_LOCAL_WORLD_VERSION = "5.0.0-beta.45" as const;
 export const VERCEL_WORKFLOW_NAME = "agentLabPrompt" as const;
 export const VERCEL_WORKFLOW_DEFAULT_HOST = "127.0.0.1" as const;
-export const VERCEL_WORKFLOW_DEFAULT_PORT = 9093;
+// Keep the local Vercel service separate from the AWS Step Functions service,
+// which uses 9093 in the shared development setup.
+export const VERCEL_WORKFLOW_DEFAULT_PORT = 9094;
 export const VERCEL_WORKFLOW_DEFAULT_REQUEST_TIMEOUT_MS = 2_000;
 export const VERCEL_WORKFLOW_DEFAULT_MODEL_TIMEOUT_MS = 30_000;
 export const VERCEL_WORKFLOW_DEFAULT_DATA_DIR = ".local/workflow-data";

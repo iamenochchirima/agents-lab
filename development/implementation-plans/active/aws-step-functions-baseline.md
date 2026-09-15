@@ -1,8 +1,8 @@
 # AWS Step Functions baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00<br>
-**Last updated:** 2026-09-15T14:48:00+02:00<br>
-**Status:** Active — platform-local implementation complete; emulator validation is pending<br>
+**Last updated:** 2026-09-15T15:10:00+02:00<br>
+**Status:** Active — platform-local implementation and shared registration complete; emulator validation is pending<br>
 **Owner:** Assigned platform agent<br>
 **Platform:** `aws-step-functions`<br>
 **Variant:** `baseline`
@@ -201,8 +201,8 @@ Not run:
   `unix:///home/enoch/.docker/desktop/docker.sock`.
 - Hosted AWS smoke: no hosted credentials, resource ARNs, cost guard, or cleanup
   approval were supplied.
-- Shared UI/API compatibility: intentionally owned by the primary integration
-  agent and outside this bounded platform change.
+- Shared UI/API compatibility: completed by the primary integration pass; local
+  emulator and hosted AWS acceptance remain pending.
 
 ## Documentation and release record
 

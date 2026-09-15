@@ -1,7 +1,7 @@
 # Parallel platform implementation coordination
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T13:58:04+02:00
+**Last updated:** 2026-09-15T15:10:00+02:00
 **Status:** Active
 **Owner:** Primary implementation agent
 
@@ -49,7 +49,7 @@ The current implementation wave is running in three isolated worktrees:
 | --- | --- | --- |
 | 1 | Restate, LangGraph, Mastra | Integrated; remaining acceptance records are tracked in each plan |
 | 2 | Inngest, Trigger.dev, DBOS | Integrated; Inngest and DBOS have local acceptance evidence, while Trigger.dev still needs a real local server profile |
-| 3 | AWS Step Functions, Hatchet, Vercel Workflows | In progress; platform-local implementation is delegated, shared integration remains with the primary agent |
+| 3 | AWS Step Functions, Hatchet, Vercel Workflows | Platform-local implementations and shared registration are integrated; local service acceptance and hosted profiles remain tracked in each plan |
 
 Only one platform agent owns a platform directory at a time. The primary agent
 does not begin shared bootstrap or UI integration for this wave until its three
@@ -138,7 +138,7 @@ Wave 1 should start first and may run concurrently:
 
 Wave 2 can then run concurrently after the first integration boundary is proven:
 
-- Inngest, Trigger.dev, DBOS, and Hatchet all add distinct durable backend models,
+- Inngest, Trigger.dev, and DBOS add distinct durable backend models,
   but their local service processes and infrastructure can compete for resources.
 
 Wave 3 should remain separate because deployment constraints dominate local semantics:
@@ -159,7 +159,7 @@ be scheduled so ports, containers, databases, and cloud credentials do not overl
       restart, unknown outcomes, and exact tests.
 - [ ] Wave 1 is implemented and integrated before Wave 2 is started.
 - [ ] Platform-specific behaviour remains visible in native evidence and documentation.
-- [ ] The UI shows a platform as runnable only after the primary integration handoff passes.
+- [x] The UI shows a platform as runnable only after the primary integration handoff passes.
 
 ## Known limits
 

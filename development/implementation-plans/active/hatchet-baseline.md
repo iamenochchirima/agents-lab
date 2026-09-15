@@ -1,8 +1,8 @@
 # Hatchet baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T14:33:40+02:00
-**Status:** Active
+**Last updated:** 2026-09-15T15:10:00+02:00
+**Status:** Active — platform-local implementation and shared registration complete; live stack validation remains
 **Owner:** Assigned platform agent
 **Platform:** `hatchet`
 **Variant:** `baseline`
@@ -59,8 +59,9 @@ development/playground/hatchet-baseline/**
 ```
 
 Do not modify common server contracts, root manifests/lockfiles, local-stack startup,
-web catalog, or documentation navigation. The primary agent handles registration and
-shared launcher integration after the platform-only commits are reviewed.
+web catalog, or documentation navigation. The primary agent owns registration and
+shared launcher integration after the platform-only commits are reviewed; those
+integration changes are now recorded in the handoff below.
 
 ## Runtime and infrastructure decision
 
@@ -128,7 +129,7 @@ Implementation checklist:
 - [x] Add opt-in full-stack integration tests for success and provider failure.
 - [x] Add pinned full-stack local Compose deployment and a learning playground walkthrough.
 - [ ] Run the opt-in integration tests against a live local Hatchet stack with a locally generated worker token.
-- [ ] Hand off shared platform-registry and launcher wiring to the primary agent.
+- [x] Hand off shared platform-registry and launcher wiring to the primary agent.
 
 Validation record for this implementation:
 
@@ -144,9 +145,10 @@ Validation record for this implementation:
 
 Known limitations and integration requirements:
 
-- This commit does not edit shared server bootstrap, platform registry, launcher scripts,
-  root package manifests, web catalog, or navigation. The primary agent must register the
-  runner and worker command in those shared boundaries.
+- The platform-local commits do not edit shared server bootstrap, platform registry,
+  launcher scripts, root package manifests, web catalog, or navigation. The primary
+  integration now registers the runner and exposes the worker command in those shared
+  boundaries.
 - The live Hatchet Compose integration was not run in this isolated check because it would
   require starting Docker services and creating a local token. The opt-in test is ready for
   that environment and is intentionally not treated as passed here.

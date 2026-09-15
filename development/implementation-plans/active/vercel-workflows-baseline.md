@@ -1,8 +1,8 @@
 # Vercel Workflows baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T14:37:14+02:00
-**Status:** Active — local baseline implemented; hosted profile and shared registration remain
+**Last updated:** 2026-09-15T15:05:00+02:00
+**Status:** Active — local baseline and shared registration implemented; hosted profile remains
 **Owner:** Assigned platform agent
 **Platform:** `vercel-workflows`
 **Variant:** `baseline`
@@ -52,8 +52,9 @@ development/playground/vercel-workflows-baseline/**
 ```
 
 Do not edit common server contracts, root manifests/lockfiles, local-stack startup,
-the web catalog, or documentation navigation. Hosted project setup and shared
-environment forwarding are primary-agent integration work.
+the web catalog, or documentation navigation. Hosted project setup remains
+primary-agent integration work; shared local registration and launcher wiring are
+complete.
 
 ## Runtime and infrastructure decision
 
@@ -95,8 +96,8 @@ environment forwarding are primary-agent integration work.
 - [x] Add focused unit and real local-World integration tests.
 - [x] Document local commands, route ownership, retries, cancellation, duplicate
   external calls, and local versus hosted semantics.
-- [ ] Register the runner in the shared server bootstrap and expose it to the shared
-  UI. This is primary-agent integration work and was intentionally not changed here.
+- [x] Register the runner in the shared server bootstrap and expose it to the shared UI.
+  This was completed by the primary integration pass.
 - [ ] Verify a disposable hosted Vercel project and add an opt-in hosted smoke test.
 
 ## Lifecycle and failure semantics

@@ -18,14 +18,13 @@ npm install
 npm test
 ```
 
-The shared `server` package does not install the Workflow SDK yet. The service uses
-`sdk.ts` to resolve the SDK explicitly from this platform's source or compiled
-platform directory, so the root server build can run it without a shared dependency.
-The service integration tests use the same local package when it is present and skip
-cleanly only when the platform package itself is absent. Bootstrap registration and
-shared dependency ownership remain primary integration work.
+The shared `server` package does not install the Workflow SDK. The service uses `sdk.ts`
+to resolve the SDK explicitly from this platform's source or compiled platform
+directory, so the root server build can run it without a shared dependency. The service
+integration tests use the same local package when it is present and skip cleanly only
+when the platform package itself is absent.
 
-Readiness is available at `GET http://127.0.0.1:9093/ready`.
+Readiness is available at `GET http://127.0.0.1:9094/ready`.
 
 The service exposes the platform-local routes used by the runner:
 
@@ -37,7 +36,7 @@ The service exposes the platform-local routes used by the runner:
 Configuration is environment-only:
 
 ```sh
-AGENTLAB_VERCEL_WORKFLOWS_PORT=9093
+AGENTLAB_VERCEL_WORKFLOWS_PORT=9094
 AGENTLAB_VERCEL_WORKFLOWS_DATA_DIR=.local/workflow-data
 OPENROUTER_API_KEY=...
 AGENTLAB_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
