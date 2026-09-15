@@ -50,6 +50,7 @@ export interface RunView {
     readonly variant: string;
     readonly task: { readonly prompt: string };
     readonly model: { readonly provider: string; readonly model: string };
+    readonly selection?: RunSelection;
   };
   readonly events: readonly RunEvent[];
   readonly executionReference: {
@@ -59,6 +60,14 @@ export interface RunView {
     readonly native: Record<string, unknown>;
   } | null;
   readonly result: RunResult | null;
+}
+
+export interface RunSelection {
+  readonly scenarioId?: string;
+  readonly environmentId?: string;
+  readonly backendProfileId?: string;
+  readonly infrastructureId?: string;
+  readonly experimentId?: string;
 }
 
 export interface RunEventsPage {
@@ -81,6 +90,7 @@ export interface PlatformRunRequest {
   readonly variant: string;
   readonly task: { readonly kind: "prompt"; readonly prompt: string };
   readonly model: { readonly provider: string; readonly model: string };
+  readonly selection?: RunSelection;
 }
 
 export class PlatformApiError extends Error {

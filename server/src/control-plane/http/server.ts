@@ -8,7 +8,7 @@ import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName
 import { RunNotFoundError, RunService, RunnerUnavailableError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
-import type { RunRequest } from "../domain/types.js";
+import type { RunRequest, RunSelection } from "../domain/types.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
@@ -141,12 +141,39 @@ function parseRunRequest(body: unknown): RunRequest {
   if ("experiment" in body && body.experiment !== undefined) {
     throw new InvalidApiRequestError("experiments are not supported by this run path yet.");
   }
+  const selection = parseRunSelection(body.selection);
   return {
     platform: body.platform,
     variant: body.variant,
     task: { kind: "prompt", prompt: body.task.prompt },
     model: { provider: body.model.provider, model: body.model.model },
+    selection,
   };
+}
+
+function parseRunSelection(value: unknown): RunSelection | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new InvalidApiRequestError("selection must be an object.");
+
+  const allowed = new Set(["scenarioId", "environmentId", "backendProfileId", "infrastructureId", "experimentId"]);
+  for (const [key, entry] of Object.entries(value)) {
+    if (!allowed.has(key)) throw new InvalidApiRequestError(`Unknown run selection field: ${key}.`);
+    if (entry !== undefined && typeof entry !== "string") {
+      throw new InvalidApiRequestError(`Run selection field ${key} must be a string.`);
+    }
+  }
+
+  return {
+    scenarioId: stringOrUndefined(value.scenarioId),
+    environmentId: stringOrUndefined(value.environmentId),
+    backendProfileId: stringOrUndefined(value.backendProfileId),
+    infrastructureId: stringOrUndefined(value.infrastructureId),
+    experimentId: stringOrUndefined(value.experimentId),
+  };
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function parseCancelBody(body: unknown): string {

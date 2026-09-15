@@ -33,6 +33,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
     context: { systemInstruction: DEFAULT_SYSTEM_INSTRUCTION },
     platformConfig: options.platformConfig ?? {},
+    selection: request.selection ?? {},
     model: {
       provider: request.model.provider as ModelProvider,
       model: request.model.model.trim(),
@@ -79,6 +80,17 @@ export function validateRunRequest(request: RunRequest): void {
 
   if (request.model.model.trim().length === 0 || request.model.model.trim().length > 200) {
     throw new InvalidRunRequestError("Model name must contain between 1 and 200 characters.");
+  }
+
+  if (request.selection !== undefined) {
+    for (const [name, value] of Object.entries(request.selection)) {
+      if (!/^(scenarioId|environmentId|backendProfileId|infrastructureId|experimentId)$/.test(name)) {
+        throw new InvalidRunRequestError(`Unknown run selection field: ${name}.`);
+      }
+      if (value !== undefined && (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(value) || value === "none" && name !== "experimentId")) {
+        throw new InvalidRunRequestError(`${name} must use a valid catalog identifier.`);
+      }
+    }
   }
 }
 

@@ -12,7 +12,15 @@ const validRequest: RunRequest = {
 };
 
 test("manifest contains immutable safe run configuration", () => {
-  const manifest = buildRunManifest(validRequest, {
+  const manifest = buildRunManifest({
+    ...validRequest,
+    selection: {
+      scenarioId: "research",
+      backendProfileId: "local-temporal-stack",
+      infrastructureId: "temporal-server",
+      experimentId: "none",
+    },
+  }, {
     now: "2026-09-15T08:00:00.000Z",
     runId: "run-test-1",
     serverVersion: "test-version",
@@ -22,11 +30,18 @@ test("manifest contains immutable safe run configuration", () => {
   assert.equal(manifest.runId, "run-test-1");
   assert.equal(manifest.createdAt, "2026-09-15T08:00:00.000Z");
   assert.equal(manifest.model.provider, "fake");
+  assert.deepEqual(manifest.selection, {
+    scenarioId: "research",
+    backendProfileId: "local-temporal-stack",
+    infrastructureId: "temporal-server",
+    experimentId: "none",
+  });
   assert.equal("apiKey" in manifest, false);
   assert.equal(Object.isFrozen(manifest), true);
   assert.equal(Object.isFrozen(manifest.task), true);
   assert.equal(Object.isFrozen(manifest.model), true);
   assert.equal(Object.isFrozen(manifest.platformConfig), true);
+  assert.equal(Object.isFrozen(manifest.selection), true);
   assert.throws(() => {
     (manifest.platformConfig as { taskQueue: string }).taskQueue = "changed";
   }, TypeError);

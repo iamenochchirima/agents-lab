@@ -22,6 +22,19 @@ export type FailureKind =
   | "internal"
   | "reconciliation";
 
+/**
+ * User-selected Lab configuration retained with a run. Platform-native
+ * settings remain in `platformConfig`; this object records what the UI chose
+ * so a run can be reproduced without teaching the common server platform APIs.
+ */
+export interface RunSelection {
+  readonly scenarioId?: string;
+  readonly environmentId?: string;
+  readonly backendProfileId?: string;
+  readonly infrastructureId?: string;
+  readonly experimentId?: string;
+}
+
 export interface RunRequest {
   readonly platform: string;
   readonly variant: string;
@@ -33,6 +46,7 @@ export interface RunRequest {
     readonly provider: string;
     readonly model: string;
   };
+  readonly selection?: RunSelection;
   readonly experiment?: undefined;
 }
 
@@ -51,6 +65,7 @@ export interface RunManifest {
     readonly systemInstruction: string;
   };
   readonly platformConfig: Readonly<Record<string, unknown>>;
+  readonly selection?: RunSelection;
   readonly model: {
     readonly provider: ModelProvider;
     readonly model: string;

@@ -80,6 +80,10 @@ export function RunStatusPanel(props: RunStatusPanelProps) {
       <dl className="run-manifest-summary">
         <div><dt>Variant</dt><dd>{props.run.manifest.variant}</dd></div>
         <div><dt>Model</dt><dd>{props.run.manifest.model.provider} / {props.run.manifest.model.model}</dd></div>
+        {props.run.manifest.selection?.scenarioId && <div><dt>Scenario</dt><dd>{props.run.manifest.selection.scenarioId}</dd></div>}
+        {props.run.manifest.selection?.backendProfileId && <div><dt>Server</dt><dd>{props.run.manifest.selection.backendProfileId}</dd></div>}
+        {props.run.manifest.selection?.infrastructureId && <div><dt>Infrastructure</dt><dd>{props.run.manifest.selection.infrastructureId}</dd></div>}
+        {props.run.manifest.selection?.experimentId && <div><dt>Experiment</dt><dd>{props.run.manifest.selection.experimentId}</dd></div>}
         {props.run.executionReference && <div><dt>Execution</dt><dd>{props.run.executionReference.executionId}</dd></div>}
       </dl>
 

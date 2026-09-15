@@ -84,12 +84,19 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
       method: "POST",
       url: "/api/runs",
       headers: { "x-request-id": "request-test-1" },
-      payload: { platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt: "Hello" }, model: { provider: "fake", model: "fake-success" } },
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Hello" },
+        model: { provider: "fake", model: "fake-success" },
+        selection: { scenarioId: "research", backendProfileId: "local-temporal-stack" },
+      },
     });
     assert.equal(created.statusCode, 202);
     assert.equal(created.headers["x-request-id"], "request-test-1");
     const run = created.json();
     assert.equal(run.status, "completed");
+    assert.deepEqual(run.manifest.selection, { scenarioId: "research", backendProfileId: "local-temporal-stack" });
 
     const events = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/events?after=2&limit=2` });
     assert.equal(events.statusCode, 200);
