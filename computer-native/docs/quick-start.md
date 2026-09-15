@@ -64,7 +64,7 @@ development, store the choice in the ignored `computer-native/.env` file:
 cp .env.example .env
 # Set these values in .env:
 # COMPUTER_NATIVE_PROVIDER=openrouter
-# OPENROUTER_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+# OPENROUTER_MODEL=openrouter/free
 # OPENROUTER_API_KEY=your-local-key
 npm run chat -- --state-dir "$STATE_DIR"
 ```
