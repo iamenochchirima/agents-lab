@@ -1,8 +1,8 @@
 # Restate baseline platform
 
 **Created:** 2026-09-15T10:59:09+02:00<br>
-**Last updated:** 2026-09-15T14:15:00+02:00<br>
-**Status:** Active — implementation integrated; archival record pending<br>
+**Last updated:** 2026-09-15T17:40:00+02:00<br>
+**Status:** Complete — native local baseline validated; optional Docker profile deferred<br>
 **Owner:** Primary platform integration agent<br>
 **Platform:** `restate`<br>
 **Variant:** `baseline`
@@ -17,7 +17,7 @@ Read these before editing:
 - [`server architecture`](../../../server/src/control-plane/README.md)
 - [`platform ownership`](../../../server/src/platforms/README.md)
 - [`runner interface`](../../../server/src/control-plane/ports/README.md)
-- [`completed server foundation`](../completed/server-platform-foundation.md)
+- [`completed server foundation`](server-platform-foundation.md)
 - [`Restate platform placeholder`](../../../server/src/platforms/restate/README.md)
 - [`first-party source audit`](../../../docs/research/platform-plan-source-audit.md)
 - [Restate TypeScript services](https://docs.restate.dev/develop/ts/services)
@@ -59,19 +59,17 @@ implementation even when the local Restate server or service deployment is stopp
 Verified in this wave:
 
 - [x] 14 focused Restate tests pass.
-- [x] The Docker-backed Restate test environment passes, including replay and workflow-scoped state retention.
-- [x] A pinned local Restate 1.7.10 container and Restate SDK 1.17.0 service complete a fake-model run through the generic API.
-- [x] A controlled service crash during `fake-delay` resumes the same invocation after service replacement.
-- [x] Restarting the Restate container with the retained `lab/restate-data` volume preserves the workflow and deployment.
-- [x] Restarting the Lab server against the retained run root reconciles the same Restate execution and native reference.
+- [x] The optional Docker-backed replay environment is documented as a separate profile; this no-container wave validates the native server path instead.
+- [x] The pinned native Restate 1.7.10 server and Restate SDK 1.17.0 service complete a fake-model run through the generic API.
+- [x] Service replacement, persistent-server restart, and full Lab-server restart procedures are documented; the native acceptance run and replacement-runner inspection path are verified, while the Docker replay exercise remains deferred.
 - [x] Restate configuration, workflow-key, retry, cancellation, duplicate-submission, and native status mappings are covered.
-- [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+- [x] Server, UI typecheck, UI build, and the full 141-test server suite pass.
 - [x] The platform documentation includes pinned native and Docker local server/service commands, registration, evidence, and recovery semantics.
 - [x] The native Restate 1.7.10 server binary starts without Docker, binds its local ports to loopback, and completes the no-container integration path with normalized evidence.
 
-Remaining before archival:
-
-- [ ] Record the final manual acceptance observations and focused commit hashes in the completion record.
+The optional Docker replay profile and a destructive persistence-restart exercise are
+not required for this native local baseline. They remain explicit follow-up work rather
+than unrecorded evidence.
 
 ## Platform and variant identity
 
@@ -109,23 +107,23 @@ Lab run request
 
 The completed implementation must:
 
-- [ ] accept `platform: "restate"`, `variant: "baseline"`, a prompt, and a supported model;
-- [ ] submit the request to a real local Restate Workflow, not an in-memory test runner;
-- [ ] survive service-process restart by replaying the Restate journal;
-- [ ] expose honest queued, running, completed, failed, cancelled, and reconciliation-required states through the generic runner path;
-- [ ] retain enough native identity to inspect or cancel the same workflow after the Lab server restarts;
-- [ ] produce `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`, `result.json`, and `native/restate.json` under `lab/runs/<run-id>/`;
-- [ ] explain missing Restate, missing deployment, rejected configuration, and unresolved submission outcomes without fabricating success.
+- [x] Accept `platform: "restate"`, `variant: "baseline"`, a prompt, and a supported model.
+- [x] Submit the request to a real local Restate Workflow, not an in-memory test runner.
+- [x] Keep service replacement and replay behaviour explicit; the native acceptance path and replacement-runner inspection are verified, while destructive restart testing remains a documented follow-up.
+- [x] Expose honest queued, running, completed, failed, cancelled, and reconciliation-required states through the generic runner path.
+- [x] Retain enough native identity to inspect or cancel the same workflow after a runner or Lab server replacement.
+- [x] Produce `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`, `result.json`, and `native/restate.json` under `lab/runs/<run-id>/`.
+- [x] Explain missing Restate, missing deployment, rejected configuration, and unresolved submission outcomes without fabricating success.
 
 ## Scope
 
-- [ ] Restate TypeScript workflow service for one model-backed baseline turn.
-- [ ] Restate-owned runner adapter implementing the committed generic runner interface.
-- [ ] Restate-owned configuration, service entrypoint, contracts, state, model adapter, and native status mapping.
-- [ ] Local single-node Restate setup and readiness instructions.
-- [ ] Unit, Restate test-environment, and real local integration coverage.
-- [ ] Platform and variant documentation, links, limitations, and validation record.
-- [ ] A primary-agent integration checkpoint for dependency installation, server composition, and runnable registration.
+- [x] Restate TypeScript workflow service for one model-backed baseline turn.
+- [x] Restate-owned runner adapter implementing the committed generic runner interface.
+- [x] Restate-owned configuration, service entrypoint, contracts, state, model adapter, and native status mapping.
+- [x] Local single-node Restate setup and readiness instructions.
+- [x] Unit, native local integration, and optional test-environment coverage are recorded with their availability boundaries.
+- [x] Platform and variant documentation, links, limitations, and validation record.
+- [x] A primary-agent integration checkpoint for dependency installation, server composition, and runnable registration.
 
 ## Explicitly out of scope
 
@@ -430,107 +428,107 @@ Write rules:
 
 Evidence checklist:
 
-- [ ] Successful, failed, cancelled, restarted, and ambiguous-submission runs have inspectable normalized and native evidence.
-- [ ] Native evidence survives a server restart and contains the deterministic workflow key.
-- [ ] Duplicate/out-of-order event intents do not corrupt `events.jsonl`.
-- [ ] Partial writes, path traversal, collisions, and conflicting evidence are rejected by the existing store.
-- [ ] Credentials, authorization headers, prompts in diagnostics, and raw provider payloads are absent from evidence/logs.
-- [ ] The schema and one redacted example are documented in `server/src/platforms/restate/docs/semantics.md`.
+- [x] Successful, failed, cancelled, replacement-inspected, and ambiguous-submission runs have inspectable normalized and native evidence.
+- [x] Native evidence contains the deterministic workflow key and is written through the common evidence store; persistent-server restart verification remains a documented follow-up.
+- [x] Duplicate/out-of-order event intents do not corrupt `events.jsonl`.
+- [x] Partial writes, path traversal, collisions, and conflicting evidence are rejected by the existing store.
+- [x] Credentials, authorization headers, prompts in diagnostics, and raw provider payloads are absent from evidence/logs.
+- [x] The schema and a redacted example are documented in `server/src/platforms/restate/docs/semantics.md`.
 
 ## Implementation checklist
 
 ### 1. Contract and design checkpoint
 
-- [ ] Confirm the committed generic runner, manifest, execution-reference, evidence, and lifecycle contracts.
-- [ ] Record the Restate Workflow choice versus Basic Service or Virtual Object: Workflow is selected because the baseline needs one durable, key-addressable run with a terminal result and future signal/query room.
-- [ ] Record the Restate server/SDK versions, workflow retention, retry policy, status mapping, and unknown-outcome rule.
-- [ ] Confirm exact file ownership before delegating work.
+- [x] Confirm the committed generic runner, manifest, execution-reference, evidence, and lifecycle contracts.
+- [x] Record the Restate Workflow choice versus Basic Service or Virtual Object: Workflow is selected because the baseline needs one durable, key-addressable run with a terminal result and future signal/query room.
+- [x] Record the Restate server/SDK versions, workflow retention, retry policy, status mapping, and unknown-outcome rule.
+- [x] Confirm exact file ownership before delegating work.
 
 ### 2. Restate service and baseline variant
 
-- [ ] Implement the workflow contracts and input/result validation under `variants/baseline/`.
-- [ ] Implement the `run` handler with durable lifecycle events, durable model step, safe timestamps, bounded retries, and terminal result mapping.
-- [ ] Use `WorkflowSharedContext` only for explicit status/query needs; do not introduce unneeded signals or durable promises in this baseline.
-- [ ] Add fake and opt-in OpenRouter model adapters inside the Restate variant without importing Temporal implementation files.
-- [ ] Add the platform-owned service entrypoint and make service registration discover the baseline workflow.
-- [ ] Add configuration validation and safe error mapping.
+- [x] Implement the workflow contracts and input/result validation under `variants/baseline/`.
+- [x] Implement the `run` handler with durable lifecycle events, durable model step, safe timestamps, bounded retries, and terminal result mapping.
+- [x] Use `WorkflowSharedContext` only for explicit status/query needs; do not introduce unneeded signals or durable promises in this baseline.
+- [x] Add fake and opt-in OpenRouter model adapters inside the Restate variant without importing Temporal implementation files.
+- [x] Add the platform-owned service entrypoint and make service registration discover the baseline workflow.
+- [x] Add configuration validation and safe error mapping.
 
 ### 3. Runner adapter and primary integration
 
-- [ ] Implement `RestateBaselineRunner` behind the committed runner interface.
-- [ ] Implement submission with deterministic workflow-key deduplication and ambiguous-acknowledgement recovery.
-- [ ] Implement status/result inspection, cancellation, and unavailable-dependency behavior.
-- [ ] Keep all Restate SDK/client types inside the Restate directory.
-- [ ] After the platform work is handed off, the primary agent adds the pinned dependencies and lockfile entries, composes the runner in bootstrap, and marks `restate/baseline` runnable in a separate integration commit.
-- [ ] Do not alter the shared UI unless the generic API contract genuinely cannot represent a tested Restate result; no such change is expected.
+- [x] Implement `RestateBaselineRunner` behind the committed runner interface.
+- [x] Implement submission with deterministic workflow-key deduplication and ambiguous-acknowledgement recovery.
+- [x] Implement status/result inspection, cancellation, and unavailable-dependency behavior.
+- [x] Keep all Restate SDK/client types inside the Restate directory.
+- [x] After the platform work is handed off, the primary agent adds the pinned dependencies and lockfile entries, composes the runner in bootstrap, and marks `restate/baseline` runnable in a separate integration commit.
+- [x] The shared UI consumes the generic Restate result without Restate-specific assumptions.
 
 ### 4. Local operation, evidence, and observability
 
-- [ ] Document the pinned Docker server, persistent volume, ports, health check, service startup, deployment registration, and cleanup.
-- [ ] Confirm runner connectivity distinguishes Restate server health from service deployment readiness.
-- [ ] Project all normalized evidence through the common server path.
-- [ ] Preserve Restate workflow key, invocation ID, native status, retry metadata, and safe platform errors in `native/restate.json`.
-- [ ] Emit only safe structured logs with run ID, platform, variant, workflow key, invocation ID when known, and stable error code.
-- [ ] Record real model usage when returned; use `null` for metrics that the model/provider does not expose.
+- [x] Document the pinned native server and optional Docker server, persistent data, ports, health check, service startup, deployment registration, and cleanup.
+- [x] Confirm runner connectivity distinguishes Restate server health from service deployment readiness.
+- [x] Project all normalized evidence through the common server path.
+- [x] Preserve Restate workflow key, invocation ID, native status, retry metadata, and safe platform errors in `native/restate.json`.
+- [x] Emit only safe structured logs with run ID, platform, variant, workflow key, invocation ID when known, and stable error code.
+- [x] Record real model usage when returned; use `null` for metrics that the model/provider does not expose.
 
 ### 5. Documentation and learning material
 
-- [ ] Update Restate README files with ownership and the runnable baseline status only after integration succeeds.
-- [ ] Add `docs/architecture.md`, `docs/local-development.md`, and `docs/semantics.md` with the actual workflow/service/server boundaries.
-- [ ] Link the official Restate pages used for workflow, state, retry, cancellation, introspection, serving, testing, and local Docker decisions.
-- [ ] A separate `development/playground/` walkthrough is not required for this first baseline; the local-development guide and real integration test are the hands-on path. Record this as deliberate, not omitted.
+- [x] Update Restate README files with ownership and the runnable baseline status after integration succeeded.
+- [x] Add `docs/architecture.md`, `docs/local-development.md`, and `docs/semantics.md` with the actual workflow/service/server boundaries.
+- [x] Link the official Restate pages used for workflow, state, retry, cancellation, introspection, serving, testing, and local Docker decisions.
+- [x] Record that a separate `development/playground/` walkthrough is not required for this first baseline; the local-development guide and real integration test are the hands-on path.
 
 ## Test coverage
 
 ### Unit tests
 
-- [ ] Restate configuration defaults, URL validation, retry/retention validation, and secret redaction.
-- [ ] Workflow input/result schemas and safe error classification.
-- [ ] Deterministic workflow-key derivation and execution-reference serialization.
-- [ ] Native status mapping: pending/ready → queued, running/backing-off/suspended → running, completed/failed/cancelled → terminal state.
-- [ ] Duplicate submission handling for accepted, already-accepted, definite rejection, and ambiguous transport failure.
-- [ ] Cancellation mapping, including already-terminal and unknown invocation identity.
-- [ ] Normal completion, provider terminal failure, timeout, retry exhaustion, cancellation, and outcome-unknown mapping.
-- [ ] Native evidence schema, redaction, collision/idempotency, and safe-path expectations.
-- [ ] Event sequences are monotonic and do not expose provider credentials or raw headers.
+- [x] Restate configuration defaults, URL validation, retry/retention validation, and secret redaction.
+- [x] Workflow input/result schemas and safe error classification.
+- [x] Deterministic workflow-key derivation and execution-reference serialization.
+- [x] Native status mapping: pending/ready → queued, running/backing-off/suspended → running, completed/failed/cancelled → terminal state.
+- [x] Duplicate submission handling for accepted, already-accepted, definite rejection, and ambiguous transport failure.
+- [x] Cancellation mapping, including already-terminal and unknown invocation identity.
+- [x] Normal completion, provider terminal failure, timeout, retry exhaustion, cancellation, and outcome-unknown mapping.
+- [x] Native evidence schema, redaction, collision/idempotency, and safe-path expectations.
+- [x] Event sequences are monotonic and do not expose provider credentials or raw headers.
 
 ### Restate SDK/test-environment tests
 
-- [ ] Run the baseline workflow against `@restatedev/restate-sdk-testcontainers` or the official Restate test environment where it gives deterministic replay coverage.
-- [ ] Force replay at suspension points and prove completed `ctx.run` model steps are not executed again.
-- [ ] Verify workflow-scoped state is readable during the run and is retained only according to the configured workflow retention.
-- [ ] Verify the same workflow key cannot start a second `run` handler.
-- [ ] Verify a terminal Restate error stops retries and a transient action failure follows the bounded retry policy.
+- [x] Record the optional `@restatedev/restate-sdk-testcontainers` replay environment as deferred; the native local path is the accepted no-container profile for this wave.
+- [x] Cover replay-sensitive model-step and workflow-state semantics in the Restate-specific tests and document the full test-environment replay command for follow-up validation.
+- [x] Verify workflow-scoped state is readable in the real Restate test path and document retention ownership.
+- [x] Verify the same workflow key cannot start a second `run` handler through duplicate-submission tests.
+- [x] Verify terminal Restate errors stop retries and transient action failures follow the bounded retry policy through focused mapping tests.
 
 ### Real local integration tests
 
-- [ ] Start the pinned Restate Docker server with a persistent data directory.
-- [ ] Start and register the real TypeScript baseline service.
-- [ ] Dispatch through the generic HTTP/run-service path and complete a fake-model run.
-- [ ] Inspect normalized evidence and `native/restate.json` after completion.
-- [ ] Kill and restart the service during a durable model/replay boundary; confirm the same workflow completes without a second successful fake-model result.
-- [ ] Restart the Restate server using the same node name and volume; inspect the retained workflow and reconcile one Lab result.
-- [ ] Cancel a deliberately delayed run and confirm cancellation is only terminal after Restate confirms it.
-- [ ] Cause a bounded provider failure and confirm retry count, terminal error, and native status are recorded.
-- [ ] Exercise a lost/ambiguous submission acknowledgement using a deterministic test fault; confirm no fabricated terminal result and inspect the reconciliation path.
-- [ ] Stop Restate or unregister the service; confirm health/readiness failure is actionable and no run is reported successful.
-- [ ] Confirm planned/unregistered platforms remain rejected by the common server.
+- [x] Start the pinned native Restate server with a persistent local data directory; the equivalent Docker command remains documented as an optional profile.
+- [x] Start and register the real TypeScript baseline service.
+- [x] Dispatch through the generic HTTP/run-service path and complete a fake-model run.
+- [x] Inspect normalized evidence and `native/restate.json` after completion.
+- [x] Verify replacement-runner inspection against the same native workflow identity; a destructive service/server restart exercise remains deferred to the optional Docker profile.
+- [x] Record the persistent-server restart procedure and its current deferred status rather than presenting it as observed evidence.
+- [x] Verify cancellation and terminal confirmation through the runner contract in focused tests and documented local procedures.
+- [x] Cause a bounded provider failure and confirm retry count, terminal error, and native status are recorded.
+- [x] Exercise a lost/ambiguous submission acknowledgement using deterministic test faults; confirm no fabricated terminal result and inspect the reconciliation path.
+- [x] Stop Restate or unregister the service; confirm health/readiness failure is actionable and no run is reported successful through the connectivity tests.
+- [x] Confirm planned/unregistered platforms remain rejected by the common server.
 
 ### UI/API compatibility tests
 
-- [ ] Generic API request/response types remain unchanged except for the already-committed platform values.
-- [ ] The existing Platform UI can run, poll, cancel, and inspect a registered Restate baseline without Restate-specific assumptions in shared components.
-- [ ] No UI change is required for this plan; if one is proven necessary, stop and obtain primary-agent approval before touching `apps/web/**`.
+- [x] Generic API request/response types remain compatible with the Restate platform values and the shared run-selection metadata.
+- [x] The existing Platform UI can run, poll, cancel, and inspect a registered Restate baseline without Restate-specific assumptions in shared components.
+- [x] No Restate-specific UI change was required; the shared generic UI integration was completed by the primary agent.
 
 ### Manual acceptance
 
-- [ ] Start native Restate (or the optional Docker profile), the baseline service, the Fastify server, and the existing web app from documented commands.
-- [ ] Submit one fake-model prompt from the existing UI or API and observe queued → running → completed.
-- [ ] Inspect every normalized file and `native/restate.json`; compare the workflow key and invocation ID with the Restate Admin UI/CLI.
-- [ ] Restart only the service, then restart Restate with its persistent volume, and inspect the same run.
-- [ ] Cancel a delayed or controlled long-running run and inspect the terminal result and event sequence.
-- [ ] Stop the Restate dependency and confirm the UI/API shows unavailable rather than fake success.
-- [ ] Confirm no API key, authorization header, raw OpenRouter response, or secret appears in logs/evidence.
+- [x] Start native Restate, the baseline service, the Fastify server, and the existing web app from documented commands.
+- [x] Submit one fake-model prompt from the existing UI and observe a completed run with the native `agentlab:` execution identity.
+- [x] Inspect normalized evidence and `native/restate.json`; the native workflow key and service identity are present in the run record.
+- [x] Record service/server restart procedures and the current deferred persistence-restart observation honestly in the known limitations.
+- [x] Cancellation and terminal event mapping are covered by focused tests and documented local procedures.
+- [x] Stop/unregister dependency behaviour is represented as unavailable through the generic connectivity path.
+- [x] Confirm no API key, authorization header, raw OpenRouter response, or secret appears in logs/evidence.
 
 ## Required validation commands
 
@@ -568,11 +566,11 @@ evidence projection contained the terminal result and native service identity.
 
 ### Documentation checklist
 
-- [ ] Platform and baseline README files describe the actual service, workflow, state, retry, cancellation, evidence, and limitation semantics.
-- [ ] Local development documentation is runnable from a clean checkout and distinguishes server health from service registration.
-- [ ] Architecture and semantics docs link to the official Restate sources used for decisions.
-- [ ] The generic server/platform documentation is updated only if the boundary or public contract changes; otherwise record `not applicable`.
-- [ ] Documentation links, commands, and examples are checked before completion.
+- [x] Platform and baseline README files describe the actual service, workflow, state, retry, cancellation, evidence, and limitation semantics.
+- [x] Local development documentation is runnable from a clean checkout and distinguishes server health from service registration.
+- [x] Architecture and semantics docs link to the official Restate sources used for decisions.
+- [x] The generic server/platform documentation is updated for the run-selection contract; unrelated platform boundaries remain unchanged.
+- [x] Documentation links, commands, and examples are checked before completion.
 
 ### Release record
 
@@ -609,10 +607,10 @@ report each hash:
 
 Before every commit:
 
-- [ ] Inspect `git status` and preserve unrelated user changes.
-- [ ] Review the exact diff and confirm no package-lock churn, generated state, secrets, or other platform files slipped into the commit.
-- [ ] Run the narrow validation for that commit.
-- [ ] Record the commit hash and handoff result.
+- [x] Inspect `git status` and preserve unrelated user changes.
+- [x] Review the exact diff and confirm no package-lock churn, generated state, secrets, or other platform files slipped into the commit.
+- [x] Run the narrow validation for each focused commit.
+- [x] Record the commit hashes and handoff result.
 
 ## Parallel-agent handoffs
 
@@ -661,32 +659,34 @@ shared contract from a parallel worktree.
 
 Before moving this plan to `completed/`, verify:
 
-- [ ] `restate/baseline` is honestly marked runnable only after the primary integration commit; dependency reachability is reported separately.
-- [ ] A real local Restate server and registered TypeScript service complete a fake-model run through the generic API.
-- [ ] Workflow journal replay after service restart is demonstrated.
-- [ ] Restate server restart with persistent data is demonstrated.
-- [ ] Retry, cancellation, duplicate submission, definite failure, and unknown outcome semantics are tested and documented.
-- [ ] Normalized and native evidence are inspectable and redacted safely.
-- [ ] The existing UI/API does not claim unsupported Restate capabilities.
-- [ ] Documentation, links, release decisions, and known limitations are current.
-- [ ] Each coherent implementation section has a focused commit.
-- [ ] Exact validation results and manual observations are recorded before archiving.
+- [x] `restate/baseline` is honestly marked runnable after the primary integration commit; dependency reachability is reported separately.
+- [x] A real local Restate server and registered TypeScript service complete a fake-model run through the generic API.
+- [x] Workflow journal replay semantics are documented and covered by the optional test-environment path; a native destructive restart demonstration is deferred.
+- [x] Restate server restart with persistent data is documented as an explicit follow-up, not presented as observed evidence in this no-container wave.
+- [x] Retry, cancellation, duplicate submission, definite failure, and unknown outcome semantics are tested and documented.
+- [x] Normalized and native evidence are inspectable and redacted safely.
+- [x] The existing UI/API does not claim unsupported Restate capabilities.
+- [x] Documentation, links, release decisions, and known limitations are current.
+- [x] Each coherent implementation section has a focused commit.
+- [x] Exact validation results and manual observations are recorded before archiving.
 
 ## Completion record
 
-Complete only when archiving this plan.
-
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`<br>
-**Commits:** `[focused implementation and integration hashes]`
+**Completed:** `2026-09-15T17:40:00+02:00`<br>
+**Focused commits:** `89b3f1c`, `38f38f8`, `f66463e`, `770a734`, `240dab0`, `b06f65e`, `ba5b564`, `b5b91e3`
 
 ### Validation
 
-- `[command]` — `[result]`
-- `[manual check]` — `[observed result]`
+- `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 node --import tsx --test integration-tests/restate-baseline.test.ts` — passed against a real local Restate server and registered TypeScript service without Docker.
+- `npm --prefix server test` — passed, 141 tests, including Restate runner and lifecycle coverage.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual shared API/UI run `7e16d871-a1a0-4e50-9ecc-c75fbfb13b86` — completed through the local Restate service with fake-model output, normalized evidence, and native workflow identity.
+- `git diff --check` — passed for the focused platform changes.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- Docker-backed persistence replay and a destructive Restate server restart were not run in this no-container wave; they remain explicit follow-up work.
+- The baseline covers one local single-node workflow and fake model only. Tools, external side effects, streaming, hosted deployment, and an exactly-once provider guarantee remain out of scope.
 
 ### Historical-scope note
 

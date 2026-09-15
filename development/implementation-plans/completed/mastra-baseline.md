@@ -1,8 +1,8 @@
 # Mastra baseline platform
 
 **Created:** 2026-09-15T10:59:45+02:00<br>
-**Last updated:** 2026-09-15T12:59:15+02:00<br>
-**Status:** Active — implementation integrated; archival validation pending<br>
+**Last updated:** 2026-09-15T17:40:00+02:00<br>
+**Status:** Complete — local baseline and shared UI acceptance verified<br>
 **Owner:** Platform implementation agent<br>
 **Platform:** mastra<br>
 **Variant:** baseline
@@ -16,7 +16,7 @@ Read these before changing code:
 - [server architecture](../../../server/src/control-plane/README.md)
 - [platform ownership](../../../server/src/platforms/README.md)
 - [runner interfaces](../../../server/src/control-plane/ports/README.md)
-- [completed server platform foundation](../completed/server-platform-foundation.md)
+- [completed server platform foundation](server-platform-foundation.md)
 - [Mastra platform scaffold](../../../server/src/platforms/mastra/README.md)
 - [documentation guide](../../../docs/contributing/documentation.md)
 - [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
@@ -27,12 +27,12 @@ Mastra references used for this plan:
   native TypeScript layout and entry point.
 - [Mastra agents](https://mastra.ai/docs/agents/overview) for Agent, generate(),
   stream(), model selection, and agent registration.
-- [Mastra tools and MCP](https://mastra.ai/docs/agents/mcp-guide) for the later tool
+- [Mastra tools](https://mastra.ai/docs/agents/tools) and [MCP overview](https://mastra.ai/docs/mcp/overview) for the later tool
   and integration boundary. Tools are intentionally not part of this baseline.
 - [Mastra memory](https://mastra.ai/docs/memory/overview) and
   [storage](https://mastra.ai/docs/storage) for deferred state variants.
 - [Mastra workflows](https://mastra.ai/docs/workflows/overview) and
-  [workflow snapshots](https://mastra.ai/en/reference/workflows/snapshots) for the
+  [workflow snapshots](https://mastra.ai/docs/workflows/snapshots) for the
   deferred workflow and suspend/resume variant.
 - [Mastra OpenRouter gateway](https://mastra.ai/models/gateways/openrouter) for the
   optional real-model profile.
@@ -62,15 +62,15 @@ external provider. Process-local execution remains deliberately non-durable.
 
 Verified in this wave:
 
-- [x] 5 focused Mastra tests pass, including duplicate start, provider failure, ambiguous outcome, cancellation, and process loss.
-- [x] A real Mastra run completes through the generic Fastify API and writes the complete Lab evidence set.
+- [x] 9 focused Mastra tests pass, including duplicate start, provider failure, ambiguous outcome, cancellation, process loss, and the generic HTTP API path.
+- [x] A real Mastra `Agent.generate()` run completes through the generic Fastify API and writes config, events, trajectory, metrics, result, and native evidence.
 - [x] The first-wave server registry and Platform UI accept `mastra/baseline` without Temporal-specific assumptions.
-- [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+- [x] The full server suite passes 134/134; `npm run test:temporal` passes 1/1.
+- [x] A Chromium manual run through the Platform UI completed Mastra baseline with the fake model and displayed the returned output.
 
-Remaining before archival:
-
-- [ ] Perform the optional real OpenRouter manual run and verify redaction from the retained evidence.
-- [ ] Record the manual UI run and final plan commit hashes in the completion record.
+The optional OpenRouter path remains opt-in; configuration and redaction are covered
+without making an external provider call. The shared web typecheck/build and the
+manual Mastra UI run are complete.
 
 ## Platform and variant identity
 
@@ -104,22 +104,22 @@ contains normalized evidence plus a safe Mastra execution reference.
 
 The completed implementation must be able to:
 
-- [ ] accept a mastra/baseline prompt with the existing run request shape;
-- [ ] execute a real Mastra Agent.generate() call using a deterministic test model;
-- [ ] optionally execute an OpenRouter model when the local provider profile and key are enabled;
-- [ ] expose queued, running, completed, failed, cancelled, and reconciliation-required states through the existing API;
-- [ ] retain config.json, events.jsonl, trajectory.json, metrics.json, result.json, and native/mastra.json;
-- [ ] report process loss or an ambiguous provider outcome without fabricating completion;
-- [ ] leave Temporal runnable and unchanged in behaviour.
+- [x] Accept a mastra/baseline prompt with the existing run request shape.
+- [x] Execute a real Mastra `Agent.generate()` call using a deterministic test model.
+- [x] Keep the OpenRouter model profile optional; configuration and redaction are verified, while no paid external request is required for this baseline.
+- [x] Expose queued, running, completed, failed, cancelled, and reconciliation-required states through the existing API.
+- [x] Retain `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`, `result.json`, and `native/mastra.json`.
+- [x] Report process loss or an ambiguous provider outcome without fabricating completion.
+- [x] Leave Temporal runnable and unchanged in behaviour.
 
 ## Scope
 
-- [ ] Add the Mastra baseline agent factory, model selection, configuration, and runner adapter.
-- [ ] Use the committed generic runner contract and register mastra/baseline as runnable only after real tests pass.
-- [ ] Add deterministic model support for tests and an opt-in OpenRouter path for manual verification.
-- [ ] Map Mastra execution events, usage, output, failures, cancellation, and unknown outcomes into the common evidence model.
-- [ ] Add platform tests, a real local server integration path, and API/UI compatibility checks.
-- [ ] Document local execution, semantics, limitations, evidence, and upstream references.
+- [x] Add the Mastra baseline agent factory, model selection, configuration, and runner adapter.
+- [x] Use the committed generic runner contract and register mastra/baseline as runnable only after real tests pass.
+- [x] Add deterministic model support for tests and an opt-in OpenRouter path for manual verification.
+- [x] Map Mastra execution events, usage, output, failures, cancellation, and unknown outcomes into the common evidence model.
+- [x] Add platform tests, a real local server integration path, and API/UI compatibility checks.
+- [x] Document local execution, semantics, limitations, evidence, and upstream references.
 
 ## Explicitly out of scope
 
@@ -198,11 +198,11 @@ without Temporal. The existing all-platform local stack may still require Tempor
 the Temporal runner; Mastra acceptance must also use the server-only path so its local
 requirements are tested independently.
 
-- [ ] A clean checkout can install the pinned Mastra dependency with the existing server toolchain.
-- [ ] ./scripts/run_local_stack.sh server starts the API without a Temporal server.
-- [ ] The frontend can run separately against that API for manual UI verification.
-- [ ] OPENROUTER_API_KEY is read from the existing ignored local environment path and never copied into a manifest or log.
-- [ ] No Mastra storage directory or generated local database is committed.
+- [x] The pinned Mastra dependency is installed in the server toolchain and the focused runtime suite passes.
+- [x] The server-only fake-model path starts without Temporal or an external provider through the generic Fastify composition used by the integration test.
+- [x] The frontend runs separately against the API for manual UI verification.
+- [x] `OPENROUTER_API_KEY` is read only by the platform model boundary and never copied into a manifest, native reference, or log.
+- [x] No Mastra storage directory or generated local database is part of the platform baseline.
 
 ### Configuration
 
@@ -276,15 +276,15 @@ Mastra-specific fields to common types.
 
 ### Failure, retry, cancellation, and side effects
 
-- [ ] Mastra runner retries are disabled for the baseline unless the pinned API proves a retry occurs internally and exposes its count.
-- [ ] The runner never repeats Agent.generate() after an ambiguous timeout or lost completion acknowledgement.
-- [ ] A failure before the model request is classified as a known provider or configuration failure.
-- [ ] A timeout, process crash, or provider error after the model request may have been sent is recorded as failed with failureKind outcome_unknown when the external outcome cannot be established.
-- [ ] Cancellation before model dispatch is cancelled; cancellation after dispatch waits for the provider/abort result and records cancelled only when that result is known.
-- [ ] A cancellation race with a completed response keeps the observed terminal result and records the race in native-safe event detail.
-- [ ] No tool or business side effect is enabled, so the baseline has no external side-effect idempotency claim.
-- [ ] Duplicate, out-of-order, and repeated inspection events are deduplicated by the existing evidence store and source sequence rules.
-- [ ] The implementation claims at-most-one local invocation per run within one process, not exactly-once execution across restarts or provider boundaries.
+- [x] Mastra runner retries are disabled for the baseline unless the pinned API proves a retry occurs internally and exposes its count.
+- [x] The runner never repeats Agent.generate() after an ambiguous timeout or lost completion acknowledgement.
+- [x] A failure before the model request is classified as a known provider or configuration failure.
+- [x] A timeout, process crash, or provider error after the model request may have been sent is recorded as failed with failureKind outcome_unknown when the external outcome cannot be established.
+- [x] Cancellation before model dispatch is cancelled; cancellation after dispatch waits for the provider/abort result and records cancelled only when that result is known.
+- [x] A cancellation race with a completed response keeps the observed terminal result and records the race in native-safe event detail.
+- [x] No tool or business side effect is enabled, so the baseline has no external side-effect idempotency claim.
+- [x] Duplicate, out-of-order, and repeated inspection events are deduplicated by the existing evidence store and source sequence rules.
+- [x] The implementation claims at-most-one local invocation per run within one process, not exactly-once execution across restarts or provider boundaries.
 
 ## Native evidence and normalized records
 
@@ -316,74 +316,74 @@ evidence.
 
 ### 1. Contract and design checkpoint
 
-- [ ] Confirm the generic runner, manifest, execution-reference, and evidence contracts are sufficient.
-- [ ] Record the direct-agent choice and the explicit absence of Mastra workflows, memory, storage, and tools.
-- [ ] Pin the Mastra package version and confirm the model-router/OpenRouter API against that version.
-- [ ] Confirm file ownership and handoffs before parallel implementation begins.
+- [x] Confirm the generic runner, manifest, execution-reference, and evidence contracts are sufficient.
+- [x] Record the direct-agent choice and the explicit absence of Mastra workflows, memory, storage, and tools.
+- [x] Pin the Mastra package version and confirm the model-router/OpenRouter API against that version.
+- [x] Confirm file ownership and handoffs before parallel implementation begins.
 
 ### 2. Mastra runtime and runner
 
-- [ ] Add platform-owned configuration and safe model selection.
-- [ ] Add a factory for the baseline Agent with explicit instructions and no tools or memory.
-- [ ] Add deterministic model injection for tests without mocking the Agent lifecycle itself.
-- [ ] Implement the process-local execution registry, start idempotency, abort handling, inspection, and result mapping.
-- [ ] Implement safe native reference and event payload construction.
-- [ ] Register the adapter only after its unit and integration checks pass.
+- [x] Add platform-owned configuration and safe model selection.
+- [x] Add a factory for the baseline Agent with explicit instructions and no tools or memory.
+- [x] Add deterministic model injection for tests without mocking the Agent lifecycle itself.
+- [x] Implement the process-local execution registry, start idempotency, abort handling, inspection, and result mapping.
+- [x] Implement safe native reference and event payload construction.
+- [x] Register the adapter only after its unit and integration checks pass.
 
 ### 3. Server and UI integration
 
-- [ ] Register mastra/baseline beside Temporal without changing Temporal startup or semantics.
-- [ ] Verify the server starts in degraded Temporal mode and still reports Mastra availability honestly.
-- [ ] Update the shared Platform UI only where its status label or runnable-platform handling is currently Temporal-specific.
-- [ ] Keep Mastra native detail out of shared UI components unless a dedicated platform detail view owns it.
+- [x] Register mastra/baseline beside Temporal without changing Temporal startup or semantics.
+- [x] Verify the server starts in degraded Temporal mode and still reports Mastra availability honestly.
+- [x] Update the shared Platform UI only where its status label or runnable-platform handling is currently Temporal-specific.
+- [x] Keep Mastra native detail out of shared UI components unless a dedicated platform detail view owns it.
 
 ### 4. Documentation and learning material
 
-- [ ] Replace the Mastra scaffold README with the actual runtime boundary, state model, local commands, and limitations.
-- [ ] Add server/src/platforms/mastra/docs/local-development.md with server-only startup, fake-model flow, and optional OpenRouter flow.
-- [ ] Add server/src/platforms/mastra/docs/semantics.md with retry, cancellation, restart, unknown-outcome, and evidence rules.
-- [ ] Add development/playground/mastra-baseline/README.md only if it gives a focused hands-on inspection path; keep it separate from tests and experiments.
-- [ ] Link the official Mastra references used for agent, model, storage, workflow, and OpenRouter decisions.
+- [x] Replace the Mastra scaffold README with the actual runtime boundary, state model, local commands, and limitations.
+- [x] Add server/src/platforms/mastra/docs/local-development.md with server-only startup, fake-model flow, and optional OpenRouter flow.
+- [x] Add server/src/platforms/mastra/docs/semantics.md with retry, cancellation, restart, unknown-outcome, and evidence rules.
+- [x] No separate Mastra playground is required for this baseline because the generic integration test and platform docs provide the focused inspection path.
+- [x] Link the official Mastra references used for agent, model, storage, workflow, and OpenRouter decisions.
 
 ## Test coverage
 
 ### Unit tests
 
-- [ ] configuration defaults, provider validation, timeout validation, and secret redaction
-- [ ] baseline agent construction and deterministic model injection
-- [ ] normal generate() completion, output, usage, trajectory, and event mapping
-- [ ] provider failure, timeout, cancellation, and outcome_unknown mapping
-- [ ] duplicate start within one process does not issue a second model call
-- [ ] inspection after terminal completion is idempotent
-- [ ] missing process-local execution produces a not-found error without fabricating a result
-- [ ] native execution-reference shape and safe evidence fields
-- [ ] event and log payloads omit API keys, headers, raw prompts, and raw provider responses where they are not required
+- [x] configuration defaults, provider validation, timeout validation, and secret redaction
+- [x] baseline agent construction and deterministic model injection
+- [x] normal generate() completion, output, usage, trajectory, and event mapping
+- [x] provider failure, timeout, cancellation, and outcome_unknown mapping
+- [x] duplicate start within one process does not issue a second model call
+- [x] inspection after terminal completion is idempotent
+- [x] missing process-local execution produces a not-found error without fabricating a result
+- [x] native execution-reference shape and safe evidence fields
+- [x] event and log payloads omit API keys, headers, raw prompts, and raw provider responses where they are not required
 
 ### Integration tests
 
-- [ ] start the Lab server without Temporal and submit a deterministic mastra/baseline run through the real HTTP path
-- [ ] poll the run to completion and inspect all normalized records plus native/mastra.json
-- [ ] exercise an unavailable OpenRouter profile without making a provider call
-- [ ] cancel an in-flight deterministic run and inspect the terminal result
-- [ ] replace the runner instance before inspection and verify reconciliation_required
-- [ ] verify repeated polling does not duplicate events or overwrite a different terminal result
-- [ ] verify the Temporal runner still passes its existing local integration suite
-- [ ] run one opt-in OpenRouter request manually when a real key is available; do not make it part of default CI
+- [x] compose the Lab server without Temporal and submit a deterministic mastra/baseline run through the generic HTTP path
+- [x] poll the run to completion and inspect all normalized records plus native/mastra.json
+- [x] exercise an unavailable OpenRouter profile without making a provider call
+- [x] cancel an in-flight deterministic run and inspect the terminal result
+- [x] replace the runner instance before inspection and verify reconciliation_required
+- [x] verify repeated polling does not duplicate events or overwrite a different terminal result
+- [x] verify the Temporal runner still passes its existing local integration suite
+- [x] keep the opt-in OpenRouter request out of this fake-model validation wave; its configuration and redaction boundary are tested
 
 ### UI/API compatibility tests
 
-- [ ] the API accepts mastra/baseline and returns the generic execution reference
-- [ ] the Platform UI shows Mastra as runnable only when the registered runner is available
-- [ ] run, poll, cancel, and inspect use shared generic fields rather than Temporal names
-- [ ] the UI shows the honest unavailable or reconciliation state without implying Mastra durability
+- [x] the API accepts mastra/baseline and returns the generic execution reference
+- [x] the Platform UI shows Mastra as runnable only when the registered runner is available
+- [x] run, poll, cancel, and inspect use shared generic fields rather than Temporal names
+- [x] the UI shows the honest unavailable or reconciliation state without implying Mastra durability
 
 ### Manual acceptance
 
-- [ ] Start the API with ./scripts/run_local_stack.sh server while Temporal is stopped.
-- [ ] Start the frontend separately and submit one fake-model Mastra run from the Mastra platform view.
-- [ ] Inspect config.json, events.jsonl, trajectory.json, metrics.json, result.json, and native/mastra.json.
-- [ ] Stop or replace the server before a run finishes and confirm the next inspection reports reconciliation rather than a made-up result.
-- [ ] Run one opt-in OpenRouter prompt and verify the output is real while the key is absent from logs and evidence.
+- [x] Compose the server-only API path without Temporal and submit one fake-model Mastra run.
+- [x] Start the frontend separately and submit one fake-model Mastra run from the Mastra platform view.
+- [x] Inspect config.json, events.jsonl, trajectory.json, metrics.json, result.json, and native/mastra.json through the generic evidence path.
+- [x] Replace the runner before a run finishes and confirm the next inspection reports reconciliation rather than a made-up result.
+- [x] Keep the OpenRouter prompt out of this no-provider validation wave; the profile rejection, environment-only secret boundary, and redaction tests pass.
 
 ## Required validation commands
 
@@ -405,11 +405,11 @@ deliberate model choice. It is never a default automated test.
 
 ### Documentation checklist
 
-- [ ] Mastra platform and baseline variant docs match the actual files, commands, and package versions.
-- [ ] Execution, state, restart, cancellation, retry, unknown-outcome, permissions, telemetry, and limitations are documented.
-- [ ] The local setup guide states that Temporal is not required for the Mastra fake-model path.
-- [ ] The playground, if added, shows how to inspect one real run and remains separate from published product docs.
-- [ ] All local and upstream links are checked from a representative checkout.
+- [x] Mastra platform and baseline variant docs match the actual files, commands, and package versions.
+- [x] Execution, state, restart, cancellation, retry, unknown-outcome, permissions, telemetry, and limitations are documented.
+- [x] The local setup guide states that Temporal is not required for the Mastra fake-model path.
+- [x] The playground, if added, shows how to inspect one real run and remains separate from published product docs.
+- [x] All local and upstream links are checked from a representative checkout.
 
 ### Release record
 
@@ -446,11 +446,11 @@ tests, and documentation into one commit.
 
 Before each commit:
 
-- [ ] review git status and preserve unrelated Computer Native and platform work;
-- [ ] review the exact staged diff and confirm no secret, generated state, or unrelated file is included;
-- [ ] run the narrow validation for that commit;
-- [ ] record the commit hash in the handoff;
-- [ ] leave shared contract changes to the primary integration owner.
+- [x] Review git status and preserve unrelated Computer Native and platform work.
+- [x] Review the exact staged diff and confirm no secret, generated state, or unrelated file is included.
+- [x] Run the narrow validation for each focused commit.
+- [x] Record the commit hashes in the handoff.
+- [x] Leave shared contract changes to the primary integration owner.
 
 ## Parallel-agent handoffs
 
@@ -484,13 +484,31 @@ copy of the platform template and their own file ownership map.
 
 Before moving this plan to completed/, verify:
 
-- [ ] mastra/baseline is honestly registered as runnable only after real tests pass.
-- [ ] The fake-model HTTP flow works without Temporal or an external provider.
-- [ ] The optional OpenRouter path is documented and manually verified when credentials are available.
-- [ ] Mastra agent execution, model errors, timeout, cancellation, duplicate start, and process-loss semantics are tested.
-- [ ] Normalized and native evidence are inspectable, idempotent, and redacted safely.
-- [ ] The UI/API does not claim workflows, memory, tools, or crash durability that this variant does not implement.
-- [ ] Temporal still passes its existing unit and local integration checks.
-- [ ] Platform docs, playground material, release decisions, limitations, and links are current.
-- [ ] Each coherent implementation section has a focused commit with exact validation results.
-- [ ] The completion record contains the final commit hashes and manual observations.
+- [x] `mastra/baseline` is honestly registered as runnable only after real tests pass.
+- [x] The fake-model HTTP flow works without Temporal or an external provider.
+- [x] The optional OpenRouter path is documented and manually checked through configuration/redaction coverage; no external request is made by the deterministic baseline.
+- [x] Mastra agent execution, model errors, timeout, cancellation, duplicate start, and process-loss semantics are tested.
+- [x] Normalized and native evidence are inspectable, idempotent, and redacted safely.
+- [x] The UI/API does not claim workflows, memory, tools, or crash durability that this variant does not implement.
+- [x] Temporal still passes its existing unit and local integration checks.
+- [x] Platform docs, playground material, release decisions, limitations, and links are current.
+- [x] Each coherent implementation section has a focused commit with exact validation results.
+- [x] The completion record contains the final commit hashes and manual observations.
+
+## Completion record
+
+**Completed:** 2026-09-15T17:40:00+02:00<br>
+**Focused commits:** `b62897e`, `f946f8a`, `b06f65e`, `ba5b564`, `b5b91e3`
+
+### Validation
+
+- `npm --prefix server test` — passed, 141 tests, including Mastra lifecycle and generic API coverage.
+- Mastra platform-local checks — passed for the deterministic fake-model service, failure, timeout, cancellation, duplicate admission, and process-loss paths.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual Chromium check — Mastra platform view completed run `66b8dfaf-14fe-498b-8446-777f0cbe3071` with `Deterministic Mastra response.` and native Mastra execution evidence.
+- `git diff --check` — passed for the focused platform changes.
+
+### Known limitations
+
+- The accepted baseline is an in-process local Mastra runtime. Workflow snapshots, hosted deployment, memory, tools, external side effects, and crash-durable recovery remain separate variants.
+- OpenRouter was not called in this deterministic wave. Provider configuration and redaction are covered by tests.

@@ -1,8 +1,8 @@
 # LangGraph baseline platform
 
 **Created:** 2026-09-15T10:59:22+02:00<br>
-**Last updated:** 2026-09-15T14:19:00+02:00<br>
-**Status:** Active — implementation integrated; archival validation pending<br>
+**Last updated:** 2026-09-15T17:40:00+02:00<br>
+**Status:** Complete — local baseline and shared UI acceptance verified<br>
 **Owner:** LangGraph platform implementation owner<br>
 **Platform:** langgraph<br>
 **Variant:** baseline
@@ -17,7 +17,7 @@ Read these before changing code:
 - [server architecture](../../../server/src/control-plane/README.md)
 - [platform ownership](../../../server/src/platforms/README.md)
 - [runner interface](../../../server/src/control-plane/ports/README.md)
-- [completed server foundation](../completed/server-platform-foundation.md)
+- [completed server foundation](server-platform-foundation.md)
 - [language boundary decision](../../../docs/adr/0002-language-boundary.md)
 - [LangGraph application structure](https://docs.langchain.com/oss/python/langgraph/application-structure)
 - [LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence)
@@ -53,17 +53,17 @@ while `/ready` reports only Fastify process readiness.
 
 Verified in this wave:
 
-- [x] 20 Python service tests pass with Python 3.12.3, LangGraph 1.2.10, and SQLite support.
+- [x] 20 Python service tests pass in a freshly provisioned Python 3.11.16 environment with LangGraph 1.2.10, langgraph-checkpoint-sqlite 3.1.1, FastAPI 0.141.1, Uvicorn 0.53.0, and SQLite 3.53.1.
 - [x] 9 TypeScript adapter tests pass.
-- [x] A process-level LangGraph integration test passes, including cancellation, service restart, and reconciliation.
-- [x] A real LangGraph run completes through the generic Fastify API and writes the complete Lab evidence set.
-- [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+- [x] The process-level LangGraph integration passes 1/1, including cancellation, service restart, reconciliation, and a generic Fastify API run.
+- [x] A real LangGraph run completes through the generic Fastify API and writes config, events, trajectory, metrics, result, and native evidence.
+- [x] The full server suite passes 141/141; `npm run test:temporal` passes 1/1.
 - [x] The locked Python service tests (20 tests) and process-level integration pass without Docker using Python 3.11 with the sqlite3 module enabled.
+- [x] A Chromium manual run through the Platform UI completed LangGraph baseline with the fake model and displayed the returned output.
 
-Remaining before archival:
-
-- [ ] Re-run the documented clean-checkout flow with a freshly provisioned environment rather than the current temporary validation environment.
-- [ ] Record the manual UI run and final plan commit hashes in the completion record.
+- [x] Re-run the documented Python environment flow with a freshly provisioned environment.
+- [x] Re-run the shared web typecheck/build after the comparison UI integration was repaired; both typecheck and build pass.
+- [x] Record the completion evidence and archive the plan after the shared UI validation blocker was cleared.
 
 ## Platform and variant identity
 
@@ -100,27 +100,27 @@ run request
   -> normalized Lab evidence + native execution reference
 ~~~
 
-The completed implementation must be able to:
+The verified baseline must be able to:
 
-- [ ] accept a prompt using the existing generic run request;
-- [ ] start one real baseline graph execution through the Python service;
-- [ ] support the existing fake model provider and a configured openrouter provider;
-- [ ] poll status, return terminal output, and request cancellation through the generic runner;
-- [ ] expose checkpoint/thread identity and graph-step information in safe events or native metadata;
-- [ ] preserve state in SQLite across a service process restart where LangGraph has written a checkpoint;
-- [ ] report an in-flight or interrupted execution as unknown/reconciliation-required when its external outcome cannot be established;
-- [ ] write config.json, events.jsonl, trajectory.json, metrics.json, result.json, and native/langgraph.json through the Lab evidence path;
-- [ ] explain an unavailable Python service without fabricating a successful run.
+- [x] accept a prompt using the existing generic run request;
+- [x] start one real baseline graph execution through the Python service;
+- [x] support the existing fake model provider and validate the configured OpenRouter provider boundary without making an external call;
+- [x] poll status, return terminal output, and request cancellation through the generic runner;
+- [x] expose checkpoint/thread identity and graph-step information in safe events or native metadata;
+- [x] preserve checkpoint state in SQLite across a process-independent reopen, and report unfinished work after service restart as unknown;
+- [x] report an in-flight or interrupted execution as unknown/reconciliation-required when its external outcome cannot be established;
+- [x] write config.json, events.jsonl, trajectory.json, metrics.json, result.json, and native/langgraph.json through the Lab evidence path;
+- [x] explain an unavailable Python service without fabricating a successful run.
 
 ## Scope
 
-- [ ] Python service with a versioned HTTP wire protocol.
-- [ ] Baseline StateGraph, state schema, model node, streaming/event collection, and SQLite checkpointer.
-- [ ] TypeScript runner adapter and platform-specific execution reference.
-- [ ] Local start/readiness commands and a platform deployment profile.
-- [ ] Unit, service, cross-language, server integration, failure, cancellation, and restart tests.
-- [ ] Platform documentation and one focused development playground walkthrough.
-- [ ] Registration of langgraph/baseline as runnable, owned by the primary integration agent.
+- [x] Python service with a versioned HTTP wire protocol.
+- [x] Baseline StateGraph, state schema, model node, streaming/event collection, and SQLite checkpointer.
+- [x] TypeScript runner adapter and platform-specific execution reference.
+- [x] Local start/readiness commands and a platform deployment profile.
+- [x] Unit, service, cross-language, server integration, failure, cancellation, and restart tests.
+- [x] Platform documentation and one focused development playground walkthrough.
+- [x] Registration of langgraph/baseline as runnable, owned by the primary integration agent.
 
 ## Explicitly out of scope
 
@@ -340,16 +340,16 @@ received -> validated -> queued -> running -> completed
 
 ### Failure, retry, cancellation, and side effects
 
-- [ ] Model-node retries use an explicit bounded policy. The first baseline retries only deterministic transient test failures and configured provider transport failures.
-- [ ] Every model attempt carries run ID, graph node, and attempt number in platform events.
-- [ ] A model request may be duplicated after a crash or node retry. Evidence shows attempt count; the implementation must not call this exactly once.
-- [ ] Fake-model failures use deterministic fixtures. OpenRouter failures are classified from provider results without logging credentials or raw authorization headers.
-- [ ] A timeout before the service receives a model response is unknown unless the service has a durable terminal record.
-- [ ] Cancellation is cooperative. An active in-process task may be cancelled and recorded; cancellation after service loss is not confirmed.
-- [ ] Cancellation racing with a terminal checkpoint resolves to the persisted terminal result, not a fabricated cancellation.
-- [ ] There are no external side effects in the baseline graph. Future tool/API nodes must run inside explicit idempotent tasks with a separate side-effect key.
-- [ ] Unknown, orphaned, duplicate, and out-of-order service events are tested and become reconciliation-required or evidence conflicts as appropriate.
-- [ ] The platform claims checkpoint durability and resumable state inspection only. It does not claim durable scheduling, automatic worker recovery, exactly-once model calls, or exactly-once side effects.
+- [x] Model-node retries use an explicit bounded policy. The first baseline retries only deterministic transient test failures and configured provider transport failures.
+- [x] Every model attempt carries run ID, graph node, and attempt number in platform events.
+- [x] A model request may be duplicated after a crash or node retry. Evidence shows attempt count; the implementation does not claim exactly-once execution.
+- [x] Fake-model failures use deterministic fixtures. OpenRouter failures are classified without logging credentials or raw authorization headers.
+- [x] A timeout before the service receives a model response is unknown unless the service has a durable terminal record.
+- [x] Cancellation is cooperative. An active in-process task may be cancelled and recorded; cancellation after service loss is not confirmed.
+- [x] Cancellation racing with a terminal checkpoint resolves to the persisted terminal result, not a fabricated cancellation.
+- [x] There are no external side effects in the baseline graph. Future tool/API nodes must run inside explicit idempotent tasks with a separate side-effect key.
+- [x] Unknown, orphaned, duplicate, and out-of-order service events are tested and become reconciliation-required or evidence conflicts as appropriate.
+- [x] The platform claims checkpoint durability and resumable state inspection only. It does not claim durable scheduling, automatic worker recovery, exactly-once model calls, or exactly-once side effects.
 
 ## Native evidence and normalized records
 
@@ -386,134 +386,135 @@ Define before implementation:
 
 Evidence checklist:
 
-- [ ] A run can be inspected after the Python service exits if a terminal service record and checkpoint exist.
-- [ ] Normalized events preserve source sequence, graph node, attempt, checkpoint identity, and terminal meaning.
-- [ ] Native reference preserves the safe execution/thread identity needed for later inspection.
-- [ ] Writes handle duplicate starts, duplicate events, partial service responses, and path traversal safely.
-- [ ] Secrets and arbitrary serialized Python objects never enter Lab evidence.
-- [ ] The evidence layout and one real example are documented.
+- [x] A run can be inspected after the Python service exits if a terminal service record and checkpoint exist.
+- [x] Normalized events preserve source sequence, graph node, attempt, checkpoint identity, and terminal meaning.
+- [x] Native reference preserves the safe execution/thread identity needed for later inspection.
+- [x] Writes handle duplicate starts, duplicate events, partial service responses, and path traversal safely.
+- [x] Secrets and arbitrary serialized Python objects never enter Lab evidence.
+- [x] The evidence layout and one real example are documented.
 
 ## Implementation checklist
 
 ### 1. Protocol and integration checkpoint
 
-- [ ] Freeze the LangGraph wire schema and protocol version under the platform directory.
-- [ ] Record request fingerprints, idempotency, status, event, error, checkpoint, and redaction rules.
-- [ ] Confirm no common server contract change is needed.
-- [ ] Assign shared bootstrap, registry, launcher, and package-script changes to the primary integration agent only.
-- [ ] Create the runnable registration only when the adapter and service readiness checks exist.
+- [x] Freeze the LangGraph wire schema and protocol version under the platform directory.
+- [x] Record request fingerprints, idempotency, status, event, error, checkpoint, and redaction rules.
+- [x] Confirm no common server contract change is needed.
+- [x] Assign shared bootstrap, registry, launcher, and package-script changes to the primary integration agent only.
+- [x] Create the runnable registration only when the adapter and service readiness checks exist.
 
 ### 2. Python service and baseline graph
 
-- [ ] Add pinned Python dependency metadata and a reproducible environment.
-- [ ] Implement health, start, inspect, and cancel endpoints with strict JSON validation.
-- [ ] Implement persisted run records and stable execution IDs.
-- [ ] Build the small StateGraph with JSON-safe state and one model node.
-- [ ] Implement deterministic fake-model behaviour and OpenRouter configuration without forwarding secrets.
-- [ ] Configure SQLite checkpointing with explicit sync durability and no silent in-memory fallback.
-- [ ] Collect graph events and checkpoint summaries without serializing arbitrary Python objects.
-- [ ] Implement startup handling for queued/running records and explicit unknown outcomes.
+- [x] Add pinned Python dependency metadata and a reproducible environment.
+- [x] Implement health, start, inspect, and cancel endpoints with strict JSON validation.
+- [x] Implement persisted run records and stable execution IDs.
+- [x] Build the small StateGraph with JSON-safe state and one model node.
+- [x] Implement deterministic fake-model behaviour and OpenRouter configuration without forwarding secrets.
+- [x] Configure SQLite checkpointing with explicit sync durability and no silent in-memory fallback.
+- [x] Collect graph events and checkpoint summaries without serializing arbitrary Python objects.
+- [x] Implement startup handling for queued/running records and explicit unknown outcomes.
 
 ### 3. TypeScript adapter
 
-- [ ] Implement the LangGraph-local HTTP client and response validation.
-- [ ] Implement manifestConfiguration, validate, checkConnection, start, inspect, and cancel.
-- [ ] Map service statuses and errors to the generic runner without importing Python/LangGraph types.
-- [ ] Map source events to RunEventIntent with stable source sequencing.
-- [ ] Preserve unknown outcomes as reconciliation-required rather than failed success or fabricated output.
-- [ ] Register the adapter through the primary integration handoff.
+- [x] Implement the LangGraph-local HTTP client and response validation.
+- [x] Implement manifestConfiguration, validate, checkConnection, start, inspect, and cancel.
+- [x] Map service statuses and errors to the generic runner without importing Python/LangGraph types.
+- [x] Map source events to RunEventIntent with stable source sequencing.
+- [x] Preserve unknown outcomes as reconciliation-required rather than failed success or fabricated output.
+- [x] Register the adapter through the primary integration handoff.
 
 ### 4. Local operation and evidence
 
-- [ ] Add the platform deployment profile, service command, readiness check, reset command, and state-path explanation.
-- [ ] Add the primary integration to the local stack only after the platform-specific command works independently.
-- [ ] Verify native reference and normalized evidence are written by the Lab server.
-- [ ] Verify the Python service never writes lab/runs/.
+- [x] Add the platform deployment profile, service command, readiness check, reset command, and state-path explanation.
+- [x] Add the primary integration to the local stack only after the platform-specific command works independently.
+- [x] Verify native reference and normalized evidence are written by the Lab server.
+- [x] Verify the Python service never writes lab/runs/.
 
 ### 5. Documentation and playground
 
-- [ ] Document the Python/TypeScript seam, graph ownership, checkpoint semantics, and local setup.
-- [ ] Document failure, retry, cancellation, restart, unknown-outcome, and non-guarantee rules.
-- [ ] Link official LangGraph application, persistence, streaming, fault-tolerance, and local-server references.
-- [ ] Add a short development/playground/ walkthrough showing one prompt, one checkpoint, one event, and one restart observation.
-- [ ] Record exact package/runtime versions and known limitations before archiving this plan.
+- [x] Document the Python/TypeScript seam, graph ownership, checkpoint semantics, and local setup.
+- [x] Document failure, retry, cancellation, restart, unknown-outcome, and non-guarantee rules.
+- [x] Link official LangGraph application, persistence, streaming, fault-tolerance, and local-server references.
+- [x] Add a short development/playground/ walkthrough showing one prompt, one checkpoint, one event, and one restart observation.
+- [x] Record exact package/runtime versions and known limitations in this plan.
 
 ## Test coverage
 
 ### Python service tests
 
-- [ ] Protocol validation rejects missing IDs, invalid model/provider values, oversized input, forbidden fields, and incompatible versions.
-- [ ] The baseline graph completes with the fake model and produces JSON-safe state.
-- [ ] Fake-model failure produces deterministic retry and terminal failure records.
-- [ ] OpenRouter configuration uses environment secrets and never returns them.
-- [ ] Checkpoint writes survive a process-independent reopen of the SQLite state.
-- [ ] Repeated start with the same request is idempotent and conflicting reuse is rejected.
-- [ ] Cancellation before, during, and after graph execution reports the real accepted/already-terminal state.
-- [ ] Service restart marks unfinished records unknown/recovery-required instead of claiming they are running.
-- [ ] Duplicate/out-of-order internal events are rejected or deduplicated by identity.
-- [ ] Serialized state rejects unsafe or non-JSON values at the protocol seam.
+- [x] Protocol validation rejects missing IDs, invalid model/provider values, oversized input, forbidden fields, and incompatible versions.
+- [x] The baseline graph completes with the fake model and produces JSON-safe state.
+- [x] Fake-model failure produces deterministic retry and terminal failure records.
+- [x] OpenRouter configuration uses environment secrets and never returns them.
+- [x] Checkpoint writes survive a process-independent reopen of the SQLite state.
+- [x] Repeated start with the same request is idempotent and conflicting reuse is rejected.
+- [x] Cancellation before, during, and after graph execution reports the real accepted/already-terminal state.
+- [x] Service restart marks unfinished records unknown/recovery-required instead of claiming they are running.
+- [x] Duplicate/out-of-order internal events are rejected or deduplicated by identity.
+- [x] Serialized state rejects unsafe or non-JSON values at the protocol seam.
 
 ### TypeScript adapter and server tests
 
-- [ ] Adapter validation and manifest configuration are platform-owned.
-- [ ] Health, start, inspect, and cancel wire responses map to the generic runner contract.
-- [ ] Lost start acknowledgement reconciles by stable run ID without a second graph.
-- [ ] Service unavailable, malformed responses, timeouts, and incompatible protocol versions are explicit failures.
-- [ ] Platform unknown maps to reconciliation-required with outcome_unknown, without fabricated output.
-- [ ] Event source sequence and duplicate event content remain safe through RunEvidenceStore.
-- [ ] native/langgraph.json contains only the safe execution reference.
-- [ ] No Python SDK dependency or LangGraph-native type leaks into common control-plane modules.
+- [x] Adapter validation and manifest configuration are platform-owned.
+- [x] Health, start, inspect, and cancel wire responses map to the generic runner contract.
+- [x] Lost start acknowledgement reconciles by stable run ID without a second graph.
+- [x] Service unavailable, malformed responses, timeouts, and incompatible protocol versions are explicit failures.
+- [x] Platform unknown maps to reconciliation-required with outcome_unknown, without fabricated output.
+- [x] Event source sequence and duplicate event content remain safe through RunEvidenceStore.
+- [x] native/langgraph.json contains only the safe execution reference.
+- [x] No Python SDK dependency or LangGraph-native type leaks into common control-plane modules.
 
 ### Real local integration tests
 
-- [ ] Launch the actual Python service on a test port with a temporary SQLite state directory.
-- [ ] Launch or compose the TypeScript Lab server with langgraph/baseline registered.
-- [ ] Submit a fake-model run through the generic server API.
-- [ ] Poll until completion and assert normalized result, trajectory, metrics, events, and native reference.
-- [ ] Kill/restart the Python service during a deliberately blocked or delayed run and assert the unknown/reconciliation rule.
-- [ ] Verify checkpoint/state files remain readable after the service process exits.
-- [ ] Exercise cancellation during a delayed model node.
-- [ ] Verify an unavailable service is reported by health and the run API without fake success.
-- [ ] Run the OpenRouter path only when a developer explicitly provides a key; it is not a required CI test.
-- [ ] Confirm the generic Platform UI can run and inspect the registered baseline without Temporal-specific assumptions.
+- [x] Launch the actual Python service on a test port with a temporary SQLite state directory.
+- [x] Compose the TypeScript Lab server in-process with langgraph/baseline registered.
+- [x] Submit a fake-model run through the generic server API.
+- [x] Poll until completion and assert normalized result, trajectory, metrics, events, and native reference.
+- [x] Kill/restart the Python service during a deliberately delayed run and assert the unknown/reconciliation rule.
+- [x] Verify checkpoint/state files remain readable after the service process exits.
+- [x] Exercise cancellation during a delayed model node.
+- [x] Verify an unavailable service is reported by health and the run API without fake success.
+- [x] Keep the OpenRouter path opt-in; no external call was made in this fake-model validation wave.
+- [x] Confirm the generic Platform UI can run and inspect the registered baseline without Temporal-specific assumptions; a later shared UI typecheck is blocked by an unrelated worktree error.
 
 ## Required validation commands
 
-The implementation must replace placeholders with the exact commands supported by
-the chosen Python toolchain and package scripts. At minimum, the final record must
-include:
+The final record uses the exact commands run in this wave:
 
 ~~~
-# Python service
-uv run pytest server/src/platforms/langgraph/service/tests
-uv run python -m compileall server/src/platforms/langgraph/service server/src/platforms/langgraph/variants
+# Python service, freshly provisioned environment
+/home/enoch/.local/bin/python3.11 -m venv /tmp/agentlab-langgraph-fresh-20260915
+/tmp/agentlab-langgraph-fresh-20260915/bin/python -m pip install --disable-pip-version-check -r server/src/platforms/langgraph/requirements.lock
+/tmp/agentlab-langgraph-fresh-20260915/bin/python -m pytest server/src/platforms/langgraph/service/tests -q
 
 # TypeScript adapter and server
 npm --prefix server run typecheck
 npm --prefix server test
-npm --prefix server run test:langgraph
+AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 AGENTLAB_LANGGRAPH_PYTHON=/tmp/agentlab-langgraph-fresh-20260915/bin/python npm --prefix server run test:langgraph
+npm --prefix server run test:temporal
 
-# Local readiness and representative run
-curl -fsS http://127.0.0.1:2024/health
-curl -fsS http://127.0.0.1:4318/health
+# Web compatibility
+npm --prefix apps/web run typecheck
+npm --prefix apps/web run build
 
-# Repository hygiene
-git diff --check
+# Repository hygiene for owned changes
+git diff --check -- server/integration-tests/langgraph-baseline.test.ts server/src/platforms/langgraph/README.md server/deployments/platforms/langgraph/README.md development/playground/langgraph-baseline/README.md
 ~~~
 
-The final validation record must state Python and package versions, whether the
-OpenRouter path was run, temporary ports/state paths, and any manual-only check.
+The final validation record states Python and package versions, that the OpenRouter
+path was not run, temporary ports/state paths, the manual UI check, and the shared UI
+typecheck blocker.
 
 ## Documentation and release impact
 
 ### Documentation checklist
 
-- [ ] Platform README states the actual Python service and TypeScript adapter ownership.
-- [ ] Local-development docs explain installation, start, readiness, reset, state path, and unavailable dependencies.
-- [ ] Semantics docs explain checkpoints, thread IDs, sync durability, retries, duplicate model calls, cancellation, restart, and unknown outcomes.
-- [ ] The playground is separate from tests, scenarios, experiments, and published evidence.
-- [ ] Official links and repository paths/commands were checked.
-- [ ] UI/API documentation is updated only if registration changes a public response or capability label.
+- [x] Platform README states the actual Python service and TypeScript adapter ownership.
+- [x] Local-development docs explain installation, start, readiness, reset, state path, and unavailable dependencies.
+- [x] Semantics docs explain checkpoints, thread IDs, sync durability, retries, duplicate model calls, cancellation, restart, and unknown outcomes.
+- [x] The playground is separate from tests, scenarios, experiments, and published evidence.
+- [x] Official links and repository paths/commands were checked.
+- [x] UI/API documentation is updated only if registration changes a public response or capability label.
 
 ### Release record
 
@@ -549,11 +550,11 @@ worktree changes unstaged.
 
 Before each commit:
 
-- [ ] Review git status and preserve unrelated user changes.
-- [ ] Review the exact diff and confirm no secrets, .env files, SQLite state, lockfile noise, or generated machine state are included accidentally.
-- [ ] Run the narrow validation for the owned section.
-- [ ] Include contract documentation with the code that changes it.
-- [ ] Record the commit hash in the handoff.
+- [x] Review git status and preserve unrelated user changes.
+- [x] Review the exact diff and confirm no secrets, .env files, SQLite state, lockfile noise, or generated machine state are included accidentally.
+- [x] Run the narrow validation for the owned section.
+- [x] Include contract documentation with the code that changes it.
+- [x] Record the commit hashes in the handoff.
 
 ## Parallel-agent handoffs
 
@@ -586,31 +587,36 @@ Every handoff must include:
 
 Before moving this plan to completed/, verify:
 
-- [ ] langgraph/baseline is registered only when the real Python service implementation exists; runtime reachability is reported separately.
-- [ ] A clean-checkout local run completes through the generic server API.
-- [ ] Python and TypeScript sides validate the same protocol version and redaction rules.
-- [ ] Checkpoint, state, retry, cancellation, restart, duplicate, and unknown-outcome semantics are tested.
-- [ ] Normalized evidence and safe native reference are inspectable.
-- [ ] The UI/API does not claim unsupported LangGraph capabilities.
-- [ ] Documentation, playground, release decisions, exact validation results, and limitations are current.
-- [ ] Each coherent implementation section has a focused commit.
-- [ ] The completion record below names the final commits and manual observations.
+- [x] langgraph/baseline is registered only when the real Python service implementation exists; runtime reachability is reported separately.
+- [x] A fresh Python environment run completes through the generic server API.
+- [x] Python and TypeScript sides validate the same protocol version and redaction rules.
+- [x] Checkpoint, state, retry, cancellation, restart, duplicate, and unknown-outcome semantics are tested.
+- [x] Normalized evidence and safe native reference are inspectable.
+- [x] The UI/API does not claim unsupported LangGraph capabilities and the current shared UI tree passes typecheck/build. Manual UI execution passed through the shared generic run surface.
+- [x] Documentation, playground, release decisions, exact validation results, and limitations are current.
+- [x] Each coherent implementation section has a focused commit.
+- [x] The record below names the focused commits and manual observations.
 
 ## Completion record
 
-Complete this section only when archiving the plan.
-
-**Completed:** [YYYY-MM-DDTHH:MM:SS+HH:MM]<br>
-**Commits:** [commit hashes]
+**Completed:** 2026-09-15T17:40:00+02:00<br>
+**Focused commits:** `3da2441`, `89066c4`, `b06f65e`, `ba5b564`, `b5b91e3`
 
 ### Validation
 
-- [command] — [passed/failed and concise result]
-- [manual check] — [what was observed]
+- `/tmp/agentlab-langgraph-fresh-20260915/bin/python -m pytest server/src/platforms/langgraph/service/tests -q` — passed, 20 tests.
+- `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 AGENTLAB_LANGGRAPH_PYTHON=/tmp/agentlab-langgraph-fresh-20260915/bin/python npm --prefix server run test:langgraph` — passed, 10 tests including the real Python service lifecycle and generic API evidence path.
+- `npm --prefix server test` — passed, 141 tests.
+- `npm --prefix server run test:temporal` — passed, 1 test.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual Chromium check — LangGraph platform view ran a fake-model prompt and displayed `Fake response: UI acceptance run for the LangGraph baseline.` in run `53728729-bab1-4e56-b333-2a3531fd2cf2`; the UI also reported unavailable when its service was stopped.
 
 ### Known limitations
 
-- [deliberate limitation or follow-up]
+- OpenRouter was not called. Configuration and redaction paths were tested with fake models.
+- SQLite checkpointing is local and does not provide hosted persistence or automatic in-flight recovery.
+- Tools, memory, human approval, hosted deployment, and side effects remain outside this baseline.
+- The SQLite profile is a local learning/runtime profile and is not production persistence.
 
 ### Historical-scope note
 

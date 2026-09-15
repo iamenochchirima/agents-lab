@@ -1,7 +1,7 @@
 # Parallel platform implementation coordination
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T14:59:11+02:00
+**Last updated:** 2026-09-15T17:51:03+02:00
 **Status:** Active
 **Owner:** Primary implementation agent
 
@@ -47,9 +47,10 @@ The current implementation wave is running in three isolated worktrees:
 
 | Wave | Platforms | State |
 | --- | --- | --- |
-| 1 | Restate, LangGraph, Mastra | Integrated; remaining acceptance records are tracked in each plan |
-| 2 | Inngest, Trigger.dev, DBOS | Integrated; Inngest and DBOS have local acceptance evidence, while Trigger.dev still needs a real local server profile |
-| 3 | Hatchet, Vercel Workflows | Platform-local implementations and shared registration are integrated; local service acceptance and hosted profiles remain tracked in each plan. AWS is intentionally excluded from this wave. |
+| 1 | Restate, LangGraph, Mastra | Complete; plans archived with local acceptance evidence |
+| 2 | Inngest, DBOS | Complete; plans archived with local acceptance evidence |
+| 2 | Trigger.dev | Active; the platform plan still requires a real local server/worker acceptance profile |
+| 3 | Hatchet, Vercel Workflows | Complete; plans archived with local acceptance evidence. AWS remains intentionally excluded from this wave. |
 
 Only one platform agent owns a platform directory at a time. The primary agent
 does not begin shared bootstrap or UI integration for this wave until its three
@@ -152,14 +153,19 @@ should be scheduled so ports, containers, databases, and cloud credentials do no
 
 ## Batch completion gate
 
-- [ ] Every non-AWS platform has a plan with exclusive ownership and a concrete runtime shape.
-- [ ] Every plan links the generic runner contract and completed foundation.
-- [ ] No plan requires a platform agent to edit shared bootstrap or root dependency files.
-- [ ] Each platform plan defines local readiness, evidence, retries, cancellation,
+- [x] Every assigned non-AWS platform has a plan with exclusive ownership and a concrete runtime shape; Trigger.dev remains explicitly active until its local profile is available.
+- [x] Every plan links the generic runner contract and completed foundation.
+- [x] No plan requires a platform agent to edit shared bootstrap or root dependency files.
+- [x] Each assigned platform plan defines local readiness, evidence, retries, cancellation,
       restart, unknown outcomes, and exact tests.
-- [ ] Wave 1 is implemented and integrated before Wave 2 is started.
-- [ ] Platform-specific behaviour remains visible in native evidence and documentation.
+- [x] Wave 1 is implemented and integrated before Wave 2 is started.
+- [x] Platform-specific behaviour remains visible in native evidence and documentation.
 - [x] The UI shows a platform as runnable only after the primary integration handoff passes.
+
+The accepted local wave consists of Restate, LangGraph, Mastra, Inngest, DBOS,
+Hatchet, and Vercel Workflows. Trigger.dev is not presented as complete because a
+real local Trigger server/worker profile was not available. AWS Step Functions is
+untouched by this wave and remains governed by its separate plan.
 
 ## Known limits
 

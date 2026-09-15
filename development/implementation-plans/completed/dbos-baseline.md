@@ -1,18 +1,18 @@
 # DBOS baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T13:57:12+02:00
-**Status:** Active — implementation integrated; PostgreSQL acceptance recorded
+**Last updated:** 2026-09-15T17:40:00+02:00
+**Status:** Complete — local baseline and shared UI acceptance verified
 **Owner:** Assigned platform agent
 **Platform:** `dbos`
 **Variant:** `baseline`
 
 ## Start here
 
-Read the [parallel coordination plan](platform-parallel-implementation.md), the
+Read the [parallel coordination plan](../active/platform-parallel-implementation.md), the
 [platform plan template](../templates/platform-baseline.md), the [generic runner
 port](../../../server/src/control-plane/ports/README.md), and the [completed server
-foundation](../completed/server-platform-foundation.md).
+foundation](server-platform-foundation.md).
 
 Use the official [DBOS TypeScript repository](https://github.com/dbos-inc/dbos)
 and current DBOS documentation. Pin the DBOS package, Node version, and PostgreSQL
@@ -40,17 +40,15 @@ registration, and UI availability wiring are implemented.
 Verified in this wave:
 
 - [x] 7 focused DBOS unit/adapter tests pass.
-- [x] A real PostgreSQL 16 container and DBOS service completed a fake-model run
-  through the generic Lab API.
+- [x] A temporary native PostgreSQL 18 instance and DBOS service completed a
+  fake-model run through the generic Lab API; no container was used.
 - [x] The opt-in DBOS integration test passed from a fresh PostgreSQL/service start.
 - [x] The generic evidence projection retained DBOS step metadata and refreshed the
   terminal native status to `SUCCESS`.
 - [x] Server, UI typecheck/build, and the full server test suite pass.
 
-Remaining before archival:
-
-- [ ] Record a manual UI run and the final focused commit hashes in the completion
-  record.
+The local baseline, shared server registration, and shared UI acceptance are complete.
+The production DBOS Conductor profile remains outside this plan.
 
 ## Ownership and parallel boundary
 
@@ -116,3 +114,21 @@ Document PostgreSQL setup, schema lifecycle, DBOS state ownership, recovery rule
 credential boundaries, and exact test commands. Use focused runtime, test, and docs
 commits. The handoff must list migrations/schema changes, required shared integration,
 known limitations, and whether any DBOS semantics remain unverified.
+
+## Completion record
+
+**Completed:** 2026-09-15T17:40:00+02:00<br>
+**Focused commits:** `7ff3463`, `507c2c6`, `b06f65e`, `ba5b564`, `b5b91e3`
+
+### Validation
+
+- `npm --prefix server test` — passed, 141 tests.
+- DBOS native integration — passed against a temporary PostgreSQL 18 instance on loopback with the DBOS service; success, failure, retry, cancellation, and status projection paths completed without Docker.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual Chromium check — DBOS platform view completed run `10195e56-216c-4c5c-87be-8e0eb58a5831` with `Fake response: UI acceptance run for the DBOS baseline.`, seven lifecycle events, and `dbos:<run-id>` native execution identity.
+- `git diff --check` — passed for the focused platform changes.
+
+### Known limitations
+
+- The local path uses native PostgreSQL and the DBOS application host. DBOS Conductor, distributed deployment, and production failover were not tested.
+- The fake model is the deterministic acceptance path. OpenRouter remains optional and was not called in this wave.

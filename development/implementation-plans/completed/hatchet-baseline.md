@@ -1,18 +1,18 @@
 # Hatchet baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T16:01:00+02:00
-**Status:** Active — embedded local baseline validated; remote/full-stack profile remains optional
+**Last updated:** 2026-09-15T17:40:00+02:00
+**Status:** Complete — embedded local baseline and shared UI acceptance verified; remote profile remains optional
 **Owner:** Assigned platform agent
 **Platform:** `hatchet`
 **Variant:** `baseline`
 
 ## Start here
 
-Read the [parallel coordination plan](platform-parallel-implementation.md), the
+Read the [parallel coordination plan](../active/platform-parallel-implementation.md), the
 [platform plan template](../templates/platform-baseline.md), the [generic runner
 port](../../../server/src/control-plane/ports/README.md), and the [completed server
-foundation](../completed/server-platform-foundation.md).
+foundation](server-platform-foundation.md).
 
 Use the official [Hatchet repository](https://github.com/hatchet-dev/hatchet) and
 current TypeScript SDK/local-development documentation. Pin all SDK, server, and
@@ -146,7 +146,7 @@ Validation record for this implementation:
 | `npx prettier --check` on Hatchet source, tests, docs, playground, and plan                   | Passed; all matched files use Prettier code style.                                  |
 | `docker compose -f server/src/platforms/hatchet/deployment/docker-compose.yml config --quiet` | Passed.                                                                            |
 | `AGENTLAB_RUN_HATCHET_INTEGRATION=1 node --test dist/integration-tests/hatchet-baseline.test.js` | Passed; 2 embedded-engine integration tests completed without Docker.              |
-| `npm --prefix server test`                                                                     | Passed; 133 tests passed, 0 failed or cancelled.                                     |
+| `npm --prefix server test`                                                                     | Passed; 141 tests passed, 0 failed or cancelled.                                     |
 | Shared `createControlPlaneRuntime()` startup and close smoke                           | Passed; all registered runners composed and embedded Hatchet shut down with no leftover process. |
 | Scoped `git diff --check`                                                                     | Passed; no whitespace errors.                                                        |
 
@@ -174,3 +174,23 @@ Document local server/worker setup, readiness, task semantics, recovery, permiss
 native evidence, and limitations. Commit runtime, tests/infrastructure, and docs
 separately. The handoff must name all shared bootstrap/script changes for the primary
 agent rather than editing them directly.
+
+## Completion record
+
+**Completed:** 2026-09-15T17:40:00+02:00<br>
+**Focused commits:** `67bc30d`, `b06f65e`, `ba5b564`, `b5b91e3`
+
+### Validation
+
+- Embedded Hatchet lifecycle integration — passed against the pinned Hatchet embedded engine without Docker; success, pre-dispatch retry, timeout, and cancellation completed with active worker registration.
+- `npm --prefix server test` — passed, 141 tests.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual Chromium check — Hatchet platform view completed run `528482de-1064-418e-96c0-f7b7c07cc942` with `Fake response: Run the Hatchet baseline and return one deterministic sentence.`, six lifecycle events, and `hatchet:<run-id>` native execution identity.
+- Shared compare check — the modal ran one identical fake task through Mastra and Hatchet and displayed both completed outputs.
+- `git diff --check` — passed for the focused platform changes.
+
+### Known limitations
+
+- The remote Hatchet full-stack Compose profile was not run. It requires Docker services and a worker token. The embedded local profile is the accepted no-container path.
+- The embedded sidecar downloads a pinned binary on first use and starts its own PostgreSQL process. Its data directory is configurable and is runtime state, not repository data.
+- OpenRouter was not called in this deterministic wave. Provider configuration, retry classification, and redaction are covered by tests.

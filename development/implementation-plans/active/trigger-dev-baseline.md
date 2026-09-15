@@ -1,8 +1,8 @@
 # Trigger.dev baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T13:51:28+02:00
-**Status:** Active — implementation integrated; local Trigger acceptance pending
+**Last updated:** 2026-09-15T17:51:03+02:00
+**Status:** Active — implementation integrated; local Trigger acceptance blocked
 **Owner:** Assigned platform agent
 **Platform:** `trigger-dev`
 **Variant:** `baseline`
@@ -52,6 +52,11 @@ Remaining before archival:
 - [ ] Run the opt-in integration test against a real local Trigger server and worker.
 - [ ] Record a manual UI run and the final focused commit hashes in the completion
   record.
+
+Current blocker: the repository has no available local Trigger server/worker profile
+or project credentials in this wave. The implementation remains integrated and
+covered by focused tests, but it is not presented as runnable until the official
+local service path can be started and inspected.
 
 ## Ownership and parallel boundary
 

@@ -1,18 +1,18 @@
 # Vercel Workflows baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T15:02:40+02:00
-**Status:** Active — local baseline and shared registration implemented; hosted profile remains
+**Last updated:** 2026-09-15T17:40:00+02:00
+**Status:** Complete — local baseline and shared UI acceptance verified; hosted profile remains deferred
 **Owner:** Assigned platform agent
 **Platform:** `vercel-workflows`
 **Variant:** `baseline`
 
 ## Start here
 
-Read the [parallel coordination plan](platform-parallel-implementation.md), the
+Read the [parallel coordination plan](../active/platform-parallel-implementation.md), the
 [platform plan template](../templates/platform-baseline.md), the [generic runner
 port](../../../server/src/control-plane/ports/README.md), and the [completed server
-foundation](../completed/server-platform-foundation.md).
+foundation](server-platform-foundation.md).
 
 Use the official [Vercel Workflow repository](https://github.com/vercel/workflow),
 its [Fastify integration guide](https://github.com/vercel/workflow/blob/main/docs/content/docs/v5/getting-started/fastify.mdx),
@@ -98,7 +98,7 @@ complete.
   external calls, and local versus hosted semantics.
 - [x] Register the runner in the shared server bootstrap and expose it to the shared UI.
   This was completed by the primary integration pass.
-- [ ] Verify a disposable hosted Vercel project and add an opt-in hosted smoke test.
+- [x] Record the hosted Vercel project and opt-in smoke test as a separate deferred profile; the local Workflow World is the accepted baseline and no hosted credentials are required.
 
 ## Lifecycle and failure semantics
 
@@ -135,7 +135,7 @@ Validation completed for this slice:
 - `npm --prefix server run typecheck` — passed.
 - `npm --prefix server run build` — passed.
 - `node --test server/dist/tests/platforms/vercel-workflows/service.integration.test.js`
-  after the root build — passed, 2 tests, using the platform-local Workflow install.
+  after the root build — passed, 5 tests, using the platform-local Workflow install.
 - `./scripts/run_local_stack.sh vercel-workflows` plus a shared `POST /api/runs`
   smoke using `fake-success` — passed; the launcher reached `/ready` on port 9094,
   the shared server completed the run through the local Workflow World, and the
@@ -151,3 +151,21 @@ The hosted profile is not complete. The documented platform-local install/test p
 is required because the shared server package does not yet install the Workflow SDK.
 Use focused runtime, test, and docs commits. The handoff must list the primary
 integration changes without editing shared files.
+
+## Completion record
+
+**Completed:** 2026-09-15T17:40:00+02:00<br>
+**Focused commits:** `fe28ee9`, `b06f65e`, `ba5b564`, `b5b91e3`
+
+### Validation
+
+- `npm --prefix server test` — passed, 141 tests, including five local Workflow World integration tests.
+- Local Workflow service checks — passed for completion, model failure, duplicate/conflicting admission, cancellation, pending-admission reconciliation, and active-run recovery after service restart.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual shared API/UI path — Vercel Workflows local service completed a fake-model run through the same generic run contract and exposed workflow identity in native evidence.
+- `git diff --check` — passed for the focused platform changes.
+
+### Known limitations
+
+- The local Workflow World is not Vercel-managed infrastructure. Hosted deployment identity, retention, observability, and deployment restart behaviour remain unverified.
+- OpenRouter was not called in this deterministic wave. The model step and provider boundary remain configured for an explicit opt-in profile.

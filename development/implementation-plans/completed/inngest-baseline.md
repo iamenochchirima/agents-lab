@@ -1,18 +1,18 @@
 # Inngest baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T14:18:00+02:00
-**Status:** Active — implementation integrated; manual UI record pending
+**Last updated:** 2026-09-15T17:40:00+02:00
+**Status:** Complete — local baseline and shared UI acceptance verified
 **Owner:** Assigned platform agent
 **Platform:** `inngest`
 **Variant:** `baseline`
 
 ## Start here
 
-Read the [parallel coordination plan](platform-parallel-implementation.md), the
+Read the [parallel coordination plan](../active/platform-parallel-implementation.md), the
 [platform plan template](../templates/platform-baseline.md), the [generic runner
 port](../../../server/src/control-plane/ports/README.md), and the [completed server
-foundation](../completed/server-platform-foundation.md).
+foundation](server-platform-foundation.md).
 
 Use the official [Inngest JavaScript SDK](https://github.com/inngest/inngest-js)
 and [Inngest development server documentation](https://www.inngest.com/docs/local-development)
@@ -40,7 +40,9 @@ idempotent.
 
 The Inngest baseline service, runner adapter, durable-step function boundary, safe
 native projection, local operation docs, playground, shared server registration,
-and UI availability wiring are implemented.
+and UI availability wiring are implemented. The platform-local integration test
+now exercises the generic runner against a pre-registered function service, which
+matches the real two-process topology.
 
 Verified in this wave:
 
@@ -50,12 +52,14 @@ Verified in this wave:
   Dev Server health.
 - [x] Lost event acknowledgements reuse the stable event identity.
 - [x] Cancellation records an asynchronous request without fabricating completion.
+- [x] A native integration run covers success, deterministic failure, safe
+  pre-dispatch retry, and cancellation requested before function start.
+- [x] The retry fixture uses a short native `RetryAfterError`; the projection counts
+  attempts from observed model-step requests.
 - [x] Server, UI typecheck/build, and the full server test suite pass.
 
-Remaining before archival:
-
-- [ ] Record a manual UI run and the final focused commit hashes in the completion
-  record.
+The local baseline, shared server registration, and shared UI acceptance are complete.
+The optional hosted Inngest profile remains outside this plan.
 
 Validation record for the no-container local path:
 
@@ -66,8 +70,9 @@ AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9191 \
 node server/dist/integration-tests/inngest-baseline.test.js
 ```
 
-Passed on 2026-09-15 against Inngest Dev Server v1.44.0 started directly with
-`npx --yes inngest-cli@1.44.0 dev`; no container was used.
+Passed on 2026-09-15 at 15:00 against Inngest Dev Server v1.44.0 started directly
+with `npx --yes inngest-cli@1.44.0 dev` after the function service was registered;
+the test reported 1 passed, 0 failed, 0 skipped. No container was used.
 
 ## Ownership and parallel boundary
 
@@ -150,3 +155,23 @@ Use focused commits:
 The handoff must list changed files, exact commands and results, infrastructure
 requirements, shared integration changes requested from the primary agent, and any
 behaviour that remains unknown.
+
+## Completion record
+
+**Completed:** 2026-09-15T17:40:00+02:00<br>
+**Focused commits:** `59c0797`, `a41acea`, `7849b46`, `b06f65e`, `ba5b564`, `b5b91e3`
+
+### Validation
+
+- `AGENTLAB_RUN_INNGEST_INTEGRATION=1 ... node server/dist/integration-tests/inngest-baseline.test.js` — passed, 1 integration test against Inngest Dev Server v1.44.0; no container used.
+- `npm --prefix server test` — passed, 141 tests.
+- `npm --prefix apps/web run typecheck` and `npm --prefix apps/web run build` — passed; build emitted only the existing large-chunk warning.
+- Manual Chromium check — Inngest platform view completed run `4519b5bc-5083-4932-b030-514c599a5f74` with `Fake response: UI acceptance run for the Inngest baseline.`, six lifecycle events, and `inngest:<run-id>` native execution identity.
+- Shared compare check — the modal ran the same fake task through Mastra and Hatchet and displayed both completed outputs.
+- `git diff --check` — passed for the focused platform changes.
+
+### Known limitations
+
+- The local acceptance uses the pinned Inngest Dev Server and a local function service. Hosted Inngest deployment and production retention were not tested.
+- The fake model is the deterministic acceptance path. OpenRouter remains optional and was not called in this wave.
+- The Dev Server and function service must run as separate processes; `/health` reports the distinction.
