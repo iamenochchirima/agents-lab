@@ -1,0 +1,15 @@
+{
+  "name": "@agent-harness-lab/restate-platform",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@restatedev/restate-sdk": "1.17.0",
+    "@restatedev/restate-sdk-clients": "1.17.0"
+  },
+  "devDependencies": {
+    "@restatedev/restate-sdk-testcontainers": "1.17.0"
+  }
+}

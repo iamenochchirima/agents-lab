@@ -1,0 +1,13 @@
+services:
+  restate:
+    image: docker.restate.dev/restatedev/restate:1.7.10
+    container_name: agentlab-restate
+    command: ["--node-name=agentlab-restate"]
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9070:9070"
+      - "127.0.0.1:5122:5122"
+    volumes:
+      - ../../../../../lab/restate-data:/restate-data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
