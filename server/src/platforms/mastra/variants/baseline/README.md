@@ -1,6 +1,12 @@
 # Mastra baseline harness variant
 
-Placeholder for the first harness variant built with Mastra.
+The baseline is a single-turn, direct-agent call:
 
-The baseline will use Mastra's native TypeScript and Node.js runtime and will expose
-the common laboratory execution and telemetry contract through an explicit adapter.
+```text
+Lab manifest → Mastra Agent → Agent.generate(prompt) → Lab evidence projection
+```
+
+It uses Mastra's native TypeScript runtime and accepts either a deterministic local
+fake model or an opt-in OpenRouter model. No tools, memory, workflows, storage, or
+durable execution are enabled. Those are separate variants so this first comparison
+does not confuse a direct agent call with Mastra workflow durability.

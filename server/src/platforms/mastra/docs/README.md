@@ -1,3 +1,4 @@
-# mastra implementation notes
+# Mastra implementation notes
 
-Documents platform-specific setup, assumptions, and operational limitations.
+- [Local development](./local-development.md)
+- [Execution semantics](./semantics.md)
