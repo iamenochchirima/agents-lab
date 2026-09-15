@@ -1,0 +1,12 @@
+{
+  "name": "@agentlab/dbos-baseline",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@dbos-inc/dbos-sdk": "4.27.6"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^12.1.0",
+    "testcontainers": "^12.1.0"
+  }
+}
