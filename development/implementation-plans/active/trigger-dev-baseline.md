@@ -42,6 +42,7 @@ shared server registration, and UI availability wiring are implemented.
 Verified in this wave:
 
 - [x] 8 focused Trigger.dev tests pass.
+- [x] The local launcher invokes the published `trigger` CLI binary correctly.
 - [x] Idempotent admission, lost acknowledgement, unknown outcome, cancellation,
   status mapping, and redaction are covered.
 - [x] Server, UI typecheck/build, and the full server test suite pass.

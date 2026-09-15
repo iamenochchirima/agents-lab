@@ -13,7 +13,8 @@ references.
 
 Status: baseline implementation and shared server registration complete. Restate is
 advertised as runnable when the Lab server starts, but it reports unavailable until the
-local Restate runtime and registered service are reachable.
+local Restate runtime and registered service are reachable. The default local runtime
+is the pinned native Restate server binary; Docker is an optional profile.
 
 Start with:
 

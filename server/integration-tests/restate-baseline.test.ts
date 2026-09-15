@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
+import { RunEvidenceStore } from "../src/control-plane/application/evidence-store.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
 import {
   RestateBaselineRunner,
@@ -92,6 +96,66 @@ test(
       assert.equal(cancellation.alreadyTerminal, true);
     } finally {
       await environment.stop();
+    }
+  },
+);
+
+test(
+  "native Restate server runs the baseline workflow without Docker and projects evidence",
+  {
+    skip:
+      process.env.AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION === "1"
+        ? false
+        : "Set AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 with the native Restate server and service running.",
+  },
+  async () => {
+    const config = loadRestateConfig(process.env);
+    const runner = await RestateBaselineRunner.connect(config);
+    const connectivity = await runner.checkConnection();
+    assert.equal(connectivity.reachable, true, connectivity.message);
+
+    const runId = `restate-native-${Date.now()}`;
+    const manifest = buildRunManifest(
+      {
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Produce one short native Restate sentence." },
+        model: { provider: "fake", model: "fake-success" },
+      },
+      { runId, platformConfig: runner.manifestConfiguration() },
+    );
+    assert.equal(runner.validate(manifest).valid, true);
+
+    const runRoot = await mkdtemp(join(tmpdir(), "agentlab-restate-native-"));
+    try {
+      const evidence = new RunEvidenceStore(runRoot);
+      await evidence.createRun(manifest);
+      let reference = await runner.start(manifest);
+      await evidence.writeExecutionReference(runId, reference);
+
+      let terminal = false;
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const inspection = await runner.inspect(reference);
+        reference = inspection.reference;
+        await evidence.writeExecutionReference(runId, reference);
+        if (inspection.result) {
+          for (const event of inspection.eventIntents) await evidence.appendEvent(event);
+          await evidence.writeResult(inspection.result);
+          if (inspection.trajectory) await evidence.writeTrajectory(inspection.trajectory);
+          if (inspection.metrics) await evidence.writeMetrics(inspection.metrics);
+          terminal = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      assert.equal(terminal, true, "native Restate workflow did not reach a terminal result");
+      const snapshot = await evidence.readSnapshot(runId);
+      assert.equal(snapshot.result?.status, "completed");
+      assert.equal(snapshot.result?.output, "Fake response: Produce one short native Restate sentence.");
+      assert.equal(snapshot.executionReference?.native.serviceName, "AgentLabRestateBaseline");
+    } finally {
+      await rm(runRoot, { recursive: true, force: true });
     }
   },
 );

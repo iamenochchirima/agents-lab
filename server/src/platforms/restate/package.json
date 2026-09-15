@@ -5,10 +5,15 @@
   "engines": {
     "node": ">=22"
   },
+  "scripts": {
+    "dev:server": "node scripts/start-server.mjs",
+    "start:server": "node scripts/start-server.mjs"
+  },
   "dependencies": {
     "apache-arrow": "18.1.0",
     "@restatedev/restate-sdk": "1.17.0",
-    "@restatedev/restate-sdk-clients": "1.17.0"
+    "@restatedev/restate-sdk-clients": "1.17.0",
+    "@restatedev/restate-server": "1.7.10"
   },
   "devDependencies": {
     "@restatedev/restate-sdk-testcontainers": "1.17.0"

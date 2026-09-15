@@ -1,7 +1,7 @@
 # Inngest baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T13:54:10+02:00
+**Last updated:** 2026-09-15T14:18:00+02:00
 **Status:** Active — implementation integrated; manual UI record pending
 **Owner:** Assigned platform agent
 **Platform:** `inngest`
@@ -54,9 +54,20 @@ Verified in this wave:
 
 Remaining before archival:
 
-- [ ] Run the opt-in integration test against the pinned Inngest Dev Server.
 - [ ] Record a manual UI run and the final focused commit hashes in the completion
   record.
+
+Validation record for the no-container local path:
+
+```text
+AGENTLAB_RUN_INNGEST_INTEGRATION=1 \
+AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
+AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9191 \
+node server/dist/integration-tests/inngest-baseline.test.js
+```
+
+Passed on 2026-09-15 against Inngest Dev Server v1.44.0 started directly with
+`npx --yes inngest-cli@1.44.0 dev`; no container was used.
 
 ## Ownership and parallel boundary
 

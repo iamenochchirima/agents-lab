@@ -1,7 +1,7 @@
 # Restate baseline platform
 
 **Created:** 2026-09-15T10:59:09+02:00<br>
-**Last updated:** 2026-09-15T13:26:00+02:00<br>
+**Last updated:** 2026-09-15T14:15:00+02:00<br>
 **Status:** Active — implementation integrated; archival record pending<br>
 **Owner:** Primary platform integration agent<br>
 **Platform:** `restate`<br>
@@ -27,6 +27,9 @@ Read these before editing:
 - [Restate TypeScript testing](https://docs.restate.dev/develop/ts/testing)
 - [Restate SDK clients](https://docs.restate.dev/services/invocation/clients/typescript-sdk)
 - [Restate invocation introspection](https://docs.restate.dev/services/introspection)
+- [Restate installation](https://docs.restate.dev/installation)
+- [Restate server configuration](https://docs.restate.dev/references/server-config)
+- [Restate networking](https://docs.restate.dev/server/networking)
 - [Restate local Docker deployment](https://docs.restate.dev/server/deploy/docker)
 
 The current generic runner contract and Temporal foundation are complete. Do not reopen
@@ -63,7 +66,8 @@ Verified in this wave:
 - [x] Restarting the Lab server against the retained run root reconciles the same Restate execution and native reference.
 - [x] Restate configuration, workflow-key, retry, cancellation, duplicate-submission, and native status mappings are covered.
 - [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
-- [x] The platform documentation includes pinned local server/service commands, registration, evidence, and recovery semantics.
+- [x] The platform documentation includes pinned native and Docker local server/service commands, registration, evidence, and recovery semantics.
+- [x] The native Restate 1.7.10 server binary starts without Docker, binds its local ports to loopback, and completes the no-container integration path with normalized evidence.
 
 Remaining before archival:
 
@@ -520,7 +524,7 @@ Evidence checklist:
 
 ### Manual acceptance
 
-- [ ] Start Docker Restate, the baseline service, the Fastify server, and the existing web app from documented commands.
+- [ ] Start native Restate (or the optional Docker profile), the baseline service, the Fastify server, and the existing web app from documented commands.
 - [ ] Submit one fake-model prompt from the existing UI or API and observe queued → running → completed.
 - [ ] Inspect every normalized file and `native/restate.json`; compare the workflow key and invocation ID with the Restate Admin UI/CLI.
 - [ ] Restart only the service, then restart Restate with its persistent volume, and inspect the same run.
@@ -542,10 +546,23 @@ curl --fail http://127.0.0.1:9070/deployments
 git diff --check
 ```
 
-The real integration commands also require Docker, the pinned Restate image, the
-registered service, and the server process. A missing Docker daemon or unavailable
-local Restate instance is a blocked prerequisite, not a passing test. Record exact
-versions, commands, output summary, and manual observations before archiving the plan.
+The native integration command requires the pinned Restate server binary, the
+registered service, and the server process. The testcontainers replay command remains
+available as an optional Docker validation, but Docker is not required for the normal
+local baseline. Record exact versions, commands, output summary, and manual
+observations before archiving the plan.
+
+No-container validation recorded on 2026-09-15:
+
+```text
+npm --prefix server/src/platforms/restate install
+npm --prefix server/src/platforms/restate run dev:server
+AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 node server/dist/integration-tests/restate-baseline.test.js
+```
+
+Passed: the native Restate 1.7.10 server bound ingress and Admin API to loopback,
+the registered TypeScript service completed a fake-model workflow, and the Lab
+evidence projection contained the terminal result and native service identity.
 
 ## Documentation and release impact
 

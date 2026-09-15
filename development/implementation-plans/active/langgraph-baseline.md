@@ -1,7 +1,7 @@
 # LangGraph baseline platform
 
 **Created:** 2026-09-15T10:59:22+02:00<br>
-**Last updated:** 2026-09-15T12:59:15+02:00<br>
+**Last updated:** 2026-09-15T14:19:00+02:00<br>
 **Status:** Active — implementation integrated; archival validation pending<br>
 **Owner:** LangGraph platform implementation owner<br>
 **Platform:** langgraph<br>
@@ -58,6 +58,7 @@ Verified in this wave:
 - [x] A process-level LangGraph integration test passes, including cancellation, service restart, and reconciliation.
 - [x] A real LangGraph run completes through the generic Fastify API and writes the complete Lab evidence set.
 - [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+- [x] The locked Python service tests (20 tests) and process-level integration pass without Docker using Python 3.11 with the sqlite3 module enabled.
 
 Remaining before archival:
 

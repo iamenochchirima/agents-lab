@@ -90,6 +90,13 @@ Available services:
   frontend, web        Start the React/Vite frontend only
   server, api          Start the Fastify server only (api is an alias)
   worker               Start the Temporal worker only
+  restate-server       Start the native Restate server (no Docker)
+  restate              Start the Restate baseline service
+  dbos                 Start the DBOS baseline service (PostgreSQL must be available)
+  inngest              Start the Inngest function service
+  inngest-dev          Start the Inngest Dev Server directly with npx
+  trigger-dev          Start the Trigger.dev local task worker
+  langgraph            Start the LangGraph Python service
   aws-step-functions   Start the AWS Step Functions platform service
   hatchet              Start the Hatchet platform worker (embedded by default)
   vercel-workflows     Start the Vercel Workflows platform service
@@ -101,6 +108,10 @@ Environment variables:
   AGENTLAB_RUN_ROOT
   AGENTLAB_TEMPORAL_ENDPOINT, AGENTLAB_TEMPORAL_NAMESPACE
   AGENTLAB_TEMPORAL_TASK_QUEUE, AGENTLAB_TEMPORAL_CLI
+  AGENTLAB_RESTATE_DATA_DIR
+  AGENTLAB_INNGEST_DEV_SERVER_URL, AGENTLAB_INNGEST_SERVICE_URL
+  AGENTLAB_DBOS_*
+  AGENTLAB_LANGGRAPH_*
   AGENTLAB_AWS_STEP_FUNCTIONS_*
   AGENTLAB_HATCHET_*, HATCHET_CLIENT_TOKEN
   AGENTLAB_VERCEL_WORKFLOWS_*
@@ -151,6 +162,80 @@ run_worker() {
     AGENTLAB_TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
     AGENTLAB_TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
     exec npm --prefix "$SERVER_DIR" run dev:worker
+}
+
+run_restate_server() {
+  require_command npm
+  require_package "$SERVER_DIR/src/platforms/restate"
+
+  echo "Starting native Restate server (no Docker)."
+  exec npm --prefix "$SERVER_DIR/src/platforms/restate" run dev:server
+}
+
+run_restate() {
+  require_command npm
+  require_package "$SERVER_DIR"
+  require_package "$SERVER_DIR/src/platforms/restate"
+
+  echo "Starting Restate baseline service."
+  exec npm --prefix "$SERVER_DIR" run dev:restate
+}
+
+run_dbos() {
+  require_command npm
+  require_package "$SERVER_DIR"
+  require_package "$SERVER_DIR/src/platforms/dbos"
+
+  echo "Starting DBOS baseline service. PostgreSQL must already be available."
+  exec npm --prefix "$SERVER_DIR" run dev:dbos
+}
+
+run_inngest() {
+  require_command npm
+  require_package "$SERVER_DIR"
+  require_package "$SERVER_DIR/src/platforms/inngest"
+
+  echo "Starting Inngest function service."
+  exec npm --prefix "$SERVER_DIR" run dev:inngest
+}
+
+run_inngest_dev() {
+  require_command npx
+
+  local service_url="${AGENTLAB_INNGEST_SERVICE_URL:-http://${API_HOST}:9091}"
+  echo "Starting Inngest Dev Server for $service_url/api/inngest."
+  exec npx --yes inngest-cli@1.44.0 dev --no-discovery -u "$service_url/api/inngest"
+}
+
+run_trigger_dev() {
+  require_command npm
+  require_package "$SERVER_DIR/src/platforms/trigger-dev"
+
+  echo "Starting Trigger.dev local task worker."
+  exec npm --prefix "$SERVER_DIR" run dev:trigger
+}
+
+run_langgraph() {
+  local python_command="${AGENTLAB_LANGGRAPH_PYTHON:-python3}"
+  require_command "$python_command"
+
+  local platform_directory="$SERVER_DIR/src/platforms/langgraph"
+  if [[ ! -d "$platform_directory" ]]; then
+    echo "LangGraph platform directory not found: $platform_directory" >&2
+    exit 1
+  fi
+  if ! "$python_command" -c 'import sqlite3' >/dev/null 2>&1; then
+    echo "LangGraph requires a Python build with the sqlite3 module." >&2
+    echo "Set AGENTLAB_LANGGRAPH_PYTHON to a compatible Python 3.11+ interpreter." >&2
+    exit 1
+  fi
+
+  echo "Starting LangGraph Python service."
+  cd "$platform_directory"
+  PYTHONPATH="$platform_directory" \
+    "$python_command" -m uvicorn service.app:app \
+      --host "${AGENTLAB_LANGGRAPH_HOST:-127.0.0.1}" \
+      --port "${AGENTLAB_LANGGRAPH_PORT:-2024}"
 }
 
 run_aws_step_functions() {
@@ -259,6 +344,27 @@ case "${1:-}" in
     ;;
   worker)
     run_worker
+    ;;
+  restate-server)
+    run_restate_server
+    ;;
+  restate)
+    run_restate
+    ;;
+  dbos)
+    run_dbos
+    ;;
+  inngest)
+    run_inngest
+    ;;
+  inngest-dev)
+    run_inngest_dev
+    ;;
+  trigger-dev|trigger)
+    run_trigger_dev
+    ;;
+  langgraph)
+    run_langgraph
     ;;
   aws-step-functions|aws)
     run_aws_step_functions

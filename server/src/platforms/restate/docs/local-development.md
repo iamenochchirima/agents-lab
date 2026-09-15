@@ -3,7 +3,6 @@
 ## Requirements
 
 - Node.js 22 or newer.
-- Docker with the Compose plugin.
 - Dependencies installed in this platform package:
 
 ```bash
@@ -12,11 +11,32 @@ npm --prefix server run build
 ```
 
 The platform package pins `@restatedev/restate-sdk` and
-`@restatedev/restate-sdk-clients` to `1.17.0`. The root server package pins the same
-runtime dependencies for the composed Lab server. The local server image is pinned to
-`docker.restate.dev/restatedev/restate:1.7.10` in the platform Compose file.
+`@restatedev/restate-sdk-clients` to `1.17.0` and the self-contained
+`@restatedev/restate-server` binary to `1.7.10`.
 
-## Start the local dependency
+## Start the local dependency without Docker
+
+Restate is distributed as a self-contained server binary. The default local path
+uses that binary, so it does not require Docker, PostgreSQL, or a Restate account:
+
+```bash
+npm --prefix server/src/platforms/restate run dev:server
+```
+
+The command stores local Restate state in `lab/restate-native-data/`. That directory is
+runtime state and must not be committed. The server exposes ingress on
+`127.0.0.1:8080` and the Admin API/UI on `127.0.0.1:9070`.
+
+Check readiness:
+
+```bash
+curl --fail http://127.0.0.1:9070/health
+```
+
+## Optional Docker profile
+
+Docker remains useful when reproducing the pinned container profile or the
+testcontainers replay suite, but it is no longer the only local path.
 
 From the repository root:
 
@@ -40,19 +60,19 @@ npm --prefix server run build
 node --enable-source-maps server/dist/src/platforms/restate/service-entry.js
 ```
 
-In a third terminal, register the host service with the containerized Restate
-server:
+In a third terminal, register the host service with the local Restate server:
 
 ```bash
 curl --fail --request POST \
   --url http://127.0.0.1:9070/deployments \
   --header 'content-type: application/json' \
-  --data '{"uri":"http://host.docker.internal:9080"}'
+  --data '{"uri":"http://127.0.0.1:9080"}'
 ```
 
-If the service and Restate server both run directly on the host, register
-`http://127.0.0.1:9080` instead. Registration is a Restate deployment operation;
-the runner reports a healthy server and an unregistered service separately.
+If the Restate server is running in Docker while the service runs on the host,
+register `http://host.docker.internal:9080` instead. Registration is a Restate
+deployment operation; the runner reports a healthy server and an unregistered
+service separately.
 
 ## Checks
 

@@ -34,7 +34,7 @@ From the repository root:
 
 ```bash
 cd server/src/platforms/trigger-dev
-npx trigger.dev@4.5.14 dev start --skip-update-check --env-file ../../../../.env
+npx trigger@4.5.14 dev start --skip-update-check --env-file ../../../../.env
 ```
 
 The command discovers `variants/baseline/execution/task.ts` through
