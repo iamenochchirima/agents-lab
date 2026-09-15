@@ -1,7 +1,7 @@
 # AWS Step Functions baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00<br>
-**Last updated:** 2026-09-15T14:40:52+02:00<br>
+**Last updated:** 2026-09-15T14:41:39+02:00<br>
 **Status:** Active — platform-local implementation complete; emulator validation is pending<br>
 **Owner:** Assigned platform agent<br>
 **Platform:** `aws-step-functions`<br>
@@ -231,11 +231,14 @@ Not run:
 
 ## Commit boundaries
 
-The final handoff must list the hashes for these coherent sections:
+Recorded commits:
 
-1. Platform runtime, SDK boundary, service, runner, state machine, and model adapters.
-2. Offline tests, opt-in emulator integration, and playground.
-3. This plan's exact validation record and documentation updates.
+- `0f6cbffddfe705a88e2f1cea7e0345376242af77` — platform runtime, SDK boundary,
+  service, runner, state machine, and model adapters.
+- `fbe6e66a7ba7958450cebac40d3d3ec6ce78faa1` — offline tests, opt-in emulator
+  integration, and playground.
+- `5d2447dd6f4136d37adb6efdf8d027ddf6972a59` — documentation and this active
+  plan's implementation/validation record.
 
 Each commit must contain only the paths owned by this plan. Unrelated dirty
 worktree changes must remain unstaged.
