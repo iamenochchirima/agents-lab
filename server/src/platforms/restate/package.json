@@ -6,6 +6,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "apache-arrow": "18.1.0",
     "@restatedev/restate-sdk": "1.17.0",
     "@restatedev/restate-sdk-clients": "1.17.0"
   },

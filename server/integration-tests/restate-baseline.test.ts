@@ -3,6 +3,12 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
+import { loadRestateConfig } from "../src/platforms/restate/config.js";
+import {
+  RestateBaselineRunner,
+  type RestateIngress,
+} from "../src/platforms/restate/runner-adapter/restate-runner.js";
 import { baselineWorkflow } from "../src/platforms/restate/service/baseline-service.js";
 import type { RestateWorkflowInput, RestateWorkflowResult } from "../src/platforms/restate/variants/baseline/contracts.js";
 
@@ -25,6 +31,7 @@ const { RestateContainer, RestateTestEnvironment } = (await import(platformDepen
       readonly container: () => unknown;
     }): Promise<{
       baseUrl(): string;
+      adminAPIBaseUrl(): string;
       stateOf(service: typeof baselineWorkflow, key: string): { get(name: string): Promise<unknown> };
       stop(): Promise<void>;
     }>;
@@ -55,18 +62,34 @@ test(
         systemInstruction: "Be concise.",
         model: { provider: "fake", model: "fake-success" },
       };
-      const workflow = ingress.workflowClient(baselineWorkflow, `agentlab:${RUN_ID}`);
-      const submission = await workflow.workflowSubmit(input);
+      const runner = RestateBaselineRunner.fromOptions({
+        config: loadRestateConfig({
+          AGENTLAB_RESTATE_INGRESS_URL: environment.baseUrl(),
+          AGENTLAB_RESTATE_ADMIN_URL: environment.adminAPIBaseUrl(),
+        }),
+        ingress: ingress as unknown as RestateIngress,
+      });
+      const manifest = buildRunManifest({
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: input.prompt },
+        model: input.model,
+      }, { runId: RUN_ID, platformConfig: runner.manifestConfiguration() });
+      const reference = await runner.start(manifest);
+      const workflow = ingress.workflowClient(baselineWorkflow, reference.executionId);
       const result = await workflow.workflowAttach();
       const state = await environment.stateOf(baselineWorkflow, `agentlab:${RUN_ID}`).get("status");
+      const inspection = await runner.inspect(reference);
+      const cancellation = await runner.cancel(reference, "already complete");
 
-      assert.equal(submission.status, "Accepted");
-      assert.equal(submission.attachable, true);
+      assert.equal(reference.native.submissionOutcome, "accepted");
       assert.equal(result.runId, RUN_ID);
       assert.equal(result.status, "completed");
       assert.equal(result.output, "Fake response: integration prompt");
       assert.equal(result.eventIntents.at(-1)?.kind, "RunCompleted");
       assert.deepEqual(state, { status: "completed", runId: RUN_ID, finishedAt: result.finishedAt });
+      assert.equal(inspection.status, "completed");
+      assert.equal(cancellation.alreadyTerminal, true);
     } finally {
       await environment.stop();
     }
@@ -76,5 +99,8 @@ test(
 function platformDependency(packageName: string): string {
   const sourcePath = new URL(`../src/platforms/restate/node_modules/@restatedev/${packageName}/dist/index.js`, import.meta.url);
   if (existsSync(fileURLToPath(sourcePath))) return fileURLToPath(sourcePath);
-  return fileURLToPath(new URL(`../../node_modules/@restatedev/${packageName}/dist/index.js`, import.meta.url));
+  const serverNodeModulesPath = import.meta.url.includes("/dist/")
+    ? `../../node_modules/@restatedev/${packageName}/dist/index.js`
+    : `../node_modules/@restatedev/${packageName}/dist/index.js`;
+  return fileURLToPath(new URL(serverNodeModulesPath, import.meta.url));
 }

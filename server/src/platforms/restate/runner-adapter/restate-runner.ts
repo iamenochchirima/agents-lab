@@ -1,4 +1,5 @@
 import * as clients from "@restatedev/restate-sdk-clients";
+import { tableFromIPC } from "apache-arrow";
 
 import type { PlatformExecutionReference, RunEventIntent, RunManifest, RunMetrics, RunResult, RunTrajectory } from "../../../control-plane/domain/types.js";
 import type {
@@ -250,7 +251,7 @@ export class RestateBaselineRunner implements PlatformRunner {
       body: JSON.stringify({ query }),
     });
     if (!response.ok) throw new RestateRunnerUnavailableError("Restate introspection is unavailable.");
-    const row = queryRows((await response.json()) as unknown)[0];
+    const row = (await queryRowsFromResponse(response))[0];
     if (!row) return null;
     const id = stringValue(row, "id");
     const status = stringValue(row, "status");
@@ -379,6 +380,14 @@ function queryRows(value: unknown): readonly Record<string, unknown>[] {
   return value.rows.filter(Array.isArray).map((row) => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
 }
 
+async function queryRowsFromResponse(response: Response): Promise<readonly Record<string, unknown>[]> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("json")) return queryRows((await response.json()) as unknown);
+  if (!response.body) return [];
+  const table = await tableFromIPC(response.body);
+  return table.toArray().map((row) => row as unknown as Record<string, unknown>);
+}
+
 function deploymentContainsService(value: unknown, serviceName: string): boolean {
   if (!isRecord(value) || !Array.isArray(value.deployments)) return false;
   return value.deployments.some((deployment) => isRecord(deployment) && Array.isArray(deployment.services) && deployment.services.some((service) => isRecord(service) && service.name === serviceName));
@@ -393,7 +402,10 @@ function stringValue(value: Record<string, unknown>, key: string): string | null
 }
 
 function numberValue(value: Record<string, unknown>, key: string): number | null {
-  return typeof value[key] === "number" && Number.isFinite(value[key]) ? value[key] as number : null;
+  const candidate = value[key];
+  if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  if (typeof candidate === "bigint" && candidate <= BigInt(Number.MAX_SAFE_INTEGER)) return Number(candidate);
+  return null;
 }
 
 function dropUndefined(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
