@@ -41,7 +41,7 @@ automatically:
 cp .env.example .env
 # Edit .env:
 # COMPUTER_NATIVE_PROVIDER=openrouter
-# OPENROUTER_MODEL=openrouter/free
+# OPENROUTER_MODEL=cohere/north-mini-code:free
 # OPENROUTER_API_KEY=your-local-key
 npm run chat
 ```
