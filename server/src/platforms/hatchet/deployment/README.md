@@ -1,6 +1,7 @@
 # Local Hatchet stack
 
-This directory pins the full Hatchet server topology used by the baseline:
+This directory pins the optional full Hatchet server topology used when the
+baseline is intentionally run remotely:
 PostgreSQL, RabbitMQ, migrations, generated server configuration, the engine,
 and the dashboard. The images are pinned to Hatchet `v0.106.5`; the TypeScript
 worker uses the separate platform-local SDK pin in `../package.json`.

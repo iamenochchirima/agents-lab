@@ -1,6 +1,8 @@
 # Execution semantics
 
-The task is a regular Hatchet task, not Hatchet embedded mode. Hatchet owns
+The task is a regular Hatchet task. Local development defaults to Hatchet
+embedded mode; remote mode uses the full Hatchet server topology. The mode
+changes where the engine is hosted, not the task semantics. Hatchet owns
 queueing, worker assignment, task timeout enforcement, task retries, and the
 durable task/run record. The Lab owns the comparable manifest and the normalized
 evidence projection.
@@ -8,7 +10,8 @@ evidence projection.
 | Situation                            | Baseline behaviour                                                                                        |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------- |
 | Duplicate start                      | Hatchet status idempotency uses `input.runId`; the existing native run is returned.                       |
-| Lost admission acknowledgement       | Query by Lab metadata; if no run is found, report `reconciliation_required`.                              |
+| Lost admission acknowledgement       | Query by Lab metadata; if no run is found, retain `reconciliation_required`.                              |
+| Accepted run not visible yet         | Keep the run queued during Hatchet's short REST projection window; inspect again rather than reporting not found. |
 | Pre-dispatch model failure           | The task throws a retryable error; Hatchet performs the configured retry.                                 |
 | Provider HTTP failure                | The task returns a failed normalized result; the task itself is not blindly retried.                      |
 | Provider response lost after request | Return `reconciliation_required`; no provider replay is attempted.                                        |
@@ -31,4 +34,6 @@ Useful first-party references:
 - [Timeouts](https://docs.hatchet.run/v1/timeouts)
 - [Cancellation](https://docs.hatchet.run/v1/cancellation)
 - [Idempotency](https://docs.hatchet.run/v1/idempotency)
+- [Embedded mode](https://docs.hatchet.run/v1/embedded)
+- [Local deployment modes](https://docs.hatchet.run/v1/running-locally)
 - [TypeScript SDK task reference](https://docs.hatchet.run/reference/typescript/runnables)

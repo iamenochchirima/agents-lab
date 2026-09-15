@@ -29,6 +29,16 @@ selected explicitly:
 ./scripts/run_local_stack.sh --help
 ```
 
+The Hatchet baseline is also available as an optional service command. It uses
+Hatchet's embedded runtime by default and does not require Docker:
+
+```bash
+./scripts/run_local_stack.sh hatchet
+```
+
+The full Hatchet Compose profile is only needed when studying a separately
+deployed Hatchet server; see the platform's [local-development guide](../server/src/platforms/hatchet/docs/local-development.md).
+
 The launcher checks for installed frontend/server dependencies and prints the temporary
 log directory when the stack stops. If Temporal is unavailable, it exits with the exact
 local start command instead of starting a non-functional worker.

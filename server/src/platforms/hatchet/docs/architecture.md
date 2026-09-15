@@ -1,14 +1,16 @@
 # Hatchet baseline architecture
 
 The baseline is one Hatchet standalone task. The Lab server submits the task;
-the Hatchet engine persists and schedules it; a separate TypeScript worker
-executes the task; the runner inspects the task and projects its result into Lab
-evidence.
+the Hatchet engine persists and schedules it; a TypeScript worker executes the
+task; the runner inspects the task and projects its result into Lab evidence.
+In the default local mode, the embedded Hatchet engine and worker are started
+inside the Lab server process. Remote mode keeps the engine and worker as
+separate services for a full deployment topology.
 
 ```text
 Lab run manifest
   -> HatchetBaselineRunner.runNoWait()
-  -> Hatchet API / engine / PostgreSQL
+  -> Hatchet API / embedded or remote engine / PostgreSQL
   -> Hatchet worker
   -> model adapter
   -> Hatchet run details
@@ -19,8 +21,9 @@ Ownership is intentionally split:
 
 - `runner-adapter/hatchet-runner.ts` owns admission, reconciliation, inspection,
   cancellation, and safe native references.
-- `service/worker-host.ts` owns the separate worker process boundary and task
-  registration.
+- `service/worker-host.ts` owns engine selection, worker lifecycle, and task
+  registration. Embedded mode is an in-process application boundary around a
+  Hatchet sidecar; it is not a fake scheduler.
 - `variants/baseline/execution/task.ts` owns the task's model call and normalized
   task output.
 - `variants/baseline/models/` owns fake and OpenRouter provider behaviour.

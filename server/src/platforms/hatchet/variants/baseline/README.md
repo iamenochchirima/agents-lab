@@ -2,7 +2,7 @@
 
 The baseline is a single Hatchet task named `agentlab-hatchet-baseline`. It
 uses Hatchet task-level retries and execution/schedule timeouts, status-based
-idempotency, a separate worker process, and two model paths:
+idempotency, an embedded or remote worker host, and two model paths:
 
 - `fake/fake-success` and deterministic failure fixtures for lifecycle study;
 - `openrouter/<model>` when `OPENROUTER_API_KEY` is explicitly configured.
