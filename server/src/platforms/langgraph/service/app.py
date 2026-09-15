@@ -78,11 +78,18 @@ class LangGraphService:
     async def shutdown(self) -> None:
         for event in self.cancel_events.values():
             event.set()
-        self.store.mark_incomplete_unknown("SERVICE_SHUTDOWN", "The LangGraph service stopped before a terminal result was recorded.")
-        for task in self.active_tasks.values():
-            if not task.done():
-                task.cancel()
-        self.store.close()
+        active_tasks = [task for task in self.active_tasks.values() if not task.done()]
+        if active_tasks:
+            await asyncio.wait(active_tasks, timeout=2.0)
+        self.store.mark_incomplete_unknown(
+            "SERVICE_SHUTDOWN",
+            "The LangGraph service stopped before a terminal result was recorded.",
+        )
+        # asyncio.to_thread cannot interrupt its worker. Keep SQLite open while
+        # a worker drains so it cannot raise a closed-connection error or
+        # overwrite the persisted unknown outcome.
+        if all(task.done() for task in active_tasks):
+            self.store.close()
 
     async def _execute(self, request: StartRunRequest, cancel_event: threading.Event) -> None:
         execution_id = f"langgraph:{request.run_id}"
@@ -160,11 +167,12 @@ class LangGraphService:
                 "failureKind": exc.failure_kind,
                 "retryable": bool(exc.retryable),
             }
-            self.store.append_event(
-                execution_id,
-                "RunCancelled" if status == "cancelled" else "RunReconciliationRequired" if status == "unknown" else "RunFailed",
-                {"code": exc.code, "failureKind": exc.failure_kind, "retryable": bool(exc.retryable)},
-            )
+            if self.store.get(execution_id)["status"] in {"queued", "running"}:
+                self.store.append_event(
+                    execution_id,
+                    "RunCancelled" if status == "cancelled" else "RunReconciliationRequired" if status == "unknown" else "RunFailed",
+                    {"code": exc.code, "failureKind": exc.failure_kind, "retryable": bool(exc.retryable)},
+                )
         except Exception as exc:  # pragma: no cover - defensive process boundary
             status = "unknown" if cancel_event.is_set() else "failed"
             error = {
@@ -173,9 +181,10 @@ class LangGraphService:
                 "failureKind": "internal" if status == "failed" else "outcome_unknown",
                 "retryable": False,
             }
-            self.store.append_event(execution_id, "RunFailed" if status == "failed" else "RunReconciliationRequired", {"code": error["code"]})
+            if self.store.get(execution_id)["status"] in {"queued", "running"}:
+                self.store.append_event(execution_id, "RunFailed" if status == "failed" else "RunReconciliationRequired", {"code": error["code"]})
         finally:
-            self.store.finish(
+            finished = self.store.finish(
                 execution_id,
                 status=status,
                 finished_at=now_iso(),
@@ -184,11 +193,12 @@ class LangGraphService:
                 attempt_count=attempt_count,
                 usage=usage,
             )
-            self.store.append_event(
-                execution_id,
-                "PlatformExecutionFinished",
-                {"status": status, "durationMs": round((time.monotonic() - started_clock) * 1000)},
-            )
+            if finished:
+                self.store.append_event(
+                    execution_id,
+                    "PlatformExecutionFinished",
+                    {"status": status, "durationMs": round((time.monotonic() - started_clock) * 1000)},
+                )
 
     def _record_stream_part(self, execution_id: str, run_id: str, part: Any) -> None:
         if not isinstance(part, dict):

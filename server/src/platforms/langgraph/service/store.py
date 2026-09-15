@@ -243,17 +243,18 @@ class SQLiteRunStore:
         error: dict[str, Any] | None,
         attempt_count: int,
         usage: dict[str, int | None],
-    ) -> None:
+    ) -> bool:
         with self._lock, self._connection:
-            self._connection.execute(
+            result = self._connection.execute(
                 """
                 UPDATE service_runs
                 SET status = ?, finished_at = ?, output = ?, error_json = ?,
                     attempt_count = ?, usage_json = ?
-                WHERE execution_id = ?
+                WHERE execution_id = ? AND status IN ('queued', 'running')
                 """,
                 (status, finished_at, output, canonical_json(error) if error else None, attempt_count, canonical_json(usage), execution_id),
             )
+            return result.rowcount == 1
 
     def mark_incomplete_unknown(self, reason_code: str, reason: str) -> None:
         with self._lock:
