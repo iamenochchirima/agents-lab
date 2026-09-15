@@ -48,6 +48,8 @@ export interface InngestEventIntent extends RunEventIntent {
 
 export interface InngestRunRecord {
   readonly runId: string;
+  /** Null means this record predates request-hash enforcement and cannot be replayed safely. */
+  readonly requestHash: string | null;
   readonly status: InngestRunStatus;
   readonly deduplicationId: string;
   readonly eventId: string | null;
@@ -70,6 +72,7 @@ export interface InngestRunRecord {
 
 export interface InngestPublicRunRecord {
   readonly runId: string;
+  readonly requestHash: string | null;
   readonly status: InngestRunStatus;
   readonly deduplicationId: string;
   readonly eventId: string | null;

@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import type { RunError, RunMetrics, RunResult, RunTrajectory, RunUsage } from "../../../../control-plane/domain/types.js";
@@ -69,9 +70,10 @@ export class InngestRunStore {
   async admit(input: InngestRunInput): Promise<InngestRunRecord> {
     return this.mutate(() => {
       const existing = this.requireLoaded(input.runId);
+      const requestHash = requestHashForInput(input);
       if (existing) {
-        if (existing.modelProvider !== input.provider || existing.model !== input.model) {
-          throw new InngestRunConflictError("The run ID is already admitted with a different model configuration.");
+        if (existing.requestHash !== requestHash) {
+          throw new InngestRunConflictError("The run ID is already admitted with different request input.");
         }
         return existing;
       }
@@ -79,6 +81,7 @@ export class InngestRunStore {
       const admittedAt = this.now().toISOString();
       const record: InngestRunRecord = {
         runId: input.runId,
+        requestHash,
         status: "queued",
         deduplicationId: `agentlab:run:${input.runId}`,
         eventId: null,
@@ -149,7 +152,13 @@ export class InngestRunStore {
   async markModelRequested(runId: string, attempt: number): Promise<InngestRunRecord> {
     return this.mutate(() => {
       const record = this.requireRun(runId);
-      const updated = ensureModelPhase(record, this.now().toISOString());
+      const updated = ensureModelPhase({
+        ...record,
+        // Inngest's attempt context is scoped to the failing step and may be
+        // reset after a successful step. The projection therefore advances
+        // from the observed model request, not only from function admission.
+        attemptCount: Math.max(record.attemptCount, attempt + 1),
+      }, this.now().toISOString());
       return this.recordEventInMemory(updated, `model-requested:${attempt}`, "ModelRequested", { attempt });
     });
   }
@@ -260,6 +269,7 @@ export class InngestRunStore {
   toPublic(record: InngestRunRecord): InngestPublicRunRecord {
     return {
       runId: record.runId,
+      requestHash: record.requestHash,
       status: record.status,
       deduplicationId: record.deduplicationId,
       eventId: record.eventId,
@@ -353,6 +363,15 @@ export class InngestRunStore {
     await writeFile(temporaryPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
     await rename(temporaryPath, join(this.directory, STATE_FILE));
   }
+}
+
+export function requestHashForInput(input: InngestRunInput): string {
+  return createHash("sha256").update(JSON.stringify({
+    model: input.model,
+    prompt: input.prompt,
+    provider: input.provider,
+    systemInstruction: input.systemInstruction,
+  })).digest("hex");
 }
 
 function ensureModelPhase(record: InngestRunRecord, startedAt: string): InngestRunRecord {

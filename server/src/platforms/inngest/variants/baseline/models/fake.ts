@@ -1,8 +1,12 @@
+import { RetryAfterError } from "inngest";
+
 import type { InngestModelRequest, InngestModelResult } from "../contracts.js";
 
-export class InngestPreDispatchRetryError extends Error {
+export class InngestPreDispatchRetryError extends RetryAfterError {
   constructor(message = "The deterministic fake model failed before dispatch and may be retried safely.") {
-    super(message);
+    // Keep the deterministic fixture quick while still exercising Inngest's
+    // native step retry path. Production errors use the configured backoff.
+    super(message, 100);
     this.name = "InngestPreDispatchRetryError";
   }
 }

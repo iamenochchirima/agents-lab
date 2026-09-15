@@ -329,6 +329,28 @@ export class InngestPlatformService {
           return null;
         });
 
+        const cancellationRequested = await step.run(`check-cancellation-${input.runId}`, async () => {
+          return (await this.store.get(input.runId))?.cancellationRequested ?? false;
+        });
+        if (cancellationRequested) {
+          await step.run(`record-cancelled-before-start-${input.runId}`, async () => {
+            await this.store.finish(input.runId, "cancelled", {
+              output: null,
+              error: {
+                code: "INNGEST_CANCELLED_BEFORE_START",
+                message: "Cancellation was requested before the function reached its first model step.",
+                failureKind: "cancelled",
+                retryable: false,
+              },
+              attemptCount: (await this.store.get(input.runId))?.attemptCount ?? 0,
+              usage: emptyUsage(),
+              terminalCode: "INNGEST_CANCELLED_BEFORE_START",
+            });
+            return null;
+          });
+          return { status: "cancelled", output: null };
+        }
+
         if (input.model === "fake-wait") {
           await step.sleep(`wait-before-model-${input.runId}`, "10s");
         }
