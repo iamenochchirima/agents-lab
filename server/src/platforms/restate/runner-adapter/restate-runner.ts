@@ -66,6 +66,7 @@ interface NativeRestateReference {
 interface InvocationRecord {
   readonly id: string;
   readonly status: string;
+  readonly completionResult: string | null;
   readonly retryCount: number | null;
   readonly modifiedAt: string | null;
 }
@@ -218,7 +219,7 @@ export class RestateBaselineRunner implements PlatformRunner {
       lastModifiedAt: invocation.modifiedAt,
     });
     return {
-      status: mapNativeStatus(invocation.status),
+      status: mapNativeStatus(invocation.status, invocation.completionResult),
       reference: updatedReference,
       eventIntents: [],
       result: null,
@@ -238,10 +239,10 @@ export class RestateBaselineRunner implements PlatformRunner {
 
   private async findInvocation(native: NativeRestateReference): Promise<InvocationRecord | null> {
     if (native.invocationId) {
-      const byId = await this.queryInvocation(`select id, status, retry_count, modified_at from sys_invocation where id = '${sqlString(native.invocationId)}'`);
+      const byId = await this.queryInvocation(`select id, status, completion_result, retry_count, modified_at from sys_invocation where id = '${sqlString(native.invocationId)}'`);
       if (byId) return byId;
     }
-    return this.queryInvocation(`select id, status, retry_count, modified_at from sys_invocation where target_service_name = '${sqlString(native.serviceName)}' and target_service_key = '${sqlString(native.workflowKey)}'`);
+    return this.queryInvocation(`select id, status, completion_result, retry_count, modified_at from sys_invocation where target_service_name = '${sqlString(native.serviceName)}' and target_service_key = '${sqlString(native.workflowKey)}'`);
   }
 
   private async queryInvocation(query: string): Promise<InvocationRecord | null> {
@@ -256,7 +257,13 @@ export class RestateBaselineRunner implements PlatformRunner {
     const id = stringValue(row, "id");
     const status = stringValue(row, "status");
     if (!id || !status) return null;
-    return { id, status, retryCount: numberValue(row, "retry_count"), modifiedAt: stringValue(row, "modified_at") };
+    return {
+      id,
+      status,
+      completionResult: stringValue(row, "completion_result"),
+      retryCount: numberValue(row, "retry_count"),
+      modifiedAt: stringValue(row, "modified_at"),
+    };
   }
 
   private async requestAdmin(path: string, init: RequestInit): Promise<Response> {
@@ -283,14 +290,14 @@ export function workflowKeyForRun(runId: string): string {
   return `${WORKFLOW_KEY_PREFIX}${runId}`;
 }
 
-export function mapNativeStatus(status: string): "queued" | "running" | "completed" | "failed" | "cancelled" {
+export function mapNativeStatus(status: string, completionResult?: string | null): "queued" | "running" | "completed" | "failed" | "cancelled" {
   switch (status.toLowerCase()) {
     case "pending":
     case "ready": return "queued";
     case "running":
     case "backing-off":
     case "suspended": return "running";
-    case "completed": return "completed";
+    case "completed": return completionResult?.toLowerCase() === "failure" ? "failed" : "completed";
     case "cancelled":
     case "canceled": return "cancelled";
     case "failed":

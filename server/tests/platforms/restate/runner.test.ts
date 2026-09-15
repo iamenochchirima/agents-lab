@@ -82,6 +82,7 @@ test("workflow keys are deterministic and native statuses remain honest", () => 
   assert.equal(mapNativeStatus("pending"), "queued");
   assert.equal(mapNativeStatus("backing-off"), "running");
   assert.equal(mapNativeStatus("completed"), "completed");
+  assert.equal(mapNativeStatus("completed", "failure"), "failed");
   assert.equal(mapNativeStatus("canceled"), "cancelled");
   assert.equal(mapNativeStatus("killed"), "failed");
 });

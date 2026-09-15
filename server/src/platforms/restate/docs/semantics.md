@@ -9,6 +9,7 @@
 | Pending or ready invocation | Map to `queued`. |
 | Running, suspended, or backing-off invocation | Map to `running`. |
 | Completed workflow output | Project the durable result and event intents. |
+| Completed invocation with `completion_result=failure` | Map the native terminal failure to `failed`, not `completed`. |
 | Terminal provider failure | Return a non-retryable model failure when the provider has rejected the request. |
 | Pre-dispatch retryable failure | Let the bounded Restate durable-step policy retry it. |
 | Post-dispatch transport failure | Return `outcome_unknown`; retrying could duplicate a provider request. |
