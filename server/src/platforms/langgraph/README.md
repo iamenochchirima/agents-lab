@@ -1,6 +1,8 @@
 # LangGraph platform
 
-Status: platform-local baseline implemented; common-server registration is a separate integration handoff.
+Status: baseline implementation and shared server registration complete. LangGraph is
+advertised as runnable when the Lab server starts, but it reports unavailable until the
+platform-local Python service is running.
 
 This directory contains the Lab's first real Python LangGraph baseline. It is a local learning and comparison profile, not LangGraph Platform, LangSmith Deployment, or a production persistence recommendation.
 
@@ -14,9 +16,21 @@ Lab server / generic runner seam
   -> LangGraph SQLite checkpointer
 ```
 
-The TypeScript adapter is the only part that knows the generic runner contract. The Python service owns graph execution, thread checkpoints, event sequencing, model calls, cancellation requests, and native execution state. The Lab server remains the sole writer of `lab/runs/<run-id>/` once the primary integration agent registers this adapter.
+The TypeScript adapter is the only part that knows the generic runner contract. The Python service owns graph execution, thread checkpoints, event sequencing, model calls, cancellation requests, and native execution state. The Lab server remains the sole writer of `lab/runs/<run-id>/` after the adapter projects that state through the common evidence store.
 
 The platform-local protocol is defined in [`protocol/`](protocol/) and is validated independently by Pydantic and TypeScript. It uses `runId` as the stable Lab identity and LangGraph `thread_id` as the checkpoint identity. A checkpoint ID, graph run ID, and node task ID remain separate native details.
+
+The TypeScript server defaults to `http://127.0.0.1:2024`; override it with
+`AGENTLAB_LANGGRAPH_SERVICE_URL` when the Python service runs elsewhere. Start the
+service from the repository root with:
+
+```bash
+cd server/src/platforms/langgraph
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.lock
+uvicorn service.app:app --host 127.0.0.1 --port 2024
+```
 
 ## Runtime facts
 
