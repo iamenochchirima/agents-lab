@@ -11,6 +11,8 @@ import { CompareRunModal } from "./CompareRunModal";
 import { cancelRun, createRun, getRun, getRunEvents, PlatformApiError, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
+const RUNNABLE_BASELINE_PLATFORMS = new Set(["temporal", "restate", "langgraph", "mastra"]);
+
 export function PlatformRunnerPage() {
   const { platform } = useOutletContext<PlatformOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -21,8 +23,8 @@ export function PlatformRunnerPage() {
   const [variantId, setVariantId] = useState(platform.variants[0].id);
   const [infrastructureId, setInfrastructureId] = useState(platform.infrastructure[0]?.id ?? "none");
   const [experimentId, setExperimentId] = useState("none");
-  const [provider, setProvider] = useState(platform.id === "temporal" ? "fake" : "");
-  const [model, setModel] = useState(platform.id === "temporal" ? "fake-success" : "");
+  const [provider, setProvider] = useState(RUNNABLE_BASELINE_PLATFORMS.has(platform.id) ? "fake" : "");
+  const [model, setModel] = useState(RUNNABLE_BASELINE_PLATFORMS.has(platform.id) ? "fake-success" : "");
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [run, setRun] = useState<RunView | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -37,7 +39,7 @@ export function PlatformRunnerPage() {
     [platform.computerEnvironmentIds],
   );
 
-  const isRunnable = platform.id === "temporal" && variantId === "baseline";
+  const isRunnable = RUNNABLE_BASELINE_PLATFORMS.has(platform.id) && variantId === "baseline";
   const taskError = task.trim().length === 0 ? "Enter a task prompt." : null;
 
   useEffect(() => {
@@ -164,7 +166,7 @@ export function PlatformRunnerPage() {
         <section className="runner-controls" aria-label="Run configuration">
           <div className="runner-controls-heading">
             <span><Settings2 aria-hidden="true" size={15} /> Configuration</span>
-            <small className={isRunnable ? "runner-connected" : undefined}>{isRunnable ? "Temporal baseline" : "Unavailable"}</small>
+            <small className={isRunnable ? "runner-connected" : undefined}>{isRunnable ? `${platform.name} baseline` : "Unavailable"}</small>
           </div>
           <div className="runner-control-grid">
             {platform.kind === "computer-native" ? (
