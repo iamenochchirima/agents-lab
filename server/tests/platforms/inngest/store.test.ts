@@ -4,7 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { InngestRunStore } from "../../../src/platforms/inngest/variants/baseline/store.js";
+import { InngestRunConflictError, InngestRunStore } from "../../../src/platforms/inngest/variants/baseline/store.js";
 
 const input = {
   runId: "run-inngest-store",
@@ -47,6 +47,23 @@ test("Inngest store persists lifecycle and is idempotent across reload", async (
     const persisted = await reloaded.get(input.runId);
     assert.equal(persisted?.result?.output, "done");
     assert.equal(persisted?.functionRunId, "fn-run-1");
+    assert.equal(persisted?.requestHash?.length, 64);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Inngest store rejects a reused run ID with different request input", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentlab-inngest-conflict-"));
+  try {
+    const store = new InngestRunStore(directory);
+    await store.load();
+    await store.admit(input);
+
+    await assert.rejects(
+      store.admit({ ...input, prompt: "A different prompt." }),
+      (error: unknown) => error instanceof InngestRunConflictError && /different request input/.test(error.message),
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -63,6 +80,22 @@ test("Inngest store records cancellation requests without fabricating a terminal
     assert.equal(updated.cancellationRequested, true);
     assert.equal(updated.result, null);
     assert.equal(updated.events.at(-1)?.kind, "RunCancellationRequested");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("Inngest store counts step retries from observed model requests", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "agentlab-inngest-retry-count-"));
+  try {
+    const store = new InngestRunStore(directory);
+    await store.load();
+    await store.admit(input);
+    await store.markStarted(input.runId, "fn-run-1", 0);
+    const updated = await store.markModelRequested(input.runId, 1);
+
+    assert.equal(updated.attemptCount, 2);
+    assert.equal(updated.events.at(-1)?.payload.attempt, 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
