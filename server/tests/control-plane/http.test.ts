@@ -147,6 +147,10 @@ test("HTTP API returns structured validation and health responses", async () => 
     assert.equal(health.json().controlPlane.ready, true);
     assert.equal(health.json().platforms[0].platform, "temporal");
 
+    const readiness = await app.inject({ method: "GET", url: "/ready" });
+    assert.equal(readiness.statusCode, 200);
+    assert.deepEqual(readiness.json(), { status: "ready", controlPlane: { ready: true } });
+
     runner.reachable = false;
     const degraded = await app.inject({ method: "GET", url: "/health" });
     assert.equal(degraded.statusCode, 503);

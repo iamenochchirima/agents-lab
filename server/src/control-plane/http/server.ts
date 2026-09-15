@@ -54,6 +54,10 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     });
   });
 
+  app.get("/ready", async (_request, reply) => {
+    return reply.send({ status: "ready", controlPlane: { ready: true } });
+  });
+
   app.post("/api/runs", async (request, reply) => {
     try {
       const run = await dependencies.service.createRun(parseRunRequest(request.body));

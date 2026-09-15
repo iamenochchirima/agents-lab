@@ -71,12 +71,14 @@ export class PlatformRegistry {
   }
 
   async checkConnections(): Promise<readonly (PlatformRegistration & { readonly connectivity: RunnerConnectivity })[]> {
-    const results = [];
-    for (const registration of this.registrations) {
-      if (!registration.runner) continue;
-      results.push({ ...registration, connectivity: await registration.runner.checkConnection() });
-    }
-    return results;
+    return Promise.all(
+      this.registrations
+        .filter((registration): registration is PlatformRegistration & { readonly runner: PlatformRunner } => registration.runner !== null)
+        .map(async (registration) => ({
+          ...registration,
+          connectivity: await registration.runner.checkConnection(),
+        })),
+    );
   }
 }
 

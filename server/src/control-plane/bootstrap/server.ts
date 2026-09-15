@@ -9,12 +9,17 @@ import { PlatformRegistry } from "../application/platform-registry.js";
 import { RunService } from "../application/run-service.js";
 import { buildControlPlaneServer } from "../http/server.js";
 import type { PlatformRunner } from "../ports/runner.js";
+import { LangGraphBaselineRunner } from "../../platforms/langgraph/runner-adapter/langgraph-runner.js";
+import { MastraBaselineRunner } from "../../platforms/mastra/runner-adapter/mastra-runner.js";
+import { loadRestateConfig } from "../../platforms/restate/config.js";
+import { RestateBaselineRunner } from "../../platforms/restate/runner-adapter/restate-runner.js";
 import { TemporalBaselineRunner } from "../../platforms/temporal/runner-adapter/temporal-runner.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
   readonly config: ServerConfig;
   readonly runner: PlatformRunner;
+  readonly runners: readonly PlatformRunner[];
   close(): Promise<void>;
 }
 
@@ -30,8 +35,14 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     runner = TemporalBaselineRunner.unavailable(config, safeMessage(error));
   }
 
+  const restateRunner = await RestateBaselineRunner.connect(loadRestateConfig());
+  const langgraphRunner = LangGraphBaselineRunner.fromOptions({
+    serviceUrl: process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024",
+  });
+  const mastraRunner = new MastraBaselineRunner();
+  const runners = [runner, restateRunner, langgraphRunner, mastraRunner] as const;
   const evidence = new RunEvidenceStore(config.runsRoot);
-  const registry = new PlatformRegistry([runner]);
+  const registry = new PlatformRegistry(runners);
   const service = new RunService({ config, evidence, registry });
   const app = buildControlPlaneServer({ config, service, evidence, registry });
 
@@ -39,6 +50,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     app,
     config,
     runner,
+    runners,
     async close() {
       await app.close();
       await runner.close();
