@@ -5,7 +5,8 @@ It asks the context module for a bounded request, invokes the model module, and 
 approved actions through tools. It must not construct prompt context, implement provider
 transport, or know which Lab scenario or experiment requested a run.
 
-The first terminal slice implements one text-only request. Its persisted turn states are
-`submitting`, `streaming`, `completed`, `failed`, `cancelled`, and `interrupted`.
+The current terminal slice implements a bounded model/tool turn. Its persisted turn
+states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
+`interrupted`. Model and tool rounds are recorded before and after tool execution.
 Interrupted turns are recorded after restart and are never automatically resent because
-the provider may have completed after the process stopped.
+the provider or tool may have completed after the process stopped.

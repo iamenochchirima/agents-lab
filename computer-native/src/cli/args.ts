@@ -2,12 +2,14 @@ import type { DeterministicBehavior, ProviderName } from "../runtime/contracts.j
 import { ComputerNativeError } from "../runtime/errors.js";
 
 export interface CliOptions {
-  readonly command: "chat";
+  readonly command: "chat" | "doctor";
   readonly stateDir?: string;
   readonly sessionId?: string;
   readonly provider?: ProviderName;
   readonly model?: string;
   readonly timeoutMs?: number;
+  readonly firstEventTimeoutMs?: number;
+  readonly workspaceRoot?: string;
   readonly deterministicBehavior?: DeterministicBehavior;
   readonly deterministicDelayMs?: number;
   readonly message?: string;
@@ -32,19 +34,24 @@ export function parseArgs(args: readonly string[]): CliOptions {
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     return { command: "chat", help: true };
   }
-  if (args[0] !== "chat") throw new ComputerNativeError("invalid-input", `Unknown command '${args[0]}'. Use 'computer-native chat'.`);
+  const command = args[0];
+  if (command !== "chat" && command !== "doctor") {
+    throw new ComputerNativeError("invalid-input", `Unknown command '${command}'. Use 'computer-native chat' or 'computer-native doctor'.`);
+  }
   const result: {
-    command: "chat";
+    command: "chat" | "doctor";
     stateDir?: string;
     sessionId?: string;
     provider?: ProviderName;
     model?: string;
     timeoutMs?: number;
+    firstEventTimeoutMs?: number;
+    workspaceRoot?: string;
     deterministicBehavior?: DeterministicBehavior;
     deterministicDelayMs?: number;
     message?: string;
     help: boolean;
-  } = { command: "chat", help: false };
+  } = { command, help: false };
   for (let index = 1; index < args.length; index += 1) {
     const argument = args[index];
     switch (argument) {
@@ -76,6 +83,15 @@ export function parseArgs(args: readonly string[]): CliOptions {
         result.timeoutMs = integer(nextValue(args, index, "--timeout-ms"), "--timeout-ms");
         index += 1;
         break;
+      case "--first-event-timeout-ms":
+        result.firstEventTimeoutMs = integer(nextValue(args, index, "--first-event-timeout-ms"), "--first-event-timeout-ms");
+        index += 1;
+        break;
+      case "--workspace":
+      case "--workspace-root":
+        result.workspaceRoot = nextValue(args, index, argument);
+        index += 1;
+        break;
       case "--deterministic-behavior": {
         const value = nextValue(args, index, "--deterministic-behavior");
         index += 1;
@@ -98,22 +114,27 @@ export function parseArgs(args: readonly string[]): CliOptions {
         throw new ComputerNativeError("invalid-input", `Unknown option '${argument}'.`);
     }
   }
+  if (result.command === "doctor" && result.message !== undefined) {
+    throw new ComputerNativeError("invalid-input", "The doctor command does not accept --message.");
+  }
   return result;
 }
 
-export const HELP_TEXT = `Usage: computer-native chat [options]
+export const HELP_TEXT = `Usage: computer-native <chat|doctor> [options]
 
-Start a local Computer Native terminal session. Without --message, the command
-reads messages interactively. The deterministic local provider is the default and never uses
-the network.
+Start a local Computer Native terminal session with 'chat', or run a bounded provider
+and workspace diagnostic with 'doctor'. The deterministic local provider is the default
+and never uses the network.
 
 Options:
-  --message <text>           Run one non-interactive turn
+  --message <text>           Run one non-interactive chat turn
   --state-dir <path>         Durable state directory
-  --session <id>             Resume an existing session
+  --session <id>             Resume an existing chat session
   --provider <deterministic|openrouter>
   --model <provider/model>   Model identifier
   --timeout-ms <milliseconds>
+  --first-event-timeout-ms <milliseconds>
+  --workspace <path>         Workspace root for read-only inspection tools
   --deterministic-behavior <mode>
                              success, failure, or timeout
   --deterministic-delay-ms <milliseconds>

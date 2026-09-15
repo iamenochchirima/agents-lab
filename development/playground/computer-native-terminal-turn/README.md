@@ -3,13 +3,13 @@
 ## Question
 
 What does the first real Computer Native turn persist before, during, and after a model
-request? How does the session look after failure, timeout, cancellation, and restart?
+request or read-only workspace tool round?
 
 ## What this runs
 
-This walkthrough calls the production Computer Native CLI and runtime. The deterministic
-local provider supplies repeatable text and controlled outcomes. OpenRouter is not used
-by the walkthrough.
+This walkthrough calls the production Computer Native runtime. The deterministic local
+provider supplies repeatable text, tool calls, and controlled outcomes. OpenRouter is not
+used by the walkthrough.
 
 ## Run it
 
@@ -23,8 +23,9 @@ cd ..
 node development/playground/computer-native-terminal-turn/run.mjs
 ```
 
-The walkthrough creates a temporary state directory and runs successful, failed,
-timed-out, and cancelled turns. It prints the session directory to inspect afterward.
+The walkthrough creates a temporary workspace and state directory, then runs a normal
+answer, directory listing, file read, rejected path escape, provider failure, and an
+interrupted model round. It prints the session directory to inspect afterward.
 
 ## Observe
 
@@ -36,19 +37,23 @@ sessions/<session-id>/
   transcript.jsonl
   turns/<turn-id>/turn.json
   turns/<turn-id>/events.jsonl
+  turns/<turn-id>/rounds.jsonl
   turns/<turn-id>/result.json
 ```
 
-The successful turn has a user and assistant message. Failure, timeout, and cancellation
-have only the user message. Each turn has correlated event IDs and a terminal result.
+Successful turns have a user and assistant message. Tool turns also have ordered
+`model_requested`, `model_completed`, `tool_requested`, and `tool_completed` evidence.
+The rejected path is returned as a model-visible tool error; it never reads outside the
+workspace. The interrupted turn is finalized on restart without replaying the model
+request.
 
 ## Change one thing
 
-Change the deterministic response or delay in `run.mjs`, then compare event order and
-result status. To see an interrupted turn, stop `npm run chat` after input but before the
-response finishes, then resume the same session ID.
+Change the deterministic response or requested tool path in `run.mjs`, then compare
+round evidence and result status. To see the interactive path, run `npm run chat` with
+`--workspace` and inspect `/status`, `/history`, and `/evidence`.
 
 ## Limits
 
-This demonstrates the first text-only turn. It does not establish tool execution,
-workspace access, memory, gateway delivery, or exactly-once provider behavior.
+This demonstrates only the bounded read-only tool slice. It does not establish file
+writes, shell execution, memory, gateway delivery, or exactly-once provider behavior.

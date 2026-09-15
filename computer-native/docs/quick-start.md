@@ -13,9 +13,9 @@ npm run typecheck
 npm test
 ```
 
-The package uses Node's built-in `readline` interface. It does not require a terminal UI
-framework. The default provider is the deterministic local provider, which does not use
-the network.
+The package uses Node's built-in `readline` interface and a local terminal renderer. It
+does not require a terminal UI framework. The default provider is the deterministic local
+provider, which does not use the network.
 
 ## Run one turn
 
@@ -31,15 +31,21 @@ npm run chat -- \
 For an interactive session, omit `--message`:
 
 ```bash
-npm run chat -- --state-dir "$STATE_DIR"
+npm run chat -- --state-dir "$STATE_DIR" --workspace .
 ```
 
-Type `exit` or `quit` to leave normally. Press Ctrl-C during a model request to cancel
-that turn. The session ID is printed when the process starts. Resume it with:
+Type `/help` to see commands. Use `/status`, `/history`, and `/evidence` to inspect the
+session. A line ending in `\\` continues into a multiline prompt. Type `/quit` to leave
+normally. Press Ctrl-C during a model request to cancel that turn; Ctrl-D exits when the
+prompt is idle. Resume the session with:
 
 ```bash
 npm run chat -- --state-dir "$STATE_DIR" --session <session-id>
 ```
+
+The workspace inspection tools are read-only and bounded. They accept workspace-relative
+paths only. Paths outside the configured workspace, oversized files, and non-UTF-8 files
+are rejected.
 
 ## Exercise controlled outcomes
 
@@ -68,6 +74,16 @@ cp .env.example .env
 # OPENROUTER_API_KEY=your-local-key
 npm run chat -- --state-dir "$STATE_DIR"
 ```
+
+Check the configured provider without creating a chat session or writing turn evidence:
+
+```bash
+npm run start -- doctor
+```
+
+The diagnostic uses the configured provider/model and the same bounded first-event and
+total-request deadlines as a turn. A failed result names the safe category (for example
+`rate-limit`, `provider-incomplete`, or `first-event-timeout`) without printing the API key.
 
 The local `.env` file is not committed. Explicit environment variables and command-line
 flags take precedence over it. The key is never included in the manifest, transcript,

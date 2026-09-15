@@ -14,9 +14,23 @@ export class ComputerNativeError extends Error {
   }
 }
 export class ModelProviderError extends ComputerNativeError {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super("provider", message, options);
+  constructor(message: string, options?: { cause?: unknown; code?: Extract<TurnError["code"], "provider" | "provider-empty" | "provider-incomplete" | "rate-limit"> }) {
+    super(options?.code ?? "provider", message, options);
     this.name = "ModelProviderError";
+  }
+}
+
+export class ToolExecutionError extends ComputerNativeError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super("tool", message, options);
+    this.name = "ToolExecutionError";
+  }
+}
+
+export class WorkspaceAccessError extends ComputerNativeError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super("workspace", message, options);
+    this.name = "WorkspaceAccessError";
   }
 }
 

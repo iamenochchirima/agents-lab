@@ -10,6 +10,7 @@ import {
   type LifecycleEventType,
   type SessionId,
   type SessionMetadata,
+  type RoundEvidence,
   type TerminalTurnStatus,
   type TranscriptMessage,
   type TurnRecord,
@@ -53,6 +54,48 @@ function turnDirectory(sessionDirectory: string, idValue: string): string {
 
 function terminalStateFromResult(result: TurnResult): Exclude<TurnStatus, "idle"> {
   return result.status;
+}
+
+function validateRound(round: RoundEvidence, sessionId: SessionId, turnId: TurnRecord["turnId"]): void {
+  if (round.schemaVersion !== 1 || round.sessionId !== sessionId || round.turnId !== turnId || !Number.isInteger(round.round) || round.round < 1) {
+    throw new ComputerNativeError("persistence", `Turn '${turnId}' contains an invalid round record. Repair it before continuing.`);
+  }
+  if ((round.phase === "tool_requested" || round.phase === "tool_completed") && (!round.callId || !round.toolName)) {
+    throw new ComputerNativeError("persistence", `Turn '${turnId}' contains a tool round without call identity. Repair it before continuing.`);
+  }
+}
+
+function validateRoundOrder(rounds: readonly RoundEvidence[], sessionId: SessionId, turnId: TurnRecord["turnId"]): void {
+  let previous: RoundEvidence | undefined;
+  const callIds = new Set<string>();
+  for (const round of rounds) {
+    validateRound(round, sessionId, turnId);
+    if (previous) {
+      if (round.round < previous.round || round.round > previous.round + 1) {
+        throw new ComputerNativeError("persistence", `Turn '${turnId}' contains out-of-order round evidence. Repair it before continuing.`);
+      }
+      if (round.round === previous.round + 1 && round.phase !== "model_requested") {
+        throw new ComputerNativeError("persistence", `Turn '${turnId}' starts a new round with an invalid phase. Repair it before continuing.`);
+      }
+      if (round.round === previous.round) {
+        const validSameRoundTransition =
+          (previous.phase === "model_requested" && round.phase === "model_completed") ||
+          (previous.phase === "model_completed" && round.phase === "tool_requested") ||
+          (previous.phase === "tool_requested" && round.phase === "tool_completed") ||
+          (previous.phase === "tool_completed" && round.phase === "tool_requested");
+        if (!validSameRoundTransition) {
+          throw new ComputerNativeError("persistence", `Turn '${turnId}' contains out-of-order phase evidence. Repair it before continuing.`);
+        }
+      }
+    }
+    if (round.callId && (round.phase === "tool_requested" || round.phase === "tool_completed")) {
+      if (callIds.has(round.callId) && round.phase === "tool_requested") {
+        throw new ComputerNativeError("persistence", `Turn '${turnId}' contains duplicate tool call '${round.callId}'. Repair it before continuing.`);
+      }
+      if (round.phase === "tool_requested") callIds.add(round.callId);
+    }
+    previous = round;
+  }
 }
 
 export class SessionStore {
@@ -229,6 +272,18 @@ export class TurnStore {
 
   async readEvents(): Promise<LifecycleEvent[]> {
     return readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
+  }
+
+  async appendRound(round: RoundEvidence): Promise<void> {
+    const existing = await this.readRounds();
+    validateRoundOrder([...existing, round], this.sessionId, this.turnId);
+    await appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(round));
+  }
+
+  async readRounds(): Promise<RoundEvidence[]> {
+    const rounds = await readJsonLines<RoundEvidence>(path.join(this.directory, "rounds.jsonl"));
+    validateRoundOrder(rounds, this.sessionId, this.turnId);
+    return rounds;
   }
 
   async updateState(nextState: Exclude<TurnStatus, "idle">): Promise<void> {

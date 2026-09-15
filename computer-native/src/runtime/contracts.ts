@@ -32,8 +32,23 @@ export interface TranscriptMessage {
 }
 
 export interface ModelMessage {
-  readonly role: "system" | "user" | "assistant";
-  readonly content: string;
+  readonly role: "system" | "user" | "assistant" | "tool";
+  readonly content: string | null;
+  readonly toolCalls?: readonly ModelToolCall[];
+  readonly toolCallId?: string;
+  readonly name?: string;
+}
+
+export interface ModelToolCall {
+  readonly callId: string;
+  readonly name: string;
+  readonly argumentsJson: string;
+}
+
+export interface ModelToolDefinition {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: Readonly<Record<string, unknown>>;
 }
 
 export interface ModelRequest {
@@ -42,6 +57,7 @@ export interface ModelRequest {
   readonly provider: ProviderName;
   readonly model: string;
   readonly messages: readonly ModelMessage[];
+  readonly tools?: readonly ModelToolDefinition[];
 }
 
 export interface ModelUsage {
@@ -50,8 +66,17 @@ export interface ModelUsage {
   readonly totalTokens?: number;
 }
 
+export interface TurnMetrics {
+  readonly modelRequestCount: number;
+  readonly toolCallCount: number;
+  readonly roundCount: number;
+  readonly durationMs: number;
+  readonly cost: null;
+}
+
 export type ModelStreamEvent =
   | { readonly type: "text"; readonly text: string }
+  | { readonly type: "tool_call"; readonly call: ModelToolCall }
   | { readonly type: "completed"; readonly usage?: ModelUsage };
 
 export interface TurnError {
@@ -59,9 +84,16 @@ export interface TurnError {
     | "configuration"
     | "persistence"
     | "provider"
+    | "provider-empty"
+    | "provider-incomplete"
+    | "rate-limit"
+    | "first-event-timeout"
     | "timeout"
     | "cancelled"
-    | "interrupted";
+    | "interrupted"
+    | "tool"
+    | "workspace"
+    | "round-limit";
   readonly message: string;
 }
 
@@ -77,6 +109,7 @@ export interface TurnResult {
   readonly assistantMessageId?: string;
   readonly assistantText?: string;
   readonly usage?: ModelUsage;
+  readonly metrics?: TurnMetrics;
   readonly error?: TurnError;
 }
 
@@ -118,6 +151,25 @@ export interface TurnRecord {
   readonly userMessagePersisted: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export type TurnEvent =
+  | { readonly type: "waiting"; readonly round: number }
+  | { readonly type: "text"; readonly text: string; readonly round: number }
+  | { readonly type: "tool_started"; readonly round: number; readonly call: ModelToolCall }
+  | { readonly type: "tool_completed"; readonly round: number; readonly callId: string; readonly name: string; readonly ok: boolean; readonly summary: string }
+  | { readonly type: "status"; readonly status: TurnStatus; readonly round: number };
+
+export interface RoundEvidence {
+  readonly schemaVersion: 1;
+  readonly sessionId: SessionId;
+  readonly turnId: TurnId;
+  readonly round: number;
+  readonly phase: "model_requested" | "model_completed" | "tool_requested" | "tool_completed";
+  readonly recordedAt: string;
+  readonly callId?: string;
+  readonly toolName?: string;
+  readonly payload: Readonly<Record<string, unknown>>;
 }
 
 export function asSessionId(value: string): SessionId {
