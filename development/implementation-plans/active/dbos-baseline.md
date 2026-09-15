@@ -1,8 +1,8 @@
 # DBOS baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T11:29:48+02:00
-**Status:** Active
+**Last updated:** 2026-09-15T13:57:12+02:00
+**Status:** Active — implementation integrated; PostgreSQL acceptance recorded
 **Owner:** Assigned platform agent
 **Platform:** `dbos`
 **Variant:** `baseline`
@@ -30,6 +30,27 @@ POST /api/runs → DBOS runner adapter → DBOS workflow + PostgreSQL → eviden
 ```
 
 The local path must use a real PostgreSQL instance, not an in-memory substitute.
+
+## Current implementation status
+
+The DBOS workflow host, PostgreSQL-backed state boundary, runner adapter, safe native
+step evidence, local operation/semantics docs, opt-in integration test, shared server
+registration, and UI availability wiring are implemented.
+
+Verified in this wave:
+
+- [x] 7 focused DBOS unit/adapter tests pass.
+- [x] A real PostgreSQL 16 container and DBOS service completed a fake-model run
+  through the generic Lab API.
+- [x] The opt-in DBOS integration test passed from a fresh PostgreSQL/service start.
+- [x] The generic evidence projection retained DBOS step metadata and refreshed the
+  terminal native status to `SUCCESS`.
+- [x] Server, UI typecheck/build, and the full server test suite pass.
+
+Remaining before archival:
+
+- [ ] Record a manual UI run and the final focused commit hashes in the completion
+  record.
 
 ## Ownership and parallel boundary
 

@@ -47,6 +47,26 @@ at startup. Adding a new platform directory does not make it runnable; its adapt
 implement the generic runner contract, be registered by the server bootstrap, and have
 its own implementation plan and validation record.
 
+## Current runnable baselines
+
+The current server composition registers these baseline adapters. A registered adapter
+is an implementation surface; its `checkConnection()` result still depends on the
+required local service being available.
+
+| Platform | Baseline boundary | Local dependency |
+| --- | --- | --- |
+| Temporal | TypeScript workflow and worker | Temporal server and worker |
+| Restate | TypeScript durable workflow service | Restate server and registered service |
+| LangGraph | Python graph service with SQLite checkpoints | LangGraph service |
+| Mastra | Direct TypeScript agent call | Lab server process |
+| Inngest | TypeScript event/function service | Inngest Dev Server and function service |
+| Trigger.dev | TypeScript task and worker boundary | Trigger server and local task worker |
+| DBOS | TypeScript workflow host | PostgreSQL and DBOS service |
+
+The UI uses this distinction directly: a platform can be selectable while its run
+control remains disabled until the server reports that its required dependency is
+reachable.
+
 Every baseline variant has the same responsibility layout:
 
 ```text

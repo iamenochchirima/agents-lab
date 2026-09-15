@@ -1,8 +1,8 @@
 # Inngest baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T11:29:48+02:00
-**Status:** Active
+**Last updated:** 2026-09-15T13:54:10+02:00
+**Status:** Active — implementation integrated; manual UI record pending
 **Owner:** Assigned platform agent
 **Platform:** `inngest`
 **Variant:** `baseline`
@@ -35,6 +35,28 @@ POST /api/runs → Inngest runner adapter → Inngest event/function → normali
 This plan does not claim exactly-once execution. The implementation must document
 Inngest's actual retry and delivery semantics and make the baseline side effects
 idempotent.
+
+## Current implementation status
+
+The Inngest baseline service, runner adapter, durable-step function boundary, safe
+native projection, local operation docs, playground, shared server registration,
+and UI availability wiring are implemented.
+
+Verified in this wave:
+
+- [x] 9 focused Inngest tests pass.
+- [x] The opt-in integration test passes against the pinned Inngest Dev Server v1.44.0.
+- [x] The service starts independently and reports `/ready` separately from degraded
+  Dev Server health.
+- [x] Lost event acknowledgements reuse the stable event identity.
+- [x] Cancellation records an asynchronous request without fabricating completion.
+- [x] Server, UI typecheck/build, and the full server test suite pass.
+
+Remaining before archival:
+
+- [ ] Run the opt-in integration test against the pinned Inngest Dev Server.
+- [ ] Record a manual UI run and the final focused commit hashes in the completion
+  record.
 
 ## Ownership and parallel boundary
 

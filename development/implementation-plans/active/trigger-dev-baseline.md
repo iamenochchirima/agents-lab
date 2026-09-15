@@ -1,8 +1,8 @@
 # Trigger.dev baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T11:29:48+02:00
-**Status:** Active
+**Last updated:** 2026-09-15T13:51:28+02:00
+**Status:** Active — implementation integrated; local Trigger acceptance pending
 **Owner:** Assigned platform agent
 **Platform:** `trigger-dev`
 **Variant:** `baseline`
@@ -32,6 +32,25 @@ POST /api/runs → Trigger.dev runner adapter → local task run → normalized 
 
 The implementation must use the local Trigger development profile for repeatable
 tests and clearly separate local evidence from any hosted deployment evidence.
+
+## Current implementation status
+
+The Trigger task definition, runner adapter, stable idempotency handling, status and
+cancellation mapping, native evidence, local-development docs, playground,
+shared server registration, and UI availability wiring are implemented.
+
+Verified in this wave:
+
+- [x] 8 focused Trigger.dev tests pass.
+- [x] Idempotent admission, lost acknowledgement, unknown outcome, cancellation,
+  status mapping, and redaction are covered.
+- [x] Server, UI typecheck/build, and the full server test suite pass.
+
+Remaining before archival:
+
+- [ ] Run the opt-in integration test against a real local Trigger server and worker.
+- [ ] Record a manual UI run and the final focused commit hashes in the completion
+  record.
 
 ## Ownership and parallel boundary
 
