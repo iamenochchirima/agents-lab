@@ -1,0 +1,22 @@
+[project]
+name = "agent-harness-lab-langgraph"
+version = "0.1.0"
+description = "The local LangGraph baseline service for Agent Harness Lab."
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi==0.141.1",
+  "langgraph==1.2.10",
+  "langgraph-checkpoint-sqlite==3.1.1",
+  "uvicorn==0.53.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "httpx==0.28.1",
+  "pytest==8.4.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["service/tests"]
+addopts = ["--import-mode=importlib"]

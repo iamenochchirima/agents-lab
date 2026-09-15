@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-harness-lab.local/schemas/langgraph-baseline-v1.json",
+  "title": "Agent Harness Lab LangGraph baseline protocol",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion"],
+  "properties": {
+    "protocolVersion": {"const": 1}
+  },
+  "$defs": {
+    "provider": {"type": "string", "enum": ["fake", "openrouter"]},
+    "status": {"type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled", "unknown"]},
+    "failureKind": {"type": "string", "enum": ["configuration", "pre_dispatch", "provider", "timeout", "cancelled", "outcome_unknown", "internal", "reconciliation"]},
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inputTokens", "outputTokens", "totalTokens"],
+      "properties": {
+        "inputTokens": {"type": ["integer", "null"], "minimum": 0},
+        "outputTokens": {"type": ["integer", "null"], "minimum": 0},
+        "totalTokens": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "failureKind", "retryable"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "failureKind": {"$ref": "#/$defs/failureKind"},
+        "retryable": {"type": "boolean"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "sourceSequence", "kind", "runId", "occurredAt", "payload"],
+      "properties": {
+        "source": {"const": "langgraph-service"},
+        "sourceSequence": {"type": "integer", "minimum": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "runId": {"type": "string", "minLength": 1},
+        "occurredAt": {"type": "string", "minLength": 1},
+        "payload": {"type": "object"}
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checkpointId", "step", "count", "pendingWrites"],
+      "properties": {
+        "checkpointId": {"type": ["string", "null"]},
+        "step": {"type": ["integer", "null"]},
+        "count": {"type": "integer", "minimum": 0},
+        "pendingWrites": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
