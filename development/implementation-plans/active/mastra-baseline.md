@@ -1,8 +1,8 @@
 # Mastra baseline platform
 
 **Created:** 2026-09-15T10:59:45+02:00<br>
-**Last updated:** 2026-09-15T11:29:48+02:00<br>
-**Status:** Active<br>
+**Last updated:** 2026-09-15T12:59:15+02:00<br>
+**Status:** Active — implementation integrated; archival validation pending<br>
 **Owner:** Platform implementation agent<br>
 **Platform:** mastra<br>
 **Variant:** baseline
@@ -52,6 +52,25 @@ process-local durability limits visible.
 This is a direct-agent baseline, not a Mastra workflow implementation. It lets the Lab
 compare a native Mastra agent call with the existing Temporal path before adding memory,
 tools, workflow snapshots, or external side effects.
+
+## Current implementation status
+
+The real Mastra `Agent.generate()` baseline, deterministic model fixture, process-local
+runner, shared server registration, Platform UI wiring, documentation, and tests are
+implemented. The fake-model path works without Temporal, Restate, LangGraph, or an
+external provider. Process-local execution remains deliberately non-durable.
+
+Verified in this wave:
+
+- [x] 5 focused Mastra tests pass, including duplicate start, provider failure, ambiguous outcome, cancellation, and process loss.
+- [x] A real Mastra run completes through the generic Fastify API and writes the complete Lab evidence set.
+- [x] The first-wave server registry and Platform UI accept `mastra/baseline` without Temporal-specific assumptions.
+- [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+
+Remaining before archival:
+
+- [ ] Perform the optional real OpenRouter manual run and verify redaction from the retained evidence.
+- [ ] Record the manual UI run and final plan commit hashes in the completion record.
 
 ## Platform and variant identity
 

@@ -1,8 +1,8 @@
 # Restate baseline platform
 
 **Created:** 2026-09-15T10:59:09+02:00<br>
-**Last updated:** 2026-09-15T11:29:48+02:00<br>
-**Status:** Active<br>
+**Last updated:** 2026-09-15T12:59:15+02:00<br>
+**Status:** Active — implementation integrated; container validation pending<br>
 **Owner:** Primary platform integration agent<br>
 **Platform:** `restate`<br>
 **Variant:** `baseline`
@@ -44,6 +44,27 @@ retained state rather than a simulated callback.
 
 This is a platform baseline, not a complete professional agent. It does not add tools,
 skills, MCP, OAuth, plugins, or multi-agent orchestration.
+
+## Current implementation status
+
+The Restate Workflow service, durable model step, runner adapter, native status and
+unknown-outcome mapping, shared server registration, local Compose profile, UI wiring,
+documentation, and focused tests are implemented. The runner is registered as an
+implementation even when the local Restate server or service deployment is stopped;
+`/health` reports those dependency states separately and no successful run is fabricated.
+
+Verified in this wave:
+
+- [x] 14 focused Restate tests pass.
+- [x] Restate configuration, workflow-key, retry, cancellation, duplicate-submission, and native status mappings are covered.
+- [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+- [x] The platform documentation includes pinned local server/service commands, registration, evidence, and recovery semantics.
+
+Remaining before archival:
+
+- [ ] Run the Docker-backed Restate test environment and the real local server/service integration with the pinned image.
+- [ ] Demonstrate service and Restate-server restart using the persistent volume.
+- [ ] Record the manual run, exact container versions, and final plan commit hashes in the completion record.
 
 ## Platform and variant identity
 
@@ -620,7 +641,7 @@ shared contract from a parallel worktree.
 
 Before moving this plan to `completed/`, verify:
 
-- [ ] `restate/baseline` is honestly marked runnable only after the primary integration commit.
+- [ ] `restate/baseline` is honestly marked runnable only after the primary integration commit; dependency reachability is reported separately.
 - [ ] A real local Restate server and registered TypeScript service complete a fake-model run through the generic API.
 - [ ] Workflow journal replay after service restart is demonstrated.
 - [ ] Restate server restart with persistent data is demonstrated.

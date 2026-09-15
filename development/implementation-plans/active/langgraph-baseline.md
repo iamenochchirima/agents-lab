@@ -1,8 +1,8 @@
 # LangGraph baseline platform
 
 **Created:** 2026-09-15T10:59:22+02:00<br>
-**Last updated:** 2026-09-15T11:29:48+02:00<br>
-**Status:** Active<br>
+**Last updated:** 2026-09-15T12:59:15+02:00<br>
+**Status:** Active — implementation integrated; archival validation pending<br>
 **Owner:** LangGraph platform implementation owner<br>
 **Platform:** langgraph<br>
 **Variant:** baseline
@@ -42,6 +42,27 @@ maps its wire responses to the generic runner interface.
 This is a platform baseline, not a complete agent product. It should make one real
 prompt run inspectable end to end and make the differences between graph
 checkpointing and Temporal workflows visible.
+
+## Current implementation status
+
+The Python service, SQLite-backed baseline graph, TypeScript runner adapter, shared
+server registration, Platform UI wiring, documentation, and focused tests are now
+implemented. The baseline is registered as a runnable implementation even when its
+Python service is stopped; `/health` reports that runtime dependency as unavailable,
+while `/ready` reports only Fastify process readiness.
+
+Verified in this wave:
+
+- [x] 20 Python service tests pass with Python 3.12.3, LangGraph 1.2.10, and SQLite support.
+- [x] 9 TypeScript adapter tests pass.
+- [x] A process-level LangGraph integration test passes, including cancellation, service restart, and reconciliation.
+- [x] A real LangGraph run completes through the generic Fastify API and writes the complete Lab evidence set.
+- [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
+
+Remaining before archival:
+
+- [ ] Re-run the documented clean-checkout flow with a freshly provisioned environment rather than the current temporary validation environment.
+- [ ] Record the manual UI run and final plan commit hashes in the completion record.
 
 ## Platform and variant identity
 
@@ -111,9 +132,9 @@ The completed implementation must be able to:
 - Changes to Temporal behaviour or the common runner contract.
 - A new platform-specific UI. The existing generic Platform UI may be made honest by the primary integration agent, but this plan does not redesign it.
 
-Do not add controls for features listed above. The UI and API must show the
-variant as unavailable until the Python service and adapter are actually
-registered and reachable.
+Do not add controls for features listed above. The UI and API must report the
+Python service's reachability honestly; registration of the implemented adapter does
+not imply that its external service is currently running.
 
 ## Architecture and ownership
 
@@ -564,7 +585,7 @@ Every handoff must include:
 
 Before moving this plan to completed/, verify:
 
-- [ ] langgraph/baseline is registered only when the real Python service is reachable.
+- [ ] langgraph/baseline is registered only when the real Python service implementation exists; runtime reachability is reported separately.
 - [ ] A clean-checkout local run completes through the generic server API.
 - [ ] Python and TypeScript sides validate the same protocol version and redaction rules.
 - [ ] Checkpoint, state, retry, cancellation, restart, duplicate, and unknown-outcome semantics are tested.
