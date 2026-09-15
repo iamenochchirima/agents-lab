@@ -12,15 +12,19 @@ SQLite service used by this Lab baseline.
 - The TypeScript Lab server only after the primary integration agent registers
   the LangGraph adapter.
 
-The verified implementation used `/usr/bin/python3.12` and the exact versions
-in the platform lockfile. The environment can be created without changing the
-root JavaScript package:
+The verified implementation used Python 3.11.16 and the exact versions in the
+platform lockfile. The environment can be created without changing the root
+JavaScript package:
 
 ```bash
 cd server/src/platforms/langgraph
-/usr/bin/python3.12 -m venv .venv
+python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements.lock
 ```
+
+Use any Python 3.11 or 3.12 interpreter with SQLite support if `python3.11` is
+not the host's command name. The service requires the `sqlite3` module for its
+checkpoint store and does not provide an in-memory fallback.
 
 ## Start
 

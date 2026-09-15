@@ -8,9 +8,12 @@ a contributor inspect the graph, protocol, SQLite file, and restart semantics.
 
 ```bash
 cd server/src/platforms/langgraph
-/usr/bin/python3.12 -m venv .venv
+python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements.lock
 ```
+
+Use any Python 3.11 or 3.12 interpreter with the `sqlite3` module enabled if
+the host uses a different command name. The baseline has no in-memory fallback.
 
 ## 2. Start the Python service
 

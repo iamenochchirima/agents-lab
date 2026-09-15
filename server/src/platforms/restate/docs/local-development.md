@@ -90,13 +90,14 @@ registration above:
 
 ```bash
 cd server
-AGENTLAB_RUN_RESTATE_INTEGRATION=1 node --import tsx --test integration-tests/restate-baseline.test.ts
+AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 node --import tsx --test integration-tests/restate-baseline.test.ts
 ```
 
-It submits a real workflow through Restate, verifies normalized evidence, runs a
-deterministic provider failure, and reads the completed workflow again through a
-replacement runner. If Restate is unavailable, the test fails; it does not mark an
-in-memory substitute as passing.
+It submits real workflows through Restate, verifies normalized evidence through the
+generic HTTP contract, and reads a completed workflow again through a replacement
+runner. If Restate is unavailable, the test fails; it does not mark an in-memory
+substitute as passing. The Docker-backed replay test remains opt-in with
+`AGENTLAB_RUN_RESTATE_INTEGRATION=1` and requires Docker.
 
 ## Optional OpenRouter path
 

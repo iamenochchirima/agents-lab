@@ -26,11 +26,15 @@ service from the repository root with:
 
 ```bash
 cd server/src/platforms/langgraph
-python -m venv .venv
+python3.11 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.lock
 uvicorn service.app:app --host 127.0.0.1 --port 2024
 ```
+
+Use any Python 3.11 or 3.12 interpreter with its SQLite module enabled. If the
+interpreter is named differently on the host, substitute that command for
+`python3.11`; the service must not silently fall back to in-memory state.
 
 ## Runtime facts
 
