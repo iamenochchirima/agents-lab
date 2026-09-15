@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { MastraBaselineRunner } from "../../../src/platforms/mastra/runner-adapter/mastra-runner.js";
+import { defaultMastraModelFactory } from "../../../src/platforms/mastra/variants/baseline/models/factory.js";
 import { createDeterministicFakeModel } from "../../../src/platforms/mastra/variants/baseline/models/fake.js";
 
 test("Mastra baseline validates fake and OpenRouter profiles without exposing secrets", async () => {
@@ -22,6 +23,7 @@ test("Mastra baseline validates fake and OpenRouter profiles without exposing se
     valid: false,
     reason: "OPENROUTER_API_KEY is required for the Mastra OpenRouter profile.",
   });
+  assert.equal(defaultMastraModelFactory({ ...openRouterManifest, model: { provider: "openrouter", model: "aion-labs/aion-2.0" } }), "openrouter/aion-labs/aion-2.0");
 
   const availableOpenRouter = new MastraBaselineRunner({ environment: { OPENROUTER_API_KEY: "test-secret" } });
   assert.deepEqual(availableOpenRouter.validate(manifestFor(availableOpenRouter, "aion-labs/aion-2.0", "openrouter")), {
@@ -29,6 +31,8 @@ test("Mastra baseline validates fake and OpenRouter profiles without exposing se
     reason: null,
   });
   assert.equal(JSON.stringify(availableOpenRouter.manifestConfiguration()).includes("test-secret"), false);
+
+  assert.equal(fakeRunner.validate(manifestFor(fakeRunner, "fake-not-supported")).valid, false);
 });
 
 test("Mastra runs a real Agent.generate call and duplicate start is idempotent", async () => {

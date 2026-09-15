@@ -5,6 +5,12 @@ export const MASTRA_AGENT_ID = "mastra-baseline-agent" as const;
 export const MASTRA_OPERATION = "agent.generate" as const;
 export const MASTRA_STORAGE_MODE = "none" as const;
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
+export const DETERMINISTIC_FAKE_MODELS = [
+  "fake-success",
+  "fake-slow",
+  "fake-provider-failure",
+  "fake-ambiguous",
+] as const;
 
 export type MastraProvider = "fake" | "openrouter";
 
@@ -40,8 +46,8 @@ export function validateConfiguration(
   }
 
   const configuration = configurationFromManifest(manifest);
-  if (configuration.provider === "fake" && !configuration.model.startsWith("fake-")) {
-    return "The Mastra fake provider requires a model name beginning with fake-.";
+  if (configuration.provider === "fake" && !DETERMINISTIC_FAKE_MODELS.includes(configuration.model as (typeof DETERMINISTIC_FAKE_MODELS)[number])) {
+    return `The Mastra fake model is unsupported: ${configuration.model}.`;
   }
 
   if (configuration.provider === "openrouter") {
