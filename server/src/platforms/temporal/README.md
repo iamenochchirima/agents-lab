@@ -12,13 +12,13 @@ The intended flow is:
 
 ```text
 Platform UI
-  → Fastify control plane
+  → Fastify server
   → immutable Lab run manifest
   → Temporal client / runner adapter
   → Temporal workflow and worker
   → model activity
   → workflow status and native details
-  → control-plane evidence in lab/runs/<run-id>/
+  → server evidence in lab/runs/<run-id>/
 ```
 
 Ownership is deliberately split:
@@ -27,12 +27,12 @@ Ownership is deliberately split:
 | --- | --- |
 | Request validation, run IDs, manifests, API responses | `server/src/control-plane/` |
 | Workflow scheduling, durable recovery, activity execution | Temporal and this directory |
-| Temporal client boundary used by the control plane | `runner-adapter/` |
+| Temporal client boundary used by the server | `runner-adapter/` |
 | The first runnable agent turn | `variants/baseline/` |
-| Normalized `events.jsonl`, `trajectory.json`, `metrics.json`, and `result.json` | The control plane |
+| Normalized `events.jsonl`, `trajectory.json`, `metrics.json`, and `result.json` | The server |
 | Workflow history and Temporal-native execution details | Temporal |
 
-The workflow must not write directly to `lab/runs/`. The control plane is the
+The workflow must not write directly to `lab/runs/`. The server is the
 single writer for normalized evidence and reconciles ordered workflow event
 intents after a restart. This keeps the Lab record separate from Temporal's
 own persistence and avoids presenting two competing sources of truth.
@@ -74,6 +74,6 @@ ownership boundary.
 ## Related locations
 
 - [`docs/`](docs/README.md) — Temporal-specific setup and design notes.
-- [`runner-adapter/`](runner-adapter/README.md) — the control-plane/Temporal client seam.
+- [`runner-adapter/`](runner-adapter/README.md) — the server/Temporal client seam.
 - [`variants/`](variants/README.md) — variants built on Temporal.
 - [`variants/baseline/`](variants/baseline/README.md) — the first intentionally narrow variant.

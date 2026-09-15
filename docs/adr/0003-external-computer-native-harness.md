@@ -19,7 +19,7 @@ internal runtime and can operate without the Lab.
 Computer environments are owned by Computer Native in the initial model: local
 workspace process, sandboxed container, and VM/remote computer. Browser automation is
 a tool capability within a computer environment. Backend-oriented platforms instead
-declare backend deployment profiles and required services.
+declare server deployments and required services.
 
 ## Considered options
 

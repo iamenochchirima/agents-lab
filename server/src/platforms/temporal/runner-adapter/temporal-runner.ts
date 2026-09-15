@@ -41,7 +41,7 @@ export class TemporalRunnerUnavailableError extends Error {
 }
 
 /**
- * Adapts the narrow control-plane runner port to Temporal's client API. No
+ * Adapts the narrow server runner port to Temporal's client API. No
  * workflow implementation details are exposed to the HTTP layer.
  */
 export class TemporalBaselineRunner implements PlatformRunner {

@@ -1,8 +1,8 @@
 # Lab server
 
-The server is the control plane for Agent Harness Lab. It validates a run request,
-creates the immutable Lab manifest, dispatches a registered platform runner, and
-projects safe platform evidence into `lab/runs/<run-id>/`.
+The server coordinates Agent Harness Lab. It validates a run request, creates the
+immutable Lab manifest, dispatches a registered platform runner, and projects safe
+platform evidence into `lab/runs/<run-id>/`.
 
 The first runnable path is `temporal/baseline`. It uses a local Temporal development
 server and a separate worker process. The browser talks to Fastify only.

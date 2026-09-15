@@ -56,7 +56,7 @@ export function OverviewView({ documents }: OverviewViewProps) {
           </article>
           <article className="status-card">
             <div className="status-card-heading"><span className="status-icon status-icon-ready"><CircleCheck aria-hidden="true" size={15} /></span><span>Architecture map</span></div>
-            <strong>Control plane mapped</strong>
+            <strong>Server mapped</strong>
             <p>See where platforms, environments, scenarios, experiments, and evidence belong.</p>
             <Link className="inline-link" to={appPaths.architecture}>View architecture <ArrowRight aria-hidden="true" size={15} /></Link>
           </article>

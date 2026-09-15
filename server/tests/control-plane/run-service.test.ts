@@ -95,7 +95,7 @@ test("creates a run before dispatch and projects a completed runner result", asy
   });
 });
 
-test("reconciliation projects workflow intents once after a control-plane restart", async () => {
+test("reconciliation projects workflow intents once after a server restart", async () => {
   await withService(async (service, store, runner) => {
     const manifest = buildRunManifest(
       {

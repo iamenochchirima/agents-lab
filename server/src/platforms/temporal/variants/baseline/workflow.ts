@@ -36,8 +36,8 @@ export const baselineCancelSignal = defineSignal<[string]>(BASELINE_CANCEL_SIGNA
 
 /**
  * One Temporal execution owns one model-backed turn. Event intents live in
- * workflow state so a control-plane outage cannot erase the lifecycle; the
- * control plane later projects them into Lab files.
+ * workflow state so a server outage cannot erase the lifecycle; the server
+ * later projects them into Lab files.
  */
 export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Promise<TemporalWorkflowResult> {
   const timestamp = (): string => new Date(workflowNow()).toISOString();

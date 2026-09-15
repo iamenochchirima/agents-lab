@@ -61,7 +61,7 @@ export async function startControlPlane(): Promise<void> {
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
   startControlPlane().catch((error: unknown) => {
-    console.error("Control plane stopped:", error);
+    console.error("Server stopped:", error);
     process.exitCode = 1;
   });
 }

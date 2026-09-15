@@ -140,7 +140,7 @@ export class RunService {
         return toRunView(reconciled, "reconciliation_required");
       }
 
-      // A control-plane read must not turn a temporary Temporal outage into a
+      // A server read must not turn a temporary Temporal outage into a
       // fabricated terminal result. Return the last durable Lab projection.
       return toRunView(snapshot, deriveStatus(snapshot.events, snapshot.result));
     }

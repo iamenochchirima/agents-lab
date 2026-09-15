@@ -24,8 +24,8 @@ application destinations:
 - **Runs:** the future home for concrete executions and their evidence.
 - **Experiments:** the future home for hypotheses, variables, controls, and failure conditions.
 - **Platforms:** the main operational workspace. Platform tabs select the runtime;
-  Computer Native exposes a computer-environment choice, while backend platforms expose
-  a backend deployment profile alongside their infrastructure, variant, model, and
+  Computer Native exposes a computer-environment choice, while server platforms expose
+  a server alongside their infrastructure, variant, model, and
   experiment controls.
 - **Compare:** opens from a platform task surface. It configures one shared scenario,
   model, and experiment for multiple platforms. Computer environments and backend
@@ -50,7 +50,7 @@ version is deliberately read-only so status changes remain inspectable in source
 The platform UI also uses typed catalogues. `platformCatalog.ts` owns the platform facts
 used by the platform workspace and coverage screen. `environmentCatalog.ts` owns
 computer-environment profiles and their operational facts. The UI keeps Computer
-Native's computer environment separate from the backend deployment profiles required by
+Native's computer environment separate from the server deployments required by
 other platform implementations. The runner can collect configuration before an
 execution API exists, but its start controls remain unavailable until they can create
 real evidence.

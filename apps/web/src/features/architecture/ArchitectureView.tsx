@@ -32,7 +32,7 @@ export function ArchitectureView({ documents }: ArchitectureViewProps) {
       <section className="architecture-cards" aria-label="Architecture areas">
         <article className="summary-card">
           <span className="card-index">01</span>
-          <h2>Control plane</h2>
+          <h2>Server</h2>
           <p>CLI, registry, runner, telemetry, storage, evaluation, and API coordinate a run.</p>
         </article>
         <article className="summary-card">

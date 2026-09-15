@@ -1,13 +1,13 @@
 # Temporal baseline recovery exercise
 
-This exercise is for learning how one Lab run crosses the control plane, a
+This exercise is for learning how one Lab run crosses the server, a
 Temporal workflow, a worker, and the local evidence projection. It uses the
 real baseline implementation and deterministic model fixtures. It is not part
 of the automated benchmark suite.
 
 ## Question
 
-What survives when the control plane or worker disappears at different points
+What survives when the server or worker disappears at different points
 in one model-backed run?
 
 ## Setup
@@ -81,7 +81,7 @@ the worker while a model activity is executing creates an ambiguous provider
 outcome. The baseline should fail that run as `outcome_unknown` rather than
 silently replaying the request.
 
-## Control-plane restart
+## Server restart
 
 1. Start a `fake-timeout` run and note its run ID after the initial request is accepted.
 2. Stop the API process while the workflow is still running.
@@ -101,7 +101,7 @@ npm --prefix server run test:temporal
 ```
 
 It covers success, retry classification, ambiguous outcomes, timeout,
-cancellation, complete evidence, and control-plane reconciliation. It fails
+cancellation, complete evidence, and server reconciliation. It fails
 explicitly if the local durable-execution profile is not usable.
 
 ## Record observations

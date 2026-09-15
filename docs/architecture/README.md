@@ -6,6 +6,6 @@ Keep this directory focused on how the laboratory is organized, not on individua
 
 Start with:
 
-- [System overview](system-overview.md), which describes the control-plane flow.
+- [System overview](system-overview.md), which describes the server flow.
 - [Repository map](repository-map.md), which explains the top-level directories.
 - [UI and documentation](ui-and-docs.md), which describes how the planning interface consumes repository Markdown.

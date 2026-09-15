@@ -14,7 +14,7 @@ records the promised scope, tests, and known limits of this first slice.
 
 ## Current boundary
 
-The Fastify control plane accepts a run request, writes the immutable Lab
+The Fastify server accepts a run request, writes the immutable Lab
 manifest, dispatches `temporal/baseline`, and projects workflow event intents
 into `lab/runs/<run-id>/`. The Temporal worker owns workflow execution and
 model activity execution. The browser talks only to Fastify.

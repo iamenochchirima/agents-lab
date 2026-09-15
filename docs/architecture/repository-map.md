@@ -20,7 +20,7 @@ flowchart TD
 | Directory | Responsibility |
 | --- | --- |
 | `apps/` | The React/Vite web application. |
-| `server/` | Lab backend: control plane, shared agent host, reusable capabilities, platform variants, contracts, and deployments. |
+| `server/` | Lab server: shared agent host, reusable capabilities, platform variants, contracts, and deployments. |
 | `computer-native/` | Temporary standalone Computer Native project, structured for later repository extraction. |
 | `docs/` | Architecture, concepts, guides, research notes, and decision records. |
 | `lab/` | Scenarios, experiments, and generated run evidence. |
@@ -29,5 +29,5 @@ flowchart TD
 Scenarios and experiments describe work and tests under `lab/`. Computer Native operates
 within the computer host selected for a run without carrying a separate
 environment-adapter tree. Backend platform implementations under `server/src/platforms/`
-declare a deployment profile and required services. The Lab control plane coordinates a
+declare a server deployment and required services. The Lab server coordinates a
 run and records evidence; it does not own a platform's reasoning loop.

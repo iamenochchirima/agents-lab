@@ -8,7 +8,7 @@ have a clear comparison point.
 
 Temporal owns workflow history and the workflow's small state: input values,
 execution phase, attempt number, ordered event intents, safe output, usage, and
-terminal error. The control plane owns these retained files:
+terminal error. The server owns these retained files:
 
 ```text
 lab/runs/<run-id>/
@@ -23,7 +23,7 @@ lab/runs/<run-id>/
 ```
 
 The workflow does not open, append, or rename a file in `lab/runs/`. The
-control plane projects workflow state after start and during every status read.
+server projects workflow state after start and during every status read.
 Writing the same event or terminal record again is safe when its content is
 identical. Different content for an existing identity is an evidence conflict.
 
@@ -58,7 +58,7 @@ result returns that result without sending another cancellation.
 | Failure | Expected behaviour |
 | --- | --- |
 | Browser reload or API poll interruption | The next `GET /api/runs/:runId` reads server evidence and reconciles Temporal state. |
-| Control-plane process restart | The stored manifest and native reference are reused. Event intents and terminal files are projected idempotently. |
+| Server process restart | The stored manifest and native reference are reused. Event intents and terminal files are projected idempotently. |
 | Worker process restart | Temporal keeps workflow history and redelivers work according to Temporal activity semantics. The workflow is not recreated under a new Lab run ID. |
 | Temporal service restart with persistent local DB | Workflow history remains available after the service returns. The API may be stale while it is unavailable. |
 | Missing manifest or missing Temporal execution | The Lab records `reconciliation_required`; it does not adopt an orphan or fabricate completion. |

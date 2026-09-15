@@ -35,7 +35,7 @@ export interface RunnerInspection {
 }
 
 /**
- * The control plane's intentionally small runner seam. A platform adapter may
+ * The server's intentionally small runner seam. A platform adapter may
  * have richer native APIs, but those details stay behind this boundary.
  */
 export interface PlatformRunner {

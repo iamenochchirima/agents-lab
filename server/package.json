@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Fastify control plane for Agent Harness Lab.",
+  "description": "Fastify server for Agent Harness Lab.",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/control-plane/bootstrap/server.ts",

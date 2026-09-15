@@ -8,7 +8,7 @@
 
 Before editing, read [repository rules](../../../AGENTS.md), the
 [server boundary](../../../server/README.md), the
-[control-plane boundary](../../../server/src/control-plane/README.md), the
+[server boundary](../../../server/src/control-plane/README.md), the
 [platform boundary](../../../server/src/platforms/README.md), and the
 [Temporal platform note](../../../server/src/platforms/temporal/README.md).
 Also inspect the existing
@@ -35,7 +35,7 @@ boundaries work together:
 
 ```text
 Platform UI
-  → Fastify control plane
+  → Fastify server
   → immutable run manifest
   → registered Temporal baseline runner
   → local Temporal workflow + worker
@@ -45,7 +45,7 @@ Platform UI
 ```
 
 Temporal is the first platform because it makes the durable-execution boundary concrete:
-the control plane creates and observes a run, while the worker and workflow own the
+the server creates and observes a run, while the worker and workflow own the
 platform-specific execution and recovery semantics.
 
 ## Definition of done
@@ -82,7 +82,7 @@ lab/runs/<run-id>/
   trajectory.json        # normalized execution path; not raw Temporal history
   metrics.json           # duration, counts, and explicitly unknown measurements
   result.json            # terminal outcome and summary
-  logs/                  # control-plane and worker diagnostics, when retained
+  logs/                  # server and worker diagnostics, when retained
   artifacts/             # declared outputs; empty is valid for this first slice
   native/temporal.json   # selected Temporal identifiers and safe native references
 ```
@@ -93,7 +93,7 @@ history, or evidence may be fabricated.
 
 ## Fixed scope
 
-- [x] Run a Fastify control plane locally from `server/`.
+- [x] Run a Fastify server locally from `server/`.
 - [x] Add a real Temporal baseline worker and workflow that connect to local Temporal.
 - [x] Register the Temporal baseline as a runnable platform variant.
 - [x] Validate a run request and create an immutable effective manifest before dispatch.
@@ -163,7 +163,7 @@ Temporal
   It remains the source of truth for an in-flight Temporal workflow.
 ```
 
-The control plane may know that a run is dispatched to `temporal/baseline`; it may not
+The server may know that a run is dispatched to `temporal/baseline`; it may not
 make assumptions about activities, workflow state shape, or Temporal retry internals.
 The Temporal variant may emit its native detail, but it must not write UI-specific state.
 
@@ -190,7 +190,7 @@ connection profile name, and safe model settings. It must exclude credentials.
 
 ### Runner contract
 
-The control plane needs only enough knowledge to start and control a run:
+The server needs only enough knowledge to start and control a run:
 
 ```text
 validate(manifest) → validation result
@@ -225,7 +225,7 @@ complete until it has been exercised against the real Fastify API and Temporal w
 
 ### Evidence contract
 
-The control plane writes normalized events such as:
+The server writes normalized events such as:
 
 ```text
 RunCreated
@@ -245,10 +245,10 @@ evidence.
 
 ### Evidence ownership, ordering, and recovery
 
-The control plane's `RunEvidenceStore` is the only writer of normalized `events.jsonl`,
+The server's `RunEvidenceStore` is the only writer of normalized `events.jsonl`,
 `trajectory.json`, `metrics.json`, and `result.json`. A workflow never writes Lab files.
 Instead, it durably retains a small ordered list of lifecycle **event intents** in its
-workflow state. The control plane reads those intents through the runner during normal
+workflow state. The server reads those intents through the runner during normal
 operation or reconciliation after restart, then materializes each one idempotently.
 
 Every event intent has a stable `runId + source + sourceSequence` identity. The evidence
@@ -258,9 +258,9 @@ the required causal order is `RunCreated`, `RunDispatched`, platform intents, th
 terminal `Run*` event. Reconciliation reuses identities, so restart cannot duplicate an
 event or a terminal result.
 
-If the control plane is unavailable, the Temporal workflow may continue, but browser
-status and normalized evidence can be stale until the control plane returns. On restart,
-the control plane reconciles only runs with an existing Lab manifest and stored Temporal
+If the server is unavailable, the Temporal workflow may continue, but browser status and
+normalized evidence can be stale until the server returns. On restart, the server
+reconciles only runs with an existing Lab manifest and stored Temporal
 execution reference. A Temporal workflow with no matching manifest is an orphan: it is
 never auto-adopted or displayed as a Lab run. A manifest whose execution reference cannot
 be found is marked `reconciliation_required`, not fabricated as completed or failed.
@@ -293,7 +293,7 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Create a typed server configuration module with API host/port, run-root path,
       Temporal endpoint/namespace/task queue, allowed model adapters, and timeouts.
 - [x] Implement a Fastify bootstrap with structured startup/shutdown handling.
-- [x] Implement `GET /health` that reports only control-plane readiness and safe Temporal
+- [x] Implement `GET /health` that reports only server readiness and safe Temporal
       connectivity; it must not claim a worker is healthy without evidence.
 - [x] Implement structured error handling, request IDs, and safe error responses.
 - [x] Keep Fastify routes thin; route handlers call application services rather than
@@ -312,7 +312,7 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Materialize `trajectory.json` and `metrics.json` with explicit `null` values for
       unavailable measurements.
 - [x] Atomically write `result.json` on every terminal outcome.
-- [x] Implement the control-plane-only evidence writer, stable event identities,
+- [x] Implement the server-only evidence writer, stable event identities,
       idempotent reconciliation, and recorded/source sequence rules.
 - [x] Mark missing or mismatched Temporal execution references as
       `reconciliation_required`; never auto-adopt orphan workflows.
@@ -328,10 +328,10 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Generate deterministic, traceable Temporal workflow IDs from the Lab run ID.
 - [x] Start one workflow per Lab run and store the returned native execution reference.
 - [x] Map cancellation requests to the appropriate Temporal cancellation mechanism.
-- [x] Implement safe inspection of workflow status for reconciliation after control-plane
+- [x] Implement safe inspection of workflow status for reconciliation after server
       restart.
 - [x] Expose ordered workflow event intents and safe terminal summary data for
-      control-plane reconciliation; the workflow must not write Lab evidence files.
+      server reconciliation; the workflow must not write Lab evidence files.
 - [x] Keep Temporal imports inside the Temporal platform directory or an explicit server
       infrastructure adapter; they must not leak into UI or generic run-domain code.
 
@@ -422,10 +422,10 @@ unavailable measurements are `null`, never invented as zero.
       ownership, and limitations of the baseline.
 - [x] Add a local-run guide: start Temporal, start stack, submit fake run, inspect run,
       cancel run, and stop stack.
-- [x] Add an architecture document showing control plane, Temporal worker, workflow,
+- [x] Add an architecture document showing server, Temporal worker, workflow,
       activity, evidence store, and UI data flow.
 - [x] Document what is durable in Temporal versus what is retained as Lab evidence.
-- [x] Document retry, cancellation, control-plane restart, and worker-restart semantics.
+- [x] Document retry, cancellation, server restart, and worker-restart semantics.
 - [x] Add a development-playground exercise that deliberately fails, cancels, and restarts
       a worker, with exact evidence to inspect.
 - [x] Update relevant UI documentation, repository map, and navigation only after the
@@ -463,9 +463,9 @@ unavailable measurements are `null`, never invented as zero.
       successful completion
 - [x] worker restart at the documented controlled point allows the workflow to resume and
       finish exactly as Temporal semantics guarantee
-- [x] control-plane restart can reconcile an in-flight or completed workflow from its
+- [x] server restart can reconcile an in-flight or completed workflow from its
       stored execution reference
-- [x] control-plane outage leaves workflow execution durable; restart materializes missed
+- [x] server outage leaves workflow execution durable; restart materializes missed
       event intents once, in source order, without duplicate events or terminal results
 - [x] orphan workflow and missing-execution-reference paths are surfaced as documented
       diagnostics and are never silently adopted or fabricated
@@ -539,7 +539,7 @@ The following checks passed:
 - `cd server && npm run build` — passed.
 - `cd server && npm run test:temporal` — passed, one real local Temporal integration
   test covering success, pre-dispatch retry, ambiguous outcome, timeout, cancellation,
-  and control-plane reconciliation. The suite requires a running local worker and fails
+  and server reconciliation. The suite requires a running local worker and fails
   explicitly when that profile is unavailable.
 - `cd apps/web && npm run typecheck` — passed, including documentation-catalog generation.
 - `cd apps/web && npm run build` — passed. Vite reported a large-chunk warning only.
@@ -554,7 +554,7 @@ second status request (the refresh/reconnect equivalent at the API boundary).
 
 The controlled worker-restart exercise used a pre-dispatch retry timer. Worker run
 `db115a21-2a05-4554-a881-2d5dc5143d21` resumed on the same workflow ID after the worker
-was stopped and restarted, then completed with two model attempts. The control-plane
+was stopped and restarted, then completed with two model attempts. The server
 restart exercise used run `6997ac2f-c4e7-4e9c-bfdf-b854a14e903f`; the workflow completed
 while the API was stopped and was projected exactly once after the API returned.
 
@@ -593,7 +593,7 @@ All applicable gate items are satisfied:
 - [x] `lab/runs/<run-id>/` contains complete, correlated, inspectable evidence.
 - [x] Temporal-native identifiers are retained without claiming that Lab evidence replaces
       Temporal workflow history.
-- [x] Worker restart and control-plane restart behaviours are demonstrated and documented.
+- [x] Worker restart and server restart behaviours are demonstrated and documented.
 - [x] OpenRouter use is optional and secret-safe; live use is documented as not run.
 - [x] All required commands pass and this record contains the validation results and
       deliberate limitations.

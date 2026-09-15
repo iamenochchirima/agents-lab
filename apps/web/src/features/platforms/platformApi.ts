@@ -130,14 +130,14 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
     if (error instanceof DOMException && error.name === "AbortError") {
       throw error;
     }
-    throw new PlatformApiError("The control plane could not be reached.", 0, "CONTROL_PLANE_UNREACHABLE");
+    throw new PlatformApiError("The server could not be reached.", 0, "CONTROL_PLANE_UNREACHABLE");
   }
 
   const body = await readJson(response);
   if (!response.ok) {
     const error = isRecord(body) && isRecord(body.error) ? body.error : {};
     throw new PlatformApiError(
-      typeof error.message === "string" ? error.message : "The control plane rejected the request.",
+      typeof error.message === "string" ? error.message : "The server rejected the request.",
       response.status,
       typeof error.code === "string" ? error.code : "API_ERROR",
     );
@@ -153,7 +153,7 @@ async function readJson(response: Response): Promise<unknown> {
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw new PlatformApiError("The control plane returned an invalid response.", response.status, "INVALID_API_RESPONSE");
+    throw new PlatformApiError("The server returned an invalid response.", response.status, "INVALID_API_RESPONSE");
   }
 }
 

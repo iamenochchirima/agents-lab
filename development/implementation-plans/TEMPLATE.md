@@ -100,7 +100,7 @@ Not applicable — `[reason]`; **or** answer every question below.
 - [ ] What happens after an ambiguous timeout, lost acknowledgement, or process crash?
 - [ ] Which action is idempotent, and what is its idempotency key or deduplication rule?
 - [ ] What happens on cancellation?
-- [ ] What happens when a worker, control plane, or dependency restarts?
+- [ ] What happens when a worker, server, or dependency restarts?
 - [ ] How are duplicate, out-of-order, or orphaned events/executions handled?
 - [ ] Which outcome is reported when the real external outcome is unknown?
 

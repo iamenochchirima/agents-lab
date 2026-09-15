@@ -1,13 +1,13 @@
 # Temporal baseline architecture
 
-The first runnable path separates the Lab's control plane from Temporal's
+The first runnable path separates the Lab's server from Temporal's
 execution system. The browser never imports the Temporal SDK and the workflow
 never writes Lab files.
 
 ```mermaid
 flowchart LR
   browser[Platform UI]
-  api[Fastify control plane]
+  api[Fastify server]
   manifest[Immutable run manifest]
   runner[Temporal runner adapter]
   temporal[(Temporal service)]
@@ -36,7 +36,7 @@ flowchart LR
 | Component | Owns | Must not own |
 | --- | --- | --- |
 | Platform UI | Prompt/model input, submit, polling, cancellation, rendering | Temporal clients, local file reads, inferred completion |
-| Fastify control plane | Request validation, manifest creation, dispatch, evidence projection, API responses | Workflow logic, model network calls, Temporal history |
+| Fastify server | Request validation, manifest creation, dispatch, evidence projection, API responses | Workflow logic, model network calls, Temporal history |
 | Temporal runner adapter | Temporal connection, workflow IDs, start, signal, query, inspection | Browser state or normalized file serialization |
 | Temporal worker | Registered workflows and activities, graceful process shutdown | HTTP routes or Lab evidence files |
 | Baseline workflow | Durable phase, event intents, retry decision, terminal outcome | Network I/O, secrets, direct filesystem writes |
@@ -54,7 +54,7 @@ flowchart LR
 6. The model activity performs one provider request. The workflow records its outcome.
 7. The API polls or reconciles the workflow, projects event intents, and writes terminal evidence.
 
-The order between control-plane and workflow events is recorded order, not a
+The order between server and workflow events is recorded order, not a
 claim about wall-clock order across processes. Source sequence is the identity
 used to make reconciliation idempotent.
 
@@ -63,7 +63,7 @@ used to make reconciliation idempotent.
 Temporal history is required to resume an in-flight workflow. The Lab manifest
 and evidence files are required to inspect and compare a run. If the control
 plane is down, the workflow may finish and its intents remain in Temporal state.
-When the control plane returns, it reads the retained reference, fetches the
+When the server returns, it reads the retained reference, fetches the
 intents, and projects each stable event identity once.
 
 An execution without a matching Lab manifest is an orphan and is not adopted.

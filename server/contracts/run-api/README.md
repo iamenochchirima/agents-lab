@@ -1,6 +1,6 @@
 # Run API contract
 
-The browser communicates with the control plane through these local HTTP
+The browser communicates with the server through these local HTTP
 endpoints. It never connects to Temporal or reads `lab/runs/` directly.
 
 ## Submit a run

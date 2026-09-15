@@ -59,7 +59,7 @@ export function RepositoryMapView({ tree }: RepositoryMapViewProps) {
           <span className="eyebrow">Repository structure</span>
           <h1>Every directory has a job.</h1>
           <p>
-            Expand the tree to see where the control plane, platforms, environments, scenarios, experiments, and evidence belong.
+            Expand the tree to see where the server, platforms, environments, scenarios, experiments, and evidence belong.
           </p>
         </div>
       </section>

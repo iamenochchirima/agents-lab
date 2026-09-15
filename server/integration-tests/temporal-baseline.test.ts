@@ -107,7 +107,7 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
     assert.equal(cancelledResult.events.some((event) => event.kind === "RunCompleted"), false);
     assert.equal((await service.cancelRun(cancelled.runId, "repeat cancellation")).status, "cancelled");
 
-    // Let the workflow finish while no control-plane service reads it. A new
+    // Let the workflow finish while no server reads it. A new
     // service instance then projects the retained Temporal intents exactly once.
     const outageRun = await service.createRun({
       ...BASE_REQUEST,
@@ -176,7 +176,7 @@ async function waitForTemporalTerminal(runner: TemporalBaselineRunner, reference
     if (inspection.status === "completed" || inspection.status === "failed" || inspection.status === "cancelled") return;
     await delay(Math.min(100, Math.max(0, deadline - Date.now())));
   }
-  throw new Error(`Temporal workflow ${reference.workflowId} did not finish while the control-plane projection was idle.`);
+  throw new Error(`Temporal workflow ${reference.workflowId} did not finish while the server projection was idle.`);
 }
 
 async function assertCompleteEvidence(root: string, run: RunView, expectedFiles: readonly string[]): Promise<void> {

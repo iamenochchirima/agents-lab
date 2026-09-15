@@ -115,8 +115,8 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   });
 
   app.setErrorHandler((error, request, reply) => {
-    request.log.error({ err: error }, "Unhandled control-plane error");
-    return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "The control plane encountered an unexpected error.", requestId: request.id } });
+    request.log.error({ err: error }, "Unhandled server error");
+    return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "The server encountered an unexpected error.", requestId: request.id } });
   });
 
   return app;
@@ -183,7 +183,7 @@ function sendError(reply: FastifyReply, error: unknown) {
   if (error instanceof RunnerUnavailableError) {
     return reply.code(503).send({ error: { code: "RUNNER_UNAVAILABLE", message: error.message } });
   }
-  return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "The control plane encountered an unexpected error." } });
+  return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "The server encountered an unexpected error." } });
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
