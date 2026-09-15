@@ -43,7 +43,7 @@ The launcher starts these Lab processes and checks each one:
 | Process | Default address or state |
 | --- | --- |
 | React/Vite UI | `http://127.0.0.1:5173` |
-| Fastify control API | `http://127.0.0.1:4318` |
+| Fastify server | `http://127.0.0.1:4318` |
 | Temporal worker | connected to the task queue above |
 
 The launcher leaves Temporal running when the Lab processes stop. It keeps

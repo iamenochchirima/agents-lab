@@ -48,7 +48,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
 export async function startControlPlane(): Promise<void> {
   const runtime = await createControlPlaneRuntime();
   await runtime.app.listen({ host: runtime.config.api.host, port: runtime.config.api.port });
-  console.log(`Agent Harness Lab API listening at http://${runtime.config.api.host}:${runtime.config.api.port}`);
+  console.log(`Agent Harness Lab server listening at http://${runtime.config.api.host}:${runtime.config.api.port}`);
 
   const shutdown = async (): Promise<void> => {
     process.off("SIGINT", shutdown);

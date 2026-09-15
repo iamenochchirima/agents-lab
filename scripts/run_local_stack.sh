@@ -81,13 +81,14 @@ show_usage() {
   cat <<EOF
 Usage: $0 [service]
 
-Start the local Agent Harness Lab services. With no service specified, all
-three Lab processes are started after checking the external Temporal server.
+Start the local Agent Harness Lab services. With no service specified, the web
+app, Lab server, and Temporal worker are started after checking the external
+Temporal server.
 
 Available services:
-  all                  Start web, control API, and Temporal worker
+  all                  Start web, Lab server, and Temporal worker
   frontend, web        Start the React/Vite frontend only
-  api, server          Start the Fastify control API only
+  server, api          Start the Fastify server only (api is an alias)
   worker               Start the Temporal worker only
   check-temporal       Check the configured Temporal endpoint
 
@@ -100,7 +101,7 @@ Environment variables:
 
 Examples:
   $0
-  $0 api
+  $0 server
   AGENTLAB_WEB_PORT=5174 $0 all
 EOF
 }
@@ -119,11 +120,11 @@ run_frontend() {
   exec npm --prefix "$WEB_DIR" run dev -- --host "$WEB_HOST" --port "$WEB_PORT"
 }
 
-run_api() {
+run_server() {
   require_command npm
   require_package "$SERVER_DIR"
 
-  echo "Starting Agent Harness Lab API at http://${API_HOST}:${API_PORT}"
+  echo "Starting Agent Harness Lab server at http://${API_HOST}:${API_PORT}"
   AGENTLAB_API_HOST="$API_HOST" \
     AGENTLAB_API_PORT="$API_PORT" \
     AGENTLAB_RUN_ROOT="$RUN_ROOT" \
@@ -175,7 +176,7 @@ start_all() {
     AGENTLAB_TEMPORAL_ENDPOINT="$TEMPORAL_ENDPOINT" \
     AGENTLAB_TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
     AGENTLAB_TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
-    npm --prefix "$SERVER_DIR" run dev >"$log_directory/api.log" 2>&1 &
+    npm --prefix "$SERVER_DIR" run dev >"$log_directory/server.log" 2>&1 &
   pids+=("$!")
 
   AGENTLAB_RUN_ROOT="$RUN_ROOT" \
@@ -191,11 +192,11 @@ start_all() {
 
   echo "Agent Harness Lab local stack started."
   echo "  Web:    http://${WEB_HOST}:${WEB_PORT}"
-  echo "  API:    http://${API_HOST}:${API_PORT}"
-  echo "  Logs:   $log_directory/{web,api,worker}.log"
+  echo "  Server: http://${API_HOST}:${API_PORT}"
+  echo "  Logs:   $log_directory/{web,server,worker}.log"
   echo "Press Ctrl-C to stop the Lab processes. Temporal remains separately managed."
 
-  wait_for_http "Control API" "http://${API_HOST}:${API_PORT}/health"
+  wait_for_http "Lab server" "http://${API_HOST}:${API_PORT}/health"
   wait_for_http "Web app" "http://${WEB_HOST}:${WEB_PORT}"
   wait_for_worker "$log_directory/worker.log"
 
@@ -221,7 +222,7 @@ case "${1:-}" in
     run_frontend
     ;;
   api|server)
-    run_api
+    run_server
     ;;
   worker)
     run_worker

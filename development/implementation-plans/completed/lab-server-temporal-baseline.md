@@ -61,7 +61,7 @@ locally configured components:
 
 ```text
 React/Vite UI       → http://127.0.0.1:<web-port>
-Fastify control API → http://127.0.0.1:<api-port>
+Fastify server     → http://127.0.0.1:<api-port>
 Temporal worker     → connects to the configured local Temporal endpoint
 ```
 
@@ -104,7 +104,7 @@ history, or evidence may be fabricated.
 - [x] Persist normalized run events and a final result under `lab/runs/`.
 - [x] Preserve safe Temporal-native identifiers and diagnostics alongside normalized
       evidence.
-- [x] Stream or poll run status through the control API without exposing worker internals
+- [x] Stream or poll run status through the server without exposing worker internals
       directly to the browser.
 - [x] Connect the existing Temporal UI to this API for submission and live observation.
 - [x] Support cancellation from the API and UI if the Temporal workflow has started.
@@ -278,7 +278,7 @@ unavailable measurements are `null`, never invented as zero.
 - [x] Define a named local Temporal profile in committed example configuration; do not
       commit machine-specific paths, credentials, or production endpoints.
 - [x] Add `server/.env.example` only for actual supported configuration values.
-- [x] Update `scripts/run_local_stack.sh` to start the web app, control API, and Temporal
+- [x] Update `scripts/run_local_stack.sh` to start the web app, server, and Temporal
       worker, with clear health checks and separate readable logs.
 - [x] Make the script detect an unavailable Temporal endpoint and fail with a useful
       instruction rather than silently starting a non-functional stack.

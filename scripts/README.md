@@ -6,7 +6,7 @@ Scripts should state their inputs, side effects, required tools, and safe cleanu
 
 ## Local stack
 
-Run the local UI, control API, and Temporal worker from the repository root. Start
+Run the local UI, Lab server, and Temporal worker from the repository root. Start
 Temporal separately first:
 
 ```bash
@@ -15,12 +15,14 @@ temporal server start-dev
 ```
 
 The launcher checks Temporal, starts each Lab process with separate temporary logs,
-waits for the API, web app, and worker readiness checks, and stops only the processes
+waits for the server, web app, and worker readiness checks, and stops only the processes
 it started when interrupted. Temporal remains separately managed. Services can also be
 selected explicitly:
 
 ```bash
 ./scripts/run_local_stack.sh frontend
+./scripts/run_local_stack.sh server
+# `api` remains a compatibility alias:
 ./scripts/run_local_stack.sh api
 ./scripts/run_local_stack.sh worker
 ./scripts/run_local_stack.sh check-temporal
