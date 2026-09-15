@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-15T09:02:04+02:00
+**Last updated:** 2026-09-15T09:43:41+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -33,8 +33,9 @@ mandatory whenever the work has state or external effects.
 
 ## Active plans
 
-- [Computer Native next standalone slice](active/computer-native-next.md) — reliable
-  real-model turns and the first bounded read-only workspace inspection loop.
+- [Computer Native reliable terminal and workspace inspection](active/computer-native-reliable-terminal-and-workspace-inspection.md) — reliable
+  real-model turns, the expanded standalone terminal interface, and the first bounded
+  read-only workspace inspection loop.
 
 ## Completed plans
 

@@ -1,13 +1,9 @@
 # Computer Native next standalone slice — reliable turns, terminal interface, and workspace inspection
 
 **Created:** 2026-09-15T09:02:04+02:00
-**Last updated:** 2026-09-15T09:37:12+02:00
+**Last updated:** 2026-09-15T09:43:41+02:00
 **Status:** Active
-**Working filename:** `computer-native-next.md`
-
-The final descriptive filename will be chosen after the implementation settles. Renaming
-this plan and updating every index link is an explicit completion task; the temporary
-name must not be treated as the finished design decision.
+**Filename:** `computer-native-reliable-terminal-and-workspace-inspection.md`
 
 ## Start here
 
@@ -233,8 +229,7 @@ Extend the existing session layout without changing the ownership of current rec
 - [ ] Record the three adopted patterns and the explicit non-adoptions in the plan handoff.
 - [ ] Define the public seams for runtime, model stream, tool registry, workspace, and
       security before adding concrete tools.
-- [ ] Rename this plan to its final descriptive filename and update the plan/navigation
-      indexes before archiving it.
+- [x] Finalize this plan's descriptive filename and update the plan/navigation indexes.
 
 ### 2. Provider reliability
 
