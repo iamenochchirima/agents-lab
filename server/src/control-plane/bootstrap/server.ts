@@ -17,6 +17,9 @@ import { TemporalBaselineRunner } from "../../platforms/temporal/runner-adapter/
 import { DbosBaselineRunner } from "../../platforms/dbos/runner-adapter/dbos-runner.js";
 import { InngestBaselineRunner } from "../../platforms/inngest/runner-adapter/inngest-runner.js";
 import { TriggerDevBaselineRunner } from "../../platforms/trigger-dev/runner-adapter/trigger-dev-runner.js";
+import { AwsStepFunctionsBaselineRunner } from "../../platforms/aws-step-functions/runner-adapter/aws-step-functions-runner.js";
+import { HatchetBaselineRunner } from "../../platforms/hatchet/runner-adapter/hatchet-runner.js";
+import { VercelWorkflowsBaselineRunner } from "../../platforms/vercel-workflows/runner-adapter/vercel-workflows-runner.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
@@ -46,7 +49,21 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const inngestRunner = new InngestBaselineRunner();
   const triggerDevRunner = TriggerDevBaselineRunner.fromEnvironment();
   const dbosRunner = new DbosBaselineRunner();
-  const runners = [runner, restateRunner, langgraphRunner, mastraRunner, inngestRunner, triggerDevRunner, dbosRunner] as const;
+  const hatchetRunner = await HatchetBaselineRunner.connect();
+  const awsStepFunctionsRunner = new AwsStepFunctionsBaselineRunner();
+  const vercelWorkflowsRunner = new VercelWorkflowsBaselineRunner();
+  const runners = [
+    runner,
+    restateRunner,
+    langgraphRunner,
+    mastraRunner,
+    inngestRunner,
+    triggerDevRunner,
+    dbosRunner,
+    hatchetRunner,
+    awsStepFunctionsRunner,
+    vercelWorkflowsRunner,
+  ] as const;
   const evidence = new RunEvidenceStore(config.runsRoot);
   const registry = new PlatformRegistry(runners);
   const service = new RunService({ config, evidence, registry });
