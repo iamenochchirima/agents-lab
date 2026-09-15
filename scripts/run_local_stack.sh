@@ -90,6 +90,9 @@ Available services:
   frontend, web        Start the React/Vite frontend only
   server, api          Start the Fastify server only (api is an alias)
   worker               Start the Temporal worker only
+  aws-step-functions   Start the AWS Step Functions platform service
+  hatchet              Start the Hatchet platform worker
+  vercel-workflows     Start the Vercel Workflows platform service
   check-temporal       Check the configured Temporal endpoint
 
 Environment variables:
@@ -98,6 +101,9 @@ Environment variables:
   AGENTLAB_RUN_ROOT
   AGENTLAB_TEMPORAL_ENDPOINT, AGENTLAB_TEMPORAL_NAMESPACE
   AGENTLAB_TEMPORAL_TASK_QUEUE, AGENTLAB_TEMPORAL_CLI
+  AGENTLAB_AWS_STEP_FUNCTIONS_*
+  AGENTLAB_HATCHET_*, HATCHET_CLIENT_TOKEN
+  AGENTLAB_VERCEL_WORKFLOWS_*
 
 Examples:
   $0
@@ -145,6 +151,39 @@ run_worker() {
     AGENTLAB_TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
     AGENTLAB_TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
     exec npm --prefix "$SERVER_DIR" run dev:worker
+}
+
+run_aws_step_functions() {
+  require_command npm
+  require_package "$SERVER_DIR"
+  require_package "$SERVER_DIR/src/platforms/aws-step-functions"
+
+  echo "Starting AWS Step Functions platform service."
+  exec npm --prefix "$SERVER_DIR" run dev:aws-step-functions
+}
+
+run_hatchet() {
+  require_command npm
+  require_package "$SERVER_DIR"
+  require_package "$SERVER_DIR/src/platforms/hatchet"
+
+  if [[ -z "${HATCHET_CLIENT_TOKEN:-}" ]]; then
+    echo "HATCHET_CLIENT_TOKEN is required to start the Hatchet worker." >&2
+    echo "Start the local Hatchet stack and export its token first." >&2
+    exit 1
+  fi
+
+  echo "Starting Hatchet platform worker."
+  exec npm --prefix "$SERVER_DIR" run dev:hatchet
+}
+
+run_vercel_workflows() {
+  require_command npm
+  require_package "$SERVER_DIR"
+  require_package "$SERVER_DIR/src/platforms/vercel-workflows"
+
+  echo "Starting Vercel Workflows platform service."
+  exec npm --prefix "$SERVER_DIR" run dev:vercel-workflows
 }
 
 start_all() {
@@ -226,6 +265,15 @@ case "${1:-}" in
     ;;
   worker)
     run_worker
+    ;;
+  aws-step-functions|aws)
+    run_aws_step_functions
+    ;;
+  hatchet)
+    run_hatchet
+    ;;
+  vercel-workflows|vercel)
+    run_vercel_workflows
     ;;
   check-temporal)
     check_temporal
