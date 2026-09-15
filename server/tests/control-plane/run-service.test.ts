@@ -60,7 +60,7 @@ class FakeRunner implements PlatformRunner {
     const result = this.state === "running" ? null : resultFor(runId, this.state);
     return {
       status: this.state,
-      reference,
+      reference: { ...reference, native: { ...reference.native, workflowStatus: this.state } },
       eventIntents: events,
       result,
       trajectory: result ? { schemaVersion: 1, runId: result.runId, phases: [] } : null,
@@ -124,6 +124,8 @@ test("reconciliation projects workflow intents once after a server restart", asy
 
     assert.equal(first.status, "completed");
     assert.equal(second.status, "completed");
+    assert.equal(first.executionReference?.native.workflowStatus, "completed");
+    assert.equal(second.executionReference?.native.workflowStatus, "completed");
     assert.equal(events.filter((event) => event.source === "temporal-workflow").length, 5);
     assert.equal(events.length, 7);
   });

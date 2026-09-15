@@ -165,8 +165,23 @@ export class RunEvidenceStore {
 
   async writeExecutionReference(runId: string, reference: PlatformExecutionReference): Promise<void> {
     const manifest = await this.readManifest(runId);
+    const path = join(this.runDirectory(runId), nativeReferenceFile(reference.platform));
     validateExecutionReference(reference, manifest, `native/${manifest.platform}.json`);
-    await this.writeIdempotent(join(this.runDirectory(runId), nativeReferenceFile(reference.platform)), reference);
+
+    // The execution identity is immutable, but inspection may enrich the native
+    // payload with an invocation ID, retry count, or terminal status. Replace the
+    // single platform-scoped reference atomically so recovery uses the newest
+    // known native identity without allowing a different execution to overwrite it.
+    try {
+      const existing = await readJson<PlatformExecutionReference>(path);
+      if (existing.executionId !== reference.executionId) {
+        throw new EvidenceConflictError(`Execution identity changed for native evidence: ${path}`);
+      }
+    } catch (error) {
+      if (!(error instanceof EvidenceNotFoundError)) throw error;
+    }
+
+    await atomicWriteJson(path, reference);
   }
 
   async writeResult(result: RunResult): Promise<void> {

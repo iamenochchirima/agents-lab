@@ -77,9 +77,21 @@ export const platformCatalog: readonly PlatformDescriptor[] = [
     backendProfiles: [{ id: "local-lab-server", name: "Local Lab server", description: "Runs the direct Mastra agent in the Lab server process.", status: "ready" }],
   },
   plannedPlatform("vercel-workflows", "Vercel Workflow / AI SDK", "Durable workflow execution", "Vercel workflow execution together with AI SDK agent primitives.", "TypeScript", "Node.js or Vercel runtime", "Workflow-hosted agent loop", "Workflow-managed state, waits, and recovery", "server/src/platforms/vercel-workflows/README.md"),
-  plannedPlatform("inngest", "Inngest", "Event-driven durable functions", "Event-driven functions and workflows for background and agent work.", "TypeScript", "Node.js service + Inngest", "Event-driven function execution", "Durable steps, events, waits, and retries", "server/src/platforms/inngest/README.md"),
-  plannedPlatform("trigger-dev", "Trigger.dev", "Durable background workflows", "Background jobs and workflow execution for long-running agent work.", "TypeScript", "Node.js service + Trigger.dev", "Task and workflow execution", "Durable task runs, waits, and retries", "server/src/platforms/trigger-dev/README.md"),
-  plannedPlatform("dbos", "DBOS", "Database-backed durable execution", "Database-backed durable workflows and application operations.", "TypeScript", "Node.js service + DBOS", "Database-backed workflow execution", "Database-persisted workflow state and recovery", "server/src/platforms/dbos/README.md"),
+  {
+    ...plannedPlatform("inngest", "Inngest", "Event-driven durable functions", "Event-driven functions and workflows for background and agent work.", "TypeScript", "Node.js service + Inngest", "Event-driven function execution", "Durable steps, events, waits, and retries", "server/src/platforms/inngest/README.md"),
+    backendProfiles: [{ id: "local-inngest-stack", name: "Local Inngest stack", description: "A Lab server, Inngest function service, and local Dev Server.", status: "ready" }],
+    infrastructure: [{ id: "inngest-dev-server", name: "Inngest Dev Server", description: "Schedules events, runs functions, and provides local durable step behavior.", requirement: "required", status: "ready" }],
+  },
+  {
+    ...plannedPlatform("trigger-dev", "Trigger.dev", "Durable background workflows", "Background jobs and workflow execution for long-running agent work.", "TypeScript", "Node.js service + Trigger.dev", "Task and workflow execution", "Durable task runs, waits, and retries", "server/src/platforms/trigger-dev/README.md"),
+    backendProfiles: [{ id: "local-trigger-stack", name: "Local Trigger stack", description: "A Lab server, Trigger API, and local task worker.", status: "ready" }],
+    infrastructure: [{ id: "trigger-server", name: "Trigger server", description: "Admits task runs and stores task history for local execution.", requirement: "required", status: "ready" }],
+  },
+  {
+    ...plannedPlatform("dbos", "DBOS", "Database-backed durable execution", "Database-backed durable workflows and application operations.", "TypeScript", "Node.js service + DBOS", "Database-backed workflow execution", "Database-persisted workflow state and recovery", "server/src/platforms/dbos/README.md"),
+    backendProfiles: [{ id: "local-dbos-stack", name: "Local DBOS stack", description: "A Lab server, DBOS workflow host, and PostgreSQL database.", status: "ready" }],
+    infrastructure: [{ id: "dbos-postgres", name: "DBOS PostgreSQL", description: "Stores DBOS workflow state, steps, and recovery metadata.", requirement: "required", status: "ready" }],
+  },
   plannedPlatform("hatchet", "Hatchet", "Durable task orchestration", "Task orchestration and background workflow execution for agent work.", "TypeScript", "Node.js service + Hatchet", "Task-driven workflow execution", "Durable task state, retries, and scheduling", "server/src/platforms/hatchet/README.md"),
   plannedPlatform("aws-step-functions", "AWS Step Functions", "Managed durable state machines", "AWS-managed state machines for durable, event-driven agent workflows.", "TypeScript", "AWS Step Functions + workers", "Managed state-machine execution", "Managed state, retries, waits, and events", "server/src/platforms/aws-step-functions/README.md"),
 ];

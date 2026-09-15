@@ -11,7 +11,15 @@ import { CompareRunModal } from "./CompareRunModal";
 import { cancelRun, createRun, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
-const RUNNABLE_BASELINE_PLATFORMS = new Set(["temporal", "restate", "langgraph", "mastra"]);
+const RUNNABLE_BASELINE_PLATFORMS = new Set([
+  "temporal",
+  "restate",
+  "langgraph",
+  "mastra",
+  "inngest",
+  "trigger-dev",
+  "dbos",
+]);
 
 export function PlatformRunnerPage() {
   const { platform } = useOutletContext<PlatformOutletContext>();

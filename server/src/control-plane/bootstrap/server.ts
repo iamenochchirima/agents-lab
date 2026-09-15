@@ -14,6 +14,9 @@ import { MastraBaselineRunner } from "../../platforms/mastra/runner-adapter/mast
 import { loadRestateConfig } from "../../platforms/restate/config.js";
 import { RestateBaselineRunner } from "../../platforms/restate/runner-adapter/restate-runner.js";
 import { TemporalBaselineRunner } from "../../platforms/temporal/runner-adapter/temporal-runner.js";
+import { DbosBaselineRunner } from "../../platforms/dbos/runner-adapter/dbos-runner.js";
+import { InngestBaselineRunner } from "../../platforms/inngest/runner-adapter/inngest-runner.js";
+import { TriggerDevBaselineRunner } from "../../platforms/trigger-dev/runner-adapter/trigger-dev-runner.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
@@ -40,7 +43,10 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     serviceUrl: process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024",
   });
   const mastraRunner = new MastraBaselineRunner();
-  const runners = [runner, restateRunner, langgraphRunner, mastraRunner] as const;
+  const inngestRunner = new InngestBaselineRunner();
+  const triggerDevRunner = TriggerDevBaselineRunner.fromEnvironment();
+  const dbosRunner = new DbosBaselineRunner();
+  const runners = [runner, restateRunner, langgraphRunner, mastraRunner, inngestRunner, triggerDevRunner, dbosRunner] as const;
   const evidence = new RunEvidenceStore(config.runsRoot);
   const registry = new PlatformRegistry(runners);
   const service = new RunService({ config, evidence, registry });

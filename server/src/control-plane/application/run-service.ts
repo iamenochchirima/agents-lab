@@ -168,6 +168,11 @@ export class RunService {
     reference: PlatformExecutionReference,
   ): Promise<RunView> {
     const inspection = await runner.inspect(reference);
+    // Platform inspection may enrich the opaque reference with native status,
+    // invocation IDs, retry counts, or reconciliation metadata. Persist that
+    // refreshed reference so a later server restart can resume from the latest
+    // known native identity.
+    await this.dependencies.evidence.writeExecutionReference(runId, inspection.reference);
     for (const intent of inspection.eventIntents) {
       await this.dependencies.evidence.appendEvent(intent);
     }
