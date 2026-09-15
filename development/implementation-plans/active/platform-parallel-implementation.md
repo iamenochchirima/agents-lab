@@ -1,7 +1,7 @@
 # Parallel platform implementation coordination
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T11:29:48+02:00
+**Last updated:** 2026-09-15T13:58:04+02:00
 **Status:** Active
 **Owner:** Primary implementation agent
 
@@ -40,6 +40,20 @@ SDK remains a variant under a platform, not an additional platform plan.
 
 The [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
 is the review record for all nine plans. It is not implementation evidence.
+
+## Current execution state
+
+The current implementation wave is running in three isolated worktrees:
+
+| Wave | Platforms | State |
+| --- | --- | --- |
+| 1 | Restate, LangGraph, Mastra | Integrated; remaining acceptance records are tracked in each plan |
+| 2 | Inngest, Trigger.dev, DBOS | Integrated; Inngest and DBOS have local acceptance evidence, while Trigger.dev still needs a real local server profile |
+| 3 | AWS Step Functions, Hatchet, Vercel Workflows | In progress; platform-local implementation is delegated, shared integration remains with the primary agent |
+
+Only one platform agent owns a platform directory at a time. The primary agent
+does not begin shared bootstrap or UI integration for this wave until its three
+platform-local handoffs have been reviewed.
 
 ## Parallel-safe ownership rule
 
