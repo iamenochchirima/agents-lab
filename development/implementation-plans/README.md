@@ -46,6 +46,27 @@ No Computer Native plan remains active for this slice.
 - [Computer Native reliable terminal and workspace inspection](completed/computer-native-reliable-terminal-and-workspace-inspection.md) — completed
   2026-09-15T10:21:25+02:00; delivered bounded real-provider turns, the standalone
   terminal interface, and read-only workspace inspection with durable round evidence.
+- [Restate baseline](completed/restate-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the local durable workflow baseline, generic
+  runner integration, native evidence, and shared UI execution path.
+- [LangGraph baseline](completed/langgraph-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the local Python graph baseline, checkpointed
+  service boundary, generic runner integration, and shared UI execution path.
+- [Mastra baseline](completed/mastra-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the local TypeScript runtime baseline, lifecycle
+  evidence, generic runner integration, and shared UI execution path.
+- [Inngest baseline](completed/inngest-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the local Dev Server/function baseline,
+  event-backed lifecycle evidence, and shared UI execution path.
+- [DBOS baseline](completed/dbos-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the local PostgreSQL-backed workflow baseline,
+  lifecycle projection, and shared UI execution path.
+- [Hatchet baseline](completed/hatchet-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the embedded local worker baseline, native
+  task evidence, generic runner integration, and shared UI execution path.
+- [Vercel Workflows baseline](completed/vercel-workflows-baseline.md) — completed
+  2026-09-15T17:40:00+02:00; delivered the local Workflow World baseline, workflow
+  evidence, generic runner integration, and shared UI execution path.
 - [Lab server + Temporal baseline](completed/lab-server-temporal-baseline.md) — completed
   2026-09-15T01:46:55+02:00; delivered the first end-to-end Platform UI, Fastify, local
   Temporal, worker, and evidence path.
