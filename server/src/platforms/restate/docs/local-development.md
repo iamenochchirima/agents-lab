@@ -59,14 +59,16 @@ Offline unit checks:
 ```bash
 npm --prefix server run typecheck
 npm --prefix server run build
-node --test server/dist/tests/platforms/restate/*.test.js
+cd server
+node --import tsx --test tests/platforms/restate/*.test.ts
 ```
 
 The real local integration test is explicit and requires the server, service, and
 registration above:
 
 ```bash
-node --test server/dist/integration-tests/restate-baseline.test.js
+cd server
+AGENTLAB_RUN_RESTATE_INTEGRATION=1 node --import tsx --test integration-tests/restate-baseline.test.ts
 ```
 
 It submits a real workflow through Restate, verifies normalized evidence, runs a
