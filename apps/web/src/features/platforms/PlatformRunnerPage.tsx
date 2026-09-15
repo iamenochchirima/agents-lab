@@ -19,6 +19,9 @@ const RUNNABLE_BASELINE_PLATFORMS = new Set([
   "inngest",
   "trigger-dev",
   "dbos",
+  "hatchet",
+  "aws-step-functions",
+  "vercel-workflows",
 ]);
 
 export function PlatformRunnerPage() {
