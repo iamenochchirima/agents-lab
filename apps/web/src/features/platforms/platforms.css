@@ -910,7 +910,8 @@
 }
 
 .compact-control select,
-.compact-control input {
+.compact-control input,
+.compact-control textarea {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -921,6 +922,12 @@
   min-width: 0;
   padding: 7px 8px;
   width: 100%;
+}
+
+.compact-control textarea {
+  height: auto;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .compact-control > div {
@@ -995,7 +1002,56 @@
 
 .comparison-platform-picker input { display: none; }
 .modal-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.modal-note { margin: 0; }
+
+.compare-task-field {
+  grid-column: 1 / -1;
+}
+
+.comparison-results {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.comparison-result {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.comparison-result strong {
+  color: var(--text-1);
+  font-size: 0.74rem;
+}
+
+.comparison-result-status {
+  align-items: center;
+  color: var(--text-2);
+  display: inline-flex;
+  font-size: 0.68rem;
+  gap: 5px;
+  text-transform: capitalize;
+}
+
+.comparison-result-output {
+  color: var(--text-2);
+  flex: 1;
+  font-size: 0.68rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-result-completed { color: var(--success); }
+.comparison-result-error,
+.comparison-result-failed,
+.comparison-result-cancelled,
+.comparison-result-reconciliation_required { color: var(--danger); }
 
 .run-status-panel {
   background: var(--surface);

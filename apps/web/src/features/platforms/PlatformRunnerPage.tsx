@@ -8,21 +8,9 @@ import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
+import { isRunnableBaseline } from "./platformCatalog";
 import { cancelRun, createRun, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
-
-const RUNNABLE_BASELINE_PLATFORMS = new Set([
-  "temporal",
-  "restate",
-  "langgraph",
-  "mastra",
-  "inngest",
-  "trigger-dev",
-  "dbos",
-  "hatchet",
-  "aws-step-functions",
-  "vercel-workflows",
-]);
 
 export function PlatformRunnerPage() {
   const { platform } = useOutletContext<PlatformOutletContext>();
@@ -34,8 +22,8 @@ export function PlatformRunnerPage() {
   const [variantId, setVariantId] = useState(platform.variants[0].id);
   const [infrastructureId, setInfrastructureId] = useState(platform.infrastructure[0]?.id ?? "none");
   const [experimentId, setExperimentId] = useState("none");
-  const [provider, setProvider] = useState(RUNNABLE_BASELINE_PLATFORMS.has(platform.id) ? "fake" : "");
-  const [model, setModel] = useState(RUNNABLE_BASELINE_PLATFORMS.has(platform.id) ? "fake-success" : "");
+  const [provider, setProvider] = useState(isRunnableBaseline(platform) ? "fake" : "");
+  const [model, setModel] = useState(isRunnableBaseline(platform) ? "fake-success" : "");
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [run, setRun] = useState<RunView | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -45,6 +33,7 @@ export function PlatformRunnerPage() {
   const [platformConnectivity, setPlatformConnectivity] = useState<PlatformConnectivity | null>(null);
   const [connectivityError, setConnectivityError] = useState<string | null>(null);
   const eventCursor = useRef(0);
+  const previousPlatformId = useRef(platform.id);
   const runIdFromUrl = searchParams.get("run");
 
   const environments = useMemo(
@@ -52,9 +41,29 @@ export function PlatformRunnerPage() {
     [platform.computerEnvironmentIds],
   );
 
-  const hasRunnableBaseline = RUNNABLE_BASELINE_PLATFORMS.has(platform.id) && variantId === "baseline";
+  const hasRunnableBaseline = isRunnableBaseline(platform) && variantId === "baseline";
   const isRunnable = hasRunnableBaseline && platformConnectivity?.reachable === true;
   const taskError = task.trim().length === 0 ? "Enter a task prompt." : null;
+
+  useEffect(() => {
+    const changedPlatform = previousPlatformId.current !== platform.id;
+    previousPlatformId.current = platform.id;
+    if (changedPlatform && searchParams.has("run")) {
+      const nextSearchParams = new URLSearchParams(searchParams);
+      nextSearchParams.delete("run");
+      setSearchParams(nextSearchParams, { replace: true });
+    }
+    setEnvironmentId(platform.computerEnvironmentIds[0] ?? "");
+    setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
+    setVariantId(platform.variants[0]?.id ?? "baseline");
+    setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
+    setProvider(isRunnableBaseline(platform) ? "fake" : "");
+    setModel(isRunnableBaseline(platform) ? "fake-success" : "");
+    setRun(null);
+    setRunEvents([]);
+    setRunError(null);
+    eventCursor.current = 0;
+  }, [platform.id, setSearchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,7 +71,7 @@ export function PlatformRunnerPage() {
 
     setPlatformConnectivity(null);
     setConnectivityError(null);
-    if (!RUNNABLE_BASELINE_PLATFORMS.has(platform.id)) {
+    if (!isRunnableBaseline(platform)) {
       return () => controller.abort();
     }
 
@@ -134,6 +143,13 @@ export function PlatformRunnerPage() {
         variant: variantId,
         task: { kind: "prompt", prompt: task.trim() },
         model: { provider: provider.trim(), model: model.trim() },
+        selection: {
+          scenarioId,
+          ...(environmentId ? { environmentId } : {}),
+          ...(backendProfileId ? { backendProfileId } : {}),
+          ...(infrastructureId !== "none" ? { infrastructureId } : {}),
+          ...(experimentId !== "none" ? { experimentId } : {}),
+        },
       }, controller.signal);
       eventCursor.current = createdRun.events.at(-1)?.recordedSequence ?? 0;
       setRunEvents(createdRun.events.slice());

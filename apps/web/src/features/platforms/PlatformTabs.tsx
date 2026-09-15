@@ -6,7 +6,7 @@ import { platformCatalog } from "./platformCatalog";
 export function PlatformTabs({ activePlatformId }: { activePlatformId: string }) {
   return (
     <nav aria-label="Agent platforms" className="platform-tabs">
-      {platformCatalog.map((platform) => (
+      {platformCatalog.filter((platform) => platform.id !== "aws-step-functions").map((platform) => (
         <NavLink
           className={({ isActive }) => `platform-tab ${isActive || platform.id === activePlatformId ? "is-active" : ""}`}
           end
