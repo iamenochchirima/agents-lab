@@ -8,8 +8,14 @@ export const HATCHET_SDK_VERSION = "1.33.1" as const;
 export const HATCHET_SERVER_VERSION = "v0.106.5" as const;
 export const HATCHET_TASK_NAME = "agentlab-hatchet-baseline" as const;
 export const HATCHET_WORKER_NAME = "agentlab-hatchet-baseline-worker" as const;
-export const HATCHET_DEFAULT_API_URL = "http://127.0.0.1:8080";
-export const HATCHET_DEFAULT_HOST_PORT = "127.0.0.1:7077";
+// Standalone tasks advertise the canonical `<workflow>:<task>` action to the
+// dispatcher. The task and workflow names are the same for this baseline.
+export const HATCHET_ACTION_NAME = `${HATCHET_TASK_NAME}:${HATCHET_TASK_NAME}` as const;
+// Restate uses port 8080 in the local stack. Keep embedded Hatchet on its own
+// defaults so both platform services can run together without manual port
+// overrides.
+export const HATCHET_DEFAULT_API_URL = "http://127.0.0.1:9095";
+export const HATCHET_DEFAULT_HOST_PORT = "127.0.0.1:7078";
 export const HATCHET_DEFAULT_TENANT_ID = "707d0855-80ab-4e1f-a156-f1c4546cbf52";
 export const HATCHET_DEFAULT_EXECUTION_TIMEOUT_MS = 60_000;
 export const HATCHET_DEFAULT_SCHEDULE_TIMEOUT_MS = 5 * 60_000;

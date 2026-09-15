@@ -16,6 +16,7 @@ import type {
 import {
   HATCHET_PLATFORM,
   HATCHET_VARIANT,
+  HATCHET_ACTION_NAME,
   HATCHET_TASK_NAME,
   loadHatchetConfig,
   safeManifestConfiguration,
@@ -75,6 +76,7 @@ interface HatchetWorkerRow {
   readonly name?: string;
   readonly status?: string;
   readonly actions?: readonly string[];
+  readonly registeredWorkflows?: readonly { readonly name?: string }[];
 }
 
 interface NativeHatchetReference {
@@ -259,7 +261,7 @@ export class HatchetBaselineRunner implements PlatformRunner {
       const matchingWorker = (workers.rows ?? []).find(
         (worker) =>
           worker.status === "ACTIVE" &&
-          (worker.actions ?? []).includes(this.config.taskName),
+          workerAdvertisesTask(worker, this.config.taskName),
       );
       if (!matchingWorker) {
         return {
@@ -347,13 +349,21 @@ export class HatchetBaselineRunner implements PlatformRunner {
     const client = this.requireClient();
 
     if (client.runs.get_status) {
-      const currentStatus = await client.runs.get_status(nativeRunId);
-      if (isTerminalStatus(currentStatus)) {
-        return {
-          accepted: false,
-          alreadyTerminal: true,
-          message: `Hatchet run is already ${currentStatus.toLowerCase()}.`,
-        };
+      try {
+        const currentStatus = await client.runs.get_status(nativeRunId);
+        if (isTerminalStatus(currentStatus)) {
+          return {
+            accepted: false,
+            alreadyTerminal: true,
+            message: `Hatchet run is already ${currentStatus.toLowerCase()}.`,
+          };
+        }
+      } catch (error) {
+        if (!isNotFoundError(error)) throw error;
+        // Acknowledged runs can be absent from the status projection briefly.
+        // The native run ID is still sufficient for an idempotent cancel call;
+        // treating this 404 as a hard failure would leave accepted work
+        // running solely because the read model lagged.
       }
     }
 
@@ -412,7 +422,12 @@ export class HatchetBaselineRunner implements PlatformRunner {
     }
 
     const output = taskOutputFromDetails(details, native.runId);
-    const status = mapStatus(details.run.status, output?.result ?? null);
+    const status = mapStatus(
+      details.run.status,
+      output?.result ?? null,
+      details.tasks[0]?.retryCount,
+      this.config.retries,
+    );
     const updated = updateReferenceFromDetails(currentReference, details);
     if (status === "queued" || status === "running") {
       return {
@@ -426,7 +441,14 @@ export class HatchetBaselineRunner implements PlatformRunner {
     }
 
     const result =
-      output?.result ?? synthesizedResult(details, native.runId, status);
+      output?.result ??
+      synthesizedResult(
+        details,
+        native.runId,
+        status,
+        this.config.executionTimeoutMs,
+        this.config.scheduleTimeoutMs,
+      );
     return {
       status:
         result.status === "cancelled"
@@ -485,6 +507,22 @@ export class HatchetBaselineRunner implements PlatformRunner {
       return null;
     }
   }
+}
+
+function workerAdvertisesTask(
+  worker: HatchetWorkerRow,
+  taskName: string,
+): boolean {
+  const actionNames = new Set(worker.actions ?? []);
+  // Older Hatchet API projections returned the standalone task name. Current
+  // workers advertise the canonical workflow:task action instead.
+  return (
+    actionNames.has(taskName) ||
+    actionNames.has(HATCHET_ACTION_NAME) ||
+    (worker.registeredWorkflows ?? []).some(
+      (workflow) => workflow.name?.toLowerCase() === taskName.toLowerCase(),
+    )
+  );
 }
 
 function inputFromManifest(manifest: RunManifest): HatchetPromptInput {
@@ -732,6 +770,8 @@ function synthesizedResult(
   details: HatchetRunDetails,
   runId: string,
   status: RunnerInspection["status"],
+  executionTimeoutMs: number,
+  scheduleTimeoutMs: number,
 ): RunResult {
   const finishedAt = details.run.finishedAt ?? new Date().toISOString();
   const task = details.tasks[0];
@@ -741,7 +781,7 @@ function synthesizedResult(
   const failureKind =
     status === "cancelled"
       ? "cancelled"
-      : hasTimeout(details)
+      : hasTimeout(details, executionTimeoutMs, scheduleTimeoutMs)
         ? "timeout"
         : "internal";
   return {
@@ -755,8 +795,8 @@ function synthesizedResult(
       code:
         status === "cancelled"
           ? "HATCHET_RUN_CANCELLED"
-          : hasTimeout(details)
-            ? "HATCHET_RUN_TIMED_OUT"
+            : hasTimeout(details, executionTimeoutMs, scheduleTimeoutMs)
+              ? "HATCHET_RUN_TIMED_OUT"
             : "HATCHET_TASK_FAILED",
       message:
         errorMessage ??
@@ -798,6 +838,8 @@ function emptyMetrics(result: RunResult): RunMetrics {
 function mapStatus(
   nativeStatus: string,
   result: RunResult | null,
+  retryCount?: number,
+  configuredRetries = 0,
 ): RunnerInspection["status"] {
   if (result)
     return result.status === "completed"
@@ -818,6 +860,16 @@ function mapStatus(
     case "CANCELLED":
       return "cancelled";
     case "FAILED":
+      // Hatchet projects a failed attempt as FAILED while the retry scheduler
+      // has not yet started the next attempt. Do not synthesize a terminal Lab
+      // result during that window; the task's retry count is the durable signal
+      // for whether another attempt remains eligible.
+      if (
+        typeof retryCount === "number" &&
+        retryCount < configuredRetries
+      ) {
+        return "queued";
+      }
       return "failed";
     default:
       return "running";
@@ -833,12 +885,51 @@ function isTerminalStatus(status: string): boolean {
   );
 }
 
-function hasTimeout(details: HatchetRunDetails): boolean {
-  return details.taskEvents.some(
-    (event) =>
-      event.eventType === "TIMED_OUT" ||
-      event.eventType === "SCHEDULING_TIMED_OUT",
-  );
+function hasTimeout(
+  details: HatchetRunDetails,
+  executionTimeoutMs: number,
+  scheduleTimeoutMs: number,
+): boolean {
+  const eventTypes = details.taskEvents.map((event) => event.eventType);
+  if (
+    eventTypes.some(
+      (eventType) =>
+        eventType === "TIMED_OUT" || eventType === "SCHEDULING_TIMED_OUT",
+    )
+  ) {
+    return true;
+  }
+
+  // Hatchet versions differ in whether timeout information is projected as a
+  // dedicated event or folded into the failed task/run status. Inspect both
+  // native status and error text so the Lab preserves timeout semantics across
+  // those projections instead of reporting every terminal failure as
+  // "internal".
+  const statusAndMessages = [
+    details.run.status,
+    details.run.errorMessage,
+    details.tasks[0]?.status,
+    details.tasks[0]?.errorMessage,
+    ...eventTypes,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  if (/\b(timeout|timed[ _-]?out|deadline[ _-]?exceeded)\b/.test(statusAndMessages)) {
+    return true;
+  }
+
+  // Some projections omit both the timeout event and error text. A terminal
+  // run that spans the configured execution/scheduling deadline is the only
+  // remaining native evidence, so retain that distinction with a small clock
+  // tolerance for timestamp precision and transport delay.
+  const startedAt = details.run.startedAt ?? details.tasks[0]?.startedAt;
+  const finishedAt = details.run.finishedAt ?? details.tasks[0]?.finishedAt;
+  if (!startedAt || !finishedAt) return false;
+  const durationMs = Date.parse(finishedAt) - Date.parse(startedAt);
+  if (!Number.isFinite(durationMs)) return false;
+  const deadlineMs = Math.min(executionTimeoutMs, scheduleTimeoutMs);
+  return durationMs >= Math.max(0, deadlineMs - 250);
 }
 
 async function readRunReferenceId(

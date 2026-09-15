@@ -67,10 +67,21 @@ class HatchetWorkerHostImpl implements HatchetWorkerHost {
     this.embeddedStop = null;
     if (embeddedStop) {
       try {
-        // The embedded SDK deliberately unreferences its child process. Give
-        // its shutdown signal a bounded window while keeping this lifecycle
-        // promise live long enough to observe a normal child exit.
-        await finishWithin(embeddedStop(), 5_000);
+        // The embedded SDK waits for the sidecar and its bundled Postgres to
+        // exit, with its own force-kill deadline. Do not return early here:
+        // callers may remove a test data directory or immediately start the
+        // next local engine, and either action is unsafe while the child still
+        // owns the database or network ports.
+        // The SDK unreferences that child, so retain one local event-loop
+        // handle while its shutdown promise is pending. Without this guard,
+        // Node can report an empty event loop and abandon the await before
+        // the sidecar's exit event is delivered.
+        const shutdownKeepAlive = setInterval(() => undefined, 1_000);
+        try {
+          await embeddedStop();
+        } finally {
+          clearInterval(shutdownKeepAlive);
+        }
       } catch (error) {
         failure ??= error;
       }

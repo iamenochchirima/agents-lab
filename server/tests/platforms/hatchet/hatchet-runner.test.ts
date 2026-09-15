@@ -58,7 +58,9 @@ class FakeClient implements HatchetRunnerClientLike {
       return details;
     },
     get_status: async (runId: string): Promise<string> =>
-      this.statusById.get(runId) ?? "RUNNING",
+      this.statusErrors.has(runId)
+        ? Promise.reject(this.statusErrors.get(runId))
+        : (this.statusById.get(runId) ?? "RUNNING"),
     list: async (): Promise<{ readonly rows: readonly any[] }> => ({
       rows: [...this.listRows],
     }),
@@ -74,6 +76,7 @@ class FakeClient implements HatchetRunnerClientLike {
   readonly tenant = { get: async () => ({ id: config.tenantId }) };
   readonly detailsById = new Map<string, HatchetRunDetails>();
   readonly statusById = new Map<string, string>();
+  readonly statusErrors = new Map<string, Error>();
   readonly listRows: any[] = [];
   readonly workerRows: any[] = [];
   readonly cancelledIds: string[] = [];
@@ -82,8 +85,13 @@ class FakeClient implements HatchetRunnerClientLike {
 function runner(
   task: HatchetTaskLike,
   client = new FakeClient(),
+  runnerConfig = config,
 ): HatchetBaselineRunner {
-  return HatchetBaselineRunner.fromClient({ config, client, task });
+  return HatchetBaselineRunner.fromClient({
+    config: runnerConfig,
+    client,
+    task,
+  });
 }
 
 function successfulOutput(runId: string): HatchetTaskOutput {
@@ -267,6 +275,23 @@ test("runner requires an active worker and cancels only non-terminal runs", asyn
   assert.deepEqual(client.cancelledIds, ["workflow-run-3"]);
 });
 
+test("runner cancels an acknowledged run when the status projection briefly returns 404", async () => {
+  const client = new FakeClient();
+  client.statusErrors.set("workflow-run-status-lag", new Error("run not found"));
+  const task = new FakeTask(async () => ({
+    getWorkflowRunId: async () => "workflow-run-status-lag",
+  }));
+  const instance = runner(task, client);
+  const reference = await instance.start(
+    manifestFor(instance, "hatchet-cancel-status-lag-test"),
+  );
+
+  const cancellation = await instance.cancel(reference, "status projection lag");
+
+  assert.equal(cancellation.accepted, true);
+  assert.deepEqual(client.cancelledIds, ["workflow-run-status-lag"]);
+});
+
 test("runner distinguishes an unavailable service from an unavailable worker", async () => {
   const task = new FakeTask(async () => ({
     getWorkflowRunId: async () => "workflow-run-unavailable",
@@ -317,4 +342,73 @@ test("runner synthesizes a timeout failure when Hatchet has no task output", asy
   assert.equal(inspection.result?.status, "failed");
   assert.equal(inspection.result?.error?.failureKind, "timeout");
   assert.equal(inspection.result?.attemptCount, 3);
+});
+
+test("runner keeps a failed attempt queued while Hatchet has retries remaining", async () => {
+  const client = new FakeClient();
+  client.detailsById.set("workflow-run-retry", {
+    run: {
+      status: "FAILED",
+      startedAt: "2026-09-15T10:00:00.000Z",
+      finishedAt: "2026-09-15T10:00:01.000Z",
+    },
+    taskEvents: [
+      {
+        id: 1,
+        timestamp: "2026-09-15T10:00:01.000Z",
+        eventType: "FAILED",
+        retryCount: 0,
+      },
+    ],
+    tasks: [
+      {
+        taskExternalId: "task-retry",
+        status: "FAILED",
+        retryCount: 0,
+        attempt: 1,
+        errorMessage: "transient task failure",
+      },
+    ],
+  });
+  const task = new FakeTask(async () => ({
+    getWorkflowRunId: async () => "workflow-run-retry",
+  }));
+  const instance = runner(task, client);
+  const inspection = await instance.inspect(
+    await instance.start(manifestFor(instance, "hatchet-retry-projection-test")),
+  );
+
+  assert.equal(inspection.status, "queued");
+  assert.equal(inspection.result, null);
+});
+
+test("runner detects timeout from a failed projection without a timeout event", async () => {
+  const client = new FakeClient();
+  client.detailsById.set("workflow-run-timeout-projection", {
+    run: {
+      status: "FAILED",
+      startedAt: "2026-09-15T10:00:00.000Z",
+      finishedAt: "2026-09-15T10:00:05.000Z",
+    },
+    taskEvents: [{ id: 1, timestamp: "2026-09-15T10:00:05.000Z", eventType: "FAILED" }],
+    tasks: [{ taskExternalId: "task-timeout", status: "FAILED", retryCount: 2, attempt: 3 }],
+  });
+  const task = new FakeTask(async () => ({
+    getWorkflowRunId: async () => "workflow-run-timeout-projection",
+  }));
+  const instance = runner(
+    task,
+    client,
+    loadHatchetConfig({
+      HATCHET_CLIENT_TOKEN: "test-token",
+      AGENTLAB_HATCHET_EXECUTION_TIMEOUT_MS: "5000",
+      AGENTLAB_HATCHET_SCHEDULE_TIMEOUT_MS: "10000",
+    }),
+  );
+  const inspection = await instance.inspect(
+    await instance.start(manifestFor(instance, "hatchet-timeout-projection-test")),
+  );
+
+  assert.equal(inspection.result?.error?.failureKind, "timeout");
+  assert.equal(inspection.result?.error?.code, "HATCHET_RUN_TIMED_OUT");
 });
