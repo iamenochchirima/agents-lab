@@ -52,12 +52,11 @@ export interface RunView {
     readonly model: { readonly provider: string; readonly model: string };
   };
   readonly events: readonly RunEvent[];
-  readonly temporalReference: {
-    readonly workflowId: string;
-    readonly workflowRunId: string;
-    readonly workflowType: string;
-    readonly namespace: string;
-    readonly taskQueue: string;
+  readonly executionReference: {
+    readonly platform: string;
+    readonly variant: string;
+    readonly executionId: string;
+    readonly native: Record<string, unknown>;
   } | null;
   readonly result: RunResult | null;
 }
@@ -70,9 +69,9 @@ export interface RunEventsPage {
   readonly done: boolean;
 }
 
-export interface TemporalRunRequest {
-  readonly platform: "temporal";
-  readonly variant: "baseline";
+export interface PlatformRunRequest {
+  readonly platform: string;
+  readonly variant: string;
   readonly task: { readonly kind: "prompt"; readonly prompt: string };
   readonly model: { readonly provider: string; readonly model: string };
 }
@@ -94,7 +93,7 @@ export function getPlatformApiBaseUrl(): string {
   return API_BASE_URL;
 }
 
-export async function createTemporalRun(request: TemporalRunRequest, signal?: AbortSignal): Promise<RunView> {
+export async function createRun(request: PlatformRunRequest, signal?: AbortSignal): Promise<RunView> {
   return requestJson<RunView>("/api/runs", {
     body: JSON.stringify(request),
     method: "POST",

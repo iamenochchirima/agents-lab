@@ -8,7 +8,7 @@ import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
-import { cancelRun, createTemporalRun, getRun, getRunEvents, PlatformApiError, type RunEvent, type RunView } from "./platformApi";
+import { cancelRun, createRun, getRun, getRunEvents, PlatformApiError, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
 export function PlatformRunnerPage() {
@@ -88,9 +88,9 @@ export function PlatformRunnerPage() {
     setRunError(null);
     const controller = new AbortController();
     try {
-      const createdRun = await createTemporalRun({
-        platform: "temporal",
-        variant: "baseline",
+      const createdRun = await createRun({
+        platform: platform.id,
+        variant: variantId,
         task: { kind: "prompt", prompt: task.trim() },
         model: { provider: provider.trim(), model: model.trim() },
       }, controller.signal);

@@ -80,7 +80,7 @@ export function RunStatusPanel(props: RunStatusPanelProps) {
       <dl className="run-manifest-summary">
         <div><dt>Variant</dt><dd>{props.run.manifest.variant}</dd></div>
         <div><dt>Model</dt><dd>{props.run.manifest.model.provider} / {props.run.manifest.model.model}</dd></div>
-        {props.run.temporalReference && <div><dt>Task queue</dt><dd>{props.run.temporalReference.taskQueue}</dd></div>}
+        {props.run.executionReference && <div><dt>Execution</dt><dd>{props.run.executionReference.executionId}</dd></div>}
       </dl>
 
       <div className="run-evidence-grid">
@@ -92,10 +92,10 @@ export function RunStatusPanel(props: RunStatusPanelProps) {
           <span className="run-section-label">Attempts</span>
           <strong>{result?.attemptCount ?? "—"}</strong>
         </div>
-        {props.run.temporalReference && (
+        {props.run.executionReference && (
           <div>
-            <span className="run-section-label">Workflow</span>
-            <strong title={props.run.temporalReference.workflowId}>{props.run.temporalReference.workflowId}</strong>
+            <span className="run-section-label">Platform</span>
+            <strong title={props.run.executionReference.executionId}>{props.run.executionReference.platform}</strong>
           </div>
         )}
       </div>
