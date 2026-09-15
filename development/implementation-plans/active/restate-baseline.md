@@ -1,7 +1,7 @@
 # Restate baseline platform
 
 **Created:** 2026-09-15T10:59:09+02:00<br>
-**Last updated:** 2026-09-15T12:59:15+02:00<br>
+**Last updated:** 2026-09-15T13:14:56+02:00<br>
 **Status:** Active — implementation integrated; container validation pending<br>
 **Owner:** Primary platform integration agent<br>
 **Platform:** `restate`<br>
@@ -56,15 +56,18 @@ implementation even when the local Restate server or service deployment is stopp
 Verified in this wave:
 
 - [x] 14 focused Restate tests pass.
+- [x] The Docker-backed Restate test environment passes, including replay and workflow-scoped state retention.
+- [x] A pinned local Restate 1.7.10 container and Restate SDK 1.17.0 service complete a fake-model run through the generic API.
+- [x] A controlled service crash during `fake-delay` resumes the same invocation after service replacement.
+- [x] Restarting the Restate container with the retained `lab/restate-data` volume preserves the workflow and deployment.
+- [x] Restarting the Lab server against the retained run root reconciles the same Restate execution and native reference.
 - [x] Restate configuration, workflow-key, retry, cancellation, duplicate-submission, and native status mappings are covered.
 - [x] Server, UI typecheck, UI build, and the full 64-test server suite pass.
 - [x] The platform documentation includes pinned local server/service commands, registration, evidence, and recovery semantics.
 
 Remaining before archival:
 
-- [ ] Run the Docker-backed Restate test environment and the real local server/service integration with the pinned image.
-- [ ] Demonstrate service and Restate-server restart using the persistent volume.
-- [ ] Record the manual run, exact container versions, and final plan commit hashes in the completion record.
+- [ ] Record the final manual acceptance observations and focused commit hashes in the completion record.
 
 ## Platform and variant identity
 

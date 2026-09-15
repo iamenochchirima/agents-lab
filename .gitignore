@@ -25,3 +25,6 @@ apps/web/src/generated/document-catalog.ts
 # Logs and local editor state
 *.log
 .DS_Store
+
+# Local platform runtime state
+lab/restate-data/
