@@ -40,6 +40,12 @@ The service exposes the platform-local routes used by the runner:
 - `POST /runs/:workflowRunId?cancel=1` — request cancellation.
 - `POST /.well-known/workflow/v1/flow` — generated Workflow SDK flow handler.
 
+The local checks cover a successful run, a terminal model failure, duplicate and
+conflicting run IDs, malformed admission, cancellation of a durable sleep,
+pending-admission reconciliation, and recovery of an active run after the
+service is restarted. The restart check is about the local World only; it does
+not establish Vercel-hosted retention or deployment recovery.
+
 Configuration is environment-only:
 
 ```sh

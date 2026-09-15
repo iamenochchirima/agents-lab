@@ -23,6 +23,11 @@ Cancellation is submitted to the native `Run.cancel()` API. A run already in a
 terminal state is reported as `alreadyTerminal`. A failed run receives a normalized
 failure record without exposing the provider response body.
 
+The local World is started after the HTTP flow route is listening, so persisted
+active runs can be delivered again after a service restart. The admission ledger
+is loaded before that recovery pass. A reservation left in `pending` is not
+replayed automatically because the native acceptance outcome is unknown.
+
 The local World is a reproducible development backend, not Vercel's managed hosted
 World. Hosted deployment, Vercel deployment identity, managed retention, and hosted
 observability still need a separate hosted profile.

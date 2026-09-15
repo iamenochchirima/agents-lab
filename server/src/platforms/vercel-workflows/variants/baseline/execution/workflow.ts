@@ -16,7 +16,9 @@ import { executeModelStep } from "./model-step.js";
 export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promise<VercelWorkflowResult> {
   "use workflow";
 
-  if (input.model.model === "fake-wait") await sleep(1_000);
+  // Keep this fixture long enough for cancellation and restart tests to
+  // observe a non-terminal durable run without making normal fake runs slow.
+  if (input.model.model === "fake-wait") await sleep(10_000);
   const step = await executeModelStep(input) as VercelWorkflowStepResult;
   const durationMs = Math.max(0, Date.parse(step.finishedAt) - Date.parse(step.startedAt));
   const result: VercelWorkflowResult = {
