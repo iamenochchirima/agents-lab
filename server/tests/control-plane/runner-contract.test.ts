@@ -14,6 +14,7 @@ import type { PlatformRunner, RunnerInspection } from "../../src/control-plane/p
 class InMemoryRestateRunner implements PlatformRunner {
   readonly platform = "restate" as const;
   readonly variant = "baseline" as const;
+  outcome: "completed" | "failed" = "completed";
 
   manifestConfiguration(): Readonly<Record<string, unknown>> {
     return { profile: "in-memory-restate-test" };
@@ -44,23 +45,26 @@ class InMemoryRestateRunner implements PlatformRunner {
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const runId = reference.executionId.replace("memory:", "");
+    const failed = this.outcome === "failed";
     const result: RunResult = {
       schemaVersion: 1,
       runId,
-      status: "completed",
+      status: this.outcome,
       startedAt: "2026-09-15T08:00:00.000Z",
       finishedAt: "2026-09-15T08:00:01.000Z",
-      output: "restate test output",
-      error: null,
+      output: failed ? null : "restate test output",
+      error: failed
+        ? { code: "RESTATE_TEST_FAILURE", message: "in-memory failure", failureKind: "provider", retryable: false }
+        : null,
       attemptCount: 1,
       usage: { inputTokens: null, outputTokens: null, totalTokens: null },
     };
     return {
-      status: "completed",
+      status: this.outcome,
       reference,
       eventIntents: [
         { source: "restate-handler", sourceSequence: 1, kind: "AgentStarted", runId, occurredAt: "2026-09-15T08:00:00.000Z", payload: {} },
-        { source: "restate-handler", sourceSequence: 2, kind: "RunCompleted", runId, occurredAt: result.finishedAt, payload: {} },
+        { source: "restate-handler", sourceSequence: 2, kind: failed ? "RunFailed" : "RunCompleted", runId, occurredAt: result.finishedAt, payload: {} },
       ],
       result,
       trajectory: { schemaVersion: 1, runId, phases: [] },
@@ -92,6 +96,16 @@ test("a non-Temporal runner uses the common service and native evidence seam", a
     const native = JSON.parse(await readFile(join(root, run.runId, "native/restate.json"), "utf8")) as PlatformExecutionReference;
     assert.equal(native.executionId, `memory:${run.runId}`);
     await assert.rejects(access(join(root, run.runId, "native/temporal.json")));
+
+    runner.outcome = "failed";
+    const failedRun = await service.createRun({
+      platform: "restate",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Exercise the failure path." },
+      model: { provider: "fake", model: "fake-success" },
+    });
+    assert.equal(failedRun.status, "failed");
+    assert.equal(failedRun.result?.error?.code, "RESTATE_TEST_FAILURE");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
