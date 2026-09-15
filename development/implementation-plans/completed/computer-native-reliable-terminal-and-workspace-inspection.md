@@ -369,12 +369,12 @@ Complete this section only when archiving the plan.
 
 **Completed:** `2026-09-15T10:21:25+02:00`
 **Final filename:** `computer-native-reliable-terminal-and-workspace-inspection.md`
-**Commits:** `implementation commit to be recorded before archive`
+**Commits:** `e66df5b`
 
 ### Validation
 
 - `cd computer-native && npm run typecheck` — passed
-- `cd computer-native && npm test` — passed; 34 deterministic tests
+- `cd computer-native && npm test` — passed; 35 deterministic tests
 - `cd computer-native && npm run build` — passed
 - `cd computer-native && npm run chat -- --help` — passed
 - `git diff --check` — passed

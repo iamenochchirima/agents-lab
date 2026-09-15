@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-15T09:43:41+02:00
+**Last updated:** 2026-09-15T10:21:25+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -33,9 +33,7 @@ mandatory whenever the work has state or external effects.
 
 ## Active plans
 
-- [Computer Native reliable terminal and workspace inspection](active/computer-native-reliable-terminal-and-workspace-inspection.md) — reliable
-  real-model turns, the expanded standalone terminal interface, and the first bounded
-  read-only workspace inspection loop.
+No Computer Native plan remains active for this slice.
 
 ## Completed plans
 
@@ -45,6 +43,9 @@ mandatory whenever the work has state or external effects.
 - [Computer Native terminal agent](completed/computer-native-tui.md) — completed
   2026-09-15T00:54:57+02:00; delivered the first streamed, evidence-producing local
   terminal turn.
+- [Computer Native reliable terminal and workspace inspection](completed/computer-native-reliable-terminal-and-workspace-inspection.md) — completed
+  2026-09-15T10:21:25+02:00; delivered bounded real-provider turns, the standalone
+  terminal interface, and read-only workspace inspection with durable round evidence.
 - [Lab server + Temporal baseline](completed/lab-server-temporal-baseline.md) — completed
   2026-09-15T01:46:55+02:00; delivered the first end-to-end Platform UI, Fastify, local
   Temporal, worker, and evidence path.
