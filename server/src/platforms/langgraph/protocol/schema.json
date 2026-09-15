@@ -2,59 +2,127 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-harness-lab.local/schemas/langgraph-baseline-v1.json",
   "title": "Agent Harness Lab LangGraph baseline protocol",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["protocolVersion"],
-  "properties": {
-    "protocolVersion": {"const": 1}
-  },
+  "oneOf": [
+    { "$ref": "#/$defs/startRequest" },
+    { "$ref": "#/$defs/startResponse" },
+    { "$ref": "#/$defs/healthResponse" },
+    { "$ref": "#/$defs/inspection" },
+    { "$ref": "#/$defs/cancelRequest" },
+    { "$ref": "#/$defs/cancelResponse" }
+  ],
   "$defs": {
-    "provider": {"type": "string", "enum": ["fake", "openrouter"]},
-    "status": {"type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled", "unknown"]},
-    "failureKind": {"type": "string", "enum": ["configuration", "pre_dispatch", "provider", "timeout", "cancelled", "outcome_unknown", "internal", "reconciliation"]},
+    "protocol": { "const": 1 },
+    "provider": { "type": "string", "enum": ["fake", "openrouter"] },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled", "unknown"] },
+    "failureKind": { "type": "string", "enum": ["configuration", "pre_dispatch", "provider", "timeout", "cancelled", "outcome_unknown", "internal", "reconciliation"] },
+    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "model": {
+      "type": "object", "additionalProperties": false, "required": ["provider", "model"],
+      "properties": { "provider": { "$ref": "#/$defs/provider" }, "model": { "type": "string", "minLength": 1, "maxLength": 200 } }
+    },
     "usage": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["inputTokens", "outputTokens", "totalTokens"],
+      "type": "object", "additionalProperties": false, "required": ["inputTokens", "outputTokens", "totalTokens"],
       "properties": {
-        "inputTokens": {"type": ["integer", "null"], "minimum": 0},
-        "outputTokens": {"type": ["integer", "null"], "minimum": 0},
-        "totalTokens": {"type": ["integer", "null"], "minimum": 0}
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "totalTokens": { "type": ["integer", "null"], "minimum": 0 }
       }
     },
     "error": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["code", "message", "failureKind", "retryable"],
+      "type": "object", "additionalProperties": false, "required": ["code", "message", "failureKind", "retryable"],
       "properties": {
-        "code": {"type": "string", "minLength": 1},
-        "message": {"type": "string", "minLength": 1},
-        "failureKind": {"$ref": "#/$defs/failureKind"},
-        "retryable": {"type": "boolean"}
+        "code": { "type": "string", "minLength": 1 }, "message": { "type": "string", "minLength": 1 },
+        "failureKind": { "$ref": "#/$defs/failureKind" }, "retryable": { "type": "boolean" }
       }
     },
     "event": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source", "sourceSequence", "kind", "runId", "occurredAt", "payload"],
+      "type": "object", "additionalProperties": false, "required": ["source", "sourceSequence", "kind", "runId", "occurredAt", "payload"],
       "properties": {
-        "source": {"const": "langgraph-service"},
-        "sourceSequence": {"type": "integer", "minimum": 1},
-        "kind": {"type": "string", "minLength": 1},
-        "runId": {"type": "string", "minLength": 1},
-        "occurredAt": {"type": "string", "minLength": 1},
-        "payload": {"type": "object"}
+        "source": { "const": "langgraph-service" }, "sourceSequence": { "type": "integer", "minimum": 1 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 100 }, "runId": { "$ref": "#/$defs/identity" },
+        "occurredAt": { "type": "string", "minLength": 1 }, "payload": { "type": "object" }
       }
     },
     "checkpoint": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["checkpointId", "step", "count", "pendingWrites"],
+      "type": "object", "additionalProperties": false, "required": ["checkpointId", "step", "count", "pendingWrites"],
       "properties": {
-        "checkpointId": {"type": ["string", "null"]},
-        "step": {"type": ["integer", "null"]},
-        "count": {"type": "integer", "minimum": 0},
-        "pendingWrites": {"type": "integer", "minimum": 0}
+        "checkpointId": { "type": ["string", "null"] }, "step": { "type": ["integer", "null"] },
+        "count": { "type": "integer", "minimum": 0 }, "pendingWrites": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "trajectory": {
+      "type": "object", "additionalProperties": false, "required": ["phases"],
+      "properties": {
+        "phases": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["name", "startedAt", "finishedAt"],
+          "properties": { "name": { "type": "string", "minLength": 1 }, "startedAt": { "type": "string", "minLength": 1 }, "finishedAt": { "type": ["string", "null"] } }
+        } }
+      }
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["modelCallCount", "modelAttemptCount", "checkpointCount", "durationMs", "inputTokens", "outputTokens", "totalTokens"],
+      "properties": {
+        "modelCallCount": { "type": "integer", "minimum": 0 }, "modelAttemptCount": { "type": "integer", "minimum": 0 },
+        "checkpointCount": { "type": "integer", "minimum": 0 }, "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 }, "outputTokens": { "type": ["integer", "null"], "minimum": 0 }, "totalTokens": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "result": {
+      "type": "object", "additionalProperties": false, "required": ["status", "runId", "startedAt", "finishedAt", "output", "error", "attemptCount", "usage"],
+      "properties": {
+        "status": { "$ref": "#/$defs/status" }, "runId": { "$ref": "#/$defs/identity" },
+        "startedAt": { "type": ["string", "null"] }, "finishedAt": { "type": ["string", "null"] }, "output": { "type": ["string", "null"] },
+        "error": { "anyOf": [{ "$ref": "#/$defs/error" }, { "type": "null" }] }, "attemptCount": { "type": "integer", "minimum": 0 }, "usage": { "$ref": "#/$defs/usage" }
+      }
+    },
+    "startRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "runId", "prompt", "systemInstruction", "model", "graph", "threadId", "durability", "maxAttempts", "timeoutMs"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocol" }, "runId": { "$ref": "#/$defs/identity" },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 20000 }, "systemInstruction": { "type": "string", "minLength": 1, "maxLength": 20000 },
+        "model": { "$ref": "#/$defs/model" }, "graph": { "const": "baseline" }, "threadId": { "$ref": "#/$defs/identity" },
+        "durability": { "const": "sqlite-sync" }, "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5 }, "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 300000 }
+      }
+    },
+    "healthResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "service", "serviceVersion", "langgraphVersion", "pythonVersion", "status", "checkpointPath", "checkpointPathWritable", "message"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocol" }, "service": { "const": "langgraph" }, "serviceVersion": { "type": "string", "minLength": 1 },
+        "langgraphVersion": { "type": "string", "minLength": 1 }, "pythonVersion": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["ready", "unavailable"] }, "checkpointPath": { "type": "string", "minLength": 1 },
+        "checkpointPathWritable": { "type": "boolean" }, "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "startResponse": {
+      "type": "object", "additionalProperties": false, "required": ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "idempotent"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 },
+        "runId": { "$ref": "#/$defs/identity" }, "threadId": { "$ref": "#/$defs/identity" }, "graph": { "const": "baseline" },
+        "status": { "$ref": "#/$defs/status" }, "idempotent": { "type": "boolean" }
+      }
+    },
+    "inspection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "checkpoint", "events", "result", "trajectory", "metrics"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 }, "runId": { "$ref": "#/$defs/identity" },
+        "threadId": { "$ref": "#/$defs/identity" }, "graph": { "const": "baseline" }, "status": { "$ref": "#/$defs/status" },
+        "checkpoint": { "$ref": "#/$defs/checkpoint" }, "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "result": { "anyOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] }, "trajectory": { "$ref": "#/$defs/trajectory" }, "metrics": { "$ref": "#/$defs/metrics" }
+      }
+    },
+    "cancelRequest": {
+      "type": "object", "additionalProperties": false, "required": ["reason"],
+      "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 500 } }
+    },
+    "cancelResponse": {
+      "type": "object", "additionalProperties": false, "required": ["protocolVersion", "executionId", "status", "accepted", "alreadyTerminal", "message"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/$defs/status" },
+        "accepted": { "type": "boolean" }, "alreadyTerminal": { "type": "boolean" }, "message": { "type": "string", "minLength": 1 }
       }
     }
   }
