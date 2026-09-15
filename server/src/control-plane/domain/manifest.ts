@@ -21,7 +21,7 @@ export interface ManifestOptions {
 }
 
 export function buildRunManifest(request: RunRequest, options: ManifestOptions = {}): Readonly<RunManifest> {
-  validateRequest(request);
+  validateRunRequest(request);
 
   const manifest: RunManifest = {
     schemaVersion: 1,
@@ -59,7 +59,7 @@ function deepFreeze<T>(value: T): Readonly<T> {
   return value as Readonly<T>;
 }
 
-function validateRequest(request: RunRequest): void {
+export function validateRunRequest(request: RunRequest): void {
   if (!isIdentifier(request.platform, "platform") || !isIdentifier(request.variant, "variant")) {
     throw new InvalidRunRequestError("platform and variant must use lowercase letters, numbers, and hyphens.");
   }

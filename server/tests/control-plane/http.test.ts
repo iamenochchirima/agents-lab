@@ -100,6 +100,12 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
     assert.equal(evidence.statusCode, 200);
     assert.equal(JSON.parse(evidence.body).output, "hello");
 
+    const native = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/native/temporal.json` });
+    assert.equal(native.statusCode, 200);
+
+    const wrongPlatformNative = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/native/restate.json` });
+    assert.equal(wrongPlatformNative.statusCode, 400);
+
     const traversal = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/../config.json` });
     assert.notEqual(traversal.statusCode, 200);
   });
@@ -110,6 +116,31 @@ test("HTTP API returns structured validation and health responses", async () => 
     const invalid = await app.inject({ method: "POST", url: "/api/runs", payload: { platform: "temporal" } });
     assert.equal(invalid.statusCode, 400);
     assert.equal(invalid.json().error.code, "INVALID_REQUEST");
+
+    const invalidIdentifier = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "Temporal",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "invalid identifier" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(invalidIdentifier.statusCode, 400);
+
+    const planned = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "planned platform" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(planned.statusCode, 503);
+    assert.match(planned.json().error.message, /planned/);
 
     const health = await app.inject({ method: "GET", url: "/health" });
     assert.equal(health.statusCode, 200);

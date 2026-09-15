@@ -31,16 +31,26 @@ export class PlatformRegistry {
   private readonly registrations: readonly PlatformRegistration[];
 
   constructor(runners: readonly PlatformRunner[]) {
-    const runnableKeys = new Set(runners.map((runner) => key(runner.platform, runner.variant)));
-    this.registrations = PLANNED_PLATFORM_VARIANTS.map(([platform, variant]) => {
-      const runner = runners.find((candidate) => key(candidate.platform, candidate.variant) === key(platform, variant)) ?? null;
-      return {
-        platform,
-        variant,
-        status: runnableKeys.has(key(platform, variant)) ? "runnable" : "planned",
+    const registrations = new Map<string, PlatformRegistration>();
+
+    for (const [platform, variant] of PLANNED_PLATFORM_VARIANTS) {
+      registrations.set(key(platform, variant), { platform, variant, status: "planned", runner: null });
+    }
+
+    for (const runner of runners) {
+      const registrationKey = key(runner.platform, runner.variant);
+      if (registrations.get(registrationKey)?.status === "runnable") {
+        throw new Error(`Duplicate platform runner registration: ${registrationKey}`);
+      }
+      registrations.set(registrationKey, {
+        platform: runner.platform,
+        variant: runner.variant,
+        status: "runnable",
         runner,
-      };
-    });
+      });
+    }
+
+    this.registrations = [...registrations.values()];
   }
 
   list(): readonly PlatformRegistration[] {

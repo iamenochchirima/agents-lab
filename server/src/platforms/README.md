@@ -42,6 +42,11 @@ platform variant declares its deployment profile and infrastructure requirements
 platform-specific assumptions, agent definitions, dependencies, telemetry, and tests
 local to the platform integration and its variants.
 
+The server registry combines this planning catalog with the adapters actually composed
+at startup. Adding a new platform directory does not make it runnable; its adapter must
+implement the generic runner contract, be registered by the server bootstrap, and have
+its own implementation plan and validation record.
+
 Every baseline variant has the same responsibility layout:
 
 ```text

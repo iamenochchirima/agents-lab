@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
-import type { RunEventIntent, RunMetrics, RunResult, RunTrajectory } from "../../src/control-plane/domain/types.js";
+import type { PlatformExecutionReference, RunEventIntent, RunMetrics, RunResult, RunTrajectory } from "../../src/control-plane/domain/types.js";
 import {
   CorruptEvidenceError,
   EvidenceConflictError,
@@ -149,6 +149,22 @@ test("reads schema-v1 Temporal native references through the generic execution f
     const snapshot = await store.readSnapshot(manifest.runId);
     assert.equal(snapshot.executionReference?.executionId, "agentlab:legacy-run");
     assert.equal(snapshot.executionReference?.native.workflowRunId, "legacy-workflow-run");
+  });
+});
+
+test("keeps native execution references scoped to their manifest platform and variant", async () => {
+  await withStore(async (store) => {
+    const reference: PlatformExecutionReference = {
+      platform: "restate",
+      variant: "baseline",
+      executionId: "restate-run-1",
+      native: { invocationId: "restate-run-1" },
+    };
+
+    await assert.rejects(
+      store.writeExecutionReference(manifest.runId, reference),
+      (error: unknown) => error instanceof CorruptEvidenceError,
+    );
   });
 });
 

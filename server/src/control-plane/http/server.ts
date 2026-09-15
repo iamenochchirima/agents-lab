@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { ServerConfig } from "../bootstrap/config.js";
 import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError } from "../application/run-service.js";
+import { InvalidRunRequestError } from "../domain/manifest.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunRequest } from "../domain/types.js";
 
@@ -172,7 +173,7 @@ function parseLimit(value: string | undefined): number {
 }
 
 function sendError(reply: FastifyReply, error: unknown) {
-  if (error instanceof InvalidApiRequestError) {
+  if (error instanceof InvalidApiRequestError || error instanceof InvalidRunRequestError) {
     return reply.code(400).send({ error: { code: "INVALID_REQUEST", message: error.message } });
   }
   if (error instanceof RunNotFoundError || error instanceof EvidenceNotFoundError) {

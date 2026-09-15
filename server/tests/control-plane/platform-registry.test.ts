@@ -21,3 +21,14 @@ test("unknown platform variants are not implicitly runnable", () => {
   assert.equal(registry.find("unknown", "baseline"), null);
   assert.equal(registry.runnable({ platform: "temporal", variant: "baseline" } as never), null);
 });
+
+test("registered adapters outside the planning catalog are still runnable", () => {
+  const adapter = {
+    platform: "test-adapter",
+    variant: "baseline",
+  } as PlatformRunner;
+  const registry = new PlatformRegistry([adapter]);
+
+  assert.equal(registry.find("test-adapter", "baseline")?.status, "runnable");
+  assert.equal(registry.runnable({ platform: "test-adapter", variant: "baseline" } as never), adapter);
+});

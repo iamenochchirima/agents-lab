@@ -1,4 +1,4 @@
-import { buildRunManifest } from "../domain/manifest.js";
+import { buildRunManifest, validateRunRequest } from "../domain/manifest.js";
 import type {
   PlatformExecutionReference,
   RunEvent,
@@ -23,8 +23,8 @@ export class RunNotFoundError extends Error {
 }
 
 export class RunnerUnavailableError extends Error {
-  constructor(readonly platform: string, readonly variant: string) {
-    super(`Runner is not available: ${platform}/${variant}`);
+  constructor(readonly platform: string, readonly variant: string, readonly reason: "unknown" | "planned") {
+    super(`Runner is not available: ${platform}/${variant} (${reason}).`);
     this.name = "RunnerUnavailableError";
   }
 }
@@ -55,9 +55,11 @@ export class RunService {
   constructor(private readonly dependencies: RunServiceDependencies) {}
 
   async createRun(request: RunRequest): Promise<RunView> {
-    const runner = this.dependencies.registry.runnableFor(request.platform, request.variant);
+    validateRunRequest(request);
+    const registration = this.dependencies.registry.find(request.platform, request.variant);
+    const runner = registration?.status === "runnable" ? registration.runner : null;
     if (!runner) {
-      throw new RunnerUnavailableError(request.platform, request.variant);
+      throw new RunnerUnavailableError(request.platform, request.variant, registration ? "planned" : "unknown");
     }
 
     const manifest = buildRunManifest(request, {
@@ -143,7 +145,12 @@ export class RunService {
 
     const runner = this.dependencies.registry.runnable(snapshot.manifest);
     if (!runner) {
-      throw new RunnerUnavailableError(snapshot.manifest.platform, snapshot.manifest.variant);
+      const registration = this.dependencies.registry.find(snapshot.manifest.platform, snapshot.manifest.variant);
+      throw new RunnerUnavailableError(
+        snapshot.manifest.platform,
+        snapshot.manifest.variant,
+        registration ? "planned" : "unknown",
+      );
     }
     const cancellation = await runner.cancel(snapshot.executionReference, reason);
     if (cancellation.alreadyTerminal) {
@@ -291,5 +298,5 @@ function calculateMetrics(result: RunResult, events: readonly RunEventIntent[]):
 }
 
 function isExecutionNotFoundError(error: unknown): boolean {
-  return error instanceof Error && (error.name === "WorkflowNotFoundError" || error.message.includes("not found"));
+  return error instanceof Error && error.message.toLowerCase().includes("not found");
 }

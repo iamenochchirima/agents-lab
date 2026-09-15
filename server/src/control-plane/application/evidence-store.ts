@@ -164,6 +164,8 @@ export class RunEvidenceStore {
   }
 
   async writeExecutionReference(runId: string, reference: PlatformExecutionReference): Promise<void> {
+    const manifest = await this.readManifest(runId);
+    validateExecutionReference(reference, manifest, `native/${manifest.platform}.json`);
     await this.writeIdempotent(join(this.runDirectory(runId), nativeReferenceFile(reference.platform)), reference);
   }
 
@@ -307,12 +309,14 @@ function normalizeExecutionReference(value: unknown, manifest: RunManifest): Pla
   }
 
   if (typeof value.executionId === "string" && isRecord(value.native)) {
-    return {
+    const reference: PlatformExecutionReference = {
       platform: typeof value.platform === "string" ? value.platform : manifest.platform,
       variant: typeof value.variant === "string" ? value.variant : manifest.variant,
       executionId: value.executionId,
       native: value.native,
     };
+    validateExecutionReference(reference, manifest, `native/${manifest.platform}.json`);
+    return reference;
   }
 
   // Schema-v1 Temporal evidence predates the generic execution reference. Keep
@@ -327,6 +331,21 @@ function normalizeExecutionReference(value: unknown, manifest: RunManifest): Pla
   }
 
   throw new CorruptEvidenceError(`native/${manifest.platform}.json`);
+}
+
+function validateExecutionReference(
+  reference: PlatformExecutionReference,
+  manifest: RunManifest,
+  path: string,
+): void {
+  if (
+    reference.platform !== manifest.platform ||
+    reference.variant !== manifest.variant ||
+    reference.executionId.trim().length === 0 ||
+    !isRecord(reference.native)
+  ) {
+    throw new CorruptEvidenceError(path);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
