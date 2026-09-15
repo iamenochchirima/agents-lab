@@ -1,0 +1,11 @@
+{
+  "name": "@agent-harness-lab/mastra-baseline",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@mastra/core": "1.66.0"
+  }
+}
