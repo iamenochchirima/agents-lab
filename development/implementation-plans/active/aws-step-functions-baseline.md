@@ -1,7 +1,7 @@
 # AWS Step Functions baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00<br>
-**Last updated:** 2026-09-15T14:41:39+02:00<br>
+**Last updated:** 2026-09-15T14:48:00+02:00<br>
 **Status:** Active — platform-local implementation complete; emulator validation is pending<br>
 **Owner:** Assigned platform agent<br>
 **Platform:** `aws-step-functions`<br>
@@ -188,7 +188,7 @@ permission, and emulator limitation instructions live in:
 Executed on 2026-09-15:
 
 - `npm --prefix server run build` — passed.
-- `npm --prefix server test` — passed: 126 passed, 2 skipped, 0 failed; the
+- `npm --prefix server test` — passed: 131 passed, 0 skipped, 0 failed; the
   AWS platform tests were included in discovery.
 - `npm --prefix server run build && node --test server/dist/integration-tests/aws-step-functions-baseline.test.js`
   — passed with 2 expected skips because the opt-in flag was not set.
@@ -239,6 +239,8 @@ Recorded commits:
   integration, and playground.
 - `5d2447dd6f4136d37adb6efdf8d027ddf6972a59` — documentation and this active
   plan's implementation/validation record.
+- `191cd8a1d6eba0e811aaaca93302033e3dbb6270` — final handoff record with the
+  exact validation count and commit boundaries.
 
-Each commit must contain only the paths owned by this plan. Unrelated dirty
-worktree changes must remain unstaged.
+Each commit contains only the paths owned by this plan. Unrelated dirty
+worktree changes remain unstaged.
