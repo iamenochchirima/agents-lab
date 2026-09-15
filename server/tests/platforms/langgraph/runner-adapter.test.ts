@@ -96,6 +96,8 @@ test("LangGraph adapter validates and maps the local protocol", async () => {
       const reference = await runner.start(request);
       assert.equal(reference.executionId, "langgraph:langgraph-test-run");
       assert.equal(reference.native.threadId, "langgraph-test-run");
+      assert.equal(reference.native.serviceOrigin, origin);
+      assert.equal("prompt" in reference.native, false);
       const inspection = await runner.inspect(reference);
       assert.equal(inspection.status, "completed");
       assert.equal(inspection.result?.output, "Fake response: hello");

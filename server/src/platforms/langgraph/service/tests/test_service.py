@@ -78,6 +78,12 @@ def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) 
 
 def test_service_records_deterministic_failure_and_unknown_outcomes(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
+        pre_dispatch = client.post("/v1/runs", json=start_payload("run-pre-dispatch-failure", "fake-pre-dispatch-failure"))
+        assert pre_dispatch.status_code == 202
+        pre_dispatch_inspection = wait_for_terminal(client, "langgraph:run-pre-dispatch-failure")
+        assert pre_dispatch_inspection["status"] == "failed"
+        assert pre_dispatch_inspection["result"]["error"]["failureKind"] == "pre_dispatch"
+
         failed = client.post("/v1/runs", json=start_payload("run-provider-failure", "fake-provider-failure"))
         assert failed.status_code == 202
         failed_inspection = wait_for_terminal(client, "langgraph:run-provider-failure")
@@ -203,6 +209,38 @@ def test_service_startup_marks_unfinished_records_unknown(tmp_path: Path) -> Non
         assert inspection.status_code == 200
         assert inspection.json()["status"] == "unknown"
         assert inspection.json()["result"]["error"]["code"] == "SERVICE_RESTARTED"
+
+
+def test_store_terminal_completion_cannot_overwrite_shutdown_reconciliation(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path / "shutdown-race.sqlite")
+    request = {
+        "execution_id": "langgraph:run-shutdown-race",
+        "run_id": "run-shutdown-race",
+        "thread_id": "run-shutdown-race",
+        "request_fingerprint": "fingerprint",
+        "prompt_hash": "hash",
+        "graph": "baseline",
+        "provider": "fake",
+        "model": "fake-delay",
+    }
+    store.create_or_get(request)
+    store.update_status("langgraph:run-shutdown-race", "running", started_at="2026-09-15T10:00:00Z")
+    store.mark_incomplete_unknown("SERVICE_SHUTDOWN", "service stopped")
+
+    finished = store.finish(
+        "langgraph:run-shutdown-race",
+        status="completed",
+        finished_at="2026-09-15T10:00:02Z",
+        output="late worker result",
+        error=None,
+        attempt_count=1,
+        usage={"inputTokens": None, "outputTokens": None, "totalTokens": None},
+    )
+
+    assert finished is False
+    assert store.get("langgraph:run-shutdown-race")["status"] == "unknown"
+    assert store.events("langgraph:run-shutdown-race")[-1]["kind"] == "RunReconciliationRequired"
+    store.close()
 
 
 def test_service_openrouter_requires_process_environment_secret(tmp_path: Path, monkeypatch) -> None:
