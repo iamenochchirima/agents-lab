@@ -8,7 +8,7 @@ import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
-import { cancelRun, createRun, getRun, getRunEvents, PlatformApiError, type RunEvent, type RunView } from "./platformApi";
+import { cancelRun, createRun, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
 const RUNNABLE_BASELINE_PLATFORMS = new Set(["temporal", "restate", "langgraph", "mastra"]);
@@ -31,6 +31,8 @@ export function PlatformRunnerPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [platformConnectivity, setPlatformConnectivity] = useState<PlatformConnectivity | null>(null);
+  const [connectivityError, setConnectivityError] = useState<string | null>(null);
   const eventCursor = useRef(0);
   const runIdFromUrl = searchParams.get("run");
 
@@ -39,8 +41,34 @@ export function PlatformRunnerPage() {
     [platform.computerEnvironmentIds],
   );
 
-  const isRunnable = RUNNABLE_BASELINE_PLATFORMS.has(platform.id) && variantId === "baseline";
+  const hasRunnableBaseline = RUNNABLE_BASELINE_PLATFORMS.has(platform.id) && variantId === "baseline";
+  const isRunnable = hasRunnableBaseline && platformConnectivity?.reachable === true;
   const taskError = task.trim().length === 0 ? "Enter a task prompt." : null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let stopped = false;
+
+    setPlatformConnectivity(null);
+    setConnectivityError(null);
+    if (!RUNNABLE_BASELINE_PLATFORMS.has(platform.id)) {
+      return () => controller.abort();
+    }
+
+    void getPlatformConnectivity(platform.id, controller.signal)
+      .then((connectivity) => {
+        if (!stopped) setPlatformConnectivity(connectivity);
+      })
+      .catch((error) => {
+        if (stopped || isAbortError(error)) return;
+        setConnectivityError(toUserMessage(error));
+      });
+
+    return () => {
+      stopped = true;
+      controller.abort();
+    };
+  }, [platform.id]);
 
   useEffect(() => {
     const activeRunId = run?.runId ?? runIdFromUrl;
@@ -156,7 +184,7 @@ export function PlatformRunnerPage() {
             value={task}
           />
           <div className="task-surface-footer">
-            <span>{isRunnable ? "Fake model is selected for the local baseline." : "This platform is not runnable yet."}</span>
+            <span>{runAvailabilityLabel({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity })}</span>
             <button className="button button-primary" disabled={!isRunnable || Boolean(taskError) || isSubmitting} onClick={() => void submitRun()} type="button">
               {isSubmitting ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Play aria-hidden="true" size={14} />} {isSubmitting ? "Starting" : "Run"}
             </button>
@@ -166,7 +194,7 @@ export function PlatformRunnerPage() {
         <section className="runner-controls" aria-label="Run configuration">
           <div className="runner-controls-heading">
             <span><Settings2 aria-hidden="true" size={15} /> Configuration</span>
-            <small className={isRunnable ? "runner-connected" : undefined}>{isRunnable ? `${platform.name} baseline` : "Unavailable"}</small>
+            <small className={isRunnable ? "runner-connected" : undefined}>{runAvailabilityStatus({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity })}</small>
           </div>
           <div className="runner-control-grid">
             {platform.kind === "computer-native" ? (
@@ -233,6 +261,42 @@ function toUserMessage(error: unknown): string {
   if (error instanceof PlatformApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "The run could not be updated.";
+}
+
+function runAvailabilityStatus({
+  connectivityError,
+  hasRunnableBaseline,
+  isRunnable,
+  platformConnectivity,
+}: {
+  connectivityError: string | null;
+  hasRunnableBaseline: boolean;
+  isRunnable: boolean;
+  platformConnectivity: PlatformConnectivity | null;
+}): string {
+  if (!hasRunnableBaseline) return "Unavailable";
+  if (isRunnable) return "Ready";
+  if (connectivityError) return "Unavailable";
+  if (!platformConnectivity) return "Checking";
+  return "Unavailable";
+}
+
+function runAvailabilityLabel({
+  connectivityError,
+  hasRunnableBaseline,
+  isRunnable,
+  platformConnectivity,
+}: {
+  connectivityError: string | null;
+  hasRunnableBaseline: boolean;
+  isRunnable: boolean;
+  platformConnectivity: PlatformConnectivity | null;
+}): string {
+  if (!hasRunnableBaseline) return "This platform is not available yet.";
+  if (isRunnable) return "Fake model is selected for the local baseline.";
+  if (connectivityError) return connectivityError;
+  if (!platformConnectivity) return "Checking platform availability…";
+  return platformConnectivity.message;
 }
 
 function CompactSelect({ children, label, onChange, value }: {

@@ -69,6 +69,13 @@ export interface RunEventsPage {
   readonly done: boolean;
 }
 
+export interface PlatformConnectivity {
+  readonly platform: string;
+  readonly variant: string;
+  readonly reachable: boolean;
+  readonly message: string;
+}
+
 export interface PlatformRunRequest {
   readonly platform: string;
   readonly variant: string;
@@ -91,6 +98,44 @@ const API_BASE_URL = (import.meta.env.VITE_AGENTLAB_API_URL || "http://127.0.0.1
 
 export function getPlatformApiBaseUrl(): string {
   return API_BASE_URL;
+}
+
+export async function getPlatformConnectivity(platformId: string, signal?: AbortSignal): Promise<PlatformConnectivity> {
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}/health`, {
+      headers: { "content-type": "application/json" },
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    throw new PlatformApiError("The server could not be reached.", 0, "CONTROL_PLANE_UNREACHABLE");
+  }
+
+  const body = await readJson(response);
+  if (!isRecord(body) || !Array.isArray(body.platforms)) {
+    throw new PlatformApiError("The server returned an invalid health response.", response.status, "INVALID_API_RESPONSE");
+  }
+
+  const platform = body.platforms.find((candidate): candidate is Record<string, unknown> => (
+    isRecord(candidate) && candidate.platform === platformId && typeof candidate.variant === "string"
+  ));
+  const variant = typeof platform?.variant === "string" ? platform.variant : null;
+  const reachable = typeof platform?.reachable === "boolean" ? platform.reachable : null;
+  const message = typeof platform?.message === "string" ? platform.message : null;
+  if (variant === null || reachable === null || message === null) {
+    throw new PlatformApiError("This platform is not registered with the server.", response.status, "PLATFORM_NOT_REGISTERED");
+  }
+
+  return {
+    platform: platformId,
+    variant,
+    reachable,
+    message,
+  };
 }
 
 export async function createRun(request: PlatformRunRequest, signal?: AbortSignal): Promise<RunView> {

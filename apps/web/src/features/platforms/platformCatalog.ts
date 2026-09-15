@@ -67,8 +67,15 @@ export const platformCatalog: readonly PlatformDescriptor[] = [
     backendProfiles: [{ id: "local-restate-stack", name: "Local Restate stack", description: "A Lab server, Restate runtime, and agent service for local development.", status: "planned" }],
     infrastructure: [{ id: "restate-server", name: "Restate runtime", description: "Coordinates durable invocations, state, and communication for the service.", requirement: "required", status: "planned" }],
   },
-  plannedPlatform("langgraph", "LangGraph", "Durable graph execution", "An explicit graph of nodes, transitions, and checkpointed state for agent work.", "Python", "Python application service", "Graph-driven state transitions", "Graph checkpointing and persistence", "server/src/platforms/langgraph/README.md"),
-  plannedPlatform("mastra", "Mastra", "Durable agent and workflow execution", "An agent and workflow runtime with state snapshots and durable execution options.", "TypeScript", "Node.js application service", "Agent and workflow primitives", "Workflow snapshots and configured durable execution", "server/src/platforms/mastra/README.md"),
+  {
+    ...plannedPlatform("langgraph", "LangGraph", "Durable graph execution", "An explicit graph of nodes, transitions, and checkpointed state for agent work.", "Python", "Python application service", "Graph-driven state transitions", "Graph checkpointing and persistence", "server/src/platforms/langgraph/README.md"),
+    backendProfiles: [{ id: "local-langgraph-service", name: "Local LangGraph service", description: "A Python service with SQLite-backed graph checkpoints.", status: "ready" }],
+    infrastructure: [{ id: "langgraph-service", name: "LangGraph service", description: "Runs the baseline graph and owns its checkpoint state.", requirement: "required", status: "ready" }],
+  },
+  {
+    ...plannedPlatform("mastra", "Mastra", "Durable agent and workflow execution", "An agent and workflow runtime with state snapshots and durable execution options.", "TypeScript", "Node.js application service", "Agent and workflow primitives", "Workflow snapshots and configured durable execution", "server/src/platforms/mastra/README.md"),
+    backendProfiles: [{ id: "local-lab-server", name: "Local Lab server", description: "Runs the direct Mastra agent in the Lab server process.", status: "ready" }],
+  },
   plannedPlatform("vercel-workflows", "Vercel Workflow / AI SDK", "Durable workflow execution", "Vercel workflow execution together with AI SDK agent primitives.", "TypeScript", "Node.js or Vercel runtime", "Workflow-hosted agent loop", "Workflow-managed state, waits, and recovery", "server/src/platforms/vercel-workflows/README.md"),
   plannedPlatform("inngest", "Inngest", "Event-driven durable functions", "Event-driven functions and workflows for background and agent work.", "TypeScript", "Node.js service + Inngest", "Event-driven function execution", "Durable steps, events, waits, and retries", "server/src/platforms/inngest/README.md"),
   plannedPlatform("trigger-dev", "Trigger.dev", "Durable background workflows", "Background jobs and workflow execution for long-running agent work.", "TypeScript", "Node.js service + Trigger.dev", "Task and workflow execution", "Durable task runs, waits, and retries", "server/src/platforms/trigger-dev/README.md"),
