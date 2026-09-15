@@ -8,6 +8,10 @@ import test from "node:test";
 
 import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
 import { RunEvidenceStore } from "../src/control-plane/application/evidence-store.js";
+import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
+import { RunService } from "../src/control-plane/application/run-service.js";
+import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
+import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
 import {
   RestateBaselineRunner,
@@ -155,6 +159,65 @@ test(
       assert.equal(snapshot.result?.output, "Fake response: Produce one short native Restate sentence.");
       assert.equal(snapshot.executionReference?.native.serviceName, "AgentLabRestateBaseline");
     } finally {
+      await rm(runRoot, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "native Restate baseline runs through the generic HTTP API",
+  {
+    skip:
+      process.env.AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION === "1"
+        ? false
+        : "Set AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 with the native Restate server and service running.",
+  },
+  async () => {
+    const runner = await RestateBaselineRunner.connect(loadRestateConfig(process.env));
+    const connectivity = await runner.checkConnection();
+    assert.equal(connectivity.reachable, true, connectivity.message);
+
+    const runRoot = await mkdtemp(join(tmpdir(), "agentlab-restate-api-"));
+    const config = loadServerConfig(
+      { AGENTLAB_RUN_ROOT: runRoot, AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake" },
+      process.cwd(),
+    );
+    const evidence = new RunEvidenceStore(runRoot);
+    const registry = new PlatformRegistry([runner]);
+    const service = new RunService({ config, evidence, registry });
+    const app = buildControlPlaneServer({ config, service, evidence, registry });
+
+    try {
+      await app.ready();
+      const createdResponse = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: {
+          platform: "restate",
+          variant: "baseline",
+          task: { kind: "prompt", prompt: "Return one generic Restate API sentence." },
+          model: { provider: "fake", model: "fake-success" },
+        },
+      });
+      assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+
+      let run = createdResponse.json() as { runId: string; status: string; result: { output: string } | null; executionReference: { executionId: string } | null };
+      for (let attempt = 0; attempt < 100 && !run.result; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        const inspectionResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}` });
+        assert.equal(inspectionResponse.statusCode, 200, inspectionResponse.body);
+        run = inspectionResponse.json() as typeof run;
+      }
+
+      assert.equal(run.status, "completed");
+      assert.equal(run.result?.output, "Fake response: Return one generic Restate API sentence.");
+      assert.match(run.executionReference?.executionId ?? "", /^agentlab:/);
+      for (const file of ["config.json", "events.jsonl", "trajectory.json", "metrics.json", "result.json", "native/restate.json"]) {
+        const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/${file}` });
+        assert.equal(response.statusCode, 200, `${file}: ${response.body}`);
+      }
+    } finally {
+      await app.close();
       await rm(runRoot, { recursive: true, force: true });
     }
   },

@@ -9,6 +9,7 @@ import { PlatformRegistry } from "../src/control-plane/application/platform-regi
 import { RunService } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
+import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mastra-runner.js";
 
 test("Mastra baseline projects a deterministic Agent.generate run through the common evidence path", async () => {
@@ -71,6 +72,43 @@ test("Mastra process loss becomes reconciliation_required instead of a fabricate
     assert.equal(reconciled.status, "reconciliation_required");
     assert.equal(reconciled.result?.error?.failureKind, "reconciliation");
     assert.equal(reconciled.result?.output, null);
+  });
+});
+
+test("Mastra baseline runs through the generic HTTP API without Temporal", async () => {
+  await withTemporaryRunRoot(async (root) => {
+    const runner = new MastraBaselineRunner({ environment: {} });
+    const evidence = new RunEvidenceStore(root);
+    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root, AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake" }, "/repo");
+    const registry = new PlatformRegistry([runner]);
+    const service = new RunService({ config, evidence, registry });
+    const app = buildControlPlaneServer({ config, service, evidence, registry });
+
+    try {
+      await app.ready();
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: {
+          platform: "mastra",
+          variant: "baseline",
+          task: { kind: "prompt", prompt: "Return one generic API sentence." },
+          model: { provider: "fake", model: "fake-success" },
+        },
+      });
+      assert.equal(created.statusCode, 202, created.body);
+      const run = created.json();
+      assert.equal(run.status, "completed");
+      assert.equal(run.result.output, "Deterministic Mastra response.");
+      assert.equal(run.executionReference.executionId, `mastra:${run.runId}`);
+
+      for (const file of ["config.json", "events.jsonl", "trajectory.json", "metrics.json", "result.json", "native/mastra.json"]) {
+        const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/${file}` });
+        assert.equal(response.statusCode, 200, `${file}: ${response.body}`);
+      }
+    } finally {
+      await app.close();
+    }
   });
 });
 
