@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -8,8 +7,7 @@ import { baselineWorkflow } from "../src/platforms/restate/service/baseline-serv
 import type { RestateWorkflowInput, RestateWorkflowResult } from "../src/platforms/restate/variants/baseline/contracts.js";
 
 const RUN_ID = "restate-testcontainer-run";
-const require = createRequire(import.meta.url);
-const clients = require(platformDependency("restate-sdk-clients")) as {
+const clients = (await import(platformDependency("restate-sdk-clients"))) as unknown as {
   connect(options: { readonly url: string }): {
     workflowClient(definition: typeof baselineWorkflow, key: string): {
       workflowSubmit(input: RestateWorkflowInput): Promise<{ readonly status: string; readonly attachable: boolean }>;
@@ -17,7 +15,7 @@ const clients = require(platformDependency("restate-sdk-clients")) as {
     };
   };
 };
-const { RestateContainer, RestateTestEnvironment } = require(platformDependency("restate-sdk-testcontainers")) as {
+const { RestateContainer, RestateTestEnvironment } = (await import(platformDependency("restate-sdk-testcontainers"))) as unknown as {
   RestateContainer: new (version: string) => unknown;
   RestateTestEnvironment: {
     start(options: {
@@ -76,7 +74,7 @@ test(
 );
 
 function platformDependency(packageName: string): string {
-  const sourcePath = new URL(`../src/platforms/restate/node_modules/@restatedev/${packageName}/dist/index.cjs`, import.meta.url);
+  const sourcePath = new URL(`../src/platforms/restate/node_modules/@restatedev/${packageName}/dist/index.js`, import.meta.url);
   if (existsSync(fileURLToPath(sourcePath))) return fileURLToPath(sourcePath);
-  return fileURLToPath(new URL(`../../node_modules/@restatedev/${packageName}/dist/index.cjs`, import.meta.url));
+  return fileURLToPath(new URL(`../../node_modules/@restatedev/${packageName}/dist/index.js`, import.meta.url));
 }
