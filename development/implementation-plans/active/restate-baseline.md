@@ -1,8 +1,8 @@
 # Restate baseline platform
 
 **Created:** 2026-09-15T10:59:09+02:00<br>
-**Last updated:** 2026-09-15T13:14:56+02:00<br>
-**Status:** Active — implementation integrated; container validation pending<br>
+**Last updated:** 2026-09-15T13:26:00+02:00<br>
+**Status:** Active — implementation integrated; archival record pending<br>
 **Owner:** Primary platform integration agent<br>
 **Platform:** `restate`<br>
 **Variant:** `baseline`
