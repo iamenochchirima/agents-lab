@@ -35,6 +35,13 @@ export class LangGraphRunnerUnavailableError extends Error {
   }
 }
 
+class LangGraphServiceHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "LangGraphServiceHttpError";
+  }
+}
+
 /**
  * Deep adapter at the platform seam. It owns the HTTP protocol and translates
  * native thread/checkpoint state into the small TypeScript runner interface.
@@ -99,22 +106,40 @@ export class LangGraphBaselineRunner implements PlatformRunner {
     const validation = this.validate(manifest);
     if (!validation.valid) throw new Error(validation.reason ?? "LangGraph manifest validation failed.");
     const configuration = this.configurationFromManifest(manifest);
-    const response = parseStartResponse(await this.request("/v1/runs", {
-      method: "POST",
-      body: JSON.stringify({
-        protocolVersion: LANGGRAPH_PROTOCOL_VERSION,
-        runId: manifest.runId,
-        prompt: manifest.task.prompt,
-        systemInstruction: manifest.context.systemInstruction,
-        model: manifest.model,
-        graph: "baseline",
-        threadId: manifest.runId,
-        durability: "sqlite-sync",
-        maxAttempts: configuration.maxAttempts,
-        timeoutMs: configuration.timeoutMs,
-      }),
-    }));
-    return referenceFromResponse(response, manifest, configuration.serviceUrl);
+    const requestBody = JSON.stringify({
+      protocolVersion: LANGGRAPH_PROTOCOL_VERSION,
+      runId: manifest.runId,
+      prompt: manifest.task.prompt,
+      systemInstruction: manifest.context.systemInstruction,
+      model: manifest.model,
+      graph: "baseline",
+      threadId: manifest.runId,
+      durability: "sqlite-sync",
+      maxAttempts: configuration.maxAttempts,
+      timeoutMs: configuration.timeoutMs,
+    });
+    try {
+      const response = parseStartResponse(await this.request("/v1/runs", {
+        method: "POST",
+        body: requestBody,
+      }));
+      return referenceFromResponse(response, manifest, configuration.serviceUrl);
+    } catch (error) {
+      if (!couldHaveLostAdmission(error)) throw error;
+
+      // The service admits by the stable run ID before doing graph work. If a
+      // response is lost after admission, reconcile that identity instead of
+      // issuing a second POST that could duplicate the graph execution.
+      try {
+        const inspection = parseInspection(await this.request(
+          `/v1/runs/${encodeURIComponent(`langgraph:${manifest.runId}`)}`,
+          { method: "GET" },
+        ));
+        return referenceFromInspection(inspection, manifest, configuration.serviceUrl);
+      } catch {
+        throw error;
+      }
+    }
   }
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
@@ -148,7 +173,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       const body = await response.json().catch(() => null);
       if (!response.ok) {
         const detail = body && typeof body === "object" && "detail" in body ? String((body as { detail: unknown }).detail) : response.statusText;
-        throw new Error(`LangGraph service returned HTTP ${response.status}: ${detail}`);
+        throw new LangGraphServiceHttpError(response.status, `LangGraph service returned HTTP ${response.status}: ${detail}`);
       }
       return body;
     } catch (error) {
@@ -180,7 +205,7 @@ interface LangGraphConfiguration {
 }
 
 interface LangGraphExecutionReference {
-  readonly serviceUrl: string;
+  readonly serviceOrigin: string;
   readonly executionId: string;
   readonly threadId: string;
   readonly graph: string;
@@ -193,7 +218,7 @@ function referenceFromResponse(
   serviceUrl: string,
 ): PlatformExecutionReference {
   const native: LangGraphExecutionReference = {
-    serviceUrl,
+    serviceOrigin: serviceUrl,
     executionId: response.executionId,
     threadId: response.threadId,
     graph: response.graph,
@@ -207,13 +232,36 @@ function referenceFromResponse(
   };
 }
 
+function referenceFromInspection(
+  inspection: LangGraphInspection,
+  manifest: RunManifest,
+  serviceUrl: string,
+): PlatformExecutionReference {
+  if (inspection.runId !== manifest.runId || inspection.executionId !== `langgraph:${manifest.runId}`) {
+    throw new Error("LangGraph reconciliation returned a different execution identity.");
+  }
+  const native: LangGraphExecutionReference = {
+    serviceOrigin: serviceUrl,
+    executionId: inspection.executionId,
+    threadId: inspection.threadId,
+    graph: inspection.graph,
+    protocolVersion: inspection.protocolVersion,
+  };
+  return {
+    platform: manifest.platform,
+    variant: manifest.variant,
+    executionId: inspection.executionId,
+    native: native as unknown as Readonly<Record<string, unknown>>,
+  };
+}
+
 function langGraphExecutionFromReference(reference: PlatformExecutionReference): LangGraphExecutionReference {
   if (reference.platform !== "langgraph" || reference.variant !== "baseline") {
     throw new Error("The execution reference does not belong to the LangGraph baseline runner.");
   }
   const native = reference.native;
   return {
-    serviceUrl: readString(native, "serviceUrl"),
+    serviceOrigin: readString(native, "serviceOrigin", "serviceUrl"),
     executionId: readString(native, "executionId"),
     threadId: readString(native, "threadId"),
     graph: readString(native, "graph"),
@@ -280,10 +328,15 @@ function mapResultStatus(status: LangGraphResult["status"], unknown: boolean): R
   return "reconciliation_required";
 }
 
-function readString(value: Readonly<Record<string, unknown>>, key: string): string {
-  const candidate = value[key];
+function readString(value: Readonly<Record<string, unknown>>, key: string, legacyKey?: string): string {
+  const candidate = value[key] ?? (legacyKey ? value[legacyKey] : undefined);
   if (typeof candidate !== "string" || candidate.trim().length === 0) throw new Error(`LangGraph configuration is missing ${key}.`);
   return candidate;
+}
+
+function couldHaveLostAdmission(error: unknown): boolean {
+  if (error instanceof LangGraphServiceHttpError) return error.status >= 500;
+  return error instanceof LangGraphRunnerUnavailableError || error instanceof TypeError;
 }
 
 function readPositiveInteger(value: Readonly<Record<string, unknown>>, key: string): number {

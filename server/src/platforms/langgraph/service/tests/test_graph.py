@@ -30,6 +30,9 @@ def test_baseline_graph_uses_real_langgraph_and_persists_checkpoint(tmp_path: Pa
 
     assert any(part["type"] == "checkpoints" for part in parts)
     assert snapshot.values["output"] == "Fake response: hello"
+    assert snapshot.values["model_provider"] == "fake"
+    assert snapshot.values["model_name"] == "fake-success"
+    assert snapshot.values["usage"] == {"inputTokens": None, "outputTokens": None, "totalTokens": None}
     assert any(kind == "ModelRequested" for kind, _ in events)
 
     with SqliteSaver.from_conn_string(str(database)) as reopened:

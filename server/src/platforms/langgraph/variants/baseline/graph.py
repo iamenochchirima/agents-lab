@@ -26,7 +26,11 @@ class GraphState(TypedDict, total=False):
     prompt: str
     system_instruction: str
     output: str
+    model_provider: str
+    model_name: str
+    node: str
     attempt_count: int
+    usage: dict[str, int | None]
 
 
 class LangGraphModelError(Exception):
@@ -114,7 +118,14 @@ def build_baseline_graph(
                 "usage": usage,
             },
         )
-        return {"output": output, "attempt_count": attempt}
+        return {
+            "output": output,
+            "model_provider": model.provider,
+            "model_name": model.model,
+            "node": "model",
+            "attempt_count": attempt,
+            "usage": usage,
+        }
 
     def retry_on(exception: BaseException) -> bool:
         return isinstance(exception, RetryablePreDispatchError)

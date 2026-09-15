@@ -132,7 +132,16 @@ class LangGraphService:
                     "run_id": request.run_id,
                 }
                 for part in graph.stream(
-                    {"prompt": request.prompt, "system_instruction": request.system_instruction, "output": "", "attempt_count": 0},
+                    {
+                        "prompt": request.prompt,
+                        "system_instruction": request.system_instruction,
+                        "output": "",
+                        "model_provider": request.model.provider,
+                        "model_name": request.model.model,
+                        "node": "",
+                        "attempt_count": 0,
+                        "usage": usage,
+                    },
                     graph_config,
                     stream_mode=["updates", "checkpoints", "tasks"],
                     version="v2",

@@ -155,7 +155,9 @@ class SQLiteRunStore:
         return self._row_to_run(row)
 
     def append_event(self, execution_id: str, kind: str, payload: dict[str, Any]) -> int:
-        event_key = hashlib.sha256(canonical_json({"kind": kind, "payload": payload}).encode()).hexdigest()
+        event_key = hashlib.sha256(
+            canonical_json({"executionId": execution_id, "kind": kind, "payload": payload}).encode()
+        ).hexdigest()
         with self._lock, self._connection:
             existing = self._connection.execute(
                 "SELECT source_sequence FROM service_events WHERE event_key = ?", (event_key,)

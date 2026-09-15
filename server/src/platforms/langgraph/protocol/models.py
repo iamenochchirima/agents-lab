@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import PROTOCOL_VERSION
 
@@ -47,15 +47,21 @@ class ModelSelection(ProtocolModel):
 
 class StartRunRequest(ProtocolModel):
     protocol_version: Literal[PROTOCOL_VERSION] = Field(default=PROTOCOL_VERSION)
-    run_id: str = Field(min_length=1, max_length=128)
+    run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     prompt: str = Field(min_length=1, max_length=20_000)
     system_instruction: str = Field(min_length=1, max_length=20_000)
     model: ModelSelection
     graph: Literal["baseline"] = "baseline"
-    thread_id: str = Field(min_length=1, max_length=255)
+    thread_id: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     durability: Literal["sqlite-sync"] = "sqlite-sync"
     max_attempts: int = Field(default=2, ge=1, le=5)
     timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+
+    @model_validator(mode="after")
+    def thread_matches_run(self) -> "StartRunRequest":
+        if self.thread_id != self.run_id:
+            raise ValueError("threadId must equal runId for the LangGraph baseline.")
+        return self
 
 
 class HealthResponse(ProtocolModel):

@@ -113,6 +113,39 @@ test("LangGraph adapter turns an unknown native outcome into reconciliation-requ
   );
 });
 
+test("LangGraph adapter reconciles a lost start acknowledgement by stable execution identity", async () => {
+  await withProtocolServer(
+    ({ method, url }) => {
+      if (method === "POST" && url === "/v1/runs") {
+        return { status: 503, body: { detail: "admission response was lost" } };
+      }
+      if (method === "GET" && url === "/v1/runs/langgraph%3Alanggraph-test-run") {
+        return { body: inspectionBody("completed") };
+      }
+      return { status: 404, body: { detail: "not found" } };
+    },
+    async (origin) => {
+      const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: origin });
+      const reference = await runner.start(manifest(origin));
+      assert.equal(reference.executionId, "langgraph:langgraph-test-run");
+      assert.equal(reference.native["serviceOrigin"], origin);
+    },
+  );
+});
+
+test("LangGraph adapter reports an unavailable service without fabricating a run", async () => {
+  const runner = LangGraphBaselineRunner.fromOptions({
+    serviceUrl: "http://127.0.0.1:1",
+    requestTimeoutMs: 100,
+  });
+  const connection = await runner.checkConnection();
+  assert.equal(connection.reachable, false);
+  await assert.rejects(
+    () => runner.start(manifest("http://127.0.0.1:1")),
+    /fetch failed|LangGraph service|ECONNREFUSED/i,
+  );
+});
+
 function inspectionBody(status: "completed" | "unknown") {
   return {
     protocolVersion: 1,

@@ -64,16 +64,24 @@ as `unknown` with `SERVICE_RESTARTED`. This is deliberate: a checkpoint proves
 state was written, not that a provider call did not happen or that the run can
 be resumed safely.
 
-Run the automated version of this observation with:
+Run the automated service-process version of this observation with:
 
 ```bash
 AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 \
 AGENTLAB_LANGGRAPH_PYTHON="$PWD/server/src/platforms/langgraph/.venv/bin/python" \
-npm --prefix server run build
+npm --prefix server run build && \
 AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 \
 AGENTLAB_LANGGRAPH_PYTHON="$PWD/server/src/platforms/langgraph/.venv/bin/python" \
 node --test server/dist/integration-tests/langgraph-baseline.test.js
 ```
+
+The integration test starts the real platform-local Uvicorn service on a
+temporary loopback port, uses a temporary SQLite directory, and removes that
+directory when it exits. It covers a fake completion, a bounded retry, active
+cancellation, service unavailability after shutdown, and a hard service restart
+that turns an interrupted execution into an unknown/reconciliation-required
+result. It does not start the shared TypeScript Lab server because registration
+is a primary-integration handoff outside this platform-owned scope.
 
 The playground does not claim hosted LangGraph deployment, Postgres durability,
 automatic recovery, tools, or exactly-once model execution.
