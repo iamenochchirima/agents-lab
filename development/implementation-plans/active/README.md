@@ -1,6 +1,6 @@
 # Active implementation plans
 
-**Last updated:** 2026-09-15T09:43:41+02:00
+**Last updated:** 2026-09-15T09:54:24+02:00
 
 These plans govern implementation that is not yet complete. Every checkbox must remain
 honest: it represents work that has been verified, not merely code that was started.
