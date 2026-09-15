@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-15T10:21:25+02:00
+**Last updated:** 2026-09-15T10:22:54+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -49,6 +49,9 @@ No Computer Native plan remains active for this slice.
 - [Lab server + Temporal baseline](completed/lab-server-temporal-baseline.md) — completed
   2026-09-15T01:46:55+02:00; delivered the first end-to-end Platform UI, Fastify, local
   Temporal, worker, and evidence path.
+- [Server platform foundation](completed/server-platform-foundation.md) — completed
+  2026-09-15T10:22:54+02:00; established the generic runner, registry, execution-reference,
+  evidence, and future-platform plan seams around the Temporal baseline.
 
 Completed plans are retained rather than deleted because their scope, trade-offs, and
 validation results remain useful project history.

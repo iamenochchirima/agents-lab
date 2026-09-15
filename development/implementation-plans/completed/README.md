@@ -1,6 +1,6 @@
 # Completed implementation plans
 
-**Last updated:** 2026-09-15T10:21:25+02:00
+**Last updated:** 2026-09-15T10:22:54+02:00
 
 Completed plans are an archive of delivered implementation slices. Each archived plan
 must retain its original scope and checklists, plus:
