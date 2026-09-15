@@ -2,6 +2,9 @@
   "name": "@agent-harness-lab/trigger-dev-baseline",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev": "trigger.dev dev start --skip-update-check"
+  },
   "engines": {
     "node": ">=22.13.0"
   },
