@@ -29,6 +29,7 @@ import type {
 import { isHatchetTaskOutput } from "../variants/baseline/contracts.js";
 import { createHatchetBaselineTask } from "../variants/baseline/execution/task.js";
 import { loadHatchetSdk } from "../sdk.js";
+import { createHatchetWorkerHost } from "../service/worker-host.js";
 
 const EXECUTION_PREFIX = "hatchet:";
 const NATIVE_SCHEMA_VERSION = 1;
@@ -106,19 +107,13 @@ export interface HatchetBaselineRunnerOptions {
   readonly client?: HatchetRunnerClientLike | null;
   readonly task?: HatchetTaskLike | null;
   readonly unavailableMessage?: string;
+  readonly close?: () => Promise<void>;
 }
 
 export class HatchetRunnerUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HatchetRunnerUnavailableError";
-  }
-}
-
-export class HatchetExecutionNotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "HatchetExecutionNotFoundError";
   }
 }
 
@@ -131,25 +126,40 @@ export class HatchetBaselineRunner implements PlatformRunner {
   private readonly client: HatchetRunnerClientLike | null;
   private readonly task: HatchetTaskLike | null;
   private readonly unavailableMessage: string | null;
+  private readonly closeHandler: (() => Promise<void>) | null;
 
   private constructor(options: HatchetBaselineRunnerOptions) {
     this.config = options.config ?? loadHatchetConfig();
     this.client = options.client ?? null;
     this.task = options.task ?? null;
     this.unavailableMessage = options.unavailableMessage ?? null;
+    this.closeHandler = options.close ?? null;
   }
 
   static async connect(
     config: HatchetConfig = loadHatchetConfig(),
   ): Promise<HatchetBaselineRunner> {
-    if (!config.clientToken) {
-      return HatchetBaselineRunner.unavailable(
-        config,
-        "HATCHET_CLIENT_TOKEN is not configured.",
-      );
-    }
-
     try {
+      if (config.runtimeMode === "embedded") {
+        // Embedded mode keeps the Hatchet engine and worker in this process so
+        // the shared Lab server needs no Docker service or external token.
+        const host = await createHatchetWorkerHost(config);
+        await host.start();
+        return HatchetBaselineRunner.fromClient({
+          config,
+          client: host.client as unknown as HatchetRunnerClientLike,
+          task: host.task as unknown as HatchetTaskLike,
+          close: () => host.stop(),
+        });
+      }
+
+      if (!config.clientToken) {
+        return HatchetBaselineRunner.unavailable(
+          config,
+          "HATCHET_CLIENT_TOKEN is not configured for remote Hatchet mode.",
+        );
+      }
+
       const sdk = loadHatchetSdk();
       const client = sdk.HatchetClient.init({
         token: config.clientToken,
@@ -191,6 +201,10 @@ export class HatchetBaselineRunner implements PlatformRunner {
       task: null,
       unavailableMessage: message,
     });
+  }
+
+  async close(): Promise<void> {
+    await this.closeHandler?.();
   }
 
   manifestConfiguration(): Readonly<Record<string, unknown>> {
@@ -375,10 +389,23 @@ export class HatchetBaselineRunner implements PlatformRunner {
     try {
       details = await this.requireClient().runs.get(nativeRunId);
     } catch (error) {
-      if (isNotFoundError(error))
-        throw new HatchetExecutionNotFoundError(
-          `Hatchet run was not found: ${nativeRunId}.`,
+      if (isNotFoundError(error)) {
+        // Hatchet can acknowledge a workflow before its REST projection is
+        // visible. Treat that short consistency window as queued and let the
+        // next inspection reconcile it instead of converting accepted work
+        // into a false not-found failure.
+        const existing = await this.findRunSafely(native.runId);
+        return pendingInspection(
+          existing
+            ? referenceFromListRow(
+                currentReference,
+                existing,
+                native.submissionOutcome,
+                native.acknowledgement,
+              )
+            : currentReference,
         );
+      }
       throw new HatchetRunnerUnavailableError(
         safeMessage(error, "Hatchet run inspection failed."),
       );
@@ -449,6 +476,14 @@ export class HatchetBaselineRunner implements PlatformRunner {
           runId,
       ) ?? null
     );
+  }
+
+  private async findRunSafely(runId: string): Promise<HatchetRunListRow | null> {
+    try {
+      return await this.findRun(runId);
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -665,6 +700,34 @@ function reconciliationInspection(
   };
 }
 
+function pendingInspection(
+  reference: PlatformExecutionReference,
+): RunnerInspection {
+  const native = nativeReference(reference);
+  const occurredAt = new Date().toISOString();
+  return {
+    status: "queued",
+    reference,
+    eventIntents: [
+      {
+        source: "hatchet-reconciliation",
+        sourceSequence: 1,
+        kind: "HatchetRunPendingVisibility",
+        runId: native.runId,
+        occurredAt,
+        payload: {
+          nativeRunId: native.nativeRunId,
+          submissionOutcome: native.submissionOutcome,
+          acknowledgement: native.acknowledgement,
+        },
+      },
+    ],
+    result: null,
+    trajectory: null,
+    metrics: null,
+  };
+}
+
 function synthesizedResult(
   details: HatchetRunDetails,
   runId: string,
@@ -829,8 +892,13 @@ function isTransportError(error: unknown): boolean {
 function isNotFoundError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const code = errorCode(error);
+  const responseStatus = (error as Error & {
+    readonly response?: { readonly status?: unknown };
+  }).response?.status;
   return (
-    code === "NOT_FOUND" || error.message.toLowerCase().includes("not found")
+    code === "NOT_FOUND" ||
+    responseStatus === 404 ||
+    error.message.toLowerCase().includes("not found")
   );
 }
 

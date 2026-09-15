@@ -91,7 +91,7 @@ Available services:
   server, api          Start the Fastify server only (api is an alias)
   worker               Start the Temporal worker only
   aws-step-functions   Start the AWS Step Functions platform service
-  hatchet              Start the Hatchet platform worker
+  hatchet              Start the Hatchet platform worker (embedded by default)
   vercel-workflows     Start the Vercel Workflows platform service
   check-temporal       Check the configured Temporal endpoint
 
@@ -167,13 +167,7 @@ run_hatchet() {
   require_package "$SERVER_DIR"
   require_package "$SERVER_DIR/src/platforms/hatchet"
 
-  if [[ -z "${HATCHET_CLIENT_TOKEN:-}" ]]; then
-    echo "HATCHET_CLIENT_TOKEN is required to start the Hatchet worker." >&2
-    echo "Start the local Hatchet stack and export its token first." >&2
-    exit 1
-  fi
-
-  echo "Starting Hatchet platform worker."
+  echo "Starting Hatchet platform worker (embedded runtime by default)."
   exec npm --prefix "$SERVER_DIR" run dev:hatchet
 }
 

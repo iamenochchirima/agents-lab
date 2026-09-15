@@ -13,7 +13,7 @@ import {
 const enabled = process.env.AGENTLAB_RUN_HATCHET_INTEGRATION === "1";
 
 test(
-  "Hatchet full local stack completes a fake baseline task",
+  "Hatchet embedded local engine completes a fake baseline task",
   { skip: !enabled },
   async () => {
     const config = loadHatchetConfig();
@@ -46,7 +46,7 @@ test(
 );
 
 test(
-  "Hatchet full local stack projects a provider failure without fabricating success",
+  "Hatchet embedded local engine projects a provider failure without fabricating success",
   { skip: !enabled },
   async () => {
     const config = loadHatchetConfig();

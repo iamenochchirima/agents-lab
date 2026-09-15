@@ -48,4 +48,6 @@ export interface PlatformRunner {
   start(manifest: RunManifest): Promise<PlatformExecutionReference>;
   cancel(reference: PlatformExecutionReference, reason: string): Promise<RunnerCancellationResult>;
   inspect(reference: PlatformExecutionReference): Promise<RunnerInspection>;
+  /** Releases platform-local workers or client connections when the server stops. */
+  close?(): Promise<void>;
 }

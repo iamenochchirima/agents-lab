@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { loadHatchetConfig } from "../../../src/platforms/hatchet/config.js";
-import { loadHatchetSdk } from "../../../src/platforms/hatchet/sdk.js";
+import {
+  loadHatchetEmbeddedSdk,
+  loadHatchetSdk,
+} from "../../../src/platforms/hatchet/sdk.js";
 import { createHatchetBaselineTask } from "../../../src/platforms/hatchet/variants/baseline/execution/task.js";
 
 test("pinned Hatchet SDK exposes the v1 client/task calls used by the baseline", () => {
@@ -28,4 +31,9 @@ test("pinned Hatchet SDK exposes the v1 client/task calls used by the baseline",
   assert.equal(typeof client.runs.get, "function");
   assert.equal(typeof client.runs.cancel, "function");
   assert.equal(typeof client.worker, "function");
+});
+
+test("pinned Hatchet SDK exposes the no-Docker embedded entry point", () => {
+  const embedded = loadHatchetEmbeddedSdk();
+  assert.equal(typeof embedded.HatchetEmbeddedClient.init, "function");
 });

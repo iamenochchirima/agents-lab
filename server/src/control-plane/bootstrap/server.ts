@@ -76,7 +76,11 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     runners,
     async close() {
       await app.close();
-      await runner.close();
+      await Promise.all(
+        runners.map((platformRunner) =>
+          (platformRunner as PlatformRunner).close?.(),
+        ),
+      );
     },
   };
 }

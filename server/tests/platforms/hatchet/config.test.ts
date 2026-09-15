@@ -29,6 +29,21 @@ test("Hatchet config pins the researched runtime and excludes credentials from m
   });
 });
 
+test("Hatchet local mode defaults to embedded and remote mode remains explicit", () => {
+  assert.equal(loadHatchetConfig().runtimeMode, "embedded");
+  assert.equal(
+    loadHatchetConfig({
+      AGENTLAB_HATCHET_RUNTIME_MODE: "remote",
+      HATCHET_CLIENT_TOKEN: "test-token",
+    }).runtimeMode,
+    "remote",
+  );
+  assert.throws(
+    () => loadHatchetConfig({ AGENTLAB_HATCHET_RUNTIME_MODE: "docker" }),
+    InvalidHatchetConfigError,
+  );
+});
+
 test("Hatchet config rejects invalid topology and inconsistent timeouts", () => {
   assert.throws(
     () =>

@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { URL } from "node:url";
 
 export const HATCHET_PLATFORM = "hatchet" as const;
@@ -17,10 +19,17 @@ export const HATCHET_DEFAULT_RETRY_BACKOFF_MAX_SECONDS = 30;
 export const HATCHET_DEFAULT_IDEMPOTENCY_FALLBACK_TTL_MS = 24 * 60 * 60 * 1_000;
 export const HATCHET_DEFAULT_REQUEST_TIMEOUT_MS = 2_000;
 export const HATCHET_DEFAULT_WORKER_SLOTS = 2;
+export const HATCHET_DEFAULT_EMBEDDED_READY_TIMEOUT_MS = 5 * 60_000;
+export const HATCHET_DEFAULT_EMBEDDED_POSTGRES_DATA_DIR = resolve(
+  homedir(),
+  ".cache/agent-harness-lab/hatchet-embedded",
+);
 
 export type HatchetTlsStrategy = "none" | "tls" | "mtls";
+export type HatchetRuntimeMode = "embedded" | "remote";
 
 export interface HatchetConfig {
+  readonly runtimeMode: HatchetRuntimeMode;
   readonly apiUrl: string;
   readonly hostPort: string;
   readonly tenantId: string;
@@ -36,6 +45,9 @@ export interface HatchetConfig {
   readonly idempotencyFallbackTtlMs: number;
   readonly requestTimeoutMs: number;
   readonly workerSlots: number;
+  readonly embeddedVersion: string;
+  readonly embeddedPostgresDataDir: string | null;
+  readonly embeddedReadyTimeoutMs: number;
   readonly openRouterApiKey: string | null;
   readonly openRouterBaseUrl: string;
   readonly sdkVersion: typeof HATCHET_SDK_VERSION;
@@ -53,6 +65,7 @@ export function loadHatchetConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): HatchetConfig {
   const config: HatchetConfig = {
+    runtimeMode: parseRuntimeMode(environment.AGENTLAB_HATCHET_RUNTIME_MODE),
     apiUrl: parseUrl(
       environment.AGENTLAB_HATCHET_API_URL,
       HATCHET_DEFAULT_API_URL,
@@ -126,6 +139,19 @@ export function loadHatchetConfig(
       1,
       100,
     ),
+    embeddedVersion:
+      environment.AGENTLAB_HATCHET_EMBEDDED_VERSION?.trim() ||
+      HATCHET_SERVER_VERSION,
+    embeddedPostgresDataDir:
+      environment.AGENTLAB_HATCHET_EMBEDDED_POSTGRES_DATA_DIR?.trim() ||
+      HATCHET_DEFAULT_EMBEDDED_POSTGRES_DATA_DIR,
+    embeddedReadyTimeoutMs: parseInteger(
+      environment.AGENTLAB_HATCHET_EMBEDDED_READY_TIMEOUT_MS,
+      HATCHET_DEFAULT_EMBEDDED_READY_TIMEOUT_MS,
+      "AGENTLAB_HATCHET_EMBEDDED_READY_TIMEOUT_MS",
+      1_000,
+      15 * 60_000,
+    ),
     openRouterApiKey: environment.OPENROUTER_API_KEY?.trim() || null,
     openRouterBaseUrl: parseUrl(
       environment.AGENTLAB_OPENROUTER_BASE_URL,
@@ -149,6 +175,7 @@ export function safeManifestConfiguration(
   config: HatchetConfig,
 ): Readonly<Record<string, unknown>> {
   return Object.freeze({
+    runtimeMode: config.runtimeMode,
     apiUrl: config.apiUrl,
     hostPort: config.hostPort,
     tenantId: config.tenantId,
@@ -165,12 +192,25 @@ export function safeManifestConfiguration(
       fallbackTtlMs: config.idempotencyFallbackTtlMs,
     },
     workerSlots: config.workerSlots,
+    embeddedVersion: config.embeddedVersion,
+    embeddedPostgresConfigured: config.embeddedPostgresDataDir !== null,
+    embeddedReadyTimeoutMs: config.embeddedReadyTimeoutMs,
     sdkVersion: config.sdkVersion,
     serverVersion: config.serverVersion,
     runtime: "node",
     clientTokenConfigured: config.clientToken !== null,
     openRouterConfigured: config.openRouterApiKey !== null,
   });
+}
+
+function parseRuntimeMode(value: string | undefined): HatchetRuntimeMode {
+  const resolved = (value ?? "embedded").trim().toLowerCase();
+  if (resolved !== "embedded" && resolved !== "remote") {
+    throw new InvalidHatchetConfigError(
+      "AGENTLAB_HATCHET_RUNTIME_MODE must be embedded or remote.",
+    );
+  }
+  return resolved;
 }
 
 export function formatHatchetDuration(milliseconds: number): string {
