@@ -11,9 +11,9 @@ The common server remains the owner of Lab evidence files. This platform never w
 `lab/runs/` directly and never places provider credentials in workflow input or native
 references.
 
-Status: platform-local implementation complete; shared server registration is a
-separate primary-agent integration step. Until that handoff is made, this directory
-can be tested directly and the generic server will not advertise Restate as runnable.
+Status: baseline implementation and shared server registration complete. Restate is
+advertised as runnable when the Lab server starts, but it reports unavailable until the
+local Restate runtime and registered service are reachable.
 
 Start with:
 

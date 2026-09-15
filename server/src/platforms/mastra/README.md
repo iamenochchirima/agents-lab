@@ -16,8 +16,8 @@ in-flight generation is process-local and cannot be adopted after a server resta
 - `variants/baseline/config/` — safe configuration and provider validation.
 - `variants/baseline/models/` — deterministic fake model and OpenRouter model selection.
 - `docs/` — local operation and failure semantics.
-- `package.json` — platform-local `@mastra/core` pin; shared server integration is a
-  separate handoff because it belongs to the server composition owner.
+- `package.json` — platform-local `@mastra/core` pin; the root server package also
+  pins the dependency for the composed runtime.
 
 ## Version facts
 
@@ -25,8 +25,9 @@ in-flight generation is process-local and cannot be adopted after a server resta
 - Node.js: `>=22.13.0` according to the package engine declaration.
 - Current verified local runtime: Node.js `23.11.1`.
 
-The package pin and local setup are intentionally owned here until the shared server
-dependency owner integrates Mastra into the root server manifest.
+The shared server composes `MastraBaselineRunner` directly. The baseline remains
+process-local by design: completed Lab evidence survives projection, but an in-flight
+generation cannot be recovered after a server restart.
 
 ## References
 

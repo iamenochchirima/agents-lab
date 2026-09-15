@@ -6,9 +6,12 @@ platform evidence into `lab/runs/<run-id>/`. The common server does not own a
 platform's execution model. Each platform implements the runner seam in its own
 directory.
 
-The first runnable path is `temporal/baseline`. It uses a local Temporal development
-server and a separate worker process. The browser talks to Fastify only. Planned
-platforms remain visible in the registry but cannot be run until their adapter exists.
+The first runnable paths are `temporal/baseline`, `restate/baseline`,
+`langgraph/baseline`, and `mastra/baseline`. Temporal uses a local development
+server and a separate worker; Restate and LangGraph use separate platform services;
+Mastra runs its direct-agent baseline in the Lab server process. The browser talks to
+Fastify only. Remaining platforms stay visible in the registry as planned until their
+adapters exist.
 
 ## Local start
 
@@ -21,13 +24,34 @@ npm --prefix server run dev
 npm --prefix server run dev:worker
 ```
 
-The API defaults to `http://127.0.0.1:4318`; its health endpoint reports the
-connectivity of registered runnable platforms. Configuration is documented in
+For the first-wave platform checks, the focused commands are:
+
+```bash
+npm --prefix server run test:mastra
+npm --prefix server run test:restate
+npm --prefix server run test:langgraph
+```
+
+The LangGraph Python service and the Restate service are started separately as
+described in their platform guides. `npm --prefix server run dev:restate` starts the
+Restate service after the server dependencies are installed.
+
+The API defaults to `http://127.0.0.1:4318`; `/ready` reports that the Fastify
+process can serve requests, while `/health` reports the connectivity of registered
+runnable platforms. Configuration is documented in
 [.env.example](.env.example).
 
 The server may start while a platform dependency is unavailable so the health response
-can explain the dependency failure. It does not fabricate a run result; a submission
-made during that condition is retained as a failed dispatch record.
+can explain the dependency failure. The deterministic Mastra baseline can run without
+Temporal, Restate, or LangGraph. A submission made while an external platform service
+is unavailable is retained as a failed dispatch record; the server does not fabricate a
+run result.
+
+Start the first-wave services independently when their native runtime is needed:
+
+- [Restate local development](src/platforms/restate/docs/local-development.md)
+- [LangGraph local service](src/platforms/langgraph/docs/README.md)
+- [Mastra local development](src/platforms/mastra/docs/local-development.md)
 
 Normalized evidence is platform-neutral:
 

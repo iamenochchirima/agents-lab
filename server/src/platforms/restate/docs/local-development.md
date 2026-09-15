@@ -12,7 +12,8 @@ npm --prefix server run build
 ```
 
 The platform package pins `@restatedev/restate-sdk` and
-`@restatedev/restate-sdk-clients` to `1.17.0`. The local server image is pinned to
+`@restatedev/restate-sdk-clients` to `1.17.0`. The root server package pins the same
+runtime dependencies for the composed Lab server. The local server image is pinned to
 `docker.restate.dev/restatedev/restate:1.7.10` in the platform Compose file.
 
 ## Start the local dependency
@@ -34,6 +35,7 @@ must not be committed.
 In a second terminal:
 
 ```bash
+npm --prefix server install
 npm --prefix server run build
 node --enable-source-maps server/dist/src/platforms/restate/service-entry.js
 ```

@@ -1,11 +1,13 @@
 # Mastra baseline local development
 
-## Install the platform dependency
+## Install the dependencies
 
-The baseline owns its Mastra dependency in the platform-local manifest:
+The baseline keeps a platform-local manifest for isolated study, while the composed Lab
+server installs the same pinned dependency at the server boundary:
 
 ```bash
 npm install --prefix server/src/platforms/mastra
+npm install --prefix server
 ```
 
 The package pin is `@mastra/core@1.66.0`. Mastra currently declares Node.js
@@ -25,10 +27,9 @@ The tests use a deterministic local language model that implements the AI SDK mo
 surface consumed by Mastra. They still construct a real Mastra `Agent` and execute
 `Agent.generate()`; they do not replace the agent lifecycle with a mock.
 
-The common server's shared bootstrap and root package manifest are intentionally not
-changed by this platform-owned slice. A separate integration change must add the
-runner to the server registry and promote the platform dependency into the server
-installation before the browser can submit `mastra/baseline` through HTTP.
+The shared bootstrap registers `mastra/baseline` alongside the other first-wave
+platforms. Start the API with `./scripts/run_local_stack.sh server`; no Temporal
+server is required for a deterministic Mastra run.
 
 ## Optional OpenRouter run
 

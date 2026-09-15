@@ -10,4 +10,7 @@ It owns:
 - mapping of native `unknown` outcomes to a `reconciliation_required` Lab result; and
 - conversion of source-sequenced service events into generic event intents.
 
-The adapter is deliberately not registered in the common platform registry by this scoped change. Registration, configuration, and the shared local launcher belong to the primary integration handoff described in the implementation plan.
+The adapter is registered by the common server alongside the other first-wave
+baselines. The registration still does not imply that the Python service is
+reachable: `checkConnection()` reports that dependency state, while the runner
+preserves the platform's native execution and reconciliation semantics.

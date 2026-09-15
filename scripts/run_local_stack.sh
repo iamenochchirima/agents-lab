@@ -196,7 +196,7 @@ start_all() {
   echo "  Logs:   $log_directory/{web,server,worker}.log"
   echo "Press Ctrl-C to stop the Lab processes. Temporal remains separately managed."
 
-  wait_for_http "Lab server" "http://${API_HOST}:${API_PORT}/health"
+  wait_for_http "Lab server" "http://${API_HOST}:${API_PORT}/ready"
   wait_for_http "Web app" "http://${WEB_HOST}:${WEB_PORT}"
   wait_for_worker "$log_directory/worker.log"
 
