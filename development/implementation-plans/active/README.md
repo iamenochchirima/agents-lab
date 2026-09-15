@@ -11,9 +11,11 @@ When a plan reaches its completion gate, add its completion record and move it t
 ## Current platform batch
 
 - [Parallel platform implementation coordination](platform-parallel-implementation.md)
-- [Inngest baseline](inngest-baseline.md)
+- [First-party platform plan source audit](../../../docs/research/platform-plan-source-audit.md)
 - [Trigger.dev baseline](trigger-dev-baseline.md)
-- [DBOS baseline](dbos-baseline.md)
-- [Hatchet baseline](hatchet-baseline.md)
-- [Vercel Workflows baseline](vercel-workflows-baseline.md)
 - [AWS Step Functions baseline](aws-step-functions-baseline.md)
+
+Restate, LangGraph, Mastra, Inngest, DBOS, Hatchet, and Vercel Workflows are
+archived in [completed plans](../completed/README.md). Trigger.dev remains active
+because its real local server/worker acceptance profile is not available yet. AWS
+Step Functions remains outside the current implementation wave.
