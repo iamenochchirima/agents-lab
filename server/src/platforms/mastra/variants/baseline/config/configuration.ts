@@ -5,7 +5,6 @@ export const MASTRA_AGENT_ID = "mastra-baseline-agent" as const;
 export const MASTRA_OPERATION = "agent.generate" as const;
 export const MASTRA_STORAGE_MODE = "none" as const;
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
-export const DEFAULT_MODEL = "aion-labs/aion-2.0";
 
 export type MastraProvider = "fake" | "openrouter";
 
