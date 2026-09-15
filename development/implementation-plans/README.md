@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-15T01:46:55+02:00
+**Last updated:** 2026-09-15T09:02:04+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -33,7 +33,8 @@ mandatory whenever the work has state or external effects.
 
 ## Active plans
 
-No active implementation plans.
+- [Computer Native next standalone slice](active/computer-native-next.md) — reliable
+  real-model turns and the first bounded read-only workspace inspection loop.
 
 ## Completed plans
 

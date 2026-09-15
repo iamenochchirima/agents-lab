@@ -85,6 +85,7 @@
         "docs/research/language-selection.md",
         "development/implementation-plans/README.md",
         "development/implementation-plans/TEMPLATE.md",
+        "development/implementation-plans/active/computer-native-next.md",
         "development/implementation-plans/completed/computer-native-tui.md",
         "development/implementation-plans/completed/lab-server-temporal-baseline.md",
         "development/implementation-plans/completed/platform-ui.md"
