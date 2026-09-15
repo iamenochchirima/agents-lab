@@ -152,24 +152,18 @@ export class DbosBaselineHost {
     const body = await readJson(request);
     const parsed = parseStartRequest(body);
     let submissionOutcome: DbosStartResponse["submissionOutcome"] = "accepted";
-  let handle: {
-    readonly workflowID: string;
-    getStatus(): Promise<{ readonly status?: string; readonly workflowName?: string } | null>;
-  };
+    let handle: {
+      readonly workflowID: string;
+      getStatus(): Promise<{ readonly status?: string; readonly workflowName?: string } | null>;
+    };
 
-    try {
-      handle = await this.dbosModule.DBOS.startWorkflow(dbosBaselineWorkflow, {
-        workflowID: parsed.workflowId,
-        timeoutMS: this.options.config.workflowTimeoutMs,
-        workflowAttributes: {
-          agentLabRunId: parsed.input.runId,
-          requestHash: parsed.input.requestHash,
-        },
-      })(parsed.input);
-    } catch (error) {
-      if (!isWorkflowConflict(error)) throw error;
-      const existing = await this.existingWorkflow(parsed.workflowId, parsed.input.requestHash);
-      if (!existing) {
+    // DBOS intentionally upserts an explicit workflow ID. Inspecting first is
+    // therefore required to distinguish a replay of the same Lab request from
+    // a new request that accidentally reuses an existing ID. The remaining
+    // conflict path handles a concurrent start that wins the race below.
+    const existingStatus = await this.dbosModule.DBOS.getWorkflowStatus(parsed.workflowId);
+    if (existingStatus) {
+      if (existingStatus.attributes?.requestHash !== parsed.input.requestHash) {
         this.writeJson(response, 409, {
           error: "WORKFLOW_ID_CONFLICT",
           message: "The workflow ID is already owned by a different request.",
@@ -178,6 +172,29 @@ export class DbosBaselineHost {
       }
       submissionOutcome = "already_exists";
       handle = this.dbosModule.DBOS.retrieveWorkflow(parsed.workflowId);
+    } else {
+      try {
+        handle = await this.dbosModule.DBOS.startWorkflow(dbosBaselineWorkflow, {
+          workflowID: parsed.workflowId,
+          timeoutMS: this.options.config.workflowTimeoutMs,
+          workflowAttributes: {
+            agentLabRunId: parsed.input.runId,
+            requestHash: parsed.input.requestHash,
+          },
+        })(parsed.input);
+      } catch (error) {
+        if (!isWorkflowConflict(error)) throw error;
+        const existing = await this.existingWorkflow(parsed.workflowId, parsed.input.requestHash);
+        if (!existing) {
+          this.writeJson(response, 409, {
+            error: "WORKFLOW_ID_CONFLICT",
+            message: "The workflow ID is already owned by a different request.",
+          });
+          return;
+        }
+        submissionOutcome = "already_exists";
+        handle = this.dbosModule.DBOS.retrieveWorkflow(parsed.workflowId);
+      }
     }
 
     const status = await handle.getStatus();
