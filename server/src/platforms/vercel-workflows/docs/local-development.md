@@ -26,6 +26,13 @@ when the platform package itself is absent.
 
 Readiness is available at `GET http://127.0.0.1:9094/ready`.
 
+From the repository root, the same service can be started through the shared
+launcher:
+
+```sh
+./scripts/run_local_stack.sh vercel-workflows
+```
+
 The service exposes the platform-local routes used by the runner:
 
 - `POST /runs/admit` — validate, reserve, and start one native Workflow run.

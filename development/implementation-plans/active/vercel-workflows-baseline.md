@@ -1,7 +1,7 @@
 # Vercel Workflows baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T14:59:11+02:00
+**Last updated:** 2026-09-15T15:02:40+02:00
 **Status:** Active — local baseline and shared registration implemented; hosted profile remains
 **Owner:** Assigned platform agent
 **Platform:** `vercel-workflows`
@@ -136,6 +136,11 @@ Validation completed for this slice:
 - `npm --prefix server run build` — passed.
 - `node --test server/dist/tests/platforms/vercel-workflows/service.integration.test.js`
   after the root build — passed, 2 tests, using the platform-local Workflow install.
+- `./scripts/run_local_stack.sh vercel-workflows` plus a shared `POST /api/runs`
+  smoke using `fake-success` — passed; the launcher reached `/ready` on port 9094,
+  the shared server completed the run through the local Workflow World, and the
+  returned record included normalized events, trajectory, metrics, result, and the
+  native `workflowRunId`.
 
 ## Documentation and handoff
 
