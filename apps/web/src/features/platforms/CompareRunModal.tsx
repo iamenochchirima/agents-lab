@@ -51,7 +51,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
             <label className="compact-control"><span>Model</span><input onChange={(event) => setModel(event.target.value)} placeholder="Model" value={model} /></label>
             <label className="compact-control"><span>Experiment</span><select value={experimentId} onChange={(event) => setExperimentId(event.target.value)}>{experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}</select></label>
           </div>
-          <p className="modal-note">{props.initialTask.trim() ? "Your custom task will be used for this exploratory comparison." : "Choose at least two platforms. Each implementation keeps its own computer environment or backend profile."}</p>
+          <p className="modal-note">{props.initialTask.trim() ? "Your custom task will be used for this exploratory comparison." : "Choose at least two platforms. Each implementation keeps its own computer environment or server."}</p>
         </div>
         <footer><button className="quiet-button" onClick={props.onClose} type="button">Cancel</button><button className="button button-primary" disabled type="button">Run comparison{canRun ? " (not available)" : ""}</button></footer>
       </section>

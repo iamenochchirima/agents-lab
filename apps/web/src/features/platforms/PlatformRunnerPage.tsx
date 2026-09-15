@@ -172,7 +172,7 @@ export function PlatformRunnerPage() {
                 {environments.map((environment) => <option key={environment.id} value={environment.id}>{environment.name}</option>)}
               </CompactSelect>
             ) : (
-              <CompactSelect label="Backend profile" value={backendProfileId} onChange={setBackendProfileId}>
+              <CompactSelect label="Server" value={backendProfileId} onChange={setBackendProfileId}>
                 {platform.backendProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
               </CompactSelect>
             )}
