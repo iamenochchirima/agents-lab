@@ -1,0 +1,65 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { FakeHatchetModelAdapter } from "../../../src/platforms/hatchet/variants/baseline/models/fake.js";
+import { OpenRouterHatchetModelAdapter } from "../../../src/platforms/hatchet/variants/baseline/models/openrouter.js";
+import type { HatchetModelRequestInput } from "../../../src/platforms/hatchet/variants/baseline/contracts.js";
+
+const input: HatchetModelRequestInput = {
+  runId: "hatchet-model-test",
+  prompt: "Say hello.",
+  systemInstruction: "Respond directly.",
+  provider: "fake",
+  model: "fake-success",
+  attemptId: "attempt-1",
+  attemptNumber: 1,
+};
+
+test("Hatchet fake model remains deterministic and exposes retry intent", async () => {
+  const adapter = new FakeHatchetModelAdapter();
+  const first = await adapter.complete(input, new AbortController().signal);
+  const second = await adapter.complete(input, new AbortController().signal);
+  const retry = await adapter.complete(
+    { ...input, model: "fake-pre-dispatch-retry" },
+    new AbortController().signal,
+  );
+
+  assert.deepEqual(first, second);
+  assert.equal(first.kind, "success");
+  assert.equal(
+    first.kind === "success" ? first.output : null,
+    "Fake response: Say hello.",
+  );
+  assert.equal(retry.kind, "failure");
+  assert.equal(
+    retry.kind === "failure" ? retry.failureKind : null,
+    "pre_dispatch",
+  );
+});
+
+test("OpenRouter network ambiguity contains no provider secret", async () => {
+  const adapter = new OpenRouterHatchetModelAdapter({
+    apiKey: "test-openrouter-secret",
+    baseUrl: "https://openrouter.ai/api/v1",
+    fetchImplementation: async () => {
+      throw new Error("socket failed with test-openrouter-secret");
+    },
+  });
+
+  const result = await adapter.complete(
+    { ...input, provider: "openrouter", model: "openai/test-model" },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result, {
+    kind: "failure",
+    failureKind: "outcome_unknown",
+    code: "OPENROUTER_RESPONSE_UNKNOWN",
+    message:
+      "The OpenRouter request was sent but its outcome could not be confirmed.",
+    requestSent: true,
+  });
+  assert.equal(
+    JSON.stringify(result).includes("test-openrouter-secret"),
+    false,
+  );
+});
