@@ -1,7 +1,7 @@
 # AWS Step Functions baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00<br>
-**Last updated:** 2026-09-15T15:10:00+02:00<br>
+**Last updated:** 2026-09-15T14:59:11+02:00<br>
 **Status:** Active — platform-local implementation and shared registration complete; emulator validation is pending<br>
 **Owner:** Assigned platform agent<br>
 **Platform:** `aws-step-functions`<br>
@@ -218,8 +218,8 @@ Not run:
   manifests identify Standard execution and the platform schema version.
 - Migration/compatibility: not applicable to existing evidence; native data is
   additive behind the existing opaque execution reference.
-- Rollout: local-only and opt-in; no shared bootstrap or UI registration is part
-  of this plan.
+- Rollout: local-only and opt-in; the shared server and UI expose the baseline, but
+  the run remains unavailable until the configured emulator or AWS profile is ready.
 - Rollback: remove/disable the platform-local directory or stop its service;
   no shared data migration is required.
 - Security: credentials remain environment-only; local emulator use is limited to
