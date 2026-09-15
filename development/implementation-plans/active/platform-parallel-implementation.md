@@ -33,7 +33,7 @@ agent writes code.
 | DBOS | [DBOS baseline](dbos-baseline.md) | TypeScript service + local Postgres | 2 |
 | Hatchet | [Hatchet baseline](hatchet-baseline.md) | TypeScript worker/service + local Hatchet server | 2 |
 | Vercel Workflows | [Vercel Workflows baseline](vercel-workflows-baseline.md) | TypeScript service + Vercel local/deployment profile | 3 |
-| AWS Step Functions | [AWS Step Functions baseline](aws-step-functions-baseline.md) | TypeScript service + LocalStack, then AWS profile | 3 |
+| AWS Step Functions | [AWS Step Functions baseline](aws-step-functions-baseline.md) | Explicitly skipped in this implementation wave | — |
 
 Temporal is already implemented and is not reopened by this batch. OpenAI Agents
 SDK remains a variant under a platform, not an additional platform plan.
@@ -49,7 +49,7 @@ The current implementation wave is running in three isolated worktrees:
 | --- | --- | --- |
 | 1 | Restate, LangGraph, Mastra | Integrated; remaining acceptance records are tracked in each plan |
 | 2 | Inngest, Trigger.dev, DBOS | Integrated; Inngest and DBOS have local acceptance evidence, while Trigger.dev still needs a real local server profile |
-| 3 | AWS Step Functions, Hatchet, Vercel Workflows | Platform-local implementations and shared registration are integrated; local service acceptance and hosted profiles remain tracked in each plan |
+| 3 | Hatchet, Vercel Workflows | Platform-local implementations and shared registration are integrated; local service acceptance and hosted profiles remain tracked in each plan. AWS is intentionally excluded from this wave. |
 
 Only one platform agent owns a platform directory at a time. The primary agent
 does not begin shared bootstrap or UI integration for this wave until its three
@@ -144,15 +144,15 @@ Wave 2 can then run concurrently after the first integration boundary is proven:
 Wave 3 should remain separate because deployment constraints dominate local semantics:
 
 - Vercel Workflows requires a Vercel-oriented local/deployed profile.
-- AWS Step Functions requires an emulator or AWS account profile and explicit cost/
-  credential controls.
+- AWS Step Functions is intentionally not assigned in this implementation wave. Its
+  existing files and plan remain untouched until a separate AWS decision is made.
 
-The plans can be assigned in parallel now. The actual local infrastructure runs should
-be scheduled so ports, containers, databases, and cloud credentials do not overlap.
+The non-AWS plans can be assigned in parallel now. The actual local infrastructure runs
+should be scheduled so ports, containers, databases, and cloud credentials do not overlap.
 
 ## Batch completion gate
 
-- [ ] Every platform has a plan with exclusive ownership and a concrete runtime shape.
+- [ ] Every non-AWS platform has a plan with exclusive ownership and a concrete runtime shape.
 - [ ] Every plan links the generic runner contract and completed foundation.
 - [ ] No plan requires a platform agent to edit shared bootstrap or root dependency files.
 - [ ] Each platform plan defines local readiness, evidence, retries, cancellation,
