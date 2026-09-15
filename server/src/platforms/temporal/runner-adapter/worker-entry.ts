@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { NativeConnection, Worker } from "@temporalio/worker";
 
 import { loadServerConfig } from "../../../control-plane/bootstrap/config.js";
+import { loadLocalServerEnvironment } from "../../../control-plane/bootstrap/local-env.js";
 import { baselineActivities } from "../variants/baseline/activities.js";
 
 /**
@@ -10,6 +11,7 @@ import { baselineActivities } from "../variants/baseline/activities.js";
  * instead of merely restarting an in-process callback.
  */
 export async function startTemporalWorker(): Promise<void> {
+  loadLocalServerEnvironment();
   const config = loadServerConfig();
   const connection = await NativeConnection.connect({ address: config.temporal.endpoint });
   const workflowExtension = import.meta.url.endsWith(".ts") ? "ts" : "js";

@@ -57,8 +57,9 @@ npm --prefix server run dev:worker
 npm --prefix apps/web run dev -- --host 127.0.0.1 --port 5173
 ```
 
-The API accepts only `fake` by default. To enable the optional provider in a
-local shell, set both values before starting the API and worker:
+The API accepts only `fake` by default. To enable the optional provider, copy
+the values into the ignored `server/.env` file or set them in the shell before
+starting the API and worker:
 
 ```bash
 export AGENTLAB_ALLOWED_MODEL_PROVIDERS=fake,openrouter

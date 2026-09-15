@@ -33,6 +33,10 @@ The launcher checks for installed frontend/server dependencies and prints the te
 log directory when the stack stops. If Temporal is unavailable, it exits with the exact
 local start command instead of starting a non-functional worker.
 
+The server and Temporal worker load `server/.env` when it exists. That file is ignored by
+Git; use `server/.env.example` as the safe configuration reference. Explicit environment
+variables take precedence over values in the local file.
+
 The frontend defaults to `127.0.0.1:5173`. Override the bind address or port
 without editing the script:
 

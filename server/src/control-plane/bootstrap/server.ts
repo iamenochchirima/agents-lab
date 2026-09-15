@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 
 import { loadServerConfig, type ServerConfig } from "./config.js";
+import { loadLocalServerEnvironment } from "./local-env.js";
 import { RunEvidenceStore } from "../application/evidence-store.js";
 import { PlatformRegistry } from "../application/platform-registry.js";
 import { RunService } from "../application/run-service.js";
@@ -46,6 +47,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
 }
 
 export async function startControlPlane(): Promise<void> {
+  loadLocalServerEnvironment();
   const runtime = await createControlPlaneRuntime();
   await runtime.app.listen({ host: runtime.config.api.host, port: runtime.config.api.port });
   console.log(`Agent Harness Lab server listening at http://${runtime.config.api.host}:${runtime.config.api.port}`);
