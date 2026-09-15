@@ -18,7 +18,9 @@ the only writer of normalized `lab/runs/<run-id>/` records after shared registra
 ## Retries and lost acknowledgements
 
 The baseline configures a bounded function retry count. `fake-retry` fails before
-dispatch on attempt zero and succeeds on the next attempt. A provider result that
+dispatch on attempt zero and succeeds on the next attempt. The fixture uses
+Inngest's `RetryAfterError` with a short delay so the local demonstration does not
+wait for production backoff. A provider result that
 was already sent is represented as `outcome_unknown` rather than being retried by
 the model adapter.
 

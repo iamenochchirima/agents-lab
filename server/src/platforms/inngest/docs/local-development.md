@@ -14,17 +14,21 @@ release/tag sources on 2026-09-15. The Dev Server image is also available as
 
 ## Start the two local processes
 
-The function service must be reachable from the Dev Server. Run the service on the
-host and point the Dev Server at its function endpoint:
+The function service must be reachable before the Dev Server registers it. Start
+the service on the host first:
+
+```bash
+AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
+AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9091 \
+npx --prefix server tsx server/src/platforms/inngest/service-entry.ts
+```
+
+Then, in another terminal, start the pinned Dev Server:
 
 ```bash
 npx --yes inngest-cli@1.44.0 dev \
   --no-discovery \
   -u http://127.0.0.1:9091/api/inngest
-
-AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
-AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9091 \
-npx --prefix server tsx server/src/platforms/inngest/service-entry.ts
 ```
 
 Check readiness separately from platform health:
@@ -49,6 +53,9 @@ The playground prints the native service projection. A common Lab run and its
 normalized evidence files are produced only after the primary composition owner
 registers this runner in the shared server; this platform-owned change does not
 edit that boundary.
+
+The opt-in integration test uses the same topology: a function service and Dev
+Server must already be running before the test dispatches events.
 
 ## Docker option
 

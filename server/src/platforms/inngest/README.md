@@ -28,8 +28,16 @@ Install the platform-local SDK dependency:
 npm install --prefix server/src/platforms/inngest
 ```
 
-Start the official Dev Server in another terminal. The version is pinned for this
-baseline rather than using `latest`:
+Start the platform service first so the Dev Server can register its function
+endpoint. The version is pinned for this baseline rather than using `latest`:
+
+```bash
+AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
+AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9091 \
+npx --prefix server tsx server/src/platforms/inngest/service-entry.ts
+```
+
+In another terminal, start the official Dev Server:
 
 ```bash
 npx --yes inngest-cli@1.44.0 dev \
@@ -37,14 +45,7 @@ npx --yes inngest-cli@1.44.0 dev \
   -u http://127.0.0.1:9091/api/inngest
 ```
 
-The Dev Server UI is available at `http://127.0.0.1:8288`. Start the platform
-service from the repository root with:
-
-```bash
-AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
-AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9091 \
-npx --prefix server tsx server/src/platforms/inngest/service-entry.ts
-```
+The Dev Server UI is available at `http://127.0.0.1:8288`.
 
 The service exposes:
 
@@ -57,6 +58,10 @@ The service exposes:
 | `POST /runs/:runId/dispatch` | Sends the stable-id event to Inngest. |
 | `GET /runs/:runId` | Returns safe native status and event projection. |
 | `POST /runs/:runId/cancel` | Sends the matching cancellation event. |
+
+The service and Dev Server are separate processes. Start them in the order above;
+with `--no-discovery`, the Dev Server must be able to register the endpoint before
+events are dispatched.
 
 ## Baseline semantics
 
