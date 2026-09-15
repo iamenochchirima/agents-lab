@@ -37,6 +37,11 @@ single writer for normalized evidence and reconciles ordered workflow event
 intents after a restart. This keeps the Lab record separate from Temporal's
 own persistence and avoids presenting two competing sources of truth.
 
+Temporal implements the server's generic platform runner seam. The common server
+stores its execution reference as `native/temporal.json`, but only this directory
+knows how to interpret its workflow ID, run ID, namespace, task queue, signals,
+queries, and activity details.
+
 Keep workflow determinism, activity boundaries, retry policy, cancellation,
 signals, timers, and worker lifecycle decisions local to this directory. Do not
 leak Temporal SDK types into the generic run domain or the browser.

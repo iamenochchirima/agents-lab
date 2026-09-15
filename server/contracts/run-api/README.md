@@ -23,7 +23,9 @@ response is `202` and contains the run view. The fake model is deterministic;
 ## Inspect and poll
 
 `GET /api/runs/<run-id>` returns the server-derived status, safe manifest, normalized
-events, native Temporal reference, and terminal evidence when available.
+events, the selected platform's opaque execution reference, and terminal evidence when
+available. The reference has `platform`, `variant`, `executionId`, and a safe `native`
+object. The server does not interpret the native object's platform-specific fields.
 
 `GET /api/runs/<run-id>/events?after=<recorded-sequence>&limit=<1-500>` is a bounded
 polling endpoint. Start with `after=0`, append returned events in order, and use the
@@ -39,8 +41,8 @@ view again rather than infer state from the browser.
 { "reason": "Stop this run." }
 ```
 
-Cancellation is forwarded to the Temporal workflow. Repeating the request after a
-terminal result is safe and returns the terminal run rather than changing it.
+Cancellation is forwarded to the selected platform runner. Repeating the request after
+a terminal result is safe and returns the terminal run rather than changing it.
 
 ## Evidence
 
@@ -52,7 +54,7 @@ events.jsonl
 trajectory.json
 metrics.json
 result.json
-native/temporal.json
+native/<platform>.json
 ```
 
 Unknown files and arbitrary paths are rejected. API errors use

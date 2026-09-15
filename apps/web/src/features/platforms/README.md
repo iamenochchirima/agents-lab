@@ -10,6 +10,8 @@ in-context multi-platform selection flow; it deliberately has no execution behav
 
 The Temporal baseline is the first runnable path. `platformApi.ts` is the only browser
 module that knows the server endpoints, and `RunStatusPanel.tsx` renders the
-server-derived lifecycle and evidence summary. The browser never connects to Temporal
-or reads the local run directory. Other platform actions remain unavailable until a
-runner and contract exist.
+server-derived lifecycle and evidence summary. The browser never connects to a
+platform service or reads the local run directory. Other platform actions remain
+unavailable until a runner and contract exist. Platform-native execution references
+are displayed through the generic `executionReference` field rather than a
+Temporal-specific response shape.

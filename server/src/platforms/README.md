@@ -4,6 +4,13 @@ Each directory contains one durable-execution platform integration and the varia
 built with that platform. Platform-specific agent definitions belong inside the variant
 that constructs them.
 
+Every real platform implementation gets its own plan copied from
+[`development/implementation-plans/templates/platform-baseline.md`](../../../development/implementation-plans/templates/platform-baseline.md).
+The plan names the files an agent owns, the local services it needs, the platform's
+execution and durability semantics, its native evidence, and the exact tests that make
+it runnable. A platform adapter may change common server code only after recording why
+the existing runner seam cannot express a real platform requirement.
+
 The initial implementation direction is deliberately mixed by platform. Python is the
 default language for the laboratory and for platforms with strong Python support.
 The platform list is intentionally practical for this phase. LangGraph and Mastra stay
