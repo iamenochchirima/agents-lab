@@ -1,0 +1,12 @@
+{
+  "name": "@agent-harness-lab/aws-step-functions-baseline",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sfn": "3.1132.0",
+    "@smithy/node-http-handler": "4.12.1"
+  }
+}
