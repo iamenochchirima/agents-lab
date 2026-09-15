@@ -1,3 +1,8 @@
-# aws-step-functions implementation notes
+# AWS Step Functions implementation notes
 
-Documents platform-specific setup, assumptions, and operational limitations.
+- [Local development](local-development.md)
+- [Semantics](semantics.md)
+
+The [platform README](../README.md) is the entry point for code ownership and official
+AWS references. These notes separate documented AWS behaviour from observations made
+against the local emulator.
