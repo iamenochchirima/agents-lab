@@ -41,6 +41,16 @@ lab/runs/<run-id>/
   native/<platform>.json
 ```
 
+The normalized files make runs comparable; the native file keeps the selected
+platform's own execution identity and diagnostics:
+
+| Lab record | Common meaning | Platform-native detail retained separately |
+| --- | --- | --- |
+| `config.json` | Effective safe run configuration | Platform settings captured by the selected adapter |
+| `events.jsonl` | Ordered lifecycle projection | Native event payloads and source names |
+| `trajectory.json`, `metrics.json`, `result.json` | Comparable execution outcome | Platform history, checkpoints, retry metadata, or provider detail |
+| `native/<platform>.json` | Selected execution reference | Platform-specific identifiers needed for inspection and recovery |
+
 The platform adapter owns native execution details. The server owns the normalized
 projection and never imports platform SDK types.
 

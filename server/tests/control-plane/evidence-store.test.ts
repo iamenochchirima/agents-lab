@@ -168,6 +168,37 @@ test("keeps native execution references scoped to their manifest platform and va
   });
 });
 
+test("keeps native references for separate runs in separate platform-scoped files", async () => {
+  await withStore(async (store, root) => {
+    const restateManifest = buildRunManifest(
+      {
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Compare native evidence." },
+        model: { provider: "fake", model: "fake-success" },
+      },
+      { runId: "run-evidence-restate-1", now: "2026-09-15T08:00:00.000Z" },
+    );
+    await store.createRun(restateManifest);
+
+    await store.writeExecutionReference(manifest.runId, {
+      platform: "temporal",
+      variant: "baseline",
+      executionId: "temporal-run-1",
+      native: { workflowId: "temporal-run-1" },
+    });
+    await store.writeExecutionReference(restateManifest.runId, {
+      platform: "restate",
+      variant: "baseline",
+      executionId: "restate-run-1",
+      native: { invocationId: "restate-run-1" },
+    });
+
+    assert.equal(JSON.parse(await readFile(join(root, manifest.runId, "native/temporal.json"), "utf8")).executionId, "temporal-run-1");
+    assert.equal(JSON.parse(await readFile(join(root, restateManifest.runId, "native/restate.json"), "utf8")).executionId, "restate-run-1");
+  });
+});
+
 test("reports corrupt JSONL and rejects unsafe run identifiers", async () => {
   await withStore(async (store, root) => {
     await store.appendEvent(intent("control-plane", 1, "RunCreated"));
