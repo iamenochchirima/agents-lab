@@ -24,7 +24,7 @@
     "test:langgraph": "npm run build && find dist/tests/platforms/langgraph -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/langgraph-baseline.test.js",
     "test:mastra": "npm run build && node --test dist/tests/platforms/mastra/mastra-runner.test.js dist/integration-tests/mastra-baseline.test.js",
     "test:restate": "npm run build && find dist/tests/platforms/restate -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/restate-baseline.test.js",
-    "test:dbos": "npm run build && node --test dist/tests/platforms/dbos/*.test.js",
+    "test:dbos": "npm run build && node --test dist/tests/platforms/dbos/*.test.js dist/integration-tests/dbos-baseline.test.js",
     "test:inngest": "npm run build && node --test dist/tests/platforms/inngest/*.test.js dist/integration-tests/inngest-baseline.test.js",
     "test:temporal": "npm run build && node --test dist/integration-tests/temporal-baseline.test.js",
     "test:trigger": "npm run build && node --test dist/tests/platforms/trigger-dev/*.test.js dist/integration-tests/trigger-dev-baseline.test.js",
