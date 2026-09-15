@@ -1,7 +1,7 @@
 # Mastra baseline platform
 
 **Created:** 2026-09-15T10:59:45+02:00<br>
-**Last updated:** 2026-09-15T10:59:45+02:00<br>
+**Last updated:** 2026-09-15T11:29:48+02:00<br>
 **Status:** Active<br>
 **Owner:** Platform implementation agent<br>
 **Platform:** mastra<br>
@@ -19,6 +19,7 @@ Read these before changing code:
 - [completed server platform foundation](../completed/server-platform-foundation.md)
 - [Mastra platform scaffold](../../../server/src/platforms/mastra/README.md)
 - [documentation guide](../../../docs/contributing/documentation.md)
+- [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
 
 Mastra references used for this plan:
 
@@ -62,7 +63,7 @@ tools, workflow snapshots, or external side effects.
 | Display name | Mastra baseline |
 | Status before this plan | Planned |
 | Language and runtime | TypeScript on Node.js 22.18+; the current server toolchain remains the project baseline |
-| SDK/framework version | Pin @mastra/core to the exact stable version selected in the dependency commit. Target 1.66.0 at plan creation and record the resolved lockfile version. |
+| SDK/framework version | Pin `@mastra/core@1.66.0` and any model-provider package to the exact resolved versions in the platform-owned package manifest; re-check official release metadata before implementation if the release has moved. |
 | Execution model | One in-process Mastra Agent.generate() invocation per Lab run |
 | Durability model | Lab evidence is durable on disk; in-flight Mastra execution is process-local and not crash durable |
 | State model | Single-turn prompt state only; no Mastra memory or workflow storage in this variant |

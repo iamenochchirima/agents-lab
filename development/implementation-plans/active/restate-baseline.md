@@ -1,7 +1,7 @@
 # Restate baseline platform
 
 **Created:** 2026-09-15T10:59:09+02:00<br>
-**Last updated:** 2026-09-15T10:59:09+02:00<br>
+**Last updated:** 2026-09-15T11:29:48+02:00<br>
 **Status:** Active<br>
 **Owner:** Primary platform integration agent<br>
 **Platform:** `restate`<br>
@@ -19,6 +19,7 @@ Read these before editing:
 - [`runner interface`](../../../server/src/control-plane/ports/README.md)
 - [`completed server foundation`](../completed/server-platform-foundation.md)
 - [`Restate platform placeholder`](../../../server/src/platforms/restate/README.md)
+- [`first-party source audit`](../../../docs/research/platform-plan-source-audit.md)
 - [Restate TypeScript services](https://docs.restate.dev/develop/ts/services)
 - [Restate TypeScript serving](https://docs.restate.dev/develop/ts/serving)
 - [Restate durable steps](https://docs.restate.dev/develop/ts/durable-steps)
@@ -53,9 +54,9 @@ skills, MCP, OAuth, plugins, or multi-agent orchestration.
 | Variant identifier | `baseline` |
 | Display name | Restate baseline |
 | Status before this plan | Planned; the registry currently exposes no runnable Restate adapter |
-| Language and runtime | TypeScript on Node.js 20+ |
-| SDK/framework version | Pin `@restatedev/restate-sdk@1.17.0` and `@restatedev/restate-sdk-clients@1.17.0`; record any reviewed upgrade explicitly |
-| Local Restate server | Pin the matching `docker.restate.dev/restatedev/restate:1.7.10` image; do not use `latest` in reproducible commands |
+| Language and runtime | TypeScript on Node.js 22+; this floor follows the current official TypeScript SDK guidance |
+| SDK/framework version | Pin the exact compatible `@restatedev/restate-sdk` and `@restatedev/restate-sdk-clients` versions from official package metadata. The source audit observed SDK `1.16.9`; do not assume the earlier `1.17.0` target or use a floating tag. |
+| Local Restate server | Pin an official server image verified compatible with the selected SDK; do not use `latest` in reproducible commands. The earlier `1.7.10` target still requires a compatibility check. |
 | Execution model | Restate Workflow: one `run` handler per workflow key, with durable `ctx.run` steps |
 | Durability model | Restate journal and replay; the service process is replaceable and does not own durable progress |
 | State model | Restate workflow-scoped K/V state and journal, retained for the configured workflow-retention period; Lab evidence is a separate projection |
@@ -221,11 +222,12 @@ delegated Restate worktree.
 
 | Dependency | Required for | Local start/readiness path | Unavailable behaviour |
 | --- | --- | --- | --- |
-| Restate Server 1.7.10 | Journal, workflow routing, retries, state, invocation lifecycle | Run the pinned Docker image; `curl --fail http://127.0.0.1:9070/health` must return HTTP 200 | Health reports Restate unavailable; submission must not fabricate a result |
+| Pinned Restate Server | Journal, workflow routing, retries, state, invocation lifecycle | Run the pinned official image; the current Admin API health endpoint is `GET http://127.0.0.1:9070/health`, and the implementation must re-check it if the server pin changes | Health reports Restate unavailable; submission must not fabricate a result |
 | Restate baseline service | Workflow handler execution | Start the Node service on `127.0.0.1:9080`, register the endpoint through the Admin API/CLI, and verify the deployment is listed | Restate may be healthy while the deployment is unavailable; runner connectivity must identify registration/service failure |
 | Docker | Local Restate server and optional SDK test container | `docker info` and the pinned container start successfully | Container-backed tests are marked unavailable, never silently skipped as passed |
 
-Reference local server command:
+Reference local server shape (the implementation must replace the image with the
+official version verified compatible with the selected SDK):
 
 ```bash
 mkdir -p lab/restate-data
@@ -233,16 +235,17 @@ docker run --name agentlab-restate --rm \
   -p 8080:8080 -p 9070:9070 -p 5122:5122 \
   -v "$PWD/lab/restate-data:/restate-data" \
   --add-host=host.docker.internal:host-gateway \
-  docker.restate.dev/restatedev/restate:1.7.10 \
+  docker.restate.dev/restatedev/restate:<verified-compatible-version> \
   --node-name=agentlab-restate
 ```
 
 The service is started separately with the platform-owned entrypoint. The documented
 registration target is `http://host.docker.internal:9080` when Restate runs in Docker;
 use `http://127.0.0.1:9080` when both processes run directly on the host. Registration
-must be explicit and idempotent for the same endpoint. The Admin API health check is
-`GET http://127.0.0.1:9070/health`; service registration/readiness is verified through
-the Admin API or the pinned Restate CLI, not by assuming that port 9080 is healthy.
+must be explicit and idempotent for the same endpoint. The current documented Admin
+health endpoint is `GET http://127.0.0.1:9070/health`; service registration/readiness
+is verified through the Admin API or pinned Restate CLI, not by assuming that port
+9080 is healthy. Reconfirm this endpoint if the server version changes.
 
 The primary integration agent may later add a Restate service process and readiness
 check to `scripts/run_local_stack.sh`. That is not a delegated platform-agent task.
@@ -270,7 +273,7 @@ Restate SDK types to common modules.
 | --- | --- | --- |
 | `manifestConfiguration()` | Return ingress/Admin/service/workflow names and bounded retry/retention settings, excluding credentials | Invalid local configuration prevents the runner from being runnable |
 | `validate()` | Validate `restate/baseline`, supported model provider, URLs, workflow key derivation, and safe limits | Reject before creating a platform execution |
-| `checkConnection()` | Check Admin `GET /health`, confirm the baseline deployment is discoverable, and report service registration separately from server health | Return `reachable: false` with an actionable message; do not throw credentials or fabricate readiness |
+| `checkConnection()` | Check Admin `GET /health` for the pinned server, confirm the baseline deployment is discoverable, and report service registration separately from server health | Return `reachable: false` with an actionable message; do not throw credentials or fabricate readiness |
 | `start()` | Submit the baseline workflow with `workflowSubmit` using the deterministic workflow key and input manifest | Retry only the submission operation with the same key; distinguish definite rejection from ambiguous acceptance |
 | `inspect()` | Use the retained workflow key/invocation ID, Restate workflow output, and Admin invocation status to map native state and retrieve the durable result | Preserve last known Lab projection when temporarily unavailable; missing execution becomes reconciliation-required only when the platform evidence proves it is gone |
 | `cancel()` | Cancel the known Restate invocation through the supported Admin/client operation and then inspect the workflow result | Cancellation request is asynchronous; do not report cancelled until the workflow result or native terminal status confirms it |

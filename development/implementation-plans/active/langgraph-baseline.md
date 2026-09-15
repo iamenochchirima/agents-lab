@@ -1,7 +1,7 @@
 # LangGraph baseline platform
 
 **Created:** 2026-09-15T10:59:22+02:00<br>
-**Last updated:** 2026-09-15T10:59:22+02:00<br>
+**Last updated:** 2026-09-15T11:29:48+02:00<br>
 **Status:** Active<br>
 **Owner:** LangGraph platform implementation owner<br>
 **Platform:** langgraph<br>
@@ -24,6 +24,7 @@ Read these before changing code:
 - [LangGraph streaming](https://docs.langchain.com/oss/python/langgraph/streaming)
 - [LangGraph fault tolerance](https://docs.langchain.com/oss/python/langgraph/fault-tolerance)
 - [LangGraph local server guidance](https://docs.langchain.com/oss/python/langgraph/local-server)
+- [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
 
 The generic TypeScript runner contract and the Temporal foundation are complete.
 This plan implements the LangGraph adapter behind those seams. Do not redesign
@@ -52,9 +53,9 @@ checkpointing and Temporal workflows visible.
 | Display name | LangGraph baseline |
 | Status before this plan | Planned |
 | Language and runtime | Python 3.11+ for the platform service, pinned to the repository-supported minor version; TypeScript/Node for the Lab adapter |
-| SDK/framework version | Pin LangGraph and checkpoint packages in the Python lockfile; record exact versions in native run metadata |
+| SDK/framework version | Pin `langgraph==1.2.10` from the reviewed source state plus compatible checkpoint packages and the local CLI in the Python lockfile; record exact resolved versions in native run metadata |
 | Execution model | A Python StateGraph with a small baseline graph invoked through a platform-owned HTTP service |
-| Durability model | Application-managed LangGraph checkpoints in SQLite; no external durable scheduler in this variant |
+| Durability model | Application-managed LangGraph checkpoints in SQLite; no external durable scheduler in this variant. SQLite is a local-development/small-project profile, not production persistence or LangSmith Deployment. |
 | State model | Per-run LangGraph thread state, checkpoint history, and pending writes; the Lab keeps a separate normalized projection |
 | Environment | Local Python process, local SQLite state, and optional OpenRouter access |
 | Infrastructure | Python environment, FastAPI/ASGI service, SQLite file, and existing TypeScript Lab server |

@@ -1,7 +1,7 @@
 # Parallel platform implementation coordination
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T10:35:00+02:00
+**Last updated:** 2026-09-15T11:29:48+02:00
 **Status:** Active
 **Owner:** Primary implementation agent
 
@@ -15,6 +15,11 @@ The completed [server platform foundation](../completed/server-platform-foundati
 is the shared contract. The next agents implement platform-owned runners and runtime
 services behind that contract. They do not redesign the common server while working
 on an individual platform.
+
+Before assigning implementation work, read the [first-party source audit](../../../docs/research/platform-plan-source-audit.md).
+It records which current platform facts are verified, which local profiles are
+development-only, and which platform-specific decisions must be settled before an
+agent writes code.
 
 ## Plans in this batch
 
@@ -32,6 +37,9 @@ on an individual platform.
 
 Temporal is already implemented and is not reopened by this batch. OpenAI Agents
 SDK remains a variant under a platform, not an additional platform plan.
+
+The [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
+is the review record for all nine plans. It is not implementation evidence.
 
 ## Parallel-safe ownership rule
 

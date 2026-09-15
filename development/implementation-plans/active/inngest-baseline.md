@@ -1,7 +1,7 @@
 # Inngest baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T10:35:00+02:00
+**Last updated:** 2026-09-15T11:29:48+02:00
 **Status:** Active
 **Owner:** Assigned platform agent
 **Platform:** `inngest`
@@ -17,7 +17,8 @@ foundation](../completed/server-platform-foundation.md).
 Use the official [Inngest JavaScript SDK](https://github.com/inngest/inngest-js)
 and [Inngest development server documentation](https://www.inngest.com/docs/local-development)
 as implementation references. Pin versions and record the exact local commands in
-the completion record.
+the completion record. The [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
+must be reviewed before implementation.
 
 ## Purpose and definition of done
 
@@ -54,9 +55,13 @@ shared launcher integration after review.
 ## Runtime and infrastructure decision
 
 - Language/runtime: TypeScript on Node.js, with a platform-owned service process.
+- SDK/CLI: pin the exact `inngest` SDK and Dev Server/CLI versions from official
+  release metadata; do not use `@latest` in reproducible commands. The source audit
+  observed SDK `4.20.0`.
 - Platform service: a small Inngest function host with an HTTP status/control boundary.
-- Local dependency: the official Inngest development server, with a deterministic
-  readiness check and an allocated port recorded in the platform README.
+- Local dependency: the official Inngest development server, with readiness checks
+  for both the function endpoint and Dev Server/API (documented default UI port
+  `8288`), plus an allocated port recorded in the platform README.
 - Model path: fake model for deterministic tests; OpenRouter only through an explicit
   environment profile and never from workflow state or evidence.
 - Native execution identity: event ID plus function run ID, with no secrets.
@@ -68,6 +73,8 @@ shared launcher integration after review.
 The adapter must define and test:
 
 - event admission and the stable event/idempotency key derived from `runId`;
+- the documented 24-hour retention limit of event/function idempotency keys; these
+  keys are not permanent Lab execution identity;
 - when an event is considered accepted versus when execution is unknown;
 - how the function reports queued, running, completed, failed, and cancelled;
 - Inngest retries, backoff, timeout, and duplicate delivery behaviour;

@@ -1,7 +1,7 @@
 # Trigger.dev baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T10:35:00+02:00
+**Last updated:** 2026-09-15T11:29:48+02:00
 **Status:** Active
 **Owner:** Assigned platform agent
 **Platform:** `trigger-dev`
@@ -17,6 +17,8 @@ foundation](../completed/server-platform-foundation.md).
 Use the official [Trigger.dev repository](https://github.com/triggerdotdev/trigger.dev)
 and its current local-development documentation. Pin the SDK, CLI, and runtime
 versions in the first implementation commit rather than relying on a floating latest.
+The [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
+must be reviewed before implementation.
 
 ## Purpose and definition of done
 
@@ -49,10 +51,13 @@ performs registration and shared launcher changes after this plan's commits are 
 ## Runtime and infrastructure decision
 
 - Language/runtime: TypeScript on Node.js.
+- SDK/CLI: pin `@trigger.dev/sdk@4.5.14` and the matching CLI line from official
+  release metadata; the reviewed source requires Node.js `>=18.20.0`.
 - Runtime shape: platform-owned task service and worker process behind the generic
   runner adapter; use the official local dev server rather than a fake task queue.
 - Local readiness: record the exact CLI command, server URL, worker readiness signal,
-  and an isolated port/project profile.
+  isolated port/project profile, and required secret key. Trigger.dev local execution
+  still depends on a Trigger server; it is not an offline emulator.
 - Model path: deterministic fake model first, optional OpenRouter profile second.
 - Native identity: Trigger task ID and run ID, plus safe attempt/status metadata.
 - If the SDK requires root dependencies, stop and hand the dependency decision to the

@@ -1,7 +1,7 @@
 # DBOS baseline platform
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T10:35:00+02:00
+**Last updated:** 2026-09-15T11:29:48+02:00
 **Status:** Active
 **Owner:** Assigned platform agent
 **Platform:** `dbos`
@@ -16,7 +16,8 @@ foundation](../completed/server-platform-foundation.md).
 
 Use the official [DBOS TypeScript repository](https://github.com/dbos-inc/dbos)
 and current DBOS documentation. Pin the DBOS package, Node version, and PostgreSQL
-version in the first implementation commit.
+version in the first implementation commit. Review the [first-party source audit](../../../docs/research/platform-plan-source-audit.md)
+before implementation.
 
 ## Purpose and definition of done
 
@@ -48,8 +49,13 @@ The primary agent owns adapter registration and shared local-stack composition.
 ## Runtime and infrastructure decision
 
 - Language/runtime: TypeScript on Node.js.
+- SDK: pin the exact `@dbos-inc/dbos-sdk` version from official package metadata
+  before implementation; the open-source repository source is not a reproducible
+  package pin by itself.
 - Platform service: DBOS workflow host with a small HTTP control/readiness boundary.
 - Required local infrastructure: isolated PostgreSQL database, schema, user, and port.
+- The local baseline launches DBOS inside the application process. DBOS Conductor is
+  a separate production/distributed recovery service and is out of scope here.
 - State model: DBOS/ PostgreSQL workflow state is platform-owned; Lab evidence remains
   a separate projection and must not be treated as the workflow checkpoint.
 - Native identity: DBOS workflow ID/run identity and safe database-backed status.

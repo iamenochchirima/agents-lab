@@ -25,6 +25,24 @@ Read these before changing code:
 - [`server platform foundation`](../completed/server-platform-foundation.md)
 - `[platform-specific SDK or service documentation]`
 
+## First-party source verification
+
+Research the exact platform version and runtime before implementation. Prefer official
+documentation, package metadata, release notes, and source repositories. Do not treat
+an integration blog, an old example, or a similarly named package as the platform
+contract.
+
+- [ ] Record the exact documentation and source URLs used, with an access timestamp.
+- [ ] Verify the selected SDK, CLI, server, image, runtime, and database versions from
+      first-party release/package metadata.
+- [ ] Verify the real local execution path, required services, ports, readiness signal,
+      credentials, and shutdown behaviour.
+- [ ] Verify execution identity, persistence/checkpoint semantics, retry/backoff,
+      cancellation, restart/recovery, and duplicate/lost-acknowledgement behaviour.
+- [ ] Separate documented guarantees from observations, assumptions, and unresolved
+      implementation decisions.
+- [ ] Add a source-audit link when this platform belongs to a coordinated batch.
+
 Reference harnesses, upstream repositories, and framework examples are design input,
 not requirements. Record which behaviours are being studied and which are intentionally
 not copied:

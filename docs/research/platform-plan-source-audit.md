@@ -1,21 +1,29 @@
 # Platform plan source audit
 
-**Audit date:** 2026-09-15
+**Audit date:** 2026-09-15T11:20:00+02:00
+**Last updated:** 2026-09-15T11:33:11+02:00
 **Scope:** Active implementation plans for Restate, LangGraph, Mastra, Inngest, Trigger.dev, DBOS, Hatchet, Vercel Workflows, and AWS Step Functions.
-**Method:** First-party documentation and first-party source repositories only. Sources were checked on the audit date. This audit does not change any implementation plan.
+**Method:** First-party documentation and first-party source repositories only. Sources were checked on the audit date. The findings below are the source baseline; follow-up corrections are recorded in the active plans after the audit.
 
 ## How to read this audit
 
 - **Verified fact** means the current first-party source explicitly supports the statement.
 - **Plan implication** means what the implementation plan must account for if it is to remain accurate.
 - **Unresolved** means the plan or source review does not yet establish a decision needed for implementation.
-- **Flag** means the current plan wording is stale, too broad, or likely to mislead an implementing agent.
+- **Flag** means the plan wording at audit time was stale, too broad, or likely to mislead an implementing agent.
+
+The active plans were subsequently corrected for the runtime, local-profile, and
+workflow-type findings called out below. Open decisions remain explicit gates for the
+implementing agents rather than being presented as verified platform behaviour.
 
 The active plans are linked for traceability, but they are intentionally not edited here.
 
 ## Executive summary
 
-| Platform | Audit result | Highest-priority finding |
+The status column describes the plans as they stood when the audit was performed;
+the follow-up edits are reflected in the active plan files and their timestamps.
+
+| Platform | Audit result at audit time | Highest-priority finding |
 | --- | --- | --- |
 | [Restate](../../development/implementation-plans/active/restate-baseline.md) | Needs correction | The plan's Node 20+ floor conflicts with current TypeScript SDK guidance of Node 22+. |
 | [LangGraph](../../development/implementation-plans/active/langgraph-baseline.md) | Mostly aligned | Local `langgraph dev` is in-memory and development-only; the custom SQLite service must not be presented as production-equivalent. |
@@ -524,8 +532,8 @@ These are the smallest decisions an implementing agent needs before starting a p
 5. Define cancellation as the platform actually implements it: immediate, cooperative, boundary-based, or unsupported.
 6. Record whether local persistence is in-memory, filesystem-backed, SQLite, Postgres-backed, or platform-managed.
 7. Separate semantic similarity from production infrastructure equivalence in every run record and document.
-8. Resolve the platform-specific blockers before parallel implementation: Restate Node floor; Hatchet embedded versus full stack; Vercel `workflow` versus AI SDK and adapter; AWS Standard versus Express; LangGraph SQLite/custom server limits; and the missing exact version/readiness details in the remaining plans.
+8. Before implementation, verify the follow-up decisions in the active plans: Restate's Node floor and SDK/server compatibility; Hatchet's selected full stack; Vercel's `workflow` versus AI SDK boundary and adapter; AWS Standard versus Express; LangGraph's SQLite/custom-server limits; and the exact version/readiness details for every platform.
 
 ## Audit boundary
 
-This document is a source audit, not an implementation approval and not evidence that any platform has been integrated successfully. It records what the first-party sources establish as of 2026-09-15, what the active plans imply, and which decisions remain open. Existing implementation plans remain unchanged.
+This document is a source audit, not an implementation approval and not evidence that any platform has been integrated successfully. It records what the first-party sources establish as of 2026-09-15, what the active plans implied at audit time, and which decisions remain open. Subsequent plan corrections address the material findings but do not replace implementation validation.
