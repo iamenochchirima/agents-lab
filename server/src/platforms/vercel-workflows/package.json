@@ -1,0 +1,25 @@
+{
+  "name": "@agent-harness-lab/vercel-workflows-platform",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build:workflow": "tsx scripts/build-workflow.ts",
+    "dev": "tsx service-entry.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test ../../../tests/platforms/vercel-workflows/*.test.ts"
+  },
+  "dependencies": {
+    "@workflow/builders": "5.0.0-beta.52",
+    "@workflow/world-local": "5.0.0-beta.45",
+    "workflow": "5.0.0-beta.52"
+  },
+  "devDependencies": {
+    "@workflow/vitest": "5.0.0-beta.52",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

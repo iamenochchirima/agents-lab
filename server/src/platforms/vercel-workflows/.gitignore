@@ -1,0 +1,4 @@
+.local/
+.workflow-build/
+.well-known/
+.swc/

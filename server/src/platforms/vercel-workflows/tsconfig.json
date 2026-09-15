@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "config.ts",
+    "index.ts",
+    "runner-adapter/**/*.ts",
+    "scripts/**/*.ts",
+    "service-entry.ts",
+    "service/**/*.ts",
+    "variants/**/*.ts"
+  ]
+}

@@ -1,3 +1,5 @@
 # composition
 
-Selects reusable skills, tools, integrations, plugins, policies, and artifacts for this variant.
+The baseline composes only a model step. Skills, tools, integrations, plugins,
+policies, and artifacts remain explicit follow-up additions rather than hidden
+placeholders in this first Workflow profile.

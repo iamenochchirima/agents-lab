@@ -1,3 +1,8 @@
-# vercel-workflows implementation notes
+# Vercel Workflows implementation notes
 
-Documents platform-specific setup, assumptions, and operational limitations.
+These notes explain the platform-local implementation and its boundary with the
+shared Lab server.
+
+- [Local development](local-development.md)
+- [Execution semantics](semantics.md)
+- [Hosted profile](hosted-profile.md)

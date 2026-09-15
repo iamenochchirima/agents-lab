@@ -1,4 +1,4 @@
-# Vercel Workflow / AI SDK variants
+# Vercel Workflows variants
 
-Variants record deliberate changes to workflow execution, agent behaviour, tool
-exposure, and durability settings.
+Variants record deliberate changes to Workflow execution, model behaviour, tool
+exposure, and durability settings. The first variant is the local baseline.

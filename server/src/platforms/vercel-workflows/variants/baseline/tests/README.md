@@ -1,3 +1,5 @@
 # tests
 
-Contains focused behavioural, recovery, and integration tests for this variant.
+Focused tests cover configuration redaction, durable admission state, stable Lab
+execution identity, unknown admission, local Workflow completion, duplicate
+admission, and cancellation.
