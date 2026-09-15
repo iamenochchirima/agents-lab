@@ -1,7 +1,7 @@
-# Computer Native next standalone slice — reliable turns and workspace inspection
+# Computer Native next standalone slice — reliable turns, terminal interface, and workspace inspection
 
 **Created:** 2026-09-15T09:02:04+02:00
-**Last updated:** 2026-09-15T09:02:04+02:00
+**Last updated:** 2026-09-15T09:37:12+02:00
 **Status:** Active
 **Working filename:** `computer-native-next.md`
 
@@ -19,6 +19,7 @@ Read:
 - [Computer Native source ownership](../../../computer-native/src/README.md)
 - [turn lifecycle](../../../computer-native/docs/turn-lifecycle.md)
 - [implementation plan lifecycle](../README.md)
+- [TUI reference comparison](../../../docs/research/tui-reference-comparison.md)
 
 Reference maps reviewed for this plan:
 
@@ -31,10 +32,11 @@ must remain standalone and must not import their code or Agent Harness Lab modul
 
 ## Purpose
 
-Make the standalone Computer Native terminal dependable with a real model, then give it
-its first useful computer capability: a bounded, read-only workspace inspection loop.
-This slice should establish the turn/tool/security seams that later write, shell, browser,
-memory, and skill capabilities can use without making those later capabilities partial.
+Make the standalone Computer Native terminal dependable with a real model, give it a
+proper terminal interface, and then give it its first useful computer capability: a
+bounded, read-only workspace inspection loop. This slice should establish the
+turn/tool/security seams that later write, shell, browser, memory, and skill capabilities
+can use without making those later capabilities partial.
 
 The reference review is one design checkpoint within this implementation phase. It is not
 the phase's deliverable and does not expand the scope into reproducing any of the three
@@ -55,10 +57,12 @@ workspace is rejected without reading it.
 
 ```text
 terminal prompt
+  → terminal application/composer
   → bounded turn runtime
   → model response or read-only tool call
   → workspace/security check
   → tool result or actionable failure
+  → streamed transcript/activity view
   → final response and durable turn evidence
 ```
 
@@ -66,6 +70,11 @@ terminal prompt
 
 - [ ] Make provider waits observable and bounded, including first-token, total-turn,
       cancellation, rate-limit, empty-stream, and upstream-error outcomes.
+- [ ] Replace the bare line-reader presentation with a small stateful terminal application:
+      transcript viewport, composer, status surface, and factual session/model/evidence
+      context.
+- [ ] Add multiline input, input history, slash-command completion for implemented
+      commands, clean resize/redraw behaviour, Ctrl-C cancellation, and Ctrl-D exit.
 - [ ] Add a typed workspace root and security-owned path-resolution policy.
 - [ ] Add a model-facing tool seam with two read-only tools: `list_directory` and
       `read_file`.
@@ -87,6 +96,9 @@ terminal prompt
 - Automatic provider fallback or silent model substitution. A selected provider/model
   must remain visible in the session and failure evidence.
 - Reproducing OpenClaw, Hermes, or Waku's complete product/runtime feature sets.
+- Gateway-backed or multi-client TUI behaviour, remote reconnection, session switching,
+  model pickers, approvals, subagent panels, mouse workflows, and other product-scale
+  overlays. The first TUI slice must expose only Computer Native capabilities that exist.
 
 ## Reference alignment checkpoint
 
@@ -97,6 +109,7 @@ The following conclusions are the bounded design input for this slice.
 | [OpenClaw map](../../../docs/research/harness-code-maps/openclaw.md) — `src/agents/embedded-agent-runner/run-loop.ts`, `src/agents/agent-tools.execution-preparer.ts`, and harness selection | Preparation, executor selection, attempt/recovery loop, tool policy, approval, and execution are distinct responsibilities. | Keep `runtime/` as the turn orchestrator, keep provider transport in `models/`, and put workspace/tool authorization behind `security/` and `tools/`. Do not collapse all of those into the CLI or one generic loop module. |
 | [Hermes map](../../../docs/research/harness-code-maps/hermes.md) — `agent/turn_facade.py` and `agent/turn_tool_round.py` | Turn admission and tool rounds have explicit phases; tool-call messages are persisted before side effects, and the loop has bounded interruption/recovery paths. | Persist tool-round evidence before executing each read-only tool, give each call an ID and round number, and never silently replay an incomplete model request after restart. |
 | [Waku map](../../../docs/research/harness-code-maps/waku.md) — `waku/loop/agent.py` and `waku/tools/registry.py` | A small visible composition root drives a bounded reason/act/observe loop through a simple registry; observers receive model/tool events. | Start with a small internal registry and an observer/event path. Keep the interface deep enough that the CLI does not know provider or filesystem details. |
+| [TUI comparison](../../../docs/research/tui-reference-comparison.md) — Hermes `ui-tui/` and OpenClaw `src/tui/` | Both treat the terminal as a stateful application: transcript viewport, composer, live status, streaming updates, activity surfaces, and explicit interruption/command flows. | Build a smaller Computer Native terminal application around typed runtime events. Borrow the interaction shape, not upstream product scope. Never render fake tools, usage, health, or capabilities. |
 
 Preserve these project-specific decisions:
 
@@ -111,19 +124,30 @@ Preserve these project-specific decisions:
 
 ### User-visible behaviour
 
-The terminal identifies the selected provider and model. While a request is waiting for
-the first model event it displays a clear waiting state. A stalled or rejected provider
-request ends with an actionable message naming the selected provider/model and failure
-category, without exposing credentials.
+The terminal opens as a small stateful application rather than a bare prompt. Its header
+identifies the selected provider/model, session, workspace, and evidence location. The
+transcript keeps user and assistant turns visually distinct, and the composer supports
+multiline input and input history. `/help`, `/status`, `/history`, `/evidence`, `/clear`,
+and `/quit` are visible commands; command completion must not advertise commands that do
+not exist.
 
-For a tool-using request, the terminal shows concise tool activity such as the tool name
-and safe path, then shows the final response. It never prints raw authorization material,
-full sensitive environment values, or an unbounded tool result.
+While a request is waiting for the first model event it displays a clear waiting state.
+Streaming text updates the active assistant turn. The status surface shows only factual
+state such as waiting, streaming, completed, cancelled, failed, elapsed time, and safe
+usage supplied by the runtime/provider. A stalled or rejected provider request ends with
+an actionable message naming the selected provider/model and failure category, without
+exposing credentials.
+
+For a tool-using request, the terminal shows concise activity such as the tool name and
+safe path in a separate activity area, then shows the final response in the transcript.
+It never prints raw authorization material, full sensitive environment values, an
+unbounded tool result, or a tool/status entry for a capability that did not execute.
 
 ### Ownership and boundaries
 
 ```text
-cli/          → input, rendering, cancellation intent, and process exit only
+cli/          → terminal application state, input/composer, rendering, cancellation intent,
+               command dispatch, and process exit only
 runtime/      → turn admission, model/tool rounds, budgets, terminal outcomes
 models/       → provider transport and normalized model/tool-call events
 context/      → bounded instruction, history, tool definitions, and user prompt assembly
@@ -138,6 +162,8 @@ telemetry/    → ordered lifecycle and diagnostic events
 - `runtime/` owns in-flight model/tool execution and is the only owner of the round budget.
 - `tools/` cannot bypass `workspace/` or `security/` to access the filesystem.
 - `cli/` cannot construct provider requests, resolve paths, or write evidence directly.
+- `cli/` consumes typed runtime/application events; it does not implement the model/tool
+  loop or infer lifecycle state from terminal text.
 - No module in `computer-native/` imports Agent Harness Lab implementation code.
 
 ## State, persistence, and evidence
@@ -238,7 +264,22 @@ Extend the existing session layout without changing the ownership of current rec
       into terminal code.
 - [ ] Apply one cancellation and timeout policy across model and tool execution.
 
-### 5. Documentation and learning material
+### 5. Terminal application interface
+
+- [ ] Define a small typed event/view-model seam for turn lifecycle, streamed assistant
+      text, tool activity, notices, and terminal outcomes.
+- [ ] Render a transcript viewport with distinct user/assistant/system/activity rows and
+      bounded history so long sessions remain usable.
+- [ ] Add a multiline composer with input history, slash-command completion, and explicit
+      key handling for submit, cancel, clear, and exit.
+- [ ] Add a factual header/status surface for provider/model, session, workspace, current
+      turn state, elapsed time, and evidence location.
+- [ ] Support terminal resize/redraw and a readable non-TTY fallback without requiring a
+      terminal UI framework in automated tests.
+- [ ] Keep tool activity, waiting state, and provider failures visible without moving
+      orchestration, authorization, or persistence into the terminal module.
+
+### 6. Documentation and learning material
 
 - [ ] Document provider diagnostics, local model configuration, and the difference between
       a model timeout and a tool failure.
@@ -258,6 +299,8 @@ Extend the existing session layout without changing the ownership of current rec
 - [ ] tool schema validation, unknown tools, stable listing order, and bounded output
 - [ ] round state transitions, call identity, event ordering, and redaction
 - [ ] maximum-round termination and no-final-assistant failure shapes
+- [ ] command parsing, completion filtering, view-model state transitions, and bounded
+      transcript rendering
 
 ### Integration tests
 
@@ -268,6 +311,9 @@ Extend the existing session layout without changing the ownership of current rec
 - [ ] path escape and oversized read are rejected without touching files outside the workspace
 - [ ] restart during a model/tool round records an interrupted turn without replay
 - [ ] terminal command uses the configured real provider and does not fall back silently
+- [ ] pseudo-terminal interaction covers startup, multiline submit, streamed response,
+      `/help`, `/status`, `/history`, `/evidence`, `/clear`, Ctrl-C cancellation, and
+      Ctrl-D exit without leaking secrets or inventing unavailable capabilities
 
 ### Manual acceptance checks
 
@@ -276,6 +322,8 @@ Extend the existing session layout without changing the ownership of current rec
 - [ ] ask the agent to read a known small file and inspect the bounded result
 - [ ] attempt a path outside the workspace and verify an explicit rejection
 - [ ] interrupt a slow provider/tool request and verify the terminal outcome
+- [ ] run the TUI in a pseudo-terminal, resize it, submit a multiline prompt, inspect
+      the status/activity surfaces, and verify clean exit
 - [ ] inspect `events.jsonl`, `rounds.jsonl`, transcript, and result for correlation and
       absence of secrets
 
@@ -302,6 +350,8 @@ Before moving this plan to `completed/`, verify:
 - [ ] The real-model path either responds or fails clearly within the documented deadlines.
 - [ ] The read-only workspace tools are bounded, secure, observable, and independently
       testable through their public seams.
+- [ ] The terminal is useful for repeated real-model interaction without requiring a
+      second interface, while remaining a presentation adapter over runtime events.
 - [ ] Restart, cancellation, duplicate, and ambiguous-outcome behaviour is documented and
       tested.
 - [ ] Documentation, examples, and the final renamed plan match the implementation.
