@@ -20,6 +20,107 @@ test("the in-process workflow seam completes text-only runs without tool activit
   assert.equal(result.eventIntents.some((event) => event.kind.startsWith("Tool")), false);
 });
 
+test("the workflow executes the selected OpenRouter model and records normalized evidence", async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const previousBaseUrl = process.env.AGENTLAB_OPENROUTER_BASE_URL;
+  const previousFetch = globalThis.fetch;
+  let requestBody: Record<string, unknown> | null = null;
+  process.env.OPENROUTER_API_KEY = "test-secret";
+  process.env.AGENTLAB_OPENROUTER_BASE_URL = "https://openrouter.example/v1";
+  globalThis.fetch = (async (url, init) => {
+    assert.equal(String(url), "https://openrouter.example/v1/chat/completions");
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-secret");
+    return new Response(JSON.stringify({
+      id: "restate-openrouter-provider-id",
+      choices: [{ message: { content: "hello from Restate OpenRouter" } }],
+      usage: { prompt_tokens: 8, completion_tokens: 9, total_tokens: 17 },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await runWorkflow("cohere/north-mini-code:free", {
+      provider: "openrouter",
+      maxRounds: 1,
+    });
+
+    assert.equal((requestBody as Record<string, unknown> | null)?.model, "cohere/north-mini-code:free");
+    assert.equal(result.status, "completed");
+    assert.equal(result.output, "hello from Restate OpenRouter");
+    assert.deepEqual(result.usage, { inputTokens: 8, outputTokens: 9, totalTokens: 17 });
+    assert.equal(result.metrics.modelCallCount, 1);
+    assert.deepEqual(result.eventIntents.find((event) => event.kind === "ModelRequested")?.payload, {
+      provider: "openrouter",
+      model: "cohere/north-mini-code:free",
+      attempt: 1,
+      round: 1,
+      toolCount: 1,
+    });
+    assert.equal(JSON.stringify(result).includes("test-secret"), false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousBaseUrl === undefined) delete process.env.AGENTLAB_OPENROUTER_BASE_URL;
+    else process.env.AGENTLAB_OPENROUTER_BASE_URL = previousBaseUrl;
+  }
+});
+
+test("the workflow aggregates reported usage across OpenRouter model calls", async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const previousBaseUrl = process.env.AGENTLAB_OPENROUTER_BASE_URL;
+  const previousFetch = globalThis.fetch;
+  const requestBodies: Record<string, unknown>[] = [];
+  let providerCall = 0;
+  process.env.OPENROUTER_API_KEY = "test-secret";
+  process.env.AGENTLAB_OPENROUTER_BASE_URL = "https://openrouter.example/v1";
+  globalThis.fetch = (async (_url, init) => {
+    requestBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    providerCall += 1;
+    const body = providerCall === 1
+      ? {
+          id: "restate-openrouter-tool-request",
+          choices: [{ message: {
+            content: null,
+            tool_calls: [{
+              id: "call-calculator-1",
+              type: "function",
+              function: { name: "calculator", arguments: '{"operation":"add","left":20,"right":22}' },
+            }],
+          } }],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        }
+      : {
+          id: "restate-openrouter-final-request",
+          choices: [{ message: { content: "done" } }],
+          usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
+        };
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const result = await runWorkflow("cohere/north-mini-code:free", {
+      provider: "openrouter",
+      maxRounds: 2,
+    });
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.output, "done");
+    assert.deepEqual(result.usage, { inputTokens: 18, outputTokens: 7, totalTokens: 25 });
+    assert.equal(result.metrics.modelCallCount, 2);
+    assert.deepEqual(requestBodies.map((body) => body.model), [
+      "cohere/north-mini-code:free",
+      "cohere/north-mini-code:free",
+    ]);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousBaseUrl === undefined) delete process.env.AGENTLAB_OPENROUTER_BASE_URL;
+    else process.env.AGENTLAB_OPENROUTER_BASE_URL = previousBaseUrl;
+  }
+});
+
 test("the workflow executes a calculator call durably before requesting the final answer", async () => {
   const executionNames: string[] = [];
   const result = await runWorkflow("fake-tool-call", { executionNames });
@@ -138,6 +239,7 @@ test("the workflow reports cancellation before a model step starts", async () =>
 async function runWorkflow(
   model: string,
   options: {
+    readonly provider?: "fake" | "openrouter";
     readonly maxRounds?: number;
     readonly maxCalls?: number;
     readonly executionNames?: string[];
@@ -164,7 +266,7 @@ async function runWorkflow(
     runId: "workflow-in-process",
     prompt: "calculate twenty plus twenty-two.",
     systemInstruction: "Use tools when appropriate.",
-    model: { provider: "fake", model },
+    model: { provider: options.provider ?? "fake", model },
     tools: { enabledNames: ["calculator"], maxRounds: options.maxRounds ?? 6, maxCalls: options.maxCalls ?? 8 },
   };
   return workflowRun(context, input);

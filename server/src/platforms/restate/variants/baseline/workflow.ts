@@ -52,6 +52,7 @@ export const baselineWorkflow = restate.workflow({
       let toolCallCount = 0;
       let toolAttemptCount = 0;
       let usage = emptyUsage();
+      let usageObserved = false;
       let messages: ModelMessage[] = [
         { role: "system", content: input.systemInstruction },
         { role: "user", content: input.prompt },
@@ -166,7 +167,12 @@ export const baselineWorkflow = restate.workflow({
             );
           }
 
-          usage = addUsage(usage, modelResult.usage);
+          // A null usage value means that a provider did not report that
+          // dimension, not that no model call has occurred yet. Seed the
+          // accumulator from the first successful call so one real
+          // OpenRouter response is not erased by the initial empty state.
+          usage = usageObserved ? addUsage(usage, modelResult.usage) : modelResult.usage;
+          usageObserved = true;
           await record("ModelCompleted", {
             provider: input.model.provider,
             model: input.model.model,
