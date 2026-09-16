@@ -49,8 +49,12 @@ export function CompareRunModal(props: CompareRunModalProps) {
   const [entries, setEntries] = useState<ComparisonEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const comparisonGeneration = useRef(0);
+  const isOpenRef = useRef(props.open);
+  isOpenRef.current = props.open;
 
   useEffect(() => {
+    comparisonGeneration.current += 1;
     if (!props.open) return;
     closeButtonRef.current?.focus();
     function closeOnEscape(event: KeyboardEvent) {
@@ -81,19 +85,25 @@ export function CompareRunModal(props: CompareRunModalProps) {
   useEffect(() => {
     if (!props.open || !entries.some((entry) => entry.run && !isTerminalStatus(entry.run.status))) return;
 
+    let stopped = false;
     const timeout = window.setTimeout(() => {
       void Promise.all(entries.map(async (entry) => {
         if (!entry.run || isTerminalStatus(entry.run.status)) return;
         try {
           const run = await getRun(entry.run.runId);
-          setEntries((current) => current.map((candidate) => candidate.platformId === entry.platformId ? { ...candidate, phase: run.status, run } : candidate));
+          if (stopped || !isOpenRef.current) return;
+          setEntries((current) => current.map((candidate) => candidate.platformId === entry.platformId ? { ...candidate, error: undefined, phase: run.status, run } : candidate));
         } catch (error) {
+          if (stopped || !isOpenRef.current) return;
           setEntries((current) => current.map((candidate) => candidate.platformId === entry.platformId ? { ...candidate, error: toUserMessage(error) } : candidate));
         }
       }));
     }, 800);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timeout);
+    };
   }, [entries, props.open]);
 
   if (!props.open) return null;
@@ -104,6 +114,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
 
   async function runComparison() {
     if (!canRun) return;
+    const generation = comparisonGeneration.current;
 
     const selection: RunSelection = {
       scenarioId,
@@ -120,7 +131,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
       try {
         const connectivity = await getPlatformConnectivity(platform.id);
         if (!connectivity.reachable) throw new PlatformApiError(connectivity.message, 503, "PLATFORM_UNAVAILABLE");
-        updateEntry(platform.id, { phase: "starting" });
+        updateEntry(platform.id, { error: undefined, phase: "starting" }, generation);
         const variant = platform.variants.find((candidate) => candidate.id === "baseline") ?? platform.variants[0];
         const run = await createRun({
           platform: platform.id,
@@ -133,15 +144,16 @@ export function CompareRunModal(props: CompareRunModalProps) {
             ...(platform.infrastructure[0] ? { infrastructureId: platform.infrastructure[0].id } : {}),
           },
         });
-        updateEntry(platform.id, { phase: run.status, run });
+        updateEntry(platform.id, { error: undefined, phase: run.status, run }, generation);
       } catch (error) {
-        updateEntry(platform.id, { error: toUserMessage(error), phase: "error" });
+        updateEntry(platform.id, { error: toUserMessage(error), phase: "error" }, generation);
       }
     }));
-    setIsRunning(false);
+    if (isOpenRef.current && comparisonGeneration.current === generation) setIsRunning(false);
   }
 
-  function updateEntry(platformId: string, patch: Partial<ComparisonEntry>) {
+  function updateEntry(platformId: string, patch: Partial<ComparisonEntry>, generation = comparisonGeneration.current) {
+    if (!isOpenRef.current || comparisonGeneration.current !== generation) return;
     setEntries((current) => current.map((entry) => entry.platformId === platformId ? { ...entry, ...patch } : entry));
   }
 
