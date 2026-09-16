@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T16:30:00+02:00
+**Last updated:** 2026-09-16T17:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -168,10 +168,13 @@ tests, but it must never replace a configured real provider silently.
   namespaced provider/model selection before a turn starts. The OpenRouter adapter now
   classifies context-limit and refusal responses, preserves bounded request IDs and
   latency evidence, and classifies pre-output versus post-output stream disconnects.
-- The current validation is 263 passing tests across the package, with 88.66% line
-  coverage, 76.86% branch coverage, and 83.78% function coverage. The full suite and
-  coverage run both pass; a prior real-browser tab-close timeout was timing-sensitive
-  and passed on the clean reruns.
+- The built-in model registry now owns provider construction and credential-free
+  capability summaries. The TUI exposes `/models` as a read-only model/provider view;
+  provider selection remains explicit at session start with no automatic fallback.
+- The current validation is 265 passing tests across the package, with 88.89% line
+  coverage, 76.91% branch coverage, and 83.97% function coverage. The full suite and
+  coverage run both pass. The browser fixture navigation timeout is 1 second so it
+  remains stable under coverage instrumentation.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -299,13 +302,15 @@ Delivered in this increment:
   provider refusal, including retry eligibility and post-output disconnect handling.
 - Tests for factory validation, adapter metadata, provider evidence, HTTP and streamed
   refusal/context errors, and pre/post-output disconnects.
+- Registry and TUI tests prove the provider list is credential-free and that `/models`
+  renders the active selection and declared capabilities without claiming fallback.
 
 Still open after this increment:
 
 - A documented real-provider acceptance run without a committed credential.
 - Broader provider fixtures for malformed response shapes, usage anomalies, fallback
   policy, credential rotation, cost accounting, and provider-native diagnostic retention.
-- A provider registry and model-selection UX beyond the current explicit configuration.
+- Broader provider selection UX beyond the read-only registry view.
 
 ### Current slice boundary: approval identity and cancellation UX
 

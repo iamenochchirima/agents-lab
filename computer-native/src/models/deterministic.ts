@@ -1,6 +1,6 @@
 import { ModelProviderError } from "../runtime/errors.js";
 import type { DeterministicBehavior, ModelRequest, ModelStreamEvent, ModelUsage } from "../runtime/contracts.js";
-import type { ModelProvider } from "./provider.js";
+import { DETERMINISTIC_CAPABILITIES, type ModelProvider } from "./provider.js";
 
 export interface DeterministicModelOptions {
   readonly behavior?: DeterministicBehavior;
@@ -36,15 +36,7 @@ function usageFor(text: string): ModelUsage {
 
 export class DeterministicModelProvider implements ModelProvider {
   readonly provider = "deterministic" as const;
-  readonly capabilities = {
-    streaming: true,
-    toolCalls: true,
-    structuredOutput: false,
-    vision: false,
-    reasoningControls: false,
-    usageReporting: true,
-    contextWindow: "harness-bounded" as const,
-  };
+  readonly capabilities = DETERMINISTIC_CAPABILITIES;
   readonly model: string;
   private readonly behavior: DeterministicBehavior;
   private readonly delayMs: number;

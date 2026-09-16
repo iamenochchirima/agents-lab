@@ -14,6 +14,7 @@ import { buildInitialContext } from "../src/context/context.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { OpenRouterModelProvider } from "../src/models/openrouter.js";
 import { createModelProvider } from "../src/models/factory.js";
+import { getModelProviderSummary, listModelProviderSummaries } from "../src/models/registry.js";
 import { atomicWriteJson, redactRecord } from "../src/persistence/json.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import { ToolRegistry } from "../src/tools/registry.js";
@@ -152,6 +153,16 @@ test("model factory validates explicit provider/model selection and exposes capa
     () => createModelProvider(loadConfig({ stateDir: tempDirectory(), provider: "deterministic", model: "openai/test" }, {})),
     /deterministic model must start with deterministic\//u,
   );
+});
+
+test("model registry exposes the built-in provider choices without exposing credentials", () => {
+  const providers = listModelProviderSummaries();
+  assert.deepEqual(providers.map((entry) => entry.provider), ["deterministic", "openrouter"]);
+  assert.deepEqual(providers.map((entry) => entry.modelHint), ["deterministic/<name>", "<namespace>/<model>[:free]"]);
+  assert.equal(providers.find((entry) => entry.provider === "openrouter")?.capabilities.contextWindow, "unknown");
+  assert.equal(JSON.stringify(providers).includes("apiKey"), false);
+  assert.equal(getModelProviderSummary("deterministic").label, "Deterministic local provider");
+  assert.equal(getModelProviderSummary("openrouter").label, "OpenRouter hosted provider");
 });
 
 test("disabled browser configuration does not advertise browser tools", async () => {
@@ -4911,8 +4922,38 @@ test("TUI commands are explicit and unknown commands do not become model prompts
   assert.deepEqual(parseTuiCommand("/help"), { kind: "help" });
   assert.deepEqual(parseTuiCommand("/exit"), { kind: "quit" });
   assert.deepEqual(parseTuiCommand("/status extra"), { kind: "status" });
+  assert.deepEqual(parseTuiCommand("/models"), { kind: "models" });
   assert.deepEqual(parseTuiCommand("/not-real"), { kind: "unknown", name: "/not-real" });
   assert.equal(parseTuiCommand("tell me about the workspace"), undefined);
+});
+
+test("TUI model view shows explicit provider choices and the active selection", async () => {
+  const chunks: string[] = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  });
+  const application = {
+    sessionId: "session_test",
+    modelLabel: "nvidia/test-model:free",
+    providerLabel: "openrouter/nvidia/test-model:free",
+    providerName: "openrouter",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["list_directory", "read_file"],
+    availableProviders: listModelProviderSummaries(),
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runCommand({ kind: "models" });
+
+  const rendered = chunks.join("");
+  assert.match(rendered, /Model providers/u);
+  assert.match(rendered, /active.*openrouter\/nvidia\/test-model:free/u);
+  assert.match(rendered, /Deterministic local provider/u);
+  assert.match(rendered, /OpenRouter hosted provider/u);
+  assert.match(rendered, /--provider.*--model/u);
 });
 
 test("TUI header presents a structured, factual agent-console surface", () => {

@@ -4,6 +4,7 @@ import { rm } from "node:fs/promises";
 import type { AppConfig } from "../config/config.js";
 import { BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, PlaywrightBrowserAdapter, cleanupOrphanedBrowserProfiles, type BrowserApprovalDecision, type BrowserApprovalRequest } from "../browser/index.js";
 import { createModelProvider } from "../models/factory.js";
+import { listModelProviderSummaries, type ModelProviderSummary } from "../models/registry.js";
 import { SessionStore } from "../persistence/session-store.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
@@ -12,7 +13,7 @@ import { ProcessSecurityPolicy } from "../security/process-policy.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process/process.js";
 import { Workspace } from "../workspace/workspace.js";
 import type { SessionLock } from "../persistence/lock.js";
-import type { TranscriptMessage, TurnEvent, TurnResult } from "./contracts.js";
+import type { ProviderName, TranscriptMessage, TurnEvent, TurnResult } from "./contracts.js";
 import type { MutationApproval, MutationEvent } from "../workspace/mutation.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
@@ -24,6 +25,9 @@ export interface ChatApplication {
   readonly sessionId: string;
   readonly modelLabel: string;
   readonly providerLabel: string;
+  readonly providerName: ProviderName;
+  readonly modelCapabilities?: ModelProviderSummary["capabilities"];
+  readonly availableProviders?: readonly ModelProviderSummary[];
   readonly workspaceRoot: string;
   readonly evidenceDirectory: string;
   readonly toolNames: readonly string[];
@@ -131,6 +135,9 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       sessionId: session.metadata.sessionId,
       modelLabel: provider.model,
       providerLabel: provider.model.startsWith(`${provider.provider}/`) ? provider.model : `${provider.provider}/${provider.model}`,
+      providerName: provider.provider,
+      modelCapabilities: provider.capabilities,
+      availableProviders: listModelProviderSummaries(),
       workspaceRoot: config.workspaceRoot,
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),

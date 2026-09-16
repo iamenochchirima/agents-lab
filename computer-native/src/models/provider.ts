@@ -12,6 +12,26 @@ export interface ModelProviderCapabilities {
   readonly contextWindow: "harness-bounded" | "provider-reported" | "unknown";
 }
 
+export const DETERMINISTIC_CAPABILITIES = {
+  streaming: true,
+  toolCalls: true,
+  structuredOutput: false,
+  vision: false,
+  reasoningControls: false,
+  usageReporting: true,
+  contextWindow: "harness-bounded",
+} as const satisfies ModelProviderCapabilities;
+
+export const OPENROUTER_CAPABILITIES = {
+  streaming: true,
+  toolCalls: true,
+  structuredOutput: false,
+  vision: false,
+  reasoningControls: false,
+  usageReporting: true,
+  contextWindow: "unknown",
+} as const satisfies ModelProviderCapabilities;
+
 export interface ModelProvider {
   readonly provider: ModelRequest["provider"];
   readonly model: string;

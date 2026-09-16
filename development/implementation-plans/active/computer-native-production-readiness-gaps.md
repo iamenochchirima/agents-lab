@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T16:34:00+02:00
+**Last updated:** 2026-09-16T17:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 263 tests passed after the provider-reliability increment.
-- `pnpm run coverage`: 263 tests passed, with 88.66% line coverage, 76.86% branch
-  coverage, and 83.78% function coverage.
+- `pnpm test`: 265 tests passed after the provider-registry increment.
+- `pnpm run coverage`: 265 tests passed, with 88.89% line coverage, 76.91% branch
+  coverage, and 83.97% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -241,25 +241,22 @@ and local configuration can supply a default provider and model.
 
 Remaining work:
 
-- Define a provider registry with capability metadata for streaming, tool calls,
-  structured output, context size, vision, reasoning controls, and usage reporting.
-- Validate model and provider configuration before a turn starts, with useful errors for
-  unsupported combinations.
-- Add bounded retry and backoff for transport failures, rate limits, and transient
-  provider errors. Do not blindly replay a request with side effects.
-- Define fallback rules and make a fallback visible in session evidence and the TUI.
-- Handle partial streams, malformed tool calls, provider disconnects, empty responses,
-  context overflow, and provider refusal responses.
-- Record request identifiers, model, provider, latency, token usage, limits, and cost
-  metadata without persisting secrets or unnecessary prompt content.
+- Extend fixtures for malformed response shapes, usage anomalies, and provider-native
+  diagnostics without persisting unbounded response bodies.
+- Decide whether product fallback is required beyond the current explicit no-fallback
+  policy; if fallback is added, persist the decision and surface it in the TUI.
 - Provide credential rotation and failure behaviour when a key is missing, expired, or
   rejected.
+- Add token/cost accounting once the provider contract and pricing source are explicit.
 - Add provider contract tests with deterministic local fixtures and a small real-provider
   acceptance profile. Real-provider tests must never depend on a committed key.
 
 Delivered in the current foundation increment, but not yet sufficient for production:
 
-- Built-in capability metadata and explicit provider/model validation.
+- A built-in provider registry with capability metadata and explicit provider/model
+  validation before admission.
+- A read-only `/models` TUI view showing configured choices and declared capabilities;
+  provider selection remains explicit at session start.
 - Bounded request identifier and latency evidence on successful model attempts.
 - Context-limit and refusal classifications, plus pre/post-output disconnect handling.
 - Deterministic contract fixtures for these cases.

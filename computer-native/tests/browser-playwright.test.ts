@@ -128,7 +128,8 @@ test("managed Playwright browser opens a local fixture, snapshots controls, and 
   });
   const adapter = new PlaywrightBrowserAdapter({
     headless: true,
-    actionTimeoutMs: 500,
+    // Keep local fixture navigation stable under Node coverage instrumentation.
+    actionTimeoutMs: 1_000,
     urlPolicy,
   });
   const manager = new BrowserSessionManager(adapter, {

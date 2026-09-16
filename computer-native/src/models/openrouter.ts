@@ -1,6 +1,6 @@
 import { ComputerNativeError, isAbortError, ModelProviderError, redactSecrets } from "../runtime/errors.js";
 import type { ModelMessage, ModelRequest, ModelStreamEvent, ModelToolCall, ModelUsage } from "../runtime/contracts.js";
-import type { ModelProvider } from "./provider.js";
+import { OPENROUTER_CAPABILITIES, type ModelProvider } from "./provider.js";
 
 interface OpenRouterChunk {
   readonly choices?: readonly [{ readonly delta?: { readonly content?: unknown; readonly refusal?: unknown; readonly tool_calls?: readonly OpenRouterToolCallDelta[] } }?];
@@ -87,15 +87,7 @@ function wireMessages(messages: readonly ModelMessage[]): readonly Record<string
 
 export class OpenRouterModelProvider implements ModelProvider {
   readonly provider = "openrouter" as const;
-  readonly capabilities = {
-    streaming: true,
-    toolCalls: true,
-    structuredOutput: false,
-    vision: false,
-    reasoningControls: false,
-    usageReporting: true,
-    contextWindow: "unknown" as const,
-  };
+  readonly capabilities = OPENROUTER_CAPABILITIES;
 
   constructor(
     readonly model: string,

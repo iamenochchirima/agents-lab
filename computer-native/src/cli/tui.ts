@@ -9,14 +9,16 @@ import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent 
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import { redactSecrets } from "../runtime/errors.js";
 import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
+import type { ModelProviderSummary } from "../models/registry.js";
 
-const COMMANDS = ["/help", "/status", "/history", "/memory", "/evidence", "/clear", "/quit"] as const;
+const COMMANDS = ["/help", "/status", "/models", "/history", "/memory", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
 const LABEL_WIDTH = 11;
 
 export type TuiCommand =
   | { readonly kind: "help" }
   | { readonly kind: "status" }
+  | { readonly kind: "models" }
   | { readonly kind: "history" }
   | { readonly kind: "memory" }
   | { readonly kind: "evidence" }
@@ -33,6 +35,8 @@ export function parseTuiCommand(input: string): TuiCommand | undefined {
       return { kind: "help" };
     case "/status":
       return { kind: "status" };
+    case "/models":
+      return { kind: "models" };
     case "/history":
       return { kind: "history" };
     case "/memory":
@@ -63,6 +67,18 @@ function singleLine(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
 
+function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): string {
+  const supported = [
+    capabilities.streaming ? "streaming" : undefined,
+    capabilities.toolCalls ? "tools" : undefined,
+    capabilities.structuredOutput ? "structured" : undefined,
+    capabilities.vision ? "vision" : undefined,
+    capabilities.reasoningControls ? "reasoning" : undefined,
+    capabilities.usageReporting ? "usage" : undefined,
+  ].filter((value): value is string => value !== undefined);
+  return `${supported.join(", ") || "no declared capabilities"} · context ${capabilities.contextWindow}`;
+}
+
 function panelRule(title: string): string {
   return `╭─ ${title} ${"─".repeat(Math.max(1, PANEL_WIDTH - title.length - 1))}╮`;
 }
@@ -72,9 +88,10 @@ function panelBottom(): string {
 }
 
 function panelRow(label: string, value: string): string {
+  const safeLabel = shorten(label, LABEL_WIDTH).padEnd(LABEL_WIDTH);
   const clipped = shorten(value, PANEL_WIDTH - LABEL_WIDTH - 1);
-  const content = `${label.padEnd(LABEL_WIDTH)} ${clipped}`;
-  return `│ ${content}${" ".repeat(PANEL_WIDTH - content.length)} │`;
+  const content = `${safeLabel} ${clipped}`;
+  return `│ ${content}${" ".repeat(Math.max(0, PANEL_WIDTH - content.length))} │`;
 }
 
 function commandCompleter(line: string): [string[], string] {
@@ -178,6 +195,7 @@ export class TerminalUi {
     this.write(`\n${this.style("36;1", "Computer Native controls")}\n`);
     this.write(`${this.style("33;1", "Session")}\n`);
     this.write(`  ${this.style("33", "/status")}     Show session, model, tools, and turn state\n`);
+    this.write(`  ${this.style("33", "/models")}     Show provider choices and model capabilities\n`);
     this.write(`  ${this.style("33", "/history")}    Show recent transcript messages\n`);
     this.write(`  ${this.style("33", "/memory")}     Show bounded durable-memory status\n`);
     this.write(`  ${this.style("33", "/evidence")}   Show the durable evidence directory\n`);
@@ -189,6 +207,21 @@ export class TerminalUi {
     this.write(`  ${this.style("2", "Ctrl+C")}       Cancel the active turn\n`);
     this.write(`  ${this.style("2", "Ctrl+D")}       Exit the session\n\n`);
     this.write(`${this.style("2", "Commands are intentionally limited to capabilities that exist.")}\n\n`);
+  }
+
+  private printModels(): void {
+    const providers = this.application.availableProviders ?? [];
+    const rows: Array<readonly [string, string]> = [
+      ["active", this.application.providerLabel],
+      ["selection", "Choose with --provider and --model before starting a session"],
+    ];
+    for (const provider of providers) {
+      rows.push([provider.provider, `${provider.label} · ${provider.modelHint} · ${capabilitySummary(provider.capabilities)}`]);
+    }
+    if (providers.length === 0) rows.push(["choices", "Provider registry is unavailable for this session"]);
+    this.write("\n");
+    this.printPanel("Model providers", rows);
+    this.write(`${this.style("2", "Provider/model selection is fixed for the current session; no fallback is automatic.")}\n\n`);
   }
 
   private async printStatus(): Promise<void> {
@@ -230,6 +263,9 @@ export class TerminalUi {
         return true;
       case "status":
         await this.printStatus();
+        return true;
+      case "models":
+        this.printModels();
         return true;
       case "history":
         await this.printHistory();

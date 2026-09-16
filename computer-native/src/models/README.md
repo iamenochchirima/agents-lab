@@ -43,3 +43,12 @@ the provider may already have accepted and partially executed the request.
 The adapter does not provide fallback models. If the selected provider is unavailable,
 the turn fails with provider evidence rather than silently switching to deterministic
 output.
+
+## Registry and selection
+
+`src/models/registry.ts` is the single built-in provider registry. It exposes a
+credential-free summary for each supported provider, validates the model identifier, and
+constructs the adapter selected by configuration. `computer-native chat` still chooses a
+provider and model through `--provider`/`--model` or the development environment; the
+session does not switch providers halfway through a turn. The TUI's `/models` command is
+a read-only view of those choices and their declared capabilities.

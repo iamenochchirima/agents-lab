@@ -10,8 +10,9 @@ test driver. Interactive sessions present a compact agent-console layout: a bran
 panel, provider/model/session/workspace/evidence context, the actual registered tool names,
 a ready or active status ribbon, streaming output, a separate tool activity lane, grouped
 help, and a visually distinct composer prompt. Slash commands are `/help`, `/status`,
-`/history`, `/evidence`, `/clear`, and `/quit`; multiline continuation uses a trailing
-`\\`, input history is provided by `readline`, and Ctrl-C cancels an active turn. The CLI
+`/models`, `/history`, `/evidence`, `/clear`, and `/quit`; `/models` is a read-only view
+of the configured provider choices and capabilities. Multiline continuation uses a
+trailing `\\`, input history is provided by `readline`, and Ctrl-C cancels an active turn. The CLI
 displays application events but the runtime owns model calls, tools, security, and
 persistence. In an interactive TTY, proposed `apply_patch`, `apply_patch_set`, `write_file`,
 `mkdir`, `delete`, `restore`, `copy`, `move`, and `rename` operations show a bounded review
