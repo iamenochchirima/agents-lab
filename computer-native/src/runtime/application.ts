@@ -2,7 +2,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import type { AppConfig } from "../config/config.js";
-import { BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, PlaywrightBrowserAdapter, cleanupOrphanedBrowserProfiles, type BrowserApprovalDecision, type BrowserApprovalRequest } from "../browser/index.js";
+import { acquireBrowserProfileLease, BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, PlaywrightBrowserAdapter, cleanupOrphanedBrowserProfiles, type BrowserApprovalDecision, type BrowserApprovalRequest } from "../browser/index.js";
 import { createModelProvider } from "../models/factory.js";
 import { listModelProviderSummaries, type ModelProviderSummary } from "../models/registry.js";
 import { SessionStore } from "../persistence/session-store.js";
@@ -103,6 +103,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       readOnlyTimeoutMs: config.browserActionTimeoutMs,
       sessionTimeoutMs: config.browserSessionTimeoutMs,
       profileDirectory: (sessionId) => path.join(config.stateDir, "browser-profiles", sessionId),
+      acquireProfileLease: acquireBrowserProfileLease,
       cleanupProfile: async (profileDirectory) => {
         const profileRoot = path.resolve(config.stateDir, "browser-profiles");
         const target = path.resolve(profileDirectory);

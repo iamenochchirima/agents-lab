@@ -53,6 +53,11 @@ with `COMPUTER_NATIVE_BROWSER_PROFILE_RETENTION_MS`,
 `COMPUTER_NATIVE_BROWSER_ARTIFACT_RETENTION_MS`, and
 `COMPUTER_NATIVE_BROWSER_CLEANUP_MAX_ENTRIES`; `doctor` prints their effective values.
 Cleanup is age-based and bounded so a recent profile from another process is retained.
+Managed profiles also hold a lock-backed ownership lease while their browser session is
+active. Cleanup retains an old profile when the lease belongs to a live process and only
+reclaims it after the existing process-identity checks establish that the owner is stale.
+The generic session manager accepts this lease as an optional backend capability, so a
+future non-local browser backend does not inherit local profile-file assumptions.
 
 Upload sources are resolved by `BrowserFilePolicy` through the workspace mutation
 policy, so absolute paths, traversal, symbolic links, non-regular files, and oversized

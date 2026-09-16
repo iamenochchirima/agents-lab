@@ -16,6 +16,7 @@ import type {
 import { asBrowserSessionId } from "./contracts.js";
 import { BrowserUrlPolicy } from "./policy.js";
 import { BrowserArtifactStore, type BrowserArtifactInfo, type BrowserDownloadTarget } from "./artifacts.js";
+import type { BrowserProfileLease } from "./cleanup.js";
 import type { BrowserWaitRequest, BrowserWaitResult, BrowserScreenshotCapture } from "./contracts.js";
 
 export interface BrowserSessionManagerOptions {
@@ -24,6 +25,7 @@ export interface BrowserSessionManagerOptions {
   readonly readOnlyTimeoutMs?: number;
   readonly sessionTimeoutMs?: number;
   readonly profileDirectory?: (sessionId: BrowserSessionId) => string;
+  readonly acquireProfileLease?: (profileDirectory: string) => Promise<BrowserProfileLease>;
   readonly cleanupProfile?: (profileDirectory: string) => Promise<void>;
   readonly artifactStore?: BrowserArtifactStore;
   readonly now?: () => string;
@@ -38,6 +40,7 @@ interface SessionState {
   expiryTimer?: NodeJS.Timeout;
   adapterClosed: boolean;
   profileCleaned: boolean;
+  profileLease?: BrowserProfileLease;
 }
 
 function defaultProfileDirectory(sessionId: BrowserSessionId): string {
@@ -56,6 +59,7 @@ function defaultSessionId(): BrowserSessionId {
 export class BrowserSessionManager {
   private readonly sessions = new Map<BrowserSessionId, SessionState>();
   private readonly profileDirectory: (sessionId: BrowserSessionId) => string;
+  private readonly acquireProfileLease?: (profileDirectory: string) => Promise<BrowserProfileLease>;
   private readonly cleanupProfile?: (profileDirectory: string) => Promise<void>;
   private readonly now: () => string;
   private readonly createSessionId: () => BrowserSessionId;
@@ -87,6 +91,7 @@ export class BrowserSessionManager {
       throw new BrowserError("browser-resource-limit", "The browser session timeout must be a positive integer.");
     }
     this.profileDirectory = options.profileDirectory ?? defaultProfileDirectory;
+    this.acquireProfileLease = options.acquireProfileLease;
     this.cleanupProfile = options.cleanupProfile;
     this.artifactStore = options.artifactStore;
     this.now = options.now ?? (() => new Date().toISOString());
@@ -108,15 +113,22 @@ export class BrowserSessionManager {
       createdAt,
       expiresAt,
     };
-    await this.adapter.startSession({ sessionId, profileDirectory: info.profileDirectory, signal });
-    const state: SessionState = { info, tabs: new Map(), closedTabs: new Set(), adapterClosed: false, profileCleaned: false };
-    this.sessions.set(sessionId, state);
-    const expiryTimer = setTimeout(() => {
-      void this.expireSession(sessionId);
-    }, this.sessionTimeoutMs);
-    expiryTimer.unref?.();
-    state.expiryTimer = expiryTimer;
-    return info;
+    let profileLease: BrowserProfileLease | undefined;
+    try {
+      profileLease = this.acquireProfileLease ? await this.acquireProfileLease(info.profileDirectory) : undefined;
+      await this.adapter.startSession({ sessionId, profileDirectory: info.profileDirectory, signal });
+      const state: SessionState = { info, tabs: new Map(), closedTabs: new Set(), adapterClosed: false, profileCleaned: false, profileLease };
+      this.sessions.set(sessionId, state);
+      const expiryTimer = setTimeout(() => {
+        void this.expireSession(sessionId);
+      }, this.sessionTimeoutMs);
+      expiryTimer.unref?.();
+      state.expiryTimer = expiryTimer;
+      return info;
+    } catch (error) {
+      await profileLease?.release().catch(() => undefined);
+      throw error;
+    }
   }
 
   async close(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<BrowserSessionInfo> {
@@ -141,18 +153,30 @@ export class BrowserSessionManager {
         cleanupError = error;
       }
     }
+    let leaseError: unknown;
+    if (session.profileLease) {
+      try {
+        await session.profileLease.release();
+        session.profileLease = undefined;
+      } catch (error) {
+        leaseError = error;
+      }
+    }
     session.info = {
       ...session.info,
       status: "closed",
       closedAt: this.now(),
       ...(closeError && closeError instanceof Error ? { failure: closeError.message } : {}),
-      ...(cleanupError ? { cleanupError: cleanupError instanceof Error ? cleanupError.message : "Browser profile cleanup failed." } : {}),
+      ...(cleanupError || leaseError ? { cleanupError: cleanupError instanceof Error ? cleanupError.message : leaseError instanceof Error ? leaseError.message : "Browser profile cleanup failed." } : {}),
     };
     if (closeError) {
       throw closeError;
     }
     if (cleanupError) {
       throw new BrowserError("adapter-failure", `Browser profile cleanup failed for session '${sessionId}'.`, { cause: cleanupError });
+    }
+    if (leaseError) {
+      throw new BrowserError("adapter-failure", `Browser profile ownership could not be released for session '${sessionId}'.`, { cause: leaseError });
     }
     return session.info;
   }
@@ -368,6 +392,15 @@ export class BrowserSessionManager {
         cleanupError = error;
       }
     }
+    let leaseError: unknown;
+    if (session.profileLease) {
+      try {
+        await session.profileLease.release();
+        session.profileLease = undefined;
+      } catch (error) {
+        leaseError = error;
+      }
+    }
     session.info = {
       ...session.info,
       status: "expired",
@@ -375,7 +408,7 @@ export class BrowserSessionManager {
       failure: closeError instanceof Error
         ? `Browser session lifetime expired; browser cleanup failed: ${closeError.message}`
         : "Browser session lifetime expired.",
-      ...(cleanupError ? { cleanupError: cleanupError instanceof Error ? cleanupError.message : "Browser profile cleanup failed." } : {}),
+      ...(cleanupError || leaseError ? { cleanupError: cleanupError instanceof Error ? cleanupError.message : leaseError instanceof Error ? leaseError.message : "Browser profile cleanup failed." } : {}),
     };
   }
 

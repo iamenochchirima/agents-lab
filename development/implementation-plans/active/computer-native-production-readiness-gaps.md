@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:55:23+02:00
+**Last updated:** 2026-09-16T19:02:20+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 296 tests passed after the browser artifact ownership increment.
-- `pnpm run coverage`: 296 tests passed, with 88.99% line coverage, 77.78% branch
-  coverage, and 84.82% function coverage in the latest run. Node's experimental
+- `pnpm test`: 299 tests passed after the browser profile ownership increment.
+- `pnpm run coverage`: 299 tests passed, with 88.95% line coverage, 77.66% branch
+  coverage, and 84.81% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -106,6 +106,10 @@ readiness:
   adapter writes are in flight. Bounded cleanup retains live in-flight artifacts and
   only reclaims old incomplete artifacts after stale-owner checks; finalization and
   discard release the lease.
+- Managed local browser profiles now hold lock-backed ownership leases for the browser
+  session lifetime. Startup cleanup retains old profiles with live owners and reclaims
+  only stale profiles; the generic session manager keeps leasing optional for other
+  backends.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 - Built-in provider adapters now expose capability metadata. The factory validates
@@ -419,8 +423,9 @@ Remaining work:
   failure.
 - Complete the browser artifact/profile crash matrix, including lock corruption,
   interrupted metadata publication, and recovery across process restarts. Artifact
-  writers now have lock-backed ownership leases, but profile ownership/authentication
-  policy remains incomplete.
+  writers and managed local profiles now have lock-backed ownership leases, but lock
+  corruption, interrupted metadata publication, process-restart recovery, and
+  profile/authentication policy remain incomplete.
 - Pin and manage browser versions, launch flags, permissions, and cleanup.
 - Add human-in-the-loop paths for CAPTCHA, MFA, payment, destructive submission, and
   other actions the agent must not silently complete.

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import {
+  acquireBrowserProfileLease,
   BrowserError,
   BrowserSessionManager,
   BrowserUrlPolicy,
@@ -99,6 +100,12 @@ class TestBrowserAdapter implements BrowserAdapter {
 class CrashingBrowserAdapter extends TestBrowserAdapter {
   async snapshot(): Promise<never> {
     throw new BrowserError("browser-crash", "The browser process exited unexpectedly.");
+  }
+}
+
+class FailingStartBrowserAdapter extends TestBrowserAdapter {
+  async startSession(): Promise<void> {
+    throw new Error("browser start failed");
   }
 }
 
@@ -337,6 +344,64 @@ test("orphaned profile cleanup stops at its entry bound", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("orphaned profile cleanup retains a profile with a live ownership lease", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-profile-lease-"));
+  try {
+    const profile = path.join(root, `browser_${"a".repeat(32)}`);
+    await mkdir(profile, { recursive: true });
+    const lease = await acquireBrowserProfileLease(profile);
+    const oldSeconds = (Date.now() - 10_000) / 1_000;
+    await utimes(profile, oldSeconds, oldSeconds);
+
+    const result = await cleanupOrphanedBrowserProfiles(root, { maxAgeMs: 1_000, maxEntries: 10 });
+
+    assert.equal(result.retained, 1);
+    assert.equal(result.removed, 0);
+    assert.equal((await stat(profile)).isDirectory(), true);
+    await lease.release();
+    await utimes(profile, oldSeconds, oldSeconds);
+    const reclaimed = await cleanupOrphanedBrowserProfiles(root, { maxAgeMs: 1_000, maxEntries: 10 });
+    assert.equal(reclaimed.removed, 1);
+    await assert.rejects(stat(profile), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("browser session manager holds and releases an optional profile lease", async () => {
+  const adapter = new TestBrowserAdapter();
+  let acquired = 0;
+  let released = 0;
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => asBrowserSessionId("browser_profile_lease"),
+    profileDirectory: () => "/managed/browser_profile_lease",
+    acquireProfileLease: async () => {
+      acquired += 1;
+      return { release: async () => { released += 1; } };
+    },
+    urlPolicy: policy(),
+  });
+
+  const session = await manager.start();
+  assert.equal(acquired, 1);
+  assert.equal(released, 0);
+  await manager.close(session.sessionId);
+  assert.equal(released, 1);
+});
+
+test("browser session manager releases a profile lease when adapter startup fails", async () => {
+  let released = 0;
+  const manager = new BrowserSessionManager(new FailingStartBrowserAdapter(), {
+    createSessionId: () => asBrowserSessionId("browser_profile_lease_failure"),
+    profileDirectory: () => "/managed/browser_profile_lease_failure",
+    acquireProfileLease: async () => ({ release: async () => { released += 1; } }),
+    urlPolicy: policy(),
+  });
+
+  await assert.rejects(() => manager.start(), /browser start failed/u);
+  assert.equal(released, 1);
 });
 
 test("browser session manager requires a fresh snapshot before acting on a changed document", async () => {

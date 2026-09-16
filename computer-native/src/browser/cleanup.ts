@@ -1,6 +1,8 @@
-import { lstat, readdir, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { safePathSegment } from "../persistence/json.js";
+import { ComputerNativeError } from "../runtime/errors.js";
+import { SessionLock } from "../persistence/lock.js";
 
 export interface BrowserCleanupOptions {
   readonly maxAgeMs: number;
@@ -32,6 +34,20 @@ function emptyResult(): BrowserCleanupResult {
 
 function managedProfileName(name: string): boolean {
   return /^browser_[a-f0-9]{32}$/u.test(name);
+}
+
+export interface BrowserProfileLease {
+  release(): Promise<void>;
+}
+
+/**
+ * Owns one managed browser profile for the lifetime of a local browser session.
+ * The lock file is intentionally inside the profile so cleanup can distinguish an
+ * old abandoned profile from one still owned by another process.
+ */
+export async function acquireBrowserProfileLease(profileDirectory: string): Promise<BrowserProfileLease> {
+  await ensurePrivateProfileDirectory(profileDirectory);
+  return SessionLock.acquire(path.join(profileDirectory, ".computer-native-profile.lock"));
 }
 
 /**
@@ -86,12 +102,47 @@ export async function cleanupOrphanedBrowserProfiles(
       result.retained += 1;
       continue;
     }
+    let lease: BrowserProfileLease | undefined;
+    try {
+      lease = await acquireCleanupProfileLease(path.join(candidate, ".computer-native-profile.lock"));
+    } catch {
+      result.skipped += 1;
+      continue;
+    }
+    if (!lease) {
+      result.retained += 1;
+      continue;
+    }
     try {
       await rm(candidate, { recursive: true, force: true });
       result.removed += 1;
     } catch {
       result.failed += 1;
+    } finally {
+      await lease.release().catch(() => undefined);
     }
   }
   return result;
+}
+
+async function acquireCleanupProfileLease(lockPath: string): Promise<BrowserProfileLease | undefined> {
+  try {
+    return await SessionLock.acquire(lockPath);
+  } catch (error) {
+    if (error instanceof ComputerNativeError && error.code === "lock") return undefined;
+    throw error;
+  }
+}
+
+async function ensurePrivateProfileDirectory(profileDirectory: string): Promise<void> {
+  try {
+    const metadata = await lstat(profileDirectory);
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new Error("Browser profile directory must be a real directory.");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await mkdir(profileDirectory, { recursive: true, mode: 0o700 });
+  }
+  await chmod(profileDirectory, 0o700);
 }

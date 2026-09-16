@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:55:23+02:00
+**Last updated:** 2026-09-16T19:02:20+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 296 passing tests across the package, with 88.99% line
-  coverage, 77.78% branch coverage, and 84.82% function coverage. Coverage is from
+- The latest validation is 299 passing tests across the package, with 88.95% line
+  coverage, 77.66% branch coverage, and 84.81% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -337,6 +337,33 @@ Still open after this slice:
 
 - Durable browser profile ownership/authentication policy, metadata migration, and the
   full browser crash/navigation race matrix.
+- Cross-platform process isolation and the complete per-write/per-side-effect crash
+  matrix remain outside this slice.
+
+### Current slice boundary: browser profile ownership
+
+Delivered in this slice:
+
+- Managed local browser profiles can acquire a lock-backed ownership lease for the
+  complete session lifetime, including adapter startup, close, expiry, and profile
+  cleanup.
+- Startup profile cleanup retains old profiles with a live lease and reclaims an old
+  profile only after the existing process-identity checks establish stale ownership.
+- The browser session manager treats profile leasing as an optional backend capability,
+  keeping generic adapters free of an implicit local-filesystem lifecycle assumption.
+- Tests cover live-lease retention and release, manager lease lifecycle, and the existing
+  bounded/symlink/unknown profile cleanup rules.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This follows their explicit session ownership and cleanup boundaries, reusing the
+  repository's lock primitive rather than creating a second lease protocol or durable
+  browser scheduler.
+
+Still open after this slice:
+
+- Authentication/cookie/local-storage policy, profile metadata migration, and the full
+  browser crash/navigation race matrix.
 - Cross-platform process isolation and the complete per-write/per-side-effect crash
   matrix remain outside this slice.
 
