@@ -1315,6 +1315,7 @@ export class TurnStore {
         `Turn '${this.turnId}' cannot commit '${terminalType}' for a '${result.status}' result.`,
       );
     }
+    if (this.record.state !== result.status) assertTransition(this.record.state, result.status);
     await this.writeResult(result);
     await this.updateState(result.status);
     // Re-append through the idempotency validator even when a terminal event

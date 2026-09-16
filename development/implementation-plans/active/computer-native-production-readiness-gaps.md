@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:03:57+02:00
+**Last updated:** 2026-09-16T21:10:04+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 306 tests passed after the model lifecycle evidence increment.
-- `pnpm run coverage`: 306 tests passed, with 88.96% line coverage, 77.77% branch
+- `pnpm test`: 307 tests passed after the terminal commit precondition increment.
+- `pnpm run coverage`: 307 tests passed, with 89.00% line coverage, 77.85% branch
   coverage, and 84.76% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -146,6 +146,9 @@ readiness:
   against their admitted owner before they can be written or adopted during recovery.
 - Repeated terminal turn evidence now compares the redacted payload: identical retries
   are idempotent, while conflicting terminal payloads fail closed.
+- Terminal commits validate the requested turn-state transition before writing
+  `result.json`; an invalid terminal transition leaves the durable state and terminal
+  result evidence unchanged.
 - A pre-cancelled turn does not invoke the provider or emit a model-request claim, and
   cancellation during model retry backoff cannot dispatch a later attempt.
 - Session ownership locks now persist a Linux executable/start-time identity alongside

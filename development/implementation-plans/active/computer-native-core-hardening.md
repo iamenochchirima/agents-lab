@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:03:57+02:00
+**Last updated:** 2026-09-16T21:10:04+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -251,8 +251,12 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 306 passing tests across the package, with 88.96% line
-  coverage, 77.77% branch coverage, and 84.76% function coverage. Coverage is from
+- Terminal commits now validate the requested turn-state transition before writing the
+  terminal result. An invalid transition leaves both the durable turn state and
+  `result.json` unchanged; a lost acknowledgement after a valid terminal write remains
+  recoverable without replaying the model or tool.
+- The latest validation is 307 passing tests across the package, with 89.00% line
+  coverage, 77.85% branch coverage, and 84.76% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -305,6 +309,32 @@ Practice check against the local Hermes and OpenClaw references:
   already persists. It follows explicit attempt identity and fail-closed lifecycle
   practices without importing a provider scheduler, replay system, event-sourcing layer,
   or exactly-once guarantee.
+
+Still open after this slice:
+
+- Full turn-level transition helpers, the complete persistence/side-effect crash matrix,
+  deterministic replay, concurrency/lease semantics, and remaining security and
+  production-operation gates.
+
+### Current slice boundary: terminal commit precondition
+
+Delivered in this increment:
+
+- `commitTerminal` validates the requested terminal lifecycle transition against the
+  current durable turn state before writing `result.json`.
+- An invalid transition, such as `submitting` → `completed`, fails without creating a
+  result artifact or changing the turn state.
+- Existing valid terminal retries remain idempotent, and an acknowledgement loss after a
+  valid result write remains recoverable without replaying the model or tool.
+- Tests cover the rejected precondition and the interaction with terminal-result and
+  terminal-event acknowledgement-loss recovery.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is a local write-order invariant around the existing terminal record. It follows
+  explicit lifecycle validation and fail-closed recovery practice without adding a
+  transaction manager, rollback service, workflow engine, event-sourcing layer, or
+  exactly-once guarantee.
 
 Still open after this slice:
 

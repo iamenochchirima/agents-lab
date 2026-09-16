@@ -146,7 +146,9 @@ the running operation's ambiguous outcome.
 
 Terminal result writes compare stable serialized values, so repeating the same commit is
 safe after a retry or recovery. The terminal lifecycle event is appended only once, and a
-result cannot be committed with a mismatched terminal event type.
+result cannot be committed with a mismatched terminal event type. `commitTerminal` checks
+the current durable turn-state transition before writing `result.json`; an invalid
+transition is rejected without creating a terminal result artifact.
 
 Browser actions use the same immutable-identity and one-way-transition pattern. The
 record stores the session, tab, document, reference, action hash, approval decision,

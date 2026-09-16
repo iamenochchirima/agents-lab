@@ -745,6 +745,33 @@ test("committing the same terminal result twice does not duplicate the terminal 
   assert.equal(turn.state, "completed");
 });
 
+test("terminal commit validates the turn transition before writing a result", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("reject invalid terminal transition", "deterministic", "deterministic/echo");
+  const result = {
+    schemaVersion: 1 as const,
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    status: "completed" as const,
+    provider: "deterministic" as const,
+    model: "deterministic/echo",
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    assistantText: "should not commit",
+  };
+
+  await assert.rejects(
+    () => turn.commitTerminal(result, "TurnCompleted"),
+    /Invalid turn transition: submitting → completed/u,
+  );
+  await assert.rejects(
+    () => readFile(path.join(turn.directory, "result.json"), "utf8"),
+    /ENOENT/u,
+  );
+  assert.equal(turn.state, "submitting");
+});
+
 test("restart recovery repairs terminal evidence after a durable write acknowledgement fails", async () => {
   const stateDir = tempDirectory();
   let resultAcknowledgements = 0;
@@ -800,7 +827,7 @@ test("restart recovery repairs terminal evidence after a durable write acknowled
       config: config(eventStateDir),
       userPrompt: "persist terminal evidence",
     }),
-    /already has a different terminal result/,
+    /Invalid turn transition: completed → failed/u,
   );
   const eventUserMessage = (await eventSession.readTranscript())[0];
   assert.ok(eventUserMessage);

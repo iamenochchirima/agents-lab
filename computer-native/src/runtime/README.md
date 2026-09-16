@@ -34,7 +34,9 @@ result or terminal event may already exist when the caller reports a write error
 restart, persistence reconciles the result, turn state, and event history; repeating
 recovery repairs missing terminal evidence without replaying the model or a tool and
 without appending a second terminal event. This is an at-least-once evidence write
-boundary, not an exactly-once execution guarantee.
+boundary, not an exactly-once execution guarantee. Before a terminal result is written,
+the current durable turn state must permit the requested transition; an invalid terminal
+transition leaves the result evidence and turn state unchanged.
 
 The same recovery boundary applies to terminal process, browser, memory, and workspace
 action records. If their normalized terminal event was not durable, recovery rebuilds it
