@@ -145,8 +145,12 @@ missing evidence after an acknowledgement loss.
 
 If an interrupted turn contains a mutation that was still `proposed`, recovery closes
 that approval lifecycle as `denied` with `approval-unavailable`; the filesystem proposal
-is never replayed. Mutations that reached `approved` or `applying` use their operation-
-specific reconciliation checks instead.
+is never replayed. If the mutation record is durable but its first lifecycle append was
+not acknowledged, recovery reconstructs the proposal and approval evidence from that
+bounded record, marks the reconstructed events as `recovered`, and then closes the
+mutation safely. An `approved` record with no applying boundary is also closed as
+`approval-unavailable` when no workspace reconciler is available; it is never replayed.
+Mutations that reached `applying` use their operation-specific reconciliation checks.
 
 Workspace mutation records and their normalized lifecycle events are both retained. The
 record carries the full bounded diff and operation-specific evidence; the event stream
@@ -157,11 +161,13 @@ and a `WorkspaceMutationReconciled` result proving that the recorded before-stat
 remained authoritative and the mutation was not replayed.
 
 When an action record is terminal but its normalized terminal event is missing, restart
-reconstructs that event before it finalizes an interrupted turn. If the turn-terminal
-event was already acknowledged, recovery atomically inserts the repaired action event
-immediately before it so the turn-terminal event remains last. Reconstruction is
-idempotent and only uses the persisted bounded record; it never launches a process,
-reopens a browser action, mutates the workspace, or changes memory contents.
+reconstructs that event before it finalizes an interrupted turn. Workspace mutation
+recovery also rebuilds a missing proposal/approval prelude when the durable record is
+the only surviving evidence. If the turn-terminal event was already acknowledged,
+recovery atomically inserts repaired action evidence immediately before it so the
+turn-terminal event remains last. Reconstruction is idempotent and only uses the
+persisted bounded record; it never launches a process, reopens a browser action,
+mutates the workspace, or changes memory contents.
 
 Local process executions use the same atomic per-operation record pattern. The record
 contains the exact approved identity and bounded outcome, and its state transition is

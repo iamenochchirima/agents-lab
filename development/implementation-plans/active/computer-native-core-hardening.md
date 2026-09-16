@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T00:05:27+02:00
+**Last updated:** 2026-09-17T00:45:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -178,6 +178,10 @@ tests, but it must never replace a configured real provider silently.
   process, browser, memory, or workspace action record. Workspace reconciliation has a
   distinct `WorkspaceMutationReconciled` event, so “not applied and not replayed” is not
   reported as either a commit or a generic failure.
+- Workspace mutation recovery now also repairs a missing first lifecycle append from the
+  durable mutation record, including recovered proposal and approval evidence before its
+  safe terminal outcome. An approved mutation with no durable applying boundary is closed
+  as approval-unavailable when no reconciler is available; it is never replayed.
 - Recovery repairs are now tested through a real approved process side effect: if the
   marker write succeeds but acknowledgement of the completed process record is lost,
   restart repairs only the missing evidence and does not run the command again.
@@ -305,11 +309,42 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 331 passing tests across the package, with 89.64% line
-  coverage, 79.12% branch coverage, and 85.19% function coverage. Coverage is from
+- The latest validation is 333 passing tests across the package, with 89.72% line
+  coverage, 79.28% branch coverage, and 85.25% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs. The
   latest full suite and coverage run both pass; one earlier coverage run was discarded
-  because instrumentation caused timing-sensitive browser and admission tests to fail.
+  because instrumentation caused a timing-sensitive process-recovery test to fail.
+
+### Current slice boundary: workspace mutation approval-evidence recovery
+
+Delivered in this increment:
+
+- Recovery repairs the workspace mutation lifecycle when its durable mutation record was
+  published but the first lifecycle event was not acknowledged. It reconstructs the
+  proposal and approval-decision events from the bounded record, marks those repairs as
+  `recovered: true`, then records the safe terminal outcome.
+- A durable `approved` mutation with no `applying` record boundary is closed as
+  `failed` with `approval-unavailable` when no operation-specific workspace
+  reconciler is available. The workspace is not touched and the mutation is never
+  replayed.
+- A durable `committed` record with missing lifecycle prelude evidence is repaired
+  through proposal, approval, applying, and committed events. Existing reconciliation
+  and idempotency behavior remains unchanged.
+- Tests cover the first-record acknowledgement-loss boundary, approved-without-reconciler
+  recovery, repeated recovery, no filesystem replay, and the existing directory,
+  transfer, quarantine, and hash-reconciliation cases.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This uses the existing operation-local durable record and recovery path. It makes the
+  approval boundary explicit after an acknowledgement loss without adding a database,
+  transaction coordinator, rollback service, event-sourcing layer, or exactly-once claim.
+
+Still open after this slice:
+
+- Equivalent first-event prelude repair for other action families, every persistence and
+  host-side crash boundary, deterministic replay, concurrency/lease acceptance, and the
+  remaining security and production-operation gates.
 
 ### Current slice boundary: model/tool round evidence ordering
 

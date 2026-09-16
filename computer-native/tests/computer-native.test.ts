@@ -1884,6 +1884,117 @@ test("filesystem completion acknowledgement loss repairs evidence without replay
   assert.equal(await readFile(path.join(root, "once.txt"), "utf8"), "written once\n");
 });
 
+test("restart repairs a missing first workspace mutation lifecycle event", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  let mutationRecords = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.includes(`${path.sep}mutations${path.sep}`) && mutationRecords++ === 0) {
+          throw new RuntimeInterruptionError("stopped after the proposed mutation record became durable");
+        }
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/mutation-record-before-event", {
+        toolCall: {
+          name: "write_file",
+          argumentsJson: JSON.stringify({ path: "once.txt", content: "written once\n" }),
+          finalResponse: "The file was written.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 1_000 }),
+      userPrompt: "write the file",
+      approveMutation: async () => ({ decision: "allow-once" }),
+    }),
+    /stopped after the proposed mutation record became durable/u,
+  );
+
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered[0]?.status, "interrupted");
+  await assert.rejects(() => readFile(path.join(root, "once.txt"), "utf8"), { code: "ENOENT" });
+
+  const events = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  assert.deepEqual(events.map((event) => event.type), [
+    "TurnStarted",
+    "ModelRequested",
+    "ModelAttemptCompleted",
+    "WorkspaceMutationProposed",
+    "WorkspaceMutationApprovalDecided",
+    "WorkspaceMutationFailed",
+    "TurnInterrupted",
+  ]);
+  assert.ok(events.filter((event) => event.type.startsWith("WorkspaceMutation")).every((event) => event.payload.recovered === true));
+  const mutationDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "mutations");
+  const mutationEntry = (await readdir(mutationDirectory))[0];
+  assert.ok(mutationEntry);
+  const mutation = JSON.parse(await readFile(path.join(mutationDirectory, mutationEntry), "utf8")) as { status: string; decision?: string; errorCode?: string };
+  assert.equal(mutation.status, "denied");
+  assert.equal(mutation.decision, "unavailable");
+  assert.equal(mutation.errorCode, "approval-unavailable");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+});
+
+test("restart closes an approved workspace mutation when reconciliation is unavailable", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const target = path.join(root, "once.txt");
+  await writeFile(target, "old\n", "utf8");
+  const workspace = await Workspace.open(root, { maxFileBytes: 64 * 1024, maxDirectoryEntries: 50 });
+  const prepared = await workspace.preparePatch(`*** Begin Patch
+*** Update File: once.txt
+@@
+-old
++new
+*** End Patch
+`);
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("recover approved mutation", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  await turn.appendEvent("TurnStarted");
+  await turn.writeMutation({
+    schemaVersion: 1,
+    mutationId: "mutation_approved_without_reconciler",
+    operation: prepared.operation,
+    path: prepared.path,
+    beforeHash: prepared.beforeHash,
+    afterHash: prepared.afterHash,
+    addedLines: prepared.addedLines,
+    removedLines: prepared.removedLines,
+    diff: prepared.diff,
+    status: "approved",
+    decision: "allow-once",
+    recordedAt: new Date().toISOString(),
+  });
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+  assert.equal(await readFile(target, "utf8"), "old\n");
+  const mutation = (await turn.readMutations())[0];
+  assert.equal(mutation?.status, "failed");
+  assert.equal(mutation?.decision, "unavailable");
+  assert.equal(mutation?.errorCode, "approval-unavailable");
+  assert.match(mutation?.reason ?? "", /not applied/u);
+  assert.deepEqual((await turn.readEvents()).map((event) => event.type), [
+    "TurnStarted",
+    "WorkspaceMutationProposed",
+    "WorkspaceMutationApprovalDecided",
+    "WorkspaceMutationFailed",
+    "TurnInterrupted",
+  ]);
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+});
+
 test("filesystem interruption before the applying record does not commit the mutation", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");

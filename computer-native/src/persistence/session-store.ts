@@ -1332,7 +1332,22 @@ export class SessionStore {
             reason: "The process stopped before approval was decided; the mutation was not applied.",
           };
           await turn.writeMutation(reconciledMutation);
-        } else if (reconcileMutation && (mutation.status === "approved" || mutation.status === "applying")) {
+        } else if (mutation.status === "approved") {
+          // The applying record is the durable boundary immediately before a
+          // workspace side effect. An approved record without that boundary
+          // is therefore safe to close as unavailable when no workspace
+          // reconciler is configured; it must never be replayed on restart.
+          reconciledMutation = reconcileMutation
+            ? await reconcileMutation(mutation)
+            : {
+                ...mutation,
+                status: "failed",
+                decision: "unavailable",
+                errorCode: "approval-unavailable",
+                reason: "The approved mutation had not reached the applying boundary when the process stopped; the mutation was not applied.",
+              };
+          await turn.writeMutation(reconciledMutation);
+        } else if (reconcileMutation && mutation.status === "applying") {
           reconciledMutation = await reconcileMutation(mutation);
           await turn.writeMutation(reconciledMutation);
         }
@@ -1854,10 +1869,65 @@ export class TurnStore {
 
   async ensureMutationTerminalEvent(record: WorkspaceMutationRecord): Promise<void> {
     if (record.status !== "committed" && record.status !== "failed" && record.status !== "denied" && record.status !== "reconciled" && record.status !== "reconciliation_required") return;
-    const events = await this.readEvents();
+    let events = await this.readEvents();
     const terminalTypes: readonly LifecycleEventType[] = ["WorkspaceMutationCommitted", "WorkspaceMutationFailed", "WorkspaceMutationReconciled"];
     if (events.some((event) => terminalTypes.includes(event.type) && event.payload.mutationId === record.mutationId)) return;
-    if (!events.some((event) => isWorkspaceMutationLifecycleEvent(event.type) && event.payload.mutationId === record.mutationId)) return;
+
+    // The mutation record and lifecycle stream are separate durable files. If
+    // the record write is acknowledged by the filesystem but the first event
+    // append is interrupted, recovery must rebuild the approval boundary from
+    // the bounded record before it can append a terminal observation. This is
+    // deliberately local to workspace mutations; it does not claim a
+    // cross-file transaction or infer that a side effect was applied.
+    const mutationEvents = () => events.filter((event) => isWorkspaceMutationLifecycleEvent(event.type) && event.payload.mutationId === record.mutationId);
+    const basePayload: Record<string, unknown> = {
+      mutationId: record.mutationId,
+      ...(record.callId ? { callId: record.callId } : {}),
+      operation: record.operation,
+      ...(record.risk ? { risk: record.risk } : {}),
+      path: record.path,
+      ...(record.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: record.approvalTimeoutMs } : {}),
+      ...(record.paths ? { paths: record.paths } : {}),
+      ...(record.members ? {
+        members: record.members.map((member) => ({
+          path: member.path,
+          operation: member.operation,
+          beforeHash: member.beforeHash,
+          afterHash: member.afterHash,
+        })),
+      } : {}),
+      ...(record.beforeHash ? { beforeHash: record.beforeHash } : {}),
+      ...(record.afterHash ? { afterHash: record.afterHash } : {}),
+      ...(record.sourcePath ? { sourcePath: record.sourcePath } : {}),
+      ...(record.sourceHash ? { sourceHash: record.sourceHash } : {}),
+      ...(record.manifestHash ? { manifestHash: record.manifestHash } : {}),
+      ...(record.entryCount !== undefined ? { entryCount: record.entryCount } : {}),
+      ...(record.totalBytes !== undefined ? { totalBytes: record.totalBytes } : {}),
+      ...(record.maxBytes !== undefined ? { maxBytes: record.maxBytes } : {}),
+      ...(record.maxDepth !== undefined ? { maxDepth: record.maxDepth } : {}),
+    };
+    if (!mutationEvents().some((event) => event.type === "WorkspaceMutationProposed")) {
+      await this.appendEvent("WorkspaceMutationProposed", { ...basePayload, recovered: true });
+      events = await this.readEvents();
+    }
+    if (!mutationEvents().some((event) => event.type === "WorkspaceMutationApprovalDecided")) {
+      const decision = record.decision ?? (record.status === "denied" ? "unavailable" : "allow-once");
+      await this.appendEvent("WorkspaceMutationApprovalDecided", {
+        ...basePayload,
+        decision,
+        ...(record.reason ? { reason: record.reason } : {}),
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
+    if (record.status === "committed" && !mutationEvents().some((event) => event.type === "WorkspaceMutationApplying")) {
+      await this.appendEvent("WorkspaceMutationApplying", {
+        ...basePayload,
+        decision: "allow-once",
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
     const type: LifecycleEventType = record.status === "committed"
       ? "WorkspaceMutationCommitted"
       : record.status === "reconciled"

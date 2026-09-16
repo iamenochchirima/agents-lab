@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T00:05:27+02:00
+**Last updated:** 2026-09-17T00:45:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 331 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 331 tests passed, with 89.64% line coverage, 79.12% branch
-  coverage, and 85.11% function coverage. The package commands serialize browser/profile,
+- `pnpm test`: 333 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 333 tests passed, with 89.72% line coverage, 79.28% branch
+  coverage, and 85.25% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -168,6 +168,11 @@ readiness:
 - Legal state transitions now pass through one small shared runtime checker used by the
   turn, process, browser, memory, and workspace validators. Domain-specific identity,
   outcome, and recovery checks remain local; this is not a generic workflow engine.
+- Workspace mutation recovery now repairs a durable mutation record whose first lifecycle
+  append was not acknowledged by reconstructing recovered proposal and approval evidence
+  before its safe terminal outcome. An approved mutation without a durable applying
+  boundary closes as approval-unavailable when no workspace reconciler is configured;
+  recovery never replays the mutation.
 - Managed Playwright element references now carry bounded adapter-side markup identity
   and are rechecked immediately before side-effecting actions; same-document DOM
   replacement fails as `stale-reference` rather than acting through an ordinal locator.
