@@ -8,6 +8,8 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig } from "../src/config/config.js";
 import { loadLocalEnvironment } from "../src/config/local-env.js";
+import type { BrowserActionRecord } from "../src/browser/records.js";
+import type { BrowserDocumentId, BrowserSessionId, BrowserTabId } from "../src/browser/contracts.js";
 import { buildInitialContext } from "../src/context/context.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { OpenRouterModelProvider } from "../src/models/openrouter.js";
@@ -26,6 +28,7 @@ import { parseArgs } from "../src/cli/args.js";
 import { parseTuiCommand, TerminalUi } from "../src/cli/tui.js";
 import type { ChatApplication } from "../src/runtime/application.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessResult, ProcessToolEvent } from "../src/process/process.js";
+import type { MemoryActionRecord } from "../src/memory/contracts.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -397,6 +400,95 @@ test("restart recovery repairs terminal evidence after a durable write acknowled
   await (await SessionStore.open(eventStateDir, eventSession.metadata.sessionId)).recoverInterruptedTurns();
   const repeatedEventEvidence = (await readFile(path.join(eventTurnDirectory, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { type: string });
   assert.equal(repeatedEventEvidence.filter((event) => event.type === "TurnCompleted").length, 1);
+});
+
+test("restart reconciles a browser action after its running record acknowledgement is lost", async () => {
+  const stateDir = tempDirectory();
+  let actionWrites = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.endsWith("browser_action_ack.json") && actionWrites++ === 2) {
+          throw new Error("simulated running browser action acknowledgement failure");
+        }
+      },
+    },
+  });
+  const turn = await session.admitTurn("recover the browser action record", "deterministic", "deterministic/echo");
+  const base: BrowserActionRecord = {
+    schemaVersion: 1,
+    actionId: "browser_action_ack",
+    callId: "browser_call_ack",
+    sessionId: "browser_session_ack" as BrowserSessionId,
+    turnId: turn.turnId,
+    tabId: "browser_tab_ack" as BrowserTabId,
+    action: "click",
+    reference: "save-button",
+    documentId: "browser_document_ack" as BrowserDocumentId,
+    actionHash: "browser-action-ack-hash",
+    status: "prepared",
+    recordedAt: new Date().toISOString(),
+  };
+  await turn.writeBrowserAction(base);
+  await turn.writeBrowserAction({ ...base, status: "approved", decision: "allow-once", recordedAt: new Date().toISOString() });
+  await assert.rejects(
+    () => turn.writeBrowserAction({ ...base, status: "running", decision: "allow-once", recordedAt: new Date().toISOString() }),
+    /simulated running browser action acknowledgement failure/u,
+  );
+
+  const firstRecovery = await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+  assert.equal(firstRecovery[0]?.status, "interrupted");
+  const record = (await turn.readBrowserActions())[0];
+  assert.equal(record?.status, "ambiguous");
+  assert.equal(record?.errorCode, "browser-ambiguous");
+  assert.match(record?.errorMessage ?? "", /not replayed/u);
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  assert.equal((await turn.readBrowserActions())[0]?.status, "ambiguous");
+});
+
+test("restart closes an approved memory action after its durable acknowledgement is lost", async () => {
+  const stateDir = tempDirectory();
+  let actionWrites = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "append-json-line" && filePath.endsWith("memory_action_ack.jsonl") && actionWrites++ === 1) {
+          throw new Error("simulated approved memory action acknowledgement failure");
+        }
+      },
+    },
+  });
+  const turn = await session.admitTurn("recover the memory action record", "deterministic", "deterministic/echo");
+  const base: MemoryActionRecord = {
+    schemaVersion: 1,
+    operationId: "memory_action_ack",
+    sessionId: session.metadata.sessionId,
+    turnId: turn.turnId,
+    callId: "memory_call_ack",
+    operation: "add",
+    scope: "user",
+    sourcePath: "memory/user.md",
+    afterContentHash: "memory-after-hash",
+    inputHash: "memory-input-hash",
+    status: "proposed",
+    recordedAt: new Date().toISOString(),
+  };
+  await turn.writeMemoryAction(base);
+  await assert.rejects(
+    () => turn.writeMemoryAction({ ...base, status: "approved", decision: "allow-once", recordedAt: new Date().toISOString() }),
+    /simulated approved memory action acknowledgement failure/u,
+  );
+
+  const firstRecovery = await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+  assert.equal(firstRecovery[0]?.status, "interrupted");
+  const record = (await turn.readMemoryActions())[0];
+  assert.equal(record?.status, "denied");
+  assert.equal(record?.decision, "unavailable");
+  assert.match(record?.reason ?? "", /not replayed/u);
+  const historyPath = path.join(turn.directory, "memory-actions", "memory_action_ack.jsonl");
+  assert.equal((await readFile(historyPath, "utf8")).trim().split("\n").length, 3);
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  assert.equal((await readFile(historyPath, "utf8")).trim().split("\n").length, 3);
 });
 
 test("resuming a session appends a second ordered turn", async () => {
@@ -3096,6 +3188,63 @@ test("restart reconciliation classifies an approved mutation by hashes without r
   });
   assert.equal(conflict.status, "reconciliation_required");
   assert.equal(conflict.errorCode, "reconciliation-required");
+});
+
+test("restart reconciles a mutation after its applying record acknowledgement is lost", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const target = path.join(root, "note.md");
+  await writeFile(target, "old\n", "utf8");
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 10 });
+  const prepared = await workspace.preparePatch(`*** Begin Patch
+*** Update File: note.md
+@@
+-old
++new
+*** End Patch
+`);
+  let mutationWrites = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.endsWith("mutation_ack_recovery.json") && mutationWrites++ === 2) {
+          throw new Error("simulated applying mutation acknowledgement failure");
+        }
+      },
+    },
+  });
+  const turn = await session.admitTurn("recover the mutation record", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const base = {
+    schemaVersion: 1 as const,
+    mutationId: "mutation_ack_recovery",
+    operation: prepared.operation,
+    path: prepared.path,
+    beforeHash: prepared.beforeHash,
+    afterHash: prepared.afterHash,
+    addedLines: prepared.addedLines,
+    removedLines: prepared.removedLines,
+    diff: prepared.diff,
+    recordedAt: new Date().toISOString(),
+  };
+  await turn.writeMutation({ ...base, status: "proposed" });
+  await turn.writeMutation({ ...base, status: "approved", decision: "allow-once" });
+  await assert.rejects(
+    () => turn.writeMutation({ ...base, status: "applying", decision: "allow-once" }),
+    /simulated applying mutation acknowledgement failure/u,
+  );
+
+  const recoveredSession = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const firstRecovery = await recoveredSession.recoverInterruptedTurns((record) => workspace.reconcileMutation(record));
+  assert.equal(firstRecovery[0]?.status, "interrupted");
+  assert.equal(await readFile(target, "utf8"), "old\n");
+  assert.equal((await turn.readMutations())[0]?.status, "reconciled");
+  assert.match((await turn.readMutations())[0]?.reason ?? "", /not replayed/u);
+
+  const secondRecovery = await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record));
+  assert.deepEqual(secondRecovery, []);
+  assert.equal((await turn.readMutations())[0]?.status, "reconciled");
 });
 
 test("restart recovery closes an undecided approval without replaying the mutation", async () => {

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T13:24:33+02:00
+**Last updated:** 2026-09-16T13:31:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -108,15 +108,15 @@ tests, but it must never replace a configured real provider silently.
   with ordered proposal, approval, application/progress, and completion/failure phases;
   event history is validated again when read during recovery.
 - SessionStore now exposes an optional diagnostic write hook. Failure-injection tests
-  simulate acknowledgement loss after a durable terminal result write and after a
-  durable terminal event append; reopening and running recovery twice repairs or
-  preserves the evidence without replaying the turn or duplicating `TurnCompleted`.
-- The current validation is 218 passing tests across the package, 87.57% line coverage,
-  74.60% branch coverage, and 82.40% function coverage. The suite includes direct
+  simulate acknowledgement loss after durable writes for terminal results/events,
+  process records, workspace mutation records, browser action records, and memory
+  action history. Reopening and running recovery twice repairs or preserves the
+  evidence without replaying the turn or duplicating terminal evidence.
+- The current validation is 222 passing tests across the package, 87.89% line coverage,
+  74.89% branch coverage, and 82.51% function coverage. The suite includes direct
   journal recovery, cancellation boundaries, tool-loop durable evidence, lifecycle
-  ordering, and terminal result/event acknowledgement failure. Coverage has also
-  exposed an existing timing-sensitive process test once; the normal suite and the
-  subsequent coverage run both passed.
+  ordering, and acknowledgement-failure recovery for every current persisted action
+  family.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -124,15 +124,16 @@ Delivered in this slice:
 
 - A scoped `SessionStore` write-hook seam for deterministic before/after durable-write
   failure injection.
-- Recovery tests for both “result is durable but its acknowledgement is lost” and
-  “terminal event is durable but its acknowledgement is lost.”
-- Repeatable restart checks proving one terminal result, one terminal event, and no
-  model/tool replay.
+- Recovery tests for “result/event is durable but its acknowledgement is lost” and the
+  equivalent process, workspace mutation, browser action, and memory action records.
+- Repeatable restart checks proving terminal evidence remains singular and no model,
+  tool, filesystem, process, browser, or memory action is replayed.
 
 Still not delivered by this slice:
 
-- Failure injection at every persistence write and every model, approval, filesystem,
-  process, browser, and memory side-effect boundary.
+- Failure injection before and after every persistence write, and at the model-send,
+  approval-decision, and underlying filesystem/process/browser/memory side-effect
+  boundaries.
 - A process-level crash harness, cross-platform durability proof, or an exactly-once
   execution guarantee.
 - The remaining shared lifecycle, approval/TUI, provider, resource-limit, security,
@@ -362,8 +363,8 @@ claim in this plan.
 - [x] Add repeatable recovery for durable terminal result/event acknowledgement failures;
       recovery does not auto-replay the turn or duplicate terminal evidence.
 - [ ] Extend crash recovery and duplicate/out-of-order handling across every persistence
-      and side-effect boundary; the current completed scope is terminal turn evidence and
-      the lifecycle streams already covered by their operation-specific tests.
+      and side-effect boundary; the current completed scope is acknowledgement loss after
+      durable records for all current action families.
 - [ ] Add cancellation propagation from the TUI through runtime to model/tool/process
       work.
 - [x] Expose normalized lifecycle events for model, workspace, process, browser, and
@@ -474,8 +475,9 @@ claim in this plan.
 - [ ] Stop before and after each durable record write.
 - [ ] Stop before and after model send, provider response, approval decision, and
       filesystem side effect.
-- [x] Inject durable terminal result and terminal event acknowledgement failures, recover
-      twice, and confirm no duplicate terminal event or side effect.
+- [x] Inject durable acknowledgement failures for terminal evidence, process, workspace,
+      browser, and memory records; recover twice and confirm no duplicate terminal
+      evidence or side effect.
 - [ ] Extend the recover-twice assertion to every supported side-effect record and the
       process-level crash harness.
 - [ ] Inject duplicate, missing, and out-of-order events.

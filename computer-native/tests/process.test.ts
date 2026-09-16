@@ -428,6 +428,59 @@ test("restart reconciles an incomplete process without replaying it", async () =
   }
 });
 
+test("restart reconciles a running process after its durable record acknowledgement is lost", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-ack-recovery-"));
+  try {
+    let executionWrites = 0;
+    const session = await SessionStore.open(stateDir, undefined, {
+      writeHooks: {
+        afterWrite: (operation, filePath) => {
+          if (operation === "replace-json" && filePath.includes(`${path.sep}executions${path.sep}`) && executionWrites++ === 2) {
+            throw new Error("simulated running process acknowledgement failure");
+          }
+        },
+      },
+    });
+    const turn = await session.admitTurn("recover the process record", "deterministic", "deterministic/process");
+    const base: ProcessExecutionRecord = {
+      schemaVersion: 1,
+      executionId: "execution_ack_recovery",
+      callId: "call_ack_recovery",
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      command: process.execPath,
+      displayArgs: ["-e", "process.exit(0)"],
+      cwd: ".",
+      executablePath: process.execPath,
+      environmentProfile: "sanitized-default",
+      environmentKeys: ["PATH"],
+      limits,
+      argvHash: "ack-recovery-hash",
+      status: "prepared",
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeProcess(base);
+    await turn.writeProcess({ ...base, status: "approved", decision: "allow-once", recordedAt: new Date().toISOString() });
+    await assert.rejects(
+      () => turn.writeProcess({ ...base, status: "running", decision: "allow-once", pid: 999999, startedAt: new Date().toISOString(), recordedAt: new Date().toISOString() }),
+      /simulated running process acknowledgement failure/u,
+    );
+
+    const recoveredSession = await SessionStore.open(stateDir, session.metadata.sessionId);
+    const firstRecovery = await recoveredSession.recoverInterruptedTurns();
+    assert.equal(firstRecovery[0]?.status, "interrupted");
+    assert.equal((await turn.readProcesses())[0]?.status, "ambiguous");
+    assert.equal((await turn.readProcesses())[0]?.errorCode, "process-ambiguous");
+    assert.match((await turn.readProcesses())[0]?.errorMessage ?? "", /not replayed/u);
+
+    const secondRecovery = await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+    assert.deepEqual(secondRecovery, []);
+    assert.equal((await turn.readProcesses())[0]?.status, "ambiguous");
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("process execution records preserve identity and one-way transitions", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-transition-"));
   try {
