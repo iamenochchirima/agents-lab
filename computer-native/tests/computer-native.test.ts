@@ -860,6 +860,18 @@ test("transcript reads reject duplicated and malformed durable messages", async 
     () => malformedSession.readTranscript(),
     /durable transcript message has an invalid record/u,
   );
+
+  const blankStateDir = path.join(stateDir, "blank");
+  const blankSession = await openSession(blankStateDir);
+  await blankSession.admitTurn("blank transcript line", "deterministic", "deterministic/echo");
+  const blankTranscriptPath = path.join(blankSession.sessionDirectory, "transcript.jsonl");
+  await writeFile(blankTranscriptPath, `${await readFile(blankTranscriptPath, "utf8")}\n`, "utf8");
+  await assert.rejects(
+    () => blankSession.readTranscript(),
+    /contains an empty line/u,
+  );
+  await blankSession.replaceJsonLines(blankTranscriptPath, []);
+  assert.deepEqual(await blankSession.readTranscript(), []);
 });
 
 test("restart recovery repairs terminal evidence after a durable write acknowledgement fails", async () => {

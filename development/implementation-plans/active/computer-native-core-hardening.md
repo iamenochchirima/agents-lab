@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:09:48+02:00
+**Last updated:** 2026-09-16T22:15:40+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -269,14 +269,17 @@ tests, but it must never replace a configured real provider silently.
 - Turn state transitions now update the in-memory record only after the durable `turn.json`
   replacement returns. Before-write failures leave memory and disk aligned; after-write
   acknowledgement loss leaves the durable state ahead and makes an explicit retry safe.
+- The shared JSONL reader now rejects internal or extra blank records instead of silently
+  dropping evidence, and empty journal replacements write an empty stream rather than a
+  misleading blank record.
 - Transcript messages are validated against the owning session and stable message ID;
   identical acknowledgement retries are ignored, while conflicting message reuse fails
   closed instead of duplicating durable conversation evidence.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 317 passing tests across the package, with 89.20% line
-  coverage, 77.92% branch coverage, and 84.95% function coverage. Coverage is from
+- The latest validation is 317 passing tests across the package, with 89.19% line
+  coverage, 77.99% branch coverage, and 84.95% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
   pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
@@ -383,6 +386,28 @@ Practice check against the local Hermes and OpenClaw references:
 
 - This keeps recovery fail-closed at the existing durable-record boundary. It does not
   add a database, migration layer, or generalized corruption-repair service.
+
+Still open after this slice:
+
+- The complete process-level crash matrix across every durable write and host-side
+  effect, plus deterministic replay, concurrency/lease acceptance, and remaining
+  security and production-operation gates.
+
+### Current slice boundary: JSONL evidence integrity
+
+Delivered in this increment:
+
+- Transcript, lifecycle, round, and memory-evidence JSONL reads reject internal or
+  repeated blank lines as malformed durable evidence.
+- The atomic JSONL replacement path preserves a valid empty-stream representation by
+  writing no delimiter when there are zero records.
+- Tests cover detection of an extra blank transcript record and successful reading after
+  an explicit empty-stream replacement.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is a bounded parser and writer invariant at the existing evidence boundary. It
+  does not add a journal database, repair daemon, or generic event-store abstraction.
 
 Still open after this slice:
 

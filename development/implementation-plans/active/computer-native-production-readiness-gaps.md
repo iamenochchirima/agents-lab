@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T22:09:48+02:00
+**Last updated:** 2026-09-16T22:15:40+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -52,7 +52,7 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 317 tests passed after the terminal-state consistency increment.
-- `pnpm run coverage`: 317 tests passed, with 89.20% line coverage, 77.92% branch
+- `pnpm run coverage`: 317 tests passed, with 89.19% line coverage, 77.99% branch
   coverage, and 84.95% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs; an earlier instrumentation run left the
   known TUI tests pending, and an immediate rerun passed all 313 tests before this slice.
@@ -164,6 +164,8 @@ readiness:
   not match the status in `result.json`, leaving the existing state unchanged.
 - Turn state is now published to the live store only after `turn.json` replacement
   returns, preserving a retryable in-memory view across acknowledgement loss.
+- Shared JSONL evidence reads now fail closed on internal or extra blank records, and
+  empty journal replacements no longer emit a misleading blank record.
 - Transcript messages are validated against session ownership and stable message IDs;
   identical acknowledgement retries do not duplicate conversation evidence, while
   conflicting message reuse fails closed.

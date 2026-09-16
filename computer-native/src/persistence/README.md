@@ -19,7 +19,9 @@ sessions/<session-id>/
 ```
 
 JSON records are written atomically. Transcript and event records append one JSON object
-per line. A turn record is created before its user message is appended, so a restart can
+per line; the reader rejects internal or extra blank lines instead of silently dropping
+evidence, while an intentionally empty replacement is represented by an empty file. A
+turn record is created before its user message is appended, so a restart can
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
 

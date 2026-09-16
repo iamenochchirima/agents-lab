@@ -41,7 +41,8 @@ export async function atomicWriteJsonLines(filePath: string, values: readonly un
   const temporaryPath = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const handle = await open(temporaryPath, "wx", 0o600);
   try {
-    await handle.writeFile(`${values.map((value) => stableStringify(value)).join("\n")}\n`, "utf8");
+    const content = values.length === 0 ? "" : `${values.map((value) => stableStringify(value)).join("\n")}\n`;
+    await handle.writeFile(content, "utf8");
     await handle.sync();
   } finally {
     await handle.close();
@@ -81,7 +82,17 @@ export async function readJsonLines<T>(filePath: string): Promise<T[]> {
     if (code === "ENOENT") return [];
     throw new ComputerNativeError("persistence", `Could not read '${path.basename(filePath)}'.`, { cause: error });
   }
-  const lines = content.split("\n").filter((line) => line.length > 0);
+  const lines = content.split("\n");
+  // One final empty segment is the normal delimiter after the last JSON value.
+  // Any other empty segment represents a lost or malformed record and must not
+  // be silently discarded from an evidence stream.
+  if (lines.at(-1) === "") lines.pop();
+  if (lines.some((line) => line.length === 0)) {
+    throw new ComputerNativeError(
+      "persistence",
+      `The durable record '${path.basename(filePath)}' contains an empty line. Repair it before continuing.`,
+    );
+  }
   return lines.map((line) => {
     try {
       return JSON.parse(line) as T;
