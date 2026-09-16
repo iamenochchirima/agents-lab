@@ -9,7 +9,7 @@
 
 ## Start here
 
-Read the [parallel coordination plan](../active/platform-parallel-implementation.md), the
+Read the [parallel coordination plan](platform-parallel-implementation.md), the
 [platform plan template](../templates/platform-baseline.md), the [generic runner
 port](../../../server/src/control-plane/ports/README.md), and the [completed server
 foundation](server-platform-foundation.md).

@@ -1,6 +1,6 @@
 # Active implementation plans
 
-**Last updated:** 2026-09-16T23:26:41+02:00
+**Last updated:** 2026-09-17T00:18:18+02:00
 
 These plans govern implementation that is not yet complete. Every checkbox must remain
 honest: it represents work that has been verified, not merely code that was started.
@@ -28,16 +28,13 @@ and Context Management configuration preview without changing Platform Lab execu
 
 ## Current platform batch
 
-The Platform Lab completion wave, including context management, the Restate tool loop,
-and browser Chat, is complete and archived in the [completed plans](../completed/README.md).
+## Current platform batch
 
 - [Real OpenRouter model connection and shared model selection](../completed/openrouter-model-selection.md)
-- [Parallel platform implementation coordination](platform-parallel-implementation.md)
 - [First-party platform plan source audit](../../../docs/research/platform-plan-source-audit.md)
-- [Trigger.dev baseline](trigger-dev-baseline.md)
 - [AWS Step Functions baseline](aws-step-functions-baseline.md)
 
 Restate, LangGraph, Mastra, Inngest, DBOS, Hatchet, and Vercel Workflows are
-archived in [completed plans](../completed/README.md). Trigger.dev remains active
-because its real local server/worker acceptance profile is not available yet. AWS
-Step Functions remains outside the current implementation wave.
+archived in [completed plans](../completed/README.md). Trigger.dev is also archived
+as implementation-ready with real server/worker and manual UI acceptance deferred.
+AWS Step Functions remains outside the current implementation wave.

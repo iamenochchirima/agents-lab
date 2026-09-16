@@ -5,13 +5,17 @@ case and it does not replace the platform integration suite.
 
 ## Prerequisites
 
-Run a Trigger server locally, set `TRIGGER_API_URL`, `TRIGGER_SECRET_KEY`, and
-`TRIGGER_PROJECT_REF`, then start the official worker:
+Use either a Trigger Cloud development project or an official self-hosted Trigger
+server. Set `TRIGGER_API_URL`, `TRIGGER_SECRET_KEY`, and `TRIGGER_PROJECT_REF`, then
+start the official worker:
 
 ```bash
 cd server/src/platforms/trigger-dev
 npx trigger.dev@4.5.14 dev start --skip-update-check --env-file ../../../../.env
 ```
+
+Trigger Cloud is the no-Docker option. Self-hosting the Trigger server requires the
+official Docker Compose deployment; the Lab does not start it automatically.
 
 In a second terminal, run the explicit integration check:
 

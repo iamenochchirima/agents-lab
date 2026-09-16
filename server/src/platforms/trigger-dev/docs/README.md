@@ -1,7 +1,7 @@
 # Trigger.dev implementation notes
 
-- [Local development](local-development.md) — pinned setup, task worker, and real
-  local run validation.
+- [Development profiles](local-development.md) — pinned setup, the no-Docker Cloud
+  profile, optional self-hosting, task worker, and real-run validation.
 - [Execution semantics](semantics.md) — admission, retries, cancellation, recovery,
   lost acknowledgements, and evidence boundaries.
 
@@ -22,5 +22,5 @@ The official sources consulted for this baseline are:
 - [Official release metadata](https://github.com/triggerdotdev/trigger.dev/releases)
   — versioned releases and the `4.5.14` pin required by the implementation plan.
 
-These links were reviewed on 2026-09-15. Official documentation describes the
+These links were reviewed on 2026-09-17. Official documentation describes the
 platform contract; local observations must remain labelled as local observations.

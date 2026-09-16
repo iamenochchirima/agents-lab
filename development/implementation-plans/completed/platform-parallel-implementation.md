@@ -1,9 +1,9 @@
 # Parallel platform implementation coordination
 
 **Created:** 2026-09-15T10:35:00+02:00
-**Last updated:** 2026-09-15T17:51:03+02:00
-**Status:** Active
-**Owner:** Primary implementation agent
+**Last updated:** 2026-09-17T00:18:18+02:00
+**Status:** Completed — current platform batch closed; external acceptance deferred
+**Owner:** Agent Harness Lab
 
 ## Purpose
 
@@ -29,11 +29,11 @@ agent writes code.
 | LangGraph | [LangGraph baseline](../completed/langgraph-baseline.md) | Python graph service + TypeScript HTTP runner adapter | 1 |
 | Mastra | [Mastra baseline](../completed/mastra-baseline.md) | TypeScript platform service + HTTP runner adapter | 1 |
 | Inngest | [Inngest baseline](../completed/inngest-baseline.md) | TypeScript function service + local dev server | 2 |
-| Trigger.dev | [Trigger.dev baseline](trigger-dev-baseline.md) | TypeScript task service + local dev server | 2 |
+| Trigger.dev | [Trigger.dev baseline](../completed/trigger-dev-baseline.md) | TypeScript task service + local task worker | 2 |
 | DBOS | [DBOS baseline](../completed/dbos-baseline.md) | TypeScript service + local Postgres | 2 |
 | Hatchet | [Hatchet baseline](../completed/hatchet-baseline.md) | TypeScript worker/service + local Hatchet server | 2 |
 | Vercel Workflows | [Vercel Workflows baseline](../completed/vercel-workflows-baseline.md) | TypeScript service + Vercel local/deployment profile | 3 |
-| AWS Step Functions | [AWS Step Functions baseline](aws-step-functions-baseline.md) | Explicitly skipped in this implementation wave | — |
+| AWS Step Functions | [AWS Step Functions baseline](../active/aws-step-functions-baseline.md) | Explicitly skipped in this implementation wave | — |
 
 Temporal is already implemented and is not reopened by this batch. OpenAI Agents
 SDK remains a variant under a platform, not an additional platform plan.
@@ -43,18 +43,17 @@ is the review record for all nine plans. It is not implementation evidence.
 
 ## Current execution state
 
-The current implementation wave is running in three isolated worktrees:
+The current implementation wave was coordinated in isolated worktrees:
 
 | Wave | Platforms | State |
 | --- | --- | --- |
 | 1 | Restate, LangGraph, Mastra | Complete; plans archived with local acceptance evidence |
 | 2 | Inngest, DBOS | Complete; plans archived with local acceptance evidence |
-| 2 | Trigger.dev | Active; the platform plan still requires a real local server/worker acceptance profile |
+| 2 | Trigger.dev | Implementation complete; real server/worker acceptance deferred until a project credential is available |
 | 3 | Hatchet, Vercel Workflows | Complete; plans archived with local acceptance evidence. AWS remains intentionally excluded from this wave. |
 
 Only one platform agent owns a platform directory at a time. The primary agent
-does not begin shared bootstrap or UI integration for this wave until its three
-platform-local handoffs have been reviewed.
+reviewed the platform-local handoffs before shared bootstrap and UI integration.
 
 ## Parallel-safe ownership rule
 
@@ -153,7 +152,7 @@ should be scheduled so ports, containers, databases, and cloud credentials do no
 
 ## Batch completion gate
 
-- [x] Every assigned non-AWS platform has a plan with exclusive ownership and a concrete runtime shape; Trigger.dev remains explicitly active until its local profile is available.
+- [x] Every assigned non-AWS platform has a plan with exclusive ownership and a concrete runtime shape; Trigger.dev's implementation is complete and its external acceptance is explicitly deferred.
 - [x] Every plan links the generic runner contract and completed foundation.
 - [x] No plan requires a platform agent to edit shared bootstrap or root dependency files.
 - [x] Each assigned platform plan defines local readiness, evidence, retries, cancellation,
@@ -163,8 +162,9 @@ should be scheduled so ports, containers, databases, and cloud credentials do no
 - [x] The UI shows a platform as runnable only after the primary integration handoff passes.
 
 The accepted local wave consists of Restate, LangGraph, Mastra, Inngest, DBOS,
-Hatchet, and Vercel Workflows. Trigger.dev is not presented as complete because a
-real local Trigger server/worker profile was not available. AWS Step Functions is
+Hatchet, and Vercel Workflows. Trigger.dev's implementation is complete, but its
+real server/worker acceptance and manual UI evidence are explicitly deferred because
+no project credential or self-hosted server was available. AWS Step Functions is
 untouched by this wave and remains governed by its separate plan.
 
 ## Known limits
@@ -175,3 +175,14 @@ untouched by this wave and remains governed by its separate plan.
   local development evidence from hosted production evidence.
 - Separate worktrees prevent source collisions, but they do not prevent resource
   collisions. Local ports, containers, databases, and credentials still need allocation.
+- Trigger.dev has no offline development mode. Resume its deferred acceptance with a
+  Trigger Cloud development project (no Docker) or an official self-hosted deployment.
+
+## Completion record
+
+**Completed:** `2026-09-17T00:18:18+02:00`
+
+This coordination plan is closed for the current batch. Platform implementations and
+shared UI/server integration are complete for the accepted local wave. Trigger.dev is
+archived as implementation-ready with two external evidence items deferred; AWS Step
+Functions remains intentionally outside this batch.

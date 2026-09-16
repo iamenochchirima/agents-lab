@@ -43,10 +43,11 @@ The next Computer Native component is selected from the
 [follow-on queue](computer-native-follow-on-queue.md); the workspace and filesystem
 category is complete and archived below.
 
-The active platform work is coordinated by
-[the platform batch plan](active/platform-parallel-implementation.md). Trigger.dev
-and AWS Step Functions remain active; the other local platform baselines from this
-batch are archived below.
+The first platform implementation batch is coordinated by the archived
+[platform batch plan](completed/platform-parallel-implementation.md). Its accepted
+local baselines are complete; Trigger.dev is implementation-ready with external
+server/worker and manual UI acceptance deferred. AWS Step Functions remains outside
+that batch and is governed by its separate active plan.
 
 The first Platform Lab completion wave is archived in the
 [Platform completion wave](completed/platform-completion-wave.md). It closed the
