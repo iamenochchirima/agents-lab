@@ -367,17 +367,17 @@ export class MemoryStore {
   }
 
   /**
-   * Reconcile an approved memory add after the parent stopped before its action
-   * record acknowledged the commit. Provenance is the idempotency evidence: a
-   * matching record is already durable, so recovery records it and never repeats
-   * the write. Other operations remain failed-closed until their operation-specific
-   * evidence is implemented.
+   * Reconcile an approved memory mutation after the parent stopped before its
+   * action record acknowledged the commit. Provenance is the idempotency evidence:
+   * a matching record is already durable, so recovery records it and never repeats
+   * the write. Removal and batch operations remain failed-closed until their
+   * operation-specific evidence is implemented.
    */
   async reconcileAction(action: MemoryActionRecord): Promise<MemoryActionRecord> {
     this.assertOpen();
     if (action.status !== "approved") return action;
     await this.refreshFromCanonical();
-    if (action.operation !== "add") {
+    if (action.operation !== "add" && action.operation !== "replace") {
       return {
         ...action,
         status: "failed",
@@ -385,13 +385,10 @@ export class MemoryStore {
         recordedAt: new Date().toISOString(),
       };
     }
-    const matches = this.records.filter((record) =>
-      this.isOwned(record)
-      && record.scope === action.scope
-      && record.sourcePath === action.sourcePath
-      && record.provenance.sourceId === action.callId
-      && record.contentHash === action.afterContentHash,
-    );
+    const matches = this.records.filter((record) => {
+      if (!this.isOwned(record) || record.scope !== action.scope || record.sourcePath !== action.sourcePath || record.provenance.sourceId !== action.callId || record.contentHash !== action.afterContentHash) return false;
+      return action.operation === "add" || (action.operation === "replace" && record.id === action.recordId);
+    });
     if (matches.length === 1) {
       return {
         ...action,

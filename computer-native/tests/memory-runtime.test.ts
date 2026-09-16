@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../src/config/config.js";
+import type { MemoryActionRecord } from "../src/memory/contracts.js";
 import { MemoryStore } from "../src/memory/store.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { SessionStore } from "../src/persistence/session-store.js";
@@ -218,6 +219,96 @@ test("memory commit acknowledgement loss reconciles the durable entry without re
     assert.equal(events.at(-1)?.type, "TurnInterrupted");
     assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)), []);
     assert.equal((await memory.search({ query: "reconcile this durable memory" })).length, 1);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory replace acknowledgement loss reconciles the durable entry without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-replace-ack-recovery-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    let actionWrites = 0;
+    const session = await SessionStore.open(config.stateDir, undefined, {
+      writeHooks: {
+        beforeWrite: (operation, filePath) => {
+          if (operation === "append-json-line" && filePath.includes(`${path.sep}memory-actions${path.sep}`) && actionWrites++ === 2) {
+            throw new RuntimeInterruptionError("stopped before memory replace evidence");
+          }
+        },
+      },
+    });
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const existing = await memory.add({ scope: "workspace", content: "legacy durable note", provenance: { source: "user", sourceId: "seed", trust: "user" } });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-replace-ack-interruption", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "replace", scope: "workspace", recordId: existing.id, expectedContentHash: existing.contentHash, content: "current durable note" }),
+            finalResponse: "The memory entry was replaced.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Replace this memory entry.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before memory replace evidence/u,
+    );
+    assert.equal((await memory.search({ query: "current durable note" })).length, 1);
+
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)))[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionDirectory = path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions");
+    const actionFile = (await readdir(actionDirectory))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(actionDirectory, actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; recordId?: string });
+    assert.equal(history.at(-1)?.status, "committed");
+    assert.equal(history.at(-1)?.recordId, existing.id);
+    const events = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    assert.equal(events.filter((event) => event.type === "MemoryCommitted").length, 1);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)), []);
+    assert.equal((await memory.search({ query: "legacy" })).length, 0);
+    assert.equal((await memory.search({ query: "current" })).length, 1);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory recovery fails closed for unsupported mutation evidence", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-unsupported-recovery-"));
+  try {
+    const memory = await MemoryStore.open({ stateDir: path.join(root, "state"), profileId: "default", workspaceId: "workspace-test" });
+    const base: MemoryActionRecord = {
+      schemaVersion: 1,
+      operationId: "memory_remove_recovery",
+      sessionId: "session-recovery",
+      turnId: "turn-recovery",
+      callId: "memory-remove-call",
+      operation: "remove",
+      recordId: "memory-record",
+      scope: "workspace",
+      sourcePath: memory.sourcePath("workspace"),
+      beforeContentHash: "before-hash",
+      inputHash: "input-hash",
+      status: "approved",
+      decision: "allow-once",
+      recordedAt: new Date().toISOString(),
+    };
+    const reconciled = await memory.reconcileAction(base);
+    assert.equal(reconciled.status, "failed");
+    assert.match(reconciled.reason ?? "", /cannot yet be reconciled automatically/u);
     await memory.close();
   } finally {
     await rm(root, { recursive: true, force: true });

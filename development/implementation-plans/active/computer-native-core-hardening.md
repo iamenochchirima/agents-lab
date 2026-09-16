@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:29:40+02:00
+**Last updated:** 2026-09-16T15:34:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -182,11 +182,12 @@ Delivered in this slice:
 - Diagnostic-stop tests covering model dispatch/response, terminal result/event
   durability, process approval before launch, process execution while running, a
   completed filesystem/browser/memory side effect, and a multi-file member boundary.
-- Memory recovery now reconciles an approved `add` when the canonical Markdown write
-  succeeded but acknowledgement of the durable memory-action record was lost. It
-  matches the canonical entry by scope, source path, model call provenance, and content
-  hash, records the commit, reconstructs missing lifecycle evidence, and never replays
-  the write. Recovery is safe to run twice.
+- Memory recovery now reconciles approved `add` and `replace` mutations when the
+  canonical Markdown write succeeded but acknowledgement of the durable memory-action
+  record was lost. It matches the canonical entry by scope, source path, exact record
+  identity where applicable, model call provenance, and content hash, records the commit,
+  reconstructs missing lifecycle evidence, and never replays the write. Recovery is safe
+  to run twice.
 
 Persistence slice limitations:
 
@@ -196,10 +197,10 @@ Persistence slice limitations:
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, and an exactly-once execution guarantee remain
   open.
-- Memory `replace`, `remove`, and `batch` operations do not yet have operation-specific
-  commit evidence for this acknowledgement-loss boundary. Recovery fails those approved
-  operations closed without replay; only the `add` reconciliation path is delivered in
-  this sub-slice.
+- Memory `remove` and `batch` operations do not yet have operation-specific commit
+  evidence for this acknowledgement-loss boundary. Recovery fails those approved
+  operations closed without replay; only `add` and `replace` reconciliation are delivered
+  in this sub-slice.
 
 ### Current slice boundary: model payload resource limits
 

@@ -103,11 +103,12 @@ artifacts also emit a durable `BrowserArtifactCreated` event containing only man
 path, MIME type, size, identity, and timestamp metadata; artifact contents are not
 copied into turn evidence.
 
-Memory action recovery is operation-specific. An approved `add` can be reconciled after
-the canonical Markdown write succeeded but acknowledgement of its memory-action record
-was lost: recovery reloads canonical memory and requires exactly one entry matching the
-approved scope, source path, model call provenance, and content hash before recording
-`committed`. It then reconstructs missing lifecycle evidence without replaying the write.
-Approved `replace`, `remove`, and `batch` actions do not yet have equivalent commit
-evidence; recovery marks them failed closed rather than guessing or repeating a side
-effect. This is deliberately not an exactly-once guarantee.
+Memory action recovery is operation-specific. An approved `add` or `replace` can be
+reconciled after the canonical Markdown write succeeded but acknowledgement of its
+memory-action record was lost: recovery reloads canonical memory and requires exactly one
+entry matching the approved scope, source path, model call provenance, content hash, and
+record identity for replacement before recording `committed`. It then reconstructs
+missing lifecycle evidence without replaying the write. Approved `remove` and `batch`
+actions do not yet have equivalent commit evidence; recovery marks them failed closed
+rather than guessing or repeating a side effect. This is deliberately not an exactly-once
+guarantee.

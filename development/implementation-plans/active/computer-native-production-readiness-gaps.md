@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T15:29:40+02:00
+**Last updated:** 2026-09-16T15:34:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 250 tests passed after the current runtime-recovery slice.
-- `pnpm run coverage`: 250 tests passed, with 88.24% line coverage, 76.11% branch
+- `pnpm test`: 252 tests passed after the current runtime-recovery slice.
+- `pnpm run coverage`: 252 tests passed, with 88.34% line coverage, 76.50% branch
   coverage, and 83.17% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -92,11 +92,11 @@ readiness:
   boundaries without converting the stop into a normal failure; recovery tests prove
   that a stopped approved process is not launched, a running child is reconciled, and
   completed filesystem, browser, memory, and multi-file side effects are not replayed.
-- An approved memory `add` whose canonical write succeeded before its action-record
-  acknowledgement was lost is reconciled from source-path, provenance, and content-hash
-  evidence without replay; repeated recovery leaves one entry and one terminal event.
-  This does not yet cover memory `replace`, `remove`, or `batch` with operation-specific
-  commit evidence.
+- Approved memory `add` and `replace` mutations whose canonical write succeeded before
+  their action-record acknowledgement was lost are reconciled from source-path,
+  record-identity where applicable, provenance, and content-hash evidence without replay;
+  repeated recovery leaves one entry and one terminal event. This does not yet cover
+  memory `remove` or `batch` with operation-specific commit evidence.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -365,9 +365,8 @@ memory evidence, and a shared approval/cancellation path.
 
 Remaining work:
 
-- Complete operation-specific acknowledgement-loss reconciliation for memory `replace`,
-  `remove`, and `batch`; until then those operations fail closed on restart and are not
-  retried.
+- Complete operation-specific acknowledgement-loss reconciliation for memory `remove`
+  and `batch`; until then those operations fail closed on restart and are not retried.
 - Replace the experimental `node:sqlite` dependency path with a supported persistence
   profile, or document and accept the runtime/version requirement for production.
 - Add session and transcript search without mixing short-term history into compact
