@@ -106,6 +106,10 @@ tests, but it must never replace a configured real provider silently.
   configured limit, so a file that grows after its initial metadata check fails closed
   instead of bypassing the limit. Exact multi-chunk reads are covered by the workspace
   contract tests.
+- Approved regular-file copy commits now stream source chunks into a same-directory
+  temporary inode while hashing, enforcing the source byte cap, and checking the
+  prepared hash before atomically linking the destination. A multi-chunk copy is covered
+  by the workspace contract tests.
 - The normalized lifecycle stream now validates process, browser, and memory action
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
@@ -451,6 +455,32 @@ Still open after this slice:
   budgets, and an OS-level immutable snapshot/file-handle contract remain open.
 - The remaining filesystem race, crash, cross-platform, and platform-isolation matrix is
   broader than this read-time limit check.
+
+### Current slice boundary: streamed regular-file copy
+
+Delivered in this slice:
+
+- Regular-file `copy` commits no longer retain a second full source buffer while staging
+  the destination. They stream bounded chunks into a temporary inode, update the SHA-256
+  source identity as they go, flush the temporary file, and publish it with a no-replace
+  link.
+- The source is opened with `O_NOFOLLOW`, checked against the prepared byte count and
+  hash, and checked again after the stream. A changed source, over-limit growth, write
+  failure, or destination collision leaves no successful copy result.
+- The test suite covers a multi-chunk exact-limit copy as well as the existing stale,
+  destination-collision, directory, and recovery paths.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is an operation-local staging and identity check at the filesystem side-effect
+  boundary. It follows the same explicit prepare/execute/reconcile shape already used by
+  the workspace and does not introduce a generic transaction layer.
+
+Still open after this slice:
+
+- File-copy preparation and directory-manifest generation still materialize one bounded
+  file at a time. Aggregate mutation budgets, streamed preparation/manifest hashing, and
+  an OS-level immutable snapshot remain open.
 
 ### Current slice boundary: memory evidence maintenance
 
@@ -933,9 +963,9 @@ claim in this plan.
       reconciliation records for the supported multi-file `apply_patch_set` boundary.
 - [x] Report partial completion and recovery instructions when an `apply_patch_set`
       transaction cannot roll back fully.
-- [ ] Add true stream-to-staging transfer and aggregate mutation limits for large inputs;
-      the current slice only bounds descriptor reads and materializes one bounded file at
-      a time.
+- [ ] Extend streaming to preparation and directory-manifest paths and add aggregate
+      mutation limits for large inputs; regular-file copy commit streaming is now
+      implemented, but the broader filesystem contract is not complete.
 
 ### 6. Security, limits, and telemetry
 

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, link, mkdir, open, readFile, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
@@ -410,6 +410,74 @@ async function readHandleAtMost(handle: Awaited<ReturnType<typeof open>>, maxByt
     if (totalBytes > maxBytes) return undefined;
     chunks.push(chunk.subarray(0, bytesRead));
   }
+}
+
+/**
+ * Stream a prepared regular-file copy into a same-directory temporary inode.
+ * The source is hashed while it is copied, so the approved source identity is
+ * checked without retaining a second full file buffer at commit time.
+ */
+async function atomicCopyFile(
+  sourceAbsolutePath: string,
+  destinationAbsolutePath: string,
+  sourceDisplayPath: string,
+  expectedHash: string,
+  expectedBytes: number,
+  maxBytes: number,
+  mode: number,
+): Promise<number> {
+  const temporaryPath = `${destinationAbsolutePath}.computer-native-${randomUUID()}.tmp`;
+  let sourceHandle: Awaited<ReturnType<typeof open>> | undefined;
+  let destinationHandle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    try {
+      sourceHandle = await open(sourceAbsolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+      throw new MutationError("mutation-stale", `Workspace copy source '${sourceDisplayPath}' could not be opened safely.`, { cause: error });
+    }
+    const sourceStats = await sourceHandle.stat();
+    if (!sourceStats.isFile() || sourceStats.size !== expectedBytes) {
+      throw new MutationError("mutation-stale", `Workspace copy source '${sourceDisplayPath}' changed before it could be copied.`);
+    }
+    if (sourceStats.size > maxBytes) {
+      throw new WorkspaceAccessError(`Workspace file '${sourceDisplayPath}' is ${sourceStats.size} bytes; the limit is ${maxBytes} bytes.`);
+    }
+    destinationHandle = await open(temporaryPath, "wx", mode);
+    const hash = createHash("sha256");
+    let totalBytes = 0;
+    while (true) {
+      const readSize = Math.min(BOUNDED_READ_CHUNK_BYTES, Math.max(1, maxBytes - totalBytes + 1));
+      const chunk = Buffer.alloc(readSize);
+      const { bytesRead } = await sourceHandle.read(chunk, 0, chunk.byteLength, null);
+      if (bytesRead === 0) break;
+      totalBytes += bytesRead;
+      if (totalBytes > maxBytes) {
+        throw new WorkspaceAccessError(`Workspace file '${sourceDisplayPath}' grew beyond the ${maxBytes}-byte limit while it was being copied.`);
+      }
+      const content = chunk.subarray(0, bytesRead);
+      hash.update(content);
+      await destinationHandle.writeFile(content);
+    }
+    const afterStats = await sourceHandle.stat();
+    if (!afterStats.isFile() || afterStats.size !== expectedBytes || totalBytes !== expectedBytes || hash.digest("hex") !== expectedHash) {
+      throw new MutationError("mutation-stale", `Workspace copy source '${sourceDisplayPath}' changed while it was being copied.`);
+    }
+    await destinationHandle.chmod(mode);
+    await destinationHandle.sync();
+    await destinationHandle.close();
+    destinationHandle = undefined;
+    await link(temporaryPath, destinationAbsolutePath);
+  } catch (error) {
+    if (!(error instanceof MutationError) && !(error instanceof WorkspaceAccessError)) {
+      throw new MutationError("mutation-failed", `Workspace file '${sourceDisplayPath}' could not be copied safely.`, { cause: error });
+    }
+    throw error;
+  } finally {
+    await sourceHandle?.close().catch(() => undefined);
+    await destinationHandle?.close().catch(() => undefined);
+    await unlink(temporaryPath).catch(() => undefined);
+  }
+  return expectedBytes;
 }
 
 export class Workspace {
@@ -1106,12 +1174,16 @@ export class Workspace {
       await this.copyDirectoryTree(source.absolutePath, destination.absolutePath, scanned);
       return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: scanned.totalBytes };
     }
-    const bytes = await this.readMutationBytes(source.absolutePath, prepared.sourcePath);
-    if (contentHashBytes(bytes) !== prepared.beforeHash) {
-      throw new MutationError("mutation-stale", `Workspace file '${prepared.sourcePath}' changed after the copy proposal was prepared; refusing to copy it.`);
-    }
-    await atomicCreateFile(destination.absolutePath, bytes, prepared.mode);
-    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: bytes.byteLength };
+    const bytes = await atomicCopyFile(
+      source.absolutePath,
+      destination.absolutePath,
+      prepared.sourcePath,
+      prepared.beforeHash,
+      prepared.bytes,
+      this.policy.limits.maxFileBytes,
+      prepared.mode,
+    );
+    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes };
   }
 
   async commitMove(prepared: PreparedFileMove): Promise<FileTransferCommit> {
@@ -1706,9 +1778,16 @@ export class Workspace {
           throw new MutationError("mutation-stale", `Workspace tree entry '${entry.path}' changed while it was being copied.`, { cause: error });
         });
         if (!sourceMetadata.isFile()) throw new MutationError("mutation-stale", `Workspace tree entry '${entry.path}' changed while it was being copied.`);
-        const bytes = await this.readMutationBytes(sourcePath, entry.path);
-        if (contentHashBytes(bytes) !== entry.hash) throw new MutationError("mutation-stale", `Workspace tree entry '${entry.path}' changed while it was being copied.`);
-        await atomicCreateFile(destinationPath, bytes, entry.mode);
+        if (!entry.hash) throw new MutationError("mutation-failed", `Workspace tree entry '${entry.path}' has no recorded content hash.`);
+        await atomicCopyFile(
+          sourcePath,
+          destinationPath,
+          entry.path,
+          entry.hash,
+          entry.bytes,
+          this.policy.limits.maxFileBytes,
+          entry.mode,
+        );
       }
       const after = await this.scanDirectoryTree(sourceAbsolutePath, ".");
       if (after.manifestHash !== scanned.manifestHash) {

@@ -82,11 +82,13 @@ registry and carry source identity, kind, manifest, and byte evidence into the m
 record. Restart reconciliation distinguishes source-only, destination-only, and
 ambiguous states for both file hashes and directory manifests.
 
-Reads are bounded in the descriptor loop, but the current copy and manifest contracts still
-materialize one bounded file at a time so they can hash, compare, and stage exact bytes.
-They do not provide an OS-level immutable snapshot or claim cross-file atomicity. True
-stream-to-staging transfer, aggregate mutation budgets, and platform-specific immutable
-file-handle support remain separate hardening work.
+Reads are bounded in the descriptor loop, and regular-file copy commits stream into a
+same-directory temporary inode while hashing and enforcing the approved source size.
+Preparation and directory-manifest generation still materialize one bounded file at a
+time so they can produce exact evidence. These operations do not provide an OS-level
+immutable snapshot or claim cross-file atomicity. Streaming preparation, aggregate
+mutation budgets, and platform-specific immutable file-handle support remain separate
+hardening work.
 
 The process slice reuses this module's security policy only to authorize and describe a
 workspace-relative process cwd. It does not turn the workspace into a host sandbox and

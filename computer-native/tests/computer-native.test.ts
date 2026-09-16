@@ -2568,6 +2568,19 @@ test("workspace prepares bounded file copies and same-filesystem moves with sour
   await assert.rejects(() => readFile(path.join(root, "final.txt")));
 });
 
+test("workspace streams a bounded multi-chunk file copy into its destination", async () => {
+  const root = path.join(tempDirectory(), "workspace");
+  const bytes = Buffer.alloc((64 * 1024) + 17, 0x62);
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, "source.bin"), bytes);
+  const workspace = await Workspace.open(root, { maxFileBytes: bytes.byteLength, maxDirectoryEntries: 10 });
+
+  const prepared = await workspace.prepareCopy("source.bin", "copy.bin");
+  const copied = await workspace.commitCopy(prepared);
+  assert.equal(copied.bytes, bytes.byteLength);
+  assert.deepEqual(await readFile(path.join(root, "copy.bin")), bytes);
+});
+
 test("workspace copies, moves, and renames bounded directory trees without following links", async () => {
   const base = tempDirectory();
   const root = path.join(base, "workspace");

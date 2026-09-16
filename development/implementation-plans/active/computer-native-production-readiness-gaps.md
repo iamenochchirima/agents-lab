@@ -349,7 +349,8 @@ normalized workspace lifecycle events in the turn evidence stream.
 The current hardening increment also makes regular-file, search, mutation, copy, and
 tree-manifest reads descriptor-backed and limit-enforced during consumption. A file that
 grows after the initial metadata check cannot bypass the configured cap; changed-size
-reads fail closed.
+reads fail closed. Regular-file copy commits also stream into a temporary destination
+while hashing and checking the approved source identity.
 
 Remaining work:
 
@@ -359,9 +360,9 @@ Remaining work:
   not claim rollback or cross-file atomicity.
 - Decide and document symlink, hard-link, device-file, socket, special-file, and mount
   behaviour. Fail closed for unsupported types.
-- Add true stream-to-staging transfer and aggregate mutation limits. Current reads still
-  materialize one bounded file at a time for hashing, comparison, and atomic staging; no
-  OS-level immutable snapshot is claimed.
+- Extend streaming to copy preparation and directory-manifest generation, then add
+  aggregate mutation limits. Those paths still materialize one bounded file at a time for
+  exact evidence; no OS-level immutable snapshot is claimed.
 - Add race handling for changed files, concurrent writers, locks, and stale approvals.
 - Add dry-run, diff/preview, restore, and reconciliation commands that remain useful
   after a crash.
