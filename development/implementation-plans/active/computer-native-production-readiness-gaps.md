@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:14:00+02:00
+**Last updated:** 2026-09-16T18:29:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 285 tests passed after the persistence and side-effect boundary increment.
-- `pnpm run coverage`: 285 tests passed, with 88.72% line coverage, 77.31% branch
-  coverage, and 84.30% function coverage in the latest run. Node's experimental
+- `pnpm test`: 292 tests passed after the cross-file memory publication increment.
+- `pnpm run coverage`: 292 tests passed, with 88.92% line coverage, 77.65% branch
+  coverage, and 84.57% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -99,7 +99,9 @@ readiness:
   repeated recovery leaves one entry and one terminal event. Memory `remove` now uses
   hash-only deletion evidence, and mixed `batch` actions persist a member manifest and
   reconcile add/replace/remove members without replay. Direct memory-store write-fault
-  injection and cross-file batch publication remain open.
+  injection now covers canonical and deletion-evidence writes. Cross-file daily batches
+  persist before/after canonical-file hashes and recover all-before, all-after, and mixed
+  publication states without replay; they do not claim rollback or cross-file atomicity.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 - Built-in provider adapters now expose capability metadata. The factory validates
@@ -434,9 +436,8 @@ boundaries, and a shared approval/cancellation path.
 Remaining work:
 
 - Add bounded retention, migration, and repair procedures for the deletion-evidence
-  ledger and batch manifests; the current local ledger is durable but append-only.
-- Prove cross-file daily-memory batch publication and recovery. The current implementation
-  reconciles members individually and does not claim cross-file atomicity or rollback.
+  ledger and batch publication journals; the current local evidence is durable but
+  append-only.
 - Replace the experimental `node:sqlite` dependency path with a supported persistence
   profile, or document and accept the runtime/version requirement for production.
 - Add session and transcript search without mixing short-term history into compact

@@ -281,6 +281,168 @@ test("memory removal interruption before canonical publication leaves the entry 
   }
 });
 
+test("cross-file memory batch interruption before publication is reconciled without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-batch-before-boundary-"));
+  try {
+    const { config, session, memory, tools } = await openRuntimeMemory(root, {
+      beforeWrite: (operation, filePath) => {
+        if (operation === "canonical-replace" && filePath.endsWith("2026-09-14.md")) {
+          throw new RuntimeInterruptionError("stopped before the first daily memory publication");
+        }
+      },
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-batch-before-boundary", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "batch", items: [
+              { operation: "add", scope: "daily", date: "2026-09-14", content: "daily memory before boundary" },
+              { operation: "add", scope: "daily", date: "2026-09-15", content: "daily memory after boundary" },
+            ] }),
+            finalResponse: "The daily memory batch was prepared.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Store these two daily memory entries.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before the first daily memory publication/u,
+    );
+    await memory.close();
+
+    const journal = (await readFile(path.join(config.stateDir, "memory", "batches.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { files: Array<{ sourcePath: string; beforeFileHash: string; afterFileHash: string }> });
+    assert.equal(journal.length, 1);
+    assert.deepEqual(journal[0]?.files.map((file) => path.basename(file.sourcePath)), ["2026-09-14.md", "2026-09-15.md"]);
+    assert.notEqual(journal[0]?.files[0]?.beforeFileHash, journal[0]?.files[0]?.afterFileHash);
+
+    const reopenedMemory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)))[0]?.status, "interrupted");
+    assert.equal((await reopenedMemory.search({ query: "before" })).length, 0);
+    assert.equal((await reopenedMemory.search({ query: "after" })).length, 0);
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionFile = (await readdir(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions")))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions", actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; decision?: string });
+    assert.equal(history.at(-1)?.status, "denied");
+    assert.equal(history.at(-1)?.decision, "unavailable");
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)), []);
+    await reopenedMemory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory batch journal acknowledgement loss closes the batch as not applied", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-batch-journal-boundary-"));
+  try {
+    const { config, session, memory, tools } = await openRuntimeMemory(root, {
+      afterWrite: (operation) => {
+        if (operation === "batch-evidence-append") {
+          throw new RuntimeInterruptionError("stopped after the memory batch journal was published");
+        }
+      },
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-batch-journal-boundary", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "batch", items: [
+              { operation: "add", scope: "daily", date: "2026-09-16", content: "journal boundary first" },
+              { operation: "add", scope: "daily", date: "2026-09-17", content: "journal boundary second" },
+            ] }),
+            finalResponse: "The daily memory batch was prepared.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Store these journal boundary entries.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped after the memory batch journal was published/u,
+    );
+    await memory.close();
+
+    const journal = await readFile(path.join(config.stateDir, "memory", "batches.jsonl"), "utf8");
+    assert.match(journal, /2026-09-16\.md/u);
+    const reopenedMemory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)))[0]?.status, "interrupted");
+    assert.equal((await reopenedMemory.search({ query: "journal" })).length, 0);
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionFile = (await readdir(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions")))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions", actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; decision?: string });
+    assert.equal(history.at(-1)?.status, "denied");
+    assert.equal(history.at(-1)?.decision, "unavailable");
+    await reopenedMemory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cross-file memory batch interruption after one publication reports partial recovery without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-batch-partial-boundary-"));
+  try {
+    const { config, session, memory, tools } = await openRuntimeMemory(root, {
+      afterWrite: (operation, filePath) => {
+        if (operation === "canonical-replace" && filePath.endsWith("2026-09-14.md")) {
+          throw new RuntimeInterruptionError("stopped after the first daily memory publication");
+        }
+      },
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-batch-partial-boundary", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "batch", items: [
+              { operation: "add", scope: "daily", date: "2026-09-14", content: "daily memory committed member" },
+              { operation: "add", scope: "daily", date: "2026-09-15", content: "daily memory uncommitted member" },
+            ] }),
+            finalResponse: "The daily memory batch was applied.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Apply these two daily memory entries.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped after the first daily memory publication/u,
+    );
+    await memory.close();
+
+    const reopenedMemory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)))[0]?.status, "interrupted");
+    assert.equal((await reopenedMemory.search({ query: "committed" })).length, 1);
+    assert.equal((await reopenedMemory.search({ query: "uncommitted" })).length, 0);
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionFile = (await readdir(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions")))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions", actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; reason?: string });
+    assert.equal(history.at(-1)?.status, "failed");
+    assert.match(history.at(-1)?.reason ?? "", /partial|ambiguous/u);
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)), []);
+    await reopenedMemory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("memory commit acknowledgement loss reconciles the durable entry without replay", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-ack-recovery-"));
   try {

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:14:00+02:00
+**Last updated:** 2026-09-16T18:29:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 289 passing tests across the package, with 88.74% line
-  coverage, 77.52% branch coverage, and 84.30% function coverage. Coverage is from
+- The latest validation is 292 passing tests across the package, with 88.92% line
+  coverage, 77.65% branch coverage, and 84.57% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -294,6 +294,10 @@ Delivered in this increment:
   canonical publication leaves the old state in place, a stop after publication is reconciled
   without replay, and a lost committed-deletion acknowledgement still recovers from the
   append-only evidence.
+- Cross-file daily-memory batches now persist a bounded before/after canonical-file hash
+  manifest before publication. Restart recovery reports all-before as not applied,
+  all-after as committed, and mixed or unexpected file hashes as partial/ambiguous; it
+  never retries an individual member or claims cross-file atomicity.
 
 Practice check against the local Hermes and OpenClaw references:
 
@@ -305,8 +309,8 @@ Still open after this increment:
 
 - The complete stop-before/after matrix for every durable write and every underlying host
   side effect, including process-level crash injection at each boundary.
-- Cross-file daily-memory batch publication, deletion-ledger retention/compaction, browser
-  profile/artifact crash recovery, and cross-platform process isolation.
+- Deletion-ledger and batch-journal retention/repair, browser profile/artifact crash
+  recovery, and cross-platform process isolation.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -342,6 +346,9 @@ Delivered in this slice:
 - Direct memory boundary tests now cover before/after canonical Markdown publication and
   before/after deletion-evidence append behaviour. Runtime tests exercise the same boundaries
   through approved model tool calls and restart recovery, including the fail-closed removal case.
+- Cross-file daily-memory batch tests cover a stop before the first changed file and a stop
+  after one file has committed. Recovery distinguishes not-applied from partial publication,
+  preserves the committed member, and never replays either member.
 
 Persistence slice limitations:
 
@@ -352,8 +359,8 @@ Persistence slice limitations:
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, and an exactly-once execution guarantee remain
   open.
-- Deletion-ledger retention/compaction and cross-file daily-memory batch publication remain
-  open. The current evidence proves the supported local acknowledgement-loss and
+- Deletion-ledger and batch-journal retention/compaction, repair, and migration remain open.
+  The current evidence proves the supported local acknowledgement-loss and
   operation-specific recovery paths, not an exactly-once guarantee or cross-file transaction.
 
 ### Current slice boundary: model payload resource limits

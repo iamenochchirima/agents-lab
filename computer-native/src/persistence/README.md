@@ -155,6 +155,6 @@ deletion evidence before and after canonical publication, allowing recovery to v
 that the exact file moved from its recorded before-hash to its after-hash without treating
 absence alone as proof. Batch actions persist a bounded member manifest and reconcile
 add, replace, and remove members together; normal and recovered batches emit one terminal
-action event. Direct fault injection around the memory store's own writes, ledger
-retention, and cross-file batch publication remain open. This is deliberately not an
-exactly-once guarantee.
+action event. Cross-file batches also persist expected before/after canonical-file hashes,
+so restart reports all-before, all-after, or partial/ambiguous publication without replay.
+Journal retention and repair remain open. This is deliberately not an exactly-once guarantee.

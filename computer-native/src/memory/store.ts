@@ -25,7 +25,7 @@ const MAX_SEARCH_RESULTS = 50;
 const MEMORY_START = "<!-- computer-native-memory: ";
 const MEMORY_END = "<!-- /computer-native-memory -->";
 
-export type MemoryWriteOperation = "canonical-replace" | "deletion-evidence-append";
+export type MemoryWriteOperation = "canonical-replace" | "deletion-evidence-append" | "batch-evidence-append";
 
 /** Diagnostic-only seam for stopping memory at a durable file boundary. */
 export interface MemoryWriteHooks {
@@ -87,6 +87,26 @@ interface MemoryDeletionEvidence {
   readonly recordedAt: string;
 }
 
+interface MemoryBatchPublicationFile {
+  readonly sourcePath: string;
+  readonly beforeFileHash: string;
+  readonly afterFileHash: string;
+}
+
+interface MemoryBatchPublicationEvidence {
+  readonly schemaVersion: 1;
+  readonly sourceId: string;
+  readonly files: readonly MemoryBatchPublicationFile[];
+  readonly recordedAt: string;
+}
+
+interface CanonicalPublication {
+  readonly filePath: string;
+  readonly content: string;
+  readonly beforeFileHash: string;
+  readonly afterFileHash: string;
+}
+
 type IndexRow = Record<string, string | number | null>;
 
 export class MemoryPolicyError extends ComputerNativeError {
@@ -107,6 +127,7 @@ export class MemoryStore {
   private readonly databasePath: string;
   private readonly lockPath: string;
   private readonly deletionEvidencePath: string;
+  private readonly batchEvidencePath: string;
   private readonly limits: Record<MemoryScope, number>;
   private readonly dailyRetentionDays: number;
   private database: DatabaseSync;
@@ -118,6 +139,7 @@ export class MemoryStore {
     this.databasePath = path.join(this.memoryDir, "index.sqlite");
     this.lockPath = path.join(this.memoryDir, ".memory.lock");
     this.deletionEvidencePath = path.join(this.memoryDir, "deletions.jsonl");
+    this.batchEvidencePath = path.join(this.memoryDir, "batches.jsonl");
     this.limits = {
       user: options.userMaxChars ?? DEFAULT_USER_MAX_CHARS,
       workspace: options.workspaceMaxChars ?? DEFAULT_WORKSPACE_MAX_CHARS,
@@ -309,6 +331,7 @@ export class MemoryStore {
   async applyBatch(mutations: readonly MemoryBatchMutation[]): Promise<readonly MemoryBatchResult[]> {
     this.assertOpen();
     if (mutations.length === 0 || mutations.length > 8) throw new MemoryPolicyError("Memory batches must contain between 1 and 8 operations.");
+    const sourceId = batchSourceId(mutations);
     const results: MemoryBatchResult[] = [];
     await this.withLockedRecords(async () => {
       const working = [...this.records];
@@ -363,8 +386,15 @@ export class MemoryStore {
       }
       const deletionEvidence = deletions.map(({ record, sourceId }) => this.createDeletionEvidence(record, this.records, working, sourceId));
       for (const evidence of deletionEvidence) await this.appendDeletionEvidence({ ...evidence, status: "prepared" });
+      const publication = await this.prepareCanonicalPublication(working);
+      await this.appendBatchPublicationEvidence({
+        schemaVersion: 1,
+        sourceId,
+        files: publication.map(({ filePath, beforeFileHash, afterFileHash }) => ({ sourcePath: filePath, beforeFileHash, afterFileHash })),
+        recordedAt: new Date().toISOString(),
+      });
       this.records = working;
-      await this.persistCanonicalRecords();
+      await this.persistCanonicalRecords(publication);
       for (const evidence of deletionEvidence) await this.appendDeletionEvidence({ ...evidence, status: "committed" });
     });
     return results;
@@ -403,8 +433,8 @@ export class MemoryStore {
    * Reconcile an approved memory mutation after the parent stopped before its
    * action record acknowledged the commit. Provenance is the idempotency evidence:
    * a matching record is already durable, so recovery records it and never repeats
-   * the write. Removal and batch operations remain failed-closed until their
-   * operation-specific evidence is implemented.
+   * the write. Cross-file batches additionally require a durable before/after file
+   * manifest so a partial publication is reported rather than guessed away.
    */
   async reconcileAction(action: MemoryActionRecord): Promise<MemoryActionRecord> {
     this.assertOpen();
@@ -480,7 +510,11 @@ export class MemoryStore {
 
   private async reconcileBatch(action: MemoryActionRecord): Promise<MemoryActionRecord> {
     if (!action.batch || action.batch.length === 0) return this.failedReconciliation(action, "The approved memory batch has no durable member manifest; it was not replayed.");
-    const outcomes = await Promise.all(action.batch.map((item) => this.reconcileBatchItem(item, action.callId)));
+    const publication = await this.latestBatchPublicationEvidence(action.callId);
+    if (!publication) return this.failedReconciliation(action, "No durable batch publication evidence matched the approved memory batch; it was not replayed.");
+    const currentFileHashes = new Map<string, string>();
+    for (const file of publication.files) currentFileHashes.set(file.sourcePath, await this.canonicalFileHash(file.sourcePath));
+    const outcomes = await Promise.all(action.batch.map((item) => this.reconcileBatchItem(item, action.callId, publication, currentFileHashes)));
     if (outcomes.every((outcome) => outcome === "committed")) {
       return {
         ...action,
@@ -502,15 +536,23 @@ export class MemoryStore {
     return this.failedReconciliation(action, "The approved memory batch has a partial or ambiguous canonical outcome; it was not replayed.");
   }
 
-  private async reconcileBatchItem(item: MemoryBatchActionItem, sourceId: string): Promise<"committed" | "not-applied" | "ambiguous"> {
+  private async reconcileBatchItem(
+    item: MemoryBatchActionItem,
+    sourceId: string,
+    publication: MemoryBatchPublicationEvidence,
+    currentFileHashes: ReadonlyMap<string, string>,
+  ): Promise<"committed" | "not-applied" | "ambiguous"> {
+    const publicationFile = publication.files.find((file) => file.sourcePath === item.sourcePath);
+    if (!publicationFile) return "ambiguous";
+    const currentFileHash = currentFileHashes.get(item.sourcePath);
+    if (!currentFileHash) return "ambiguous";
+    const current = this.records.find((record) => this.isOwned(record) && record.id === item.recordId);
     if (item.operation === "remove") {
       if (!item.recordId || !item.beforeContentHash) return "ambiguous";
       const evidence = await this.latestDeletionEvidence(item.recordId, item.scope, item.sourcePath, item.beforeContentHash, sourceId);
       if (!evidence) return "ambiguous";
-      const current = this.records.find((record) => this.isOwned(record) && record.id === item.recordId);
-      const currentFileHash = await this.canonicalFileHash(item.sourcePath);
-      if (!current && currentFileHash === evidence.afterFileHash) return "committed";
-      if (current?.contentHash === item.beforeContentHash && currentFileHash === evidence.beforeFileHash) return "not-applied";
+      if (!current && currentFileHash === publicationFile.afterFileHash && currentFileHash === evidence.afterFileHash) return "committed";
+      if (current?.contentHash === item.beforeContentHash && currentFileHash === publicationFile.beforeFileHash && currentFileHash === evidence.beforeFileHash) return "not-applied";
       return "ambiguous";
     }
     const matches = this.records.filter((record) =>
@@ -521,7 +563,12 @@ export class MemoryStore {
       && record.contentHash === item.afterContentHash
       && (item.operation === "add" || record.id === item.recordId),
     );
-    return matches.length === 1 ? "committed" : "ambiguous";
+    if (currentFileHash === publicationFile.afterFileHash) return matches.length === 1 ? "committed" : "ambiguous";
+    if (currentFileHash === publicationFile.beforeFileHash) {
+      if (item.operation === "add") return matches.length === 0 ? "not-applied" : "ambiguous";
+      return current?.contentHash === item.beforeContentHash && matches.length === 0 ? "not-applied" : "ambiguous";
+    }
+    return "ambiguous";
   }
 
   private failedReconciliation(action: MemoryActionRecord, reason: string): MemoryActionRecord {
@@ -541,10 +588,17 @@ export class MemoryStore {
     );
   }
 
+  private async latestBatchPublicationEvidence(sourceId: string): Promise<MemoryBatchPublicationEvidence | undefined> {
+    const evidence = await readJsonLines<MemoryBatchPublicationEvidence>(this.batchEvidencePath);
+    return evidence.reverse().find((candidate) => isValidBatchPublicationEvidence(candidate, this.memoryDir) && candidate.sourceId === sourceId);
+  }
+
   private async canonicalFileHash(filePath: string): Promise<string> {
     const relative = path.relative(this.memoryDir, path.resolve(filePath));
     if (relative.startsWith("..") || path.isAbsolute(relative)) throw new ComputerNativeError("persistence", "Memory recovery referenced a path outside the managed memory directory.");
     try {
+      const information = await lstat(filePath);
+      if (information.isSymbolicLink() || !information.isFile()) throw new ComputerNativeError("persistence", "Memory recovery referenced a non-regular canonical file.");
       return hashMemoryContent(await readFile(filePath, "utf8"));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return hashMemoryContent("");
@@ -575,6 +629,12 @@ export class MemoryStore {
     await this.options.writeHooks?.afterWrite?.("deletion-evidence-append", this.deletionEvidencePath);
   }
 
+  private async appendBatchPublicationEvidence(evidence: MemoryBatchPublicationEvidence): Promise<void> {
+    await this.options.writeHooks?.beforeWrite?.("batch-evidence-append", this.batchEvidencePath);
+    await appendJsonLine(this.batchEvidencePath, evidence);
+    await this.options.writeHooks?.afterWrite?.("batch-evidence-append", this.batchEvidencePath);
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.database.close();
@@ -602,9 +662,9 @@ export class MemoryStore {
     this.rebuildIndex();
   }
 
-  private async persistCanonicalRecords(): Promise<void> {
+  private async prepareCanonicalPublication(records: readonly StoredMemoryRecord[]): Promise<readonly CanonicalPublication[]> {
     const byPath = new Map<string, StoredMemoryRecord[]>();
-    for (const record of this.records) {
+    for (const record of records) {
       const records = byPath.get(record.sourcePath) ?? [];
       records.push(record);
       byPath.set(record.sourcePath, records);
@@ -613,11 +673,24 @@ export class MemoryStore {
       path.join(this.memoryDir, "USER.md"),
       path.join(this.memoryDir, "MEMORY.md"),
       ...(await dailyFiles(this.memoryDir)).map((file) => file.filePath),
-      ...this.records.filter((record) => record.scope === "daily").map((record) => record.sourcePath),
+      ...records.filter((record) => record.scope === "daily").map((record) => record.sourcePath),
     ];
+    const publication: CanonicalPublication[] = [];
     for (const filePath of new Set(paths)) {
-      const records = byPath.get(filePath) ?? [];
-      await this.writeCanonicalFile(filePath, renderMemoryFile(filePath, records));
+      const fileRecords = byPath.get(filePath) ?? [];
+      const content = renderMemoryFile(filePath, fileRecords);
+      const beforeFileHash = await this.canonicalFileHash(filePath);
+      const afterFileHash = hashMemoryContent(content);
+      if (fileRecords.length === 0 && beforeFileHash === hashMemoryContent("")) continue;
+      if (beforeFileHash !== afterFileHash) publication.push({ filePath, content, beforeFileHash, afterFileHash });
+    }
+    return publication;
+  }
+
+  private async persistCanonicalRecords(publication?: readonly CanonicalPublication[]): Promise<void> {
+    const files = publication ?? await this.prepareCanonicalPublication(this.records);
+    for (const file of files) {
+      await this.writeCanonicalFile(file.filePath, file.content);
     }
   }
 
@@ -864,6 +937,35 @@ async function ensureManagedDirectory(directory: string): Promise<void> {
     await ensureDirectory(directory);
   }
   await chmod(directory, 0o700);
+}
+
+function batchSourceId(mutations: readonly MemoryBatchMutation[]): string {
+  const sourceIds = mutations.map((mutation) => mutation.operation === "remove" ? mutation.sourceId : mutation.provenance.sourceId);
+  const sourceId = sourceIds[0];
+  if (!sourceId || sourceId.trim().length === 0 || sourceIds.some((candidate) => candidate !== sourceId)) {
+    throw new MemoryPolicyError("A memory batch must have one stable source identity for recovery.");
+  }
+  return sourceId;
+}
+
+function isValidBatchPublicationEvidence(value: MemoryBatchPublicationEvidence, memoryDir: string): value is MemoryBatchPublicationEvidence {
+  if (value?.schemaVersion !== 1 || typeof value.sourceId !== "string" || value.sourceId.trim().length === 0 || !Array.isArray(value.files) || value.files.length === 0) return false;
+  const paths = new Set<string>();
+  return value.files.every((file) => {
+    if (!file || typeof file.sourcePath !== "string" || !path.isAbsolute(file.sourcePath) || !/^[a-f0-9]{64}$/u.test(file.beforeFileHash) || !/^[a-f0-9]{64}$/u.test(file.afterFileHash)) return false;
+    const sourcePath = path.resolve(file.sourcePath);
+    const relative = path.relative(memoryDir, sourcePath);
+    if (relative.startsWith("..") || path.isAbsolute(relative) || !isCanonicalMemoryPath(sourcePath, memoryDir) || paths.has(sourcePath)) return false;
+    paths.add(sourcePath);
+    return true;
+  });
+}
+
+function isCanonicalMemoryPath(filePath: string, memoryDir: string): boolean {
+  const relative = path.relative(memoryDir, path.resolve(filePath));
+  if (relative === "USER.md" || relative === "MEMORY.md") return true;
+  const dailyPrefix = `daily${path.sep}`;
+  return relative.startsWith(dailyPrefix) && path.dirname(relative) === "daily" && /^\d{4}-\d{2}-\d{2}\.md$/u.test(path.basename(relative));
 }
 
 function validateMutation(mutation: MemoryMutation, limits: Record<MemoryScope, number>): void {

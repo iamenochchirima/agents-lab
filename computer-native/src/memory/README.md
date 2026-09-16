@@ -25,9 +25,12 @@ bounded accordingly.
 The `memory` tool also accepts one bounded same-scope consolidation batch of up to
 eight add, replace, or remove operations. The batch is validated and approved as one
 exact proposal, and its durable action record retains a hash-only member manifest for
-restart reconciliation. Canonical files are still published individually; this does not
-claim a cross-file transaction. Mixed batches emit one terminal action event so the
-normalized lifecycle does not close one operation identity multiple times.
+restart reconciliation. Before publication, a bounded batch journal records the expected
+before/after hash for each changed canonical file. Recovery classifies all-before as not
+applied, all-after as committed, and mixed or unexpected hashes as partial/ambiguous; it
+never replays a member and does not claim a cross-file transaction or rollback. Mixed
+batches emit one terminal action event so the normalized lifecycle does not close one
+operation identity multiple times.
 
 Search evidence stores a query digest, scopes, result references, and truncation status
 without persisting the query text. Memory lifecycle evidence is append-only JSONL so
