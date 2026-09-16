@@ -1,9 +1,12 @@
+import { spawn } from "node:child_process";
 import { chmod, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LocalProcessRunner } from "../src/process/local-runner.js";
+import { reconcileRunningProcess } from "../src/process/recovery.js";
 import type { ProcessLimits } from "../src/process/process.js";
 import type { ProcessExecutionRecord } from "../src/process/process.js";
 import { ProcessSecurityPolicy } from "../src/security/process-policy.js";
@@ -142,6 +145,27 @@ test("timeout and cancellation terminate foreground processes", async () => {
     assert.equal(cancellationResult.state, "cancelled");
     assert.equal(cancellationResult.errorCode, "process-cancelled");
     assert.equal(cancellationResult.terminationConfirmed, true);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("a launch-record acknowledgement failure terminates the spawned child", async () => {
+  const harness = await createHarness();
+  try {
+    const prepared = await harness.policy.prepare({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => require('node:fs').writeFileSync('launch-failure-marker.txt', 'ran'), 300)"],
+    }, "execution_launch_ack_failure");
+    const runner = new LocalProcessRunner((value) => harness.policy.verify(value));
+    await assert.rejects(
+      () => runner.run(prepared, undefined, async (event) => {
+        if (event.type === "started") throw new Error("simulated launch record acknowledgement failure");
+      }),
+      /simulated launch record acknowledgement failure/u,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await assert.rejects(() => readFile(path.join(harness.root, "launch-failure-marker.txt"), "utf8"), { code: "ENOENT" });
   } finally {
     await harness.cleanup();
   }
@@ -605,6 +629,181 @@ test("restart repairs process evidence after a real side effect completes before
     assert.equal((events.match(/ProcessCompleted/g) ?? []).length, 1);
     assert.deepEqual(await (await SessionStore.open(stateDir, result.sessionId)).recoverInterruptedTurns(), []);
     assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran");
+  } finally {
+    await harness.cleanup();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("a crashed process is recovered without replaying a completed side effect", async () => {
+  const harness = await createHarness();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-crash-harness-"));
+  try {
+    const moduleRoot = path.resolve(process.cwd(), "dist", "src");
+    const importUrl = (relativePath: string): string => pathToFileURL(path.join(moduleRoot, relativePath)).href;
+    const childScript = `
+      const { SessionStore } = await import(${JSON.stringify(importUrl("persistence/session-store.js"))});
+      const { DeterministicModelProvider } = await import(${JSON.stringify(importUrl("models/deterministic.js"))});
+      const { loadConfig } = await import(${JSON.stringify(importUrl("config/config.js"))});
+      const { runTurn } = await import(${JSON.stringify(importUrl("runtime/turn.js"))});
+      const { sep } = await import("node:path");
+      const stateDir = process.env.COMPUTER_NATIVE_CRASH_STATE;
+      const workspaceRoot = process.env.COMPUTER_NATIVE_CRASH_WORKSPACE;
+      if (!stateDir || !workspaceRoot) process.exit(2);
+      let executionWrites = 0;
+      const session = await SessionStore.open(stateDir, undefined, {
+        writeHooks: {
+          afterWrite: (operation, filePath) => {
+            if (operation === "replace-json" && filePath.includes(sep + "executions" + sep) && executionWrites++ === 3) process.exit(42);
+          },
+        },
+      });
+      const config = loadConfig({
+        stateDir,
+        workspaceRoot,
+        processMode: "approval",
+        processDurationMs: 500,
+        processTerminationGraceMs: 100,
+        processOutputBytes: 4096,
+        processArgumentCount: 16,
+        processArgumentBytes: 4096,
+      }, {});
+      await runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/process", {
+          toolCall: {
+            name: "run_command",
+            argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "require('node:fs').appendFileSync('marker.txt', 'ran\\\\n')"] }),
+            finalResponse: "The command completed.",
+          },
+        }),
+        config,
+        userPrompt: "Run the marker command.",
+        approveProcess: async () => ({ decision: "allow-once" }),
+      });
+    `;
+    const child = spawn(process.execPath, ["--input-type=module", "-e", childScript], {
+      env: {
+        ...process.env,
+        COMPUTER_NATIVE_CRASH_STATE: stateDir,
+        COMPUTER_NATIVE_CRASH_WORKSPACE: harness.root,
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    const childExit = await new Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    assert.equal(childExit.code, 42);
+    assert.equal(childExit.signal, null);
+    assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran\n");
+
+    const sessionId = (await readdir(path.join(stateDir, "sessions"))).find((entry) => entry !== ".lock");
+    assert.ok(sessionId);
+    const restarted = await SessionStore.open(stateDir, sessionId);
+    const transcript = await restarted.readTranscript();
+    const turnId = transcript[0]?.turnId;
+    assert.ok(turnId);
+    const recovered = await restarted.recoverInterruptedTurns(undefined, reconcileRunningProcess);
+    assert.equal(recovered[0]?.status, "interrupted");
+    assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran\n");
+
+    const turnDirectory = path.join(stateDir, "sessions", sessionId, "turns", turnId);
+    const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string; sequence: number });
+    assert.equal(events.filter((event) => event.type === "ProcessCompleted").length, 1);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(events.map((event) => event.sequence), events.map((_, index) => index + 1));
+
+    assert.deepEqual(await (await SessionStore.open(stateDir, sessionId)).recoverInterruptedTurns(undefined, reconcileRunningProcess), []);
+    assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran\n");
+  } finally {
+    await harness.cleanup();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("recovery terminates a still-running child without replaying it", async () => {
+  const harness = await createHarness();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-orphan-recovery-"));
+  try {
+    const moduleRoot = path.resolve(process.cwd(), "dist", "src");
+    const importUrl = (relativePath: string): string => pathToFileURL(path.join(moduleRoot, relativePath)).href;
+    const childScript = `
+      const { SessionStore } = await import(${JSON.stringify(importUrl("persistence/session-store.js"))});
+      const { DeterministicModelProvider } = await import(${JSON.stringify(importUrl("models/deterministic.js"))});
+      const { loadConfig } = await import(${JSON.stringify(importUrl("config/config.js"))});
+      const { runTurn } = await import(${JSON.stringify(importUrl("runtime/turn.js"))});
+      const { sep } = await import("node:path");
+      const stateDir = process.env.COMPUTER_NATIVE_CRASH_STATE;
+      const workspaceRoot = process.env.COMPUTER_NATIVE_CRASH_WORKSPACE;
+      if (!stateDir || !workspaceRoot) process.exit(2);
+      let executionWrites = 0;
+      const session = await SessionStore.open(stateDir, undefined, {
+        writeHooks: {
+          afterWrite: (operation, filePath) => {
+            if (operation === "replace-json" && filePath.includes(sep + "executions" + sep) && executionWrites++ === 2) process.exit(43);
+          },
+        },
+      });
+      const config = loadConfig({
+        stateDir,
+        workspaceRoot,
+        processMode: "approval",
+        processDurationMs: 5_000,
+        processTerminationGraceMs: 100,
+        processOutputBytes: 4096,
+        processArgumentCount: 16,
+        processArgumentBytes: 4096,
+      }, {});
+      await runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/process", {
+          toolCall: {
+            name: "run_command",
+            argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "setTimeout(() => require('node:fs').appendFileSync('marker.txt', 'ran\\\\n'), 500)"] }),
+            finalResponse: "The command completed.",
+          },
+        }),
+        config,
+        userPrompt: "Run the delayed marker command.",
+        approveProcess: async () => ({ decision: "allow-once" }),
+      });
+    `;
+    const child = spawn(process.execPath, ["--input-type=module", "-e", childScript], {
+      env: {
+        ...process.env,
+        COMPUTER_NATIVE_CRASH_STATE: stateDir,
+        COMPUTER_NATIVE_CRASH_WORKSPACE: harness.root,
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    const childExit = await new Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    assert.equal(childExit.code, 43);
+    assert.equal(childExit.signal, null);
+
+    const sessionId = (await readdir(path.join(stateDir, "sessions"))).find((entry) => entry !== ".lock");
+    assert.ok(sessionId);
+    const restarted = await SessionStore.open(stateDir, sessionId);
+    const transcript = await restarted.readTranscript();
+    const turnId = transcript[0]?.turnId;
+    assert.ok(turnId);
+    const recovered = await restarted.recoverInterruptedTurns(undefined, reconcileRunningProcess);
+    assert.equal(recovered[0]?.status, "interrupted");
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await assert.rejects(() => readFile(path.join(harness.root, "marker.txt"), "utf8"), { code: "ENOENT" });
+
+    const turnDirectory = path.join(stateDir, "sessions", sessionId, "turns", turnId);
+    const executionEntry = (await readdir(path.join(turnDirectory, "executions")))[0];
+    assert.ok(executionEntry);
+    const processRecord = JSON.parse(await readFile(path.join(turnDirectory, "executions", executionEntry), "utf8")) as ProcessExecutionRecord;
+    assert.equal(processRecord.status, "ambiguous");
+    assert.equal(processRecord.terminationConfirmed, true);
+    assert.match(processRecord.errorMessage ?? "", /termination was confirmed/u);
+    assert.deepEqual(await (await SessionStore.open(stateDir, sessionId)).recoverInterruptedTurns(undefined, reconcileRunningProcess), []);
   } finally {
     await harness.cleanup();
     await rm(stateDir, { recursive: true, force: true });

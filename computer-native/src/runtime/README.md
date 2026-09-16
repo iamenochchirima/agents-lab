@@ -41,4 +41,7 @@ The `run_command` tool is a foreground process turn within this lifecycle. Its a
 wait pauses the turn deadline, while the process itself has separate timeout, output,
 argument, and termination-grace limits. Process events are persisted before the turn
 can be treated as complete; an interrupted prepared/approved process is closed without
-launch, and an interrupted running process is marked ambiguous rather than replayed.
+launch, and an interrupted running process is reconciled by terminating its recorded
+foreground process group where possible, then marked ambiguous rather than replayed.
+If launch evidence fails after spawn, the runner cleans up the child before the failure
+is returned to this lifecycle.

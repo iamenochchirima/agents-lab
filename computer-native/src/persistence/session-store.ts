@@ -305,7 +305,10 @@ export class SessionStore {
     return new TurnStore(this, directory, { ...record, userMessagePersisted: true });
   }
 
-  async recoverInterruptedTurns(reconcileMutation?: (record: WorkspaceMutationRecord) => Promise<WorkspaceMutationRecord>): Promise<TurnResult[]> {
+  async recoverInterruptedTurns(
+    reconcileMutation?: (record: WorkspaceMutationRecord) => Promise<WorkspaceMutationRecord>,
+    reconcileProcess?: (record: ProcessExecutionRecord) => Promise<ProcessExecutionRecord>,
+  ): Promise<TurnResult[]> {
     const turnsDirectory = path.join(this.sessionDirectory, "turns");
     await ensureDirectory(turnsDirectory);
     const entries = await readdir(turnsDirectory, { withFileTypes: true });
@@ -338,7 +341,12 @@ export class SessionStore {
           reconciledExecution = { ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The approved process had not reached a launch record when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() };
           await turn.writeProcess(reconciledExecution);
         } else if (execution.status === "running") {
-          reconciledExecution = { ...execution, status: "ambiguous", errorCode: "process-ambiguous", errorMessage: "The process was running when the parent process stopped; its outcome is unknown and the command was not replayed.", finishedAt: now(), recordedAt: now() };
+          reconciledExecution = reconcileProcess
+            ? await reconcileProcess(execution)
+            : { ...execution, status: "ambiguous", errorCode: "process-ambiguous", errorMessage: "The process was running when the parent process stopped; its outcome is unknown and the command was not replayed.", finishedAt: now(), recordedAt: now() };
+          if (reconciledExecution.status !== "ambiguous") {
+            throw new ComputerNativeError("persistence", `Process execution '${execution.executionId}' reconciliation must remain ambiguous because its outcome is unknown.`);
+          }
           await turn.writeProcess(reconciledExecution);
         }
         await turn.ensureProcessTerminalEvent(reconciledExecution);

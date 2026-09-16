@@ -65,8 +65,11 @@ reopens a browser action, mutates the workspace, or changes memory contents.
 
 Local process executions use the same atomic per-operation record pattern. The record
 contains the exact approved identity and bounded outcome, and its state transition is
-validated before replacement. Restart recovery never starts a process: prepared and
-approved records become approval-unavailable, while running records become ambiguous.
+validated before replacement. Restart recovery never starts or replays a process:
+prepared and approved records become approval-unavailable, while running records are
+handed to the runtime's process reconciler. That reconciler attempts to terminate the
+recorded foreground process group, persists whether cleanup was confirmed, and retains
+the running operation's ambiguous outcome.
 
 Terminal result writes compare stable serialized values, so repeating the same commit is
 safe after a retry or recovery. The terminal lifecycle event is appended only once, and a

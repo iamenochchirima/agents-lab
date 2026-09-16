@@ -33,10 +33,10 @@ export class LocalProcessRunner implements ProcessRunner {
       resolveClose = resolve;
     });
 
-    const requestTermination = (reason: "timeout" | "output-limit" | "cancelled"): void => {
+    const requestTermination = (reason: "timeout" | "output-limit" | "cancelled", emitEvent = true): void => {
       if (terminationRequested || childExited) return;
       terminationRequested = true;
-      onEvent?.({ type: "terminating", executionId: prepared.executionId, reason });
+      if (emitEvent) onEvent?.({ type: "terminating", executionId: prepared.executionId, reason });
       try {
         if (childPid !== undefined && process.platform !== "win32") process.kill(-childPid, "SIGTERM");
         else child.kill("SIGTERM");
@@ -90,8 +90,6 @@ export class LocalProcessRunner implements ProcessRunner {
         errorMessage: "The child process did not expose a process identifier.",
       };
     }
-    await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid });
-
     const capture = (stream: "stdout" | "stderr", chunk: Buffer): void => {
       const remaining = prepared.limits.maxOutputBytes - capturedBytes;
       const accepted = Math.max(0, Math.min(chunk.byteLength, remaining));
@@ -117,6 +115,19 @@ export class LocalProcessRunner implements ProcessRunner {
       terminationConfirmed = terminationRequested;
       resolveClose?.({ code, signal: signalName });
     });
+
+    try {
+      await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid });
+    } catch (error) {
+      // The started event is the acknowledgement boundary for durable launch
+      // evidence. If that acknowledgement fails, do not leave the child alive
+      // while the caller records the failed/ambiguous tool result.
+      requestTermination("cancelled", false);
+      await closePromise;
+      if (terminationTimer) clearTimeout(terminationTimer);
+      if (forcedTerminationTimer) clearTimeout(forcedTerminationTimer);
+      throw error;
+    }
 
     if (signal?.aborted) {
       cancelled = true;

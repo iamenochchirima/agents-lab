@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 227 tests passed.
-- `pnpm run coverage`: 227 tests passed, with 88.00% line coverage, 75.14% branch
-  coverage, and 82.78% function coverage.
+- `pnpm test`: 230 tests passed after the current process-lifecycle slice.
+- `pnpm run coverage`: 230 tests passed, with 87.96% line coverage, 75.26% branch
+  coverage, and 82.90% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -64,9 +64,15 @@ readiness:
 - Recovery reconstructs missing terminal lifecycle events from durable process, browser,
   memory, and workspace records; workspace “not applied” outcomes use a distinct
   reconciliation event.
+- Real child-process crash tests now prove that losing acknowledgement after the
+  process's completed record does not replay a completed side effect, and that a still
+  running detached child is terminated during restart recovery without replay. The
+  running record remains `ambiguous` and records whether termination was confirmed.
 - A real approved process side-effect test proves that losing acknowledgement after the
   command and terminal record complete does not replay the command on recovery; the
   missing lifecycle event is repaired before an already durable turn-terminal event.
+- A launch-record acknowledgement failure after spawn now terminates the child before
+  the failure returns to the runtime.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -82,7 +88,7 @@ provider, browser-profile, and operational acceptance evidence.
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
 | Models and providers | Real OpenRouter path plus deterministic tests | Provider registry, resilient transport, fallback policy, usage/cost evidence, and credential operations |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
-| Process execution | Bounded foreground local commands | PTY/background jobs, process-tree cleanup, resource/network isolation, and shell policy |
+| Process execution | Bounded foreground local commands with approval, limits, launch-failure cleanup, and restart cleanup for the detached foreground process group | Cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
 | Memory | Durable Markdown and local lexical retrieval | Mature retrieval, compaction, promotion, privacy, deletion, migration, and real-model acceptance |
 | Skills and plugins | Planned boundaries only | Trust, manifests, permissions, isolation, lifecycle, and evidence |
@@ -143,6 +149,10 @@ Exit evidence:
 - Current evidence also covers reconstruction of one missing terminal lifecycle event per
   action family. It does not yet prove reconstruction after a process-level crash at
   every write boundary or across all future action types.
+- Current process crash evidence covers a completed-side-effect acknowledgement loss,
+  a crash after a running record becomes durable, and an in-process launch-record
+  acknowledgement failure. It does not yet cover every pre-write crash point,
+  cross-platform process-group behaviour, or a host-level PID-reuse defence.
 - The runner reports at-most-once or at-least-once behaviour precisely. It does not claim
   exactly-once execution without proof.
 
@@ -276,8 +286,9 @@ Exit evidence:
 - The product clearly labels local host execution and its limits.
 - Interactive, background, shell, and isolated execution are either implemented with
   the stated guarantees or explicitly excluded from the production product definition.
-- Tests prove child cleanup and resource enforcement after timeout, cancellation, crash,
-  and restart.
+- Tests prove child cleanup after timeout, cancellation, launch acknowledgement failure,
+  crash, and restart. Resource enforcement and cross-platform process-tree guarantees
+  remain open.
 
 ### 6. Browser interaction
 

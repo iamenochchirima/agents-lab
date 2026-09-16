@@ -7,6 +7,7 @@ import { createModelProvider } from "../models/factory.js";
 import { SessionStore } from "../persistence/session-store.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
+import { reconcileRunningProcess } from "../process/recovery.js";
 import { ProcessSecurityPolicy } from "../security/process-policy.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process/process.js";
 import { Workspace } from "../workspace/workspace.js";
@@ -134,7 +135,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
-      recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record)),
+      recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess),
       readTranscript: () => session.readTranscript(),
       runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch }),
       close: async () => {

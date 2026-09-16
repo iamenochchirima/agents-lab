@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T13:47:42+02:00
+**Last updated:** 2026-09-16T14:08:56+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -122,8 +122,13 @@ tests, but it must never replace a configured real provider silently.
 - Recovery repairs are now tested through a real approved process side effect: if the
   marker write succeeds but acknowledgement of the completed process record is lost,
   restart repairs only the missing evidence and does not run the command again.
-- The current validation is 227 passing tests across the package, 88.00% line coverage,
-  75.14% branch coverage, and 82.78% function coverage.
+- A real child-process crash after a durable running record now exercises restart
+  cleanup: the detached foreground process group is terminated where possible, the
+  outcome remains ambiguous, and `terminationConfirmed` is persisted separately.
+- If the launch lifecycle acknowledgement fails after spawn, `LocalProcessRunner`
+  terminates the child before returning the persistence failure.
+- The current validation is 230 passing tests across the package, with 87.96% line
+  coverage, 75.26% branch coverage, and 82.90% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -140,14 +145,17 @@ Delivered in this slice:
 - An integration recovery test proving a real approved process side effect is not
   replayed when its terminal record acknowledgement is lost; the repaired event is
   inserted before an already durable turn-terminal event.
+- A process-level crash test proving a still-running detached child is terminated during
+  restart recovery without replaying it, plus a launch-acknowledgement failure test
+  proving the in-process runner cleans up after spawn.
 
 Still not delivered by this slice:
 
 - Failure injection before and after every persistence write, and at the model-send,
   approval-decision, and underlying filesystem/process/browser/memory side-effect
   boundaries.
-- A process-level crash harness, cross-platform durability proof, or an exactly-once
-  execution guarantee.
+- Complete per-write and per-side-effect process crash coverage, cross-platform process
+  group durability proof, PID-reuse defence, or an exactly-once execution guarantee.
 - The remaining shared lifecycle, approval/TUI, provider, resource-limit, security,
   real-provider, and manual acceptance gates listed below.
 

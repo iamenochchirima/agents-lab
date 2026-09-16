@@ -17,8 +17,9 @@ only because its filesystem timestamp did not change at the available precision.
 `LocalProcessRunner` owns `spawn` and the foreground lifecycle. It always uses
 `shell: false`, ignores stdin, captures bounded stdout/stderr, and terminates the
 process group on timeout, cancellation, or output overflow where the platform permits
-it. A termination that cannot be confirmed is reported as `ambiguous`; it is never
-silently treated as success.
+it. If the durable `started` acknowledgement fails after spawn, it also terminates the
+child before returning that failure. A termination that cannot be confirmed is reported
+as `ambiguous`; it is never silently treated as success.
 
 `ToolRegistry` exposes this through `run_command`. The runtime supplies an approval
 callback and persists the process events under the turn's `executions/` directory.
@@ -31,9 +32,16 @@ the review window is auditable.
 The durable states are `prepared`, `approved`, `running`, `completed`, `failed`,
 `cancelled`, and `ambiguous`. Identity and resource limits are immutable after the
 first record. Restart recovery closes `prepared` and `approved` executions as
-approval-unavailable, and marks `running` executions ambiguous. It never replays a
-process automatically because the child may have completed after its acknowledgement
-was lost.
+approval-unavailable. For a `running` execution, the application recovery path attempts
+to terminate the recorded foreground process group (or child PID on Windows), records
+whether termination was confirmed, and still marks the outcome `ambiguous`. It never
+replays a process automatically because the child may have completed after its
+acknowledgement was lost.
+
+`terminationConfirmed` means that no process remained in the recorded target after the
+cleanup attempt. It does not mean that an external side effect was undone. If the PID
+is missing, invalid, reused, inaccessible, or the operating system cannot confirm
+termination, recovery records `false` and leaves the outcome explicitly ambiguous.
 
 This is an at-most-once launch policy from the harness perspective, with an explicit
 ambiguous outcome when the child lifecycle cannot be confirmed. It does not claim
