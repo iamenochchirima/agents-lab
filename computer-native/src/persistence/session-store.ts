@@ -830,6 +830,34 @@ function assertMemoryActionRecord(
   assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, "Memory action");
 }
 
+function assertMemorySearchEvidence(
+  record: unknown,
+  expectedSessionId: SessionMetadata["sessionId"],
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is MemorySearchEvidence {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Memory search", "searchId");
+  const candidate = record as Record<string, unknown>;
+  const validNonEmptyString = (value: unknown): boolean => typeof value === "string" && value.trim().length > 0;
+  const validScope = (value: unknown): boolean => value === "user" || value === "workspace" || value === "daily";
+  const resultIds = candidate.resultIds;
+  const scopes = candidate.scopes;
+  if (candidate.sessionId !== expectedSessionId
+    || !validNonEmptyString(candidate.callId)
+    || !validNonEmptyString(candidate.queryHash)
+    || (scopes !== undefined && (!Array.isArray(scopes) || scopes.length === 0 || scopes.some((value) => !validScope(value))))
+    || !Number.isSafeInteger(candidate.maxResults) || (candidate.maxResults as number) <= 0
+    || !Array.isArray(resultIds) || resultIds.some((value) => !validNonEmptyString(value))
+    || !Number.isSafeInteger(candidate.resultCount) || (candidate.resultCount as number) < 0
+    || candidate.resultCount !== resultIds.length
+    || (candidate.resultCount as number) > (candidate.maxResults as number)
+    || typeof candidate.truncated !== "boolean"
+    || !validNonEmptyString(candidate.recordedAt)) {
+    throw new ComputerNativeError("persistence", `Memory search '${String(candidate.searchId)}' has an invalid durable record.`);
+  }
+  assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, "Memory search");
+}
+
 function assertWorkspaceMutationRecord(
   record: unknown,
   expectedCorrelationId: CorrelationId,
@@ -1575,13 +1603,7 @@ export class TurnStore {
   }
 
   async writeMemorySearch(record: MemorySearchEvidence): Promise<void> {
-    if (record.schemaVersion !== 1 || record.searchId.trim().length === 0 || record.callId.trim().length === 0) {
-      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid memory search record.`);
-    }
-    assertRecordCorrelation(this.correlationId, record.correlationId, "Memory search");
-    if (record.turnId !== this.turnId || record.sessionId !== this.sessionId) {
-      throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
-    }
+    assertMemorySearchEvidence(record, this.sessionId, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "memory-searches");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`);
@@ -1593,10 +1615,7 @@ export class TurnStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     if (previous) {
-      assertTurnBoundRecord(previous, this.turnId, this.correlationId, "Memory search", "searchId");
-      if (previous.sessionId !== this.sessionId || typeof previous.callId !== "string" || previous.callId.trim().length === 0) {
-        throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
-      }
+      assertMemorySearchEvidence(previous, this.sessionId, this.turnId, this.correlationId);
       const { recordedAt: _previousRecordedAt, ...previousSemantics } = redactRecord(previous) as Record<string, unknown>;
       const { recordedAt: _recordedAt, ...recordSemantics } = redactRecord(record) as Record<string, unknown>;
       if (stableStringify(previousSemantics) !== stableStringify(recordSemantics)) {
@@ -1616,20 +1635,14 @@ export class TurnStore {
     const records: MemorySearchEvidence[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
       const record = await readJson<MemorySearchEvidence>(path.join(directory, entry.name));
-      assertTurnBoundRecord(record, this.turnId, this.correlationId, "Memory search", "searchId");
-      if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
-        throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
-      }
+      assertMemorySearchEvidence(record, this.sessionId, this.turnId, this.correlationId);
       records.push(record);
     }
     return records;
   }
 
   async ensureMemorySearchEvent(record: MemorySearchEvidence): Promise<void> {
-    assertTurnBoundRecord(record, this.turnId, this.correlationId, "Memory search", "searchId");
-    if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
-      throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
-    }
+    assertMemorySearchEvidence(record, this.sessionId, this.turnId, this.correlationId);
     const payload = {
       searchId: record.searchId,
       callId: record.callId,

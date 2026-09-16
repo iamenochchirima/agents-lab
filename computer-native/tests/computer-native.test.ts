@@ -5714,6 +5714,38 @@ test("memory search evidence is idempotent and rejects conflicting identity reus
   assert.deepEqual(persisted.resultIds, ["memory_record_1"]);
 });
 
+test("recovery rejects malformed memory search evidence before lifecycle repair", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("reject malformed memory search evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const base: MemorySearchEvidence = {
+    schemaVersion: 1,
+    searchId: "memory_search_malformed",
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    correlationId: turn.correlationId,
+    callId: "memory_search_malformed_call",
+    queryHash: "query-hash",
+    maxResults: 5,
+    resultIds: ["memory_record_1"],
+    resultCount: 1,
+    truncated: false,
+    recordedAt: new Date().toISOString(),
+  };
+  await turn.writeMemorySearch(base);
+  await atomicWriteJson(path.join(turn.directory, "memory-searches", `${base.searchId}.json`), {
+    ...base,
+    resultCount: "not-an-integer",
+  });
+
+  await assert.rejects(
+    () => session.recoverInterruptedTurns(),
+    /invalid durable record/u,
+  );
+  assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"streaming"/u);
+});
+
 test("restart repairs missing memory search lifecycle evidence without replay", async () => {
   const stateDir = tempDirectory();
   let interrupted = false;

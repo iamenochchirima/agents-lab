@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:14:09+02:00
+**Last updated:** 2026-09-16T23:19:20+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -1118,6 +1118,32 @@ Still open after this slice:
 - The broader per-write and host-side crash matrix, schema migration/repair tooling,
   backup/restore, and the remaining memory retrieval/privacy/compaction work remain open.
 
+### Current slice boundary: memory-search evidence integrity
+
+Delivered in this slice:
+
+- `TurnStore.writeMemorySearch` validates search evidence before publication and validates
+  an existing record before accepting an identical acknowledgement retry.
+- `readMemorySearches` and `ensureMemorySearchEvent` validate the same contract before
+  inspection, recovery, or lifecycle-event repair. Validation covers ownership, query and
+  call identity, scope filters, positive result bounds, result IDs/counts, truncation, and
+  timestamps.
+- A malformed result count or result set fails closed before recovery can reconstruct a
+  `MemorySearched` event or advance the interrupted turn.
+- Tests cover idempotent search evidence, conflicting identity reuse, acknowledgement-loss
+  repair, and malformed evidence rejection.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is operation-specific evidence validation at the existing memory-search persistence
+  boundary. It keeps the search result set redacted and bounded without adding a generic
+  event-sourcing or retrieval framework.
+
+Still open after this slice:
+
+- The broader per-write and host-side crash matrix, schema migration/repair tooling,
+  backup/restore, and the remaining memory retrieval/privacy/compaction work remain open.
+
 ### Current slice boundary: memory action record integrity
 
 Delivered in this slice:
@@ -1566,6 +1592,7 @@ claim in this plan.
       filesystem outcome classification.
 - [x] Reject malformed memory action records before recovery reconciliation or terminal
       lifecycle reconstruction.
+- [x] Reject malformed memory-search evidence before recovery lifecycle-event repair.
 - [ ] Retry eligibility, backoff limits, provider error classification, and no silent
       fallback.
 - [ ] Approval choice parsing, stale approval rejection, exact identity binding, and

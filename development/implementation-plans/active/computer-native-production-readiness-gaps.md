@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:14:09+02:00
+**Last updated:** 2026-09-16T23:19:20+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -52,8 +52,8 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 324 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 324 tests passed, with 89.59% line coverage, 79.00% branch
-  coverage, and 85.06% function coverage. The package commands serialize browser/profile,
+- `pnpm run coverage`: 325 tests passed, with 89.35% line coverage, 78.83% branch
+  coverage, and 85.03% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -96,6 +96,9 @@ readiness:
   recovery reconciliation. Invalid ownership, operation/scope, source or content hashes,
   batch members, limits, statuses, decisions, reasons, or timestamps fail closed before
   memory outcome classification.
+- Persisted memory-search evidence is now schema-validated before publication, duplicate
+  acknowledgement, inspection, or recovery event repair. Invalid result bounds, IDs,
+  scopes, counts, or truncation metadata fail closed before lifecycle reconstruction.
 - Model requests are rejected before provider transport when their serialized size
   exceeds `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`; streamed response text and tool-call
   fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
@@ -226,7 +229,7 @@ provider, browser-profile, and operational acceptance evidence.
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery and durable mutation-record validation | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, durable-record validation, launch-failure cleanup, and restart cleanup for the detached foreground process group | Full process crash matrix, cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability with durable action-record validation | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
-| Memory | Durable Markdown, local lexical retrieval, bounded evidence maintenance, and durable action-record validation | Mature retrieval, promotion, privacy, deletion, migration, backup/restore, and real-model acceptance |
+| Memory | Durable Markdown, local lexical retrieval, bounded evidence maintenance, and durable action/search-record validation | Mature retrieval, promotion, privacy, deletion, migration, backup/restore, and real-model acceptance |
 | Skills and plugins | Planned boundaries only | Trust, manifests, permissions, isolation, lifecycle, and evidence |
 | External integrations | Not implemented as a product layer | Credentials, retries, idempotency, webhooks, queues, and connector recovery |
 | Durable jobs and delegation | Foreground turns only | Scheduling, leases, restart recovery, budgets, child-agent policy, and operator controls |
