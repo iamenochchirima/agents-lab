@@ -670,6 +670,73 @@ test("restart repairs missing process completion evidence from a durable termina
   }
 });
 
+test("restart repairs a missing process prelude before an already durable terminal event", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-prelude-recovery-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("repair process prelude", "deterministic", "deterministic/process");
+    await turn.updateState("streaming");
+    const executionId = "execution_prelude_recovery";
+    const callId = "call_prelude_recovery";
+    await turn.appendEvent("TurnStarted");
+    await turn.writeProcess({
+      schemaVersion: 1,
+      executionId,
+      callId,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      command: process.execPath,
+      displayArgs: ["-e", "process.exitCode = 1"],
+      cwd: ".",
+      executablePath: process.execPath,
+      environmentProfile: "sanitized-default",
+      environmentKeys: ["PATH"],
+      limits,
+      argvHash: "prelude-recovery-hash",
+      status: "failed",
+      decision: "allow-once",
+      errorCode: "process-exit",
+      errorMessage: "the terminal record was durable before its prelude acknowledgement",
+      stdout: "",
+      stderr: "",
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      outputTruncated: false,
+      durationMs: 10,
+      exitCode: 1,
+      signal: null,
+      terminationConfirmed: true,
+      startedAt: new Date(0).toISOString(),
+      finishedAt: new Date(1).toISOString(),
+      recordedAt: new Date(1).toISOString(),
+    });
+    await turn.appendEvent("ProcessCompleted", {
+      executionId,
+      callId,
+      status: "failed",
+      errorCode: "process-exit",
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      recovered: true,
+    });
+
+    await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "ProcessPrepared",
+      "ProcessApprovalDecided",
+      "ProcessCompleted",
+      "TurnInterrupted",
+    ]);
+    assert.ok(events.filter((event) => event.type === "ProcessPrepared" || event.type === "ProcessApprovalDecided").every((event) => event.payload.recovered === true));
+    assert.equal(events[3]?.payload.recovered, true);
+    assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("restart repairs process evidence after a real side effect completes before acknowledgement", async () => {
   const harness = await createHarness();
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-side-effect-recovery-"));

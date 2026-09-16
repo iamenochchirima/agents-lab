@@ -134,6 +134,56 @@ test("restart repairs a missing first memory lifecycle event", async () => {
   }
 });
 
+test("restart repairs a missing memory prelude before an already durable terminal event", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-prelude-recovery-"));
+  try {
+    const session = await SessionStore.open(path.join(root, "state"));
+    const turn = await session.admitTurn("repair memory prelude", "deterministic", "deterministic/memory");
+    await turn.updateState("streaming");
+    const action: MemoryActionRecord = {
+      schemaVersion: 1,
+      operationId: "memory_prelude_recovery",
+      sessionId: session.metadata.sessionId,
+      turnId: turn.turnId,
+      correlationId: turn.correlationId,
+      callId: "memory_prelude_call",
+      operation: "add",
+      scope: "workspace",
+      sourcePath: "MEMORY.md",
+      afterContentHash: "after-hash",
+      inputHash: "after-hash",
+      status: "failed",
+      reason: "the terminal record was durable before its prelude acknowledgement",
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.appendEvent("TurnStarted");
+    await turn.writeMemoryAction(action);
+    await turn.appendEvent("MemoryFailed", {
+      operationId: action.operationId,
+      callId: action.callId,
+      operation: action.operation,
+      scope: action.scope,
+      status: "failed",
+      recovered: true,
+    });
+
+    await (await SessionStore.open(path.join(root, "state"), session.metadata.sessionId)).recoverInterruptedTurns();
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "MemoryPrepared",
+      "MemoryApprovalDecided",
+      "MemoryFailed",
+      "TurnInterrupted",
+    ]);
+    assert.ok(events.filter((event) => event.type === "MemoryPrepared" || event.type === "MemoryApprovalDecided").every((event) => event.payload.recovered === true));
+    assert.equal(events[3]?.payload.recovered, true);
+    assert.deepEqual(await (await SessionStore.open(path.join(root, "state"), session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("memory action evidence rejects skipped transitions and identity drift", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-action-transition-"));
   try {

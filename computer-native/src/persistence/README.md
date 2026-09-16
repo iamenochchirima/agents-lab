@@ -166,11 +166,12 @@ remained authoritative and the mutation was not replayed.
 When an action record is terminal but its normalized terminal event is missing, restart
 reconstructs that event before it finalizes an interrupted turn. Workspace mutation
 recovery also rebuilds a missing proposal/approval prelude when the durable record is
-the only surviving evidence. If the turn-terminal event was already acknowledged,
-recovery atomically inserts repaired action evidence immediately before it so the
-turn-terminal event remains last. Reconstruction is idempotent and only uses the
-persisted bounded record; it never launches a process, reopens a browser action,
-mutates the workspace, or changes memory contents.
+the only surviving evidence. For process, browser, and memory actions, if a
+recovery-only terminal event is already durable while its prepared/approval prelude is
+missing, recovery atomically inserts the repaired action evidence immediately before
+that terminal event. Reconstruction is idempotent and only uses the persisted bounded
+record; it never launches a process, reopens a browser action, mutates the workspace,
+or changes memory contents.
 
 Local process executions use the same atomic per-operation record pattern. The record
 contains the exact approved identity and bounded outcome, and its state transition is

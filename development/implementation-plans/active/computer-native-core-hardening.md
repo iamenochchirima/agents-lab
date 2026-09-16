@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T00:47:00+02:00
+**Last updated:** 2026-09-17T00:59:41+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -185,7 +185,9 @@ tests, but it must never replace a configured real provider silently.
 - Process, browser, and memory recovery now apply the same first-event repair rule from
   their bounded action records. Prepared/approval evidence is reconstructed before the
   recovery-only terminal observation, and no process, browser action, or memory write is
-  replayed.
+  replayed. If the recovery-only terminal event is already durable while that prelude is
+  incomplete, recovery inserts the missing action evidence immediately before the terminal
+  event and preserves idempotency.
 - Persisted workspace mutation previews and model round arguments now redact provider-
   shaped `sk-...` and bearer credentials at the shared evidence boundary. The original
   approved file content remains unchanged; only durable evidence is sanitized.
@@ -319,8 +321,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 337 passing tests across the package. The latest coverage
-  run passes with 89.90% line coverage, 79.44% branch coverage, and 85.42% function
+- The latest validation is 340 passing tests across the package. The latest coverage
+  run passes with 89.94% line coverage, 79.57% branch coverage, and 85.57% function
   coverage. Coverage is from Node's experimental test-coverage runner and can vary
   slightly between runs; one earlier run was discarded because instrumentation caused
   a timing-sensitive process-recovery test to fail.

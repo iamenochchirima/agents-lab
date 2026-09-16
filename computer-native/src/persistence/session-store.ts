@@ -1490,6 +1490,46 @@ export class TurnStore {
     return event;
   }
 
+  private async repairActionPreludeBeforeTerminal(
+    identityField: string,
+    identity: string,
+    terminalTypes: readonly LifecycleEventType[],
+    repairs: readonly (readonly [LifecycleEventType, Readonly<Record<string, unknown>>])[],
+  ): Promise<void> {
+    const eventsPath = path.join(this.directory, "events.jsonl");
+    const existing = await readJsonLines<LifecycleEvent>(eventsPath);
+    validateLifecycleEventHistory(existing, this.sessionId, this.turnId);
+    for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
+    const terminalIndex = existing.findIndex((event) => terminalTypes.includes(event.type) && event.payload[identityField] === identity);
+    if (terminalIndex < 0) return;
+
+    // A terminal action event can be durable before its approval prelude. The
+    // regular append-recovery path inserts before a terminal turn event, which
+    // would place this prelude after the action terminal. Rewrite the one
+    // action segment in one bounded operation so its lifecycle order stays
+    // valid.
+    const prefix = existing.slice(0, terminalIndex);
+    const inserted: LifecycleEvent[] = [];
+    for (const [type, payload] of repairs) {
+      const normalizedPayload = this.session.redactEvidence(payload);
+      assertLifecycleEventOrder([...prefix, ...inserted], type, normalizedPayload);
+      inserted.push({
+        schemaVersion: 1,
+        eventId: id("event"),
+        sequence: terminalIndex + inserted.length + 1,
+        type,
+        recordedAt: now(),
+        sessionId: this.record.sessionId,
+        turnId: this.record.turnId,
+        correlationId: this.correlationId,
+        payload: normalizedPayload as Readonly<Record<string, unknown>>,
+      });
+    }
+    const repaired = [...prefix, ...inserted, ...existing.slice(terminalIndex)].map((event, index) => ({ ...event, sequence: index + 1 }));
+    validateLifecycleEventHistory(repaired, this.sessionId, this.turnId);
+    await this.session.replaceJsonLines(eventsPath, repaired);
+  }
+
   async readEvents(): Promise<LifecycleEvent[]> {
     const events = await readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
     validateLifecycleEventHistory(events, this.sessionId, this.turnId);
@@ -1843,7 +1883,32 @@ export class TurnStore {
     if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
     let events = await this.readEvents();
     const processEvents = () => events.filter((event) => event.payload.executionId === record.executionId);
-    if (processEvents().some((event) => event.type === "ProcessCompleted")) return;
+    const hasTerminal = () => processEvents().some((event) => event.type === "ProcessCompleted");
+
+    const missingPrelude: (readonly [LifecycleEventType, Readonly<Record<string, unknown>>])[] = [];
+    if (!processEvents().some((event) => event.type === "ProcessPrepared")) {
+      missingPrelude.push(["ProcessPrepared", {
+        executionId: record.executionId,
+        callId: record.callId,
+        cwd: record.cwd,
+        command: record.command,
+        recovered: true,
+      }]);
+    }
+    if (!processEvents().some((event) => event.type === "ProcessApprovalDecided")) {
+      missingPrelude.push(["ProcessApprovalDecided", {
+        executionId: record.executionId,
+        callId: record.callId,
+        decision: record.decision ?? (record.status === "failed" ? "unavailable" : "allow-once"),
+        recovered: true,
+      }]);
+    }
+    if (hasTerminal()) {
+      if (missingPrelude.length > 0) {
+        await this.repairActionPreludeBeforeTerminal("executionId", record.executionId, ["ProcessCompleted"], missingPrelude);
+      }
+      return;
+    }
 
     // A process record can be durable even when its first lifecycle append was
     // interrupted. Rebuild the approval prelude from the immutable request
@@ -1883,13 +1948,10 @@ export class TurnStore {
     if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
     let events = await this.readEvents();
     const browserEvents = () => events.filter((event) => event.payload.actionId === record.actionId);
-    if (browserEvents().some((event) => event.type === "BrowserCompleted")) return;
 
-    // Browser action records are persisted before their lifecycle event. Repair
-    // the approval prelude when that first acknowledgement is lost; recovery
-    // records observation only and never reopens a tab or dispatches an action.
+    const missingPrelude: (readonly [LifecycleEventType, Readonly<Record<string, unknown>>])[] = [];
     if (!browserEvents().some((event) => event.type === "BrowserPrepared")) {
-      await this.appendRecoveredEvent("BrowserPrepared", {
+      missingPrelude.push(["BrowserPrepared", {
         actionId: record.actionId,
         callId: record.callId,
         sessionId: record.sessionId,
@@ -1897,16 +1959,28 @@ export class TurnStore {
         action: record.action,
         reference: record.reference,
         recovered: true,
-      });
-      events = await this.readEvents();
+      }]);
     }
     if (!browserEvents().some((event) => event.type === "BrowserApprovalDecided")) {
-      await this.appendRecoveredEvent("BrowserApprovalDecided", {
+      missingPrelude.push(["BrowserApprovalDecided", {
         actionId: record.actionId,
         callId: record.callId,
         decision: record.decision ?? (record.status === "failed" ? "unavailable" : "allow-once"),
         recovered: true,
-      });
+      }]);
+    }
+    if (browserEvents().some((event) => event.type === "BrowserCompleted")) {
+      if (missingPrelude.length > 0) {
+        await this.repairActionPreludeBeforeTerminal("actionId", record.actionId, ["BrowserCompleted"], missingPrelude);
+      }
+      return;
+    }
+
+    // Browser action records are persisted before their lifecycle event. Repair
+    // the approval prelude when that first acknowledgement is lost; recovery
+    // records observation only and never reopens a tab or dispatches an action.
+    for (const [type, payload] of missingPrelude) {
+      await this.appendRecoveredEvent(type, payload);
       events = await this.readEvents();
     }
     await this.appendRecoveredEvent("BrowserCompleted", {
@@ -1924,7 +1998,6 @@ export class TurnStore {
     let events = await this.readEvents();
     const memoryEvents = () => events.filter((event) => event.payload.operationId === record.operationId);
     const terminalTypes: readonly LifecycleEventType[] = ["MemoryCommitted", "MemoryForgotten", "MemoryFailed"];
-    if (memoryEvents().some((event) => terminalTypes.includes(event.type))) return;
 
     // The action history is durable before its normalized event. Reconstruct
     // the prepared/approval prelude from hash-only evidence after an
@@ -1949,16 +2022,25 @@ export class TurnStore {
       afterContentHash: record.afterContentHash ?? null,
       risk,
     };
+    const missingPrelude: (readonly [LifecycleEventType, Readonly<Record<string, unknown>>])[] = [];
     if (!memoryEvents().some((event) => event.type === "MemoryPrepared")) {
-      await this.appendRecoveredEvent("MemoryPrepared", { ...basePayload, recovered: true });
-      events = await this.readEvents();
+      missingPrelude.push(["MemoryPrepared", { ...basePayload, recovered: true }]);
     }
     if (!memoryEvents().some((event) => event.type === "MemoryApprovalDecided")) {
-      await this.appendRecoveredEvent("MemoryApprovalDecided", {
+      missingPrelude.push(["MemoryApprovalDecided", {
         ...basePayload,
         decision: record.decision ?? (record.status === "denied" ? "unavailable" : "allow-once"),
         recovered: true,
-      });
+      }]);
+    }
+    if (memoryEvents().some((event) => terminalTypes.includes(event.type))) {
+      if (missingPrelude.length > 0) {
+        await this.repairActionPreludeBeforeTerminal("operationId", record.operationId, terminalTypes, missingPrelude);
+      }
+      return;
+    }
+    for (const [type, payload] of missingPrelude) {
+      await this.appendRecoveredEvent(type, payload);
       events = await this.readEvents();
     }
     const type: LifecycleEventType = record.status === "committed"

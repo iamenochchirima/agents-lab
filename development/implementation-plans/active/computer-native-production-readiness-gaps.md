@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T00:47:00+02:00
+**Last updated:** 2026-09-17T00:59:41+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 337 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 337 tests passed with 89.90% line coverage, 79.44% branch
-  coverage, and 85.42% function coverage. The package commands serialize
+- `pnpm test`: 340 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 340 tests passed with 89.94% line coverage, 79.57% branch
+  coverage, and 85.57% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -175,8 +175,10 @@ readiness:
   recovery never replays the mutation.
 - Process, browser, and memory action recovery now repairs the same missing prepared and
   approval prelude from bounded action records before writing their recovered terminal
-  observations. This preserves the approval boundary without replaying a command,
-  browser action, or memory write.
+  observations. Tests also cover the case where that recovery-only terminal event is
+  already durable: the missing prelude is inserted immediately before it, preserving
+  lifecycle order and idempotency without replaying a command, browser action, or memory
+  write.
 - Workspace mutation previews and model-round arguments now redact provider-shaped
   `sk-...` and bearer credentials before persistence. The redaction is evidence-only;
   approved workspace content remains unchanged. Broader secret-source discovery and
@@ -326,10 +328,12 @@ Exit evidence:
 - Current evidence also covers reconstruction of one missing terminal lifecycle event per
   action family. It does not yet prove reconstruction after a process-level crash at
   every write boundary or across all future action types.
-- Current action evidence now also covers a missing first lifecycle append for process,
-  browser, memory, and workspace records. These repairs are operation-local and
-  idempotent; they do not cover a terminal event whose earlier action prelude is already
-  malformed, or a crash at every persistence and host-side boundary.
+- Current action evidence now covers a missing first lifecycle append for process, browser,
+  memory, and workspace records, plus a missing process/browser/memory prelude when a
+  recovery-only terminal event is already durable. These repairs are operation-local and
+  idempotent; workspace mutation has a separate proposal/applying contract and remains
+  limited to first-event recovery. This still does not cover a crash at every persistence
+  and host-side boundary.
 - Current event-order evidence covers process, browser, and memory action lifecycles,
   including identity omission, skipped phases, post-terminal writes, and direct
   recovered-terminal reconstruction. Persisted model/tool round evidence also rejects

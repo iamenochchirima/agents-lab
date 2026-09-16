@@ -112,6 +112,40 @@ test("restart repairs a missing first browser lifecycle event", async () => {
   }
 });
 
+test("restart repairs a missing browser prelude before an already durable terminal event", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-prelude-recovery-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("repair browser prelude", "deterministic", "deterministic/browser");
+    await turn.updateState("streaming");
+    const action = { ...record("failed", turn.turnId), actionId: "browser_prelude_recovery", callId: "browser_prelude_call" };
+    await turn.appendEvent("TurnStarted");
+    await turn.writeBrowserAction(action);
+    await turn.appendEvent("BrowserCompleted", {
+      actionId: action.actionId,
+      callId: action.callId,
+      status: "failed",
+      errorCode: "browser-crash",
+      recovered: true,
+    });
+
+    await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "BrowserPrepared",
+      "BrowserApprovalDecided",
+      "BrowserCompleted",
+      "TurnInterrupted",
+    ]);
+    assert.ok(events.filter((event) => event.type === "BrowserPrepared" || event.type === "BrowserApprovalDecided").every((event) => event.payload.recovered === true));
+    assert.equal(events[3]?.payload.recovered, true);
+    assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("recovery rejects a malformed browser action before classifying it", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-malformed-record-"));
   try {
