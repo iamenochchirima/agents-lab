@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { completeTriggerOpenRouterModel } from "../../../src/platforms/trigger-dev/variants/baseline/execution/openrouter.js";
+import {
+  completeTriggerOpenRouterModel,
+  TRIGGER_OPENROUTER_MAX_OUTPUT_BYTES,
+  TRIGGER_OPENROUTER_MAX_RESPONSE_BYTES,
+} from "../../../src/platforms/trigger-dev/variants/baseline/execution/openrouter.js";
 import type { TriggerPromptPayload } from "../../../src/platforms/trigger-dev/variants/baseline/contracts.js";
 
 const payload: TriggerPromptPayload = {
@@ -78,6 +82,47 @@ test("Trigger OpenRouter task does not dispatch an already-cancelled request", a
         && error.message.includes("before dispatch"),
     );
     assert.equal(fetchCalls, 0);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+  }
+});
+
+test("Trigger OpenRouter task bounds the provider response body", async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-secret";
+  let bodyCancelled = false;
+  try {
+    await assert.rejects(
+      completeTriggerOpenRouterModel(payload, new AbortController().signal, async () => new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new TextEncoder().encode(`{\"choices\":[{\"message\":{\"content\":\"${"x".repeat(TRIGGER_OPENROUTER_MAX_RESPONSE_BYTES)}\"}}]}`));
+        },
+        cancel() {
+          bodyCancelled = true;
+        },
+      }), { status: 200 })),
+      (error: unknown) => error instanceof Error
+        && error.name === "TRIGGER_OPENROUTER_RESPONSE_TOO_LARGE",
+    );
+    assert.equal(bodyCancelled, true);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+  }
+});
+
+test("Trigger OpenRouter task bounds assistant output", async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-secret";
+  try {
+    await assert.rejects(
+      completeTriggerOpenRouterModel(payload, new AbortController().signal, async () => new Response(JSON.stringify({
+        choices: [{ message: { content: "x".repeat(TRIGGER_OPENROUTER_MAX_OUTPUT_BYTES + 1) } }],
+      }), { status: 200 })),
+      (error: unknown) => error instanceof Error
+        && error.name === "TRIGGER_OPENROUTER_OUTPUT_TOO_LARGE",
+    );
   } finally {
     if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previousKey;

@@ -3,6 +3,8 @@ import { TriggerBaselineTaskError, type TriggerPromptPayload } from "../contract
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
+export const TRIGGER_OPENROUTER_MAX_RESPONSE_BYTES = 1_048_576;
+export const TRIGGER_OPENROUTER_MAX_OUTPUT_BYTES = 100_000;
 
 export interface TriggerOpenRouterModelResult {
   readonly output: string;
@@ -72,10 +74,15 @@ export async function completeTriggerOpenRouterModel(
       );
     }
 
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
+    const bodyResult = await readJson(response);
+    if (bodyResult.kind === "too_large") {
+      throw new TriggerBaselineTaskError(
+        "TRIGGER_OPENROUTER_RESPONSE_TOO_LARGE",
+        "provider",
+        "OpenRouter returned a response larger than the configured safety limit.",
+      );
+    }
+    if (bodyResult.kind === "invalid") {
       throw new TriggerBaselineTaskError(
         "TRIGGER_OPENROUTER_INVALID_RESPONSE",
         "provider",
@@ -83,7 +90,7 @@ export async function completeTriggerOpenRouterModel(
       );
     }
 
-    const output = readText(body);
+    const output = readText(bodyResult.value);
     if (!output) {
       throw new TriggerBaselineTaskError(
         "TRIGGER_OPENROUTER_EMPTY_RESPONSE",
@@ -91,8 +98,15 @@ export async function completeTriggerOpenRouterModel(
         "OpenRouter returned no assistant text.",
       );
     }
+    if (Buffer.byteLength(output, "utf8") > TRIGGER_OPENROUTER_MAX_OUTPUT_BYTES) {
+      throw new TriggerBaselineTaskError(
+        "TRIGGER_OPENROUTER_OUTPUT_TOO_LARGE",
+        "provider",
+        "OpenRouter assistant output exceeded the configured safety limit.",
+      );
+    }
 
-    return { output, usage: readUsage(body) };
+    return { output, usage: readUsage(bodyResult.value) };
   } catch (error) {
     if (error instanceof TriggerBaselineTaskError) throw error;
     if (signal.aborted) {
@@ -108,6 +122,46 @@ export async function completeTriggerOpenRouterModel(
     signal.removeEventListener("abort", onAbort);
   }
 }
+
+async function readJson(response: Response): Promise<JsonReadResult> {
+  if (!response.body) return { kind: "invalid" };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > TRIGGER_OPENROUTER_MAX_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return { kind: "too_large" };
+      }
+      chunks.push(chunk.value);
+    }
+  } catch {
+    return { kind: "invalid" };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return { kind: "ok", value: JSON.parse(new TextDecoder().decode(bytes)) };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+type JsonReadResult =
+  | { readonly kind: "ok"; readonly value: unknown }
+  | { readonly kind: "too_large" }
+  | { readonly kind: "invalid" };
 
 function readText(body: unknown): string | null {
   if (!isRecord(body) || !Array.isArray(body.choices) || !isRecord(body.choices[0])) return null;
