@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T14:18:22+02:00
+**Last updated:** 2026-09-16T14:30:45+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -96,6 +96,11 @@ tests, but it must never replace a configured real provider silently.
 - Shared numeric runtime, process, browser, workspace, tool, retry, and memory limits
   are validated at startup; invalid zero, negative, fractional, or non-finite values
   fail before a session starts.
+- Model request and streamed output limits are now configured independently from tool
+  output. Requests are rejected before provider transport with `ModelRequestRejected`;
+  response text and tool-call fields are counted as UTF-8 bytes across the turn, and an
+  over-limit response fails without persisting a partial assistant message. The
+  OpenRouter adapter enforces its response bound while reading the stream as well.
 - The initial model instruction now describes the implemented bounded directory
   transfer and same-parent rename tools instead of limiting them to regular files.
 - Multi-file patch commits now check cancellation before starting and between members;
@@ -130,8 +135,11 @@ tests, but it must never replace a configured real provider silently.
 - Process records now carry a Linux executable/start-token identity. Recovery verifies
   it before signalling a process group and fails closed on a mismatch or unsupported
   identity source.
-- The current validation is 231 passing tests across the package, with 87.94% line
-  coverage, 75.13% branch coverage, and 82.96% function coverage.
+- Model request/output limits are covered at configuration, runtime, and OpenRouter
+  adapter boundaries, including pre-provider rejection and no-partial-transcript
+  failure behavior.
+- The current validation is 235 passing tests across the package, with 87.90% line
+  coverage, 75.16% branch coverage, and 82.97% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -152,14 +160,36 @@ Delivered in this slice:
   restart recovery without replaying it, plus a launch-acknowledgement failure test
   proving the in-process runner cleans up after spawn.
 
-Still not delivered by this slice:
+### Current slice boundary: model payload resource limits
+
+Delivered in this slice:
+
+- Positive configuration and `.env` settings for independent serialized request and
+  streamed response byte limits.
+- Pre-transport request rejection with durable `ModelRequestRejected` evidence.
+- Turn-wide UTF-8 accounting for response text and tool-call fields, with a typed
+  `resource-limit` failure that does not retry or persist partial assistant output.
+- OpenRouter-side response enforcement while consuming the provider stream, so the
+  adapter also fails before unbounded response accumulation.
+- Tests for defaults, invalid configuration, pre-provider rejection, partial-output
+  failure, and provider-level stream enforcement.
+
+Broader gates still open after this slice:
+
+- OS-level process/container limits, network isolation, or a sandbox guarantee.
+- Provider capability metadata, fallback policy, usage/cost accounting, or the full
+  provider resilience work listed in the model/provider section.
+- The remaining full runtime crash matrix, structured approval/TUI gates, and real-
+  provider/manual acceptance gates.
+
+Still not delivered by the persistence acknowledgement slice:
 
 - Failure injection before and after every persistence write, and at the model-send,
   approval-decision, and underlying filesystem/process/browser/memory side-effect
   boundaries.
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, or an exactly-once execution guarantee.
-- The remaining shared lifecycle, approval/TUI, provider, resource-limit, security,
+- The remaining shared lifecycle, approval/TUI, provider, security,
   real-provider, and manual acceptance gates listed below.
 
 The plan remains active. These are verified vertical slices, not completion of the
@@ -186,8 +216,9 @@ remaining runtime, approval, filesystem, or security work below.
       partial completion. Use atomic replacement only where the underlying operation can
       prove it; the patch set explicitly reports partial or uncertain outcomes rather
       than claiming cross-file atomicity.
-- [ ] Add shared resource limits for turns, requests, output, files, directory entries,
-      bytes, depth, and operation duration.
+- [x] Add shared resource limits for turns, requests, output, files, directory entries,
+      bytes, depth, and operation duration. Model request and streamed output limits are
+      independently enforced and recorded; OS-level isolation remains a separate gap.
 - [ ] Recheck approved identities immediately before side effects and reject stale or
       changed approvals.
 - [ ] Extend security and telemetry evidence for retries, cancellation, recovery,

@@ -14,5 +14,5 @@ export function createModelProvider(config: AppConfig): ModelProvider {
   if (!config.openRouterApiKey) {
     throw new ComputerNativeError("configuration", "OpenRouter credentials are unavailable.");
   }
-  return new OpenRouterModelProvider(config.model, config.openRouterApiKey);
+  return new OpenRouterModelProvider(config.model, config.openRouterApiKey, fetch, config.maxModelOutputBytes);
 }

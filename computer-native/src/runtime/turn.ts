@@ -37,7 +37,7 @@ export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryDailyMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryDailyMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
   readonly memory?: MemoryStore;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
@@ -779,6 +779,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
   let modelRequestCount = 0;
   let toolCallCount = 0;
   let roundCount = 0;
+  let modelOutputBytes = 0;
   try {
     for (let round = 1; round <= options.config.maxModelToolRounds; round += 1) {
       roundCount = round;
@@ -796,6 +797,16 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       const toolCalls: ModelToolCall[] = [];
       const callIds = new Set<string>();
       const roundRequest = { ...request, messages, tools: tools.definitions };
+      const requestBytes = Buffer.byteLength(JSON.stringify(roundRequest), "utf8");
+      if (requestBytes > options.config.maxModelRequestBytes) {
+        await turn.appendEvent("ModelRequestRejected", {
+          round,
+          reason: "request-size",
+          requestBytes,
+          maxRequestBytes: options.config.maxModelRequestBytes,
+        });
+        throw new ComputerNativeError("resource-limit", `The model request is ${requestBytes} bytes, above the ${options.config.maxModelRequestBytes}-byte limit.`);
+      }
       let attempt = 0;
       while (true) {
         attempt += 1;
@@ -810,11 +821,21 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
             emittedEvent = true;
             abort.markFirstEvent();
             if (event.type === "text") {
+              const chunkBytes = Buffer.byteLength(event.text, "utf8");
+              if (modelOutputBytes + chunkBytes > options.config.maxModelOutputBytes) {
+                throw new ComputerNativeError("resource-limit", `The model response exceeded the ${options.config.maxModelOutputBytes}-byte limit.`);
+              }
+              modelOutputBytes += chunkBytes;
               roundText.push(event.text);
               response += event.text;
               options.onText?.(event.text);
               options.onEvent?.({ type: "text", text: event.text, round });
             } else if (event.type === "tool_call") {
+              const callBytes = Buffer.byteLength(JSON.stringify(event.call), "utf8");
+              if (modelOutputBytes + callBytes > options.config.maxModelOutputBytes) {
+                throw new ComputerNativeError("resource-limit", `The model response exceeded the ${options.config.maxModelOutputBytes}-byte limit.`);
+              }
+              modelOutputBytes += callBytes;
               if (callIds.has(event.call.callId)) {
                 throw new ModelProviderError(`The provider returned duplicate tool call ID '${event.call.callId}'.`, { code: "provider-incomplete" });
               }

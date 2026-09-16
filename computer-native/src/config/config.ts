@@ -16,6 +16,11 @@ export const DEFAULT_MAX_TREE_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_TREE_DEPTH = 32;
 export const DEFAULT_MAX_TOOL_OUTPUT_BYTES = 32 * 1024;
 export const DEFAULT_MAX_TOOL_DURATION_MS = 10_000;
+// Keep model payloads bounded independently from tool output. The request bound
+// protects provider memory and transport cost; the response bound also limits
+// streamed text and assembled tool-call arguments per turn.
+export const DEFAULT_MAX_MODEL_REQUEST_BYTES = 512 * 1024;
+export const DEFAULT_MAX_MODEL_OUTPUT_BYTES = 256 * 1024;
 // A multi-step interaction can spend four rounds on preparation and side effects
 // before the model gets a final reporting round. Keep the loop bounded, but leave
 // enough room for snapshot → action → verification workflows such as browser forms.
@@ -93,6 +98,8 @@ export interface ConfigOverrides {
   readonly maxTreeDepth?: number;
   readonly maxToolOutputBytes?: number;
   readonly maxToolDurationMs?: number;
+  readonly maxModelRequestBytes?: number;
+  readonly maxModelOutputBytes?: number;
   readonly maxModelToolRounds?: number;
   readonly modelRetryAttempts?: number;
   readonly modelRetryBackoffMs?: number;
@@ -148,6 +155,8 @@ export interface AppConfig {
   readonly maxTreeDepth: number;
   readonly maxToolOutputBytes: number;
   readonly maxToolDurationMs: number;
+  readonly maxModelRequestBytes: number;
+  readonly maxModelOutputBytes: number;
   readonly maxModelToolRounds: number;
   readonly modelRetryAttempts: number;
   readonly modelRetryBackoffMs: number;
@@ -258,6 +267,8 @@ function validateNumericConfig(config: AppConfig): void {
     ["max tree depth", config.maxTreeDepth],
     ["max tool output bytes", config.maxToolOutputBytes],
     ["max tool duration", config.maxToolDurationMs],
+    ["max model request bytes", config.maxModelRequestBytes],
+    ["max model output bytes", config.maxModelOutputBytes],
     ["max model tool rounds", config.maxModelToolRounds],
     ["model retry attempts", config.modelRetryAttempts],
     ["memory user max chars", config.memoryUserMaxChars],
@@ -351,6 +362,8 @@ export function loadConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessE
     maxTreeDepth: overrides.maxTreeDepth ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TREE_DEPTH, DEFAULT_MAX_TREE_DEPTH, "max tree depth"),
     maxToolOutputBytes: overrides.maxToolOutputBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TOOL_OUTPUT_BYTES, DEFAULT_MAX_TOOL_OUTPUT_BYTES, "max tool output bytes"),
     maxToolDurationMs: overrides.maxToolDurationMs ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TOOL_DURATION_MS, DEFAULT_MAX_TOOL_DURATION_MS, "max tool duration"),
+    maxModelRequestBytes: overrides.maxModelRequestBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES, DEFAULT_MAX_MODEL_REQUEST_BYTES, "max model request bytes"),
+    maxModelOutputBytes: overrides.maxModelOutputBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES, DEFAULT_MAX_MODEL_OUTPUT_BYTES, "max model output bytes"),
     maxModelToolRounds: overrides.maxModelToolRounds ?? positiveInteger(env.COMPUTER_NATIVE_MAX_MODEL_TOOL_ROUNDS, DEFAULT_MAX_MODEL_TOOL_ROUNDS, "max model tool rounds"),
     deterministicBehavior: overrides.deterministicBehavior ?? deterministicBehavior(env.COMPUTER_NATIVE_DETERMINISTIC_BEHAVIOR),
     deterministicDelayMs,
@@ -409,6 +422,8 @@ export function safeConfigSummary(config: AppConfig): Readonly<Record<string, un
     maxTreeDepth: config.maxTreeDepth,
     maxToolOutputBytes: config.maxToolOutputBytes,
     maxToolDurationMs: config.maxToolDurationMs,
+    maxModelRequestBytes: config.maxModelRequestBytes,
+    maxModelOutputBytes: config.maxModelOutputBytes,
     maxModelToolRounds: config.maxModelToolRounds,
     memoryEnabled: config.memoryEnabled,
     memoryUserMaxChars: config.memoryUserMaxChars,

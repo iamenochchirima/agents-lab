@@ -67,6 +67,14 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.approvalTimeoutMs, 120_000);
   assert.equal(deterministic.modelRetryAttempts, 2);
   assert.equal(deterministic.modelRetryBackoffMs, 250);
+  assert.equal(deterministic.maxModelRequestBytes, 512 * 1024);
+  assert.equal(deterministic.maxModelOutputBytes, 256 * 1024);
+  const configured = loadConfig({ stateDir: tempDirectory() }, {
+    COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES: "1234",
+    COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES: "5678",
+  });
+  assert.equal(configured.maxModelRequestBytes, 1234);
+  assert.equal(configured.maxModelOutputBytes, 5678);
   assert.equal(deterministic.processMode, "approval");
   assert.equal(deterministic.processDurationMs, 60_000);
   assert.equal(deterministic.processCallsPerTurn, 4);
@@ -101,6 +109,14 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.throws(
     () => config(tempDirectory(), { deterministicDelayMs: -1 }),
     /deterministic delay must be a non-negative integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { maxModelRequestBytes: 0 }),
+    /max model request bytes must be a positive integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { maxModelOutputBytes: 0 }),
+    /max model output bytes must be a positive integer/u,
   );
 });
 
@@ -618,6 +634,83 @@ test("provider failure records the user message without an assistant", async () 
   assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
 });
 
+test("model request size is rejected before the provider is invoked", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let providerCalls = 0;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/bounded-request",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string }> {
+      providerCalls += 1;
+      yield { type: "text", text: "should not run" };
+    },
+  };
+
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir, { maxModelRequestBytes: 1 }),
+    userPrompt: "request that must be rejected",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "resource-limit");
+  assert.equal(providerCalls, 0);
+  assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
+  const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequestRejected", "TurnFailed"]);
+  const rejection = events.find((event) => event.type === "ModelRequestRejected");
+  assert.equal(rejection?.payload.reason, "request-size");
+  assert.equal(typeof rejection?.payload.requestBytes, "number");
+});
+
+test("model output size failure does not persist a partial assistant message", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const result = await runTurn({
+    session,
+    provider: new DeterministicModelProvider("deterministic/bounded-output", { response: "x".repeat(100) }),
+    config: config(stateDir, { maxModelRequestBytes: 512 * 1024, maxModelOutputBytes: 32 }),
+    userPrompt: "return bounded output",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "resource-limit");
+  assert.equal(result.assistantText, undefined);
+  assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
+  const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  const attempt = events.find((event) => event.type === "ModelAttemptCompleted");
+  assert.equal(attempt?.payload.status, "failed");
+  assert.equal(attempt?.payload.errorCode, "resource-limit");
+});
+
+test("model output size also bounds assembled tool-call fields", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/bounded-tool-call",
+    async *stream(): AsyncIterable<{ readonly type: "tool_call"; readonly call: { readonly callId: string; readonly name: string; readonly argumentsJson: string } }> {
+      yield { type: "tool_call", call: { callId: "call_1", name: "read_file", argumentsJson: "x".repeat(100) } };
+    },
+  };
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir, { maxModelRequestBytes: 512 * 1024, maxModelOutputBytes: 32 }),
+    userPrompt: "return a bounded tool call",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "resource-limit");
+  assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
+});
+
 test("turn retries a provider failure before the first event and records the retry", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);
@@ -912,6 +1005,27 @@ test("OpenRouter adapter normalizes streamed tool calls and serializes the provi
     { role: "assistant", content: null, tool_calls: [{ id: "call_0", type: "function", function: { name: "list_directory", arguments: "{}" } }] },
     { role: "tool", content: "{\"entries\":[]}", tool_call_id: "call_0", name: "list_directory" },
   ]);
+});
+
+test("OpenRouter adapter rejects a response stream above its configured byte limit", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'));
+      controller.close();
+    },
+  });
+  const provider = new OpenRouterModelProvider("openai/example", "bounded-secret", async () => new Response(stream, { status: 200 }), 4);
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "hello" }],
+  };
+  await assert.rejects(
+    async () => { for await (const _event of provider.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ComputerNativeError && error.code === "resource-limit" && error.message.includes("4-byte limit"),
+  );
 });
 
 test("OpenRouter adapter classifies incomplete streams and rate limits", async () => {

@@ -1,4 +1,4 @@
-import { ModelProviderError, redactSecrets } from "../runtime/errors.js";
+import { ComputerNativeError, ModelProviderError, redactSecrets } from "../runtime/errors.js";
 import type { ModelMessage, ModelRequest, ModelStreamEvent, ModelToolCall, ModelUsage } from "../runtime/contracts.js";
 import type { ModelProvider } from "./provider.js";
 
@@ -76,6 +76,7 @@ export class OpenRouterModelProvider implements ModelProvider {
     readonly model: string,
     private readonly apiKey: string,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly maxOutputBytes = 256 * 1024,
   ) {}
 
   async *stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent> {
@@ -122,7 +123,14 @@ export class OpenRouterModelProvider implements ModelProvider {
     let buffer = "";
     let lastUsage: ModelUsage | undefined;
     let sawDone = false;
+    let responseBytes = 0;
     const toolCalls = new Map<number, { id?: string; name: string; argumentsJson: string }>();
+    const countResponseBytes = (value: string): void => {
+      responseBytes += Buffer.byteLength(value, "utf8");
+      if (responseBytes > this.maxOutputBytes) {
+        throw new ComputerNativeError("resource-limit", `The model response exceeded the ${this.maxOutputBytes}-byte limit.`);
+      }
+    };
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -135,11 +143,17 @@ export class OpenRouterModelProvider implements ModelProvider {
           const event = parseChunk(line.slice(5).trim());
           if (!event) continue;
           if (event.done) sawDone = true;
-          if (event.text) yield { type: "text", text: event.text };
+          if (event.text) {
+            countResponseBytes(event.text);
+            yield { type: "text", text: event.text };
+          }
           lastUsage = event.usage ?? lastUsage;
           for (const delta of event.toolCalls) {
             const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : toolCalls.size;
             const existing = toolCalls.get(index) ?? { name: "", argumentsJson: "" };
+            if (typeof delta.id === "string") countResponseBytes(delta.id);
+            if (typeof delta.function?.name === "string") countResponseBytes(delta.function.name);
+            if (typeof delta.function?.arguments === "string") countResponseBytes(delta.function.arguments);
             const id = typeof delta.id === "string" ? delta.id : existing.id;
             const name = typeof delta.function?.name === "string" ? `${existing.name}${delta.function.name}` : existing.name;
             const argumentsJson = typeof delta.function?.arguments === "string" ? `${existing.argumentsJson}${delta.function.arguments}` : existing.argumentsJson;
@@ -151,11 +165,17 @@ export class OpenRouterModelProvider implements ModelProvider {
       if (trailing.startsWith("data:")) {
         const event = parseChunk(trailing.slice(5).trim());
         if (event?.done) sawDone = true;
-        if (event?.text) yield { type: "text", text: event.text };
+        if (event?.text) {
+          countResponseBytes(event.text);
+          yield { type: "text", text: event.text };
+        }
         if (event?.usage) lastUsage = event.usage;
         for (const delta of event?.toolCalls ?? []) {
           const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : toolCalls.size;
           const existing = toolCalls.get(index) ?? { name: "", argumentsJson: "" };
+          if (typeof delta.id === "string") countResponseBytes(delta.id);
+          if (typeof delta.function?.name === "string") countResponseBytes(delta.function.name);
+          if (typeof delta.function?.arguments === "string") countResponseBytes(delta.function.arguments);
           const id = typeof delta.id === "string" ? delta.id : existing.id;
           const name = typeof delta.function?.name === "string" ? `${existing.name}${delta.function.name}` : existing.name;
           const argumentsJson = typeof delta.function?.arguments === "string" ? `${existing.argumentsJson}${delta.function.arguments}` : existing.argumentsJson;

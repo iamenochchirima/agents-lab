@@ -30,6 +30,15 @@ provider call and `ModelAttemptCompleted` records success or bounded failure. Sc
 delays are separate lifecycle evidence. A failure after partial text or a tool call is
 never replayed automatically.
 
+Model requests and streamed model output are bounded independently from tool output.
+`COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES` is checked before a provider call and emits
+`ModelRequestRejected` when the serialized request is too large. The runtime also counts
+UTF-8 response text and assembled tool-call fields across the entire turn; exceeding
+`COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` fails the turn with `resource-limit` and does
+not append a partial assistant transcript message. The OpenRouter adapter enforces the
+same response bound while reading the provider stream, so an oversized response is
+stopped before it can accumulate in memory.
+
 Workspace actions use the same turn event stream as model, process, browser, and memory
 work. The runtime persists `WorkspaceMutationProposed`, approval, application/progress,
 and committed or failed events alongside the detailed mutation record. The event payload

@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T13:47:42+02:00
+**Last updated:** 2026-09-16T14:30:45+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 231 tests passed after the current process-lifecycle slice.
-- `pnpm run coverage`: 231 tests passed, with 87.94% line coverage, 75.13% branch
-  coverage, and 82.96% function coverage.
+- `pnpm test`: 235 tests passed after the current model-resource-limit slice.
+- `pnpm run coverage`: 235 tests passed, with 87.90% line coverage, 75.16% branch
+  coverage, and 82.97% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -75,6 +75,11 @@ readiness:
   the failure returns to the runtime.
 - Linux process records carry an executable/start-token identity, and recovery refuses
   to signal a PID whose current identity does not match the persisted record.
+- Model requests are rejected before provider transport when their serialized size
+  exceeds `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`; streamed response text and tool-call
+  fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
+  partial assistant transcript. The OpenRouter adapter applies the response bound while
+  reading the provider stream.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 

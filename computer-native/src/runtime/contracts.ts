@@ -112,6 +112,7 @@ export interface TurnError {
     | "cancelled"
     | "interrupted"
     | "tool"
+    | "resource-limit"
     | ProcessErrorCode
     | "workspace"
     | "round-limit"
@@ -138,6 +139,7 @@ export interface TurnResult {
 export type LifecycleEventType =
   | "TurnStarted"
   | "ModelRequested"
+  | "ModelRequestRejected"
   | "ModelAttemptCompleted"
   | "ModelRetryScheduled"
   | "ModelCompleted"

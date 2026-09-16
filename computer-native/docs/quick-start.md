@@ -239,6 +239,13 @@ text or a tool call has been emitted is not retried because replay could duplica
 or obscure a side effect. Retry attempts are recorded in the turn evidence and shown in
 the TUI.
 
+Model payloads are bounded separately from tool output. The default request limit is
+512 KiB (`COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`) and the default streamed response
+limit is 256 KiB (`COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES`). A request above its limit is
+rejected before transport; output above its limit fails the turn without persisting a
+partial assistant message. Lower or raise these limits in `.env` for controlled local
+tests, but keep them positive integers.
+
 The local `.env` file is not committed. Explicit environment variables and command-line
 flags take precedence over it. The key is never included in the manifest, transcript,
 events, result, terminal error, or browser-facing output. If the key or model is missing,
