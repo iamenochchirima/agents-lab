@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T01:10:48+02:00
+**Last updated:** 2026-09-17T01:20:33+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -52,8 +52,8 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 341 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 341 tests passed with 89.95% line coverage, 79.50% branch
-  coverage, and 85.62% function coverage. The package commands serialize
+- `pnpm run coverage`: 341 tests passed with 89.86% line coverage, 79.52% branch
+  coverage, and 85.54% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -203,6 +203,11 @@ readiness:
   and pre-output versus post-output disconnects now have bounded classifications. The
   runtime does not retry context/refusal outcomes and does not retry a disconnect after
   partial output.
+- OpenRouter tool-call fragments now reject malformed index, ID, function-name, and
+  argument-fragment types at the adapter boundary as non-retryable `provider-incomplete`
+  outcomes. This closes only the tested tool-call field-shape gap; broader malformed
+  response-shape fixtures, fallback policy, cost accounting, and credential-expiry
+  operations remain open.
 - New turns carry a stable correlation ID through TUI events, model requests, lifecycle
   and round evidence, terminal results, and action records. Older records use a turn-ID
   compatibility fallback, while explicit cross-turn correlation mismatches fail closed.

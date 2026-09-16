@@ -74,8 +74,21 @@ function parseChunk(data: string): { readonly text?: string; readonly refusal?: 
     if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) {
       throw new ModelProviderError("OpenRouter returned an invalid tool-call entry.", { code: "provider-incomplete", retryable: false });
     }
+    // Tool-call fragments are untrusted provider data; reject wrong field types here so they do not become misleading runtime tool errors later.
+    if (toolCall.index !== undefined && (!Number.isInteger(toolCall.index) || (toolCall.index as number) < 0)) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call index.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.id !== undefined && (typeof toolCall.id !== "string" || toolCall.id.length === 0)) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call ID.", { code: "provider-incomplete", retryable: false });
+    }
     if (toolCall.function !== undefined && (!toolCall.function || typeof toolCall.function !== "object" || Array.isArray(toolCall.function))) {
       throw new ModelProviderError("OpenRouter returned an invalid tool-call function.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.function?.name !== undefined && typeof toolCall.function.name !== "string") {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call name.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.function?.arguments !== undefined && typeof toolCall.function.arguments !== "string") {
+      throw new ModelProviderError("OpenRouter returned invalid tool-call arguments.", { code: "provider-incomplete", retryable: false });
     }
   }
   const content = parsed.choices?.[0]?.delta?.content;

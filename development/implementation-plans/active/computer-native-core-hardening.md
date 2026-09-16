@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:10:48+02:00
+**Last updated:** 2026-09-17T01:20:33+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -113,6 +113,10 @@ tests, but it must never replace a configured real provider silently.
   response text and tool-call fields are counted as UTF-8 bytes across the turn, and an
   over-limit response fails without persisting a partial assistant message. The
   OpenRouter adapter enforces its response bound while reading the stream as well.
+- OpenRouter tool-call fragments now fail closed at the adapter boundary when their
+  index, ID, function name, or argument fragment has the wrong type. These outcomes are
+  non-retryable `provider-incomplete` errors, with contract coverage for each malformed
+  field; broader malformed response-shape coverage remains open.
 - Workspace file, search, mutation, copy, and tree-manifest reads now use no-follow file
   descriptors with a bounded chunk loop. The loop probes at most one byte beyond the
   configured limit, so a file that grows after its initial metadata check fails closed
