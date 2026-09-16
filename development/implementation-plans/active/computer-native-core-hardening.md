@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:44:49+02:00
+**Last updated:** 2026-09-16T18:55:23+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 295 passing tests across the package, with 89.04% line
-  coverage, 77.70% branch coverage, and 85.10% function coverage. Coverage is from
+- The latest validation is 296 passing tests across the package, with 88.99% line
+  coverage, 77.78% branch coverage, and 84.82% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -311,6 +311,34 @@ Still open after this increment:
   side effect, including process-level crash injection at each boundary.
 - Browser profile/artifact crash recovery, cross-platform process isolation, and a
   complete per-write/per-side-effect crash matrix.
+
+### Current slice boundary: browser artifact ownership
+
+Delivered in this slice:
+
+- Screenshot and download targets acquire a lock-backed artifact lease before exposing
+  their managed path to the browser adapter.
+- Finalization and discard release the lease only after the artifact data and metadata
+  boundary has settled. A target without a lease cannot be finalized by a forged or
+  stale caller.
+- Bounded artifact cleanup retains old incomplete artifacts whose lease is still held by
+  a live writer. It can reclaim an old artifact only after the existing process-identity
+  lock rules establish that the writer is stale or absent.
+- Tests cover the live in-flight lease boundary; existing tests continue to cover
+  malformed, oversized, symlinked, orphaned, and bounded cleanup cases.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This keeps ownership and cleanup explicit at the artifact boundary, like their
+  session/run ownership patterns. It reuses the existing lock primitive and does not
+  introduce a durable browser workflow or pretend artifact cleanup is transactional.
+
+Still open after this slice:
+
+- Durable browser profile ownership/authentication policy, metadata migration, and the
+  full browser crash/navigation race matrix.
+- Cross-platform process isolation and the complete per-write/per-side-effect crash
+  matrix remain outside this slice.
 
 ### Current slice boundary: memory evidence maintenance
 

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { atomicWriteJson, safePathSegment } from "../persistence/json.js";
+import { ComputerNativeError } from "../runtime/errors.js";
+import { SessionLock } from "../persistence/lock.js";
 import { lstat, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { BrowserError } from "./errors.js";
@@ -70,6 +72,7 @@ export class BrowserArtifactStore {
   private readonly maxDownloadBytes: number;
   private readonly now: () => string;
   private readonly createArtifactId: () => string;
+  private readonly artifactLeases = new Map<string, SessionLock>();
 
   constructor(private readonly rootDirectory: string, options: BrowserArtifactStoreOptions = {}) {
     this.maxScreenshotBytes = options.maxScreenshotBytes ?? 4 * 1024 * 1024;
@@ -98,11 +101,13 @@ export class BrowserArtifactStore {
     const artifactId = safePathSegment(this.createArtifactId(), "Browser artifact ID");
     const directory = path.join(this.rootDirectory, safeSession, "screenshots");
     await ensureManagedDirectory(this.rootDirectory, directory);
+    const targetPath = path.join(directory, `${artifactId}.png`);
+    await this.acquireArtifactLease(targetPath);
     return {
       artifactId,
       sessionId,
       tabId,
-      path: path.join(directory, `${artifactId}.png`),
+      path: targetPath,
       maxBytes: this.maxScreenshotBytes,
       maxWidth: this.maxScreenshotWidth,
       maxHeight: this.maxScreenshotHeight,
@@ -110,6 +115,7 @@ export class BrowserArtifactStore {
   }
 
   async finalizeScreenshot(target: BrowserScreenshotTarget, capture: BrowserScreenshotCapture): Promise<BrowserArtifactInfo> {
+    this.requireArtifactLease(target.path);
     let file;
     try {
       file = await lstat(target.path);
@@ -145,6 +151,7 @@ export class BrowserArtifactStore {
       await this.discardScreenshot(target).catch(() => undefined);
       throw new BrowserError("artifact-violation", "Browser screenshot metadata could not be persisted.", { cause: error });
     }
+    await this.releaseArtifactLease(target.path);
     return artifact;
   }
 
@@ -154,16 +161,19 @@ export class BrowserArtifactStore {
     const artifactId = safePathSegment(this.createArtifactId(), "Browser artifact ID");
     const directory = path.join(this.rootDirectory, safeSession, "downloads");
     await ensureManagedDirectory(this.rootDirectory, directory);
+    const targetPath = path.join(directory, `${artifactId}.download`);
+    await this.acquireArtifactLease(targetPath);
     return {
       artifactId,
       sessionId,
       tabId,
-      path: path.join(directory, `${artifactId}.download`),
+      path: targetPath,
       maxBytes: this.maxDownloadBytes,
     };
   }
 
   async finalizeDownload(target: BrowserDownloadTarget, capture: BrowserDownloadCapture): Promise<BrowserArtifactInfo> {
+    this.requireArtifactLease(target.path);
     let file;
     try {
       file = await lstat(target.path);
@@ -193,17 +203,26 @@ export class BrowserArtifactStore {
       await this.discardDownload(target).catch(() => undefined);
       throw new BrowserError("artifact-violation", "Browser download metadata could not be persisted.", { cause: error });
     }
+    await this.releaseArtifactLease(target.path);
     return artifact;
   }
 
   async discardScreenshot(target: BrowserScreenshotTarget): Promise<void> {
-    await rm(target.path, { force: true });
-    await rm(`${target.path}.json`, { force: true });
+    try {
+      await rm(target.path, { force: true });
+      await rm(`${target.path}.json`, { force: true });
+    } finally {
+      await this.releaseArtifactLease(target.path).catch(() => undefined);
+    }
   }
 
   async discardDownload(target: BrowserDownloadTarget): Promise<void> {
-    await rm(target.path, { force: true });
-    await rm(`${target.path}.json`, { force: true });
+    try {
+      await rm(target.path, { force: true });
+      await rm(`${target.path}.json`, { force: true });
+    } finally {
+      await this.releaseArtifactLease(target.path).catch(() => undefined);
+    }
   }
 
   /**
@@ -307,22 +326,63 @@ export class BrowserArtifactStore {
             result.retained += 1;
             continue;
           }
+          const lease = await acquireCleanupLease(`${dataPath}.lock`);
+          if (!lease) {
+            result.retained += 1;
+            continue;
+          }
           try {
             if (dataExists) await rm(dataPath, { force: true });
             if (metadataExists) await rm(metadataPath, { force: true });
             result.removed += 1;
           } catch {
             result.failed += 1;
+          } finally {
+            await lease.release().catch(() => undefined);
           }
         }
       }
     }
     return result;
   }
+
+  private async acquireArtifactLease(filePath: string): Promise<void> {
+    try {
+      const lease = await SessionLock.acquire(`${filePath}.lock`);
+      this.artifactLeases.set(filePath, lease);
+    } catch (error) {
+      if (error instanceof ComputerNativeError && error.code === "lock") {
+        throw new BrowserError("artifact-violation", "The browser artifact target is already in use.", { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  private requireArtifactLease(filePath: string): void {
+    if (!this.artifactLeases.has(filePath)) {
+      throw new BrowserError("artifact-violation", "The browser artifact target is not owned by this artifact store.");
+    }
+  }
+
+  private async releaseArtifactLease(filePath: string): Promise<void> {
+    const lease = this.artifactLeases.get(filePath);
+    if (!lease) return;
+    this.artifactLeases.delete(filePath);
+    await lease.release();
+  }
 }
 
 function emptyCleanupResult(): BrowserCleanupResult {
   return { scanned: 0, removed: 0, retained: 0, skipped: 0, failed: 0, truncated: false };
+}
+
+async function acquireCleanupLease(filePath: string): Promise<SessionLock | undefined> {
+  try {
+    return await SessionLock.acquire(filePath);
+  } catch (error) {
+    if (error instanceof ComputerNativeError && error.code === "lock") return undefined;
+    throw error;
+  }
 }
 
 async function ensureManagedDirectory(rootDirectory: string, directory: string): Promise<void> {

@@ -221,6 +221,27 @@ test("browser artifact cleanup stops at its candidate bound", async () => {
   }
 });
 
+test("browser artifact cleanup retains an in-flight artifact with a live lease", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-artifacts-lease-"));
+  try {
+    const store = new BrowserArtifactStore(root);
+    const target = await store.createScreenshotTarget(asBrowserSessionId("browser_lease"), asBrowserTabId("tab_lease"));
+    await writeFile(target.path, "partial capture");
+    const oldSeconds = (Date.now() - 10_000) / 1_000;
+    await utimes(target.path, oldSeconds, oldSeconds);
+
+    const result = await store.cleanupExpired({ maxAgeMs: 1_000, maxEntries: 10 });
+
+    assert.equal(result.retained, 1);
+    assert.equal(result.removed, 0);
+    assert.equal((await stat(target.path)).isFile(), true);
+    await store.discardScreenshot(target);
+    await assert.rejects(stat(target.path), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("browser upload policy accepts bounded regular workspace files and rejects links or traversal", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-upload-"));
   try {

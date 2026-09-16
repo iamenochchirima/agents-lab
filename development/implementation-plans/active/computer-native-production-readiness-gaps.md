@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:44:49+02:00
+**Last updated:** 2026-09-16T18:55:23+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 295 tests passed after the memory evidence maintenance increment.
-- `pnpm run coverage`: 295 tests passed, with 89.04% line coverage, 77.70% branch
-  coverage, and 85.10% function coverage in the latest run. Node's experimental
+- `pnpm test`: 296 tests passed after the browser artifact ownership increment.
+- `pnpm run coverage`: 296 tests passed, with 88.99% line coverage, 77.78% branch
+  coverage, and 84.82% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -102,6 +102,10 @@ readiness:
   injection now covers canonical and deletion-evidence writes. Cross-file daily batches
   persist before/after canonical-file hashes and recover all-before, all-after, and mixed
   publication states without replay; they do not claim rollback or cross-file atomicity.
+- Browser screenshot and download targets now hold lock-backed ownership leases while
+  adapter writes are in flight. Bounded cleanup retains live in-flight artifacts and
+  only reclaims old incomplete artifacts after stale-owner checks; finalization and
+  discard release the lease.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 - Built-in provider adapters now expose capability metadata. The factory validates
@@ -413,6 +417,10 @@ Remaining work:
 - Handle browser crashes, stale element references, navigation races, modal dialogs,
   disconnected sessions, duplicate submissions, and unknown outcomes after a network
   failure.
+- Complete the browser artifact/profile crash matrix, including lock corruption,
+  interrupted metadata publication, and recovery across process restarts. Artifact
+  writers now have lock-backed ownership leases, but profile ownership/authentication
+  policy remains incomplete.
 - Pin and manage browser versions, launch flags, permissions, and cleanup.
 - Add human-in-the-loop paths for CAPTCHA, MFA, payment, destructive submission, and
   other actions the agent must not silently complete.
