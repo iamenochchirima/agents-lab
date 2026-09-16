@@ -52,7 +52,7 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 303 tests passed after the workspace bounded-input increments.
-- `pnpm run coverage`: 303 tests passed, with 88.74% line coverage, 77.58% branch
+- `pnpm run coverage`: 303 tests passed, with 88.56% line coverage, 77.50% branch
   coverage, and 84.74% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -364,8 +364,9 @@ Remaining work:
 - The first aggregate mutation limits are now implemented: directory-tree operations use
   entry/byte/depth bounds and multi-file patch sets enforce and record the configured
   `COMPUTER_NATIVE_MAX_PATCH_SET_BYTES` resulting-content cap before approval and commit.
-  Remaining work is limited to any newly introduced multi-file operation, plus an
-  OS-level immutable snapshot/file-handle contract; text reads and patch preparation
+  Tree operations also expose their observed total and effective byte ceiling in approval
+  evidence. Remaining work is limited to any newly introduced multi-file operation, plus
+  an OS-level immutable snapshot/file-handle contract; text reads and patch preparation
   still materialize bounded content where their contracts require it.
 - Add race handling for changed files, concurrent writers, locks, and stale approvals.
 - Add dry-run, diff/preview, restore, and reconciliation commands that remain useful

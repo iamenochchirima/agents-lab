@@ -3741,8 +3741,8 @@ test("directory copy, move, and rename tools expose bounded approval evidence", 
     maxTreeBytes: 1_000,
     maxTreeDepth: 4,
   }), 2_000);
-  const requests: Array<{ operation: string; risk: string; manifestHash?: string; entryCount?: number; approvalTimeoutMs?: number }> = [];
-  const approve = async (request: { operation: string; risk: string; manifestHash?: string; entryCount?: number; approvalTimeoutMs?: number }) => {
+  const requests: Array<{ operation: string; risk: string; manifestHash?: string; entryCount?: number; totalBytes?: number; maxBytes?: number; approvalTimeoutMs?: number }> = [];
+  const approve = async (request: { operation: string; risk: string; manifestHash?: string; entryCount?: number; totalBytes?: number; maxBytes?: number; approvalTimeoutMs?: number }) => {
     requests.push(request);
     return { decision: "allow-once" as const };
   };
@@ -3756,6 +3756,8 @@ test("directory copy, move, and rename tools expose bounded approval evidence", 
   assert.match(copied.summary, /Copied directory/);
   assert.equal(requests[0]?.risk, "copy-directory");
   assert.equal(requests[0]?.entryCount, 3);
+  assert.equal(requests[0]?.totalBytes, Buffer.byteLength("export const answer = 42;\n"));
+  assert.equal(requests[0]?.maxBytes, 1_000);
   assert.equal(typeof requests[0]?.manifestHash, "string");
   assert.equal(requests[0]?.approvalTimeoutMs, 120_000);
 
@@ -3766,6 +3768,7 @@ test("directory copy, move, and rename tools expose bounded approval evidence", 
   }, { approveMutation: approve });
   assert.equal(moved.ok, true);
   assert.match(moved.summary, /Moved directory/);
+  assert.equal(requests[1]?.maxBytes, 1_000);
 
   const renamed = await registry.execute({
     callId: "rename_directory_call",
@@ -3775,6 +3778,7 @@ test("directory copy, move, and rename tools expose bounded approval evidence", 
   assert.equal(renamed.ok, true);
   assert.match(renamed.summary, /Renamed directory/);
   assert.equal(requests[2]?.risk, "rename-directory");
+  assert.equal(requests[2]?.maxBytes, 1_000);
   assert.equal(await readFile(path.join(root, "archive", "renamed-project", "src", "main.ts"), "utf8"), "export const answer = 42;\n");
 });
 

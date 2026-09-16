@@ -119,7 +119,8 @@ tests, but it must never replace a configured real provider silently.
   reports the prepared byte total and effective limit in approval/evidence records, and
   recalculates both before commit. The default is 256 KiB through
   `COMPUTER_NATIVE_MAX_PATCH_SET_BYTES`; directory-tree operations retain their separate
-  entry/byte/depth budget.
+  entry/byte/depth budget and now report the observed total plus effective `maxTreeBytes`
+  in their approval/evidence records as well.
 - The normalized lifecycle stream now validates process, browser, and memory action
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
@@ -236,8 +237,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 303 passing tests across the package, with 88.74% line
-  coverage, 77.58% branch coverage, and 84.74% function coverage. Coverage is from
+- The latest validation is 303 passing tests across the package, with 88.56% line
+  coverage, 77.50% branch coverage, and 84.74% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -510,6 +511,9 @@ Delivered in this slice:
   normalized lifecycle payload, and durable mutation record. Commit recalculates the total
   and refuses mismatched or over-budget prepared data before creating the transaction
   directory.
+- Directory-tree copy, move, rename, delete, and restore approvals likewise carry the
+  observed tree byte total and effective tree byte limit, keeping the bounded operation
+  visible at the same review and evidence boundary.
 - The limit is intentionally separate from directory-tree `maxTreeBytes`: the former
   bounds the resulting contents of one patch set, while the latter bounds one traversed
   tree. No shared transaction manager or rollback guarantee was added.
