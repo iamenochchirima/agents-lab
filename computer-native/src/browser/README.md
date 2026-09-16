@@ -30,7 +30,10 @@ Screenshot and download targets also hold a per-artifact session lease while the
 writes them. Cleanup retains a live lease, and only removes an old incomplete artifact
 after the existing lock ownership rules establish that its writer is no longer present.
 Finalized or discarded targets release the lease; a crashed writer leaves recoverable
-lock-and-artifact evidence for the bounded cleanup pass.
+lock-and-artifact evidence for the bounded cleanup pass. Download targets are reserved
+long enough to show the exact managed destination in the approval request, then are
+discarded when approval is denied, unavailable, or fails before the browser starts. This
+keeps an approval that did not start a download from leaking an artifact lease.
 
 The session manager enforces a configured maximum tab count before opening another tab
 and rejects adapter observations that exceed that bound. The Playwright adapter also

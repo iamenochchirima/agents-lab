@@ -439,6 +439,34 @@ test("browser upload and download bind exact file paths to approval", async () =
   }
 });
 
+test("browser download approval denial releases the reserved artifact target", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-download-denial-"));
+  try {
+    const artifactStore = new BrowserArtifactStore(root, { maxDownloadBytes: 1_024 });
+    const tools = createTools(new ToolTestAdapter(), artifactStore);
+    await tools.execute("browser_start", "call_start", {}, {});
+    await tools.execute("browser_open", "call_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+    await tools.execute("browser_snapshot", "call_snapshot", {}, {});
+
+    let reservedPath = "";
+    const result = await tools.execute("browser_download", "call_download_denied", { ref: "@e1" }, {
+      approveBrowser: async (request) => {
+        reservedPath = request.path ?? "";
+        return { decision: "deny", reason: "Not now." };
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.errorCode, "browser-approval-denied");
+    assert.match(reservedPath, /downloads/u);
+    await assert.rejects(stat(reservedPath));
+    await assert.rejects(stat(`${reservedPath}.json`));
+    await assert.rejects(stat(`${reservedPath}.lock`));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("browser upload rejects a source changed after approval before calling the adapter", async () => {
   let resolutionCount = 0;
   const adapter = new ToolTestAdapter();

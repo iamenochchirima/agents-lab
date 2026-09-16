@@ -307,6 +307,12 @@ export class BrowserSessionManager {
     return store.createDownloadTarget(sessionId, tabId);
   }
 
+  async discardDownload(target: BrowserDownloadTarget): Promise<void> {
+    const store = this.artifactStore;
+    if (!store) throw new BrowserError("artifact-violation", "Browser artifact storage is not configured.");
+    await store.discardDownload(target);
+  }
+
   async upload(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserActionRequest, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserActionResult> {
     const session = this.requireActiveSession(sessionId);
     const tab = this.requireTab(session, tabId);

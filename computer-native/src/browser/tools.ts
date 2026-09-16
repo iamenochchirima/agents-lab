@@ -425,8 +425,17 @@ export class BrowserTools {
       warning: "This browser download writes a file to the managed artifact directory. The exact destination and byte limit must be approved before it runs.",
     } satisfies Omit<BrowserApprovalRequest, "actionHash">;
     const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };
-    const decision = await this.obtainApproval(request, context);
-    if (decision.decision !== "allow-once") return this.deniedAction(request, decision, "download", context);
+    let decision: BrowserApprovalDecision;
+    try {
+      decision = await this.obtainApproval(request, context);
+    } catch (error) {
+      await this.options.manager.discardDownload(target).catch(() => undefined);
+      throw error;
+    }
+    if (decision.decision !== "allow-once") {
+      await this.options.manager.discardDownload(target);
+      return this.deniedAction(request, decision, "download", context);
+    }
     await context.onBrowser?.({ type: "started", request });
     try {
       const artifact = await this.options.manager.download(sessionId, tabId, {

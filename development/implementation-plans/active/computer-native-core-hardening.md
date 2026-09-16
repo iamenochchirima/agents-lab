@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:24:52+02:00
+**Last updated:** 2026-09-16T21:32:37+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -261,8 +261,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 309 passing tests across the package, with 89.02% line
-  coverage, 77.82% branch coverage, and 84.90% function coverage. Coverage is from
+- The latest validation is 310 passing tests across the package, with 89.10% line
+  coverage, 77.85% branch coverage, and 84.93% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -486,6 +486,33 @@ Still open after this slice:
 
 - Durable browser profile ownership/authentication policy, metadata migration, and the
   full browser crash/navigation race matrix.
+- Cross-platform process isolation and the complete per-write/per-side-effect crash
+  matrix remain outside this slice.
+
+### Current slice boundary: browser approval reservation cleanup
+
+Delivered in this slice:
+
+- A browser download target is reserved before approval only so the exact managed
+  destination and byte limit can be shown to the reviewer.
+- Denied or unavailable download approval now discards that target and releases its
+  lock-backed lease before returning the terminal approval outcome. Approval-channel
+  failures also release the reservation before propagating the failure.
+- The adapter is still never called for a denied download, and no artifact or lock is
+  left behind by the non-started operation.
+- A focused regression test covers the denied approval path and checks the managed
+  data, metadata, and lease files are absent.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is an operation-local resource cleanup fix at the approval boundary, consistent
+  with explicit ownership and fail-closed side-effect handling. It does not introduce a
+  general reservation service, approval broker, or artifact transaction layer.
+
+Still open after this slice:
+
+- Browser profile/authentication policy, metadata migration, and the full browser
+  crash/navigation race matrix.
 - Cross-platform process isolation and the complete per-write/per-side-effect crash
   matrix remain outside this slice.
 

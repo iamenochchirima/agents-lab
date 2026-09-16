@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:24:52+02:00
+**Last updated:** 2026-09-16T21:32:37+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 309 tests passed after the transcript evidence identity increment.
-- `pnpm run coverage`: 309 tests passed, with 89.07% line coverage, 77.90% branch
-  coverage, and 84.89% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 310 tests passed after the browser approval reservation-cleanup increment.
+- `pnpm run coverage`: 310 tests passed, with 89.10% line coverage, 77.85% branch
+  coverage, and 84.93% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -110,7 +110,8 @@ readiness:
 - Browser screenshot and download targets now hold lock-backed ownership leases while
   adapter writes are in flight. Bounded cleanup retains live in-flight artifacts and
   only reclaims old incomplete artifacts after stale-owner checks; finalization and
-  discard release the lease.
+  discard release the lease. A denied or unavailable download approval also discards its
+  preallocated target, so a non-started browser action does not leak a live lease.
 - Managed local browser profiles now hold lock-backed ownership leases for the browser
   session lifetime. Startup cleanup retains old profiles with live owners and reclaims
   only stale profiles; the generic session manager keeps leasing optional for other
