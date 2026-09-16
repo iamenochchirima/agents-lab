@@ -1,6 +1,6 @@
 # Active implementation plans
 
-**Last updated:** 2026-09-16T11:00:00+02:00
+**Last updated:** 2026-09-16T12:00:00+02:00
 
 These plans govern implementation that is not yet complete. Every checkbox must remain
 honest: it represents work that has been verified, not merely code that was started.
@@ -13,7 +13,9 @@ When a plan reaches its completion gate, add its completion record and move it t
 The browser-interaction and memory slices are complete and archived in
 [`../completed/computer-native-browser-interaction.md`](../completed/computer-native-browser-interaction.md)
 and [`../completed/computer-native-memory.md`](../completed/computer-native-memory.md).
-The queue can now advance to the next Computer Native module.
+The queue can now advance to the next Computer Native module. Overall maturity is not
+complete. The authoritative remaining work is in
+[Computer Native production-readiness gaps](computer-native-production-readiness-gaps.md).
 
 ## Current additive UI slice
 

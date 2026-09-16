@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-16T11:00:00+02:00
+**Last updated:** 2026-09-16T12:00:00+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -54,6 +54,10 @@ The current shared model slice is tracked in the
 The Computer Native memory slice is complete in
 [the completed memory plan](completed/computer-native-memory.md). It followed the
 browser interaction slice and used local Hermes and OpenClaw code as design references.
+
+Those completed Computer Native plans describe bounded implementation slices, not a
+production-ready product. The current maturity gate and remaining work are recorded in
+[Computer Native production-readiness gaps](active/computer-native-production-readiness-gaps.md).
 
 The next context slice is tracked in the
 [session context and compaction plan](active/context-management.md). It covers the

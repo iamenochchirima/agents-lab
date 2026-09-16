@@ -4,7 +4,13 @@ This is a planning queue, not an active implementation plan. The completed works
 and filesystem category is archived in [Computer Native workspace and filesystem
 capability](completed/computer-native-workspace-filesystem.md).
 
-After that category reaches its completion gate, the next Computer Native components are:
+The current maturity status and the full list of remaining product gaps are tracked in
+[Computer Native production-readiness gaps](active/computer-native-production-readiness-gaps.md).
+The completed plans below record slice completion only. They do not mean that Computer
+Native is production-ready.
+
+The next Computer Native components after the completed workspace and filesystem
+category are:
 
 1. **Shell and process execution** — completed in
    [Computer Native process execution](completed/computer-native-process-execution.md).
@@ -16,11 +22,13 @@ After that category reaches its completion gate, the next Computer Native compon
    - Explicit browser/session ownership, navigation and interaction approval, page-content
      limits, download handling, credential boundaries, and browser-run evidence.
 
-3. **Memory** — active plan:
-   [Computer Native memory](active/computer-native-memory.md).
+3. **Memory** — the first memory foundation slice is complete in
+   [Computer Native memory](completed/computer-native-memory.md).
    - Compact user and durable stores, dated working notes, bounded retrieval, explicit
      mutation approval, provenance, retention, deletion, recovery, and memory-operation
-     evidence. The plan is grounded in the local Hermes and OpenClaw implementations.
+     evidence were delivered in that slice. The remaining mature retrieval, compaction,
+     privacy, migration, and lifecycle work is tracked in the production-readiness gaps
+     document.
 
 4. **Skills**
    - Skill discovery, instruction loading, trust and scope policy, versioning, isolation,
