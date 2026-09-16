@@ -49,7 +49,8 @@ export interface RunView {
     readonly platform: string;
     readonly variant: string;
     readonly task: { readonly prompt: string };
-    readonly model: { readonly provider: string; readonly model: string };
+    readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly snapshotId?: string };
+    readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
     readonly selection?: RunSelection;
   };
   readonly events: readonly RunEvent[];
@@ -60,6 +61,12 @@ export interface RunView {
     readonly native: Record<string, unknown>;
   } | null;
   readonly result: RunResult | null;
+  readonly context: ContextProjection | null;
+  readonly projection: {
+    readonly state: "current" | "stale";
+    readonly observedAt: string;
+    readonly reason: string | null;
+  };
 }
 
 export interface RunSelection {
@@ -85,11 +92,56 @@ export interface PlatformConnectivity {
   readonly message: string;
 }
 
+export interface ModelSelection {
+  readonly provider: "openrouter";
+  readonly model: string;
+  readonly contextWindowTokens?: number;
+}
+
+export interface ContextProjection {
+  readonly scope?: "session" | "run";
+  readonly sessionId: string;
+  readonly sessionRevision: number;
+  readonly compactionRevision: number;
+  readonly budget: {
+    readonly contextWindowTokens: number | null;
+    readonly inputTokens: number | null;
+    readonly reservedOutputTokens: number;
+    readonly safetyMarginTokens: number;
+    readonly remainingTokens: number | null;
+    readonly remainingPercent: number | null;
+    readonly quality: "exact" | "estimated" | "unknown";
+    readonly tokenizerBasis: string;
+    readonly pressure: "normal" | "compaction_due" | "compacting" | "exhausted" | "unknown";
+  };
+  readonly updatedAt: string;
+}
+
+export interface ModelOption {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly contextLength: number | null;
+  readonly inputModalities: readonly string[];
+  readonly outputModalities: readonly string[];
+  readonly promptPriceUsdPerMillion: number | null;
+  readonly completionPriceUsdPerMillion: number | null;
+  readonly isFree: boolean;
+  readonly supportsTools: boolean;
+}
+
+export interface ModelCatalog {
+  readonly provider: "openrouter";
+  readonly defaultModel: string | null;
+  readonly models: readonly ModelOption[];
+}
+
 export interface PlatformRunRequest {
   readonly platform: string;
   readonly variant: string;
   readonly task: { readonly kind: "prompt"; readonly prompt: string };
-  readonly model: { readonly provider: string; readonly model: string };
+  readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
+  readonly sessionId?: string;
   readonly selection?: RunSelection;
 }
 
@@ -114,7 +166,7 @@ export async function getPlatformConnectivity(platformId: string, signal?: Abort
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/health`, {
+    response = await fetch(`${API_BASE_URL}/api/platforms/${encodeURIComponent(platformId)}/health`, {
       headers: { "content-type": "application/json" },
       signal,
     });
@@ -126,26 +178,30 @@ export async function getPlatformConnectivity(platformId: string, signal?: Abort
   }
 
   const body = await readJson(response);
-  if (!isRecord(body) || !Array.isArray(body.platforms)) {
+  if (!response.ok) {
+    const error = isRecord(body) && isRecord(body.error) ? body.error : {};
+    throw new PlatformApiError(
+      typeof error.message === "string" ? error.message : "The server could not check this platform.",
+      response.status,
+      typeof error.code === "string" ? error.code : "PLATFORM_HEALTH_ERROR",
+    );
+  }
+  if (!isRecord(body) || typeof body.platform !== "string" || typeof body.variant !== "string" || typeof body.reachable !== "boolean" || typeof body.message !== "string") {
     throw new PlatformApiError("The server returned an invalid health response.", response.status, "INVALID_API_RESPONSE");
   }
 
-  const platform = body.platforms.find((candidate): candidate is Record<string, unknown> => (
-    isRecord(candidate) && candidate.platform === platformId && typeof candidate.variant === "string"
-  ));
-  const variant = typeof platform?.variant === "string" ? platform.variant : null;
-  const reachable = typeof platform?.reachable === "boolean" ? platform.reachable : null;
-  const message = typeof platform?.message === "string" ? platform.message : null;
-  if (variant === null || reachable === null || message === null) {
-    throw new PlatformApiError("This platform is not registered with the server.", response.status, "PLATFORM_NOT_REGISTERED");
-  }
-
   return {
-    platform: platformId,
-    variant,
-    reachable,
-    message,
+    platform: body.platform,
+    variant: body.variant,
+    reachable: body.reachable,
+    message: body.message,
   };
+}
+
+export async function getModels(query = "", signal?: AbortSignal): Promise<ModelCatalog> {
+  const params = new URLSearchParams({ provider: "openrouter", limit: "40" });
+  if (query.trim()) params.set("q", query.trim());
+  return requestJson<ModelCatalog>(`/api/models?${params.toString()}`, { signal });
 }
 
 export async function createRun(request: PlatformRunRequest, signal?: AbortSignal): Promise<RunView> {

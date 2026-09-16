@@ -11,7 +11,10 @@ export const appPaths = {
   repository: "/repository",
   settings: "/settings",
   docs: "/docs",
+  studio: "/studio",
+  components: "/components",
   platform: (platformId: string) => `/platforms/${platformId}`,
   platformSection: (platformId: string, section: string) => `/platforms/${platformId}/${section}`,
   environment: (environmentId: string) => `/environments/${environmentId}`,
+  component: (areaId: string) => `/components/${areaId}`,
 } as const;

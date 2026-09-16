@@ -1,12 +1,22 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, redirect } from "react-router";
 
 import { MainLayout } from "../app/layouts/MainLayout";
 import { RouteErrorPage } from "../features/system/RouteErrorPage";
+import { appPaths } from "./paths";
 
 export const router = createBrowserRouter([
   {
+    path: "/studio",
+    lazy: async () => {
+      const { StudioPrototypePage } = await import("../features/studio/StudioPrototypePage");
+      return { Component: StudioPrototypePage };
+    },
+    handle: { label: "Studio" },
+  },
+  {
     path: "/",
     Component: MainLayout,
+    HydrateFallback: RouteHydrateFallback,
     errorElement: <RouteErrorPage />,
     children: [
       {
@@ -42,11 +52,25 @@ export const router = createBrowserRouter([
         handle: { label: "Experiments" },
       },
       {
-        path: "platforms",
+        path: "components",
         lazy: async () => {
-          const { PlatformIndexPage } = await import("../features/platforms/PlatformIndexPage");
-          return { Component: PlatformIndexPage };
+          const { ComponentLabPage } = await import("../features/component-lab/ComponentLabPage");
+          return { Component: ComponentLabPage };
         },
+        handle: { label: "Component Lab" },
+      },
+      {
+        path: "components/:areaId",
+        lazy: async () => {
+          const { ComponentLabAreaPage } = await import("../features/component-lab/ComponentLabPage");
+          return { Component: ComponentLabAreaPage };
+        },
+        handle: { label: "Component Lab" },
+      },
+      {
+        path: "platforms",
+        Component: PlatformIndexRedirectFallback,
+        loader: () => redirect(appPaths.platform("temporal")),
         handle: { label: "Platforms" },
       },
       {
@@ -64,6 +88,14 @@ export const router = createBrowserRouter([
               return { Component: PlatformRunnerPage };
             },
             handle: { label: "Platform runner" },
+          },
+          {
+            path: "chat",
+            lazy: async () => {
+              const { PlatformChatPage } = await import("../features/platforms/PlatformChatPage");
+              return { Component: PlatformChatPage };
+            },
+            handle: { label: "Platform chat" },
           },
         ],
       },
@@ -150,3 +182,11 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
+
+function PlatformIndexRedirectFallback() {
+  return null;
+}
+
+function RouteHydrateFallback() {
+  return <div aria-busy="true" />;
+}

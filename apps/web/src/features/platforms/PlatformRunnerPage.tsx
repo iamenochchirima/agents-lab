@@ -1,15 +1,17 @@
-import { ChevronDown, LoaderCircle, Play, Settings2, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, LoaderCircle, MessageSquare, Play, Settings2, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext, useSearchParams } from "react-router";
+import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import { environmentCatalog } from "../environments/environmentCatalog";
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
+import { ModelPicker } from "../models/ModelPicker";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
 import { isRunnableBaseline } from "./platformCatalog";
-import { cancelRun, createRun, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
+import { appPaths } from "../../routes/paths";
+import { cancelRun, createRun, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
 export function PlatformRunnerPage() {
@@ -22,8 +24,7 @@ export function PlatformRunnerPage() {
   const [variantId, setVariantId] = useState(platform.variants[0].id);
   const [infrastructureId, setInfrastructureId] = useState(platform.infrastructure[0]?.id ?? "none");
   const [experimentId, setExperimentId] = useState("none");
-  const [provider, setProvider] = useState(isRunnableBaseline(platform) ? "fake" : "");
-  const [model, setModel] = useState(isRunnableBaseline(platform) ? "fake-success" : "");
+  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [run, setRun] = useState<RunView | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -32,9 +33,11 @@ export function PlatformRunnerPage() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [platformConnectivity, setPlatformConnectivity] = useState<PlatformConnectivity | null>(null);
   const [connectivityError, setConnectivityError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const eventCursor = useRef(0);
   const previousPlatformId = useRef(platform.id);
   const runIdFromUrl = searchParams.get("run");
+  const preservesSession = platform.id === "temporal";
 
   const environments = useMemo(
     () => environmentCatalog.filter((environment) => platform.computerEnvironmentIds.includes(environment.id)),
@@ -57,11 +60,10 @@ export function PlatformRunnerPage() {
     setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
     setVariantId(platform.variants[0]?.id ?? "baseline");
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
-    setProvider(isRunnableBaseline(platform) ? "fake" : "");
-    setModel(isRunnableBaseline(platform) ? "fake-success" : "");
     setRun(null);
     setRunEvents([]);
     setRunError(null);
+    setSessionId(null);
     eventCursor.current = 0;
   }, [platform.id, setSearchParams]);
 
@@ -109,6 +111,9 @@ export function PlatformRunnerPage() {
 
         eventCursor.current = Math.max(eventCursor.current, eventPage.nextSequence);
         setRun(nextRun);
+        if (preservesSession) {
+          setSessionId((current) => getRunSessionId(nextRun) ?? current);
+        }
         setRunEvents((current) => mergeEvents(mergeEvents(current, nextRun.events), eventPage.events));
         setRunError(null);
 
@@ -118,7 +123,17 @@ export function PlatformRunnerPage() {
       } catch (error) {
         if (stopped || isAbortError(error)) return;
         setRunError(toUserMessage(error));
-        if (error instanceof PlatformApiError && error.status === 404) return;
+        if (error instanceof PlatformApiError && error.status === 404) {
+          setRun(null);
+          setRunEvents([]);
+          eventCursor.current = 0;
+          if (searchParams.get("run") === targetRunId) {
+            const nextSearchParams = new URLSearchParams(searchParams);
+            nextSearchParams.delete("run");
+            setSearchParams(nextSearchParams, { replace: true });
+          }
+          return;
+        }
         timeout = window.setTimeout(() => void refresh(), 1500);
       }
     }
@@ -129,10 +144,10 @@ export function PlatformRunnerPage() {
       controller.abort();
       if (timeout !== undefined) window.clearTimeout(timeout);
     };
-  }, [run?.runId, runIdFromUrl]);
+  }, [preservesSession, run?.runId, runIdFromUrl]);
 
   async function submitRun() {
-    if (!isRunnable || !task.trim() || !provider.trim() || !model.trim() || isSubmitting) return;
+    if (!isRunnable || !task.trim() || !selectedModel || isSubmitting) return;
 
     setIsSubmitting(true);
     setRunError(null);
@@ -142,7 +157,8 @@ export function PlatformRunnerPage() {
         platform: platform.id,
         variant: variantId,
         task: { kind: "prompt", prompt: task.trim() },
-        model: { provider: provider.trim(), model: model.trim() },
+        model: selectedModel,
+        ...(preservesSession && sessionId ? { sessionId } : {}),
         selection: {
           scenarioId,
           ...(environmentId ? { environmentId } : {}),
@@ -154,6 +170,7 @@ export function PlatformRunnerPage() {
       eventCursor.current = createdRun.events.at(-1)?.recordedSequence ?? 0;
       setRunEvents(createdRun.events.slice());
       setRun(createdRun);
+      if (preservesSession) setSessionId(getRunSessionId(createdRun));
       const nextSearchParams = new URLSearchParams(searchParams);
       nextSearchParams.set("run", createdRun.runId);
       setSearchParams(nextSearchParams, { replace: true });
@@ -186,9 +203,12 @@ export function PlatformRunnerPage() {
           <span className="eyebrow">{platform.name}</span>
           <h1>Run an agent</h1>
         </div>
-        <button className="quiet-button" onClick={() => setIsCompareOpen(true)} type="button">
+        <div className="runner-heading-actions">
+          <Link className="button button-primary runner-chat-button" to={appPaths.platformSection(platform.id, "chat")}><MessageSquare aria-hidden="true" size={14} /> Chat</Link>
+          <button className="quiet-button" onClick={() => setIsCompareOpen(true)} type="button">
           <SlidersHorizontal aria-hidden="true" size={15} /> Compare
-        </button>
+          </button>
+        </div>
       </header>
 
       <main className="runner-surface">
@@ -211,8 +231,8 @@ export function PlatformRunnerPage() {
             value={task}
           />
           <div className="task-surface-footer">
-            <span>{runAvailabilityLabel({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity })}</span>
-            <button className="button button-primary" disabled={!isRunnable || Boolean(taskError) || isSubmitting} onClick={() => void submitRun()} type="button">
+            <span>{runAvailabilityLabel({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity, selectedModel })}</span>
+            <button className="button button-primary" disabled={!isRunnable || Boolean(taskError) || !selectedModel || isSubmitting} onClick={() => void submitRun()} type="button">
               {isSubmitting ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Play aria-hidden="true" size={14} />} {isSubmitting ? "Starting" : "Run"}
             </button>
           </div>
@@ -244,10 +264,7 @@ export function PlatformRunnerPage() {
             <CompactSelect label="Experiment" value={experimentId} onChange={setExperimentId}>
               {experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}
             </CompactSelect>
-            <label className="compact-control">
-              <span>Model</span>
-              <div><input onChange={(event) => setProvider(event.target.value)} placeholder="Provider" value={provider} /><input onChange={(event) => setModel(event.target.value)} placeholder="Model" value={model} /></div>
-            </label>
+            <ModelPicker onChange={setSelectedModel} value={selectedModel} />
           </div>
         </section>
 
@@ -258,9 +275,8 @@ export function PlatformRunnerPage() {
 
       <CompareRunModal
         initialExperimentId={experimentId}
-        initialModel={model}
+        initialModel={selectedModel}
         initialPlatformId={platform.id}
-        initialProvider={provider}
         initialScenarioId={scenarioId}
         initialTask={task}
         onClose={() => setIsCompareOpen(false)}
@@ -274,6 +290,11 @@ function mergeEvents(current: readonly RunEvent[], incoming: readonly RunEvent[]
   const byId = new Map(current.map((event) => [event.eventId, event]));
   for (const event of incoming) byId.set(event.eventId, event);
   return [...byId.values()].sort((left, right) => left.recordedSequence - right.recordedSequence);
+}
+
+function getRunSessionId(run: RunView): string | null {
+  if (run.context?.sessionId) return run.context.sessionId;
+  return run.manifest.context?.sessionId ?? null;
 }
 
 function isTerminalStatus(status: RunView["status"]): boolean {
@@ -313,14 +334,17 @@ function runAvailabilityLabel({
   hasRunnableBaseline,
   isRunnable,
   platformConnectivity,
+  selectedModel,
 }: {
   connectivityError: string | null;
   hasRunnableBaseline: boolean;
   isRunnable: boolean;
   platformConnectivity: PlatformConnectivity | null;
+  selectedModel: ModelSelection | null;
 }): string {
   if (!hasRunnableBaseline) return "This platform is not available yet.";
-  if (isRunnable) return "Fake model is selected for the local baseline.";
+  if (isRunnable && selectedModel) return "OpenRouter model selected.";
+  if (isRunnable) return "Select an OpenRouter model to run.";
   if (connectivityError) return connectivityError;
   if (!platformConnectivity) return "Checking platform availability…";
   return platformConnectivity.message;

@@ -3,12 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
+import { ModelPicker } from "../models/ModelPicker";
 import { isRunnableBaseline, platformCatalog } from "./platformCatalog";
 import {
   createRun,
   getPlatformConnectivity,
   getRun,
   PlatformApiError,
+  type ModelSelection,
   type RunSelection,
   type RunStatus,
   type RunView,
@@ -16,9 +18,8 @@ import {
 
 interface CompareRunModalProps {
   initialExperimentId: string;
-  initialModel: string;
+  initialModel: ModelSelection | null;
   initialPlatformId: string;
-  initialProvider: string;
   initialScenarioId: string;
   initialTask: string;
   onClose: () => void;
@@ -43,8 +44,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
   const [platformIds, setPlatformIds] = useState(() => initialComparisonPlatforms(props.initialPlatformId));
   const [scenarioId, setScenarioId] = useState(props.initialScenarioId);
   const [experimentId, setExperimentId] = useState(props.initialExperimentId);
-  const [provider, setProvider] = useState(props.initialProvider);
-  const [model, setModel] = useState(props.initialModel);
+  const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(props.initialModel);
   const [task, setTask] = useState(props.initialTask);
   const [entries, setEntries] = useState<ComparisonEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -65,19 +65,18 @@ export function CompareRunModal(props: CompareRunModalProps) {
     setPlatformIds(initialComparisonPlatforms(props.initialPlatformId));
     setScenarioId(props.initialScenarioId);
     setExperimentId(props.initialExperimentId);
-    setProvider(props.initialProvider);
-    setModel(props.initialModel);
+    setSelectedModel(props.initialModel);
     setTask(props.initialTask);
     setEntries([]);
     setIsRunning(false);
-  }, [props.open, props.initialExperimentId, props.initialModel, props.initialPlatformId, props.initialProvider, props.initialScenarioId, props.initialTask]);
+  }, [props.open, props.initialExperimentId, props.initialModel, props.initialPlatformId, props.initialScenarioId, props.initialTask]);
 
   const selectedPlatforms = useMemo(
     () => comparablePlatforms.filter((platform) => platformIds.includes(platform.id)),
     [platformIds],
   );
   const hasActiveRuns = entries.some((entry) => entry.run && !isTerminalStatus(entry.run.status));
-  const canRun = selectedPlatforms.length >= 2 && Boolean(task.trim()) && Boolean(provider.trim()) && Boolean(model.trim()) && !isRunning && !hasActiveRuns;
+  const canRun = selectedPlatforms.length >= 2 && Boolean(task.trim()) && Boolean(selectedModel) && !isRunning && !hasActiveRuns;
 
   useEffect(() => {
     if (!props.open || !entries.some((entry) => entry.run && !isTerminalStatus(entry.run.status))) return;
@@ -127,7 +126,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
           platform: platform.id,
           variant: variant.id,
           task: { kind: "prompt", prompt: task.trim() },
-          model: { provider: provider.trim(), model: model.trim() },
+          model: selectedModel!,
           selection: {
             ...selection,
             ...(platform.backendProfiles[0] ? { backendProfileId: platform.backendProfiles[0].id } : {}),
@@ -162,8 +161,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
           </div>
           <div className="modal-form-grid">
             <label className="compact-control"><span>Scenario</span><select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)}>{scenarioCatalog.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.name}</option>)}</select></label>
-            <label className="compact-control"><span>Provider</span><input onChange={(event) => setProvider(event.target.value)} placeholder="Provider" value={provider} /></label>
-            <label className="compact-control"><span>Model</span><input onChange={(event) => setModel(event.target.value)} placeholder="Model" value={model} /></label>
+            <ModelPicker onChange={setSelectedModel} value={selectedModel} />
             <label className="compact-control"><span>Experiment</span><select value={experimentId} onChange={(event) => setExperimentId(event.target.value)}>{experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}</select></label>
             <label className="compact-control compare-task-field"><span>Task</span><textarea onChange={(event) => setTask(event.target.value)} placeholder="Describe a task" rows={3} value={task} /></label>
           </div>
