@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:05:00+02:00
+**Last updated:** 2026-09-16T15:15:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -376,12 +376,12 @@ claim in this plan.
 - [x] Add regular-file and directory move with destination and overwrite policy.
 - [x] Add regular-file and directory copy with bounded recursive traversal and explicit
       symlink/special-file behaviour.
-- [ ] Reuse existing quarantine and recovery rules for destructive replacement or
+- [x] Reuse existing quarantine and recovery rules for destructive replacement or
       deletion paths.
-- [ ] Add prepared operation manifests, precondition checks, operation journals, and
-      reconciliation records for multi-file changes.
-- [ ] Report partial completion and recovery instructions when a transaction cannot
-      roll back fully.
+- [x] Add prepared operation manifests, precondition checks, operation journals, and
+      reconciliation records for the supported multi-file `apply_patch_set` boundary.
+- [x] Report partial completion and recovery instructions when an `apply_patch_set`
+      transaction cannot roll back fully.
 - [ ] Add large-input streaming and aggregate limits without loading an entire tree into
       memory.
 
@@ -419,7 +419,9 @@ claim in this plan.
       fail-closed behaviour.
 - [ ] Path, symlink, special-file, destination, overwrite, size, depth, and aggregate
       limit policy.
-- [ ] Filesystem operation manifests and partial-result classification.
+- [x] Filesystem operation manifests and partial-result classification for
+      `apply_patch_set`; transfer manifests remain covered by their operation-specific
+      recovery paths.
 - [ ] TUI state rendering for waiting, approved, rejected, retrying, cancelling,
       interrupted, partial, ambiguous, failed, and completed states.
 
@@ -502,9 +504,10 @@ Before moving this plan to `completed/`, verify:
 - [ ] The TUI exposes lifecycle and error states without inventing capabilities.
 - [ ] Real-provider behaviour is bounded and visible, with no silent deterministic
       fallback.
-- [ ] Directory create, copy, move, and rename are implemented or explicitly removed
-      from the declared product contract with a recorded reason.
-- [ ] Multi-file operations report proven rollback or honest partial/ambiguous outcomes.
+- [x] Directory create, copy, move, and rename are implemented within the declared
+      bounded local filesystem contract.
+- [x] `apply_patch_set` reports honest partial/ambiguous outcomes with journal recovery;
+      no cross-file rollback guarantee is claimed.
 - [ ] Shared limits, redaction, identity rechecks, and host-execution boundaries are
       enforced and tested.
 - [ ] Unit, integration, failure-injection, security, manual, and real-provider tests
