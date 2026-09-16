@@ -40,6 +40,26 @@ test("the workflow executes a calculator call durably before requesting the fina
   ]);
 });
 
+test("the workflow reuses completed named actions during deterministic journal replay", async () => {
+  const actionCache = new Map<string, unknown>();
+  const firstExecutions: string[] = [];
+  const first = await runWorkflow("fake-tool-call", { executionNames: firstExecutions, actionCache });
+  const replayExecutions: string[] = [];
+  const replay = await runWorkflow("fake-tool-call", { executionNames: replayExecutions, actionCache });
+
+  assert.equal(first.status, "completed");
+  assert.equal(replay.status, "completed");
+  assert.equal(replay.output, first.output);
+  assert.equal(replay.metrics.modelCallCount, first.metrics.modelCallCount);
+  assert.equal(replay.metrics.toolCallCount, first.metrics.toolCallCount);
+  assert.deepEqual(firstExecutions, [
+    "model.request.1.attempt.1",
+    "tool.execute.1.1.call-calculator-1",
+    "model.request.2.attempt.1",
+  ]);
+  assert.deepEqual(replayExecutions, []);
+});
+
 test("the workflow records a safe pre-dispatch retry as a separate durable model attempt", async () => {
   const result = await runWorkflow("fake-pre-dispatch-retry-once");
 
@@ -117,7 +137,13 @@ test("the workflow reports cancellation before a model step starts", async () =>
 
 async function runWorkflow(
   model: string,
-  options: { readonly maxRounds?: number; readonly maxCalls?: number; readonly executionNames?: string[]; readonly signal?: AbortSignal } = {},
+  options: {
+    readonly maxRounds?: number;
+    readonly maxCalls?: number;
+    readonly executionNames?: string[];
+    readonly actionCache?: Map<string, unknown>;
+    readonly signal?: AbortSignal;
+  } = {},
 ): Promise<RestateWorkflowResult> {
   let timestamp = Date.parse("2026-09-16T12:00:00.000Z");
   const signal = options.signal ?? new AbortController().signal;
@@ -127,8 +153,11 @@ async function runWorkflow(
     date: { toJSON: async () => new Date(timestamp += 1).toISOString() },
     set: (_name: string, _value: unknown) => undefined,
     run: async <T>(name: string, action: () => Promise<T> | T): Promise<T> => {
+      if (options.actionCache?.has(name)) return options.actionCache.get(name) as T;
       options.executionNames?.push(name);
-      return action();
+      const result = await action();
+      options.actionCache?.set(name, result);
+      return result;
     },
   };
   const input: RestateWorkflowInput = {
