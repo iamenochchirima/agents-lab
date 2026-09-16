@@ -135,3 +135,58 @@ test("idle Ctrl+C closes the interactive TUI", { timeout: 2_000 }, async () => {
   assert.match(rendered, /Session closed\./u);
   assert.doesNotMatch(rendered, /Nothing is running/u);
 });
+
+test("TUI renders one terminal activity line for a mixed memory batch", async () => {
+  const chunks: string[] = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  });
+  const application = {
+    sessionId: "session_memory_batch_ui",
+    modelLabel: "deterministic/memory-batch",
+    providerLabel: "deterministic/deterministic/memory-batch",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["memory"],
+    runTurn: async (
+      _message: string,
+      _signal: AbortSignal | undefined,
+      _onText: ((text: string) => void) | undefined,
+      _onEvent: ((event: unknown) => void) | undefined,
+      _approveMutation: unknown,
+      _onMutation: unknown,
+      _approveProcess: unknown,
+      _onProcess: unknown,
+      _approveBrowser: unknown,
+      _onBrowser: unknown,
+      _approveMemory: unknown,
+      onMemory: ((event: unknown) => void) | undefined,
+    ) => {
+      onMemory?.({
+        type: "batch_committed",
+        request: {
+          operationId: "memory_batch_ui",
+          callId: "memory_batch_call_ui",
+          operation: "batch",
+          scope: "workspace",
+          sourcePath: "/tmp/state/memory/MEMORY.md",
+          contentPreview: "two changes",
+          risk: "batch",
+          batch: [],
+        },
+        results: [
+          { operation: "add", recordId: "memory_one" },
+          { operation: "remove", recordId: "memory_two" },
+        ],
+      });
+      return { status: "completed" };
+    },
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runSingle("apply memory batch");
+
+  assert.match(chunks.join(""), /memory · batch committed · 2 changes/u);
+});

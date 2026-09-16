@@ -19,6 +19,9 @@ panel with named approve, deny, inspect, and cancel choices. Unsupported input f
 Non-interactive runs have no approval channel
 and therefore do not perform workspace mutations.
 
+Mixed durable-memory batches are rendered as one terminal activity line with their bounded
+member count; the renderer does not pretend that the batch is a cross-file transaction.
+
 The current browser slice uses a separate browser approval panel for click, type, key,
 upload, and download actions. It shows the browser session, tab, document/reference,
 exact action hash, optional path/byte limit, and the warning that page content is

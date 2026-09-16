@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:47:29+02:00
+**Last updated:** 2026-09-16T15:50:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -158,8 +158,8 @@ tests, but it must never replace a configured real provider silently.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
-- The current validation is 255 passing tests across the package, with 88.62% line
-  coverage, 76.83% branch coverage, and 83.50% function coverage.
+- The current validation is 256 passing tests across the package, with 88.58% line
+  coverage, 76.68% branch coverage, and 83.70% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 

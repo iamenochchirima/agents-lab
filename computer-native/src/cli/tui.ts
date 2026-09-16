@@ -413,6 +413,10 @@ export class TerminalUi {
         this.status = `memory removed: ${target}`;
         this.printActivity("✓", `memory · removed · ${target}`, "32;1");
         break;
+      case "batch_committed":
+        this.status = `memory batch committed: ${event.results.length} changes`;
+        this.printActivity("✓", `memory · batch committed · ${event.results.length} changes`, "32;1");
+        break;
       case "failed":
         this.status = `memory failed: ${target}`;
         this.printActivity("×", `memory · failed · ${target} · ${event.reason}`, "31;1");
