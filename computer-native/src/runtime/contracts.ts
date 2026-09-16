@@ -130,6 +130,7 @@ export interface TurnError {
     | "provider-incomplete"
     | "provider-context"
     | "provider-refusal"
+    | "provider-auth"
     | "rate-limit"
     | "first-event-timeout"
     | "timeout"

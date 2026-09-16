@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T17:05:00+02:00
+**Last updated:** 2026-09-16T17:25:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 265 tests passed after the provider-registry increment.
-- `pnpm run coverage`: 265 tests passed, with 88.89% line coverage, 76.91% branch
-  coverage, and 83.97% function coverage.
+- `pnpm test`: 266 tests passed after the provider error-classification increment.
+- `pnpm run coverage`: 266 tests passed, with 88.81% line coverage, 76.84% branch
+  coverage, and 83.87% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -245,8 +245,8 @@ Remaining work:
   diagnostics without persisting unbounded response bodies.
 - Decide whether product fallback is required beyond the current explicit no-fallback
   policy; if fallback is added, persist the decision and surface it in the TUI.
-- Provide credential rotation and failure behaviour when a key is missing, expired, or
-  rejected.
+- Provide documented credential rotation and recovery when a local key is rotated,
+  missing, or expired; rejected credentials now have a typed `provider-auth` outcome.
 - Add token/cost accounting once the provider contract and pricing source are explicit.
 - Add provider contract tests with deterministic local fixtures and a small real-provider
   acceptance profile. Real-provider tests must never depend on a committed key.
@@ -259,7 +259,7 @@ Delivered in the current foundation increment, but not yet sufficient for produc
   provider selection remains explicit at session start.
 - Bounded request identifier and latency evidence on successful model attempts.
 - Context-limit and refusal classifications, plus pre/post-output disconnect handling.
-- Deterministic contract fixtures for these cases.
+- Rejected-credential and malformed stream-shape contract fixtures for these cases.
 
 Exit evidence:
 

@@ -1630,7 +1630,7 @@ test("OpenRouter adapter classifies incomplete streams and rate limits", async (
   const unauthorized = new OpenRouterModelProvider("openai/example", "secret", async () => new Response("unauthorized", { status: 401 }));
   await assert.rejects(
     async () => { for await (const _event of unauthorized.stream(request, new AbortController().signal)) void _event; },
-    (error: unknown) => error instanceof ModelProviderError && error.retryable === false,
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-auth" && error.retryable === false,
   );
   const contextLimited = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(
     JSON.stringify({ error: { message: "maximum context length exceeded" } }),
@@ -1647,6 +1647,39 @@ test("OpenRouter adapter classifies incomplete streams and rate limits", async (
   await assert.rejects(
     async () => { for await (const _event of refusal.stream(request, new AbortController().signal)) void _event; },
     (error: unknown) => error instanceof ModelProviderError && error.code === "provider-refusal" && error.retryable === false,
+  );
+});
+
+test("OpenRouter adapter rejects malformed stream shapes as non-retryable provider errors", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"tool_calls":"not-an-array"}}]}\n\n'));
+      controller.close();
+    },
+  });
+  const provider = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(stream, { status: 200 }));
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "hello" }],
+  };
+  await assert.rejects(
+    async () => { for await (const _event of provider.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-incomplete" && error.retryable === false,
+  );
+
+  const malformedEntryStream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"tool_calls":[null]}}]}\n\n'));
+      controller.close();
+    },
+  });
+  const malformedEntry = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(malformedEntryStream, { status: 200 }));
+  await assert.rejects(
+    async () => { for await (const _event of malformedEntry.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-incomplete" && error.retryable === false,
   );
 });
 

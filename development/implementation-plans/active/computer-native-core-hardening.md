@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T17:05:00+02:00
+**Last updated:** 2026-09-16T17:25:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -171,8 +171,10 @@ tests, but it must never replace a configured real provider silently.
 - The built-in model registry now owns provider construction and credential-free
   capability summaries. The TUI exposes `/models` as a read-only model/provider view;
   provider selection remains explicit at session start with no automatic fallback.
-- The current validation is 265 passing tests across the package, with 88.89% line
-  coverage, 76.91% branch coverage, and 83.97% function coverage. The full suite and
+- OpenRouter now classifies rejected credentials as `provider-auth` and rejects malformed
+  choices, deltas, and tool-call shapes as bounded non-retryable provider errors.
+- The current validation is 266 passing tests across the package, with 88.81% line
+  coverage, 76.84% branch coverage, and 83.87% function coverage. The full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
 
@@ -304,6 +306,8 @@ Delivered in this increment:
   refusal/context errors, and pre/post-output disconnects.
 - Registry and TUI tests prove the provider list is credential-free and that `/models`
   renders the active selection and declared capabilities without claiming fallback.
+- Malformed stream-shape and rejected-credential fixtures prove these failures terminate
+  as typed provider outcomes without a transport retry.
 
 Still open after this increment:
 

@@ -30,9 +30,10 @@ function retryableHttpStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-function providerHttpFailure(status: number, body: string): { readonly code: "provider" | "provider-context" | "provider-refusal" | "rate-limit"; readonly retryable: boolean } {
+function providerHttpFailure(status: number, body: string): { readonly code: "provider" | "provider-context" | "provider-refusal" | "provider-auth" | "rate-limit"; readonly retryable: boolean } {
   const normalized = body.toLowerCase();
   if (status === 429) return { code: "rate-limit", retryable: true };
+  if (status === 401 || status === 403) return { code: "provider-auth", retryable: false };
   if (status === 400 || status === 413) {
     if (/context|token limit|maximum .*length|prompt .*too (large|long)|request .*too (large|long)/u.test(normalized)) {
       return { code: "provider-context", retryable: false };
@@ -49,9 +50,33 @@ function parseChunk(data: string): { readonly text?: string; readonly refusal?: 
   if (data === "[DONE]") return { toolCalls: [], done: true };
   let parsed: OpenRouterChunk;
   try {
-    parsed = JSON.parse(data) as OpenRouterChunk;
+    const candidate = JSON.parse(data) as unknown;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new Error("stream event is not an object");
+    parsed = candidate as OpenRouterChunk;
   } catch {
-    throw new ModelProviderError("OpenRouter returned an invalid streaming event.");
+    throw new ModelProviderError("OpenRouter returned an invalid streaming event.", { code: "provider-incomplete", retryable: false });
+  }
+  if (parsed.choices !== undefined && !Array.isArray(parsed.choices)) {
+    throw new ModelProviderError("OpenRouter returned an invalid choices field.", { code: "provider-incomplete", retryable: false });
+  }
+  const firstChoice = parsed.choices?.[0];
+  if (firstChoice !== undefined && firstChoice !== null && (typeof firstChoice !== "object" || Array.isArray(firstChoice))) {
+    throw new ModelProviderError("OpenRouter returned an invalid choice entry.", { code: "provider-incomplete", retryable: false });
+  }
+  const delta = firstChoice?.delta;
+  if (delta !== undefined && delta !== null && (typeof delta !== "object" || Array.isArray(delta))) {
+    throw new ModelProviderError("OpenRouter returned an invalid delta.", { code: "provider-incomplete", retryable: false });
+  }
+  if (delta?.tool_calls !== undefined && !Array.isArray(delta.tool_calls)) {
+    throw new ModelProviderError("OpenRouter returned an invalid tool-call list.", { code: "provider-incomplete", retryable: false });
+  }
+  for (const toolCall of delta?.tool_calls ?? []) {
+    if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call entry.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.function !== undefined && (!toolCall.function || typeof toolCall.function !== "object" || Array.isArray(toolCall.function))) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call function.", { code: "provider-incomplete", retryable: false });
+    }
   }
   const content = parsed.choices?.[0]?.delta?.content;
   const refusal = parsed.choices?.[0]?.delta?.refusal;
