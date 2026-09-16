@@ -424,3 +424,154 @@ test("diagnostic interruption after a browser action does not repeat it", async 
     await rm(artifactRoot, { recursive: true, force: true });
   }
 });
+
+test("browser completion acknowledgement loss preserves an uncertain outcome without replay", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-ack-boundary-state-"));
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-ack-boundary-workspace-"));
+  const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-ack-boundary-artifacts-"));
+  try {
+    let actionWrites = 0;
+    const session = await SessionStore.open(stateDir, undefined, {
+      writeHooks: {
+        afterWrite: (operation, filePath) => {
+          if (operation === "replace-json" && filePath.includes(`${path.sep}browser-actions${path.sep}`) && actionWrites++ === 3) {
+            throw new RuntimeInterruptionError("stopped after browser completion evidence became durable");
+          }
+        },
+      },
+    });
+    const workspace = await Workspace.open(workspaceRoot, { maxFileBytes: 4_096, maxDirectoryEntries: 20 });
+    const urlPolicy = new BrowserUrlPolicy({ allowedLocalHosts: ["127.0.0.1"], dnsLookup: async () => ["127.0.0.1"] });
+    const adapter = new TurnBrowserAdapter();
+    const manager = new BrowserSessionManager(adapter, {
+      createSessionId: () => asBrowserSessionId("browser_ack_boundary"),
+      artifactStore: new BrowserArtifactStore(artifactRoot, { maxScreenshotBytes: 1_024 }),
+      urlPolicy,
+    });
+    const tools = new ToolRegistry(workspace, 32_000, undefined, {
+      manager,
+      maxOutputBytes: 32_000,
+      redactionSecrets: ["secret-value"],
+    });
+    await tools.execute({ callId: "call_start", name: "browser_start", argumentsJson: "{}" });
+    await tools.execute({ callId: "call_open", name: "browser_open", argumentsJson: JSON.stringify({ url: "http://127.0.0.1:4173/fixture" }) });
+    await tools.execute({ callId: "call_snapshot", name: "browser_snapshot", argumentsJson: "{}" });
+
+    const config = loadConfig({
+      stateDir,
+      workspaceRoot,
+      provider: "openrouter",
+      model: "browser-ack-boundary-test",
+      openRouterApiKey: "secret-value",
+      timeoutMs: 10_000,
+      firstEventTimeoutMs: 1_000,
+      approvalTimeoutMs: 1_000,
+      processMode: "deny",
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new BrowserTurnProvider(),
+        tools,
+        config,
+        userPrompt: "Perform the browser action once.",
+        approveBrowser: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped after browser completion evidence became durable/u,
+    );
+    assert.equal(adapter.actCalls, 1);
+
+    const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "browser-actions");
+    const actionFiles = await readdir(actionDirectory);
+    assert.equal(actionFiles.length, 1);
+    const action = JSON.parse(await readFile(path.join(actionDirectory, actionFiles[0]!), "utf8")) as { status: string };
+    assert.equal(action.status, "completed");
+    const events = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload?: { recovered?: boolean } });
+    assert.equal(events.filter((event) => event.type === "BrowserCompleted").length, 1);
+    assert.equal(events.find((event) => event.type === "BrowserCompleted")?.payload?.recovered, true);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+    assert.equal(adapter.actCalls, 1);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+    await rm(workspaceRoot, { recursive: true, force: true });
+    await rm(artifactRoot, { recursive: true, force: true });
+  }
+});
+
+test("browser interruption before the durable start record does not launch the action", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-pre-start-state-"));
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-pre-start-workspace-"));
+  const artifactRoot = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-pre-start-artifacts-"));
+  try {
+    let actionWrites = 0;
+    const session = await SessionStore.open(stateDir, undefined, {
+      writeHooks: {
+        beforeWrite: (operation, filePath) => {
+          if (operation === "replace-json" && filePath.includes(`${path.sep}browser-actions${path.sep}`) && actionWrites++ === 2) {
+            throw new RuntimeInterruptionError("stopped before browser start evidence");
+          }
+        },
+      },
+    });
+    const workspace = await Workspace.open(workspaceRoot, { maxFileBytes: 4_096, maxDirectoryEntries: 20 });
+    const urlPolicy = new BrowserUrlPolicy({ allowedLocalHosts: ["127.0.0.1"], dnsLookup: async () => ["127.0.0.1"] });
+    const adapter = new TurnBrowserAdapter();
+    const manager = new BrowserSessionManager(adapter, {
+      createSessionId: () => asBrowserSessionId("browser_pre_start"),
+      artifactStore: new BrowserArtifactStore(artifactRoot, { maxScreenshotBytes: 1_024 }),
+      urlPolicy,
+    });
+    const tools = new ToolRegistry(workspace, 32_000, undefined, {
+      manager,
+      maxOutputBytes: 32_000,
+      redactionSecrets: ["secret-value"],
+    });
+    await tools.execute({ callId: "call_start", name: "browser_start", argumentsJson: "{}" });
+    await tools.execute({ callId: "call_open", name: "browser_open", argumentsJson: JSON.stringify({ url: "http://127.0.0.1:4173/fixture" }) });
+    await tools.execute({ callId: "call_snapshot", name: "browser_snapshot", argumentsJson: "{}" });
+
+    const config = loadConfig({
+      stateDir,
+      workspaceRoot,
+      provider: "openrouter",
+      model: "browser-pre-start-test",
+      openRouterApiKey: "secret-value",
+      timeoutMs: 10_000,
+      firstEventTimeoutMs: 1_000,
+      approvalTimeoutMs: 1_000,
+      processMode: "deny",
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new BrowserTurnProvider(),
+        tools,
+        config,
+        userPrompt: "Perform the browser action only after it is durably prepared.",
+        approveBrowser: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before browser start evidence/u,
+    );
+    assert.equal(adapter.actCalls, 0);
+
+    const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "browser-actions");
+    const actionFiles = await readdir(actionDirectory);
+    assert.equal(actionFiles.length, 1);
+    const action = JSON.parse(await readFile(path.join(actionDirectory, actionFiles[0]!), "utf8")) as { status: string; errorCode?: string };
+    assert.equal(action.status, "failed");
+    assert.equal(action.errorCode, "browser-approval-unavailable");
+    assert.equal(adapter.actCalls, 0);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+    await rm(workspaceRoot, { recursive: true, force: true });
+    await rm(artifactRoot, { recursive: true, force: true });
+  }
+});

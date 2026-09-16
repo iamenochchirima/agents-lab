@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { stableStringify } from "../persistence/json.js";
-import { redactSecrets, ToolExecutionError } from "../runtime/errors.js";
+import { isRuntimeInterruptionError, redactSecrets, ToolExecutionError } from "../runtime/errors.js";
 import type {
   BrowserActionKind,
   BrowserApprovalAction,
@@ -525,6 +525,10 @@ export class BrowserTools {
   }
 
   private async browserActionFailure(request: BrowserApprovalRequest, error: unknown, context: BrowserToolContext): Promise<BrowserToolOutcome> {
+    // A persistence acknowledgement fault models the parent process stopping at
+    // a durable boundary. It must reach turn recovery instead of being rewritten
+    // as an adapter failure, because the browser side effect may already have run.
+    if (isRuntimeInterruptionError(error)) throw error;
     const browserError = error instanceof BrowserError ? error : new BrowserError("adapter-failure", error instanceof Error ? error.message : "Browser action failed.");
     const secrets = this.options.redactionSecrets ?? [];
     const safeMessage = safeText(browserError.safeMessage, secrets);

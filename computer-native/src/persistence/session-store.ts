@@ -310,6 +310,11 @@ function assertWorkspaceMutationLifecycleEventOrder(
     }
     return;
   }
+  // A restart can prove that an approved mutation never reached the applying
+  // boundary because its before-write acknowledgement failed. In that case the
+  // reconciler emits a terminal "not applied" observation directly after the
+  // approval evidence; it must remain explicitly recovery-marked.
+  if (type === "WorkspaceMutationReconciled" && previous === "WorkspaceMutationApprovalDecided" && payload.recovered === true) return;
   if (type === "WorkspaceMutationFailed" && previous === "WorkspaceMutationApprovalDecided") return;
   if (previous !== "WorkspaceMutationApplying" && previous !== "WorkspaceMutationProgress") {
     throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot finish before application starts.`);

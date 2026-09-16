@@ -1607,6 +1607,108 @@ test("diagnostic interruption after a filesystem side effect recovers without re
   assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
 });
 
+test("filesystem completion acknowledgement loss repairs evidence without replay", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  let mutationAcknowledgements = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.includes(`${path.sep}mutations${path.sep}`) && filePath.endsWith(".json") && mutationAcknowledgements++ === 3) {
+          throw new RuntimeInterruptionError("stopped after filesystem completion evidence became durable");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/write-ack-boundary", {
+        toolCall: {
+          name: "write_file",
+          argumentsJson: JSON.stringify({ path: "once.txt", content: "written once\n" }),
+          finalResponse: "The file was written.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 1_000 }),
+      userPrompt: "Write the file once.",
+      approveMutation: async () => ({ decision: "allow-once" }),
+    }),
+    /stopped after filesystem completion evidence became durable/u,
+  );
+  assert.equal(await readFile(path.join(root, "once.txt"), "utf8"), "written once\n");
+
+  const workspace = await Workspace.open(root, { maxFileBytes: 64 * 1024, maxDirectoryEntries: 50, maxTreeEntries: 100, maxTreeBytes: 256 * 1024, maxTreeDepth: 8 });
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  assert.equal((await restarted.recoverInterruptedTurns((record) => workspace.reconcileMutation(record)))[0]?.status, "interrupted");
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const mutationDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "mutations");
+  const mutationEntry = (await readdir(mutationDirectory))[0];
+  assert.ok(mutationEntry);
+  const mutation = JSON.parse(await readFile(path.join(mutationDirectory, mutationEntry), "utf8")) as { status: string };
+  assert.equal(mutation.status, "committed");
+  const events = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload?: { recovered?: boolean } });
+  assert.equal(events.filter((event) => event.type === "WorkspaceMutationCommitted").length, 1);
+  assert.equal(events.find((event) => event.type === "WorkspaceMutationCommitted")?.payload?.recovered, true);
+  assert.equal(events.at(-1)?.type, "TurnInterrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
+  assert.equal(await readFile(path.join(root, "once.txt"), "utf8"), "written once\n");
+});
+
+test("filesystem interruption before the applying record does not commit the mutation", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const target = path.join(root, "once.txt");
+  await writeFile(target, "old\n", "utf8");
+  let mutationWrites = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.includes(`${path.sep}mutations${path.sep}`) && mutationWrites++ === 2) {
+          throw new RuntimeInterruptionError("stopped before filesystem applying evidence");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/pre-apply-boundary", {
+        toolCall: {
+          name: "write_file",
+          argumentsJson: JSON.stringify({ path: "once.txt", content: "new\n" }),
+          finalResponse: "The file was not changed.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 1_000 }),
+      userPrompt: "Change the file only after the applying record is durable.",
+      approveMutation: async () => ({ decision: "allow-once" }),
+    }),
+    /stopped before filesystem applying evidence/u,
+  );
+  assert.equal(await readFile(target, "utf8"), "old\n");
+
+  const workspace = await Workspace.open(root, { maxFileBytes: 64 * 1024, maxDirectoryEntries: 50, maxTreeEntries: 100, maxTreeBytes: 256 * 1024, maxTreeDepth: 8 });
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  assert.equal((await restarted.recoverInterruptedTurns((record) => workspace.reconcileMutation(record)))[0]?.status, "interrupted");
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const mutationDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "mutations");
+  const mutationEntry = (await readdir(mutationDirectory))[0];
+  assert.ok(mutationEntry);
+  const mutation = JSON.parse(await readFile(path.join(mutationDirectory, mutationEntry), "utf8")) as { status: string };
+  assert.equal(mutation.status, "reconciled");
+  const events = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload?: { recovered?: boolean } });
+  assert.equal(events.filter((event) => event.type === "WorkspaceMutationReconciled").length, 1);
+  assert.equal(events.find((event) => event.type === "WorkspaceMutationReconciled")?.payload?.recovered, true);
+  assert.equal(events.at(-1)?.type, "TurnInterrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
+  assert.equal(await readFile(target, "utf8"), "old\n");
+});
+
 test("diagnostic interruption between multi-file members preserves partial progress without replay", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");

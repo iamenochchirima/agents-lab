@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:35:00+02:00
+**Last updated:** 2026-09-16T18:06:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -208,11 +208,17 @@ tests, but it must never replace a configured real provider silently.
 - The runtime now owns a separate turn-execution lock for the complete foreground turn.
   Admission rejects concurrent execution before provider dispatch, scans durable turn
   records for unrecovered `submitting`/`streaming` work, and recovery uses the same lock.
+- Selected persistence and host-side interruption boundaries now have end-to-end tests:
+  workspace stops before applying and after committed-record acknowledgement, and browser
+  stops before durable start and after completion evidence. Browser persistence interruptions
+  are preserved as runtime interruptions instead of being rewritten as adapter failures.
+  Recovery proves the filesystem is not replayed, browser actions are not replayed, and
+  recovery-only lifecycle evidence is emitted once.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 281 passing tests across the package, with 88.71% line
-  coverage, 77.16% branch coverage, and 84.30% function coverage. Coverage is from
+- The latest validation is 285 passing tests across the package, with 88.72% line
+  coverage, 77.31% branch coverage, and 84.30% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -265,6 +271,32 @@ Still open after this increment:
   filesystem guarantees and operator-visible lease expiry.
 - Deterministic replay and the remaining per-boundary crash matrix.
 
+### Current slice boundary: persistence and side-effect boundary matrix
+
+Delivered in this increment:
+
+- A workspace mutation stopped before its durable applying record is written is reconciled
+  as not applied; the target remains unchanged and the mutation is not retried.
+- A workspace mutation whose committed record is durable but whose acknowledgement is
+  interrupted is recovered as committed; the missing lifecycle event is repaired without
+  replaying the file write.
+- A browser action stopped before its durable start record is written does not reach the
+  adapter and recovers as approval-unavailable.
+- A browser action whose completion record is durable but whose acknowledgement is
+  interrupted recovers as completed with one recovery-marked lifecycle event and no second
+  adapter call.
+- Workspace recovery now permits a recovery-marked `WorkspaceMutationReconciled` event
+  immediately after approval when hash reconciliation proves that application never began.
+- Browser runtime-interruption errors are no longer converted into ordinary adapter
+  failures, preserving the restart path when persistence fails around a browser side effect.
+
+Still open after this increment:
+
+- The complete stop-before/after matrix for every durable write and every underlying host
+  side effect, including process-level crash injection at each boundary.
+- Memory canonical/deletion-evidence write faults, cross-file batch publication, browser
+  profile/artifact crash recovery, and cross-platform process isolation.
+
 ### Current slice boundary: persistence acknowledgement recovery
 
 Delivered in this slice:
@@ -299,9 +331,9 @@ Delivered in this slice:
 
 Persistence slice limitations:
 
-- Failure injection before and after every persistence write, and at the model-send,
-  approval-decision, and underlying filesystem/process/browser/memory side-effect
-  boundaries, remains open.
+- Failure injection before and after every persistence write, and at every model-send,
+  approval-decision, and underlying filesystem/process/browser/memory side-effect boundary,
+  remains open. This increment covers selected workspace and browser boundaries only.
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, and an exactly-once execution guarantee remain
   open.

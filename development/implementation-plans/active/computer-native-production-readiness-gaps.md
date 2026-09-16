@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:35:00+02:00
+**Last updated:** 2026-09-16T18:06:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 281 tests passed after the durable runtime admission increment.
-- `pnpm run coverage`: 281 tests passed, with 88.71% line coverage, 77.16% branch
+- `pnpm test`: 285 tests passed after the persistence and side-effect boundary increment.
+- `pnpm run coverage`: 285 tests passed, with 88.72% line coverage, 77.31% branch
   coverage, and 84.30% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -135,6 +135,11 @@ readiness:
   provider dispatch, refuses to admit around a durable `submitting`/`streaming` turn,
   and shares the execution lock with restart recovery. This is not queueing, durable
   worker leasing, or a multi-turn scheduler.
+- The boundary matrix now includes real runtime interruption tests before a workspace
+  applying record, after a committed workspace record acknowledgement, before a browser
+  start record, and after browser completion evidence. These tests prove no filesystem or
+  browser side effect is replayed and that recovery-only lifecycle evidence is singular.
+  They do not constitute complete coverage of every durable write or host-side boundary.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,
@@ -203,9 +208,10 @@ Exit evidence:
 - A fault-injection test can stop the process at each persistence and side-effect
   boundary and reconcile the result on restart.
 - Current evidence covers acknowledgement loss after durable terminal-result, terminal-
-  event, process, workspace-mutation, browser-action, and memory-action writes. This is
-  narrower than the required full persistence/side-effect boundary matrix because it
-  does not yet stop before writes or at the underlying side-effect boundaries.
+  event, process, workspace-mutation, browser-action, and memory-action writes. Selected
+  before/after boundaries are now covered for workspace and browser actions, but this is
+  still narrower than the required full persistence/side-effect boundary matrix because
+  it does not yet stop before every write or at every underlying side-effect boundary.
 - Current evidence also covers reconstruction of one missing terminal lifecycle event per
   action family. It does not yet prove reconstruction after a process-level crash at
   every write boundary or across all future action types.
@@ -214,10 +220,11 @@ Exit evidence:
   recovered-terminal reconstruction. It does not yet cover every persistence and
   underlying side-effect boundary.
 - Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
-  writes, process approval before launch, process execution while running, completed
-  filesystem/browser/memory side effects, and a committed multi-file member boundary.
-  It does not yet cover every individual persistence write or every possible host-side
-  side-effect boundary.
+  writes, process approval before launch, process execution while running, workspace
+  applying and committed-record boundaries, browser start and completion-record
+  boundaries, completed filesystem/browser/memory side effects, and a committed multi-file
+  member boundary. It does not yet cover every individual persistence write or every
+  possible host-side side-effect boundary.
 - Current process crash evidence covers a completed-side-effect acknowledgement loss,
   a crash after a running record becomes durable, and an in-process launch-record
   acknowledgement failure. It does not yet cover every pre-write crash point,
