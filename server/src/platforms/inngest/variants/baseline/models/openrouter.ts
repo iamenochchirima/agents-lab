@@ -1,5 +1,8 @@
 import type { InngestModelRequest, InngestModelResult } from "../contracts.js";
 
+const MAX_RESPONSE_BYTES = 1_048_576;
+const MAX_OUTPUT_CHARS = 100_000;
+
 export interface InngestOpenRouterModelOptions {
   readonly apiKey: string;
   readonly baseUrl: string;
@@ -42,7 +45,6 @@ export async function completeOpenRouterModel(
     };
   }
 
-  const body = await readJson(response);
   if (!response.ok) {
     const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
     return {
@@ -55,8 +57,19 @@ export async function completeOpenRouterModel(
     };
   }
 
-  const output = readText(body, ["choices", 0, "message", "content"]);
-  if (!output) {
+  const body = await readJson(response);
+  if (body.kind === "too_large") {
+    return {
+      kind: "failure",
+      code: "OPENROUTER_RESPONSE_TOO_LARGE",
+      message: "OpenRouter returned a response larger than the configured safety limit.",
+      failureKind: "provider",
+      retryable: false,
+      requestSent: true,
+    };
+  }
+
+  if (body.kind === "invalid") {
     return {
       kind: "failure",
       code: "OPENROUTER_INVALID_RESPONSE",
@@ -67,11 +80,33 @@ export async function completeOpenRouterModel(
     };
   }
 
-  const usage = objectValue(body, "usage");
+  const output = readText(body.value, ["choices", 0, "message", "content"]);
+  if (!output) {
+    return {
+      kind: "failure",
+      code: "OPENROUTER_INVALID_RESPONSE",
+      message: "OpenRouter returned no assistant content.",
+      failureKind: "provider",
+      retryable: false,
+      requestSent: true,
+    };
+  }
+  if (output.length > MAX_OUTPUT_CHARS) {
+    return {
+      kind: "failure",
+      code: "OPENROUTER_OUTPUT_TOO_LARGE",
+      message: "OpenRouter assistant output exceeded the configured safety limit.",
+      failureKind: "provider",
+      retryable: false,
+      requestSent: true,
+    };
+  }
+
+  const usage = objectValue(body.value, "usage");
   return {
     kind: "success",
     output,
-    providerRequestId: stringValue(body, "id"),
+    providerRequestId: stringValue(body.value, "id"),
     usage: {
       inputTokens: numberValue(usage, "prompt_tokens"),
       outputTokens: numberValue(usage, "completion_tokens"),
@@ -80,13 +115,42 @@ export async function completeOpenRouterModel(
   };
 }
 
-async function readJson(response: Response): Promise<unknown> {
+async function readJson(response: Response): Promise<JsonReadResult> {
+  if (!response.body) return { kind: "invalid" };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   try {
-    return await response.json();
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) return { kind: "too_large" };
+      chunks.push(chunk.value);
+    }
   } catch {
-    return null;
+    return { kind: "invalid" };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return { kind: "ok", value: JSON.parse(new TextDecoder().decode(bytes)) };
+  } catch {
+    return { kind: "invalid" };
   }
 }
+
+type JsonReadResult =
+  | { readonly kind: "ok"; readonly value: unknown }
+  | { readonly kind: "too_large" }
+  | { readonly kind: "invalid" };
 
 function readText(value: unknown, path: readonly (string | number)[]): string | null {
   let current = value;
