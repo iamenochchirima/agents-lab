@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:45:57+02:00
+**Last updated:** 2026-09-16T21:52:09+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,10 +51,11 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 312 tests passed after the memory-search evidence identity increment.
-- `pnpm run coverage`: 312 tests passed, with 88.77% line coverage, 77.67% branch
-  coverage, and 84.85% function coverage in the latest successful run. Node's experimental
-  coverage runner can vary slightly between runs.
+- `pnpm test`: 313 tests passed after the memory-search evidence recovery increment.
+- `pnpm run coverage`: 313 tests passed, with 89.16% line coverage, 77.84% branch
+  coverage, and 84.92% function coverage in the latest successful run. Node's experimental
+  coverage runner can vary slightly between runs; one earlier instrumentation run left the
+  known TUI tests pending, and an immediate rerun passed all 313 tests.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -142,6 +143,8 @@ readiness:
   identical repeated payload and rejects conflicting duplicates by stable identity.
 - Memory search evidence is now immutable by `searchId`; identical acknowledgement retries
   are no-ops and conflicting result sets or query identity cannot overwrite it.
+- Restart recovery reconstructs a missing `MemorySearched` event from durable search
+  evidence before recording the interrupted turn; repeated recovery remains idempotent.
 - One-shot action lifecycle evidence is also idempotent by action identity; repeatable
   workspace progress observations remain preserved as separate events.
 - Durable lifecycle history rejects unknown types, broken sequence numbers, and
@@ -258,7 +261,8 @@ Exit evidence:
   duplicate evidence still fails closed. Model request, attempt-completion, and retry
   evidence also requires exact attempt identity and a successful latest attempt before
   model completion. Memory-search evidence also rejects conflicting reuse of a `searchId`
-  rather than silently replacing the recorded result set. It does not yet cover every
+  rather than silently replacing the recorded result set, and recovery repairs a missing
+  `MemorySearched` event without replaying the search. It does not yet cover every
   persistence and underlying side-effect boundary.
 - Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
   writes, process approval before launch, process execution while running, workspace

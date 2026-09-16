@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:45:57+02:00
+**Last updated:** 2026-09-16T21:52:09+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -266,10 +266,11 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 312 passing tests across the package, with 88.77% line
-  coverage, 77.67% branch coverage, and 84.85% function coverage. Coverage is from
+- The latest validation is 313 passing tests across the package, with 89.16% line
+  coverage, 77.84% branch coverage, and 84.92% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
-  coverage run both pass. The browser fixture navigation timeout is 1 second so it
+  latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
+  pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
 
 ### Current slice boundary: model/tool round evidence ordering
@@ -338,8 +339,12 @@ Delivered in this increment:
   scope, result identity, limit, or other field fails closed.
 - Existing ownership and correlation checks also apply to the previously persisted
   record, so a corrupt or cross-turn record cannot be silently overwritten.
+- Restart recovery reconstructs a missing `MemorySearched` lifecycle event from the
+  durable record before it closes the interrupted turn; the repair is marked recovered
+  and does not replay the search.
 - Tests cover the public persistence seam, identical retry, conflicting retry, and
-  preservation of the original durable result set.
+  preservation of the original durable result set, acknowledgement-loss recovery, and
+  repeat recovery without a duplicate lifecycle event.
 
 Practice check against the local Hermes and OpenClaw references:
 

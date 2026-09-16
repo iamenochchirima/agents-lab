@@ -880,6 +880,9 @@ export class SessionStore {
         }
         await turn.ensureMemoryTerminalEvent(reconciledAction);
       }
+      for (const search of await turn.readMemorySearches()) {
+        await turn.ensureMemorySearchEvent(search);
+      }
       if (result) {
         if (!isTerminalStatus(record.state)) await turn.updateState(terminalStateFromResult(result));
         await turn.ensureTerminalEvent(result);
@@ -1237,6 +1240,31 @@ export class TurnStore {
       records.push(record);
     }
     return records;
+  }
+
+  async ensureMemorySearchEvent(record: MemorySearchEvidence): Promise<void> {
+    assertTurnBoundRecord(record, this.turnId, this.correlationId, "Memory search", "searchId");
+    if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
+    }
+    const payload = {
+      searchId: record.searchId,
+      callId: record.callId,
+      queryHash: record.queryHash,
+      scopes: record.scopes ?? null,
+      resultCount: record.resultCount,
+      resultIds: record.resultIds,
+      truncated: record.truncated,
+    };
+    const existing = (await this.readEvents()).find((event) => event.type === "MemorySearched" && event.payload.searchId === record.searchId);
+    if (existing) {
+      const { recovered: _recovered, ...existingPayload } = existing.payload;
+      if (stableStringify(existingPayload) !== stableStringify(redactRecord(payload))) {
+        throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' lifecycle evidence conflicts with its durable search record.`);
+      }
+      return;
+    }
+    await this.appendRecoveredEvent("MemorySearched", { ...payload, recovered: true });
   }
 
   async readBrowserActions(): Promise<BrowserActionRecord[]> {

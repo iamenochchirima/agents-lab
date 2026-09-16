@@ -5539,6 +5539,51 @@ test("memory search evidence is idempotent and rejects conflicting identity reus
   assert.deepEqual(persisted.resultIds, ["memory_record_1"]);
 });
 
+test("restart repairs missing memory search lifecycle evidence without replay", async () => {
+  const stateDir = tempDirectory();
+  let interrupted = false;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (!interrupted && operation === "replace-json" && filePath.includes(`${path.sep}memory-searches${path.sep}`)) {
+          interrupted = true;
+          throw new RuntimeInterruptionError("stopped after memory search evidence became durable");
+        }
+      },
+    },
+  });
+  const turn = await session.admitTurn("recover memory search evidence", "deterministic", "deterministic/echo");
+  await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
+  const search: MemorySearchEvidence = {
+    schemaVersion: 1,
+    searchId: "memory_search_recovery",
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    correlationId: turn.correlationId,
+    callId: "memory_search_recovery_call",
+    queryHash: "query-hash",
+    maxResults: 5,
+    resultIds: ["memory_record_1"],
+    resultCount: 1,
+    truncated: false,
+    recordedAt: new Date().toISOString(),
+  };
+  await assert.rejects(
+    () => turn.writeMemorySearch(search),
+    /stopped after memory search evidence became durable/u,
+  );
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const [recovered] = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered?.status, "interrupted");
+  const eventsPath = path.join(turn.directory, "events.jsonl");
+  const events = (await readFile(eventsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload?: { recovered?: boolean } });
+  const searchEvent = events.find((event) => event.type === "MemorySearched");
+  assert.equal(searchEvent?.payload?.recovered, true);
+  assert.ok(events.findIndex((event) => event.type === "MemorySearched") < events.findIndex((event) => event.type === "TurnInterrupted"));
+  assert.deepEqual(await restarted.recoverInterruptedTurns(), []);
+});
+
 test("cancellation interrupts a waiting read-only tool without committing an assistant", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);

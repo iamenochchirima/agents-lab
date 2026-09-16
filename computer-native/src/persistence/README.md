@@ -113,6 +113,9 @@ not adopted.
 Memory search evidence is also immutable by `searchId`. An identical write retry is a
 no-op after an acknowledgement loss; a changed result set, query hash, scope, or other
 field for the same identity is rejected rather than silently overwriting the evidence.
+Restart recovery reconstructs a missing `MemorySearched` lifecycle event from that durable
+record and inserts it before the recovered turn-terminal event; repeating recovery does
+not create a second search event.
 
 Model attempt evidence may carry bounded `providerRequestId` and `latencyMs` fields when
 the adapter reports them. They describe transport observation only and do not authorize
