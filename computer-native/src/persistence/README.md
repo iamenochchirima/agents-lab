@@ -49,6 +49,15 @@ partial metadata write instead of deleting the lock. This prevents common PID-re
 process-group mistakes, but it is not a full cross-platform process identity guarantee
 or a substitute for durable job leases.
 
+The runtime uses a separate `.turn-execution.lock` for the single foreground turn
+slot. `runTurn` acquires it before reading the transcript or admitting a new turn and
+holds it until terminalisation, cancellation, or an interruption has returned to the
+caller. Admission then scans durable turn records and rejects a new runtime turn while
+any existing turn is still `submitting` or `streaming`. Recovery uses the same lock, so
+it cannot mutate an active turn. A stale execution lock can be reclaimed using the
+owner-identity rules above, but the durable non-terminal turn still has to be recovered
+before a new turn is admitted.
+
 Runtime interruption checkpoints complement the write hooks by stopping a turn before
 or after model dispatch, approval, tool execution, terminal commit, process launch, or
 a committed member of a multi-file patch. Recovery uses the records that were already

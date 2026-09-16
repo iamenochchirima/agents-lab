@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:05:00+02:00
+**Last updated:** 2026-09-16T18:35:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -205,11 +205,14 @@ tests, but it must never replace a configured real provider silently.
 - Session locks now persist the owner PID plus a Linux executable/start-time token. A
   live PID with a mismatched token is reclaimed as stale; unverified or permission-denied
   live owners fail closed, and invalid PIDs are never probed as process groups.
+- The runtime now owns a separate turn-execution lock for the complete foreground turn.
+  Admission rejects concurrent execution before provider dispatch, scans durable turn
+  records for unrecovered `submitting`/`streaming` work, and recovery uses the same lock.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 279 passing tests across the package, with 88.67% line
-  coverage, 77.09% branch coverage, and 84.31% function coverage. Coverage is from
+- The latest validation is 281 passing tests across the package, with 88.71% line
+  coverage, 77.16% branch coverage, and 84.30% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -237,6 +240,30 @@ Still open after this increment:
   session lock; this increment prevents competing session owners but does not claim
   multi-turn scheduling or durable job leases.
 - Crash, upgrade, and network-filesystem semantics for lock creation and release.
+
+### Current increment: durable runtime turn admission
+
+Delivered in this increment:
+
+- `runTurn` acquires a separate execution lock before transcript read, turn admission,
+  provider dispatch, or tool setup, and releases it in a `finally` path after normal,
+  failed, cancelled, or diagnostic-interrupted execution returns.
+- Admission validates the durable turn-record identity and rejects any existing
+  `submitting` or `streaming` turn instead of starting a second runtime turn.
+- Restart recovery takes the same execution lock, so recovery cannot rewrite action or
+  terminal evidence while a live turn is executing.
+- A stale execution lock can be reclaimed by the existing owner-identity checks, but an
+  unrecovered durable turn still blocks new admission until recovery classifies it.
+- Tests cover concurrent provider non-dispatch, recovery blocked during an active turn,
+  durable orphan rejection, recovery before re-admission, and release after completion.
+
+Still open after this increment:
+
+- Queueing, fairness, cancellation of queued work, and durable leases for long-running
+  jobs or worker processes.
+- Cross-process scheduling beyond the foreground session lock, including network
+  filesystem guarantees and operator-visible lease expiry.
+- Deterministic replay and the remaining per-boundary crash matrix.
 
 ### Current slice boundary: persistence acknowledgement recovery
 

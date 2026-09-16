@@ -84,6 +84,33 @@ function terminalStateFromResult(result: TurnResult): Exclude<TurnStatus, "idle"
   return result.status;
 }
 
+function validateTurnRecord(record: unknown, sessionId: SessionId, directoryName?: string): asserts record is TurnRecord {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new ComputerNativeError("persistence", "A durable turn record is not an object.");
+  }
+  const candidate = record as Record<string, unknown>;
+  const state = candidate.state;
+  const turnId = candidate.turnId;
+  const provider = candidate.provider;
+  if (candidate.schemaVersion !== 1
+    || candidate.sessionId !== sessionId
+    || typeof turnId !== "string"
+    || (candidate.correlationId !== undefined && typeof candidate.correlationId !== "string")
+    || typeof provider !== "string"
+    || (provider !== "deterministic" && provider !== "openrouter")
+    || typeof candidate.model !== "string"
+    || (!NON_TERMINAL_STATES.includes(state as TurnStatus) && !isTerminalStatus(state as TurnStatus))
+    || typeof candidate.userMessagePersisted !== "boolean"
+    || typeof candidate.createdAt !== "string"
+    || typeof candidate.updatedAt !== "string") {
+    throw new ComputerNativeError("persistence", `Turn '${typeof turnId === "string" ? turnId : "unknown"}' has an invalid durable record.`);
+  }
+  safePathSegment(turnId, "Turn ID");
+  if (directoryName !== undefined && turnId !== directoryName) {
+    throw new ComputerNativeError("persistence", `Turn '${turnId}' does not match its durable directory '${directoryName}'.`);
+  }
+}
+
 function validateTurnResult(result: unknown, record: TurnRecord): asserts result is TurnResult {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     throw new ComputerNativeError("persistence", `Turn '${record.turnId}' contains an invalid terminal result.`);
@@ -530,6 +557,22 @@ export class SessionStore {
     return SessionLock.acquire(path.join(this.sessionDirectory, ".lock"));
   }
 
+  /**
+   * Own the single foreground runtime slot for this session. The lock remains
+   * held for the complete turn, while the durable turn record remains the
+   * authority used by restart recovery after an owner process disappears.
+   */
+  async acquireTurnExecution(): Promise<SessionLock> {
+    const lock = await SessionLock.acquire(path.join(this.sessionDirectory, ".turn-execution.lock"));
+    try {
+      await this.assertNoActiveTurn();
+      return lock;
+    } catch (error) {
+      await lock.release().catch(() => undefined);
+      throw error;
+    }
+  }
+
   async readTranscript(): Promise<TranscriptMessage[]> {
     return readJsonLines<TranscriptMessage>(path.join(this.sessionDirectory, "transcript.jsonl"));
   }
@@ -569,7 +612,39 @@ export class SessionStore {
     return new TurnStore(this, directory, { ...record, userMessagePersisted: true });
   }
 
+  private async assertNoActiveTurn(): Promise<void> {
+    const turnsDirectory = path.join(this.sessionDirectory, "turns");
+    await ensureDirectory(turnsDirectory);
+    const entries = await readdir(turnsDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      let record: TurnRecord;
+      try {
+        record = await readJson<TurnRecord>(path.join(turnsDirectory, entry.name, "turn.json"));
+        validateTurnRecord(record, this.metadata.sessionId, entry.name);
+      } catch (error) {
+        throw new ComputerNativeError("persistence", `Turn '${entry.name}' cannot be admitted around an invalid durable record.`, { cause: error });
+      }
+      if (NON_TERMINAL_STATES.includes(record.state)) {
+        throw new ComputerNativeError("lock", `Session '${this.metadata.sessionId}' already has active turn '${record.turnId}' in state '${record.state}'. Recover it before starting another turn.`);
+      }
+    }
+  }
+
   async recoverInterruptedTurns(
+    reconcileMutation?: (record: WorkspaceMutationRecord) => Promise<WorkspaceMutationRecord>,
+    reconcileProcess?: (record: ProcessExecutionRecord) => Promise<ProcessExecutionRecord>,
+    reconcileMemory?: (record: MemoryActionRecord) => Promise<MemoryActionRecord>,
+  ): Promise<TurnResult[]> {
+    const lock = await SessionLock.acquire(path.join(this.sessionDirectory, ".turn-execution.lock"));
+    try {
+      return await this.recoverInterruptedTurnsUnlocked(reconcileMutation, reconcileProcess, reconcileMemory);
+    } finally {
+      await lock.release();
+    }
+  }
+
+  private async recoverInterruptedTurnsUnlocked(
     reconcileMutation?: (record: WorkspaceMutationRecord) => Promise<WorkspaceMutationRecord>,
     reconcileProcess?: (record: ProcessExecutionRecord) => Promise<ProcessExecutionRecord>,
     reconcileMemory?: (record: MemoryActionRecord) => Promise<MemoryActionRecord>,
@@ -586,6 +661,7 @@ export class SessionStore {
       let record: TurnRecord;
       try {
         record = await readJson<TurnRecord>(recordPath);
+        validateTurnRecord(record, this.metadata.sessionId, entry.name);
       } catch (error) {
         throw new ComputerNativeError("persistence", `Turn '${entry.name}' has no valid turn record. Repair it before continuing.`, { cause: error });
       }

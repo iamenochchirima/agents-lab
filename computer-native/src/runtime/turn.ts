@@ -324,6 +324,15 @@ async function executeToolWithDeadline(
 }
 
 export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
+  const executionLock = await options.session.acquireTurnExecution();
+  try {
+    return await runTurnWithExecutionLock(options);
+  } finally {
+    await executionLock.release();
+  }
+}
+
+async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnResult> {
   const startedAt = new Date().toISOString();
   const history = await options.session.readTranscript();
   let tools: ToolRegistry;

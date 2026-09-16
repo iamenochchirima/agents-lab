@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:05:00+02:00
+**Last updated:** 2026-09-16T18:35:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 279 tests passed after the session-lock hardening increment.
-- `pnpm run coverage`: 279 tests passed, with 88.67% line coverage, 77.09% branch
-  coverage, and 84.31% function coverage in the latest run. Node's experimental
+- `pnpm test`: 281 tests passed after the durable runtime admission increment.
+- `pnpm run coverage`: 281 tests passed, with 88.71% line coverage, 77.16% branch
+  coverage, and 84.30% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -131,6 +131,10 @@ readiness:
   or permission-denied live owners remain locked, and invalid PIDs are never probed as
   process groups. This hardens session ownership but does not establish durable job
   leases or full cross-platform process identity.
+- `runTurn` now owns one foreground execution slot per session. It rejects concurrent
+  provider dispatch, refuses to admit around a durable `submitting`/`streaming` turn,
+  and shares the execution lock with restart recovery. This is not queueing, durable
+  worker leasing, or a multi-turn scheduler.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,
@@ -223,6 +227,10 @@ Exit evidence:
   yet cover cross-platform identity, network filesystems, lock renewal, or durable turn
   leases. A session lock prevents competing application owners; it does not yet define
   concurrent turn scheduling inside a future long-running worker.
+- Runtime admission now has direct evidence for concurrent provider non-dispatch,
+  recovery exclusion while a turn is active, and re-admission only after recovery
+  closes an orphaned turn. It does not yet cover queued work, fairness, durable worker
+  leases, or deterministic replay.
 - The runner reports at-most-once or at-least-once behaviour precisely. It does not claim
   exactly-once execution without proof.
 
