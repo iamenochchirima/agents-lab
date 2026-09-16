@@ -12,6 +12,13 @@ apart from its platform, variant, and stable execution identity.
 provider metadata, such as a context-window limit, before creating a manifest. That
 value is frozen for the run; the browser's copy of the catalog is never authoritative.
 
+`RunRequest.capabilities.tools` is the small provider-neutral capability declaration used
+when a workload enables tools. It contains only enabled names and bounded round/call
+limits. The common manifest validates its shape, while each platform adapter owns the
+actual definition lookup, model-tool mapping, execution boundary, retries, and native
+evidence. It is optional so existing single-turn baselines retain their platform-local
+defaults.
+
 An execution reference may contain a platform-native evidence object. That object is
 for persistence and inspection. It is not a second common lifecycle model, and common
 code must not branch on fields such as workflow IDs, graph checkpoints, or service

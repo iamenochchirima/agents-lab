@@ -35,6 +35,14 @@ export interface RunSelection {
   readonly experimentId?: string;
 }
 
+export interface RunCapabilities {
+  readonly tools: {
+    readonly enabledNames: readonly string[];
+    readonly maxRounds: number;
+    readonly maxCalls: number;
+  };
+}
+
 export interface RunRequest {
   readonly platform: string;
   readonly variant: string;
@@ -50,6 +58,8 @@ export interface RunRequest {
     readonly model: string;
     readonly contextWindowTokens?: number;
   };
+  /** Provider-neutral capability settings resolved into the immutable manifest. */
+  readonly capabilities?: RunCapabilities;
   readonly selection?: RunSelection;
   readonly experiment?: undefined;
 }
@@ -73,6 +83,7 @@ export interface RunManifest {
     readonly snapshotId?: string;
   };
   readonly platformConfig: Readonly<Record<string, unknown>>;
+  readonly capabilities?: RunCapabilities;
   readonly selection?: RunSelection;
   readonly model: {
     readonly provider: ModelProvider;

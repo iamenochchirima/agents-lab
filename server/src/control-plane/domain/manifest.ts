@@ -43,6 +43,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
       ...options.context,
     },
     platformConfig: options.platformConfig ?? {},
+    ...(request.capabilities === undefined ? {} : { capabilities: request.capabilities }),
     selection: request.selection ?? {},
     model: {
       provider: request.model.provider as ModelProvider,
@@ -104,6 +105,8 @@ export function validateRunRequest(request: RunRequest): void {
     throw new InvalidRunRequestError("Model context window must be a positive integer when provided.");
   }
 
+  validateCapabilities(request.capabilities);
+
   if (request.selection !== undefined) {
     for (const [name, value] of Object.entries(request.selection)) {
       if (!/^(scenarioId|environmentId|backendProfileId|infrastructureId|experimentId)$/.test(name)) {
@@ -113,6 +116,28 @@ export function validateRunRequest(request: RunRequest): void {
         throw new InvalidRunRequestError(`${name} must use a valid catalog identifier.`);
       }
     }
+  }
+}
+
+function validateCapabilities(capabilities: RunRequest["capabilities"]): void {
+  if (capabilities === undefined) return;
+  const tools = capabilities.tools;
+  if (!tools || !Array.isArray(tools.enabledNames) || tools.enabledNames.length > 32) {
+    throw new InvalidRunRequestError("capabilities.tools.enabledNames must contain at most 32 tool names.");
+  }
+  const names = new Set<string>();
+  for (const name of tools.enabledNames) {
+    if (typeof name !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(name)) {
+      throw new InvalidRunRequestError("Tool names must use lowercase letters, numbers, and hyphens.");
+    }
+    if (names.has(name)) throw new InvalidRunRequestError(`Duplicate enabled tool: ${name}.`);
+    names.add(name);
+  }
+  if (!Number.isInteger(tools.maxRounds) || tools.maxRounds < 1 || tools.maxRounds > 32) {
+    throw new InvalidRunRequestError("capabilities.tools.maxRounds must be an integer between 1 and 32.");
+  }
+  if (!Number.isInteger(tools.maxCalls) || tools.maxCalls < 1 || tools.maxCalls > 64) {
+    throw new InvalidRunRequestError("capabilities.tools.maxCalls must be an integer between 1 and 64.");
   }
 }
 
