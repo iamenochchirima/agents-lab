@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 270 tests passed after the terminal-evidence and cancellation increment.
-- `pnpm run coverage`: 270 tests passed, with 88.52% line coverage, 76.94% branch
-  coverage, and 84.23% function coverage in the latest run. Node's experimental
+- `pnpm test`: 274 tests passed after the persistence identity increment.
+- `pnpm run coverage`: 274 tests passed, with 88.62% line coverage, 76.95% branch
+  coverage, and 84.25% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -119,6 +119,9 @@ readiness:
   identical repeated payload and rejects conflicting duplicates by stable identity.
 - One-shot action lifecycle evidence is also idempotent by action identity; repeatable
   workspace progress observations remain preserved as separate events.
+- Durable lifecycle history rejects unknown types, broken sequence numbers, and
+  cross-session/turn records. Terminal results and persisted action records are checked
+  against their admitted owner before they can be written or adopted during recovery.
 - Repeated terminal turn evidence now compares the redacted payload: identical retries
   are idempotent, while conflicting terminal payloads fail closed.
 - A pre-cancelled turn does not invoke the provider or emit a model-request claim, and

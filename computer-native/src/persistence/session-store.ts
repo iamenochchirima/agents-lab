@@ -84,9 +84,72 @@ function terminalStateFromResult(result: TurnResult): Exclude<TurnStatus, "idle"
   return result.status;
 }
 
+function validateTurnResult(result: unknown, record: TurnRecord): asserts result is TurnResult {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new ComputerNativeError("persistence", `Turn '${record.turnId}' contains an invalid terminal result.`);
+  }
+  const candidate = result as Record<string, unknown>;
+  if (candidate.schemaVersion !== 1 || !isTerminalStatus(candidate.status as TurnStatus)) {
+    throw new ComputerNativeError("persistence", `Turn '${record.turnId}' contains an invalid terminal result.`);
+  }
+  if (candidate.sessionId !== record.sessionId) {
+    throw new ComputerNativeError("persistence", `Terminal result does not belong to session '${record.sessionId}'.`);
+  }
+  if (candidate.turnId !== record.turnId) {
+    throw new ComputerNativeError("persistence", `Terminal result does not belong to turn '${record.turnId}'.`);
+  }
+  if (candidate.provider !== record.provider) {
+    throw new ComputerNativeError("persistence", `Terminal result provider does not match the admitted provider '${record.provider}'.`);
+  }
+  if (candidate.model !== record.model) {
+    throw new ComputerNativeError("persistence", `Terminal result model does not match the admitted model '${record.model}'.`);
+  }
+  if (candidate.correlationId !== undefined && typeof candidate.correlationId !== "string") {
+    throw new ComputerNativeError("persistence", `Terminal result for turn '${record.turnId}' has an invalid correlation.`);
+  }
+  assertRecordCorrelation(record.correlationId ?? asCorrelationId(record.turnId), candidate.correlationId as CorrelationId | undefined, "Terminal result");
+}
+
 function isTerminalLifecycleEvent(type: LifecycleEventType): boolean {
   return type === "TurnCompleted" || type === "TurnFailed" || type === "TurnCancelled" || type === "TurnInterrupted";
 }
+
+const LIFECYCLE_EVENT_TYPES: ReadonlySet<LifecycleEventType> = new Set([
+  "TurnStarted",
+  "ModelRequested",
+  "ModelRequestRejected",
+  "ModelAttemptCompleted",
+  "ModelRetryScheduled",
+  "ModelCompleted",
+  "ProcessPrepared",
+  "ProcessApprovalDecided",
+  "ProcessStarted",
+  "ProcessTerminating",
+  "ProcessCompleted",
+  "BrowserPrepared",
+  "BrowserApprovalDecided",
+  "BrowserStarted",
+  "BrowserCompleted",
+  "BrowserArtifactCreated",
+  "MemoryBootstrapLoaded",
+  "MemorySearched",
+  "MemoryPrepared",
+  "MemoryApprovalDecided",
+  "MemoryCommitted",
+  "MemoryForgotten",
+  "MemoryFailed",
+  "WorkspaceMutationProposed",
+  "WorkspaceMutationApprovalDecided",
+  "WorkspaceMutationApplying",
+  "WorkspaceMutationProgress",
+  "WorkspaceMutationCommitted",
+  "WorkspaceMutationFailed",
+  "WorkspaceMutationReconciled",
+  "TurnCompleted",
+  "TurnFailed",
+  "TurnCancelled",
+  "TurnInterrupted",
+]);
 
 const WORKSPACE_MUTATION_LIFECYCLE_EVENTS: ReadonlySet<LifecycleEventType> = new Set([
   "WorkspaceMutationProposed",
@@ -244,9 +307,34 @@ function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: Li
   }
 }
 
-function validateLifecycleEventHistory(events: readonly LifecycleEvent[]): void {
+function validateLifecycleEventHistory(
+  events: readonly LifecycleEvent[],
+  expectedSessionId?: SessionId,
+  expectedTurnId?: TurnRecord["turnId"],
+): void {
   const prefix: LifecycleEvent[] = [];
-  for (const event of events) {
+  for (const [index, event] of events.entries()) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      throw new ComputerNativeError("persistence", "A durable lifecycle event has an invalid record.");
+    }
+    if (event.schemaVersion !== 1 || typeof event.eventId !== "string" || event.eventId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", "A durable lifecycle event has an invalid record identity.");
+    }
+    if (!LIFECYCLE_EVENT_TYPES.has(event.type)) {
+      throw new ComputerNativeError("persistence", `Lifecycle event '${event.eventId}' has an unknown event type.`);
+    }
+    if (!Number.isInteger(event.sequence) || event.sequence !== index + 1) {
+      throw new ComputerNativeError("persistence", `Lifecycle event '${event.eventId}' has an invalid sequence.`);
+    }
+    if (expectedSessionId !== undefined && event.sessionId !== expectedSessionId) {
+      throw new ComputerNativeError("persistence", `Lifecycle event '${event.eventId}' does not belong to session '${expectedSessionId}'.`);
+    }
+    if (expectedTurnId !== undefined && event.turnId !== expectedTurnId) {
+      throw new ComputerNativeError("persistence", `Lifecycle event '${event.eventId}' does not belong to turn '${expectedTurnId}'.`);
+    }
+    if (!event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)) {
+      throw new ComputerNativeError("persistence", `Lifecycle event '${event.eventId}' has an invalid payload.`);
+    }
     if (prefix.some((candidate) => isTerminalLifecycleEvent(candidate.type))) {
       throw new ComputerNativeError("persistence", `Lifecycle event '${event.type}' appears after a terminal turn event.`);
     }
@@ -357,6 +445,30 @@ function assertRecordCorrelation(expected: CorrelationId, actual: CorrelationId 
   if (actual !== undefined && actual !== expected) {
     throw new ComputerNativeError("persistence", `${kind} correlation '${actual}' does not belong to correlation '${expected}'.`);
   }
+}
+
+function assertTurnBoundRecord(
+  record: unknown,
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+  kind: string,
+  identityField: string,
+): void {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new ComputerNativeError("persistence", `${kind} has an invalid durable record.`);
+  }
+  const candidate = record as Record<string, unknown>;
+  const identity = candidate[identityField];
+  if (candidate.schemaVersion !== 1 || typeof identity !== "string" || identity.trim().length === 0) {
+    throw new ComputerNativeError("persistence", `${kind} '${identity}' has an invalid durable identity.`);
+  }
+  if (candidate.turnId !== expectedTurnId) {
+    throw new ComputerNativeError("persistence", `${kind} '${identity}' does not belong to turn '${expectedTurnId}'.`);
+  }
+  if (candidate.correlationId !== undefined && typeof candidate.correlationId !== "string") {
+    throw new ComputerNativeError("persistence", `${kind} '${identity}' has an invalid correlation.`);
+  }
+  assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, kind);
 }
 
 export class SessionStore {
@@ -485,6 +597,7 @@ export class SessionStore {
         if (!(error instanceof ComputerNativeError) || !error.message.startsWith("Could not read")) throw error;
       }
       const turn = new TurnStore(this, directory, record);
+      if (result) validateTurnResult(result, record);
       for (const execution of await turn.readProcesses()) {
         let reconciledExecution = execution;
         if (execution.status === "prepared") {
@@ -645,7 +758,7 @@ export class TurnStore {
   async appendEvent(type: LifecycleEventType, payload: Readonly<Record<string, unknown>> = {}): Promise<LifecycleEvent> {
     const eventsPath = path.join(this.directory, "events.jsonl");
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
-    validateLifecycleEventHistory(existing);
+    validateLifecycleEventHistory(existing, this.sessionId, this.turnId);
     for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
     if (terminal) {
@@ -681,7 +794,7 @@ export class TurnStore {
   private async appendRecoveredEvent(type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): Promise<LifecycleEvent> {
     const eventsPath = path.join(this.directory, "events.jsonl");
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
-    validateLifecycleEventHistory(existing);
+    validateLifecycleEventHistory(existing, this.sessionId, this.turnId);
     for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     const terminalIndex = existing.findIndex((event) => isTerminalLifecycleEvent(event.type));
     if (terminalIndex < 0) return this.appendEvent(type, payload);
@@ -705,7 +818,7 @@ export class TurnStore {
 
   async readEvents(): Promise<LifecycleEvent[]> {
     const events = await readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
-    validateLifecycleEventHistory(events);
+    validateLifecycleEventHistory(events, this.sessionId, this.turnId);
     for (const event of events) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     return events;
   }
@@ -749,6 +862,9 @@ export class TurnStore {
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid process execution record.`);
     }
     assertRecordCorrelation(this.correlationId, record.correlationId, "Process execution");
+    if (record.sessionId !== this.sessionId || record.turnId !== this.turnId) {
+      throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' does not belong to turn '${this.turnId}'.`);
+    }
     const directory = path.join(this.directory, "executions");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.executionId, "Execution ID")}.json`);
@@ -777,7 +893,12 @@ export class TurnStore {
     });
     const records: ProcessExecutionRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
-      records.push(await readJson<ProcessExecutionRecord>(path.join(directory, entry.name)));
+      const record = await readJson<ProcessExecutionRecord>(path.join(directory, entry.name));
+      assertTurnBoundRecord(record, this.turnId, this.correlationId, "Process execution", "executionId");
+      if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
+        throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' does not belong to turn '${this.turnId}'.`);
+      }
+      records.push(record);
     }
     return records;
   }
@@ -834,6 +955,12 @@ export class TurnStore {
     const records: MemoryActionRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".jsonl")).sort((left, right) => left.name.localeCompare(right.name))) {
       const history = await readJsonLines<MemoryActionRecord>(path.join(directory, entry.name));
+      for (const record of history) {
+        assertTurnBoundRecord(record, this.turnId, this.correlationId, "Memory action", "operationId");
+        if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
+          throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${this.turnId}'.`);
+        }
+      }
       const latest = history.at(-1);
       if (latest) records.push(latest);
     }
@@ -861,7 +988,12 @@ export class TurnStore {
     });
     const records: MemorySearchEvidence[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
-      records.push(await readJson<MemorySearchEvidence>(path.join(directory, entry.name)));
+      const record = await readJson<MemorySearchEvidence>(path.join(directory, entry.name));
+      assertTurnBoundRecord(record, this.turnId, this.correlationId, "Memory search", "searchId");
+      if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
+        throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
+      }
+      records.push(record);
     }
     return records;
   }
@@ -874,7 +1006,12 @@ export class TurnStore {
     });
     const records: BrowserActionRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
-      records.push(await readJson<BrowserActionRecord>(path.join(directory, entry.name)));
+      const record = await readJson<BrowserActionRecord>(path.join(directory, entry.name));
+      assertTurnBoundRecord(record, this.turnId, this.correlationId, "Browser action", "actionId");
+      if (typeof record.callId !== "string" || record.callId.trim().length === 0) {
+        throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' has an invalid call identity.`);
+      }
+      records.push(record);
     }
     return records;
   }
@@ -887,7 +1024,19 @@ export class TurnStore {
     });
     const records: WorkspaceMutationRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
-      records.push(await readJson<WorkspaceMutationRecord>(path.join(directory, entry.name)));
+      const record = await readJson<WorkspaceMutationRecord>(path.join(directory, entry.name));
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        throw new ComputerNativeError("persistence", "Workspace mutation has an invalid durable record.");
+      }
+      const candidate = record as unknown as Record<string, unknown>;
+      if (candidate.schemaVersion !== 1 || typeof candidate.mutationId !== "string" || candidate.mutationId.trim().length === 0 || typeof candidate.diff !== "string" || candidate.diff.length === 0) {
+        throw new ComputerNativeError("persistence", `Workspace mutation '${candidate.mutationId}' has an invalid durable identity.`);
+      }
+      if (candidate.correlationId !== undefined && typeof candidate.correlationId !== "string") {
+        throw new ComputerNativeError("persistence", `Workspace mutation '${candidate.mutationId}' has an invalid correlation.`);
+      }
+      assertRecordCorrelation(this.correlationId, candidate.correlationId as CorrelationId | undefined, "Workspace mutation");
+      records.push(record);
     }
     return records;
   }
@@ -914,6 +1063,7 @@ export class TurnStore {
   }
 
   async writeResult(result: TurnResult): Promise<void> {
+    validateTurnResult(result, this.record);
     const resultPath = path.join(this.directory, "result.json");
     try {
       const existing = await readJson<TurnResult>(resultPath);
@@ -1021,10 +1171,10 @@ export class TurnStore {
     }
     await this.writeResult(result);
     await this.updateState(result.status);
-    const events = await this.readEvents();
-    if (!events.some((event) => event.type === terminalType)) {
-      await this.appendEvent(terminalType, payload);
-    }
+    // Re-append through the idempotency validator even when a terminal event
+    // already exists. An identical acknowledgement retry is safe; a changed
+    // payload must fail closed instead of being silently ignored.
+    await this.appendEvent(terminalType, payload);
   }
 }
 

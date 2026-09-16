@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T17:18:52+02:00
+**Last updated:** 2026-09-16T17:28:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -194,14 +194,19 @@ tests, but it must never replace a configured real provider silently.
 - One-shot process, browser, memory, workspace, search, and artifact lifecycle events
   now have the same idempotent identity check. Workspace progress remains append-only so
   repeated journal observations are preserved rather than collapsed.
+- Durable lifecycle history now validates schema identity, known event types, contiguous
+  sequence numbers, owning session/turn, and correlation before append or recovery.
+- Terminal results are validated against the admitted session, turn, provider, model, and
+  correlation before write or restart adoption; persisted process, browser, memory,
+  memory-search, and workspace records are checked against their owning turn as well.
 - Terminal turn events now compare their redacted payload on repeated append: identical
   acknowledgement-loss retries are accepted, while a conflicting terminal payload fails
   closed instead of silently reusing the first outcome.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 270 passing tests across the package, with 88.52% line
-  coverage, 76.94% branch coverage, and 84.23% function coverage. Coverage is from
+- The latest validation is 274 passing tests across the package, with 88.62% line
+  coverage, 76.95% branch coverage, and 84.25% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.

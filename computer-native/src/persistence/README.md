@@ -60,6 +60,14 @@ committed, reconciled, or failed event closes that mutation's lifecycle. Reading
 stream validates these rules again, so persisted corruption is reported instead of being
 silently treated as a valid recovery state.
 
+Event records are also checked for schema identity, known event type, contiguous sequence,
+owning session, owning turn, and correlation. Terminal results are checked against the
+admitted session, turn, provider, model, and correlation before they are written or used
+during restart recovery. Process, browser, memory, memory-search, and workspace records
+are likewise checked against their owning turn before recovery can close or reconcile an
+action. A record that crosses a turn boundary is treated as persistence corruption and is
+not adopted.
+
 Model attempt evidence may carry bounded `providerRequestId` and `latencyMs` fields when
 the adapter reports them. They describe transport observation only and do not authorize
 replay or imply exactly-once model execution. Provider and model identity remain part of

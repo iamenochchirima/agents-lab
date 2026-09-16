@@ -29,7 +29,7 @@ import { runTurn } from "../src/runtime/turn.js";
 import { parseArgs } from "../src/cli/args.js";
 import { parseTuiCommand, TerminalUi } from "../src/cli/tui.js";
 import type { ChatApplication } from "../src/runtime/application.js";
-import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessResult, ProcessToolEvent } from "../src/process/process.js";
+import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionRecord, ProcessResult, ProcessToolEvent } from "../src/process/process.js";
 import { reconcileRunningProcess } from "../src/process/recovery.js";
 import type { MemoryActionRecord } from "../src/memory/contracts.js";
 
@@ -286,6 +286,107 @@ test("lifecycle events reject out-of-order model attempt evidence", async () => 
   assert.equal((await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" })).eventId, retry.eventId);
   const modelCompleted = await turn.appendEvent("ModelCompleted");
   assert.equal((await turn.appendEvent("ModelCompleted")).eventId, modelCompleted.eventId);
+});
+
+test("lifecycle history rejects cross-turn, unknown, and out-of-sequence durable events", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("validate event identity", "deterministic", "deterministic/echo");
+  const started = await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
+  const eventsPath = path.join(turn.directory, "events.jsonl");
+
+  await writeFile(eventsPath, `${JSON.stringify({ ...started, sequence: 2 })}\n`, "utf8");
+  await assert.rejects(() => turn.readEvents(), /invalid sequence/u);
+
+  await writeFile(eventsPath, `${JSON.stringify({ ...started, type: "UnknownEvent" })}\n`, "utf8");
+  await assert.rejects(() => turn.readEvents(), /unknown event type/u);
+
+  await writeFile(eventsPath, `${JSON.stringify({ ...started, sessionId: asSessionId("session_other") })}\n`, "utf8");
+  await assert.rejects(() => turn.readEvents(), /does not belong to session/u);
+});
+
+test("terminal results reject mismatched durable identity", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("validate terminal identity", "deterministic", "deterministic/echo");
+  const result = {
+    schemaVersion: 1 as const,
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    status: "completed" as const,
+    provider: "deterministic" as const,
+    model: "deterministic/echo",
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    assistantText: "done",
+  };
+
+  await assert.rejects(
+    () => turn.writeResult({ ...result, turnId: asTurnId("turn_other") }),
+    /does not belong to turn/u,
+  );
+  await assert.rejects(
+    () => turn.writeResult({ ...result, model: "deterministic/other" }),
+    /does not match the admitted model/u,
+  );
+  await turn.writeResult(result);
+});
+
+test("restart refuses to adopt a terminal result from another turn", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("reject foreign terminal result", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  await atomicWriteJson(path.join(turn.directory, "result.json"), {
+    schemaVersion: 1,
+    sessionId: turn.sessionId,
+    turnId: asTurnId("turn_foreign"),
+    status: "completed",
+    provider: "deterministic",
+    model: "deterministic/echo",
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    assistantText: "foreign",
+  });
+
+  const reopened = await SessionStore.open(stateDir, session.metadata.sessionId);
+  await assert.rejects(() => reopened.recoverInterruptedTurns(), /does not belong to turn/u);
+  const record = JSON.parse(await readFile(path.join(turn.directory, "turn.json"), "utf8")) as { state: string };
+  assert.equal(record.state, "streaming");
+});
+
+test("restart rejects a process record from another session", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("reject foreign process evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const processRecord: ProcessExecutionRecord = {
+    schemaVersion: 1,
+    executionId: "execution_foreign",
+    callId: "call_foreign",
+    sessionId: "session_other",
+    turnId: turn.turnId,
+    command: "node",
+    displayArgs: [],
+    cwd: ".",
+    executablePath: process.execPath,
+    environmentProfile: "sanitized-default",
+    environmentKeys: [],
+    limits: {
+      timeoutMs: 1_000,
+      terminationGraceMs: 100,
+      maxOutputBytes: 1_000,
+      maxArgumentCount: 4,
+      maxArgumentBytes: 100,
+    },
+    argvHash: "hash",
+    status: "prepared",
+    recordedAt: new Date().toISOString(),
+  };
+  await atomicWriteJson(path.join(turn.directory, "executions", `${processRecord.executionId}.json`), processRecord);
+
+  const reopened = await SessionStore.open(stateDir, session.metadata.sessionId);
+  await assert.rejects(() => reopened.recoverInterruptedTurns(), /does not belong to turn/u);
 });
 
 test("lifecycle events enforce process, browser, and memory action ordering", async () => {
@@ -548,6 +649,10 @@ test("committing the same terminal result twice does not duplicate the terminal 
 
   await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
   await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
+  await assert.rejects(
+    () => turn.commitTerminal(result, "TurnCompleted", { assistantText: "different final evidence" }),
+    /TurnCompleted evidence was repeated with a different payload/u,
+  );
   await assert.rejects(
     () => turn.appendEvent("TurnCompleted", { assistantText: "different final evidence" }),
     /TurnCompleted evidence was repeated with a different payload/u,
