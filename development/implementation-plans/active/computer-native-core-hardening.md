@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:10:08+02:00
+**Last updated:** 2026-09-16T23:14:09+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -1462,6 +1462,8 @@ claim in this plan.
 - [ ] Extend crash recovery and duplicate/out-of-order handling across every persistence
       and side-effect boundary; the current completed scope is acknowledgement loss after
       durable records for all current action families.
+- [x] Make the documented package test and coverage commands serialize host-sensitive
+      fixtures so browser/profile/process tests remain reproducible under normal load.
 - [ ] Add cancellation propagation from the TUI through runtime to model/tool/process
       work.
 - [x] Expose normalized lifecycle events for model, workspace, process, browser, and

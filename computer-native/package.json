@@ -10,8 +10,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "pnpm run build && node --test dist/tests/*.test.js",
-    "coverage": "pnpm run build && node --test --experimental-test-coverage dist/tests/*.test.js",
+    "test": "pnpm run build && node --test --test-concurrency=1 dist/tests/*.test.js",
+    "coverage": "pnpm run build && node --test --test-concurrency=1 --experimental-test-coverage dist/tests/*.test.js",
     "chat": "pnpm run build && node dist/src/cli/main.js chat",
     "start": "node dist/src/cli/main.js"
   },

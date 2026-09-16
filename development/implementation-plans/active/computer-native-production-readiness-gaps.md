@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:10:08+02:00
+**Last updated:** 2026-09-16T23:14:09+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,13 +51,11 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- The latest concurrent `pnpm test` run executed 324 tests: 322 passed and two
-  timing-sensitive browser/admission tests failed under concurrent load. The affected
-  browser files pass when run individually, and the serialized full suite passes 324/324.
-- The serialized equivalent of `pnpm run coverage` passes 324 tests, with 89.47% line
-  coverage, 78.87% branch coverage, and 85.14% function coverage. The default concurrent
-  coverage command hit the same timing-sensitive browser/admission failures; the coverage
-  runner is experimental and can vary with host contention.
+- `pnpm test`: 324 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 324 tests passed, with 89.59% line coverage, 79.00% branch
+  coverage, and 85.06% function coverage. The package commands serialize browser/profile,
+  process, and admission fixtures for reproducibility; Node's coverage runner remains
+  experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.

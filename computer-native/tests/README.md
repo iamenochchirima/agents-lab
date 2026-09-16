@@ -11,5 +11,7 @@ pnpm test
 ```
 
 The test suite uses the deterministic local provider for repeatable success, failure,
-timeout, cancellation, persistence, and restart cases. It never needs a real provider
-credential.
+timeout, cancellation, persistence, and restart cases. Test files run serially because
+browser fixtures, managed profiles, and process/admission tests share host resources;
+this keeps the documented command reproducible under normal developer workloads. It
+never needs a real provider credential.
