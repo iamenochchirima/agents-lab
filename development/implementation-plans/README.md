@@ -52,8 +52,8 @@ The one-command local comparison stack is documented in the
 [completed launcher plan](completed/local-stack-launcher.md). It starts the priority
 local platform services before the shared Lab server and web app.
 
-The current shared model slice is tracked in the
-[OpenRouter model selection plan](active/openrouter-model-selection.md).
+The completed shared model slice is recorded in the
+[OpenRouter model selection plan](completed/openrouter-model-selection.md).
 
 The Computer Native memory slice is complete in
 [the completed memory plan](completed/computer-native-memory.md). It followed the
