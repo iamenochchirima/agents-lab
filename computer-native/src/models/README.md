@@ -52,8 +52,9 @@ OpenRouter rejects malformed tool-call fragment fields at the adapter boundary w
 index, ID, function name, or argument fragment has the wrong type. It reports these as
 non-retryable `provider-incomplete` errors instead of allowing malformed provider data
 to reach tool execution. It applies the same boundary to malformed usage containers and
-token counts, while treating omitted or null usage fields as valid absence. This is a
-bounded contract, not validation of every provider response field.
+token counts, and streamed content/refusal fields, while treating omitted or null usage
+and text fields as valid absence. This is a bounded contract, not validation of every
+provider response field.
 
 The adapter does not provide fallback models. If the selected provider is unavailable,
 the turn fails with provider evidence rather than silently switching to deterministic

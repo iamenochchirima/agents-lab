@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T01:25:50+02:00
+**Last updated:** 2026-09-17T01:29:48+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 342 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 342 tests passed with 89.98% line coverage, 79.74% branch
-  coverage, and 85.54% function coverage. The package commands serialize
+- `pnpm test`: 343 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 343 tests passed with 89.86% line coverage, 79.58% branch
+  coverage, and 85.55% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -206,9 +206,10 @@ readiness:
 - OpenRouter tool-call fragments now reject malformed index, ID, function-name, and
   argument-fragment types at the adapter boundary as non-retryable `provider-incomplete`
   outcomes. Usage metadata also rejects malformed containers and token-count types while
-  preserving omitted/null fields. This closes only the tested provider-shape gaps;
-  broader malformed response-shape fixtures, fallback policy, cost accounting, and
-  credential-expiry operations remain open.
+  preserving omitted/null fields. Streamed content and refusal fields also reject
+  malformed non-string values. This closes only the tested provider-shape gaps; broader
+  malformed response-shape fixtures, fallback policy, cost accounting, and credential-
+  expiry operations remain open.
 - New turns carry a stable correlation ID through TUI events, model requests, lifecycle
   and round evidence, terminal results, and action records. Older records use a turn-ID
   compatibility fallback, while explicit cross-turn correlation mismatches fail closed.

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:25:50+02:00
+**Last updated:** 2026-09-17T01:29:48+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -120,6 +120,9 @@ tests, but it must never replace a configured real provider silently.
 - OpenRouter usage metadata now rejects a non-object container and negative, fractional,
   unsafe, or non-numeric token counts as non-retryable `provider-incomplete` errors;
   absent or null usage fields remain valid because providers may omit them.
+- OpenRouter streamed `content` and `refusal` fields now reject non-string, non-null
+  values at the adapter boundary as non-retryable `provider-incomplete` errors rather
+  than silently dropping malformed provider output.
 - Workspace file, search, mutation, copy, and tree-manifest reads now use no-follow file
   descriptors with a bounded chunk loop. The loop probes at most one byte beyond the
   configured limit, so a file that grows after its initial metadata check fails closed

@@ -33,6 +33,14 @@ function usageFrom(value: OpenRouterChunk["usage"]): ModelUsage | undefined {
   };
 }
 
+function optionalStreamText(value: unknown, field: "content" | "refusal"): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new ModelProviderError(`OpenRouter returned an invalid ${field} field.`, { code: "provider-incomplete", retryable: false });
+  }
+  return value;
+}
+
 function retryableHttpStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
@@ -98,8 +106,8 @@ function parseChunk(data: string): { readonly text?: string; readonly refusal?: 
       throw new ModelProviderError("OpenRouter returned invalid tool-call arguments.", { code: "provider-incomplete", retryable: false });
     }
   }
-  const content = parsed.choices?.[0]?.delta?.content;
-  const refusal = parsed.choices?.[0]?.delta?.refusal;
+  const content = optionalStreamText(parsed.choices?.[0]?.delta?.content, "content");
+  const refusal = optionalStreamText(parsed.choices?.[0]?.delta?.refusal, "refusal");
   const text = typeof content === "string" && content.length > 0 ? content : undefined;
   const refusalText = typeof refusal === "string" && refusal.length > 0 ? refusal : undefined;
   const usage = usageFrom(parsed.usage);
