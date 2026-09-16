@@ -24,7 +24,8 @@ atomically, and removes an oversized or failed capture. The default screenshot b
 `COMPUTER_NATIVE_BROWSER_SCREENSHOT_MAX_WIDTH`, and
 `COMPUTER_NATIVE_BROWSER_SCREENSHOT_MAX_HEIGHT` configure it. `browser_wait` accepts
 only a bounded integer duration and is cancellable; neither read-only operation requires
-approval.
+approval. The effective approval timeout is included in the hashed request and durable
+action record so a recovered action cannot silently inherit a different review window.
 
 The session manager enforces a configured maximum tab count before opening another tab
 and rejects adapter observations that exceed that bound. The Playwright adapter also

@@ -14,9 +14,9 @@ help, and a visually distinct composer prompt. Slash commands are `/help`, `/sta
 `\\`, input history is provided by `readline`, and Ctrl-C cancels an active turn. The CLI
 displays application events but the runtime owns model calls, tools, security, and
 persistence. In an interactive TTY, proposed `apply_patch`, `apply_patch_set`, `write_file`,
-`mkdir`, `delete`, `restore`, `copy`, and `move` operations show a bounded review panel and
-wait for `y`/`yes`;
-every other answer denies the operation. Non-interactive runs have no approval channel
+`mkdir`, `delete`, `restore`, `copy`, `move`, and `rename` operations show a bounded review
+panel with named approve, deny, inspect, and cancel choices. Unsupported input fails closed.
+Non-interactive runs have no approval channel
 and therefore do not perform workspace mutations.
 
 The current browser slice uses a separate browser approval panel for click, type, key,

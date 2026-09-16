@@ -216,6 +216,7 @@ test("run_command is approval-gated and returns the real bounded process result"
       approveProcess: async (request) => {
         assert.equal(request.cwd, ".");
         assert.equal(request.environmentProfile, "sanitized-default");
+        assert.equal(request.approvalTimeoutMs, 120_000);
         assert.match(request.warning, /not an OS sandbox/u);
         return { decision: "allow-once" };
       },
@@ -378,6 +379,7 @@ test("model run persists bounded process evidence and returns the real result", 
     const records = await readFile(path.join(executionDirectory, executionEntry), "utf8");
     assert.match(records, /persisted output/u);
     assert.match(records, /"status":"completed"/u);
+    assert.match(records, /"approvalTimeoutMs":120000/u);
     assert.doesNotMatch(records, /OPENROUTER_API_KEY|must-not-be-inherited/u);
     const events = await readFile(path.join(executionDirectory, "..", "events.jsonl"), "utf8");
     assert.match(events, /ProcessPrepared/u);

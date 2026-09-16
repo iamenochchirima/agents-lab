@@ -103,6 +103,7 @@ export interface MemoryApprovalRequest {
   readonly afterContentHash?: string;
   readonly contentPreview: string;
   readonly risk: "remember" | "replace" | "forget" | "batch";
+  readonly approvalTimeoutMs?: number;
   readonly batch?: readonly MemoryBatchApprovalItem[];
 }
 
@@ -138,6 +139,7 @@ export interface MemoryActionRecord {
   readonly beforeContentHash?: string;
   readonly afterContentHash?: string;
   readonly inputHash: string;
+  readonly approvalTimeoutMs?: number;
   readonly status: MemoryActionStatus;
   readonly decision?: MemoryApprovalDecision["decision"];
   readonly reason?: string;

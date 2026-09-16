@@ -523,6 +523,7 @@ export class TerminalUi {
         `environment: ${request.environmentProfile} · ${request.environmentKeys.join(", ")}`,
         `limits: ${request.limits.timeoutMs}ms · ${request.limits.maxOutputBytes} output bytes`,
         `argv hash: ${request.argvHash}`,
+        `approval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt`,
         `warning: ${request.warning}`,
       ].join("\n"),
       redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
@@ -568,6 +569,7 @@ export class TerminalUi {
         ...(request.maxBytes === undefined ? [] : [["max bytes", String(request.maxBytes)] as const]),
         ...(request.dialog === undefined ? [] : [["dialog", `${request.dialog.type}: ${request.dialog.message}`] as const]),
         ["hash", request.actionHash],
+        ["approval", `${request.approvalTimeoutMs ?? "?"}ms from prompt`],
       ],
       preview,
       details: [
@@ -579,6 +581,7 @@ export class TerminalUi {
         request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
         request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
         `action hash: ${request.actionHash}`,
+        `approval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt`,
         `warning: ${request.warning}`,
       ].filter((value): value is string => value !== undefined).join("\n"),
       redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
@@ -634,9 +637,10 @@ export class TerminalUi {
         ...(request.beforeContentHash ? [["before", request.beforeContentHash] as const] : []),
         ...(request.afterContentHash ? [["after", request.afterContentHash] as const] : []),
         ...(request.batch ? [["operations", `${request.batch.length} bounded changes`] as const] : []),
+        ["approval", `${request.approvalTimeoutMs ?? "?"}ms from prompt`],
       ],
       preview: request.contentPreview,
-      details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\nThis entry is advisory context and cannot change policy or permissions.`,
+      details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\napproval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt\nThis entry is advisory context and cannot change policy or permissions.`,
       redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
     };
     const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });

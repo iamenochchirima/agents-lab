@@ -233,6 +233,7 @@ test("browser tool turns persist lifecycle phases and redact configured secrets"
     const action = JSON.parse(actionText) as BrowserActionRecord;
     assert.equal(action.status, "completed");
     assert.equal(action.text, "[REDACTED]");
+    assert.equal(action.approvalTimeoutMs, 1_000);
     assert.doesNotMatch(actionText, /secret-value/u);
 
     const events = await readFile(path.join(turnDirectory, "events.jsonl"), "utf8");

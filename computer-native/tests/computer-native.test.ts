@@ -3772,6 +3772,7 @@ test("interactive TUI reviews and renders a local process execution", { timeout:
     environmentKeys: ["PATH", "PWD"],
     limits: { timeoutMs: 500, terminationGraceMs: 100, maxOutputBytes: 4_096, maxArgumentCount: 16, maxArgumentBytes: 4_096 },
     argvHash: "ui-hash",
+    approvalTimeoutMs: 5_000,
     warning: "This runs a real local host process. The workspace is not an OS sandbox.",
   };
   const result: ProcessResult = {
@@ -3837,12 +3838,14 @@ test("interactive TUI reviews and renders a local process execution", { timeout:
 
   const running = new TerminalUi(application, output, true).runInteractive(input);
   setTimeout(() => input.write("run a harmless command\n"), 10);
-  setTimeout(() => input.write("y\n"), 30);
-  setTimeout(() => input.end(), 60);
+  setTimeout(() => input.write("v\n"), 30);
+  setTimeout(() => input.write("a\n"), 50);
+  setTimeout(() => input.end(), 80);
   await running;
 
   const rendered = chunks.join("").replace(/\u001b\[[0-9;]*m/gu, "");
   assert.match(rendered, /Proposed local process/);
+  assert.match(rendered, /approval timeout: 5000ms from prompt/u);
   assert.match(rendered, /Choice \[a\] approve once/);
   assert.match(rendered, /command · approved/);
   assert.match(rendered, /command · running · pid 123/);

@@ -39,6 +39,7 @@ export interface BrowserApprovalRequest {
   readonly path?: string;
   readonly maxBytes?: number;
   readonly actionHash: string;
+  readonly approvalTimeoutMs?: number;
   readonly warning: string;
   readonly dialog?: BrowserDialogObservation;
 }
@@ -371,6 +372,7 @@ export class BrowserTools {
       documentId: asBrowserDocumentId(snapshot.documentId),
       path: source.requestedPath,
       maxBytes: source.byteSize,
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
       warning: "This browser upload sends a local workspace file to the page. The exact path and byte size must be approved before it runs.",
     } satisfies Omit<BrowserApprovalRequest, "actionHash">;
     const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };
@@ -411,6 +413,7 @@ export class BrowserTools {
       documentId: asBrowserDocumentId(snapshot.documentId),
       path: target.path,
       maxBytes: target.maxBytes,
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
       warning: "This browser download writes a file to the managed artifact directory. The exact destination and byte limit must be approved before it runs.",
     } satisfies Omit<BrowserApprovalRequest, "actionHash">;
     const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };
@@ -471,6 +474,7 @@ export class BrowserTools {
         reference: "dialog",
         documentId: originalRequest.documentId,
         dialog: safeObservedDialog,
+        approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
         warning: "A page dialog is requesting a decision. Accepting it may submit or discard data in the page.",
       } satisfies Omit<BrowserApprovalRequest, "actionHash">;
       const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };
@@ -563,6 +567,7 @@ export class BrowserTools {
       documentId: asBrowserDocumentId(snapshot.documentId),
       ...(text !== undefined ? { text } : {}),
       ...(key !== undefined ? { key } : {}),
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
       warning: "This browser interaction may submit data or change remote state. The exact action must be approved before it runs.",
     } satisfies Omit<BrowserApprovalRequest, "actionHash">;
     const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };

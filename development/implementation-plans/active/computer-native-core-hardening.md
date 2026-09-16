@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T14:05:00+02:00
+**Last updated:** 2026-09-16T14:25:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -90,13 +90,16 @@ tests, but it must never replace a configured real provider silently.
 - Mutation records now persist the effective approval timeout, and the TUI renders that
   timeout as part of the review context. A changed timeout is treated as an identity
   change during durable mutation transitions.
+- Process, browser, memory, and workspace approval requests now carry the effective
+  timeout into the TUI and durable evidence. Browser action hashes include the timeout,
+  and all four action records reject timeout identity drift.
 - Shared numeric runtime, process, browser, workspace, tool, retry, and memory limits
   are validated at startup; invalid zero, negative, fractional, or non-finite values
   fail before a session starts.
 - The initial model instruction now describes the implemented bounded directory
   transfer and same-parent rename tools instead of limiting them to regular files.
-- The current validation is 213 passing tests across the package, 87.80% line coverage,
-  74.30% branch coverage, and 82.13% function coverage, including directory security,
+- The current validation is 213 passing tests across the package, 87.53% line coverage,
+  74.05% branch coverage, and 82.13% function coverage, including directory security,
   tool approval, and restart-reconciliation cases.
 
 The plan remains active. These are verified vertical slices, not completion of the
@@ -309,7 +312,7 @@ claim in this plan.
 - [ ] Define retry, timeout, backoff, output, file, directory, and tool-round limits.
 - [ ] Define error categories that distinguish denied, invalid, failed, interrupted,
       cancelled, partial, and outcome-unknown results.
-- [ ] Add configuration validation with safe defaults and actionable error messages.
+- [x] Add configuration validation with safe defaults and actionable error messages.
 
 ### 2. Runtime and persistence
 

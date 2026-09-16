@@ -45,7 +45,7 @@ result cannot be committed with a mismatched terminal event type.
 
 Browser actions use the same immutable-identity and one-way-transition pattern. The
 record stores the session, tab, document, reference, action hash, approval decision,
-bounded outcome, and terminal status. Browser actions that were prepared or approved
+approval timeout, bounded outcome, and terminal status. Browser actions that were prepared or approved
 when the parent stopped are closed as approval-unavailable; actions that were running
 become ambiguous and are never replayed. Known configured secrets are redacted before
 browser action records and lifecycle payloads are written. Screenshot and download

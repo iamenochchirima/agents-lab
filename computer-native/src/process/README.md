@@ -22,7 +22,9 @@ silently treated as success.
 
 `ToolRegistry` exposes this through `run_command`. The runtime supplies an approval
 callback and persists the process events under the turn's `executions/` directory.
-Without an approval callback the tool fails closed and does not spawn a child.
+Without an approval callback the tool fails closed and does not spawn a child. The
+effective approval timeout is included in the request and durable execution record so
+the review window is auditable.
 
 ## State and recovery
 

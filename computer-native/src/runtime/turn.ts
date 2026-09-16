@@ -393,6 +393,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       environmentKeys: request.environmentKeys,
       limits: request.limits,
       argvHash: request.argvHash,
+      ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
     };
     let record: ProcessExecutionRecord | undefined;
     if (event.type === "prepared") {
@@ -507,6 +508,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         message: bounded(redactSecrets(request.dialog.message, secrets), 2_000),
       } } : {}),
       actionHash: request.actionHash,
+      ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
     };
     const dialog = event.type === "completed" && event.dialog ? {
       type: event.dialog.type,
@@ -611,6 +613,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       ...(request.beforeContentHash ? { beforeContentHash: request.beforeContentHash } : {}),
       ...(request.afterContentHash ? { afterContentHash: request.afterContentHash } : {}),
       inputHash: request.afterContentHash ?? request.beforeContentHash ?? "unknown",
+      ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
       status: event.type === "prepared"
         ? "proposed"
         : event.type === "approval_decided"

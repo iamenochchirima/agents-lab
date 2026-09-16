@@ -62,6 +62,7 @@ test("runtime dispatches a real memory tool call through approval and persists i
     assert.ok(actionEvidenceName?.endsWith(".jsonl"));
     const actionHistory = await readFile(path.join(actionEvidenceDirectory, actionEvidenceName), "utf8");
     assert.equal(actionHistory.trim().split("\n").length, 3);
+    assert.match(actionHistory, /"approvalTimeoutMs":120000/u);
     assert.doesNotMatch(actionHistory, /This repository uses pnpm/u);
     const searchEvents = await readFile(path.join(session.sessionDirectory, "turns", searchResult.turnId, "events.jsonl"), "utf8");
     assert.match(searchEvents, /MemorySearched/u);

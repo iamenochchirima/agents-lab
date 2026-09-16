@@ -29,7 +29,7 @@ claim a cross-file transaction.
 
 Search evidence stores a query digest, scopes, result references, and truncation status
 without persisting the query text. Memory lifecycle evidence is append-only JSONL so
-proposal, approval, and terminal outcomes remain inspectable after a restart.
+proposal, approval timeout, and terminal outcomes remain inspectable after a restart.
 
 The implementation uses Node's built-in `node:sqlite` module so this extracted
 package does not add a native database dependency. The schema is ordinary

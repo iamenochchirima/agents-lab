@@ -62,6 +62,7 @@ export interface ProcessApprovalRequest {
   readonly environmentKeys: readonly string[];
   readonly limits: ProcessLimits;
   readonly argvHash: string;
+  readonly approvalTimeoutMs?: number;
   readonly warning: string;
 }
 
@@ -84,6 +85,7 @@ export interface ProcessExecutionRecord {
   readonly environmentKeys: readonly string[];
   readonly limits: ProcessLimits;
   readonly argvHash: string;
+  readonly approvalTimeoutMs?: number;
   readonly status: ProcessState;
   readonly decision?: "allow-once" | "deny" | "unavailable";
   readonly pid?: number;
@@ -132,6 +134,7 @@ export function assertProcessTransition(previous: ProcessExecutionRecord, next: 
     JSON.stringify(previous.environmentKeys) !== JSON.stringify(next.environmentKeys) ? "environmentKeys" : undefined,
     !sameLimits ? "limits" : undefined,
     previous.argvHash !== next.argvHash ? "argvHash" : undefined,
+    previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
   ].filter((field): field is string => field !== undefined);
   if (changedFields.length > 0) throw new Error("Process execution identity cannot change after it is recorded (" + changedFields.join(", ") + ").");
   if (previous.status === next.status) return;

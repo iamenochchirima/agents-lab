@@ -467,6 +467,7 @@ test("browser interaction approval binds the exact requested action", async () =
       assert.equal(request.action, "click");
       assert.equal(request.reference, "@e1");
       assert.equal(request.tabId, "tab_tools");
+      assert.equal(request.approvalTimeoutMs, 120_000);
       return { decision: "allow-once" };
     },
   });

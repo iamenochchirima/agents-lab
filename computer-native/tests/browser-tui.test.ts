@@ -27,6 +27,7 @@ test("interactive TUI renders and approves the exact browser action", { timeout:
     documentId: asBrowserDocumentId("document_ui"),
     text: "secret-value",
     actionHash: "b".repeat(64),
+    approvalTimeoutMs: 3_000,
     warning: "This browser interaction may submit data or change remote state.",
   };
   const application = {
@@ -120,6 +121,7 @@ test("interactive TUI renders and approves the exact browser action", { timeout:
   const rendered = chunks.join("").replace(/\u001b\[[0-9;]*m/gu, "");
   assert.match(rendered, /Proposed browser interaction/u);
   assert.match(rendered, /document\s+document_ui/u);
+  assert.match(rendered, /approval\s+3000ms from prompt/u);
   assert.match(rendered, /text\s+\[REDACTED\]/u);
   assert.doesNotMatch(rendered, /secret-value/u);
   assert.match(rendered, /browser · approved · type/u);

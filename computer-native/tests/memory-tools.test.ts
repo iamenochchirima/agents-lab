@@ -106,6 +106,7 @@ test("memory consolidation batches are bounded, exact, and approval-gated", asyn
       approveMemory: async (request) => {
         assert.equal(request.operation, "batch");
         assert.equal(request.batch?.length, 2);
+        assert.equal(request.approvalTimeoutMs, 120_000);
         return { decision: "allow-once" };
       },
       onMemory: async (event) => { events.push(event.type); },

@@ -693,6 +693,7 @@ export class ToolRegistry {
       afterContentHash: hashMemoryContent(content),
       contentPreview: redactSecrets(content.slice(0, 2_000), [process.env.OPENROUTER_API_KEY ?? ""]),
       risk: operation === "add" ? "remember" : "replace",
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
     };
     await context.onMemory?.({ type: "prepared", request });
     context.pauseDeadline?.();
@@ -783,6 +784,7 @@ export class ToolRegistry {
       sourcePath: approvalItems.map((item) => item.sourcePath).join(", "),
       contentPreview: approvalItems.map((item, index) => `${index + 1}. ${item.operation} ${item.recordId ?? item.scope}: ${item.contentPreview}`).join("\n").slice(0, 2_000),
       risk: "batch",
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
       batch: approvalItems,
       afterContentHash: hashMemoryContent(stableStringify(approvalItems)),
     };
@@ -833,6 +835,7 @@ export class ToolRegistry {
       beforeContentHash: record.contentHash,
       contentPreview: redactSecrets(record.content.slice(0, 2_000), [process.env.OPENROUTER_API_KEY ?? ""]),
       risk: "forget",
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
     };
     await context.onMemory?.({ type: "prepared", request });
     context.pauseDeadline?.();
@@ -914,6 +917,7 @@ export class ToolRegistry {
       environmentKeys: prepared.environmentKeys,
       limits: prepared.limits,
       argvHash: prepared.argvHash,
+      approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
       warning: "This runs a real local host process. The workspace is its starting directory, not an OS sandbox; the command may access other files, network resources, and credentials available through the host.",
     };
     await context.onProcess?.({ type: "prepared", request });

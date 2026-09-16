@@ -27,6 +27,7 @@ export interface BrowserActionRecord {
   readonly path?: string;
   readonly maxBytes?: number;
   readonly actionHash: string;
+  readonly approvalTimeoutMs?: number;
   readonly status: BrowserActionStatus;
   readonly decision?: "allow-once" | "deny" | "unavailable";
   readonly summary?: string;
@@ -72,6 +73,7 @@ export function assertBrowserActionTransition(previous: BrowserActionRecord, nex
     previous.path !== next.path ? "path" : undefined,
     previous.maxBytes !== next.maxBytes ? "maxBytes" : undefined,
     previous.actionHash !== next.actionHash ? "actionHash" : undefined,
+    previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
   ].filter((field): field is string => field !== undefined);
   if (changedFields.length > 0) {
     throw new Error(`Browser action identity cannot change after it is recorded (${changedFields.join(", ")}).`);
