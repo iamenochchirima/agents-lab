@@ -138,6 +138,7 @@ export interface TurnResult {
 export type LifecycleEventType =
   | "TurnStarted"
   | "ModelRequested"
+  | "ModelAttemptCompleted"
   | "ModelRetryScheduled"
   | "ModelCompleted"
   | "ProcessPrepared"

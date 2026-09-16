@@ -81,7 +81,13 @@ tests, but it must never replace a configured real provider silently.
 - Filesystem transfer identity is persisted as a byte hash or tree manifest, restart
   reconciliation distinguishes source-only and destination-complete states, and TUI
   approval context identifies file versus directory transfers.
-- The current validation is 211 passing tests across the package, including directory
+- The runtime now gives each model request attempt a durable identity and records a
+  bounded completion or failure event after the provider returns, while retry scheduling
+  remains separate and observable.
+- The runtime now rejects model attempt completion and retry events when their request
+  evidence is missing or out of order, and refuses any event that would follow a
+  terminal lifecycle event.
+- The current validation is 213 passing tests across the package, including directory
   security, tool approval, and restart-reconciliation cases.
 
 The plan remains active. These are verified vertical slices, not completion of the
@@ -299,7 +305,7 @@ claim in this plan.
 ### 2. Runtime and persistence
 
 - [ ] Implement the shared lifecycle transition helpers in `src/runtime`.
-- [ ] Persist model attempts before sending and after each bounded response or failure.
+- [x] Persist model attempts before sending and after each bounded response or failure.
 - [ ] Persist approval preparation and decision before tool execution.
 - [ ] Record recovery classification and operation-specific reconciliation data.
 - [ ] Add restart recovery that is safe to run repeatedly and never auto-replays a side

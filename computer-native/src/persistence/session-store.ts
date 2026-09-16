@@ -61,6 +61,26 @@ function terminalStateFromResult(result: TurnResult): Exclude<TurnStatus, "idle"
   return result.status;
 }
 
+function isTerminalLifecycleEvent(type: LifecycleEventType): boolean {
+  return type === "TurnCompleted" || type === "TurnFailed" || type === "TurnCancelled" || type === "TurnInterrupted";
+}
+
+function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): void {
+  if (type === "ModelAttemptCompleted") {
+    const attemptId = payload.attemptId;
+    const requested = existing.some((event) => event.type === "ModelRequested" && (attemptId === undefined || event.payload.attemptId === attemptId));
+    if (!requested) throw new ComputerNativeError("persistence", "A model attempt cannot complete before its request is recorded.");
+  }
+  if (type === "ModelRetryScheduled") {
+    const attemptId = payload.attemptId;
+    const completed = existing.some((event) => event.type === "ModelAttemptCompleted" && (attemptId === undefined || event.payload.attemptId === attemptId));
+    if (!completed) throw new ComputerNativeError("persistence", "A model retry cannot be scheduled before the failed attempt is recorded.");
+  }
+  if (type === "ModelCompleted" && !existing.some((event) => event.type === "ModelAttemptCompleted")) {
+    throw new ComputerNativeError("persistence", "A model cannot complete before at least one model attempt is recorded.");
+  }
+}
+
 function validateRound(round: RoundEvidence, sessionId: SessionId, turnId: TurnRecord["turnId"]): void {
   if (round.schemaVersion !== 1 || round.sessionId !== sessionId || round.turnId !== turnId || !Number.isInteger(round.round) || round.round < 1) {
     throw new ComputerNativeError("persistence", `Turn '${turnId}' contains an invalid round record. Repair it before continuing.`);
@@ -324,6 +344,12 @@ export class TurnStore {
   async appendEvent(type: LifecycleEventType, payload: Readonly<Record<string, unknown>> = {}): Promise<LifecycleEvent> {
     const eventsPath = path.join(this.directory, "events.jsonl");
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
+    const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
+    if (terminal) {
+      if (terminal.type === type) return terminal;
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' already has terminal event '${terminal.type}'; '${type}' cannot be appended.`);
+    }
+    assertLifecycleEventOrder(existing, type, payload);
     const event: LifecycleEvent = {
       schemaVersion: 1,
       eventId: id("event"),

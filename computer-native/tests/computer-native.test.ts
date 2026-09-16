@@ -193,6 +193,17 @@ test("turn state transitions accept the first lifecycle and reject terminal rewr
   assert.throws(() => assertTransition("completed", "streaming"), /Invalid turn transition/);
 });
 
+test("lifecycle events reject out-of-order model attempt evidence", async () => {
+  const session = await openSession(tempDirectory());
+  const turn = await session.admitTurn("event order", "deterministic", "deterministic/echo");
+  await assert.rejects(() => turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test" }), /before its request/);
+  await turn.appendEvent("ModelRequested", { attemptId: "attempt_test" });
+  await assert.rejects(() => turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" }), /before the failed attempt/);
+  await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test", status: "failed" });
+  await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" });
+  await turn.appendEvent("ModelCompleted");
+});
+
 test("deterministic local provider produces repeatable chunks without network access", async () => {
   const request = buildInitialContext({
     sessionId: asSessionId("session_test"),
@@ -254,8 +265,8 @@ test("successful turn persists ordered transcript, events, and result", async ()
   const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
   const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
     .trim().split("\n").map((line) => JSON.parse(line) as { sequence: number; sessionId: string; turnId: string; type: string });
-  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequested", "ModelCompleted", "TurnCompleted"]);
-  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4]);
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequested", "ModelAttemptCompleted", "ModelCompleted", "TurnCompleted"]);
+  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5]);
   assert.ok(events.every((event) => event.sessionId === result.sessionId && event.turnId === result.turnId));
 });
 
@@ -278,6 +289,7 @@ test("committing the same terminal result twice does not duplicate the terminal 
 
   await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
   await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
+  await assert.rejects(() => turn.appendEvent("TurnFailed"), /already has terminal event/);
 
   const events = await turn.readEvents();
   assert.deepEqual(events.map((event) => event.type), ["TurnCompleted"]);
@@ -361,6 +373,13 @@ test("turn retries a provider failure before the first event and records the ret
   const retry = events.find((event) => event.type === "ModelRetryScheduled");
   assert.equal(retry?.payload.attempt, 1);
   assert.equal(retry?.payload.nextAttempt, 2);
+  const attempts = events.filter((event) => event.type === "ModelAttemptCompleted");
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0]?.payload.status, "retryable-failure");
+  assert.equal(attempts[1]?.payload.status, "completed");
+  assert.match(String(attempts[0]?.payload.attemptId), /^attempt_[a-f0-9]{32}$/u);
+  assert.equal(typeof attempts[1]?.payload.attemptId, "string");
+  assert.notEqual(attempts[0]?.payload.attemptId, attempts[1]?.payload.attemptId);
 });
 
 test("turn does not retry a provider failure after partial output", async () => {

@@ -23,6 +23,12 @@ per line. A turn record is created before its user message is appended, so a res
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
 
+Lifecycle append validates the ordering of model attempt evidence: a
+`ModelAttemptCompleted` event must follow its matching `ModelRequested` event, and a
+`ModelRetryScheduled` event must follow that attempt's completion. Once a terminal turn
+event exists, the same terminal event is idempotent and any different or later lifecycle
+event is rejected.
+
 If an interrupted turn contains a mutation that was still `proposed`, recovery closes
 that approval lifecycle as `denied` with `approval-unavailable`; the filesystem proposal
 is never replayed. Mutations that reached `approved` or `applying` use their operation-

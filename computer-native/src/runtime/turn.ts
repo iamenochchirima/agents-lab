@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AppConfig } from "../config/config.js";
 import { buildInitialContext } from "../context/context.js";
 import { isRetryableModelFailure, type ModelProvider } from "../models/provider.js";
@@ -707,10 +708,11 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       let attempt = 0;
       while (true) {
         attempt += 1;
+        const attemptId = `attempt_${randomUUID().replaceAll("-", "")}`;
         modelRequestCount += 1;
         abort.beginModelRound();
         options.onEvent?.({ type: "waiting", round });
-        await turn.appendEvent("ModelRequested", { provider: request.provider, model: request.model, round, attempt });
+        await turn.appendEvent("ModelRequested", { provider: request.provider, model: request.model, round, attempt, attemptId });
         let emittedEvent = false;
         try {
           for await (const event of options.provider.stream(roundRequest, abort.signal)) {
@@ -731,14 +733,25 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
               usage = event.usage ?? usage;
             }
           }
+          await turn.appendEvent("ModelAttemptCompleted", { round, attempt, attemptId, status: "completed", emittedEvent, usage: usage ?? null });
           break;
         } catch (error) {
           const canRetry = !abort.signal.aborted && attempt < options.config.modelRetryAttempts && isRetryableModelFailure(error, emittedEvent);
+          const reason = bounded(safeErrorMessage(error), 1_000);
+          await turn.appendEvent("ModelAttemptCompleted", {
+            round,
+            attempt,
+            attemptId,
+            status: canRetry ? "retryable-failure" : "failed",
+            emittedEvent,
+            retryScheduled: canRetry,
+            errorCode: error instanceof ComputerNativeError ? error.code : "provider",
+            reason,
+          });
           if (!canRetry) throw error;
           const delayMs = Math.min(options.config.modelRetryBackoffMs * (2 ** (attempt - 1)), 30_000);
-          const reason = bounded(safeErrorMessage(error), 1_000);
           abort.clearFirstEventTimer();
-          await turn.appendEvent("ModelRetryScheduled", { round, attempt, nextAttempt: attempt + 1, delayMs, reason });
+          await turn.appendEvent("ModelRetryScheduled", { round, attempt, attemptId, nextAttempt: attempt + 1, delayMs, reason });
           options.onEvent?.({ type: "retry", round, attempt, delayMs, reason });
           await waitForRetry(delayMs, abort.signal);
         }
