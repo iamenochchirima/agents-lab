@@ -28,6 +28,7 @@ import { parseArgs } from "../src/cli/args.js";
 import { parseTuiCommand, TerminalUi } from "../src/cli/tui.js";
 import type { ChatApplication } from "../src/runtime/application.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessResult, ProcessToolEvent } from "../src/process/process.js";
+import { reconcileRunningProcess } from "../src/process/recovery.js";
 import type { MemoryActionRecord } from "../src/memory/contracts.js";
 
 const execFileAsync = promisify(execFile);
@@ -1126,6 +1127,60 @@ test("diagnostic interruption after approval closes the process as not started",
   assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
 });
 
+test("diagnostic interruption after process start recovers the running child without replay", { skip: process.platform !== "linux" }, async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const marker = path.join(root, "must-not-run-after-recovery.txt");
+  const session = await openSession(stateDir);
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/running-process-interruption", {
+        toolCall: {
+          name: "run_command",
+          argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "setTimeout(() => require('node:fs').writeFileSync('must-not-run-after-recovery.txt', 'late'), 5000)"] }),
+          finalResponse: "The command completed.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, processDurationMs: 5_000, processTerminationGraceMs: 100 }),
+      userPrompt: "run the delayed command",
+      approveProcess: async () => ({ decision: "allow-once" }),
+      diagnostics: {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.type === "after-process-start") {
+            throw new RuntimeInterruptionError("stopped after process start");
+          }
+        },
+      },
+    }),
+    /stopped after process start/u,
+  );
+
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const executionDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "executions");
+  const executionEntry = (await readdir(executionDirectory))[0];
+  assert.ok(executionEntry);
+  const running = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; pid?: number };
+  assert.equal(running.status, "running");
+  assert.ok(running.pid);
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns(undefined, reconcileRunningProcess);
+  assert.equal(recovered[0]?.status, "interrupted");
+  const reconciled = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; errorCode?: string; terminationConfirmed?: boolean };
+  assert.equal(reconciled.status, "ambiguous");
+  assert.equal(reconciled.errorCode, "process-ambiguous");
+  assert.equal(reconciled.terminationConfirmed, true);
+  await assert.rejects(() => readFile(marker, "utf8"), { code: "ENOENT" });
+  const events = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.equal(events.filter((event) => event.type === "ProcessStarted").length, 1);
+  assert.equal(events.filter((event) => event.type === "ProcessCompleted").length, 1);
+  assert.equal(events.at(-1)?.type, "TurnInterrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, reconcileRunningProcess), []);
+});
+
 test("diagnostic interruption after a filesystem side effect recovers without replay", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");
@@ -1171,6 +1226,89 @@ test("diagnostic interruption after a filesystem side effect recovers without re
   assert.equal(eventLines.filter((event) => event.type === "WorkspaceMutationCommitted").length, 1);
   assert.equal(eventLines.at(-1)?.type, "TurnInterrupted");
   assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
+});
+
+test("diagnostic interruption between multi-file members preserves partial progress without replay", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, "one.txt"), "one old\n", "utf8");
+  await writeFile(path.join(root, "two.txt"), "two old\n", "utf8");
+  const session = await openSession(stateDir);
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/patch-set-interruption", {
+        toolCall: {
+          name: "apply_patch_set",
+          argumentsJson: JSON.stringify({ patches: [
+            `*** Begin Patch
+*** Update File: one.txt
+@@
+-one old
++one new
+*** End Patch
+`,
+            `*** Begin Patch
+*** Update File: two.txt
+@@
+-two old
++two new
+*** End Patch
+`,
+          ] }),
+          finalResponse: "The patch set was applied.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 4_000 }),
+      userPrompt: "update both notes",
+      approveMutation: async () => ({ decision: "allow-once" }),
+      diagnostics: {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.type === "after-mutation-member" && checkpoint.path === "one.txt") {
+            throw new RuntimeInterruptionError("stopped between patch-set members");
+          }
+        },
+      },
+    }),
+    /stopped between patch-set members/u,
+  );
+  assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "one new\n");
+  assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "two old\n");
+
+  const workspace = await Workspace.open(root, { maxFileBytes: 64 * 1024, maxDirectoryEntries: 50, maxTreeEntries: 100, maxTreeBytes: 256 * 1024, maxTreeDepth: 8 });
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns((record) => workspace.reconcileMutation(record));
+  assert.equal(recovered[0]?.status, "interrupted");
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const mutationDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "mutations");
+  const mutationEntry = (await readdir(mutationDirectory))[0];
+  assert.ok(mutationEntry);
+  const mutation = JSON.parse(await readFile(path.join(mutationDirectory, mutationEntry), "utf8")) as {
+    status: string;
+    errorCode?: string;
+    journal?: { state: string; members: Array<{ path: string; state: string }> };
+  };
+  assert.equal(mutation.status, "reconciliation_required");
+  assert.equal(mutation.errorCode, "reconciliation-required");
+  assert.equal(mutation.journal?.state, "reconciliation_required");
+  assert.deepEqual(mutation.journal?.members.map((member) => ({ path: member.path, state: member.state })), [
+    { path: "one.txt", state: "committed" },
+    { path: "two.txt", state: "pending" },
+  ]);
+  const events = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  const progressEvents = events.filter((event) => event.type === "WorkspaceMutationProgress");
+  assert.ok(progressEvents.length >= 4);
+  assert.equal(progressEvents.filter((event) => {
+    const journal = event.payload.journal as { members?: Array<{ path: string; state: string }> } | undefined;
+    return journal?.members?.some((member) => member.path === "one.txt" && member.state === "committed") === true;
+  }).length, 1);
+  assert.equal(events.filter((event) => event.type === "WorkspaceMutationFailed").length, 1);
+  assert.equal(events.at(-1)?.type, "TurnInterrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
+  assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "one new\n");
+  assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "two old\n");
 });
 
 test("missing user message is reported as a repairable incomplete record", async () => {

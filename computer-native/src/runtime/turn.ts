@@ -487,6 +487,23 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         decision: event.decision.decision,
       });
     }
+    if (event.type === "progress" && request.operation === "patch-set" && event.journal) {
+      const committedMember = event.journal.members.find((member) =>
+        member.state === "committed"
+        && event.journal!.members
+          .filter((candidate) => candidate.commitOrder > member.commitOrder)
+          .every((candidate) => candidate.state === "pending"),
+      );
+      if (committedMember) {
+        await checkpoint(options.diagnostics, {
+          type: "after-mutation-member",
+          callId: request.callId ?? "",
+          mutationId: request.mutationId,
+          path: committedMember.path,
+          commitOrder: committedMember.commitOrder,
+        });
+      }
+    }
     await options.onMutation?.(event);
   };
   const recordProcess = async (event: ProcessToolEvent): Promise<void> => {
@@ -587,6 +604,14 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
             errorCode: record.errorCode ?? null,
           });
         }
+      }
+      if (event.type === "started") {
+        await checkpoint(options.diagnostics, {
+          type: "after-process-start",
+          callId: request.callId,
+          executionId: request.executionId,
+          pid: event.pid,
+        });
       }
       if (event.type === "approval_decided") {
         await checkpoint(options.diagnostics, {

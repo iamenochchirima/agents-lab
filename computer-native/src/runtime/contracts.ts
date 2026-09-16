@@ -106,6 +106,8 @@ export type RuntimeCheckpoint =
   | { readonly type: "after-model-response"; readonly round: number; readonly attempt: number; readonly attemptId: string; readonly emittedEvent: boolean }
   | { readonly type: "before-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string }
   | { readonly type: "after-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string; readonly decision: "allow-once" | "deny" | "unavailable" }
+  | { readonly type: "after-process-start"; readonly callId: string; readonly executionId: string; readonly pid: number }
+  | { readonly type: "after-mutation-member"; readonly callId: string; readonly mutationId: string; readonly path: string; readonly commitOrder: number }
   | { readonly type: "before-tool-execution"; readonly round: number; readonly toolName: string; readonly callId: string }
   | { readonly type: "after-tool-execution"; readonly round: number; readonly toolName: string; readonly callId: string; readonly ok: boolean; readonly errorCode?: string }
   | { readonly type: "before-terminal-commit"; readonly status: TerminalTurnStatus; readonly turnId: TurnId };

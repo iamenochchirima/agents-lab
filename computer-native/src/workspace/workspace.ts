@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, link, mkdir, open, readFile, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
-import { MutationError, WorkspaceAccessError } from "../runtime/errors.js";
+import { isRuntimeInterruptionError, MutationError, WorkspaceAccessError } from "../runtime/errors.js";
 import { WORKSPACE_QUARANTINE_DIRECTORY, WORKSPACE_TRANSACTION_DIRECTORY, WorkspaceSecurityPolicy, type WorkspaceLimits } from "../security/workspace-policy.js";
 import { contentHash, contentHashBytes, describePatch, prepareFileWrite, preparePatch as preparePurePatch, type PreparedPatch } from "./patch.js";
 import { MAX_MUTATION_SET_FILES, MAX_MUTATION_SET_REQUEST_BYTES, type MutationJournal, type MutationJournalMember, type MutationJournalState, type MutationMember, type WorkspaceMutationRecord } from "./mutation.js";
@@ -1255,6 +1255,7 @@ export class Workspace {
       await rmdir(transactionDirectory.absolutePath).catch(() => undefined);
       return { paths: prepared.paths, journal };
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       journal = { ...journal, state: "reconciliation_required" };
       try {
         await onJournal?.(journal);

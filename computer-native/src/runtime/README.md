@@ -13,10 +13,11 @@ the provider or tool may have completed after the process stopped.
 
 The runtime exposes an optional diagnostic checkpoint hook for deterministic failure
 injection. Checkpoints cover model dispatch and response completion, approval boundaries,
-tool execution, and terminal commit. A diagnostic may throw `RuntimeInterruptionError`
-to model the parent process stopping at that boundary; the runtime deliberately leaves
-the turn non-terminal so the normal restart recovery path can classify it. This seam is
-unset in normal CLI operation and is not a retry or fallback mechanism.
+tool execution, terminal commit, process launch, and each committed member of a
+multi-file patch. A diagnostic may throw `RuntimeInterruptionError` to model the parent
+process stopping at that boundary; the runtime deliberately leaves the turn non-terminal
+so the normal restart recovery path can classify it. This seam is unset in normal CLI
+operation and is not a retry or fallback mechanism.
 
 Terminal persistence is also recovery-aware at the acknowledgement boundary. A durable
 result or terminal event may already exist when the caller reports a write error. On

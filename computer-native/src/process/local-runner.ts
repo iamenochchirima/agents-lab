@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ProcessEvent, PreparedProcess, ProcessResult, ProcessRunner } from "./process.js";
 import { readProcessIdentity } from "./recovery.js";
+import { isRuntimeInterruptionError } from "../runtime/errors.js";
 
 function elapsed(startedAt: number): number {
   return Math.max(0, Date.now() - startedAt);
@@ -121,6 +122,7 @@ export class LocalProcessRunner implements ProcessRunner {
     try {
       await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid, ...(processIdentity ? { processIdentity } : {}) });
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       // The started event is the acknowledgement boundary for durable launch
       // evidence. If that acknowledgement fails, do not leave the child alive
       // while the caller records the failed/ambiguous tool result.

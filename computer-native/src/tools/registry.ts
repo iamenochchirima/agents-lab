@@ -984,6 +984,7 @@ export class ToolRegistry {
         }
       });
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       const errorMessage = safeErrorMessage(error);
       const failure = started
         ? processResultForFailure(request, "ambiguous", "process-ambiguous", "The process started but its final outcome could not be confirmed: " + errorMessage, true, startedPid)
@@ -1316,6 +1317,7 @@ export class ToolRegistry {
         bytesWritten = committed.bytesWritten;
       }
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       const mutationError = error instanceof MutationError
         ? error
         : new MutationError("mutation-failed", safeErrorMessage(error), { cause: error });
