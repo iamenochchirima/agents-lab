@@ -1317,8 +1317,12 @@ export class TurnStore {
 
   async updateState(nextState: Exclude<TurnStatus, "idle">): Promise<void> {
     if (this.record.state !== nextState) assertTransition(this.record.state, nextState);
-    this.record = { ...this.record, state: nextState, updatedAt: now() };
-    await this.session.replaceJson(path.join(this.directory, "turn.json"), this.record);
+    const nextRecord = { ...this.record, state: nextState, updatedAt: now() };
+    await this.session.replaceJson(path.join(this.directory, "turn.json"), nextRecord);
+    // Keep the in-memory view behind the durable record until the write has
+    // acknowledged. An after-write interruption leaves the disk state ahead,
+    // which the next explicit retry can safely reconcile through the same path.
+    this.record = nextRecord;
   }
 
   async appendAssistantMessage(content: string, createdAt = now()): Promise<string> {

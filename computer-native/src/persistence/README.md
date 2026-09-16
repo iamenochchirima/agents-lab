@@ -23,6 +23,11 @@ per line. A turn record is created before its user message is appended, so a res
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
 
+Turn state changes are written before the live `TurnStore` updates its in-memory record.
+If an acknowledgement is lost after the file replacement, the durable state is ahead of
+the caller's object and the same explicit state update can be retried; a write failure
+before replacement does not make the live object claim an unrecorded state.
+
 Transcript messages are validated for schema, session ownership, turn identity, role, and
 content before they are read or appended. Their stable message IDs make an identical
 acknowledgement retry a no-op; reusing an ID with different content or metadata is

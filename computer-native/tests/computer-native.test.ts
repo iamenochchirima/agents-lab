@@ -292,6 +292,41 @@ test("turn state transitions accept the first lifecycle and reject terminal rewr
   assert.throws(() => assertTransition("completed", "streaming"), /Invalid turn transition/);
 });
 
+test("turn state only advances in memory after durable acknowledgement", async () => {
+  const stateDir = tempDirectory();
+  let mode: "none" | "before" | "after" = "none";
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (mode === "before" && operation === "replace-json" && filePath.endsWith(`${path.sep}turn.json`)) {
+          throw new RuntimeInterruptionError("stopped before turn state became durable");
+        }
+      },
+      afterWrite: (operation, filePath) => {
+        if (mode === "after" && operation === "replace-json" && filePath.endsWith(`${path.sep}turn.json`)) {
+          throw new RuntimeInterruptionError("stopped after turn state became durable");
+        }
+      },
+    },
+  });
+  const turn = await session.admitTurn("durable state acknowledgement", "deterministic", "deterministic/echo");
+  mode = "before";
+  await assert.rejects(() => turn.updateState("streaming"), /stopped before turn state became durable/u);
+  assert.equal(turn.state, "submitting");
+  assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"submitting"/u);
+
+  mode = "none";
+  await turn.updateState("streaming");
+  mode = "after";
+  await assert.rejects(() => turn.updateState("completed"), /stopped after turn state became durable/u);
+  assert.equal(turn.state, "streaming");
+  assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"completed"/u);
+
+  mode = "none";
+  await turn.updateState("completed");
+  assert.equal(turn.state, "completed");
+});
+
 test("lifecycle events reject out-of-order model attempt evidence", async () => {
   const session = await openSession(tempDirectory());
   const turn = await session.admitTurn("event order", "deterministic", "deterministic/echo");

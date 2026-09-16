@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:57:47+02:00
+**Last updated:** 2026-09-16T22:03:01+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -263,14 +263,17 @@ tests, but it must never replace a configured real provider silently.
 - Malformed `result.json` is now distinct from a missing result. Direct terminal writes
   and restart recovery fail closed without overwriting malformed evidence or changing the
   durable turn state.
+- Turn state transitions now update the in-memory record only after the durable `turn.json`
+  replacement returns. Before-write failures leave memory and disk aligned; after-write
+  acknowledgement loss leaves the durable state ahead and makes an explicit retry safe.
 - Transcript messages are validated against the owning session and stable message ID;
   identical acknowledgement retries are ignored, while conflicting message reuse fails
   closed instead of duplicating durable conversation evidence.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 314 passing tests across the package, with 89.16% line
-  coverage, 77.90% branch coverage, and 84.93% function coverage. Coverage is from
+- The latest validation is 315 passing tests across the package, with 89.01% line
+  coverage, 77.78% branch coverage, and 84.93% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
   pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
@@ -325,6 +328,28 @@ Practice check against the local Hermes and OpenClaw references:
 - This is the existing round record's operation-local acknowledgement behavior. It uses
   the stable call/round identity already emitted by the runtime and does not add a
   generic event store, replay engine, or exactly-once execution claim.
+
+Still open after this slice:
+
+- The complete process-level crash matrix across every durable write and host-side
+  effect, plus deterministic replay, concurrency/lease acceptance, and remaining
+  security and production-operation gates.
+
+### Current slice boundary: turn-state acknowledgement ordering
+
+Delivered in this increment:
+
+- `TurnStore.updateState` validates the transition, writes the candidate durable record,
+  and only then publishes that state to the live object.
+- A failure before replacement leaves the previous state available for retry; an
+  acknowledgement loss after replacement leaves the disk state authoritative without
+  causing a false in-memory transition.
+- Tests cover both injected boundaries and an explicit retry of the after-write case.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This preserves the existing persistence-first lifecycle contract at one state boundary.
+  It does not add a transaction coordinator or attempt to provide exactly-once writes.
 
 Still open after this slice:
 
