@@ -1,7 +1,7 @@
 # Computer Native memory
 
 **Created:** 2026-09-16T09:18:07+02:00
-**Last updated:** 2026-09-16T09:18:07+02:00
+**Last updated:** 2026-09-16T09:34:40+02:00
 **Status:** Active
 **Owner:** Computer Native standalone runtime
 **Filename:** `computer-native-memory.md`
@@ -85,6 +85,12 @@ The answer comes from the memory module, not from the previous transcript being
 silently copied into the prompt. A user can then request removal, approve the exact
 deletion, start another session, and verify that the deleted entry is no longer
 retrievable. `/memory` and `/evidence` show bounded status and operation metadata.
+
+The approval experience is a real review panel, not a bare `[y/N]` question. It shows
+the operation, risk, exact target, scope, before/after or content summary, limits, and
+warning. The user can select a decision with the keyboard, approve once, deny, inspect
+more detail, or cancel. Ctrl+C cancels an active turn or approval and exits cleanly when
+the console is idle.
 
 ```text
 turn admission
@@ -214,13 +220,45 @@ second transcript store.
 - [ ] Ensure memory writes never create tool permissions, alter approval policy, change
       the workspace root, or override higher-priority instructions.
 
-### 5. Runtime, TUI, persistence, and telemetry
+### 5. Runtime, TUI, approval, persistence, and telemetry
 
 - [ ] Route memory operations through the existing tool registry and runtime. The CLI
       renderer must not write memory files or call the search adapter directly.
+- [ ] Replace the separate inline `[y/N]` prompts for workspace, process, browser, and
+      memory actions with one shared interactive approval-prompt module. Keep each
+      operation's typed request and risk rules distinct behind that seam.
+- [ ] Render a proper approval panel with a clear title, risk level, exact action,
+      target and scope, changed paths or bounded content summary, hashes or identity,
+      limits, provenance, and the warning that applies to the operation. Redact secrets
+      at the rendering boundary as well as before persistence.
+- [ ] Support keyboard navigation and visible shortcuts: arrow keys or `j`/`k` move
+      the selection, Enter confirms the highlighted choice, `a` approves once, `d`
+      denies, `v` toggles bounded detail, and Escape cancels. The safe decision is
+      highlighted by default. Bare unrecognised text must not approve anything.
+- [ ] Add typed approval choices rather than a single boolean: approve once, deny, and
+      cancel. Add a current-session approval only for explicitly classified low-risk
+      repeatable operations, binding the grant to a policy fingerprint and expiry;
+      destructive, credential-bearing, external-side-effect, purge, and deletion
+      operations never receive a broad session bypass. Record every grant and use.
+- [ ] Keep approval input in a modal focus separate from the normal composer. Queue or
+      reject a second approval request deterministically rather than letting prompts
+      interleave in the terminal.
 - [ ] Add factual TUI activity for memory search, bootstrap load, proposal, approval,
       commit, deletion, stale index, and failure states. Redact content and secrets in
       panels while showing enough identity and scope to review the operation.
+- [ ] Improve the console presentation around the modal: stable header and context,
+      status ribbon, streaming output, activity lane, composer hint, narrow-terminal
+      fallback, resize handling, and `NO_COLOR` behavior. Display only real state; do
+      not add simulated health, usage, or completion data.
+- [ ] Make Ctrl+C consistent across every input state. While a turn is active it
+      cancels the turn; while an approval is open it cancels the approval and leaves the
+      operation unstarted; while idle with an empty composer it exits cleanly; while an
+      unsent draft exists it clears the draft first and a second Ctrl+C within a short
+      window exits. A second Ctrl+C may force-close a turn that does not acknowledge
+      cancellation, with the turn recorded as interrupted.
+- [ ] Keep Ctrl+D, `/quit`, and `/exit` as explicit exit paths, but do not require a
+      slash command to leave the console. Close pending readline/raw-key handlers,
+      browser/process resources, and the application exactly once on every exit path.
 - [ ] Add `/memory` status and bounded inspection output for store sizes, index health,
       pending proposals, and retention settings. Do not dump all memory by default.
 - [ ] Persist immutable memory-operation records with operation ID, turn/session link,
@@ -274,6 +312,7 @@ second transcript store.
 | OpenClaw memory search and get | Return bounded results with source paths and line ranges, use a rebuildable local index, and report stale/unavailable search state. | Start with deterministic local lexical search and make index status, limits, and source hashes observable. |
 | OpenClaw provenance and forget paths | Deletion needs lineage, preview, scope, and index cleanup rather than deleting an opaque row. | Store source/session/turn lineage and require exact or dry-run-reviewed deletion. Do not delete transcripts as a side effect of forgetting memory. |
 | OpenClaw compaction flush and dreaming | Memory maintenance has a lifecycle around context pressure, and background promotion needs review and trust gates. | Add the pre-compaction seam now, but defer compaction ownership and background consolidation until their own plans are ready. |
+| Hermes CLI/TUI and mature approval flows | Interrupts are useful in both active and idle states, and approvals are rendered as a review interaction with explicit choices rather than an accidental inline boolean prompt. | Build one shared Computer Native approval panel with keyboard focus, bounded detail, typed risk choices, session-scoped grants where policy permits, and a clean Ctrl+C exit/cancel contract. |
 
 Important non-adoptions:
 
@@ -407,6 +446,9 @@ memory operation is authorized.
       isolation cases fail closed.
 - [ ] Evidence and telemetry contain operation references and bounded metadata without
       raw secrets or unbounded memory content.
+- [ ] Approval-prompt tests cover rendering, redaction, default focus, keyboard
+      navigation, approve-once, deny, cancel, detail toggle, session-grant limits,
+      malformed input, resize, narrow terminals, and `NO_COLOR` output.
 
 ### Manual acceptance checks
 
@@ -416,6 +458,12 @@ memory operation is authorized.
       fake credential. Confirm it is rejected or staged and never enters bootstrap memory.
 - [ ] Request a replacement and a forget operation. Confirm the approval panel shows the
       exact target/hash and the next session cannot retrieve the removed value.
+- [ ] Trigger a workspace, process, browser, and memory approval. Confirm each uses the
+      same review-panel interaction, shows operation-specific details, and never treats
+      arbitrary typed text as approval.
+- [ ] Press Ctrl+C during an active model turn, while an approval panel is open, at an
+      idle empty composer, and with an unsent draft. Confirm cancel, exit, draft-clear,
+      and forced-interrupt outcomes are distinct and recorded correctly.
 - [ ] Run `/memory` and `/evidence`; confirm scope, counts, source references, statuses,
       and index health are visible without dumping sensitive content.
 - [ ] Stop the process during approval and during an index update. Restart and verify no
@@ -452,6 +500,9 @@ Before moving this plan to `completed/`, verify:
       into bootstrap context.
 - [ ] Failure, cancellation, restart, stale-index, deletion, and cross-scope cases are
       implemented and tested.
+- [ ] The approval panel is shared across existing side-effecting tools and provides
+      deliberate keyboard choices, bounded review detail, safe defaults, and clean exit
+      behavior. `[y/N]` is not the only approval interface.
 - [ ] No secret, unsafe path, untrusted instruction, or unsupported capability is
       advertised or retained.
 - [ ] Required validation commands and manual acceptance checks pass.
