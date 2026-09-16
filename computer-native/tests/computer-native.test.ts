@@ -2431,6 +2431,12 @@ test("workspace quarantines a file for deletion and restores it from the recover
   await assert.rejects(() => workspace.stat(".computer-native-trash"), /reserved for internal recovery data/);
   await assert.rejects(() => workspace.stat(".computer-native-transactions"), /reserved for internal recovery data/);
 
+  await rename(manifestPath, manifestBackup);
+  await writeFile(manifestPath, Buffer.alloc((8 * 1024 * 1024) + 1, 0x20));
+  await assert.rejects(() => workspace.prepareRestore("mutation_delete_test"), /missing or invalid/);
+  await rm(manifestPath);
+  await rename(manifestBackup, manifestPath);
+
   await writeFile(target, "new user content\n", "utf8");
   await assert.rejects(() => workspace.prepareRestore("mutation_delete_test"), /already exists/);
   await rm(target);

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T19:28:00+02:00
+**Last updated:** 2026-09-16T19:40:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -113,6 +113,8 @@ tests, but it must never replace a configured real provider silently.
 - File-transfer preparation and directory-manifest generation now hash through the same
   bounded descriptor pattern, so identity checks do not retain full file buffers. Text
   reads and patch preparation remain content-producing operations by contract.
+- Recovery manifests now use an operation-specific 8 MiB cap, a no-follow descriptor, and
+  a post-read size check before JSON parsing; oversized or changing metadata fails closed.
 - The normalized lifecycle stream now validates process, browser, and memory action
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
@@ -446,6 +448,8 @@ Delivered in this slice:
   callers.
 - File-transfer preparation and tree-manifest generation hash bounded files in chunks and
   retain only byte counts and digests for their identity evidence.
+- Recovery-manifest reads are bounded before parsing and retain the existing explicit
+  symlink rejection behaviour.
 
 Practice check against the local Hermes and OpenClaw references:
 

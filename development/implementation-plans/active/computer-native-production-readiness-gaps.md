@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T19:28:00+02:00
+**Last updated:** 2026-09-16T19:40:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -350,7 +350,8 @@ The current hardening increment also makes regular-file, search, mutation, copy,
 tree-manifest reads descriptor-backed and limit-enforced during consumption. A file that
 grows after the initial metadata check cannot bypass the configured cap; changed-size
 reads fail closed. Regular-file copy commits also stream into a temporary destination
-while hashing and checking the approved source identity.
+while hashing and checking the approved source identity. Recovery manifests are capped
+before JSON parsing and read through no-follow descriptors.
 
 Remaining work:
 

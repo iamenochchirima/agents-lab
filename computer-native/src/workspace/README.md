@@ -14,9 +14,10 @@ permanently purged only by exact token after a second approval.
 symbolic-link target. `searchFiles` returns bounded literal content matches, bounded
 relative path-name matches, or both. Name patterns support only `*` and `?`; traversal,
 absolute paths, bracket expressions, and oversized patterns are rejected. Both operations
-are read-only and do not use the approval gate. File content and tree-manifest reads use
-no-follow descriptors and enforce the byte cap while reading, so a file that grows after
-the initial metadata check is rejected rather than read past the configured limit.
+are read-only and do not use the approval gate. File content, tree-manifest, and recovery
+manifest reads use no-follow descriptors and enforce an operation-specific byte cap while
+reading, so a file that grows after the initial metadata check is rejected rather than
+read past the configured limit.
 
 `apply_patch` and `write_file` prepare the exact before/after content and hashes in memory.
 The runtime must supply an explicit approval decision before `commitPatch` can write. Commit rechecks

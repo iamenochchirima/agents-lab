@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, link, mkdir, open, readFile, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
+import { lstat, link, mkdir, open, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { isRuntimeInterruptionError, MutationError, WorkspaceAccessError } from "../runtime/errors.js";
 import { WORKSPACE_QUARANTINE_DIRECTORY, WORKSPACE_TRANSACTION_DIRECTORY, WorkspaceSecurityPolicy, type WorkspaceLimits } from "../security/workspace-policy.js";
@@ -276,6 +276,7 @@ export const DEFAULT_MAX_TREE_ENTRIES = 2_000;
 export const DEFAULT_MAX_TREE_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_TREE_DEPTH = 32;
 const BOUNDED_READ_CHUNK_BYTES = 64 * 1024;
+const MAX_QUARANTINE_MANIFEST_BYTES = 8 * 1024 * 1024;
 interface QuarantineManifest {
   readonly schemaVersion: 1;
   readonly mutationId: string;
@@ -1867,10 +1868,24 @@ export class Workspace {
       throw new WorkspaceAccessError(`Recovery manifest '${mutationId}' is not a regular file; symbolic links are not allowed.`);
     }
     let value: unknown;
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      value = JSON.parse(await readFile(manifestPath, "utf8"));
+      handle = await open(manifestPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const fileStats = await handle.stat();
+      if (!fileStats.isFile() || fileStats.size > MAX_QUARANTINE_MANIFEST_BYTES) {
+        throw new WorkspaceAccessError(`Recovery manifest '${mutationId}' is missing or invalid.`);
+      }
+      const bytes = await readHandleAtMost(handle, MAX_QUARANTINE_MANIFEST_BYTES);
+      const afterStats = await handle.stat();
+      if (!bytes || !afterStats.isFile() || afterStats.size !== fileStats.size || bytes.byteLength !== fileStats.size) {
+        throw new WorkspaceAccessError(`Recovery manifest '${mutationId}' changed while it was being read.`);
+      }
+      value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
     } catch (error) {
+      if (error instanceof WorkspaceAccessError) throw error;
       throw new WorkspaceAccessError(`Recovery manifest '${mutationId}' is missing or invalid.`, { cause: error });
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
     if (!value || typeof value !== "object") throw new WorkspaceAccessError(`Recovery manifest '${mutationId}' is invalid.`);
     const manifest = value as Partial<QuarantineManifest>;
