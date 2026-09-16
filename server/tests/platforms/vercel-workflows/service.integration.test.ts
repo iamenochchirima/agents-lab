@@ -69,6 +69,70 @@ test("local Workflow World runs a durable prompt and exposes native identity", {
   }
 });
 
+test("local Workflow World executes the selected OpenRouter model through its durable step", { skip: !hasPlatformDependencies }, async () => {
+  const { VercelWorkflowsPlatformService } = await import("../../../src/platforms/vercel-workflows/service/platform-service.js");
+  const dataDir = await mkdtemp(join(tmpdir(), "agentlab-vercel-workflows-openrouter-"));
+  const port = await freePort();
+  const config = {
+    ...loadVercelWorkflowsConfig({}),
+    host: "127.0.0.1",
+    port,
+    serviceUrl: `http://127.0.0.1:${port}`,
+    dataDir,
+  };
+  const service = new VercelWorkflowsPlatformService({ config });
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const previousBaseUrl = process.env.AGENTLAB_OPENROUTER_BASE_URL;
+  const previousFetch = globalThis.fetch;
+  let requestBody: Record<string, unknown> | null = null;
+  process.env.OPENROUTER_API_KEY = "test-secret";
+  process.env.AGENTLAB_OPENROUTER_BASE_URL = "https://openrouter.example/v1";
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === "https://openrouter.example/v1/chat/completions") {
+      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-secret");
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({
+        id: "vercel-openrouter-provider-id",
+        choices: [{ message: { content: "hello from Vercel Workflows OpenRouter" } }],
+        usage: { prompt_tokens: 13, completion_tokens: 4, total_tokens: 17 },
+      }), { status: 200 });
+    }
+    return previousFetch(input, init);
+  }) as typeof fetch;
+
+  try {
+    await service.start();
+    const admission = await admit(service.address, openRouterWorkflowInput("integration-vercel-workflow-openrouter"));
+    assert.equal(admission.status, 202);
+    const admitted = await admission.json() as { readonly workflowRunId: string };
+    const record = await waitForTerminal(service.address, admitted.workflowRunId);
+
+    assert.equal((requestBody as Record<string, unknown> | null)?.model, "cohere/north-mini-code:free");
+    assert.equal(record.status, "completed");
+    assert.equal(record.result.output, "hello from Vercel Workflows OpenRouter");
+    assert.deepEqual(record.result.usage, { inputTokens: 13, outputTokens: 4, totalTokens: 17 });
+    assert.equal(record.result.metrics.modelCallCount, 1);
+    assert.equal(record.result.metrics.modelAttemptCount, 1);
+    const completedEvent = record.result.eventIntents.find((event: { readonly kind: string }) => event.kind === "model_call_completed");
+    assert.equal(completedEvent?.payload.provider, "openrouter");
+    assert.equal(completedEvent?.payload.model, "cohere/north-mini-code:free");
+    assert.equal(completedEvent?.payload.attempt, 1);
+    assert.equal(completedEvent?.payload.requestId, "vercel-openrouter-provider-id");
+    assert.equal(typeof completedEvent?.payload.stepId, "string");
+    assert.deepEqual(record.result.trajectory.phases.map((phase: { readonly name: string }) => phase.name), ["model"]);
+    assert.deepEqual(record.result.native.stepNames, ["step//./model-step//executeModelStep"]);
+    assert.equal(JSON.stringify(record).includes("test-secret"), false);
+  } finally {
+    await service.stop();
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousBaseUrl === undefined) delete process.env.AGENTLAB_OPENROUTER_BASE_URL;
+    else process.env.AGENTLAB_OPENROUTER_BASE_URL = previousBaseUrl;
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("local Workflow projects a model failure without fabricating a successful result", { skip: !hasPlatformDependencies }, async () => {
   const { VercelWorkflowsPlatformService } = await import("../../../src/platforms/vercel-workflows/service/platform-service.js");
   const dataDir = await mkdtemp(join(tmpdir(), "agentlab-vercel-workflows-failure-"));
@@ -202,6 +266,16 @@ function workflowInput(runId: string, model = "fake"): VercelWorkflowInput {
     prompt: model === "fake" ? "Explain durable execution in one sentence." : "wait",
     systemInstruction: "Be concise.",
     model: { provider: "fake", model },
+    modelTimeoutMs: 1_000,
+  };
+}
+
+function openRouterWorkflowInput(runId: string): VercelWorkflowInput {
+  return {
+    runId,
+    prompt: "Say hello from a Vercel Workflow.",
+    systemInstruction: "Respond directly.",
+    model: { provider: "openrouter", model: "cohere/north-mini-code:free" },
     modelTimeoutMs: 1_000,
   };
 }
