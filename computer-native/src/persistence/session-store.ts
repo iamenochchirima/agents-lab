@@ -689,6 +689,88 @@ function assertProcessExecutionRecord(
   }
 }
 
+function assertBrowserActionRecord(
+  record: unknown,
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is BrowserActionRecord {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Browser action", "actionId");
+  const candidate = record as Record<string, unknown>;
+  const validAction = candidate.action === "click"
+    || candidate.action === "type"
+    || candidate.action === "press"
+    || candidate.action === "upload"
+    || candidate.action === "download"
+    || candidate.action === "dialog";
+  const validStatus = candidate.status === "prepared"
+    || candidate.status === "approved"
+    || candidate.status === "running"
+    || candidate.status === "completed"
+    || candidate.status === "failed"
+    || candidate.status === "cancelled"
+    || candidate.status === "ambiguous";
+  const validErrorCode = candidate.errorCode === "session-not-found"
+    || candidate.errorCode === "session-closed"
+    || candidate.errorCode === "session-timeout"
+    || candidate.errorCode === "tab-not-found"
+    || candidate.errorCode === "tab-closed"
+    || candidate.errorCode === "tab-ownership"
+    || candidate.errorCode === "navigation-policy"
+    || candidate.errorCode === "stale-reference"
+    || candidate.errorCode === "invalid-action"
+    || candidate.errorCode === "browser-timeout"
+    || candidate.errorCode === "browser-cancelled"
+    || candidate.errorCode === "browser-crash"
+    || candidate.errorCode === "browser-ambiguous"
+    || candidate.errorCode === "browser-resource-limit"
+    || candidate.errorCode === "artifact-violation"
+    || candidate.errorCode === "adapter-failure"
+    || candidate.errorCode === "browser-approval-denied"
+    || candidate.errorCode === "browser-approval-unavailable";
+  const dialog = candidate.dialog as Record<string, unknown> | undefined;
+  const validDialog = dialog === undefined
+    || (dialog !== null
+      && typeof dialog === "object"
+      && (dialog.type === "alert" || dialog.type === "beforeunload" || dialog.type === "confirm" || dialog.type === "prompt")
+      && typeof dialog.message === "string");
+  const diagnostic = candidate.diagnostic as Record<string, unknown> | undefined;
+  const validDiagnostic = diagnostic === undefined
+    || (diagnostic !== null
+      && typeof diagnostic === "object"
+      && typeof diagnostic.name === "string"
+      && typeof diagnostic.message === "string");
+  const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
+  const validNonNegativeInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+  if (typeof candidate.sessionId !== "string" || candidate.sessionId.trim().length === 0
+    || typeof candidate.callId !== "string" || candidate.callId.trim().length === 0
+    || typeof candidate.tabId !== "string" || candidate.tabId.trim().length === 0
+    || !validAction
+    || typeof candidate.reference !== "string" || candidate.reference.trim().length === 0
+    || typeof candidate.documentId !== "string" || candidate.documentId.trim().length === 0
+    || (candidate.text !== undefined && typeof candidate.text !== "string")
+    || (candidate.key !== undefined && typeof candidate.key !== "string")
+    || (candidate.path !== undefined && (typeof candidate.path !== "string" || candidate.path.trim().length === 0))
+    || (candidate.maxBytes !== undefined && !validNonNegativeInteger(candidate.maxBytes))
+    || typeof candidate.actionHash !== "string" || candidate.actionHash.trim().length === 0
+    || (candidate.approvalTimeoutMs !== undefined && !validPositiveInteger(candidate.approvalTimeoutMs))
+    || !validStatus
+    || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
+    || (candidate.summary !== undefined && typeof candidate.summary !== "string")
+    || (candidate.errorCode !== undefined && !validErrorCode)
+    || (candidate.underlyingErrorCode !== undefined && !validErrorCode)
+    || (candidate.errorMessage !== undefined && typeof candidate.errorMessage !== "string")
+    || !validDialog
+    || (candidate.dialogDecision !== undefined && candidate.dialogDecision !== "accept" && candidate.dialogDecision !== "dismiss")
+    || (candidate.cancellationConfirmed !== undefined && typeof candidate.cancellationConfirmed !== "boolean")
+    || !validDiagnostic
+    || (candidate.startedAt !== undefined && typeof candidate.startedAt !== "string")
+    || (candidate.finishedAt !== undefined && typeof candidate.finishedAt !== "string")
+    || typeof candidate.recordedAt !== "string" || candidate.recordedAt.trim().length === 0
+    || (candidate.status === "running" && (typeof candidate.startedAt !== "string" || candidate.startedAt.trim().length === 0))) {
+    throw new ComputerNativeError("persistence", `Browser action '${String(candidate.actionId)}' has an invalid durable record.`);
+  }
+}
+
 export type BrowserArtifactEvidence = BrowserArtifactInfo & {
   readonly turnId: TurnRecord["turnId"];
   readonly correlationId?: CorrelationId;
@@ -1261,13 +1343,7 @@ export class TurnStore {
   }
 
   async writeBrowserAction(record: BrowserActionRecord): Promise<void> {
-    if (record.schemaVersion !== 1 || record.actionId.trim().length === 0 || record.callId.trim().length === 0) {
-      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid browser action record.`);
-    }
-    assertRecordCorrelation(this.correlationId, record.correlationId, "Browser action");
-    if (record.turnId !== this.turnId) {
-      throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' does not belong to turn '${this.turnId}'.`);
-    }
+    assertBrowserActionRecord(record, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "browser-actions");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.actionId, "Browser action ID")}.json`);
@@ -1279,6 +1355,7 @@ export class TurnStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     if (previous) {
+      assertBrowserActionRecord(previous, this.turnId, this.correlationId);
       try {
         assertBrowserActionTransition(previous, record);
       } catch (error) {
@@ -1407,10 +1484,7 @@ export class TurnStore {
     const records: BrowserActionRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
       const record = await readJson<BrowserActionRecord>(path.join(directory, entry.name));
-      assertTurnBoundRecord(record, this.turnId, this.correlationId, "Browser action", "actionId");
-      if (typeof record.callId !== "string" || record.callId.trim().length === 0) {
-        throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' has an invalid call identity.`);
-      }
+      assertBrowserActionRecord(record, this.turnId, this.correlationId);
       records.push(record);
     }
     return records;

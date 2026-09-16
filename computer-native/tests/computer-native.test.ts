@@ -989,7 +989,7 @@ test("restart reconciles a browser action after its running record acknowledgeme
   await turn.writeBrowserAction(base);
   await turn.writeBrowserAction({ ...base, status: "approved", decision: "allow-once", recordedAt: new Date().toISOString() });
   await assert.rejects(
-    () => turn.writeBrowserAction({ ...base, status: "running", decision: "allow-once", recordedAt: new Date().toISOString() }),
+    () => turn.writeBrowserAction({ ...base, status: "running", decision: "allow-once", startedAt: new Date().toISOString(), recordedAt: new Date().toISOString() }),
     /simulated running browser action acknowledgement failure/u,
   );
 

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:48:42+02:00
+**Last updated:** 2026-09-16T22:56:12+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -1002,6 +1002,34 @@ Still open after this slice:
   and process-tree guarantees, OS/network isolation, PTY/background jobs, shell policy,
   and operational repair procedures remain open.
 
+### Current slice boundary: browser action record integrity
+
+Delivered in this slice:
+
+- `TurnStore.writeBrowserAction` validates a browser action before creating or replacing
+  its durable record. Existing records are validated again before a state transition is
+  accepted, so recovery cannot transition from malformed prior evidence.
+- Recovery validates browser-session, tab, document, reference, action hash, action/status,
+  approval decision, bounded limit, error, dialog, diagnostic, and timestamp fields before
+  classifying a browser action or reconstructing its terminal event.
+- A `running` browser action must carry a non-empty start timestamp. Invalid action kinds,
+  malformed nested dialog/diagnostic data, invalid error codes, and malformed limits fail
+  closed without marking the action ambiguous or advancing the turn.
+- Tests cover normal running-action recovery and rejection of a malformed persisted action
+  before recovery classification.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is operation-specific validation at the existing browser persistence/recovery
+  boundary. It follows their explicit lifecycle and guard-check pattern without adding a
+  generic schema framework, browser workflow engine, or transaction coordinator.
+
+Still open after this slice:
+
+- Equivalent complete validation for workspace mutation and memory action records, the
+  full per-write/side-effect crash matrix, and broader browser profile/authentication and
+  cross-platform recovery work remain open.
+
 ### Current slice boundary: model payload resource limits
 
 Delivered in this slice:
@@ -1369,6 +1397,8 @@ claim in this plan.
 - [ ] Record recovery classification and operation-specific reconciliation data.
 - [x] Validate persisted process ownership, execution context, limits, state, and
       running-process identity before transitions or restart reconciliation.
+- [x] Validate persisted browser action identity, action/status, limits, nested outcome
+      evidence, and running timestamps before transitions or restart reconciliation.
 - [x] Add repeatable recovery for durable terminal result/event acknowledgement failures;
       recovery does not auto-replay the turn or duplicate terminal evidence.
 - [x] Reconstruct one missing terminal lifecycle event for each current persisted action
@@ -1472,6 +1502,8 @@ claim in this plan.
 - [ ] Attempt numbering, action hashes, idempotency/reconciliation keys, and redaction.
 - [x] Reject malformed or foreign-session process records before PID interpretation or
       recovery-side process reconciliation.
+- [x] Reject malformed browser action records before recovery classification or terminal
+      event reconstruction.
 - [ ] Retry eligibility, backoff limits, provider error classification, and no silent
       fallback.
 - [ ] Approval choice parsing, stale approval rejection, exact identity binding, and

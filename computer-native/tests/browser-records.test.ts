@@ -29,6 +29,7 @@ import type { ModelProvider } from "../src/models/provider.js";
 import type { ModelRequest, ModelStreamEvent } from "../src/runtime/contracts.js";
 import { runTurn } from "../src/runtime/turn.js";
 import { RuntimeInterruptionError } from "../src/runtime/errors.js";
+import { atomicWriteJson } from "../src/persistence/json.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 
 function record(status: BrowserActionRecord["status"], turnId = "turn_test"): BrowserActionRecord {
@@ -44,6 +45,7 @@ function record(status: BrowserActionRecord["status"], turnId = "turn_test"): Br
     documentId: asBrowserDocumentId("document_test"),
     actionHash: "a".repeat(64),
     status,
+    ...(status === "running" ? { startedAt: "2026-09-15T00:00:00.000Z" } : {}),
     recordedAt: "2026-09-15T00:00:00.000Z",
   };
 }
@@ -76,6 +78,31 @@ test("restart marks a running browser action ambiguous without replaying it", as
     assert.equal(actions.length, 1);
     assert.equal(actions[0]?.status, "ambiguous");
     assert.equal(actions[0]?.errorCode, "browser-ambiguous");
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("recovery rejects a malformed browser action before classifying it", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-malformed-record-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("malformed browser action", "deterministic", "deterministic/browser");
+    const base = record("prepared", turn.turnId);
+    await turn.writeBrowserAction(base);
+    await atomicWriteJson(path.join(turn.directory, "browser-actions", `${base.actionId}.json`), {
+      ...base,
+      status: "running",
+      decision: "allow-once",
+      startedAt: new Date().toISOString(),
+      action: "not-a-browser-action",
+    });
+
+    await assert.rejects(
+      () => session.recoverInterruptedTurns(),
+      /invalid durable record/u,
+    );
+    assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"submitting"/u);
   } finally {
     await rm(stateDir, { recursive: true, force: true });
   }
