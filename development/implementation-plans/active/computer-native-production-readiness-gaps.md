@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:36:00+02:00
+**Last updated:** 2026-09-16T21:45:57+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 311 tests passed after the round acknowledgement-retry increment.
-- `pnpm run coverage`: 311 tests passed, with 89.03% line coverage, 77.85% branch
+- `pnpm test`: 312 tests passed after the memory-search evidence identity increment.
+- `pnpm run coverage`: 312 tests passed, with 88.77% line coverage, 77.67% branch
   coverage, and 84.85% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -140,6 +140,8 @@ readiness:
   compatibility fallback, while explicit cross-turn correlation mismatches fail closed.
 - Model request, attempt completion, retry, and completion evidence is idempotent for an
   identical repeated payload and rejects conflicting duplicates by stable identity.
+- Memory search evidence is now immutable by `searchId`; identical acknowledgement retries
+  are no-ops and conflicting result sets or query identity cannot overwrite it.
 - One-shot action lifecycle evidence is also idempotent by action identity; repeatable
   workspace progress observations remain preserved as separate events.
 - Durable lifecycle history rejects unknown types, broken sequence numbers, and
@@ -255,8 +257,9 @@ Exit evidence:
   latest round record is now a no-op after acknowledgement loss; conflicting or later
   duplicate evidence still fails closed. Model request, attempt-completion, and retry
   evidence also requires exact attempt identity and a successful latest attempt before
-  model completion. It does not yet cover every persistence and underlying side-effect
-  boundary.
+  model completion. Memory-search evidence also rejects conflicting reuse of a `searchId`
+  rather than silently replacing the recorded result set. It does not yet cover every
+  persistence and underlying side-effect boundary.
 - Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
   writes, process approval before launch, process execution while running, workspace
   applying and committed-record boundaries, browser start and completion-record

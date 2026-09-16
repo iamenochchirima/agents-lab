@@ -31,7 +31,7 @@ import { parseTuiCommand, TerminalUi } from "../src/cli/tui.js";
 import type { ChatApplication } from "../src/runtime/application.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionRecord, ProcessResult, ProcessToolEvent } from "../src/process/process.js";
 import { reconcileRunningProcess } from "../src/process/recovery.js";
-import type { MemoryActionRecord } from "../src/memory/contracts.js";
+import type { MemoryActionRecord, MemorySearchEvidence } from "../src/memory/contracts.js";
 
 const execFileAsync = promisify(execFile);
 const temporaryDirectories: string[] = [];
@@ -5505,6 +5505,38 @@ test("round evidence accepts an identical immediate retry but rejects a conflict
     () => turn.appendRound({ ...first, recordedAt: new Date(Date.now() + 2).toISOString(), payload: { requestBytes: 43 } }),
     /evidence was repeated with a different payload/u,
   );
+});
+
+test("memory search evidence is idempotent and rejects conflicting identity reuse", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("retry memory search evidence", "deterministic", "deterministic/echo");
+  const first: MemorySearchEvidence = {
+    schemaVersion: 1,
+    searchId: "memory_search_retry",
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    correlationId: turn.correlationId,
+    callId: "memory_search_call",
+    queryHash: "query-hash",
+    maxResults: 5,
+    resultIds: ["memory_record_1"],
+    resultCount: 1,
+    truncated: false,
+    recordedAt: new Date().toISOString(),
+  };
+
+  await turn.writeMemorySearch(first);
+  await turn.writeMemorySearch({ ...first, recordedAt: new Date(Date.now() + 1).toISOString() });
+
+  const evidenceDirectory = path.join(turn.directory, "memory-searches");
+  assert.equal((await readdir(evidenceDirectory)).length, 1);
+  await assert.rejects(
+    () => turn.writeMemorySearch({ ...first, recordedAt: new Date(Date.now() + 2).toISOString(), resultIds: [], resultCount: 0 }),
+    /evidence was repeated with a different payload/u,
+  );
+  const persisted = JSON.parse(await readFile(path.join(evidenceDirectory, "memory_search_retry.json"), "utf8")) as MemorySearchEvidence;
+  assert.deepEqual(persisted.resultIds, ["memory_record_1"]);
 });
 
 test("cancellation interrupts a waiting read-only tool without committing an assistant", async () => {

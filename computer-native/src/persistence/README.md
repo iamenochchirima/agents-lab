@@ -110,6 +110,10 @@ are likewise checked against their owning turn before recovery can close or reco
 action. A record that crosses a turn boundary is treated as persistence corruption and is
 not adopted.
 
+Memory search evidence is also immutable by `searchId`. An identical write retry is a
+no-op after an acknowledgement loss; a changed result set, query hash, scope, or other
+field for the same identity is rejected rather than silently overwriting the evidence.
+
 Model attempt evidence may carry bounded `providerRequestId` and `latencyMs` fields when
 the adapter reports them. They describe transport observation only and do not authorize
 replay or imply exactly-once model execution. Provider and model identity remain part of

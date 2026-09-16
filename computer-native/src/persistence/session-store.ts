@@ -1198,7 +1198,27 @@ export class TurnStore {
     }
     const directory = path.join(this.directory, "memory-searches");
     await ensureDirectory(directory);
-    await this.session.replaceJson(path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`), record);
+    const recordPath = path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`);
+    let previous: MemorySearchEvidence | undefined;
+    try {
+      await stat(recordPath);
+      previous = await readJson<MemorySearchEvidence>(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (previous) {
+      assertTurnBoundRecord(previous, this.turnId, this.correlationId, "Memory search", "searchId");
+      if (previous.sessionId !== this.sessionId || typeof previous.callId !== "string" || previous.callId.trim().length === 0) {
+        throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
+      }
+      const { recordedAt: _previousRecordedAt, ...previousSemantics } = redactRecord(previous) as Record<string, unknown>;
+      const { recordedAt: _recordedAt, ...recordSemantics } = redactRecord(record) as Record<string, unknown>;
+      if (stableStringify(previousSemantics) !== stableStringify(recordSemantics)) {
+        throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' evidence was repeated with a different payload for the same identity.`);
+      }
+      return;
+    }
+    await this.session.replaceJson(recordPath, record);
   }
 
   async readMemorySearches(): Promise<MemorySearchEvidence[]> {
