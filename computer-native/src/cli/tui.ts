@@ -146,6 +146,8 @@ export class TerminalUi {
         return "◌";
       case "cancelling":
         return "■";
+      case "interrupted":
+        return "!";
       default:
         return "◆";
     }
@@ -324,6 +326,11 @@ export class TerminalUi {
         this.printActivity("✓", `workspace change · committed ${path}${event.bytesWritten === undefined ? "" : ` · ${event.bytesWritten} bytes`}`, "32;1");
         break;
       case "failed":
+        if (event.code === "reconciliation-required") {
+          this.status = `workspace change outcome unknown: ${path}`;
+          this.printActivity("?", `workspace change · partial/uncertain · ${path} · ${event.reason}`, "33;1");
+          break;
+        }
         this.status = `workspace change failed: ${path}`;
         this.printActivity("×", `workspace change · failed ${path} · ${event.reason}`, "31;1");
         break;
@@ -357,6 +364,11 @@ export class TerminalUi {
         this.printActivity("■", `command · ${event.reason} · ${event.request.command}`, "33;1");
         break;
       case "completed":
+        if (event.result.state === "ambiguous") {
+          this.status = `command outcome unknown: ${event.request.command}`;
+          this.printActivity("?", `command · outcome unknown · ${event.request.command}`, "33;1");
+          break;
+        }
         this.status = `command ${event.result.state}: ${event.request.command}`;
         this.printActivity(event.result.state === "completed" && event.result.errorCode === undefined ? "✓" : "×", `command · ${event.result.state} · ${event.request.command}`, event.result.state === "completed" && event.result.errorCode === undefined ? "32;1" : "31;1");
         break;
@@ -388,11 +400,12 @@ export class TerminalUi {
         this.printActivity("↳", `browser · ${event.request.action} running · ${event.request.reference}`, "33;1");
         break;
       case "completed":
-        this.status = event.ok ? "browser action completed" : "browser action failed";
+        const outcomeUnknown = !event.ok && event.errorCode === "browser-ambiguous";
+        this.status = outcomeUnknown ? "browser action outcome unknown" : event.ok ? "browser action completed" : "browser action failed";
         const dialogText = event.dialog
           ? ` · dialog ${event.dialog.type}: ${singleLine(redactSecrets(event.dialog.message, [process.env.OPENROUTER_API_KEY ?? ""]))}`
           : "";
-        this.printActivity(event.ok ? "✓" : "×", `browser · ${event.request.action} · ${event.summary}${dialogText}${event.cancellationConfirmed === true ? " · cancellation confirmed" : event.cancellationConfirmed === false ? " · cancellation unconfirmed" : ""}`, event.ok ? "32;1" : "31;1");
+        this.printActivity(outcomeUnknown ? "?" : event.ok ? "✓" : "×", `browser · ${event.request.action} · ${outcomeUnknown ? "outcome unknown" : event.summary}${dialogText}${event.cancellationConfirmed === true ? " · cancellation confirmed" : event.cancellationConfirmed === false ? " · cancellation unconfirmed" : ""}`, outcomeUnknown ? "33;1" : event.ok ? "32;1" : "31;1");
         break;
     }
   }
@@ -452,7 +465,7 @@ export class TerminalUi {
 
   private finishTurn(result: TurnResult): void {
     const elapsed = formatDuration(Date.now() - this.startedAt);
-    const icon = result.status === "completed" ? "✓" : result.status === "cancelled" ? "■" : "×";
+    const icon = result.status === "completed" ? "✓" : result.status === "cancelled" ? "■" : result.status === "interrupted" ? "!" : "×";
     const detail = result.status === "completed"
       ? `${elapsed}${result.usage?.outputTokens === undefined ? "" : ` · ${result.usage.outputTokens} output tokens`}`
       : result.error?.message ?? "No assistant response was committed.";

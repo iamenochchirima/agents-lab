@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T16:01:30+02:00
+**Last updated:** 2026-09-16T16:06:30+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 257 tests passed after the current approval/TUI increment.
-- `pnpm run coverage`: 257 tests passed, with 88.58% line coverage, 76.56% branch
+- `pnpm test`: 258 tests passed after the current approval/TUI increment.
+- `pnpm run coverage`: 258 tests passed, with 88.60% line coverage, 76.70% branch
   coverage, and 83.70% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.

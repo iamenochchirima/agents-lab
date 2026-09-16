@@ -165,6 +165,42 @@ test("active Ctrl+C cancellation is idempotent and reaches a terminal result", {
   assert.match(rendered, /cancelled/u);
 });
 
+test("TUI distinguishes partial and outcome-unknown actions from ordinary failure", async () => {
+  const { output, chunks } = captureOutput();
+  const application = {
+    sessionId: "session_outcome_states",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["apply_patch_set", "browser_click"],
+    runTurn: async (...args: unknown[]) => {
+      const onMutation = args[5] as ((event: unknown) => void) | undefined;
+      const onBrowser = args[9] as ((event: unknown) => void) | undefined;
+      onMutation?.({
+        type: "failed",
+        request: { path: "one.txt" },
+        code: "reconciliation-required",
+        reason: "one member committed and another member is still staged",
+      });
+      onBrowser?.({
+        type: "completed",
+        request: { action: "click" },
+        ok: false,
+        errorCode: "browser-ambiguous",
+        summary: "the adapter stopped after dispatch",
+      });
+      return { status: "completed" };
+    },
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runSingle("show outcomes");
+
+  const rendered = chunks.join("");
+  assert.match(rendered, /workspace change · partial\/uncertain · one\.txt/u);
+  assert.match(rendered, /browser · click · outcome unknown/u);
+});
+
 test("TUI renders one terminal activity line for a mixed memory batch", async () => {
   const chunks: string[] = [];
   const output = new Writable({

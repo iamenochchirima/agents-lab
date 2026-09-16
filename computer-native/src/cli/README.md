@@ -26,6 +26,10 @@ show their operation and call IDs. Ctrl-C is safe to repeat: the first press req
 cancellation and later presses do not create duplicate cancellation activity or terminal
 evidence.
 
+The activity lane also distinguishes a normal failure from an interrupted turn, a
+partial/uncertain filesystem mutation, and an outcome-unknown process or browser action.
+Those labels are observations, not claims that the external side effect was rolled back.
+
 Mixed durable-memory batches are rendered as one terminal activity line with their bounded
 member count; the renderer does not pretend that the batch is a cross-file transaction.
 

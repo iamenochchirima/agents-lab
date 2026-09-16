@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T16:01:30+02:00
+**Last updated:** 2026-09-16T16:06:30+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -162,8 +162,10 @@ tests, but it must never replace a configured real provider silently.
   for workspace, process, browser, and memory actions. Repeated Ctrl-C requests one
   cancellation transition, keeps the approval safe-default, and does not add duplicate
   cancellation activity.
-- The current validation is 257 passing tests across the package, with 88.58% line
-  coverage, 76.56% branch coverage, and 83.70% function coverage.
+- The TUI now labels interrupted turns, partial/uncertain filesystem mutations, and
+  outcome-unknown process or browser actions distinctly from ordinary failure.
+- The current validation is 258 passing tests across the package, with 88.60% line
+  coverage, 76.70% branch coverage, and 83.70% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -291,8 +293,11 @@ Delivered in this increment:
 - Active cancellation is idempotent in the TUI. The first Ctrl-C aborts the active
   controller and reports cancellation; repeated Ctrl-C input does not emit duplicate
   cancellation transitions.
+- Partial/uncertain filesystem outcomes and ambiguous process/browser outcomes are
+  rendered as outcome-unknown observations rather than ordinary failures.
 - Tests cover panel identity/expiry rendering, idle Ctrl-C, active cancellation, and
-  cancellation while an interactive approval or browser action is in progress.
+  cancellation while an interactive approval or browser action is in progress, plus
+  partial and outcome-unknown rendering.
 
 ## Scope
 
@@ -533,7 +538,7 @@ claim in this plan.
       action hash, and expiry in the approval view.
 - [x] Bind the selected decision to the prepared action identity and reject stale
       decisions.
-- [ ] Show retry, waiting, cancelling, interrupted, partial, and outcome-unknown states
+- [x] Show retry, waiting, cancelling, interrupted, partial, and outcome-unknown states
       distinctly from success and failure.
 - [ ] Make Ctrl+C work while idle, during model transport, during approval, and during
       active tool execution without terminating the shell unexpectedly.
