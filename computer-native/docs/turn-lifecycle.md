@@ -52,7 +52,10 @@ change request, optional before/after hashes, approval outcome, and commit bytes
 non-recursive directory preview for `delete_directory`, the bounded manifest metadata for
 `delete_directory_tree` and `restore_directory`, the exact-token metadata for
 `purge_quarantine`, or the quarantine/restore metadata for `delete` and `restore`, or
-source/destination hashes for `copy` and `move`.
+source/destination hashes for file `copy` and `move`, bounded source/destination manifests
+for directory transfers, and same-parent identity for `rename`. The effective approval
+timeout is persisted with the mutation so a recovered action cannot silently inherit a
+different review window.
 
 `executions/<execution-id>.json` records the immutable executable/argument identity,
 workspace cwd, sanitized environment profile and keys, limits, approval decision,
@@ -124,7 +127,7 @@ message.
 The configured workspace root is an authorization boundary for `list_directory`,
 `read_file`, `stat`, `search_files`, `list_quarantine`, `write_file`, `mkdir`, `delete_directory`,
 `delete_directory_tree`, `delete`, `restore`, `restore_directory`, `purge_quarantine`, `copy`,
-`move`, `apply_patch`, and `apply_patch_set`; it is not
+`move`, `rename`, `apply_patch`, and `apply_patch_set`; it is not
 automatically a process sandbox. Paths must be relative to the root, traversal and
 symlink escapes are rejected, reads, searches, and writes are bounded, and directory
 listings, metadata, matches, diffs, and tool output are bounded. `write_file` and

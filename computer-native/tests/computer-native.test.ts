@@ -87,6 +87,18 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
     () => config(tempDirectory(), { provider: "openrouter", model: "openai/example" }),
     (error: unknown) => error instanceof ComputerNativeError && error.code === "configuration",
   );
+  assert.throws(
+    () => config(tempDirectory(), { maxFileBytes: 0 }),
+    /max file bytes must be a positive integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { modelRetryAttempts: 0 }),
+    /model retry attempts must be a positive integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { deterministicDelayMs: -1 }),
+    /deterministic delay must be a non-negative integer/u,
+  );
 });
 
 test("disabled browser configuration does not advertise browser tools", async () => {
@@ -2158,8 +2170,8 @@ test("directory copy, move, and rename tools expose bounded approval evidence", 
     maxTreeBytes: 1_000,
     maxTreeDepth: 4,
   }), 2_000);
-  const requests: Array<{ operation: string; risk: string; manifestHash?: string; entryCount?: number }> = [];
-  const approve = async (request: { operation: string; risk: string; manifestHash?: string; entryCount?: number }) => {
+  const requests: Array<{ operation: string; risk: string; manifestHash?: string; entryCount?: number; approvalTimeoutMs?: number }> = [];
+  const approve = async (request: { operation: string; risk: string; manifestHash?: string; entryCount?: number; approvalTimeoutMs?: number }) => {
     requests.push(request);
     return { decision: "allow-once" as const };
   };
@@ -2174,6 +2186,7 @@ test("directory copy, move, and rename tools expose bounded approval evidence", 
   assert.equal(requests[0]?.risk, "copy-directory");
   assert.equal(requests[0]?.entryCount, 3);
   assert.equal(typeof requests[0]?.manifestHash, "string");
+  assert.equal(requests[0]?.approvalTimeoutMs, 120_000);
 
   const moved = await registry.execute({
     callId: "move_directory_call",

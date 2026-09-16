@@ -477,12 +477,14 @@ export class TerminalUi {
       extra: [
         ...(request.paths && request.paths.length > 0 ? [["paths", request.paths.join(", ")] as const] : []),
         ["change", change],
+        ["approval", `${request.approvalTimeoutMs ?? "?"}ms from prompt`],
         ["before", request.beforeHash ?? "absent"],
         ["after", request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")],
       ],
       preview: `${change}\n${request.diff}`,
       details: [
         `paths: ${request.paths?.join(", ") ?? request.path}`,
+        `approval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt`,
         `before: ${request.beforeHash ?? "absent"}`,
         `after: ${request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")}`,
         request.diff,

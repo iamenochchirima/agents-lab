@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T12:15:00+02:00
+**Last updated:** 2026-09-16T14:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -87,8 +87,17 @@ tests, but it must never replace a configured real provider silently.
 - The runtime now rejects model attempt completion and retry events when their request
   evidence is missing or out of order, and refuses any event that would follow a
   terminal lifecycle event.
-- The current validation is 213 passing tests across the package, including directory
-  security, tool approval, and restart-reconciliation cases.
+- Mutation records now persist the effective approval timeout, and the TUI renders that
+  timeout as part of the review context. A changed timeout is treated as an identity
+  change during durable mutation transitions.
+- Shared numeric runtime, process, browser, workspace, tool, retry, and memory limits
+  are validated at startup; invalid zero, negative, fractional, or non-finite values
+  fail before a session starts.
+- The initial model instruction now describes the implemented bounded directory
+  transfer and same-parent rename tools instead of limiting them to regular files.
+- The current validation is 213 passing tests across the package, 87.80% line coverage,
+  74.30% branch coverage, and 82.13% function coverage, including directory security,
+  tool approval, and restart-reconciliation cases.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.

@@ -1171,6 +1171,7 @@ export class ToolRegistry {
 
   private async executePreparedMutation(call: ModelToolCall, prepared: PreparedWorkspaceMutation, context: ToolExecutionContext, mutationId = `mutation_${randomUUID().replaceAll("-", "")}`): Promise<ToolExecutionResult> {
     const preview = prepared.operation === "patch-set" || prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "delete" || prepared.operation === "restore" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" || prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? prepared.preview : prepared.diff;
+    const approvalTimeoutMs = context.approvalTimeoutMs ?? 120_000;
     if (Buffer.byteLength(preview, "utf8") > this.maxOutputBytes) {
       throw new ToolExecutionError(`The proposed diff is larger than the ${this.maxOutputBytes}-byte review limit; split the change into smaller patches.`);
     }
@@ -1179,6 +1180,7 @@ export class ToolRegistry {
       mutationId,
       operation: prepared.operation,
       risk: mutationRisk(prepared),
+      approvalTimeoutMs,
       ...(prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { kind: prepared.kind } : {}),
       ...(prepared.operation === "patch-set" ? { paths: prepared.paths, members: prepared.members, journal: prepared.journal } : {}),
       path: prepared.path,
@@ -1198,7 +1200,7 @@ export class ToolRegistry {
     let decision: Awaited<ReturnType<MutationApproval>>;
     try {
       decision = context.approveMutation
-        ? await this.awaitApproval(context.approveMutation, request, context.signal, context.approvalTimeoutMs ?? 120_000)
+        ? await this.awaitApproval(context.approveMutation, request, context.signal, approvalTimeoutMs)
         : { decision: "unavailable" as const, reason: "No interactive approval channel is available; the mutation was not written." };
     } finally {
       context.resumeTurnDeadline?.();

@@ -60,6 +60,7 @@ export interface MutationApprovalRequest {
   readonly operation: WorkspaceMutationOperation;
   readonly risk: MutationRisk;
   readonly kind?: "file" | "directory";
+  readonly approvalTimeoutMs?: number;
   readonly paths?: readonly string[];
   readonly members?: readonly MutationMember[];
   readonly journal?: MutationJournal;
@@ -103,6 +104,7 @@ export interface WorkspaceMutationRecord {
   readonly operation: WorkspaceMutationOperation;
   readonly risk?: MutationRisk;
   readonly kind?: "file" | "directory";
+  readonly approvalTimeoutMs?: number;
   readonly paths?: readonly string[];
   readonly members?: readonly MutationMember[];
   readonly journal?: MutationJournal;
@@ -166,6 +168,7 @@ export function assertMutationTransition(previous: WorkspaceMutationRecord, next
     previous.operation !== next.operation ? "operation" : undefined,
     previous.risk !== next.risk ? "risk" : undefined,
     previous.kind !== next.kind ? "kind" : undefined,
+    previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
     JSON.stringify(previous.paths) !== JSON.stringify(next.paths) ? "paths" : undefined,
     !sameMembers(previous.members, next.members) ? "members" : undefined,
     previous.path !== next.path ? "path" : undefined,
