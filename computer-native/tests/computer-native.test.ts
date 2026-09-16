@@ -792,6 +792,34 @@ test("transcript append is idempotent by message identity and rejects conflictin
   );
 });
 
+test("transcript reads reject duplicated and malformed durable messages", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("detect transcript corruption", "deterministic", "deterministic/echo");
+  const user = (await session.readTranscript())[0];
+  assert.ok(user);
+  const transcriptPath = path.join(session.sessionDirectory, "transcript.jsonl");
+
+  await session.appendJsonLine(transcriptPath, user);
+  await assert.rejects(
+    () => session.readTranscript(),
+    /Transcript message .* is duplicated/u,
+  );
+
+  const malformedStateDir = path.join(stateDir, "malformed");
+  const malformedSession = await openSession(malformedStateDir);
+  await atomicWriteJson(path.join(malformedSession.sessionDirectory, "transcript.jsonl"), {
+    ...user,
+    sessionId: malformedSession.metadata.sessionId,
+    turnId: turn.turnId,
+    content: 42,
+  });
+  await assert.rejects(
+    () => malformedSession.readTranscript(),
+    /durable transcript message has an invalid record/u,
+  );
+});
+
 test("restart recovery repairs terminal evidence after a durable write acknowledgement fails", async () => {
   const stateDir = tempDirectory();
   let resultAcknowledgements = 0;

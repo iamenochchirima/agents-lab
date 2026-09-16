@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:15:18+02:00
+**Last updated:** 2026-09-16T21:20:30+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 308 tests passed after the transcript evidence identity increment.
-- `pnpm run coverage`: 308 tests passed, with 89.00% line coverage, 77.82% branch
-  coverage, and 84.79% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 309 tests passed after the transcript evidence identity increment.
+- `pnpm run coverage`: 309 tests passed, with 89.07% line coverage, 77.90% branch
+  coverage, and 84.89% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
