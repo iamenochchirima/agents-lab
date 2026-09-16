@@ -1,8 +1,8 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T21:38:28+02:00`
-**Status:** Active
+**Last updated:** `2026-09-16T21:51:48+02:00`
+**Status:** Completed
 **Owner:** Agent Harness Lab
 
 ## Start here
@@ -274,8 +274,15 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
       submit a prompt, and inspect the returned model ID and real response.
 - [x] Re-run the same runner acceptance check for Inngest after its local function service
       and Dev Server became available.
-- [ ] Run the same acceptance check for Trigger.dev, DBOS, and Hatchet after their local
-      dependencies and credentials are available.
+- [x] Run the same acceptance check for DBOS and Hatchet after bringing up their local
+      dependencies without Docker. DBOS used an isolated temporary PostgreSQL instance
+      with the canonical `127.0.0.1:55432` profile; Hatchet used an isolated embedded
+      data directory so its native engine and worker could start without colliding with
+      another local Hatchet process.
+- [x] Check Trigger.dev availability through the same acceptance path. The runner
+      reported `TRIGGER_SECRET_KEY is not configured for the Trigger.dev profile`, so
+      no Trigger run was claimed or fabricated; its real acceptance remains an explicit
+      credential-gated follow-up.
 - [x] Open Compare, select two reachable platforms, choose one model once, run, and inspect
       both run records.
 - [x] Disconnect or unset the key and verify the UI shows an actionable error without a
@@ -330,7 +337,21 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - A fresh real OpenRouter fan-out completed concurrently on Temporal (`91e9fc4b-8e61-4b13-bf59-33e88fa0a105`) and Restate (`de45c4b1-e18c-405b-8e0f-3adad707a7eb`) at `2026-09-16T20:49:00+02:00` with `cohere/north-mini-code:free`. Both run manifests recorded `provider: openrouter`, both returned terminal results and usage, and no fake model was involved. This was exercised at the API boundary; browser-level Compare acceptance is recorded below.
 - Browser Compare acceptance completed at `2026-09-16T21:18:41+02:00` against the local Vite app and Lab server. The UI selected `cohere/north-mini-code:free` once and concurrently completed Temporal (`78977acc-0463-4f0e-ac52-226e888e1a5f`) and Restate (`5c9108e8-556f-4b92-8ece-6e91044e38e5`). Both manifests recorded `provider: openrouter`; both results were terminal with usage and the expected smoke output.
 - Evidence inspection for the browser Compare runs found `config.json`, `events.jsonl`, `metrics.json`, `trajectory.json`, `result.json`, and native evidence for both runs. A secret-pattern scan found no authorization header, API key, or provider secret in either run directory.
-- Local availability snapshot at `2026-09-16T21:14:28+02:00`: Temporal, Restate, LangGraph, Mastra, and Vercel Workflows were reachable. Inngest and DBOS returned `fetch failed`; Trigger.dev lacked `TRIGGER_SECRET_KEY`; Hatchet's embedded sidecar exited before readiness. Those four remain unvalidated locally and are not claimed as runnable in this acceptance record.
+- Local availability snapshot at `2026-09-16T21:48:00+02:00`: Temporal, Restate,
+  LangGraph, Mastra, Vercel Workflows, Inngest, DBOS, and Hatchet were reachable in
+  the isolated acceptance topology. Trigger.dev remained unavailable because
+  `TRIGGER_SECRET_KEY` was not configured. The consolidated browser pass completed
+  real OpenRouter runs with `cohere/north-mini-code:free` for:
+  - Temporal: `8c4f93ab-f860-47a7-807c-cb1768764932`
+  - Restate: `abbdcf8c-bf28-46a5-85ac-1a6ddc777162`
+  - LangGraph: `d43a0d54-c81d-466e-b9b3-621b209c256f`
+  - Mastra: `1eb37c19-7141-453e-ad9d-e48722f3ffbe`
+  - Vercel Workflows: `fb85ce2f-b35b-484e-a992-6aed60d3bacf`
+  - Inngest: `c5a21f88-e6fe-439e-b33e-5ade4a867637`
+  - DBOS: `3e4d400e-faf8-4fc9-b135-ad97739e2992`
+  - Hatchet: `d1488f3e-b595-41e2-9907-881d4226ba20`
+  Each completed run recorded the selected provider/model, terminal result, native
+  reference, trajectory, metrics, and no secret-like fields in its API projection.
 
 ## Required validation commands
 
@@ -352,15 +373,15 @@ do not mark it runnable or fabricate an external result.
 
 ## Completion gate
 
-- [ ] Every applicable implementation and test checkbox is complete.
+- [x] Every applicable implementation and test checkbox is complete.
 - [x] The UI has one shared searchable real-model picker and no fake model control.
 - [x] Every active non-AWS platform has a real OpenRouter execution path or a documented,
-      tested, explicitly blocked dependency with no false readiness claim; four remain
-      locally unvalidated because their services or credentials are unavailable.
+      tested, explicitly blocked dependency with no false readiness claim; Trigger.dev
+      is the only platform not live-executed because its required credential is absent.
 - [x] Failure, timeout, cancellation, retry, ambiguous outcome, and secret-redaction
       behaviour is implemented and tested.
 - [x] Documentation and examples match the implementation.
-- [ ] Required validation commands and manual checks are recorded.
+- [x] Required validation commands and manual checks are recorded.
 
 ## Commit discipline and handoff
 
@@ -401,10 +422,10 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
-- [ ] Commit documentation and plan completion records separately when practical.
-- [ ] Before each commit, inspect status and the exact staged diff; preserve unrelated
+- [x] Commit documentation and plan completion records separately when practical.
+- [x] Before each commit, inspect status and the exact staged diff; preserve unrelated
       Computer Native and generated `server/lab/` changes.
-- [ ] Record all implementation commit hashes in the completion record.
+- [x] Record all implementation commit hashes in the completion record.
 
 ## Release impact record
 
@@ -426,18 +447,39 @@ do not mark it runnable or fabricate an external result.
 
 Complete this section only when archiving the plan.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-16T21:51:48+02:00`
+**Commits:** `e9edb4f, dce6e9c, cdf847f, c626a74, c04ca49, 2b0dc4b, e734081, cfe12e7, a3c34ea, d63bf4e, cd10341, 7832961, 363e50b, d0c47ce, 0b03650, 4987a42, 042a7b7, d551ef2, 7a65729, 2789f0e, 9371cc9, 5658d4c, 96914bc, 43ede1e, 2e9a51e, 3e56e25, 22d66eb, 88afa51, bd122cc, fd813b6, 829e322, ccff5f4, cf41f92, 2db48d9`
 
 ### Validation
 
-- `[command]` — `[passed/failed and concise result]`
-- `[manual check]` — `[what was observed]`
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server test` — 243 passed, 2 intentionally
+  skipped opt-in native-provider tests, 0 failed.
+- `pnpm --filter @agent-harness-lab/web run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/web run build` — passed; only the existing Vite
+  large-chunk warning remained.
+- `bash -n scripts/run_local_stack.sh` — passed.
+- `node --test apps/web/tests/browser/model-picker.browser.test.mjs` — passed.
+- `AGENTLAB_RUN_LIVE_PLATFORM_UI=1 AGENTLAB_API_URL=http://127.0.0.1:4320
+  AGENTLAB_WEB_URL=http://127.0.0.1:5174 node --test
+  apps/web/tests/browser/live-platform-runners.browser.test.mjs` — passed; eight
+  platforms completed real OpenRouter runs, and Trigger.dev was explicitly reported
+  unavailable because its credential was absent.
+- `git diff --check` — passed.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- Trigger.dev's live acceptance requires a configured `TRIGGER_SECRET_KEY` and a
+  reachable Trigger.dev API/task worker. The implementation, mocked task path, and
+  unavailable-state handling are covered; no external credential was invented.
+- LangGraph's live run does not currently receive provider token usage from its strict
+  Python wire response, so its normalized usage remains unavailable even though the
+  real model response and lifecycle evidence are present.
+- The browser acceptance used isolated local service topologies for DBOS PostgreSQL
+  and Hatchet embedded state; these prove local execution wiring, not hosted-provider
+  availability or production capacity.
 
 ### Historical-scope note
 
-`[Record any later architecture change that makes this scope or terminology outdated.]`
+No later architecture change is recorded for this completed slice. The separate
+Computer Native implementation remains intentionally outside its scope.
