@@ -300,7 +300,15 @@ test("lifecycle events enforce process, browser, and memory action ordering", as
     () => turn.appendEvent("ProcessStarted", { executionId: "process_order", callId: "process_call", pid: 123 }),
     /before ProcessApprovalDecided|cannot follow ProcessPrepared/u,
   );
-  await turn.appendEvent("ProcessPrepared", { executionId: "process_order", callId: "process_call" });
+  const prepared = await turn.appendEvent("ProcessPrepared", { executionId: "process_order", callId: "process_call" });
+  assert.equal(
+    (await turn.appendEvent("ProcessPrepared", { executionId: "process_order", callId: "process_call" })).eventId,
+    prepared.eventId,
+  );
+  await assert.rejects(
+    () => turn.appendEvent("ProcessPrepared", { executionId: "process_order", callId: "process_call", command: "different" }),
+    /repeated with a different payload/u,
+  );
   await assert.rejects(
     () => turn.appendEvent("ProcessStarted", { executionId: "process_order", callId: "process_call", pid: 123 }),
     /before ProcessApprovalDecided|cannot follow ProcessPrepared/u,

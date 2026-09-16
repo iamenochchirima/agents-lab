@@ -281,6 +281,36 @@ function findIdempotentModelEvent(
   return candidate;
 }
 
+function lifecycleEventIdentity(type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): readonly [string, string] | undefined {
+  // Progress is a sequence of distinct journal observations for one mutation,
+  // not a retryable one-shot lifecycle phase.
+  if (type === "WorkspaceMutationProgress") return undefined;
+  const actionField = ACTION_LIFECYCLE_IDENTITY_FIELDS[type]
+    ?? (isWorkspaceMutationLifecycleEvent(type) ? "mutationId" : undefined)
+    ?? (type === "MemorySearched" ? "searchId" : undefined)
+    ?? (type === "BrowserArtifactCreated" ? "artifactId" : undefined);
+  if (!actionField) return undefined;
+  const value = payload[actionField];
+  return typeof value === "string" && value.length > 0 ? [actionField, value] : undefined;
+}
+
+function findIdempotentActionEvent(
+  existing: readonly LifecycleEvent[],
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): LifecycleEvent | undefined {
+  const identity = lifecycleEventIdentity(type, payload);
+  if (!identity) return undefined;
+  const [field, value] = identity;
+  const candidate = existing.find((event) => event.type === type && event.payload[field] === value);
+  if (!candidate) return undefined;
+  const normalizedPayload = redactRecord(payload);
+  if (stableStringify(candidate.payload) !== stableStringify(normalizedPayload)) {
+    throw new ComputerNativeError("persistence", `${type} evidence was repeated with a different payload for the same identity.`);
+  }
+  return candidate;
+}
+
 function validateRound(round: RoundEvidence, sessionId: SessionId, turnId: TurnRecord["turnId"]): void {
   if (round.schemaVersion !== 1 || round.sessionId !== sessionId || round.turnId !== turnId || !Number.isInteger(round.round) || round.round < 1) {
     throw new ComputerNativeError("persistence", `Turn '${turnId}' contains an invalid round record. Repair it before continuing.`);
@@ -624,6 +654,8 @@ export class TurnStore {
     }
     const existingModelEvent = findIdempotentModelEvent(existing, type, payload);
     if (existingModelEvent) return existingModelEvent;
+    const existingActionEvent = findIdempotentActionEvent(existing, type, payload);
+    if (existingActionEvent) return existingActionEvent;
     assertLifecycleEventOrder(existing, type, payload);
     const event: LifecycleEvent = {
       schemaVersion: 1,

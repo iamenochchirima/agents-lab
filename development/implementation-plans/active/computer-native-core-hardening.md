@@ -191,8 +191,11 @@ tests, but it must never replace a configured real provider silently.
 - Model request, attempt completion, retry, and completion events are now idempotent by
   their stable identity when the repeated payload is identical; conflicting repeats fail
   closed instead of appending duplicate model evidence.
-- The latest validation is 268 passing tests across the package, with 88.82% line
-  coverage, 76.92% branch coverage, and 83.99% function coverage. Coverage is from
+- One-shot process, browser, memory, workspace, search, and artifact lifecycle events
+  now have the same idempotent identity check. Workspace progress remains append-only so
+  repeated journal observations are preserved rather than collapsed.
+- The latest validation is 268 passing tests across the package, with 88.84% line
+  coverage, 77.08% branch coverage, and 84.04% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -652,6 +655,8 @@ claim in this plan.
       tool actions, and persisted records.
 - [x] Make model lifecycle evidence idempotent for identical acknowledgement-loss retries
       and reject conflicting duplicate payloads.
+- [x] Make one-shot action lifecycle evidence idempotent while preserving repeatable
+      workspace progress observations.
 - [ ] Document which controls are policy controls and which guarantees require a future
       OS/container isolation profile.
 
