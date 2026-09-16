@@ -1,5 +1,6 @@
 import type { Writable } from "node:stream";
 import { redactSecrets } from "../runtime/errors.js";
+import { sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
 
 const PANEL_WIDTH = 72;
 const LABEL_WIDTH = 11;
@@ -80,7 +81,7 @@ function redactApprovalValue(value: string, secrets: readonly string[]): string 
     .replace(/-----BEGIN [^-\n]*PRIVATE KEY-----[\s\S]*?-----END [^-\n]*PRIVATE KEY-----/giu, "[REDACTED PRIVATE KEY]")
     .replace(/\bsk(?:-[a-z0-9]+)?-[a-z0-9._-]{12,}\b/giu, "[REDACTED]")
     .replace(/\b(?:api[_-]?key|access[_-]?token|password|secret|token)\s*[:=]\s*[^\s,;]+/giu, (match) => `${match.slice(0, match.indexOf(match.match(/[:=]/u)?.[0] ?? "=") + 1)}[REDACTED]`);
-  return result;
+  return sanitizeTerminalText(result);
 }
 
 function panelRule(title: string, width: number): string {
@@ -92,6 +93,7 @@ function panelBottom(width: number): string {
 }
 
 function panelRow(label: string, value: string, width: number, secrets: readonly string[]): string {
+  label = sanitizeTerminalSingleLine(label);
   const safeValue = shorten(singleLine(redactApprovalValue(value, secrets)), width - LABEL_WIDTH - 1);
   const content = `${label.padEnd(LABEL_WIDTH)} ${safeValue}`;
   return `│ ${content}${" ".repeat(Math.max(0, width - content.length))} │`;
@@ -104,7 +106,8 @@ function style(colour: boolean, code: string, value: string): string {
 export function renderApprovalPanel(panel: ApprovalPanel, options: { readonly colour: boolean; readonly width?: number } = { colour: false }): string {
   const width = options.width ?? PANEL_WIDTH;
   const secrets = panel.redactionSecrets ?? [];
-    const preview = shorten(redactApprovalValue(panel.preview, secrets), PREVIEW_LIMIT);
+  const title = sanitizeTerminalSingleLine(panel.title);
+  const preview = shorten(redactApprovalValue(panel.preview, secrets), PREVIEW_LIMIT);
   const rows: readonly (readonly [string, string])[] = [
     ["risk", panel.risk],
     ["action", panel.action],
@@ -116,7 +119,7 @@ export function renderApprovalPanel(panel: ApprovalPanel, options: { readonly co
     ["preview", preview],
   ];
   const lines = [
-    style(options.colour, "33;1", panelRule(panel.title, width)),
+    style(options.colour, "33;1", panelRule(title, width)),
     ...rows.map(([label, value]) => style(options.colour, "2", panelRow(label, value, width, secrets))),
     style(options.colour, "33;1", panelBottom(width)),
   ];

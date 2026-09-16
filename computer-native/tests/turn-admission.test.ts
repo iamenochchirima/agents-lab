@@ -27,18 +27,18 @@ test("runtime admission rejects a concurrent turn before its provider is invoked
   try {
     const session = await SessionStore.open(stateDir);
     const config = loadConfig({ stateDir, workspaceRoot: stateDir, browserEnabled: false, timeoutMs: 2_000 }, {});
-    let firstStarted = false;
+    let resolveFirstStarted: (() => void) | undefined;
+    const firstStarted = new Promise<void>((resolve) => {
+      resolveFirstStarted = resolve;
+    });
     let secondProviderCalls = 0;
     const first = runTurn({
       session,
-      provider: providerThatWaitsUntilReleased(() => { firstStarted = true; }, "first result"),
+      provider: providerThatWaitsUntilReleased(() => { resolveFirstStarted?.(); }, "first result"),
       config,
       userPrompt: "first turn",
     });
-    for (let attempt = 0; attempt < 100 && !firstStarted; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    }
-    assert.equal(firstStarted, true);
+    await firstStarted;
     await assert.rejects(
       () => session.recoverInterruptedTurns(),
       /already in use/u,

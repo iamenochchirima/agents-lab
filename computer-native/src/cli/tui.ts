@@ -10,6 +10,7 @@ import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, Mem
 import { redactSecrets } from "../runtime/errors.js";
 import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 import type { ModelProviderSummary } from "../models/registry.js";
+import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
 
 const COMMANDS = ["/help", "/status", "/models", "/history", "/memory", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
@@ -63,59 +64,6 @@ function shorten(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function singleLine(value: string): string {
-  return value.replace(/\s+/gu, " ").trim();
-}
-
-function isCsiFinal(value: string): boolean {
-  const code = value.charCodeAt(0);
-  return code >= 0x40 && code <= 0x7e;
-}
-
-function sanitizeTerminalChunk(value: string, pending: string): { readonly text: string; readonly pending: string } {
-  const input = pending + value;
-  let text = "";
-  let index = 0;
-  while (index < input.length) {
-    if (input[index] !== "\u001b") {
-      const code = input.charCodeAt(index);
-      if (code === 0x09 || code === 0x0a || code >= 0x20 && code !== 0x7f) text += input[index];
-      index += 1;
-      continue;
-    }
-    if (index + 1 >= input.length) return { text, pending: input.slice(index) };
-    const kind = input[index + 1];
-    if (kind === "[") {
-      let end = index + 2;
-      while (end < input.length && !isCsiFinal(input[end] ?? "")) end += 1;
-      if (end >= input.length) return { text, pending: input.slice(index) };
-      index = end + 1;
-      continue;
-    }
-    if (kind === "]" || kind === "P" || kind === "^" || kind === "_" || kind === "X") {
-      let end = index + 2;
-      let terminator = -1;
-      while (end < input.length) {
-        if (input[end] === "\u0007") {
-          terminator = end;
-          break;
-        }
-        if (input[end] === "\u001b" && input[end + 1] === "\\") {
-          terminator = end + 1;
-          break;
-        }
-        end += 1;
-      }
-      if (terminator < 0) return { text, pending: input.slice(index) };
-      index = terminator + 1;
-      continue;
-    }
-    // Drop an unrecognised two-byte escape rather than allowing it to reach the terminal.
-    index += 2;
-  }
-  return { text, pending: "" };
-}
-
 function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): string {
   const supported = [
     capabilities.streaming ? "streaming" : undefined,
@@ -137,8 +85,8 @@ function panelBottom(): string {
 }
 
 function panelRow(label: string, value: string): string {
-  const safeLabel = shorten(label, LABEL_WIDTH).padEnd(LABEL_WIDTH);
-  const clipped = shorten(value, PANEL_WIDTH - LABEL_WIDTH - 1);
+  const safeLabel = shorten(sanitizeTerminalSingleLine(label), LABEL_WIDTH).padEnd(LABEL_WIDTH);
+  const clipped = shorten(sanitizeTerminalSingleLine(value), PANEL_WIDTH - LABEL_WIDTH - 1);
   const content = `${safeLabel} ${clipped}`;
   return `│ ${content}${" ".repeat(Math.max(0, PANEL_WIDTH - content.length))} │`;
 }
@@ -176,6 +124,7 @@ export class TerminalUi {
   }
 
   private style(code: string, value: string): string {
+    value = sanitizeTerminalText(value);
     return this.colour ? `\u001b[${code}m${value}\u001b[0m` : value;
   }
 
@@ -197,6 +146,7 @@ export class TerminalUi {
 
   private printActivity(icon: string, message: string, colour = "2"): void {
     this.closeResponseLine();
+    message = sanitizeTerminalSingleLine(message);
     this.write(`${this.style(colour, icon)} ${this.style("2", message)}\n`);
   }
 
@@ -228,6 +178,7 @@ export class TerminalUi {
   }
 
   private printStatusLine(): void {
+    this.status = sanitizeTerminalSingleLine(this.status);
     const elapsed = this.startedAt > 0 ? ` · ${formatDuration(Date.now() - this.startedAt)}` : "";
     const round = this.statusRound > 0 ? ` · round ${this.statusRound}` : "";
     this.write(`${this.style("2", "│")} ${this.style("33;1", this.statusIcon())} ${this.style("2", this.status)}${this.style("2", `${round}${elapsed}`)}\n`);
@@ -345,7 +296,7 @@ export class TerminalUi {
         }
         return true;
       case "evidence":
-        this.write(`\nEvidence directory:\n${this.application.evidenceDirectory}\n\n`);
+        this.printEvidence();
         return true;
       case "clear":
         if (this.interactive) this.write("\u001b[2J\u001b[H");
@@ -357,6 +308,11 @@ export class TerminalUi {
         this.write(`\nUnknown command '${command.name}'. Type /help to see available commands.\n\n`);
         return true;
     }
+  }
+
+  private printEvidence(): void {
+    this.write("\nEvidence directory:\n");
+    this.write(sanitizeTerminalText(this.application.evidenceDirectory) + "\n\n");
   }
 
   private handleEvent(event: TurnEvent): void {
@@ -496,7 +452,7 @@ export class TerminalUi {
         const outcomeUnknown = !event.ok && event.errorCode === "browser-ambiguous";
         this.status = outcomeUnknown ? "browser action outcome unknown" : event.ok ? "browser action completed" : "browser action failed";
         const dialogText = event.dialog
-          ? ` · dialog ${event.dialog.type}: ${singleLine(redactSecrets(event.dialog.message, [process.env.OPENROUTER_API_KEY ?? ""]))}`
+          ? ` · dialog ${event.dialog.type}: ${sanitizeTerminalSingleLine(redactSecrets(event.dialog.message, [process.env.OPENROUTER_API_KEY ?? ""]))}`
           : "";
         this.printActivity(outcomeUnknown ? "?" : event.ok ? "✓" : "×", `browser · ${event.request.action} · ${outcomeUnknown ? "outcome unknown" : event.summary}${dialogText}${event.cancellationConfirmed === true ? " · cancellation confirmed" : event.cancellationConfirmed === false ? " · cancellation unconfirmed" : ""}`, outcomeUnknown ? "33;1" : event.ok ? "32;1" : "31;1");
         break;
@@ -958,6 +914,7 @@ export class TerminalUi {
   }
 
   async runSingle(message: string): Promise<TurnResult> {
+    message = sanitizeTerminalText(message);
     this.write(`${this.style("36;1", "You")}\n${message.trim()}\n`);
     return this.runTurn(message);
   }

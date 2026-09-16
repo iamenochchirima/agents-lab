@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:34:59+02:00
+**Last updated:** 2026-09-16T23:44:52+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -211,6 +211,13 @@ tests, but it must never replace a configured real provider silently.
   across chunks, and unfinished assistant lines are closed before lifecycle activity is
   printed. This prevents model output from controlling the terminal or colliding with
   tool/progress lines; full viewport/scrollback work remains open.
+- Terminal safety is now shared by streamed text, lifecycle activity, session panels,
+  history/evidence output, and approval review values. Control sequences from model,
+  file, browser, or process-derived text cannot alter the terminal; full viewport,
+  scrollback, redraw, and accessibility work remains open.
+- The serialized package suite now uses an explicit provider-start barrier for turn
+  admission coverage instead of a timing-based polling window, so instrumentation does
+  not create asynchronous activity after the test has cleaned up its workspace.
 - The TUI now labels interrupted turns, partial/uncertain filesystem mutations, and
   outcome-unknown process or browser actions distinctly from ordinary failure.
 - Built-in model adapters now expose capability metadata, and the factory validates
@@ -1616,6 +1623,8 @@ claim in this plan.
       interrupted, partial, ambiguous, failed, and completed states.
 - [x] Sanitize streamed model control sequences, including sequences split across chunks,
       and terminate assistant output before rendering lifecycle activity.
+- [x] Sanitize lifecycle summaries, session/history/evidence values, and approval review
+      values before rendering them to the terminal.
 
 ### Integration tests
 

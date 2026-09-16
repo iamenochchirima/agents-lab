@@ -6181,6 +6181,14 @@ test("TUI sanitizes streamed output and separates it from activity", async () =>
         round: 1,
         call: { callId: "call_stream_safety", name: "read_file", argumentsJson: '{"path":"note.txt"}' },
       });
+      onEvent?.({
+        type: "tool_completed",
+        round: 1,
+        callId: "call_stream_safety",
+        name: "read_file",
+        ok: true,
+        summary: "summary\u001b[31munsafe\u001b[0m\u0001",
+      });
       return {
         schemaVersion: 1 as const,
         sessionId: asSessionId("session_tui_stream_safety"),
@@ -6201,6 +6209,7 @@ test("TUI sanitizes streamed output and separates it from activity", async () =>
   const rendered = chunks.join("");
   assert.doesNotMatch(rendered, /\u001b|attacker-controlled title|\u0001|\u0007/u);
   assert.match(rendered, /Agent › answer\n.*read_file · started/su);
+  assert.match(rendered, /read_file · summaryunsafe/u);
 });
 
 test("interactive TUI reviews and renders a local process execution", { timeout: 2_000 }, async () => {

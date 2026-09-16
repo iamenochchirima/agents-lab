@@ -58,6 +58,20 @@ test("approval panel renders the required context and redacts secrets", () => {
   assert.doesNotMatch(rendered, /secret-value/u);
 });
 
+test("approval panel strips terminal controls from untrusted review values", () => {
+  const rendered = renderApprovalPanel({
+    ...panel,
+    title: "Proposed\u001b[31m workspace change\u001b[0m",
+    target: "notes\u001b[2J.md",
+    preview: "diff\u001b]0;attacker title\u0007safe\u0001",
+  }, { colour: false });
+
+  assert.doesNotMatch(rendered, /\u001b|\u0001|\u0007/u);
+  assert.match(rendered, /Proposed workspace change/u);
+  assert.match(rendered, /notes\.md/u);
+  assert.match(rendered, /diffsafe/u);
+});
+
 test("approval prompt supports details and line-input fallback", async () => {
   const { output, chunks } = captureOutput();
   const answers = ["v", "a"];

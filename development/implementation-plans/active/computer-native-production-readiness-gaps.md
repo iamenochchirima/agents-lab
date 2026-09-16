@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:34:59+02:00
+**Last updated:** 2026-09-16T23:44:52+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 327 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 327 tests passed, with 89.55% line coverage, 78.97% branch
-  coverage, and 85.00% function coverage. The package commands serialize browser/profile,
+- `pnpm test`: 328 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 328 tests passed, with 89.53% line coverage, 78.96% branch
+  coverage, and 85.11% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -105,6 +105,12 @@ readiness:
 - Streamed model output is sanitized before it reaches the terminal, including control
   sequences split across provider chunks, and response lines are separated from activity
   output. Full viewport/scrollback, resize redraw, and accessibility work remain open.
+- The same terminal-safety boundary now covers lifecycle summaries, session/history/
+  evidence values, and approval review values. Full viewport/scrollback, resize redraw,
+  and accessibility work remain open.
+- Admission coverage now synchronizes on provider start instead of polling for a fixed
+  interval, removing an instrumentation-sensitive cleanup race from the reproducible
+  package checks.
 - Model requests are rejected before provider transport when their serialized size
   exceeds `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`; streamed response text and tool-call
   fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
