@@ -3530,7 +3530,7 @@ test("interactive TUI reviews and renders a local process execution", { timeout:
 
   const rendered = chunks.join("").replace(/\u001b\[[0-9;]*m/gu, "");
   assert.match(rendered, /Proposed local process/);
-  assert.match(rendered, /Run this command\? \[y\/N\]/);
+  assert.match(rendered, /Choice \[a\] approve once/);
   assert.match(rendered, /command · approved/);
   assert.match(rendered, /command · running · pid 123/);
   assert.match(rendered, /command · completed/);
@@ -3668,7 +3668,7 @@ test("interactive TUI owns an apply_patch approval question and defaults to expl
 
   const rendered = chunks.join("").replace(/\u001b\[[0-9;]*m/gu, "");
   assert.match(rendered, /Proposed workspace change/);
-  assert.match(rendered, /Apply this change\? \[y\/N\]/);
+  assert.match(rendered, /Choice \[a\] approve once/);
   assert.match(rendered, /approved once/);
   assert.match(rendered, /--- a\/note\.md/);
 });

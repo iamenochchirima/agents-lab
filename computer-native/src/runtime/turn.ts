@@ -10,6 +10,8 @@ import { ProcessSecurityPolicy } from "../security/process-policy.js";
 import { Workspace } from "../workspace/workspace.js";
 import type { MutationApproval, MutationEvent, WorkspaceMutationRecord } from "../workspace/mutation.js";
 import type { SessionStore } from "../persistence/session-store.js";
+import type { MemoryActionRecord, MemoryApproval, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
+import type { MemoryStore } from "../memory/store.js";
 import { ComputerNativeError, ModelProviderError, redactSecrets, safeErrorMessage } from "./errors.js";
 import type {
   ModelMessage,
@@ -33,7 +35,8 @@ export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryDailyMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
+  readonly memory?: MemoryStore;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
   readonly onText?: (text: string) => void;
@@ -44,6 +47,9 @@ export interface RunTurnOptions {
   readonly onProcess?: (event: ProcessToolEvent) => void | Promise<void>;
   readonly approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>;
   readonly onBrowser?: (event: BrowserToolEvent) => void | Promise<void>;
+  readonly approveMemory?: MemoryApproval;
+  readonly onMemory?: (event: MemoryEvent) => void | Promise<void>;
+  readonly onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void | Promise<void>;
 }
 
 interface AbortContext {
@@ -286,6 +292,8 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       workspace,
       options.config.maxToolOutputBytes,
       processPolicy ? { policy: processPolicy, runner: new LocalProcessRunner((prepared) => processPolicy.verify(prepared)), redactionSecrets: options.config.openRouterApiKey ? [options.config.openRouterApiKey] : [] } : undefined,
+      undefined,
+      options.memory ? { store: options.memory, maxResults: options.config.memoryMaxResults } : undefined,
     );
   }
   const turn = await options.session.admitTurn(options.userPrompt, options.provider.provider, options.provider.model);
@@ -556,6 +564,86 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
     }
     await options.onBrowser?.(event);
   };
+  const recordMemory = async (event: MemoryEvent): Promise<void> => {
+    const request = event.request;
+    const base = {
+      operationId: request.operationId,
+      callId: request.callId,
+      operation: request.operation,
+      recordId: request.recordId ?? null,
+      scope: request.scope,
+      sourcePath: request.sourcePath,
+      beforeContentHash: request.beforeContentHash ?? null,
+      afterContentHash: request.afterContentHash ?? null,
+      risk: request.risk,
+    };
+    const action: MemoryActionRecord = {
+      schemaVersion: 1,
+      operationId: request.operationId,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      callId: request.callId,
+      operation: request.operation,
+      ...(request.recordId ? { recordId: request.recordId } : {}),
+      scope: request.scope,
+      sourcePath: request.sourcePath,
+      ...(request.beforeContentHash ? { beforeContentHash: request.beforeContentHash } : {}),
+      ...(request.afterContentHash ? { afterContentHash: request.afterContentHash } : {}),
+      inputHash: request.afterContentHash ?? request.beforeContentHash ?? "unknown",
+      status: event.type === "prepared"
+        ? "proposed"
+        : event.type === "approval_decided"
+          ? event.decision.decision === "allow-once" ? "approved" : "denied"
+          : event.type === "committed" || event.type === "forgotten"
+            ? "committed"
+            : "failed",
+      ...(event.type === "approval_decided" ? { decision: event.decision.decision } : {}),
+      ...(event.type === "approval_decided" && "reason" in event.decision && event.decision.reason ? { reason: event.decision.reason } : {}),
+      ...(event.type === "failed" ? { reason: event.reason } : {}),
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeMemoryAction(action);
+    if (event.type === "prepared") {
+      await turn.appendEvent("MemoryPrepared", { ...base, contentPreview: bounded(redactSecrets(request.contentPreview, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]), 2_000) });
+    } else if (event.type === "approval_decided") {
+      await turn.appendEvent("MemoryApprovalDecided", { ...base, decision: event.decision.decision });
+    } else if (event.type === "committed") {
+      await turn.appendEvent("MemoryCommitted", { ...base, recordId: event.record.id, contentHash: event.record.contentHash });
+    } else if (event.type === "forgotten") {
+      await turn.appendEvent("MemoryForgotten", base);
+    } else {
+      await turn.appendEvent("MemoryFailed", { ...base, reason: event.reason });
+    }
+    await options.onMemory?.(event);
+  };
+  const recordMemorySearch = async (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">): Promise<void> => {
+    const record: MemorySearchEvidence = {
+      ...evidence,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeMemorySearch(record);
+    await turn.appendEvent("MemorySearched", {
+      searchId: record.searchId,
+      callId: record.callId,
+      queryHash: record.queryHash,
+      scopes: record.scopes ?? null,
+      resultCount: record.resultCount,
+      resultIds: record.resultIds,
+      truncated: record.truncated,
+    });
+    await options.onMemorySearch?.(evidence);
+  };
+  const memory = options.memory ? await options.memory.bootstrap() : [];
+  if (options.memory) {
+    await turn.appendEvent("MemoryBootstrapLoaded", {
+      selectedIds: memory.map((record) => record.id),
+      selectedCount: memory.length,
+      scopes: [...new Set(memory.map((record) => record.scope))],
+      maxChars: options.config.memoryBootstrapMaxChars,
+    });
+  }
   const request = buildInitialContext({
     sessionId: turn.sessionId,
     turnId: turn.turnId,
@@ -565,6 +653,8 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
     userPrompt: options.userPrompt,
     history,
     tools: tools.definitions,
+    memory,
+    memoryMaxChars: options.config.memoryBootstrapMaxChars,
   });
   await turn.appendEvent("TurnStarted", { provider: request.provider, model: request.model });
   await turn.updateState("streaming");
@@ -660,6 +750,9 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           onProcess: recordProcess,
           approveBrowser: options.approveBrowser,
           onBrowser: recordBrowser,
+          approveMemory: options.approveMemory,
+          onMemory: recordMemory,
+          onMemorySearch: recordMemorySearch,
           processCallLimitReached,
         });
         await turn.appendRound({

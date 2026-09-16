@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { rm } from "node:fs/promises";
 import type { AppConfig } from "../config/config.js";
 import { BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, PlaywrightBrowserAdapter, cleanupOrphanedBrowserProfiles, type BrowserApprovalDecision, type BrowserApprovalRequest } from "../browser/index.js";
@@ -14,6 +15,8 @@ import type { TranscriptMessage, TurnEvent, TurnResult } from "./contracts.js";
 import type { MutationApproval, MutationEvent } from "../workspace/mutation.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
+import type { MemoryApproval, MemoryEvent, MemorySearchEvidence, MemoryStatus } from "../memory/contracts.js";
+import { MemoryStore } from "../memory/store.js";
 import { runTurn } from "./turn.js";
 
 export interface ChatApplication {
@@ -23,14 +26,16 @@ export interface ChatApplication {
   readonly workspaceRoot: string;
   readonly evidenceDirectory: string;
   readonly toolNames: readonly string[];
+  readonly readMemoryStatus?: () => Promise<MemoryStatus>;
   recoverInterruptedTurns(): Promise<readonly TurnResult[]>;
   readTranscript(): Promise<readonly TranscriptMessage[]>;
-  runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void): Promise<TurnResult>;
+  runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void): Promise<TurnResult>;
   close(): Promise<void>;
 }
 export async function openChatApplication(config: AppConfig, requestedSessionId?: string): Promise<ChatApplication> {
   const session = await SessionStore.open(config.stateDir, requestedSessionId);
   const lock: SessionLock = await session.acquireLock();
+  let memory: MemoryStore | undefined;
   try {
     const provider = createModelProvider(config);
     const workspace = await Workspace.open(config.workspaceRoot, {
@@ -40,6 +45,17 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       maxTreeBytes: config.maxTreeBytes,
       maxTreeDepth: config.maxTreeDepth,
     });
+    memory = config.memoryEnabled
+      ? await MemoryStore.open({
+          stateDir: config.stateDir,
+          profileId: session.metadata.profileId,
+          workspaceId: createHash("sha256").update(config.workspaceRoot, "utf8").digest("hex").slice(0, 32),
+          userMaxChars: config.memoryUserMaxChars,
+          workspaceMaxChars: config.memoryWorkspaceMaxChars,
+          dailyMaxChars: config.memoryDailyMaxChars,
+          dailyRetentionDays: config.memoryDailyRetentionDays,
+        })
+      : undefined;
     const processPolicy = config.processMode === "approval"
       ? new ProcessSecurityPolicy({
           workspace: workspace.policy,
@@ -107,7 +123,9 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       config.maxToolOutputBytes,
       processPolicy ? { policy: processPolicy, runner: new LocalProcessRunner((prepared) => processPolicy.verify(prepared)), redactionSecrets: config.openRouterApiKey ? [config.openRouterApiKey] : [] } : undefined,
       browserToolOptions,
+      memory ? { store: memory, maxResults: config.memoryMaxResults, maxBootstrapChars: config.memoryBootstrapMaxChars } : undefined,
     );
+    const activeMemory = memory;
     return {
       sessionId: session.metadata.sessionId,
       modelLabel: provider.model,
@@ -115,19 +133,25 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       workspaceRoot: config.workspaceRoot,
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),
+      readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
       recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record)),
       readTranscript: () => session.readTranscript(),
-      runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser) => runTurn({ session, provider, tools, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser }),
+      runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch }),
       close: async () => {
         try {
           await browserSessions.closeAll();
         } finally {
+          await activeMemory?.close();
           await lock.release();
         }
       },
     };
   } catch (error) {
-    await lock.release();
+    try {
+      await memory?.close();
+    } finally {
+      await lock.release();
+    }
     throw error;
   }
 }

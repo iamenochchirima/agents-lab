@@ -47,6 +47,18 @@ is quarantined and cleaned rather than reused. Personal browser profiles, remote
 providers, arbitrary JavaScript, and page-dialog decisions remain later slices in the
 active implementation plan.
 
+The current memory slice adds durable, inspectable user, workspace, and dated daily
+notes under the state directory. `memory_search` and `memory_get` are bounded read-only
+tools; `memory` and `memory_forget` show an approval panel before changing canonical
+Markdown. Memory is advisory context, not an authorization source, and only compact
+user/workspace entries are loaded into a new turn by default. The SQLite file beside the
+Markdown is a rebuildable index, not the source of truth. Node 23 currently reports the
+standard-library SQLite experimental warning; the index adapter is isolated so that
+runtime decision can be revisited without changing the tool or context contracts.
+The memory tool also supports a bounded same-scope consolidation batch; its approval
+and append-only evidence cover the complete proposal, while canonical publication does
+not claim cross-file atomicity.
+
 ```bash
 cd computer-native
 pnpm install
@@ -61,10 +73,14 @@ The command creates a new session unless `--session <session-id>` is supplied. S
 The interactive terminal opens as a compact agent console: a branded context panel shows
 the session, model, workspace, evidence location, and actual registered tools; the status
 ribbon and activity lane show factual turn/tool state; and the composer has a distinct
-prompt. Type `/help` for commands. A line ending in `\\` continues into a multiline
-prompt; Ctrl-C cancels an active turn and Ctrl-D exits. The default workspace is the
-current directory; set `--workspace <path>` or `COMPUTER_NATIVE_WORKSPACE_ROOT` to change
-it.
+prompt. Type `/help` for commands and `/memory` for bounded memory status. Workspace,
+process, browser, and memory changes use the same review panel with explicit approve,
+deny, details, and cancel choices; approval defaults to the safe deny selection. A line
+ending in `\\` continues into a multiline prompt. Ctrl-C cancels an active turn or
+approval, clears a draft before a second idle Ctrl-C exits, and exits cleanly when the
+composer is empty; Ctrl-D, `/quit`, and `/exit` remain explicit exit paths. The default
+workspace is the current directory; set `--workspace <path>` or
+`COMPUTER_NATIVE_WORKSPACE_ROOT` to change it.
 
 For repeated local development, copy `.env.example` to `.env`, set the provider, model,
 and key, then run the normal command. The `.env` file is ignored by git and loaded

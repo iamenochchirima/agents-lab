@@ -34,6 +34,8 @@ result status `cancelled` and error code `cancelled`.
     rounds.jsonl
     mutations/<mutation-id>.json
     executions/<execution-id>.json
+    memory-actions/<operation-id>.jsonl
+    memory-searches/<search-id>.json
     result.json
 ```
 
@@ -60,6 +62,15 @@ termination was confirmed. Process records move one way from `prepared` through
 pre-launch cancellation, output overflow, timeout, runner failure, and ambiguous
 termination have typed process error codes; command output is bounded and known API
 keys are redacted.
+
+`memory-actions/<operation-id>.jsonl` records the append-only lifecycle of the exact memory operation identity,
+profile/workspace-scoped source path, expected and resulting content hashes, approval
+decision, and bounded terminal status. It never stores the full memory body. Prepared or
+approved-but-uncommitted memory operations are closed as unavailable during restart
+recovery; the model call is never replayed. Canonical memory remains under
+`<state-directory>/memory/` and the index is rebuilt from it when necessary.
+`memory-searches/<search-id>.json` stores only a query digest, bounded scopes, result
+references, and truncation status; it does not persist raw search text.
 
 Mutation records are updated atomically as the operation moves through `proposed`,
 `approved`, `applying`, and a terminal outcome (`committed`, `failed`, `denied`,
@@ -92,8 +103,10 @@ recovery marks it `ambiguous` with `process-ambiguous`. No command is replayed b
 the child may have completed after its last durable acknowledgement.
 
 When a later turn is admitted, the context builder includes only the most recent bounded
-transcript messages. This provides ordinary conversational continuity without allowing
-an unbounded session history to become a model request.
+transcript messages plus a frozen, character-bounded snapshot of user/workspace memory.
+Daily notes and old session material remain out of bootstrap context until a bounded
+memory search requests them. Memory bodies are delimited as advisory, untrusted data and
+cannot override system instructions, tool policy, or approval decisions.
 
 ## Restart recovery
 
@@ -125,6 +138,6 @@ workspace-local transaction directory for its per-member temporary paths and lea
 partial or conflicting outcomes for reconciliation. The model/tool loop has an explicit
 round limit and tool deadline. No ambiguous commit is replayed automatically.
 
-This slice does not load skills, memory, shell grammar, plugins, gateway messages, or
+This slice does not load skills, shell grammar, plugins, gateway messages, or
 profile-specific context. It also does not claim exactly-once provider execution. Those
 belong to later slices with their own plans and evidence rules.

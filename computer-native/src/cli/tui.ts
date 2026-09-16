@@ -6,9 +6,11 @@ import type { MutationApproval, MutationApprovalRequest, MutationApprovalDecisio
 import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process/process.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
+import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import { redactSecrets } from "../runtime/errors.js";
+import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 
-const COMMANDS = ["/help", "/status", "/history", "/evidence", "/clear", "/quit"] as const;
+const COMMANDS = ["/help", "/status", "/history", "/memory", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
 const LABEL_WIDTH = 11;
 
@@ -16,6 +18,7 @@ export type TuiCommand =
   | { readonly kind: "help" }
   | { readonly kind: "status" }
   | { readonly kind: "history" }
+  | { readonly kind: "memory" }
   | { readonly kind: "evidence" }
   | { readonly kind: "clear" }
   | { readonly kind: "quit" }
@@ -32,6 +35,8 @@ export function parseTuiCommand(input: string): TuiCommand | undefined {
       return { kind: "status" };
     case "/history":
       return { kind: "history" };
+    case "/memory":
+      return { kind: "memory" };
     case "/evidence":
       return { kind: "evidence" };
     case "/clear":
@@ -89,6 +94,10 @@ export class TerminalUi {
   private approvalQuestion: MutationApproval | undefined;
   private processApprovalQuestion: ((request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>) | undefined;
   private browserApprovalQuestion: ((request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>) | undefined;
+  private memoryApprovalQuestion: MemoryApproval | undefined;
+  private approvalInput: NodeJS.ReadableStream | undefined;
+  private pauseApprovalInput: (() => void) | undefined;
+  private resumeApprovalInput: (() => void) | undefined;
 
   constructor(
     private readonly application: ChatApplication,
@@ -165,6 +174,7 @@ export class TerminalUi {
     this.write(`${this.style("33;1", "Session")}\n`);
     this.write(`  ${this.style("33", "/status")}     Show session, model, tools, and turn state\n`);
     this.write(`  ${this.style("33", "/history")}    Show recent transcript messages\n`);
+    this.write(`  ${this.style("33", "/memory")}     Show bounded durable-memory status\n`);
     this.write(`  ${this.style("33", "/evidence")}   Show the durable evidence directory\n`);
     this.write(`  ${this.style("33", "/clear")}      Redraw the console\n`);
     this.write(`  ${this.style("33", "/quit")}       Close the session\n\n`);
@@ -218,6 +228,23 @@ export class TerminalUi {
         return true;
       case "history":
         await this.printHistory();
+        return true;
+      case "memory":
+        if (this.application.readMemoryStatus) {
+          const status = await this.application.readMemoryStatus();
+          this.write("\n");
+          this.printPanel("Durable memory", [
+            ["state", status.enabled ? "enabled" : "disabled"],
+            ["entries", `${status.entries} total · ${status.userEntries} user · ${status.workspaceEntries} workspace · ${status.dailyEntries} daily`],
+            ["retention", `${status.dailyRetentionDays} days for daily notes (cleanup is explicit)`],
+            ["index health", `${status.indexStatus} · ${status.indexEntries} indexed`],
+            ["index", status.indexPath],
+            ["canonical", status.canonicalPaths.join(" · ")],
+          ]);
+          this.write("\n");
+        } else {
+          this.write(`\n${this.style("2", "Durable memory is not enabled for this session.")}\n\n`);
+        }
         return true;
       case "evidence":
         this.write(`\nEvidence directory:\n${this.application.evidenceDirectory}\n\n`);
@@ -361,6 +388,37 @@ export class TerminalUi {
     }
   }
 
+  private handleMemory(event: MemoryEvent): void {
+    const target = event.request.recordId ?? event.request.scope;
+    switch (event.type) {
+      case "prepared":
+        this.status = `memory approval: ${event.request.operation}`;
+        this.printActivity("◇", `memory · approval requested · ${event.request.operation} · ${target}`, "33;1");
+        break;
+      case "approval_decided":
+        this.status = event.decision.decision === "allow-once" ? `memory approved: ${target}` : `memory not approved: ${target}`;
+        this.printActivity(event.decision.decision === "allow-once" ? "✓" : "×", `memory · ${event.decision.decision} · ${target}`, event.decision.decision === "allow-once" ? "32;1" : "31;1");
+        break;
+      case "committed":
+        this.status = `memory stored: ${event.record.id}`;
+        this.printActivity("✓", `memory · stored · ${event.record.scope} · ${event.record.id}`, "32;1");
+        break;
+      case "forgotten":
+        this.status = `memory removed: ${target}`;
+        this.printActivity("✓", `memory · removed · ${target}`, "32;1");
+        break;
+      case "failed":
+        this.status = `memory failed: ${target}`;
+        this.printActivity("×", `memory · failed · ${target} · ${event.reason}`, "31;1");
+        break;
+    }
+  }
+
+  private handleMemorySearch(evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">): void {
+    this.status = `memory search: ${evidence.resultCount} result${evidence.resultCount === 1 ? "" : "s"}`;
+    this.printActivity("⌕", `memory · search · ${evidence.resultCount} result${evidence.resultCount === 1 ? "" : "s"}${evidence.truncated ? " · more results available" : ""}`, "36;1");
+  }
+
   private beginTurn(): void {
     this.startedAt = Date.now();
     this.responseStarted = false;
@@ -403,44 +461,33 @@ export class TerminalUi {
     const change = request.operation === "patch-set"
       ? `${request.paths?.length ?? request.members?.length ?? 0} files · +${request.addedLines} / -${request.removedLines} lines`
       : request.operation === "mkdir" ? "create directory" : request.operation === "delete-directory" ? "delete empty directory" : request.operation === "delete-directory-tree" ? `quarantine directory tree · ${request.entryCount ?? "?"} entries · ${request.totalBytes ?? "?"} bytes` : request.operation === "delete" ? "quarantine file" : request.operation === "restore-directory" ? "restore directory tree" : request.operation === "purge-quarantine" ? "permanently remove quarantine entry" : request.operation === "restore" ? "restore file" : request.operation === "copy" ? "copy file" : request.operation === "move" ? "move/rename file" : `+${request.addedLines} / -${request.removedLines} lines`;
-    this.write("\n");
-    this.printPanel("Proposed workspace change", [
-      ["operation", request.operation],
-      ["risk", risk],
-      ["path", request.path],
-      ...(request.paths && request.paths.length > 0 ? [["paths", request.paths.join("\n")] as const] : []),
-      ["change", change],
-      ["before", request.beforeHash ?? "absent"],
-      ["after", request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")],
-    ]);
-    this.write(`${this.style("2", request.diff)}\n`);
-    const answer = await new Promise<{ readonly kind: "answer"; readonly value: string } | { readonly kind: "cancelled" }>((resolve) => {
-      let settled = false;
-      const finish = (result: { readonly kind: "answer"; readonly value: string } | { readonly kind: "cancelled" }): void => {
-        if (settled) return;
-        settled = true;
-        signal?.removeEventListener("abort", onAbort);
-        resolve(result);
-      };
-      const onAbort = (): void => {
-        if (settled) return;
-        settled = true;
-        signal?.removeEventListener("abort", onAbort);
-        cancelQuestion?.();
-        resolve({ kind: "cancelled" });
-      };
-      if (signal?.aborted) {
-        onAbort();
-        return;
-      }
-      signal?.addEventListener("abort", onAbort, { once: true });
-      question(`${this.style("33;1", "Apply this change? [y/N]")} `, (value) => finish({ kind: "answer", value }));
-    });
-    if (answer.kind === "cancelled") {
+    const panel: ApprovalPanel = {
+      title: "Proposed workspace change",
+      risk,
+      action: request.operation,
+      target: request.path,
+      scope: "workspace",
+      extra: [
+        ...(request.paths && request.paths.length > 0 ? [["paths", request.paths.join(", ")] as const] : []),
+        ["change", change],
+        ["before", request.beforeHash ?? "absent"],
+        ["after", request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")],
+      ],
+      preview: `${change}\n${request.diff}`,
+      details: [
+        `paths: ${request.paths?.join(", ") ?? request.path}`,
+        `before: ${request.beforeHash ?? "absent"}`,
+        `after: ${request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")}`,
+        request.diff,
+      ].join("\n"),
+      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+    };
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", `Approval cancelled; the ${targetNoun} was left unchanged.`)}\n`);
-      return { decision: "unavailable", reason: "The active turn ended before approval was completed." };
+      return answer;
     }
-    if (answer.value.trim().toLowerCase() === "y" || answer.value.trim().toLowerCase() === "yes") {
+    if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return { decision: "allow-once" };
     }
@@ -455,42 +502,28 @@ export class TerminalUi {
     cancelQuestion?: () => void,
   ): Promise<ProcessApprovalDecision> {
     const command = [request.command, ...request.displayArgs.map((argument) => JSON.stringify(argument))].join(" ");
-    this.write("\n");
-    this.printPanel("Proposed local process", [
-      ["command", command],
-      ["cwd", request.cwd],
-      ["executable", request.executablePath],
-      ["environment", `${request.environmentProfile} · ${request.environmentKeys.join(", ")}`],
-      ["limits", `${request.limits.timeoutMs}ms · ${request.limits.maxOutputBytes} output bytes`],
-      ["warning", request.warning],
-    ]);
-    const answer = await new Promise<{ readonly kind: "answer"; readonly value: string } | { readonly kind: "cancelled" }>((resolve) => {
-      let settled = false;
-      const finish = (result: { readonly kind: "answer"; readonly value: string } | { readonly kind: "cancelled" }): void => {
-        if (settled) return;
-        settled = true;
-        signal?.removeEventListener("abort", onAbort);
-        resolve(result);
-      };
-      const onAbort = (): void => {
-        if (settled) return;
-        settled = true;
-        signal?.removeEventListener("abort", onAbort);
-        cancelQuestion?.();
-        resolve({ kind: "cancelled" });
-      };
-      if (signal?.aborted) {
-        onAbort();
-        return;
-      }
-      signal?.addEventListener("abort", onAbort, { once: true });
-      question(`${this.style("33;1", "Run this command? [y/N]")} `, (value) => finish({ kind: "answer", value }));
-    });
-    if (answer.kind === "cancelled") {
+    const panel: ApprovalPanel = {
+      title: "Proposed local process",
+      risk: "local-process",
+      action: request.command,
+      target: request.executablePath,
+      scope: request.cwd,
+      preview: `${command}\n${request.warning}`,
+      details: [
+        `command: ${command}`,
+        `environment: ${request.environmentProfile} · ${request.environmentKeys.join(", ")}`,
+        `limits: ${request.limits.timeoutMs}ms · ${request.limits.maxOutputBytes} output bytes`,
+        `argv hash: ${request.argvHash}`,
+        `warning: ${request.warning}`,
+      ].join("\n"),
+      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+    };
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the process was not started.")}\n`);
-      return { decision: "unavailable", reason: "The active turn ended before process approval was completed." };
+      return answer;
     }
-    if (answer.value.trim().toLowerCase() === "y" || answer.value.trim().toLowerCase() === "yes") {
+    if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return { decision: "allow-once" };
     }
@@ -504,75 +537,110 @@ export class TerminalUi {
     signal?: AbortSignal,
     cancelQuestion?: () => void,
   ): Promise<BrowserApprovalDecision> {
-    this.write("\n");
-    this.printPanel("Proposed browser interaction", [
-      ["action", request.action],
-      ["session", request.sessionId],
-      ["tab", request.tabId],
-      ["reference", request.reference],
-      ["document", request.documentId],
-      ...(request.text !== undefined ? [["text", redactSecrets(request.text, [process.env.OPENROUTER_API_KEY ?? ""]) ] as const] : []),
-      ...(request.key !== undefined ? [["key", request.key] as const] : []),
-      ...(request.path !== undefined ? [["path", redactSecrets(request.path, [process.env.OPENROUTER_API_KEY ?? ""]) ] as const] : []),
-      ...(request.maxBytes !== undefined ? [["max bytes", String(request.maxBytes)] as const] : []),
-      ...(request.dialog ? [["dialog", `${request.dialog.type}: ${redactSecrets(request.dialog.message, [process.env.OPENROUTER_API_KEY ?? ""])}`] as const] : []),
-      ["hash", request.actionHash],
-      ["warning", request.warning],
-    ]);
-    const answer = await new Promise<{ readonly kind: "answer"; readonly value: string } | { readonly kind: "cancelled" }>((resolve) => {
-      let finished = false;
-      const finish = (value: { readonly kind: "answer"; readonly value: string } | { readonly kind: "cancelled" }) => {
-        if (finished) return;
-        finished = true;
-        signal?.removeEventListener("abort", onAbort);
-        resolve(value);
-      };
-      const onAbort = () => {
-        cancelQuestion?.();
-        finish({ kind: "cancelled" });
-      };
-      if (signal?.aborted) {
-        onAbort();
-        return;
-      }
-      signal?.addEventListener("abort", onAbort, { once: true });
-      const prompt = request.dialog
-        ? request.dialog.type === "prompt"
-          ? "Resolve page prompt? [a:<text>/d/N]"
-          : "Resolve page dialog? [a]ccept/[d]ismiss/N"
-        : "Allow this browser action? [y/N]";
-      question(`${this.style("33;1", prompt)} `, (value) => finish({ kind: "answer", value }));
-    });
-    if (answer.kind === "cancelled") {
+    const preview = [
+      request.text === undefined ? undefined : `text: ${request.text}`,
+      request.key === undefined ? undefined : `key: ${request.key}`,
+      request.path === undefined ? undefined : `path: ${request.path}`,
+      request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
+      request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
+      request.warning,
+    ].filter((value): value is string => value !== undefined).join("\n");
+    const panel: ApprovalPanel = {
+      title: "Proposed browser interaction",
+      risk: request.dialog ? "page-dialog" : "browser-interaction",
+      action: request.action,
+      target: `${request.reference} · document ${request.documentId}`,
+      scope: `${request.sessionId} · ${request.tabId}`,
+      extra: [
+        ["document", request.documentId],
+        ...(request.text === undefined ? [] : [["text", request.text] as const]),
+        ...(request.key === undefined ? [] : [["key", request.key] as const]),
+        ...(request.path === undefined ? [] : [["path", request.path] as const]),
+        ...(request.maxBytes === undefined ? [] : [["max bytes", String(request.maxBytes)] as const]),
+        ...(request.dialog === undefined ? [] : [["dialog", `${request.dialog.type}: ${request.dialog.message}`] as const]),
+        ["hash", request.actionHash],
+      ],
+      preview,
+      details: [
+        `document: ${request.documentId}`,
+        `reference: ${request.reference}`,
+        request.text === undefined ? undefined : `text: ${request.text}`,
+        request.key === undefined ? undefined : `key: ${request.key}`,
+        request.path === undefined ? undefined : `path: ${request.path}`,
+        request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
+        request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
+        `action hash: ${request.actionHash}`,
+        `warning: ${request.warning}`,
+      ].filter((value): value is string => value !== undefined).join("\n"),
+      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+    };
+    const prompt = new ApprovalPrompt({ output: this.output, colour: this.colour });
+    const answer = request.dialog
+      ? await prompt.askDialog(panel, request.dialog.type, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput })
+      : await prompt.ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the browser action was not started.")}\n`);
-      return { decision: "unavailable", reason: "The active turn ended before browser approval was completed." };
+      return answer;
     }
-    const normalized = answer.value.trim();
-    const lower = normalized.toLowerCase();
     if (request.dialog) {
-      if (lower === "d" || lower === "dismiss") {
+      if (answer.decision === "allow-once" && "dialogDecision" in answer && answer.dialogDecision === "dismiss") {
         this.write(`${this.style("32;1", "✓ dialog dismissed")}${this.style("2", "; the browser action remains uncertain") }\n`);
         return { decision: "allow-once", dialogDecision: "dismiss" };
       }
-      const acceptPrefix = lower === "a" || lower === "accept";
-      const promptMatch = /^(?:a|accept)\s*:\s*([\s\S]*)$/iu.exec(normalized) ?? /^(?:a|accept)\s+([\s\S]+)$/iu.exec(normalized);
-      if (acceptPrefix && request.dialog.type !== "prompt") {
+      if (answer.decision === "allow-once" && "dialogDecision" in answer && answer.dialogDecision === "accept") {
         this.write(`${this.style("32;1", "✓ dialog accepted")}${this.style("2", "; the browser action remains uncertain") }\n`);
-        return { decision: "allow-once", dialogDecision: "accept" };
-      }
-      if (promptMatch && request.dialog.type === "prompt") {
-        this.write(`${this.style("32;1", "✓ dialog accepted")}${this.style("2", "; the browser action remains uncertain") }\n`);
-        return { decision: "allow-once", dialogDecision: "accept", promptText: promptMatch[1] ?? "" };
+        return {
+          decision: "allow-once",
+          dialogDecision: "accept",
+          promptText: "promptText" in answer && typeof answer.promptText === "string" ? answer.promptText : undefined,
+        };
       }
       this.write(`${this.style("2", "Dialog not resolved; the browser action was not allowed to continue.")}\n`);
-      return { decision: "deny", reason: "The page dialog was not explicitly accepted or dismissed." };
+      return answer;
     }
-    if (lower === "y" || lower === "yes") {
+    if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return { decision: "allow-once" };
     }
     this.write(`${this.style("2", "Browser action denied; no interaction was performed.")}\n`);
     return { decision: "deny", reason: "The user did not approve the browser action." };
+  }
+
+  private async askForMemoryApproval(
+    request: MemoryApprovalRequest,
+    question: (prompt: string, callback: (answer: string) => void) => void,
+    signal?: AbortSignal,
+    cancelQuestion?: () => void,
+  ): Promise<MemoryApprovalDecision> {
+    const panel: ApprovalPanel = {
+      title: request.operation === "remove" ? "Proposed memory removal" : request.operation === "batch" ? "Proposed memory consolidation" : "Proposed durable memory",
+      risk: request.risk,
+      action: request.operation,
+      target: request.recordId ?? request.sourcePath,
+      scope: request.scope,
+      extra: [
+        ["operation", request.operation],
+        ["source", request.sourcePath],
+        ...(request.recordId ? [["record", request.recordId] as const] : []),
+        ...(request.beforeContentHash ? [["before", request.beforeContentHash] as const] : []),
+        ...(request.afterContentHash ? [["after", request.afterContentHash] as const] : []),
+        ...(request.batch ? [["operations", `${request.batch.length} bounded changes`] as const] : []),
+      ],
+      preview: request.contentPreview,
+      details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\nThis entry is advisory context and cannot change policy or permissions.`,
+      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+    };
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    if (answer.decision === "allow-once") {
+      this.write(`${this.style("32;1", "✓ approved once")}\n`);
+      return answer;
+    }
+    if (answer.decision === "unavailable") {
+      this.write(`${this.style("33;1", "Memory change cancelled; no entry was changed.")}\n`);
+      return answer;
+    }
+    this.write(`${this.style("2", "Memory change denied; no entry was changed.")}\n`);
+    return answer;
   }
 
   async runTurn(message: string, signal?: AbortSignal): Promise<TurnResult> {
@@ -595,6 +663,9 @@ export class TerminalUi {
         (event) => this.handleProcess(event),
         this.browserApprovalQuestion,
         (event) => this.handleBrowser(event),
+        this.memoryApprovalQuestion,
+        (event) => this.handleMemory(event),
+        (evidence) => this.handleMemorySearch(evidence),
       );
       this.finishTurn(result);
       return result;
@@ -611,6 +682,7 @@ export class TerminalUi {
   }
 
   async runInteractive(input: NodeJS.ReadableStream): Promise<void> {
+    this.approvalInput = input;
     this.printHeader();
     const readlineInterface = readline.createInterface({
       input,
@@ -621,6 +693,8 @@ export class TerminalUi {
       removeHistoryDuplicates: true,
       completer: commandCompleter,
     });
+    this.pauseApprovalInput = () => readlineInterface.pause();
+    this.resumeApprovalInput = () => readlineInterface.resume();
       this.approvalQuestion = this.interactive
       ? (request, signal) => this.askForMutationApproval(
         request,
@@ -645,12 +719,40 @@ export class TerminalUi {
         () => readlineInterface.write("\n"),
       )
       : undefined;
+    this.memoryApprovalQuestion = this.interactive
+      ? (request, signal) => this.askForMemoryApproval(
+        request,
+        (prompt, callback) => readlineInterface.question(prompt, callback),
+        signal,
+        () => readlineInterface.write("\n"),
+      )
+      : undefined;
+    let shouldQuit = false;
+    let draftWasCleared = false;
     const onInterrupt = () => {
       if (this.cancelActiveTurn()) return;
-      this.write(`${this.style("2", "Nothing is running. Type /help or /quit.")}\n`);
-      if (this.interactive) readlineInterface.prompt();
+      if (shouldQuit) return;
+      if (readlineInterface.line.trim().length > 0 && !draftWasCleared) {
+        readlineInterface.write(null, { ctrl: true, name: "u" });
+        draftWasCleared = true;
+        this.write(`${this.style("2", "Draft cleared. Press Ctrl+C again to exit.")}\n`);
+        if (this.interactive) readlineInterface.prompt();
+        return;
+      }
+      shouldQuit = true;
+      this.write(`${this.style("2", "Closing the session.")}\n`);
+      // Closing readline does not wake its async iterator on every stream
+      // implementation. End readable test/pipe streams as well so the loop
+      // cannot leave the process pending after an idle interrupt.
+      readlineInterface.close();
+      const readable = input as NodeJS.ReadableStream & { push?: (chunk: null) => void };
+      readable.push?.(null);
     };
     readlineInterface.on("SIGINT", onInterrupt);
+    const onInputData = (chunk: string | Buffer): void => {
+      if (String(chunk).includes("\u0003")) onInterrupt();
+    };
+    input.on("data", onInputData);
     const onResize = () => {
       if (!this.interactive) return;
       this.write("\u001b[2K\r");
@@ -664,6 +766,7 @@ export class TerminalUi {
         readlineInterface.prompt();
       }
       for await (const line of readlineInterface) {
+        if (shouldQuit) break;
         const continued = line.endsWith("\\");
         const part = continued ? line.slice(0, -1) : line;
         if (multiline.length > 0 || continued) {
@@ -678,6 +781,7 @@ export class TerminalUi {
         }
         const value = (multiline.length > 0 ? multiline.join("\n") : line).trim();
         multiline = [];
+        draftWasCleared = false;
         if (this.interactive) readlineInterface.setPrompt(this.promptText());
         if (value.length === 0) {
           if (this.interactive) readlineInterface.prompt();
@@ -697,7 +801,12 @@ export class TerminalUi {
       this.approvalQuestion = undefined;
       this.processApprovalQuestion = undefined;
       this.browserApprovalQuestion = undefined;
+      this.memoryApprovalQuestion = undefined;
+      this.approvalInput = undefined;
+      this.pauseApprovalInput = undefined;
+      this.resumeApprovalInput = undefined;
       readlineInterface.removeListener("SIGINT", onInterrupt);
+      input.removeListener("data", onInputData);
       this.output.removeListener("resize", onResize);
       readlineInterface.close();
     }

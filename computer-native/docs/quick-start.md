@@ -32,10 +32,11 @@ Type a normal prompt such as:
 Say hello in one sentence, then tell me which model is serving this turn.
 ```
 
-Type `/help` to see commands. Use `/status`, `/history`, and `/evidence` to inspect the
-session. A line ending in `\\` continues into a multiline prompt. Type `/quit` to leave
-normally. Press Ctrl-C during a model request to cancel that turn; Ctrl-D exits when the
-prompt is idle. Resume the session with:
+Type `/help` to see commands. Use `/status`, `/history`, `/memory`, and `/evidence` to
+inspect the session. A line ending in `\\` continues into a multiline prompt. Type
+`/quit` to leave normally. Press Ctrl-C during a model request or approval to cancel it;
+when the composer is idle, the first Ctrl-C clears a draft and the next exits. Ctrl-D
+also exits. Resume the session with:
 
 ```bash
 pnpm run chat --session <session-id>
@@ -54,17 +55,49 @@ is the separate recursive operation: it preflights a bounded tree, rejects links
 special files, moves the tree to quarantine, and returns a token for
 `restore_directory`. `purge_quarantine` permanently removes one exact token and is
 irreversible. In an
-interactive TTY, `apply_patch` shows its exact single-file diff and asks for `y`/`yes`;
-non-interactive commands have no approval channel and fail closed without writing.
+interactive TTY, side-effecting tools show a shared review panel with risk, exact target,
+bounded preview, and `a` approve once, `d` deny, `v` details, arrow keys or `j`/`k` to
+move, Enter to select, and Escape to cancel. The default selection is deny. Non-
+interactive commands have no approval channel and fail closed without writing.
 `copy` and `move` likewise require approval, operate on regular files, reject an existing
 destination, and recheck the source hash before the operation. `apply_patch_set` reviews
 2–16 file patches together and journals each member with a workspace-local temporary path;
 it does not claim all-or-nothing filesystem atomicity.
 
+Durable memory is stored under the configured state directory, never implicitly in the
+workspace:
+
+```text
+<state-dir>/memory/USER.md
+<state-dir>/memory/MEMORY.md
+<state-dir>/memory/daily/YYYY-MM-DD.md
+<state-dir>/memory/index.sqlite       # rebuildable lookup index
+```
+
+Ask the real model for example operations such as:
+
+```text
+Remember that I prefer concise answers and that this repository uses pnpm. Confirm what you stored.
+What do you remember about my preferences and this repository? Search durable memory and cite the memory references.
+Forget the repository preference after showing me the exact entry and asking for approval.
+```
+
+`memory_search` and `memory_get` are bounded and read-only. `memory` and
+`memory_forget` require the same approval panel as file, process, and browser changes.
+The `memory` tool can also submit one bounded same-scope consolidation batch of up to
+eight add, replace, or remove operations. The panel reviews the complete batch; the
+filesystem publication is deliberately not described as a cross-file transaction.
+Entries are screened for credentials, invisible control text, and common instruction
+injection patterns; rejected content is not written. User and workspace memory are
+loaded as a small advisory snapshot at turn start, while daily notes are retrieved only
+when explicitly searched. Use `/memory` for counts and index/canonical locations; it
+does not print every stored entry.
+
 When `COMPUTER_NATIVE_PROCESS_MODE=approval` (the development default), the model also
 has `run_command`. It accepts an executable and exact `args` array, not a shell command
 string. In an interactive TTY, Computer Native shows the executable, argument vector,
-working directory, environment profile, and limits before asking for `y`/`yes`. The
+working directory, environment profile, and limits before showing the same approval
+panel. The
 runner ignores stdin, uses `shell: false`, bounds output and duration, and records the
 execution under the turn evidence. The workspace is a starting directory, not a host
 sandbox; use `COMPUTER_NATIVE_PROCESS_MODE=deny` to remove the capability entirely.

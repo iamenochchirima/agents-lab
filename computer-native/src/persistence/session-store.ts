@@ -32,6 +32,7 @@ import { SessionLock } from "./lock.js";
 import { assertMutationTransition, type WorkspaceMutationRecord } from "../workspace/mutation.js";
 import { assertProcessTransition, type ProcessExecutionRecord } from "../process/process.js";
 import { assertBrowserActionTransition, type BrowserActionRecord } from "../browser/records.js";
+import type { MemoryActionRecord, MemorySearchEvidence } from "../memory/contracts.js";
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
@@ -240,6 +241,17 @@ export class SessionStore {
           });
         }
       }
+      for (const action of await turn.readMemoryActions()) {
+        if (action.status === "proposed" || action.status === "approved") {
+          await turn.writeMemoryAction({
+            ...action,
+            status: "denied",
+            decision: "unavailable",
+            reason: "The process stopped before the memory operation committed; it was not replayed.",
+            recordedAt: now(),
+          });
+        }
+      }
       if (result) {
         if (!isTerminalStatus(record.state)) await turn.updateState(terminalStateFromResult(result));
         await turn.ensureTerminalEvent(result);
@@ -421,6 +433,60 @@ export class TurnStore {
       }
     }
     await atomicWriteJson(recordPath, record);
+  }
+
+  async writeMemoryAction(record: MemoryActionRecord): Promise<void> {
+    if (record.schemaVersion !== 1 || record.operationId.trim().length === 0 || record.callId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid memory action record.`);
+    }
+    if (record.turnId !== this.turnId || record.sessionId !== this.sessionId) {
+      throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${this.turnId}'.`);
+    }
+    const directory = path.join(this.directory, "memory-actions");
+    await ensureDirectory(directory);
+    // Lifecycle updates are append-only. Recovery reads the latest state, while
+    // the JSONL history preserves the earlier proposal/approval outcome.
+    await appendJsonLine(path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`), record);
+  }
+
+  async readMemoryActions(): Promise<MemoryActionRecord[]> {
+    const directory = path.join(this.directory, "memory-actions");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' memory records cannot be listed.`, { cause: error });
+    });
+    const records: MemoryActionRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".jsonl")).sort((left, right) => left.name.localeCompare(right.name))) {
+      const history = await readJsonLines<MemoryActionRecord>(path.join(directory, entry.name));
+      const latest = history.at(-1);
+      if (latest) records.push(latest);
+    }
+    return records;
+  }
+
+  async writeMemorySearch(record: MemorySearchEvidence): Promise<void> {
+    if (record.schemaVersion !== 1 || record.searchId.trim().length === 0 || record.callId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid memory search record.`);
+    }
+    if (record.turnId !== this.turnId || record.sessionId !== this.sessionId) {
+      throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
+    }
+    const directory = path.join(this.directory, "memory-searches");
+    await ensureDirectory(directory);
+    await atomicWriteJson(path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`), record);
+  }
+
+  async readMemorySearches(): Promise<MemorySearchEvidence[]> {
+    const directory = path.join(this.directory, "memory-searches");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' memory searches cannot be listed.`, { cause: error });
+    });
+    const records: MemorySearchEvidence[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
+      records.push(await readJson<MemorySearchEvidence>(path.join(directory, entry.name)));
+    }
+    return records;
   }
 
   async readBrowserActions(): Promise<BrowserActionRecord[]> {

@@ -6,7 +6,7 @@ import { ensureDirectory } from "./json.js";
 export class SessionLock {
   private constructor(private readonly filePath: string, private readonly handle: Awaited<ReturnType<typeof open>>) {}
 
-  static async acquire(filePath: string): Promise<SessionLock> {
+  static async acquire(filePath: string, options: { readonly waitMs?: number } = {}): Promise<SessionLock> {
     await ensureDirectory(path.dirname(filePath));
     try {
       const handle = await open(filePath, "wx", 0o600);
@@ -28,6 +28,10 @@ export class SessionLock {
       if (ownerPid !== undefined) {
         try {
           process.kill(ownerPid, 0);
+          if ((options.waitMs ?? 0) > 0) {
+            await new Promise((resolve) => setTimeout(resolve, Math.min(10, options.waitMs ?? 0)));
+            return SessionLock.acquire(filePath, { waitMs: Math.max(0, (options.waitMs ?? 0) - 10) });
+          }
           throw new ComputerNativeError("lock", `Session is already in use by process ${ownerPid}.`);
         } catch (probeError) {
           if (probeError instanceof ComputerNativeError) throw probeError;
