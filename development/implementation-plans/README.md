@@ -48,6 +48,11 @@ The active platform work is coordinated by
 and AWS Step Functions remain active; the other local platform baselines from this
 batch are archived below.
 
+The first Platform Lab completion wave is archived in the
+[Platform completion wave](completed/platform-completion-wave.md). It closed the
+connected context, Restate tool-loop, and browser Chat slices before the next native
+platform session adapter is planned.
+
 The one-command local comparison stack is documented in the
 [completed launcher plan](completed/local-stack-launcher.md). It starts the priority
 local platform services before the shared Lab server and web app.
@@ -64,8 +69,8 @@ production-ready product. The current maturity gate and remaining work are recor
 [Computer Native production-readiness gaps](active/computer-native-production-readiness-gaps.md).
 The next active Computer Native slice is [core hardening and production foundation](active/computer-native-core-hardening.md).
 
-The next context slice is tracked in the
-[session context and compaction plan](active/context-management.md). It covers the
+The first context slice is archived in the
+[session context and compaction plan](completed/context-management.md). It covers the
 shared context semantics and first Temporal integration; long-term memory remains a
 separate follow-on capability.
 
@@ -131,6 +136,18 @@ catalog and Context Management preview without changing Platform Lab execution.
 - [Server platform foundation](completed/server-platform-foundation.md) — completed
   2026-09-15T10:22:54+02:00; established the generic runner, registry, execution-reference,
   evidence, and future-platform plan seams around the Temporal baseline.
+- [Platform completion wave](completed/platform-completion-wave.md) — completed
+  2026-09-16T23:26:41+02:00; closed the connected context, Restate tool-loop, and browser
+  Chat implementation wave with focused validation and no Docker requirement.
+- [Session context, token budgets, and bounded compaction](completed/context-management.md)
+  — completed 2026-09-16T23:26:41+02:00; delivered the first Temporal session/context
+  adapter, bounded compaction, keyed turn admission, and safe context projections.
+- [Tool-enabled turn loop](completed/tool-enabled-turn-loop.md) — completed
+  2026-09-16T23:26:41+02:00; delivered the bounded Restate calculator loop and browser
+  tool activity disclosure.
+- [Browser Chat surface](completed/browser-chat-surface.md) — completed
+  2026-09-16T23:26:41+02:00; delivered browser-first Chat routes, Temporal continuity,
+  safe evidence links, and registered-platform route coverage.
 
 Completed plans are retained rather than deleted because their scope, trade-offs, and
 validation results remain useful project history.

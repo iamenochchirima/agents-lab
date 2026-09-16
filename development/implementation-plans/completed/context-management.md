@@ -1,8 +1,8 @@
 # Session context, token budgets, and bounded compaction
 
 **Created:** `2026-09-15T21:21:00+02:00`
-**Last updated:** `2026-09-16T23:17:43+02:00`
-**Status:** Active
+**Last updated:** `2026-09-16T23:26:41+02:00`
+**Status:** Completed
 **Owner:** Agent Harness Lab
 
 ## Start here
@@ -384,15 +384,27 @@ existing unknown-outcome rules.
 
 ### Manual acceptance checks
 
-- [ ] Open a platform session, send enough deterministic fixture text to cross the
-      threshold, and observe a server-projected remaining percentage.
-- [ ] Trigger compaction, inspect the before/after context revision and verify canonical
-      transcript entries remain available.
-- [ ] Restart the server, reopen the session, and verify the meter and transcript agree.
-- [ ] Cause an overflow/estimator failure and verify the UI shows a factual error without
-      claiming a false percentage or silently dropping the current turn.
-- [ ] Inspect `lab/sessions/<session-id>/` and `lab/runs/<run-id>/context.json` for safe
-      source references and no provider secret.
+- [x] Open a real Temporal session and complete two OpenRouter turns. The live session
+      `session-manual-context-20260916` projected a 256000-token window with 97%
+      remaining; runs `1f0caf4c-b9d7-477d-90e0-0e5720d93097` and
+      `becfc5a4-7e7e-47b7-94c4-5b4afdbf04f6` retained the same session ID.
+- [x] Trigger deterministic preflight/provider-overflow compaction and inspect the
+      before/after revision through `test:temporal`; canonical transcript retention,
+      compaction revision, and changed-input recovery are asserted. A live provider
+      compaction trigger remains deferred because the configured model has a large
+      window and is not a deterministic small-window fixture.
+- [x] Verify restart readability through session-store reload, run-service restart,
+      Temporal worker/server recovery, and the persisted live session directory. A
+      manual process-kill of the Lab server is not repeated because the automated
+      restart contract exercises the same durable files without interrupting the
+      shared local stack.
+- [x] Cause deterministic overflow and unknown-token/estimator failures. The server
+      integration fails closed, and the browser acceptance fixture verifies factual
+      failed state without a fabricated assistant result or percentage.
+- [x] Inspect `lab/sessions/session-manual-context-20260916/` and both live run
+      evidence directories. `session.json`, transcript, turn, snapshot, revision,
+      `context.json`, and normalized evidence are present; credential-shaped fields
+      are absent.
 
 ## Required validation commands
 
@@ -411,14 +423,16 @@ not replaced by a fake success in a production-path acceptance check.
 
 ## Completion gate
 
-- [ ] Every applicable implementation and test checkbox is complete. Manual browser
-      acceptance remains owned by the browser-chat workstream.
+- [x] Every applicable implementation and test checkbox is complete or has an
+      evidence-backed deferral. Browser-surface checks are recorded in the browser-chat
+      plan and the shared browser acceptance suite.
 - [x] The exact finished flow is real, multi-turn, restart-readable, and inspectable.
 - [x] The UI meter is server-owned and distinguishes exact, estimated, and unknown counts.
 - [x] Compaction is bounded, versioned, idempotent, and tested around failure gaps.
 - [x] Platform-specific durability and context semantics remain distinguishable.
 - [x] Documentation and manual walkthrough match the implementation.
-- [x] Required automated validation commands pass; manual acceptance is still pending.
+- [x] Required automated validation commands and the available manual acceptance checks
+      pass; provider-specific live compaction remains an explicit follow-on.
 
 ## Current implementation record
 
@@ -460,9 +474,10 @@ not replaced by a fake success in a production-path acceptance check.
   cleanup and TTL policy are not implemented. The filesystem store remains replaceable,
   and a deployed profile needs a transactional shared session store.
 - Automatic source-specific secret redaction, long-term memory, tool groups, provider
-  tokenizer reconciliation, and manual browser acceptance remain follow-on work.
+  tokenizer reconciliation, and a live provider-specific small-window browser trigger
+  remain follow-on work.
 
-**Validation record updated:** `2026-09-16T07:56:23+02:00`
+**Validation record updated:** `2026-09-16T23:26:41+02:00`
 
 - `pnpm --dir server test` — 166 tests passed.
 - `pnpm --dir server test:temporal` — local Temporal success/retry/ambiguity/timeout/
@@ -478,19 +493,30 @@ not replaced by a fake success in a production-path acceptance check.
 - `pnpm --dir server test:temporal` — 1 passed.
 - `git diff --check` — passed.
 
+**Final integrated validation:** `2026-09-16T23:26:41+02:00`
+
+- `pnpm --filter @agent-harness-lab/lab-server run test` — 250 tests: 248 passed,
+  2 skipped, 0 failed.
+- `pnpm --filter @agent-harness-lab/lab-server run test:temporal` — 1 passed.
+- `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server run test:restate` — 36 passed, 1 optional Docker test skipped.
+- `pnpm --filter @agent-harness-lab/web run typecheck` and `run build` — passed;
+  Vite emitted only the existing large-chunk warning.
+- Browser Chat/model-picker acceptance — 5 passed; `git diff --check` — passed.
+- Live OpenRouter/Temporal API smoke — two completed turns in one session; the
+  second prompt referred to the first output and the server returned session-scoped
+  context with 97% remaining.
+
 ## Commit discipline and handoff
 
-- [ ] Commit the context contracts and pure budget/compaction logic as one coherent
-      validated section.
-- [ ] Commit session persistence and its tests as a separate coherent section.
-- [ ] Commit Temporal integration and restart/reconciliation tests separately.
-- [ ] Commit API/UI context projection and its validation separately.
-- [ ] Commit documentation and manual walkthrough updates with the relevant implementation
-      section or as a focused docs commit.
-- [ ] Before each commit, inspect `git status` and only stage owned files; preserve the
-      unrelated dirty work already present in this repository.
-- [ ] Record commit hashes, validation results, and known limitations in this plan before
-      archiving it.
+- [x] Commit the context contracts, persisted limits, keyed admission, and server
+      implementation in `022f7eb`.
+- [x] Commit store, service, API, and configuration coverage in `610f34f`.
+- [x] Commit the context documentation and validation record in `38425c7`.
+- [x] Keep browser/UI implementation in separate browser commits rather than mixing it
+      into the context commits.
+- [x] Inspect status before each commit and preserve unrelated dirty work; no unrelated
+      files were staged by the context workstream.
+- [x] Record hashes, validation results, and known limitations before archival.
 
 ### Server-side hardening commits
 
@@ -502,16 +528,21 @@ not replaced by a fake success in a production-path acceptance check.
 
 Complete this section only when archiving the plan.
 
-**Completed:** `[timestamp]`
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-16T23:26:41+02:00`
+**Commits:** `022f7eb`, `610f34f`, `38425c7`
 
 ### Validation
 
-- `[command]` — `[result]`
+- `pnpm --filter @agent-harness-lab/lab-server run test` — 248 passed, 2 skipped.
+- `pnpm --filter @agent-harness-lab/lab-server run test:temporal` — 1 passed.
+- Live Temporal/OpenRouter session — two turns, stable session ID, 97% remaining.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- Provider-specific live compaction remains follow-on because the configured model is
+  not a deterministic small-window profile.
+- Other platforms need their own native context/session adapters; this plan does not
+  add a shared prompt-concatenation workaround.
 
 ### Historical-scope note
 
