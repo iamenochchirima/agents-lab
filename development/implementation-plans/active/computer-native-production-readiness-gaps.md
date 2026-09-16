@@ -52,8 +52,8 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 303 tests passed after the workspace bounded-input increments.
-- `pnpm run coverage`: 303 tests passed, with 88.56% line coverage, 77.50% branch
-  coverage, and 84.74% function coverage in the latest run. Node's experimental
+- `pnpm run coverage`: 303 tests passed, with 88.74% line coverage, 77.68% branch
+  coverage, and 84.66% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -111,8 +111,9 @@ readiness:
   only stale profiles; the generic session manager keeps leasing optional for other
   backends.
 - Browser upload approvals now bind a source file identity (device/inode/mode, size,
-  modification time, and SHA-256) and recheck it immediately before adapter dispatch;
-  changed or unavailable sources fail closed without an upload.
+  modification time, and SHA-256) using a bounded no-follow descriptor read, and
+  recheck it immediately before adapter dispatch; changed, growing, or unavailable
+  sources fail closed without an upload.
 - Managed Playwright element references now carry bounded adapter-side markup identity
   and are rechecked immediately before side-effecting actions; same-document DOM
   replacement fails as `stale-reference` rather than acting through an ordinal locator.

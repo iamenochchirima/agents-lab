@@ -62,10 +62,13 @@ future non-local browser backend does not inherit local profile-file assumptions
 Upload sources are resolved by `BrowserFilePolicy` through the workspace mutation
 policy, so absolute paths, traversal, symbolic links, non-regular files, and oversized
 files are rejected before approval. The prepared source includes device/inode/mode,
-size, modification time, and a SHA-256 content identity; that identity is resolved again
-after approval and before the adapter receives the source. A changed or unavailable
-source fails closed and is not uploaded. Downloads use a preallocated managed artifact
-target and Playwright's download event; the model cannot provide an arbitrary destination.
+size, modification time, and a SHA-256 content identity. Identity hashing uses a
+no-follow descriptor and reads at most the configured upload limit plus one byte, then
+checks the descriptor metadata again so file growth or in-flight replacement fails
+closed. That identity is resolved again after approval and before the adapter receives
+the source. A changed or unavailable source fails closed and is not uploaded. Downloads
+use a preallocated managed artifact target and Playwright's download event; the model
+cannot provide an arbitrary destination.
 
 The managed Playwright adapter also fingerprints the bounded element markup when a
 snapshot assigns a reference. Immediately before click, type, press, upload, or
