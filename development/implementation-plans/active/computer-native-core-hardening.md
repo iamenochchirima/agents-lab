@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:44:52+02:00
+**Last updated:** 2026-09-16T23:56:46+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -305,8 +305,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 320 passing tests across the package, with 89.20% line
-  coverage, 77.90% branch coverage, and 84.84% function coverage. Coverage is from
+- The latest validation is 329 passing tests across the package, with 89.62% line
+  coverage, 79.12% branch coverage, and 85.11% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs. The
   latest full suite and coverage run both pass; one earlier coverage run was discarded
   because instrumentation caused timing-sensitive browser and admission tests to fail.
@@ -1270,6 +1270,32 @@ Delivered in this increment:
   cancellation while an interactive approval or browser action is in progress, plus
   partial and outcome-unknown rendering.
 
+### Current slice boundary: filesystem transfer stale-approval checks
+
+Delivered in this increment:
+
+- Added an approval-path regression matrix for file and directory `copy`, `move`, and
+  `rename`.
+- Each test changes the prepared source inside the approval callback. The registry now
+  proves the operation returns `mutation-stale`, leaves the changed source untouched,
+  and does not publish a destination.
+- The test exercises the existing operation-specific safeguards: file transfers hash
+  through a no-follow descriptor, directory transfers re-scan their bounded manifest,
+  and destination publication remains no-replace.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is a bounded stale-precondition test at the existing approval and filesystem
+  seams. It strengthens an auditable safety contract without introducing a filesystem
+  transaction coordinator, rollback service, or an exactly-once claim.
+
+Still open after this increment:
+
+- The complete crash matrix around every durable write and host-side filesystem effect,
+  deterministic concurrency/lease tests, and platform-specific immutable-handle
+  support. The operation still cannot claim an OS-level snapshot between the final
+  observation and the host filesystem commit.
+
 ## Scope
 
 - [ ] Define and enforce durable turn, attempt, tool-action, approval, and terminal-result
@@ -1294,8 +1320,11 @@ Delivered in this increment:
 - [x] Add shared resource limits for turns, requests, output, files, directory entries,
       bytes, depth, and operation duration. Model request and streamed output limits are
       independently enforced and recorded; OS-level isolation remains a separate gap.
-- [ ] Recheck approved identities immediately before side effects and reject stale or
-      changed approvals.
+- [x] Recheck approved identities immediately before side effects and reject stale or
+      changed approvals. The current filesystem transfer matrix covers file and
+      directory copy, move, and rename through the public approval path; the remaining
+      crash/TOCTOU limitations are recorded below and are not treated as solved by this
+      check.
 - [ ] Extend security and telemetry evidence for retries, cancellation, recovery,
       partial results, and denied operations.
 - [ ] Add the remaining unit, integration, failure-injection, security, manual, and
@@ -1652,7 +1681,8 @@ claim in this plan.
 - [ ] Extend the recover-twice assertion to every supported side-effect record and the
       process-level crash harness.
 - [ ] Inject duplicate, missing, and out-of-order events.
-- [ ] Change a target after approval and confirm the action is rejected as stale.
+- [x] Change a target after approval and confirm the action is rejected as stale for
+      file and directory copy, move, and rename through the public tool registry.
 - [ ] Fail one operation in a multi-file change and verify the exact partial state and
       recovery path.
 - [ ] Cancel during retry backoff, approval, copy, move, and cleanup.

@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:44:52+02:00
+**Last updated:** 2026-09-16T23:56:46+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 328 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 328 tests passed, with 89.53% line coverage, 78.96% branch
+- `pnpm test`: 329 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 329 tests passed, with 89.62% line coverage, 79.12% branch
   coverage, and 85.11% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
@@ -160,6 +160,11 @@ readiness:
   modification time, and SHA-256) using a bounded no-follow descriptor read, and
   recheck it immediately before adapter dispatch; changed, growing, or unavailable
   sources fail closed without an upload.
+- File and directory copy, move, and rename approvals now have a public registry race
+  matrix: changing the prepared source inside approval is rejected as `mutation-stale`,
+  and no destination is published. This verifies the existing no-follow hash/manifest
+  checks and no-replace destination boundary; it does not claim an OS-level immutable
+  snapshot between observation and commit.
 - Managed Playwright element references now carry bounded adapter-side markup identity
   and are rechecked immediately before side-effecting actions; same-document DOM
   replacement fails as `stale-reference` rather than acting through an ordinal locator.

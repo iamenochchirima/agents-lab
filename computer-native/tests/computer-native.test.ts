@@ -4023,6 +4023,57 @@ test("copy and move are approval-gated and preserve destination collision safety
   assert.match(collision.content, /destination.*already exists/);
 });
 
+test("file and directory transfers reject source changes made after approval preparation", async () => {
+  const root = path.join(tempDirectory(), "workspace");
+  await mkdir(root, { recursive: true });
+  const registry = new ToolRegistry(await Workspace.open(root, {
+    maxFileBytes: 100,
+    maxDirectoryEntries: 20,
+    maxTreeEntries: 20,
+    maxTreeBytes: 1_000,
+    maxTreeDepth: 4,
+  }), 1_000);
+
+  for (const operation of ["copy", "move", "rename"] as const) {
+    const sourceFile = `${operation}-source.txt`;
+    const destinationFile = `${operation}-destination.txt`;
+    await writeFile(path.join(root, sourceFile), "prepared file\n", "utf8");
+    const staleFile = await registry.execute({
+      callId: `${operation}_stale_file_call`,
+      name: operation,
+      argumentsJson: JSON.stringify({ source: sourceFile, destination: destinationFile }),
+    }, {
+      approveMutation: async () => {
+        await writeFile(path.join(root, sourceFile), "changed after approval\n", "utf8");
+        return { decision: "allow-once" };
+      },
+    });
+    assert.equal(staleFile.ok, false);
+    assert.equal(staleFile.errorCode, "mutation-stale");
+    assert.equal(await readFile(path.join(root, sourceFile), "utf8"), "changed after approval\n");
+    await assert.rejects(() => lstat(path.join(root, destinationFile)), { code: "ENOENT" });
+
+    const sourceDirectory = `${operation}-source-directory`;
+    const destinationDirectory = `${operation}-destination-directory`;
+    await mkdir(path.join(root, sourceDirectory), { recursive: true });
+    await writeFile(path.join(root, sourceDirectory, "child.txt"), "prepared directory\n", "utf8");
+    const staleDirectory = await registry.execute({
+      callId: `${operation}_stale_directory_call`,
+      name: operation,
+      argumentsJson: JSON.stringify({ source: sourceDirectory, destination: destinationDirectory }),
+    }, {
+      approveMutation: async () => {
+        await writeFile(path.join(root, sourceDirectory, "child.txt"), "changed after approval\n", "utf8");
+        return { decision: "allow-once" };
+      },
+    });
+    assert.equal(staleDirectory.ok, false);
+    assert.equal(staleDirectory.errorCode, "mutation-stale");
+    assert.equal(await readFile(path.join(root, sourceDirectory, "child.txt"), "utf8"), "changed after approval\n");
+    await assert.rejects(() => lstat(path.join(root, destinationDirectory)), { code: "ENOENT" });
+  }
+});
+
 test("directory copy, move, and rename tools expose bounded approval evidence", async () => {
   const root = path.join(tempDirectory(), "workspace");
   await mkdir(path.join(root, "project", "src"), { recursive: true });
