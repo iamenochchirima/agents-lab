@@ -36,6 +36,7 @@ import { SessionLock } from "./lock.js";
 import { assertMutationTransition, type WorkspaceMutationRecord } from "../workspace/mutation.js";
 import { assertProcessTransition, type ProcessExecutionRecord } from "../process/process.js";
 import { assertBrowserActionTransition, type BrowserActionRecord } from "../browser/records.js";
+import type { BrowserArtifactInfo } from "../browser/artifacts.js";
 import { assertMemoryActionTransition, type MemoryActionRecord, type MemorySearchEvidence } from "../memory/contracts.js";
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
@@ -609,6 +610,48 @@ function assertTurnBoundRecord(
   assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, kind);
 }
 
+export type BrowserArtifactEvidence = BrowserArtifactInfo & {
+  readonly turnId: TurnRecord["turnId"];
+  readonly correlationId?: CorrelationId;
+};
+
+function assertBrowserArtifactEvidence(
+  record: unknown,
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is BrowserArtifactEvidence {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Browser artifact", "artifactId");
+  const candidate = record as Record<string, unknown>;
+  if (typeof candidate.sessionId !== "string" || candidate.sessionId.trim().length === 0
+    || typeof candidate.tabId !== "string" || candidate.tabId.trim().length === 0
+    || typeof candidate.path !== "string" || candidate.path.trim().length === 0
+    || (candidate.kind !== "screenshot" && candidate.kind !== "download")
+    || (candidate.mimeType !== "image/png" && candidate.mimeType !== "application/octet-stream")
+    || !Number.isInteger(candidate.byteSize) || (candidate.byteSize as number) < 0
+    || typeof candidate.createdAt !== "string" || candidate.createdAt.trim().length === 0
+    || (candidate.width !== undefined && (!Number.isInteger(candidate.width) || (candidate.width as number) <= 0))
+    || (candidate.height !== undefined && (!Number.isInteger(candidate.height) || (candidate.height as number) <= 0))
+    || (candidate.fileName !== undefined && (typeof candidate.fileName !== "string" || candidate.fileName.trim().length === 0))) {
+    throw new ComputerNativeError("persistence", `Browser artifact '${String(candidate.artifactId)}' has an invalid durable record.`);
+  }
+}
+
+function browserArtifactEventPayload(record: BrowserArtifactEvidence): Readonly<Record<string, unknown>> {
+  return {
+    artifactId: record.artifactId,
+    kind: record.kind,
+    sessionId: record.sessionId,
+    tabId: record.tabId,
+    path: record.path,
+    mimeType: record.mimeType,
+    byteSize: record.byteSize,
+    createdAt: record.createdAt,
+    ...(record.width !== undefined ? { width: record.width } : {}),
+    ...(record.height !== undefined ? { height: record.height } : {}),
+    fileName: record.fileName ?? null,
+  };
+}
+
 function assertMemoryActionHistory(
   history: readonly MemoryActionRecord[],
   expectedSessionId: SessionMetadata["sessionId"],
@@ -868,6 +911,9 @@ export class SessionStore {
           await turn.writeBrowserAction(reconciledAction);
         }
         await turn.ensureBrowserTerminalEvent(reconciledAction);
+      }
+      for (const artifact of await turn.readBrowserArtifacts()) {
+        await turn.ensureBrowserArtifactEvent(artifact);
       }
       for (const action of await turn.readMemoryActions()) {
         let reconciledAction = action;
@@ -1297,6 +1343,57 @@ export class TurnStore {
       records.push(record);
     }
     return records;
+  }
+
+  async writeBrowserArtifact(record: BrowserArtifactEvidence): Promise<void> {
+    assertBrowserArtifactEvidence(record, this.turnId, this.correlationId);
+    const directory = path.join(this.directory, "browser-artifacts");
+    await ensureDirectory(directory);
+    const recordPath = path.join(directory, `${safePathSegment(record.artifactId, "Browser artifact ID")}.json`);
+    let previous: BrowserArtifactEvidence | undefined;
+    try {
+      await stat(recordPath);
+      previous = await readJson<BrowserArtifactEvidence>(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (previous) {
+      assertBrowserArtifactEvidence(previous, this.turnId, this.correlationId);
+      if (stableStringify(previous) !== stableStringify(record)) {
+        throw new ComputerNativeError("persistence", `Browser artifact '${record.artifactId}' evidence was repeated with a different payload for the same identity.`);
+      }
+      return;
+    }
+    await this.session.replaceJson(recordPath, record);
+  }
+
+  async readBrowserArtifacts(): Promise<BrowserArtifactEvidence[]> {
+    const directory = path.join(this.directory, "browser-artifacts");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' browser artifacts cannot be listed.`, { cause: error });
+    });
+    const records: BrowserArtifactEvidence[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
+      const record = await readJson<BrowserArtifactEvidence>(path.join(directory, entry.name));
+      assertBrowserArtifactEvidence(record, this.turnId, this.correlationId);
+      records.push(record);
+    }
+    return records;
+  }
+
+  async ensureBrowserArtifactEvent(record: BrowserArtifactEvidence): Promise<void> {
+    assertBrowserArtifactEvidence(record, this.turnId, this.correlationId);
+    const payload = browserArtifactEventPayload(record);
+    const existing = (await this.readEvents()).find((event) => event.type === "BrowserArtifactCreated" && event.payload.artifactId === record.artifactId);
+    if (existing) {
+      const { recovered: _recovered, ...existingPayload } = existing.payload;
+      if (stableStringify(existingPayload) !== stableStringify(redactRecord(payload))) {
+        throw new ComputerNativeError("persistence", `Browser artifact '${record.artifactId}' lifecycle evidence conflicts with its durable artifact record.`);
+      }
+      return;
+    }
+    await this.appendRecoveredEvent("BrowserArtifactCreated", { ...payload, recovered: true });
   }
 
   async readMutations(): Promise<WorkspaceMutationRecord[]> {

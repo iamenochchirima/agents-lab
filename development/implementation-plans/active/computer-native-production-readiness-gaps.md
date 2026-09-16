@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T22:15:40+02:00
+**Last updated:** 2026-09-16T22:23:25+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,11 +51,11 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 317 tests passed after the terminal-state consistency increment.
-- `pnpm run coverage`: 317 tests passed, with 89.19% line coverage, 77.99% branch
-  coverage, and 84.95% function coverage in the latest successful run. Node's experimental
-  coverage runner can vary slightly between runs; an earlier instrumentation run left the
-  known TUI tests pending, and an immediate rerun passed all 313 tests before this slice.
+- `pnpm test`: 318 tests passed after the browser-artifact evidence increment.
+- `pnpm run coverage`: 318 tests passed, with 89.20% line coverage, 77.84% branch
+  coverage, and 85.08% function coverage in the latest successful run. Node's experimental
+  coverage runner can vary slightly between runs; one earlier run was discarded because
+  instrumentation caused timing-sensitive browser and admission tests to fail.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -113,6 +113,11 @@ readiness:
   only reclaims old incomplete artifacts after stale-owner checks; finalization and
   discard release the lease. A denied or unavailable download approval also discards its
   preallocated target, so a non-started browser action does not leak a live lease.
+- Browser screenshot and download turns now persist bounded per-turn artifact metadata
+  before emitting `BrowserArtifactCreated`. Restart recovery repairs that event from the
+  per-turn record after an acknowledgement loss and does not recreate the browser file;
+  an interruption before the per-turn checkpoint can still leave an orphan for bounded
+  artifact cleanup, so external artifact creation is not claimed to be transactional.
 - Managed local browser profiles now hold lock-backed ownership leases for the browser
   session lifetime. Startup cleanup retains old profiles with live owners and reclaims
   only stale profiles; the generic session manager keeps leasing optional for other
@@ -479,10 +484,9 @@ Remaining work:
   disconnected sessions, duplicate submissions, and unknown outcomes after a network
   failure.
 - Complete the browser artifact/profile crash matrix, including lock corruption,
-  interrupted metadata publication, and recovery across process restarts. Artifact
-  writers and managed local profiles now have lock-backed ownership leases, but lock
-  corruption, interrupted metadata publication, process-restart recovery, and
-  profile/authentication policy remain incomplete.
+  interrupted external metadata publication, and recovery across process restarts.
+  Per-turn artifact-event recovery is now covered, but lock corruption, orphan cleanup
+  after a pre-checkpoint stop, and profile/authentication policy remain incomplete.
 - Pin and manage browser versions, launch flags, permissions, and cleanup.
 - Add human-in-the-loop paths for CAPTCHA, MFA, payment, destructive submission, and
   other actions the agent must not silently complete.

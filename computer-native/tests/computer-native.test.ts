@@ -17,6 +17,7 @@ import { createModelProvider } from "../src/models/factory.js";
 import { getModelProviderSummary, listModelProviderSummaries } from "../src/models/registry.js";
 import { atomicWriteJson, redactRecord } from "../src/persistence/json.js";
 import { SessionStore } from "../src/persistence/session-store.js";
+import type { BrowserArtifactEvidence } from "../src/persistence/session-store.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
@@ -5707,6 +5708,57 @@ test("restart repairs missing memory search lifecycle evidence without replay", 
   const searchEvent = events.find((event) => event.type === "MemorySearched");
   assert.equal(searchEvent?.payload?.recovered, true);
   assert.ok(events.findIndex((event) => event.type === "MemorySearched") < events.findIndex((event) => event.type === "TurnInterrupted"));
+  assert.deepEqual(await restarted.recoverInterruptedTurns(), []);
+});
+
+test("restart repairs missing browser artifact lifecycle evidence without replay", async () => {
+  const stateDir = tempDirectory();
+  let interrupted = false;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (!interrupted && operation === "replace-json" && filePath.includes(`${path.sep}browser-artifacts${path.sep}`)) {
+          interrupted = true;
+          throw new RuntimeInterruptionError("stopped after browser artifact evidence became durable");
+        }
+      },
+    },
+  });
+  const turn = await session.admitTurn("recover browser artifact evidence", "deterministic", "deterministic/echo");
+  await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
+  const artifact: BrowserArtifactEvidence = {
+    schemaVersion: 1,
+    artifactId: "artifact_recovery",
+    kind: "screenshot",
+    sessionId: "browser_artifact_session" as BrowserSessionId,
+    tabId: "tab_artifact_recovery" as BrowserTabId,
+    path: "/managed/browser/artifact_recovery.png",
+    mimeType: "image/png",
+    byteSize: 42,
+    createdAt: new Date().toISOString(),
+    width: 320,
+    height: 240,
+    turnId: turn.turnId,
+    correlationId: turn.correlationId,
+  };
+
+  await assert.rejects(
+    () => turn.writeBrowserArtifact(artifact),
+    /stopped after browser artifact evidence became durable/u,
+  );
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const [recovered] = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered?.status, "interrupted");
+  const eventsPath = path.join(turn.directory, "events.jsonl");
+  const events = (await readFile(eventsPath, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { type: string; payload?: { artifactId?: string; recovered?: boolean } });
+  const artifactEvent = events.find((event) => event.type === "BrowserArtifactCreated");
+  assert.equal(artifactEvent?.payload?.artifactId, "artifact_recovery");
+  assert.equal(artifactEvent?.payload?.recovered, true);
+  assert.ok(events.findIndex((event) => event.type === "BrowserArtifactCreated") < events.findIndex((event) => event.type === "TurnInterrupted"));
   assert.deepEqual(await restarted.recoverInterruptedTurns(), []);
 });
 

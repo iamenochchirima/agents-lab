@@ -15,6 +15,7 @@ sessions/<session-id>/
     events.jsonl
     executions/<execution-id>.json
     browser-actions/<action-id>.json
+    browser-artifacts/<artifact-id>.json
     result.json
 ```
 
@@ -184,9 +185,12 @@ approval timeout, bounded outcome, and terminal status. Browser actions that wer
 when the parent stopped are closed as approval-unavailable; actions that were running
 become ambiguous and are never replayed. Known configured secrets are redacted before
 browser action records and lifecycle payloads are written. Screenshot and download
-artifacts also emit a durable `BrowserArtifactCreated` event containing only managed
-path, MIME type, size, identity, and timestamp metadata; artifact contents are not
-copied into turn evidence.
+artifacts first write bounded per-turn metadata under `browser-artifacts/<artifact-id>.json`,
+then emit `BrowserArtifactCreated`. Restart recovery reconstructs that lifecycle event if
+its acknowledgement was lost, before finalizing the interrupted turn; artifact contents
+are not copied into turn evidence. This closes the Computer Native evidence boundary, but
+does not make external artifact creation transactional: an interruption before the
+per-turn record can still leave an orphan for bounded artifact cleanup to handle.
 
 Memory action recovery is operation-specific. An approved `add` or `replace` can be
 reconciled after the canonical Markdown write succeeded but acknowledgement of its

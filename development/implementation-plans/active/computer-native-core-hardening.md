@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:15:40+02:00
+**Last updated:** 2026-09-16T22:23:25+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -235,6 +235,11 @@ tests, but it must never replace a configured real provider silently.
   repeated journal observations are preserved rather than collapsed.
 - Durable lifecycle history now validates schema identity, known event types, contiguous
   sequence numbers, owning session/turn, and correlation before append or recovery.
+- Browser screenshot and download results now write bounded per-turn artifact evidence
+  before their `BrowserArtifactCreated` lifecycle event. Recovery repairs a missing event
+  from that operation-specific record before finalizing the interrupted turn, and repeated
+  recovery does not duplicate it. Artifact contents remain owned by the browser artifact
+  store; turn evidence retains metadata and the managed path only.
 - Terminal results are validated against the admitted session, turn, provider, model, and
   correlation before write or restart adoption; persisted process, browser, memory,
   memory-search, and workspace records are checked against their owning turn as well.
@@ -278,12 +283,11 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 317 passing tests across the package, with 89.19% line
-  coverage, 77.99% branch coverage, and 84.95% function coverage. Coverage is from
-  Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
-  latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
-  pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
-  remains stable under coverage instrumentation.
+- The latest validation is 318 passing tests across the package, with 89.20% line
+  coverage, 77.84% branch coverage, and 85.08% function coverage. Coverage is from
+  Node's experimental test-coverage runner and can vary slightly between runs. The
+  latest full suite and coverage run both pass; one earlier coverage run was discarded
+  because instrumentation caused timing-sensitive browser and admission tests to fail.
 
 ### Current slice boundary: model/tool round evidence ordering
 
@@ -621,19 +625,27 @@ Delivered in this slice:
 - Bounded artifact cleanup retains old incomplete artifacts whose lease is still held by
   a live writer. It can reclaim an old artifact only after the existing process-identity
   lock rules establish that the writer is stale or absent.
-- Tests cover the live in-flight lease boundary; existing tests continue to cover
-  malformed, oversized, symlinked, orphaned, and bounded cleanup cases.
+- Per-turn artifact evidence is written before the lifecycle event. If its acknowledgement
+  is lost, restart recovery reconstructs the missing `BrowserArtifactCreated` event before
+  writing the interrupted turn result; recovery is idempotent and does not recreate the
+  browser artifact.
+- Tests cover the live in-flight lease boundary, direct artifact-evidence recovery, and
+  an integrated screenshot turn; existing tests continue to cover malformed, oversized,
+  symlinked, orphaned, and bounded cleanup cases.
 
 Practice check against the local Hermes and OpenClaw references:
 
 - This keeps ownership and cleanup explicit at the artifact boundary, like their
   session/run ownership patterns. It reuses the existing lock primitive and does not
   introduce a durable browser workflow or pretend artifact cleanup is transactional.
+- The per-turn record is an operation-specific recovery checkpoint, matching the existing
+  process, browser-action, memory, and workspace evidence patterns. It is not a generic
+  artifact ledger or an exactly-once guarantee for external file creation.
 
 Still open after this slice:
 
-- Durable browser profile ownership/authentication policy, metadata migration, and the
-  full browser crash/navigation race matrix.
+- Durable browser profile ownership/authentication policy, metadata migration, interrupted
+  external metadata publication, and the full browser crash/navigation race matrix.
 - Cross-platform process isolation and the complete per-write/per-side-effect crash
   matrix remain outside this slice.
 

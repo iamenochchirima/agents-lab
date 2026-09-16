@@ -254,13 +254,23 @@ test("browser tool turns persist lifecycle phases and redact configured secrets"
       userPrompt: "Capture the fixture.",
     });
     assert.equal(screenshotResult.status, "completed");
-    const screenshotEvents = await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", screenshotResult.turnId, "events.jsonl"), "utf8");
+    const screenshotTurnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", screenshotResult.turnId);
+    const screenshotEvents = await readFile(path.join(screenshotTurnDirectory, "events.jsonl"), "utf8");
     assert.match(screenshotEvents, /BrowserArtifactCreated/u);
     assert.match(screenshotEvents, /"mimeType":"image\/png"/u);
     assert.match(screenshotEvents, /"byteSize":33/u);
     assert.match(screenshotEvents, /"height":1/u);
     assert.match(screenshotEvents, /"width":1/u);
     assert.doesNotMatch(screenshotEvents, /test-png/u);
+    const artifactEvidenceFiles = await readdir(path.join(screenshotTurnDirectory, "browser-artifacts"));
+    assert.equal(artifactEvidenceFiles.length, 1);
+    const artifactEvidence = JSON.parse(await readFile(path.join(screenshotTurnDirectory, "browser-artifacts", artifactEvidenceFiles[0]!), "utf8")) as { artifactId: string; turnId: string; kind: string };
+    const artifactEvent = screenshotEvents.trim().split("\n")
+      .map((line) => JSON.parse(line) as { type: string; payload?: { artifactId?: string } })
+      .find((event) => event.type === "BrowserArtifactCreated");
+    assert.equal(artifactEvidence.artifactId, artifactEvent?.payload?.artifactId);
+    assert.equal(artifactEvidence.turnId, screenshotResult.turnId);
+    assert.equal(artifactEvidence.kind, "screenshot");
 
     adapter.dialogOnAct = true;
     await tools.execute({ callId: "call_snapshot_again", name: "browser_snapshot", argumentsJson: "{}" });

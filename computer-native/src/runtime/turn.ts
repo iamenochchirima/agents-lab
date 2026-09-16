@@ -652,6 +652,11 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
   };
   const recordBrowser = async (event: BrowserToolEvent): Promise<void> => {
     if (event.type === "artifact") {
+      await turn.writeBrowserArtifact({
+        ...event.artifact,
+        turnId: turn.turnId,
+        correlationId: turn.correlationId,
+      });
       await turn.appendEvent("BrowserArtifactCreated", {
         artifactId: event.artifact.artifactId,
         kind: event.artifact.kind,
