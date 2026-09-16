@@ -321,6 +321,10 @@ test("model lifecycle evidence requires a started turn and exact attempt identit
     () => turn.appendEvent("ModelRequested", { attemptId: "attempt_before_start" }),
     /before TurnStarted/u,
   );
+  await assert.rejects(
+    () => turn.appendEvent("TurnStarted", { provider: "openrouter", model: "openrouter/other" }),
+    /TurnStarted provider .* does not match admitted provider/u,
+  );
   await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
   await assert.rejects(
     () => turn.appendEvent("ModelRequested"),
@@ -384,6 +388,9 @@ test("lifecycle history rejects cross-turn, unknown, and out-of-sequence durable
 
   await writeFile(eventsPath, `${JSON.stringify({ ...started, sessionId: asSessionId("session_other") })}\n`, "utf8");
   await assert.rejects(() => turn.readEvents(), /does not belong to session/u);
+
+  await writeFile(eventsPath, `${JSON.stringify({ ...started, payload: { provider: "openrouter", model: "openrouter/other" } })}\n`, "utf8");
+  await assert.rejects(() => turn.readEvents(), /TurnStarted provider .* does not match admitted provider/u);
 });
 
 test("terminal results reject mismatched durable identity", async () => {

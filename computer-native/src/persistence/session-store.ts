@@ -159,6 +159,20 @@ function validateTranscriptMessage(message: unknown, expectedSessionId: SessionI
   safePathSegment(candidate.turnId, "Turn ID");
 }
 
+function assertTurnStartedIdentity(
+  record: TurnRecord,
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): void {
+  if (type !== "TurnStarted") return;
+  if (payload.provider !== undefined && payload.provider !== record.provider) {
+    throw new ComputerNativeError("persistence", `TurnStarted provider '${String(payload.provider)}' does not match admitted provider '${record.provider}'.`);
+  }
+  if (payload.model !== undefined && payload.model !== record.model) {
+    throw new ComputerNativeError("persistence", `TurnStarted model '${String(payload.model)}' does not match admitted model '${record.model}'.`);
+  }
+}
+
 function isTerminalLifecycleEvent(type: LifecycleEventType): boolean {
   return type === "TurnCompleted" || type === "TurnFailed" || type === "TurnCancelled" || type === "TurnInterrupted";
 }
@@ -948,6 +962,7 @@ export class TurnStore {
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
     validateLifecycleEventHistory(existing, this.sessionId, this.turnId);
     for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
+    assertTurnStartedIdentity(this.record, type, payload);
     const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
     if (terminal) {
       if (terminal.type === type) {
@@ -1007,7 +1022,10 @@ export class TurnStore {
   async readEvents(): Promise<LifecycleEvent[]> {
     const events = await readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
     validateLifecycleEventHistory(events, this.sessionId, this.turnId);
-    for (const event of events) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
+    for (const event of events) {
+      assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
+      assertTurnStartedIdentity(this.record, event.type, event.payload);
+    }
     return events;
   }
 

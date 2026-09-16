@@ -17,6 +17,10 @@ the terminal result, and action records. Older records without this field use th
 turn ID as a compatibility fallback; a non-matching correlation is rejected rather than
 joining evidence from another turn.
 
+When `TurnStarted` includes provider and model fields, persistence checks them against
+the admitted turn. Recovery and focused persistence tests may use the minimal event form
+without those optional fields.
+
 The runtime exposes an optional diagnostic checkpoint hook for deterministic failure
 injection. Checkpoints cover model dispatch and response completion, approval boundaries,
 tool execution, terminal commit, process launch, and each committed member of a

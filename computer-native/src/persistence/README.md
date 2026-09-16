@@ -78,7 +78,9 @@ event exists, the same terminal event is idempotent and any different or later l
 event is rejected. Model request, attempt completion, retry, and completion evidence is
 also idempotent by its stable attempt or event identity: an identical retry returns the
 durable event, while a conflicting payload is rejected. Workspace mutation events are
-also ordered and checked when read back:
+also ordered and checked when read back. When `TurnStarted` includes provider and model
+metadata, those fields are checked against the admitted turn; the minimal metadata-free
+form remains valid for recovery and focused persistence tests:
 `WorkspaceMutationProposed` must precede its approval decision, an allow-once decision
 must precede application, progress may repeat only after application starts, and a
 committed, reconciled, or failed event closes that mutation's lifecycle. Reading an existing event

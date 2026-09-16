@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:20:30+02:00
+**Last updated:** 2026-09-16T21:24:52+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -152,6 +152,8 @@ readiness:
 - Transcript messages are validated against session ownership and stable message IDs;
   identical acknowledgement retries do not duplicate conversation evidence, while
   conflicting message reuse fails closed.
+- `TurnStarted` provider/model metadata is checked against the admitted turn when
+  present, preventing a durable lifecycle record from claiming a different selection.
 - A pre-cancelled turn does not invoke the provider or emit a model-request claim, and
   cancellation during model retry backoff cannot dispatch a later attempt.
 - Session ownership locks now persist a Linux executable/start-time identity alongside

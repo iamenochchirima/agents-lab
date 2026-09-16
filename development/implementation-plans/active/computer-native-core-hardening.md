@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:20:30+02:00
+**Last updated:** 2026-09-16T21:24:52+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -258,8 +258,11 @@ tests, but it must never replace a configured real provider silently.
 - Transcript messages are validated against the owning session and stable message ID;
   identical acknowledgement retries are ignored, while conflicting message reuse fails
   closed instead of duplicating durable conversation evidence.
-- The latest validation is 309 passing tests across the package, with 89.07% line
-  coverage, 77.90% branch coverage, and 84.89% function coverage. Coverage is from
+- `TurnStarted` provider/model metadata is checked against the admitted turn whenever
+  present; metadata-free recovery records remain supported without weakening the normal
+  runtime path.
+- The latest validation is 309 passing tests across the package, with 89.02% line
+  coverage, 77.82% branch coverage, and 84.90% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
