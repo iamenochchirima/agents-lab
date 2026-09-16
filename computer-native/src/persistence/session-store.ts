@@ -94,6 +94,12 @@ function terminalStateFromResult(result: TurnResult): Exclude<TurnStatus, "idle"
   return result.status;
 }
 
+function assertTerminalResultState(currentState: TurnStatus, result: TurnResult): void {
+  if (isTerminalStatus(currentState) && currentState !== result.status) {
+    throw new ComputerNativeError("persistence", `Terminal result status '${result.status}' does not match durable turn state '${currentState}'.`);
+  }
+}
+
 function validateTurnRecord(record: unknown, sessionId: SessionId, directoryName?: string): asserts record is TurnRecord {
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     throw new ComputerNativeError("persistence", "A durable turn record is not an object.");
@@ -805,7 +811,10 @@ export class SessionStore {
       const resultPath = path.join(directory, "result.json");
       const result = await fileExists(resultPath) ? await readJson<TurnResult>(resultPath) : undefined;
       const turn = new TurnStore(this, directory, record);
-      if (result) validateTurnResult(result, record);
+      if (result) {
+        validateTurnResult(result, record);
+        assertTerminalResultState(record.state, result);
+      }
       for (const execution of await turn.readProcesses()) {
         let reconciledExecution = execution;
         if (execution.status === "prepared") {
@@ -1342,6 +1351,7 @@ export class TurnStore {
 
   async writeResult(result: TurnResult): Promise<void> {
     validateTurnResult(result, this.record);
+    assertTerminalResultState(this.record.state, result);
     const resultPath = path.join(this.directory, "result.json");
     if (await fileExists(resultPath)) {
       const existing = await readJson<TurnResult>(resultPath);

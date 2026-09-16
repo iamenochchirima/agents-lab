@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T22:06:13+02:00
+**Last updated:** 2026-09-16T22:09:48+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 316 tests passed after the terminal-evidence consistency increment.
-- `pnpm run coverage`: 316 tests passed, with 89.16% line coverage, 77.92% branch
-  coverage, and 84.93% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 317 tests passed after the terminal-state consistency increment.
+- `pnpm run coverage`: 317 tests passed, with 89.20% line coverage, 77.92% branch
+  coverage, and 84.95% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs; an earlier instrumentation run left the
   known TUI tests pending, and an immediate rerun passed all 313 tests before this slice.
 - `pnpm run typecheck`: passed.
@@ -160,6 +160,8 @@ readiness:
   overwritten.
 - Restart recovery checks existing terminal-event status, assistant identity, and error
   payload against the durable result before advancing the turn state.
+- Direct writes and restart recovery also reject a terminal `turn.json` state that does
+  not match the status in `result.json`, leaving the existing state unchanged.
 - Turn state is now published to the live store only after `turn.json` replacement
   returns, preserving a retryable in-memory view across acknowledgement loss.
 - Transcript messages are validated against session ownership and stable message IDs;

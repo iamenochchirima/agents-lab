@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:06:13+02:00
+**Last updated:** 2026-09-16T22:09:48+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -275,8 +275,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 316 passing tests across the package, with 89.16% line
-  coverage, 77.92% branch coverage, and 84.93% function coverage. Coverage is from
+- The latest validation is 317 passing tests across the package, with 89.20% line
+  coverage, 77.92% branch coverage, and 84.95% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
   pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
@@ -375,6 +375,9 @@ Delivered in this increment:
 - Tests cover the direct `TurnStore.writeResult` seam and restart recovery, including
   preservation of the malformed file, conflicting terminal evidence, and the
   non-terminal durable state.
+- An already-terminal `turn.json` state must also agree with `result.json`; direct writes
+  and restart recovery reject a completed/failed/cancelled mismatch without changing the
+  durable state.
 
 Practice check against the local Hermes and OpenClaw references:
 
