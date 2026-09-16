@@ -39,7 +39,9 @@ export interface ChatApplication {
   close(): Promise<void>;
 }
 export async function openChatApplication(config: AppConfig, requestedSessionId?: string): Promise<ChatApplication> {
-  const session = await SessionStore.open(config.stateDir, requestedSessionId);
+  const session = await SessionStore.open(config.stateDir, requestedSessionId, {
+    redactionSecrets: config.openRouterApiKey ? [config.openRouterApiKey] : [],
+  });
   const lock: SessionLock = await session.acquireLock();
   let memory: MemoryStore | undefined;
   try {

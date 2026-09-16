@@ -55,6 +55,8 @@ export interface SessionStoreOptions {
    * but before the caller receives acknowledgement.
    */
   readonly writeHooks?: PersistenceWriteHooks;
+  /** Secrets known by the selected local provider; never write them to evidence. */
+  readonly redactionSecrets?: readonly string[];
 }
 
 function now(): string {
@@ -1051,6 +1053,7 @@ export class SessionStore {
     readonly sessionDirectory: string,
     readonly metadata: SessionMetadata,
     private readonly writeHooks?: PersistenceWriteHooks,
+    private readonly redactionSecrets: readonly string[] = [],
   ) {}
 
   static async open(stateDir: string, requestedSessionId?: string, options: SessionStoreOptions = {}): Promise<SessionStore> {
@@ -1063,7 +1066,7 @@ export class SessionStore {
       if (metadata.sessionId !== selectedId || metadata.schemaVersion !== 1) {
         throw new ComputerNativeError("persistence", "The session metadata is invalid.");
       }
-      return new SessionStore(stateDir, sessionDirectory, metadata, options.writeHooks);
+      return new SessionStore(stateDir, sessionDirectory, metadata, options.writeHooks, options.redactionSecrets ?? []);
     } catch (error) {
       const metadataExists = await stat(metadataPath).then(() => true).catch(() => false);
       if (metadataExists || (error instanceof ComputerNativeError && !error.message.startsWith("Could not read"))) throw error;
@@ -1076,27 +1079,35 @@ export class SessionStore {
         profileId: "default",
       };
       await ensureDirectory(path.join(sessionDirectory, "turns"));
-      const store = new SessionStore(stateDir, sessionDirectory, metadata, options.writeHooks);
+      const store = new SessionStore(stateDir, sessionDirectory, metadata, options.writeHooks, options.redactionSecrets ?? []);
       await store.replaceJson(metadataPath, metadata);
       return store;
     }
   }
 
+  /** Normalize untrusted values before any session-owned evidence is published. */
+  redactEvidence<T>(value: T): T {
+    return redactRecord(value, this.redactionSecrets) as T;
+  }
+
   async replaceJson(filePath: string, value: unknown): Promise<void> {
+    const normalized = this.redactEvidence(value);
     await this.writeHooks?.beforeWrite?.("replace-json", filePath);
-    await atomicWriteJson(filePath, value);
+    await atomicWriteJson(filePath, normalized);
     await this.writeHooks?.afterWrite?.("replace-json", filePath);
   }
 
   async appendJsonLine(filePath: string, value: unknown): Promise<void> {
+    const normalized = this.redactEvidence(value);
     await this.writeHooks?.beforeWrite?.("append-json-line", filePath);
-    await appendJsonLine(filePath, value);
+    await appendJsonLine(filePath, normalized);
     await this.writeHooks?.afterWrite?.("append-json-line", filePath);
   }
 
   async replaceJsonLines(filePath: string, values: readonly unknown[]): Promise<void> {
+    const normalized = values.map((value) => this.redactEvidence(value));
     await this.writeHooks?.beforeWrite?.("replace-json-lines", filePath);
-    await atomicWriteJsonLines(filePath, values);
+    await atomicWriteJsonLines(filePath, normalized);
     await this.writeHooks?.afterWrite?.("replace-json-lines", filePath);
   }
 
@@ -1378,16 +1389,17 @@ export class SessionStore {
   }
 
   async appendMessage(message: TranscriptMessage): Promise<void> {
-    validateTranscriptMessage(message, this.metadata.sessionId);
+    const normalized = this.redactEvidence(message);
+    validateTranscriptMessage(normalized, this.metadata.sessionId);
     const transcript = await this.readTranscript();
-    const existing = transcript.find((candidate) => candidate.messageId === message.messageId);
+    const existing = transcript.find((candidate) => candidate.messageId === normalized.messageId);
     if (existing) {
-      if (stableStringify(existing) !== stableStringify(message)) {
-        throw new ComputerNativeError("persistence", `Transcript message '${message.messageId}' already has different content.`);
+      if (stableStringify(existing) !== stableStringify(normalized)) {
+        throw new ComputerNativeError("persistence", `Transcript message '${normalized.messageId}' already has different content.`);
       }
       return;
     }
-    await this.appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
+    await this.appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), normalized);
   }
 }
 
@@ -1420,11 +1432,11 @@ export class TurnStore {
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
     validateLifecycleEventHistory(existing, this.sessionId, this.turnId);
     for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
-    assertTurnStartedIdentity(this.record, type, payload);
+    const normalizedPayload = this.session.redactEvidence(payload);
+    assertTurnStartedIdentity(this.record, type, normalizedPayload);
     const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
     if (terminal) {
       if (terminal.type === type) {
-        const normalizedPayload = redactRecord(payload);
         if (stableStringify(terminal.payload) !== stableStringify(normalizedPayload)) {
           throw new ComputerNativeError("persistence", `${type} evidence was repeated with a different payload for the same terminal turn.`);
         }
@@ -1432,11 +1444,11 @@ export class TurnStore {
       }
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' already has terminal event '${terminal.type}'; '${type}' cannot be appended.`);
     }
-    const existingModelEvent = findIdempotentModelEvent(existing, type, payload);
+    const existingModelEvent = findIdempotentModelEvent(existing, type, normalizedPayload);
     if (existingModelEvent) return existingModelEvent;
-    const existingActionEvent = findIdempotentActionEvent(existing, type, payload);
+    const existingActionEvent = findIdempotentActionEvent(existing, type, normalizedPayload);
     if (existingActionEvent) return existingActionEvent;
-    assertLifecycleEventOrder(existing, type, payload);
+    assertLifecycleEventOrder(existing, type, normalizedPayload);
     const event: LifecycleEvent = {
       schemaVersion: 1,
       eventId: id("event"),
@@ -1446,7 +1458,7 @@ export class TurnStore {
       sessionId: this.record.sessionId,
       turnId: this.record.turnId,
       correlationId: this.correlationId,
-      payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
+      payload: normalizedPayload as Readonly<Record<string, unknown>>,
     };
     await this.session.appendJsonLine(eventsPath, event);
     return event;
@@ -1460,7 +1472,8 @@ export class TurnStore {
     const terminalIndex = existing.findIndex((event) => isTerminalLifecycleEvent(event.type));
     if (terminalIndex < 0) return this.appendEvent(type, payload);
     const prefix = existing.slice(0, terminalIndex);
-    assertLifecycleEventOrder(prefix, type, payload);
+    const normalizedPayload = this.session.redactEvidence(payload);
+    assertLifecycleEventOrder(prefix, type, normalizedPayload);
     const event: LifecycleEvent = {
       schemaVersion: 1,
       eventId: id("event"),
@@ -1470,7 +1483,7 @@ export class TurnStore {
       sessionId: this.record.sessionId,
       turnId: this.record.turnId,
       correlationId: this.correlationId,
-      payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
+      payload: normalizedPayload as Readonly<Record<string, unknown>>,
     };
     const repaired = [...prefix, event, existing[terminalIndex]].map((candidate, index) => ({ ...candidate, sequence: index + 1 }));
     await this.session.replaceJsonLines(eventsPath, repaired);
@@ -1489,8 +1502,8 @@ export class TurnStore {
 
   async appendRound(round: RoundEvidence): Promise<void> {
     const existing = await this.readRounds();
-    assertRecordCorrelation(this.correlationId, round.correlationId, "Round");
-    const normalized = { ...round, correlationId: round.correlationId ?? this.correlationId };
+    const normalized = this.session.redactEvidence({ ...round, correlationId: round.correlationId ?? this.correlationId });
+    assertRecordCorrelation(this.correlationId, normalized.correlationId, "Round");
     const previous = existing.at(-1);
     if (previous && roundIdentity(previous) === roundIdentity(normalized)) {
       if (stableStringify(roundSemantics(previous)) !== stableStringify(roundSemantics(normalized))) {
@@ -1499,7 +1512,7 @@ export class TurnStore {
       return;
     }
     validateRoundOrder([...existing, normalized], this.sessionId, this.turnId);
-    await this.session.appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(normalized));
+    await this.session.appendJsonLine(path.join(this.directory, "rounds.jsonl"), normalized);
   }
 
   async readRounds(): Promise<RoundEvidence[]> {
@@ -1510,10 +1523,14 @@ export class TurnStore {
   }
 
   async writeMutation(record: WorkspaceMutationRecord): Promise<void> {
-    assertWorkspaceMutationRecord(record, this.correlationId);
+    // Patch previews can contain file content supplied by an untrusted model or
+    // workspace. Normalize the complete bounded record before validation and
+    // transition comparison so redaction remains stable across updates.
+    const normalized = this.session.redactEvidence(record);
+    assertWorkspaceMutationRecord(normalized, this.correlationId);
     const directory = path.join(this.directory, "mutations");
     await ensureDirectory(directory);
-    const recordPath = path.join(directory, `${safePathSegment(record.mutationId, "Mutation ID")}.json`);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.mutationId, "Mutation ID")}.json`);
     let previous: WorkspaceMutationRecord | undefined;
     try {
       await stat(recordPath);
@@ -1523,16 +1540,17 @@ export class TurnStore {
     }
     if (previous) {
       assertWorkspaceMutationRecord(previous, this.correlationId);
-      assertMutationTransition(previous, record);
+      assertMutationTransition(previous, normalized);
     }
-    await this.session.replaceJson(recordPath, record);
+    await this.session.replaceJson(recordPath, normalized);
   }
 
   async writeProcess(record: ProcessExecutionRecord): Promise<void> {
-    assertProcessExecutionRecord(record, this.sessionId, this.turnId, this.correlationId);
+    const normalized = this.session.redactEvidence(record);
+    assertProcessExecutionRecord(normalized, this.sessionId, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "executions");
     await ensureDirectory(directory);
-    const recordPath = path.join(directory, `${safePathSegment(record.executionId, "Execution ID")}.json`);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.executionId, "Execution ID")}.json`);
     let previous: ProcessExecutionRecord | undefined;
     try {
       await stat(recordPath);
@@ -1543,12 +1561,12 @@ export class TurnStore {
     if (previous) {
       assertProcessExecutionRecord(previous, this.sessionId, this.turnId, this.correlationId);
       try {
-        assertProcessTransition(previous, record);
+        assertProcessTransition(previous, normalized);
       } catch (error) {
-        throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+        throw new ComputerNativeError("persistence", `Process execution '${normalized.executionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
       }
     }
-    await this.session.replaceJson(recordPath, record);
+    await this.session.replaceJson(recordPath, normalized);
   }
 
   async readProcesses(): Promise<ProcessExecutionRecord[]> {
@@ -1567,10 +1585,11 @@ export class TurnStore {
   }
 
   async writeBrowserAction(record: BrowserActionRecord): Promise<void> {
-    assertBrowserActionRecord(record, this.turnId, this.correlationId);
+    const normalized = this.session.redactEvidence(record);
+    assertBrowserActionRecord(normalized, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "browser-actions");
     await ensureDirectory(directory);
-    const recordPath = path.join(directory, `${safePathSegment(record.actionId, "Browser action ID")}.json`);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.actionId, "Browser action ID")}.json`);
     let previous: BrowserActionRecord | undefined;
     try {
       await stat(recordPath);
@@ -1581,24 +1600,25 @@ export class TurnStore {
     if (previous) {
       assertBrowserActionRecord(previous, this.turnId, this.correlationId);
       try {
-        assertBrowserActionTransition(previous, record);
+        assertBrowserActionTransition(previous, normalized);
       } catch (error) {
-        throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+        throw new ComputerNativeError("persistence", `Browser action '${normalized.actionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
       }
     }
-    await this.session.replaceJson(recordPath, record);
+    await this.session.replaceJson(recordPath, normalized);
   }
 
   async writeMemoryAction(record: MemoryActionRecord): Promise<void> {
-    assertMemoryActionRecord(record, this.sessionId, this.turnId, this.correlationId);
+    const normalized = this.session.redactEvidence(record);
+    assertMemoryActionRecord(normalized, this.sessionId, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "memory-actions");
     await ensureDirectory(directory);
-    const recordPath = path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.operationId, "Memory operation ID")}.jsonl`);
     const history = await readJsonLines<MemoryActionRecord>(recordPath);
-    assertMemoryActionHistory([...history, record], this.sessionId, this.turnId, this.correlationId);
+    assertMemoryActionHistory([...history, normalized], this.sessionId, this.turnId, this.correlationId);
     // Lifecycle updates are append-only. Recovery reads the latest state, while
     // the JSONL history preserves the earlier proposal/approval outcome.
-    await this.session.appendJsonLine(recordPath, record);
+    await this.session.appendJsonLine(recordPath, normalized);
   }
 
   async readMemoryActions(): Promise<MemoryActionRecord[]> {
@@ -1618,10 +1638,11 @@ export class TurnStore {
   }
 
   async writeMemorySearch(record: MemorySearchEvidence): Promise<void> {
-    assertMemorySearchEvidence(record, this.sessionId, this.turnId, this.correlationId);
+    const normalized = this.session.redactEvidence(record);
+    assertMemorySearchEvidence(normalized, this.sessionId, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "memory-searches");
     await ensureDirectory(directory);
-    const recordPath = path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.searchId, "Memory search ID")}.json`);
     let previous: MemorySearchEvidence | undefined;
     try {
       await stat(recordPath);
@@ -1632,13 +1653,13 @@ export class TurnStore {
     if (previous) {
       assertMemorySearchEvidence(previous, this.sessionId, this.turnId, this.correlationId);
       const { recordedAt: _previousRecordedAt, ...previousSemantics } = redactRecord(previous) as Record<string, unknown>;
-      const { recordedAt: _recordedAt, ...recordSemantics } = redactRecord(record) as Record<string, unknown>;
+      const { recordedAt: _recordedAt, ...recordSemantics } = normalized;
       if (stableStringify(previousSemantics) !== stableStringify(recordSemantics)) {
         throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' evidence was repeated with a different payload for the same identity.`);
       }
       return;
     }
-    await this.session.replaceJson(recordPath, record);
+    await this.session.replaceJson(recordPath, normalized);
   }
 
   async readMemorySearches(): Promise<MemorySearchEvidence[]> {
@@ -1694,10 +1715,11 @@ export class TurnStore {
   }
 
   async writeBrowserArtifact(record: BrowserArtifactEvidence): Promise<void> {
-    assertBrowserArtifactEvidence(record, this.turnId, this.correlationId);
+    const normalized = this.session.redactEvidence(record);
+    assertBrowserArtifactEvidence(normalized, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "browser-artifacts");
     await ensureDirectory(directory);
-    const recordPath = path.join(directory, `${safePathSegment(record.artifactId, "Browser artifact ID")}.json`);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.artifactId, "Browser artifact ID")}.json`);
     let previous: BrowserArtifactEvidence | undefined;
     try {
       await stat(recordPath);
@@ -1707,12 +1729,12 @@ export class TurnStore {
     }
     if (previous) {
       assertBrowserArtifactEvidence(previous, this.turnId, this.correlationId);
-      if (stableStringify(previous) !== stableStringify(record)) {
-        throw new ComputerNativeError("persistence", `Browser artifact '${record.artifactId}' evidence was repeated with a different payload for the same identity.`);
+      if (stableStringify(previous) !== stableStringify(normalized)) {
+        throw new ComputerNativeError("persistence", `Browser artifact '${normalized.artifactId}' evidence was repeated with a different payload for the same identity.`);
       }
       return;
     }
-    await this.session.replaceJson(recordPath, record);
+    await this.session.replaceJson(recordPath, normalized);
   }
 
   async readBrowserArtifacts(): Promise<BrowserArtifactEvidence[]> {

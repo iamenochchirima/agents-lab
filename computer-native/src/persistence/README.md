@@ -155,9 +155,10 @@ mutation safely. An `approved` record with no applying boundary is also closed a
 Mutations that reached `applying` use their operation-specific reconciliation checks.
 
 Workspace mutation records and their normalized lifecycle events are both retained. The
-record carries the full bounded diff and operation-specific evidence; the event stream
-links the action to the turn timeline using the mutation identity, operation, hashes,
-limits, and journal state without duplicating the full diff. Recovery preserves the
+record carries the full bounded diff and operation-specific evidence, with configured
+provider secrets and recognized credential-shaped values redacted before persistence;
+the event stream links the action to the turn timeline using the mutation identity,
+operation, hashes, limits, and journal state without duplicating the full diff. Recovery preserves the
 distinction between a committed mutation, a failed or reconciliation-required mutation,
 and a `WorkspaceMutationReconciled` result proving that the recorded before-state
 remained authoritative and the mutation was not replayed.

@@ -1884,6 +1884,44 @@ test("filesystem completion acknowledgement loss repairs evidence without replay
   assert.equal(await readFile(path.join(root, "once.txt"), "utf8"), "written once\n");
 });
 
+test("workspace and model evidence redact provider-shaped secrets without changing the file", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const secret = "provider-secret-value-123456";
+  const providerShapedSecret = "sk-or-v1-0123456789abcdef0123456789abcdef";
+  const session = await SessionStore.open(stateDir, undefined, { redactionSecrets: [secret] });
+
+  const result = await runTurn({
+    session,
+    provider: new DeterministicModelProvider("deterministic/redaction", {
+      toolCall: {
+        name: "write_file",
+        argumentsJson: JSON.stringify({ path: "credentials.txt", content: `provider key: ${secret} / ${providerShapedSecret}\n` }),
+        finalResponse: "The file was written.",
+      },
+    }),
+    config: config(stateDir, { workspaceRoot: root, openRouterApiKey: secret }),
+    userPrompt: "Write the credential fixture.",
+    approveMutation: async () => ({ decision: "allow-once" }),
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(await readFile(path.join(root, "credentials.txt"), "utf8"), `provider key: ${secret} / ${providerShapedSecret}\n`);
+  const turnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", result.turnId);
+  const mutationDirectory = path.join(turnDirectory, "mutations");
+  const mutationFile = (await readdir(mutationDirectory))[0];
+  assert.ok(mutationFile);
+  const mutationEvidence = await readFile(path.join(mutationDirectory, mutationFile), "utf8");
+  const roundEvidence = await readFile(path.join(turnDirectory, "rounds.jsonl"), "utf8");
+  assert.doesNotMatch(mutationEvidence, new RegExp(secret, "u"));
+  assert.doesNotMatch(mutationEvidence, new RegExp(providerShapedSecret, "u"));
+  assert.doesNotMatch(roundEvidence, new RegExp(secret, "u"));
+  assert.doesNotMatch(roundEvidence, new RegExp(providerShapedSecret, "u"));
+  assert.match(mutationEvidence, /\[REDACTED\]/u);
+  assert.match(roundEvidence, /\[REDACTED\]/u);
+});
+
 test("restart repairs a missing first workspace mutation lifecycle event", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");

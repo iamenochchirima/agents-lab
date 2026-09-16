@@ -24,3 +24,8 @@ rejects shell grammar because the runner uses `shell: false`; an approved proces
 still access host resources available to that executable, so the approval warning is
 deliberately explicit. Executable and working-directory identity are rechecked after
 approval, and unconfirmed termination is recorded as ambiguous rather than successful.
+
+Evidence redaction is applied at the persistence boundary as well as in the TUI. Known
+provider-key shapes such as `sk-...` and bearer credentials are removed from bounded
+model-round payloads and workspace mutation previews before they are written. The
+workspace file itself is not rewritten: redaction protects evidence, not user data.

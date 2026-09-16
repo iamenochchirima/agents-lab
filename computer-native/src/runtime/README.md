@@ -85,6 +85,10 @@ bounded usage object. Missing usage remains missing; the runtime does not estima
 Attempt and completion evidence also records observed request/output bytes and the
 effective configured limits. Cost remains `null` until a pricing source is explicitly
 configured, so the TUI and evidence never imply a cost estimate that was not measured.
+The session persistence boundary receives the configured provider secret and redacts it,
+alongside recognized bearer and `sk-...` credential shapes, from persisted transcript,
+round, lifecycle, and action evidence. User and workspace content used for the actual
+operation is not rewritten.
 
 Model requests and streamed model output are bounded independently from tool output.
 `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES` is checked before a provider call and emits

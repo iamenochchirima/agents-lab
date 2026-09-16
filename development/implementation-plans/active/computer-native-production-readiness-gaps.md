@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T01:30:00+02:00
+**Last updated:** 2026-09-17T00:47:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 336 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 336 tests passed with 89.85% line coverage, 79.47% branch
-  coverage, and 85.39% function coverage. The package commands serialize
+- `pnpm test`: 337 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 337 tests passed with 89.90% line coverage, 79.44% branch
+  coverage, and 85.42% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -177,6 +177,13 @@ readiness:
   approval prelude from bounded action records before writing their recovered terminal
   observations. This preserves the approval boundary without replaying a command,
   browser action, or memory write.
+- Workspace mutation previews and model-round arguments now redact provider-shaped
+  `sk-...` and bearer credentials before persistence. The redaction is evidence-only;
+  approved workspace content remains unchanged. Broader secret-source discovery and
+  complete cross-surface leakage tests remain open.
+- The configured provider secret is now supplied to session persistence and redacted
+  across transcript, round, lifecycle, and action evidence. This is a bounded secret
+  boundary, not proof that arbitrary undiscovered secrets can be detected.
 - Managed Playwright element references now carry bounded adapter-side markup identity
   and are rechecked immediately before side-effecting actions; same-document DOM
   replacement fails as `stale-reference` rather than acting through an ordinal locator.
@@ -734,7 +741,7 @@ Exit evidence:
 
 ## Cross-cutting test and release gate
 
-The approximately 89.85% current line coverage is a baseline metric, not the completion gate. Before
+The approximately 89.90% current line coverage is a baseline metric, not the completion gate. Before
 calling the product production-ready, the test programme must include the following:
 
 ### Contract and unit tests

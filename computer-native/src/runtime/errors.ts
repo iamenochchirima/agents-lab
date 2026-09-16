@@ -100,5 +100,9 @@ export function redactSecrets(value: string, secrets: readonly string[] = []): s
       result = result.split(secret).join("[REDACTED]");
     }
   }
-  return result.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
+  return result
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    // Provider keys commonly use the `sk-...` shape. Keep this bounded to a
+    // credential-like prefix so ordinary workspace text is not rewritten.
+    .replace(/\bsk-[A-Za-z0-9][A-Za-z0-9._-]{11,}\b/gi, "[REDACTED]");
 }

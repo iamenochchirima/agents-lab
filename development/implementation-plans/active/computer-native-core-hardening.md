@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:30:00+02:00
+**Last updated:** 2026-09-17T00:47:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -186,6 +186,12 @@ tests, but it must never replace a configured real provider silently.
   their bounded action records. Prepared/approval evidence is reconstructed before the
   recovery-only terminal observation, and no process, browser action, or memory write is
   replayed.
+- Persisted workspace mutation previews and model round arguments now redact provider-
+  shaped `sk-...` and bearer credentials at the shared evidence boundary. The original
+  approved file content remains unchanged; only durable evidence is sanitized.
+- The selected provider secret is now passed into session persistence, so custom local
+  development keys are redacted as well as recognized credential-shaped values across
+  transcript, round, lifecycle, and action evidence.
 - Recovery repairs are now tested through a real approved process side effect: if the
   marker write succeeds but acknowledgement of the completed process record is lost,
   restart repairs only the missing evidence and does not run the command again.
@@ -313,8 +319,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 336 passing tests across the package. The latest coverage
-  run passes with 89.85% line coverage, 79.47% branch coverage, and 85.39% function
+- The latest validation is 337 passing tests across the package. The latest coverage
+  run passes with 89.90% line coverage, 79.44% branch coverage, and 85.42% function
   coverage. Coverage is from Node's experimental test-coverage runner and can vary
   slightly between runs; one earlier run was discarded because instrumentation caused
   a timing-sensitive process-recovery test to fail.
