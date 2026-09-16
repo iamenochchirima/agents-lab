@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T19:42:00+02:00`
+**Last updated:** `2026-09-16T20:07:00+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -46,9 +46,10 @@ UI model picker → GET /api/models → OpenRouter catalog
 UI run request → Lab server → selected platform runner/service → OpenRouter chat completion → run evidence
 ```
 
-The UI contains no fake model option. Fake adapters remain available only to automated
-tests and deterministic failure/recovery experiments, so those tests do not spend money
-or depend on network availability.
+The UI contains no fake model option. The internal run contract still accepts explicit
+fake adapters for deterministic lifecycle tests and failure/recovery exercises, so those
+checks do not spend money or depend on network availability. They are not a silent
+fallback for a missing or failed OpenRouter request.
 
 ## Scope
 
@@ -244,6 +245,9 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - [x] Verify catalog and completion requests contain the selected model but never the key
       in a body, DTO, error, manifest, event, or reference.
 - [x] Verify model IDs with provider namespaces and variant suffixes are preserved.
+- [x] Bound provider response bodies and assistant output at each platform-local
+      OpenRouter boundary; oversized payloads are rejected without entering durable
+      state, and the behaviour is covered by platform model tests.
 - [x] Verify every active non-AWS platform accepts OpenRouter and retains its existing fake-only
       failure fixtures; add Trigger OpenRouter validation/task tests.
 - [x] Verify run request parsing rejects client-supplied secret/config fields.
@@ -285,7 +289,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - Live `GET /api/models?provider=openrouter&limit=3` — returned the OpenRouter catalog.
 - Live Mastra run with selected model `cohere/north-mini-code:free` — completed with real provider output and usage; run ID `787e3db5-0c81-4d74-861e-00f170e675ed`.
 - The live run evidence was scanned for API keys, bearer headers, and provider secret prefixes; none were present.
-- Python LangGraph tests — not run because this environment has no `pytest`, LangGraph package, or `_sqlite3` support.
+- `server/src/platforms/langgraph/.local311/bin/pytest -q` — 22 passed, 1 deprecation warning; the provider response limit and parsing tests are included. The `.local` Python 3.12 environment remains unusable because its interpreter lacks `_sqlite3`.
 
 ## Required validation commands
 
@@ -320,6 +324,16 @@ do not mark it runnable or fabricate an external result.
       foundation commit `e9edb4f` (`feat(server): integrate context and model projections`).
 - [x] Commit the Trigger.dev OpenRouter task execution, its pre-dispatch cancellation
       guard, tests, and platform docs in `dce6e9c` (`feat(trigger): add OpenRouter task execution`).
+- [x] Commit the Inngest provider/configuration update in `cdf847f` (`feat(inngest): use selected model provider`).
+- [x] Commit the DBOS provider/configuration update in `c626a74` (`feat(dbos): use selected model provider`).
+- [x] Commit the Hatchet provider documentation update in `c04ca49` (`docs(hatchet): document selected model provider`).
+- [x] Commit the Vercel Workflows provider/configuration update in `2b0dc4b` (`feat(vercel): use selected model provider`).
+- [x] Commit response bounds and model-level tests for Inngest in `e734081` (`fix(inngest): bound OpenRouter responses`).
+- [x] Commit response bounds and model-level tests for Hatchet in `cfe12e7` (`fix(hatchet): bound OpenRouter responses`).
+- [x] Commit response bounds and model-level tests for Temporal in `a3c34ea` (`fix(temporal): bound OpenRouter responses`).
+- [x] Commit response bounds and provider-boundary tests for LangGraph in `d63bf4e` (`fix(langgraph): bound OpenRouter responses`).
+- [x] Commit streamed response bounds and model-level tests for DBOS in `cd10341` (`fix(dbos): bound OpenRouter responses`).
+- [x] Commit streamed response bounds and model-level tests for Vercel Workflows in `7832961` (`fix(vercel): bound OpenRouter responses`).
 - [ ] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [ ] Commit the shared web picker and runner/Compare integration separately.
