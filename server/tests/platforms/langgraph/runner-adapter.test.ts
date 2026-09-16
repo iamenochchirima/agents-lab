@@ -54,7 +54,7 @@ function manifest(serviceUrl: string): RunManifest {
       maxAttempts: 2,
       timeoutMs: 30_000,
     },
-    model: { provider: "fake", model: "fake-success" },
+    model: { provider: "fake", model: "fake-success", contextWindowTokens: 256_000 },
   };
 }
 test("LangGraph adapter validates and maps the local protocol", async () => {
@@ -77,6 +77,7 @@ test("LangGraph adapter validates and maps the local protocol", async () => {
       }
       if (method === "POST" && url === "/v1/runs") {
         assert.equal((body as Record<string, unknown>).runId, "langgraph-test-run");
+        assert.deepEqual((body as Record<string, unknown>).model, { provider: "fake", model: "fake-success" });
         return { status: 202, body: { protocolVersion: 1, executionId: "langgraph:langgraph-test-run", runId: "langgraph-test-run", threadId: "langgraph-test-run", graph: "baseline", status: "queued", idempotent: false } };
       }
       if (method === "GET" && url === "/v1/runs/langgraph%3Alanggraph-test-run") {

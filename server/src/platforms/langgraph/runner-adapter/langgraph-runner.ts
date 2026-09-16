@@ -111,7 +111,12 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       runId: manifest.runId,
       prompt: manifest.task.prompt,
       systemInstruction: manifest.context.systemInstruction,
-      model: manifest.model,
+      // The common manifest carries UI-only context metadata. LangGraph's
+      // strict wire model intentionally accepts only provider and model here.
+      model: {
+        provider: manifest.model.provider,
+        model: manifest.model.model,
+      },
       graph: "baseline",
       threadId: manifest.runId,
       durability: "sqlite-sync",
