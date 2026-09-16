@@ -18,6 +18,7 @@ and [`../completed/computer-native-memory.md`](../completed/computer-native-memo
 The queue can now advance to the next Computer Native module. Overall maturity is not
 complete. The authoritative remaining work is in
 [Computer Native production-readiness gaps](computer-native-production-readiness-gaps.md).
+The queue's status table separately lists what each completed slice still does not cover.
 
 ## Current additive UI slice
 
