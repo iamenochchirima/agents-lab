@@ -66,13 +66,26 @@ The implementation is complete only when the same behaviour is covered by automa
 tests and by a short manual TUI acceptance flow. A deterministic provider may control
 tests, but it must never replace a configured real provider silently.
 
+## Progress so far
+
+- The persistence layer now compares durable results using stable serialization and
+  refuses duplicate terminal events when the same result is committed again.
+- The runtime now retries eligible provider failures only before the first stream event,
+  records `ModelRetryScheduled`, exposes retry activity in the TUI, and leaves partial
+  provider output non-retryable.
+- The retry policy is configurable through `COMPUTER_NATIVE_MODEL_RETRY_ATTEMPTS` and
+  `COMPUTER_NATIVE_MODEL_RETRY_BACKOFF_MS`.
+
+The plan remains active. These are verified vertical slices, not completion of the
+remaining runtime, approval, filesystem, or security work below.
+
 ## Scope
 
 - [ ] Define and enforce durable turn, attempt, tool-action, approval, and terminal-result
       state transitions.
 - [ ] Record stable identities, attempt numbers, action hashes, timestamps, limits, and
       outcomes needed for restart reconciliation.
-- [ ] Add bounded model retry for transport failures with visible attempt evidence and
+- [x] Add bounded model retry for transport failures with visible attempt evidence and
       no automatic replay of an approved or started side effect.
 - [ ] Make cancellation, timeout, restart, duplicate events, and ambiguous outcomes
       explicit runtime results.
@@ -310,7 +323,7 @@ claim in this plan.
 
 - [ ] Add provider capability metadata and validate provider/model combinations before
       admission.
-- [ ] Add bounded retry for eligible transport failures, rate limits, and transient
+- [x] Add bounded retry for eligible transport failures, rate limits, and transient
       provider errors.
 - [ ] Handle partial streams, empty responses, malformed tool calls, disconnects,
       context overflow, and provider refusal without hanging the turn.

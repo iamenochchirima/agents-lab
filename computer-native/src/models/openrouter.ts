@@ -26,6 +26,10 @@ function usageFrom(value: OpenRouterChunk["usage"]): ModelUsage | undefined {
   };
 }
 
+function retryableHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 function parseChunk(data: string): { readonly text?: string; readonly usage?: ModelUsage; readonly toolCalls: readonly OpenRouterToolCallDelta[]; readonly done: boolean } | undefined {
   if (data.length === 0) return undefined;
   if (data === "[DONE]") return { toolCalls: [], done: true };
@@ -101,14 +105,14 @@ export class OpenRouterModelProvider implements ModelProvider {
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
-      throw new ModelProviderError("OpenRouter request failed before a response was received.", { cause: error });
+      throw new ModelProviderError("OpenRouter request failed before a response was received.", { cause: error, retryable: true });
     }
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw new ModelProviderError(
         `OpenRouter returned HTTP ${response.status}: ${redactSecrets(body.slice(0, 500), [this.apiKey])}`,
-        { code: response.status === 429 ? "rate-limit" : "provider" },
+        { code: response.status === 429 ? "rate-limit" : "provider", retryable: retryableHttpStatus(response.status) },
       );
     }
     if (!response.body) throw new ModelProviderError("OpenRouter returned no response stream.");

@@ -15,4 +15,8 @@ The first slice includes two adapters behind this contract:
 - The OpenRouter provider sends a streamed text request when explicitly selected and
   reads its credential from `OPENROUTER_API_KEY`.
 
-The runtime does not automatically retry an ambiguous model request in this slice.
+The runtime retries only provider failures that happen before the first stream event,
+within the configured attempt and backoff limits. A failure after text or a tool call
+has been emitted is not retried because replay could duplicate visible output or obscure
+an already-started side effect. Every scheduled retry is recorded in lifecycle evidence
+and shown in the TUI.

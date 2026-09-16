@@ -14,9 +14,12 @@ export class ComputerNativeError extends Error {
   }
 }
 export class ModelProviderError extends ComputerNativeError {
-  constructor(message: string, options?: { cause?: unknown; code?: Extract<TurnError["code"], "provider" | "provider-empty" | "provider-incomplete" | "rate-limit"> }) {
+  readonly retryable: boolean | undefined;
+
+  constructor(message: string, options?: { cause?: unknown; code?: Extract<TurnError["code"], "provider" | "provider-empty" | "provider-incomplete" | "rate-limit">; retryable?: boolean }) {
     super(options?.code ?? "provider", message, options);
     this.name = "ModelProviderError";
+    this.retryable = options?.retryable;
   }
 }
 

@@ -17,7 +17,7 @@ import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
 import { MAX_PATCH_REQUEST_BYTES, type MutationEvent } from "../src/workspace/mutation.js";
-import { ComputerNativeError } from "../src/runtime/errors.js";
+import { ComputerNativeError, ModelProviderError } from "../src/runtime/errors.js";
 import { asSessionId, asTurnId, type ModelRequest, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
 import { allowedTransitions, assertTransition } from "../src/runtime/state.js";
 import { openChatApplication } from "../src/runtime/application.js";
@@ -62,6 +62,8 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.model, "deterministic/echo");
   assert.equal(deterministic.timeoutMs, 30_000);
   assert.equal(deterministic.approvalTimeoutMs, 120_000);
+  assert.equal(deterministic.modelRetryAttempts, 2);
+  assert.equal(deterministic.modelRetryBackoffMs, 250);
   assert.equal(deterministic.processMode, "approval");
   assert.equal(deterministic.processDurationMs, 60_000);
   assert.equal(deterministic.processCallsPerTurn, 4);
@@ -257,6 +259,31 @@ test("successful turn persists ordered transcript, events, and result", async ()
   assert.ok(events.every((event) => event.sessionId === result.sessionId && event.turnId === result.turnId));
 });
 
+test("committing the same terminal result twice does not duplicate the terminal event", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("commit once", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const result = {
+    schemaVersion: 1 as const,
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    status: "completed" as const,
+    provider: "deterministic" as const,
+    model: "deterministic/echo",
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    assistantText: "done",
+  };
+
+  await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
+  await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
+
+  const events = await turn.readEvents();
+  assert.deepEqual(events.map((event) => event.type), ["TurnCompleted"]);
+  assert.equal(turn.state, "completed");
+});
+
 test("resuming a session appends a second ordered turn", async () => {
   const stateDir = tempDirectory();
   const firstSession = await openSession(stateDir);
@@ -297,6 +324,72 @@ test("provider failure records the user message without an assistant", async () 
   assert.equal(result.status, "failed");
   assert.equal(result.error?.code, "provider");
   assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
+});
+
+test("turn retries a provider failure before the first event and records the retry", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let calls = 0;
+  const lifecycle: TurnEvent[] = [];
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/flaky",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string } | { readonly type: "completed" }> {
+      calls += 1;
+      if (calls === 1) throw new ModelProviderError("temporary provider failure", { code: "provider" });
+      yield { type: "text", text: "recovered" };
+      yield { type: "completed" };
+    },
+  };
+
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir, { firstEventTimeoutMs: 10, modelRetryAttempts: 2, modelRetryBackoffMs: 30 }),
+    userPrompt: "retry once",
+    onEvent: (event) => lifecycle.push(event),
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.assistantText, "recovered");
+  assert.equal(calls, 2);
+  assert.equal(result.metrics?.modelRequestCount, 2);
+  assert.ok(lifecycle.some((event) => event.type === "retry" && event.attempt === 1 && event.delayMs === 30));
+  const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  const retry = events.find((event) => event.type === "ModelRetryScheduled");
+  assert.equal(retry?.payload.attempt, 1);
+  assert.equal(retry?.payload.nextAttempt, 2);
+});
+
+test("turn does not retry a provider failure after partial output", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let calls = 0;
+  const lifecycle: TurnEvent[] = [];
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/partial-failure",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string }> {
+      calls += 1;
+      yield { type: "text", text: "partial" };
+      throw new ModelProviderError("stream ended unexpectedly", { code: "provider-incomplete" });
+    },
+  };
+
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir, { modelRetryAttempts: 3, modelRetryBackoffMs: 0 }),
+    userPrompt: "do not duplicate partial output",
+    onEvent: (event) => lifecycle.push(event),
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "provider-incomplete");
+  assert.equal(calls, 1);
+  assert.equal(lifecycle.some((event) => event.type === "retry"), false);
 });
 
 test("timeout and cancellation produce distinct terminal results", async () => {
@@ -547,6 +640,11 @@ test("OpenRouter adapter classifies incomplete streams and rate limits", async (
   await assert.rejects(
     async () => { for await (const _event of rateLimited.stream(request, new AbortController().signal)) void _event; },
     (error: unknown) => error instanceof ComputerNativeError && error.code === "rate-limit" && !error.message.includes("secret"),
+  );
+  const unauthorized = new OpenRouterModelProvider("openai/example", "secret", async () => new Response("unauthorized", { status: 401 }));
+  await assert.rejects(
+    async () => { for await (const _event of unauthorized.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.retryable === false,
   );
 });
 
@@ -3386,6 +3484,7 @@ test("TUI renders the public turn lifecycle as styled activity", async () => {
       onMutation?: (event: MutationEvent) => void,
     ) => {
       onEvent?.({ type: "waiting", round: 1 });
+      onEvent?.({ type: "retry", round: 1, attempt: 1, delayMs: 0, reason: "temporary provider failure" });
       onEvent?.({
         type: "tool_started",
         round: 1,
@@ -3428,6 +3527,7 @@ test("TUI renders the public turn lifecycle as styled activity", async () => {
 
   const rendered = chunks.join("");
   assert.match(rendered, /waiting for model/);
+  assert.match(rendered, /model retry · attempt 1 · temporary provider failure/);
   assert.match(rendered, /read_file · started/);
   assert.match(rendered, /read_file · Read note\.txt\./);
   assert.match(rendered, /workspace change · proposed note\.md/);

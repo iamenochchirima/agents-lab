@@ -20,6 +20,8 @@ export const DEFAULT_MAX_TOOL_DURATION_MS = 10_000;
 // before the model gets a final reporting round. Keep the loop bounded, but leave
 // enough room for snapshot → action → verification workflows such as browser forms.
 export const DEFAULT_MAX_MODEL_TOOL_ROUNDS = 8;
+export const DEFAULT_MODEL_RETRY_ATTEMPTS = 2;
+export const DEFAULT_MODEL_RETRY_BACKOFF_MS = 250;
 export const DEFAULT_FIRST_EVENT_TIMEOUT_MS = 12_000;
 export const DEFAULT_APPROVAL_TIMEOUT_MS = 120_000;
 export const DEFAULT_PROCESS_MODE: ProcessMode = "approval";
@@ -92,6 +94,8 @@ export interface ConfigOverrides {
   readonly maxToolOutputBytes?: number;
   readonly maxToolDurationMs?: number;
   readonly maxModelToolRounds?: number;
+  readonly modelRetryAttempts?: number;
+  readonly modelRetryBackoffMs?: number;
   readonly deterministicBehavior?: DeterministicBehavior;
   readonly deterministicDelayMs?: number;
   readonly openRouterApiKey?: string;
@@ -145,6 +149,8 @@ export interface AppConfig {
   readonly maxToolOutputBytes: number;
   readonly maxToolDurationMs: number;
   readonly maxModelToolRounds: number;
+  readonly modelRetryAttempts: number;
+  readonly modelRetryBackoffMs: number;
   readonly deterministicBehavior: DeterministicBehavior;
   readonly deterministicDelayMs: number;
   readonly openRouterApiKey?: string;
@@ -236,6 +242,8 @@ export function loadConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessE
   const timeoutMs = overrides.timeoutMs ?? positiveInteger(env.COMPUTER_NATIVE_TIMEOUT_MS, 30_000, "timeout");
   const firstEventTimeoutMs = overrides.firstEventTimeoutMs ?? positiveInteger(env.COMPUTER_NATIVE_FIRST_EVENT_TIMEOUT_MS, DEFAULT_FIRST_EVENT_TIMEOUT_MS, "first event timeout");
   const approvalTimeoutMs = overrides.approvalTimeoutMs ?? positiveInteger(env.COMPUTER_NATIVE_APPROVAL_TIMEOUT_MS, DEFAULT_APPROVAL_TIMEOUT_MS, "approval timeout");
+  const modelRetryAttempts = overrides.modelRetryAttempts ?? positiveInteger(env.COMPUTER_NATIVE_MODEL_RETRY_ATTEMPTS, DEFAULT_MODEL_RETRY_ATTEMPTS, "model retry attempts");
+  const modelRetryBackoffMs = overrides.modelRetryBackoffMs ?? nonNegativeInteger(env.COMPUTER_NATIVE_MODEL_RETRY_BACKOFF_MS, DEFAULT_MODEL_RETRY_BACKOFF_MS, "model retry backoff");
   const selectedProcessMode = processMode(overrides.processMode ?? env.COMPUTER_NATIVE_PROCESS_MODE);
   const deterministicDelayMs = overrides.deterministicDelayMs ?? nonNegativeInteger(env.COMPUTER_NATIVE_DETERMINISTIC_DELAY_MS, 0, "deterministic delay");
   const stateDir = expandHome(overrides.stateDir ?? env.COMPUTER_NATIVE_STATE_DIR ??
@@ -255,6 +263,8 @@ export function loadConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessE
     timeoutMs,
     firstEventTimeoutMs,
     approvalTimeoutMs,
+    modelRetryAttempts,
+    modelRetryBackoffMs,
     processMode: selectedProcessMode,
     processDurationMs: overrides.processDurationMs ?? positiveInteger(env.COMPUTER_NATIVE_PROCESS_DURATION_MS, DEFAULT_PROCESS_DURATION_MS, "process duration"),
     processTerminationGraceMs: overrides.processTerminationGraceMs ?? positiveInteger(env.COMPUTER_NATIVE_PROCESS_TERMINATION_GRACE_MS, DEFAULT_PROCESS_TERMINATION_GRACE_MS, "process termination grace"),
@@ -309,6 +319,8 @@ export function safeConfigSummary(config: AppConfig): Readonly<Record<string, un
     timeoutMs: config.timeoutMs,
     firstEventTimeoutMs: config.firstEventTimeoutMs,
     approvalTimeoutMs: config.approvalTimeoutMs,
+    modelRetryAttempts: config.modelRetryAttempts,
+    modelRetryBackoffMs: config.modelRetryBackoffMs,
     processMode: config.processMode,
     processDurationMs: config.processDurationMs,
     processTerminationGraceMs: config.processTerminationGraceMs,

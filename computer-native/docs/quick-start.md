@@ -232,6 +232,13 @@ The diagnostic uses the configured provider/model and the same bounded first-eve
 total-request deadlines as a turn. A failed result names the safe category (for example
 `rate-limit`, `provider-incomplete`, or `first-event-timeout`) without printing the API key.
 
+Before the first provider event, transient provider failures may be retried within the
+configured limits. Set `COMPUTER_NATIVE_MODEL_RETRY_ATTEMPTS` and
+`COMPUTER_NATIVE_MODEL_RETRY_BACKOFF_MS` in `.env` to adjust that policy. A failure after
+text or a tool call has been emitted is not retried because replay could duplicate output
+or obscure a side effect. Retry attempts are recorded in the turn evidence and shown in
+the TUI.
+
 The local `.env` file is not committed. Explicit environment variables and command-line
 flags take precedence over it. The key is never included in the manifest, transcript,
 events, result, terminal error, or browser-facing output. If the key or model is missing,

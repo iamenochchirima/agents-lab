@@ -1,6 +1,6 @@
 import type { AppConfig } from "../config/config.js";
 import { buildInitialContext } from "../context/context.js";
-import type { ModelProvider } from "../models/provider.js";
+import { isRetryableModelFailure, type ModelProvider } from "../models/provider.js";
 import { ToolRegistry, type ToolExecutionContext, type ToolExecutionResult } from "../tools/registry.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionRecord } from "../process/process.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
@@ -35,7 +35,7 @@ export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryDailyMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryDailyMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
   readonly memory?: MemoryStore;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
@@ -59,6 +59,7 @@ interface AbortContext {
   readonly didCancel: () => boolean;
   readonly pauseTotalDeadline: () => void;
   readonly resumeTotalDeadline: () => void;
+  readonly clearFirstEventTimer: () => void;
   beginModelRound(): void;
   markFirstEvent(): void;
   dispose(): void;
@@ -130,6 +131,7 @@ function combinedSignal(external: AbortSignal | undefined, timeoutMs: number, fi
     didCancel: () => cancelled,
     pauseTotalDeadline,
     resumeTotalDeadline,
+    clearFirstEventTimer: markFirstEvent,
     beginModelRound,
     markFirstEvent,
     dispose: () => {
@@ -166,6 +168,22 @@ function modelMessageForAssistant(content: string, toolCalls: readonly ModelTool
 
 function cancellationError(): DOMException {
   return new DOMException("The tool execution was cancelled.", "AbortError");
+}
+
+async function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) throw cancellationError();
+  if (delayMs === 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      reject(cancellationError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function metrics(startedAt: string, modelRequestCount: number, toolCallCount: number, roundCount: number): TurnMetrics {
@@ -671,10 +689,6 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
   try {
     for (let round = 1; round <= options.config.maxModelToolRounds; round += 1) {
       roundCount = round;
-      modelRequestCount += 1;
-      abort.beginModelRound();
-      options.onEvent?.({ type: "waiting", round });
-      await turn.appendEvent("ModelRequested", { provider: request.provider, model: request.model, round });
       await turn.appendRound({
         schemaVersion: 1,
         sessionId: turn.sessionId,
@@ -682,28 +696,50 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         round,
         phase: "model_requested",
         recordedAt: new Date().toISOString(),
-        payload: { provider: request.provider, model: request.model, messageCount: messages.length },
+        payload: { provider: request.provider, model: request.model, messageCount: messages.length, maxAttempts: options.config.modelRetryAttempts },
       });
 
       const roundText: string[] = [];
       const toolCalls: ModelToolCall[] = [];
       const callIds = new Set<string>();
       const roundRequest = { ...request, messages, tools: tools.definitions };
-      for await (const event of options.provider.stream(roundRequest, abort.signal)) {
-        abort.markFirstEvent();
-        if (event.type === "text") {
-          roundText.push(event.text);
-          response += event.text;
-          options.onText?.(event.text);
-          options.onEvent?.({ type: "text", text: event.text, round });
-        } else if (event.type === "tool_call") {
-          if (callIds.has(event.call.callId)) {
-            throw new ModelProviderError(`The provider returned duplicate tool call ID '${event.call.callId}'.`, { code: "provider-incomplete" });
+      let attempt = 0;
+      while (true) {
+        attempt += 1;
+        modelRequestCount += 1;
+        abort.beginModelRound();
+        options.onEvent?.({ type: "waiting", round });
+        await turn.appendEvent("ModelRequested", { provider: request.provider, model: request.model, round, attempt });
+        let emittedEvent = false;
+        try {
+          for await (const event of options.provider.stream(roundRequest, abort.signal)) {
+            emittedEvent = true;
+            abort.markFirstEvent();
+            if (event.type === "text") {
+              roundText.push(event.text);
+              response += event.text;
+              options.onText?.(event.text);
+              options.onEvent?.({ type: "text", text: event.text, round });
+            } else if (event.type === "tool_call") {
+              if (callIds.has(event.call.callId)) {
+                throw new ModelProviderError(`The provider returned duplicate tool call ID '${event.call.callId}'.`, { code: "provider-incomplete" });
+              }
+              callIds.add(event.call.callId);
+              toolCalls.push(event.call);
+            } else {
+              usage = event.usage ?? usage;
+            }
           }
-          callIds.add(event.call.callId);
-          toolCalls.push(event.call);
-        } else {
-          usage = event.usage ?? usage;
+          break;
+        } catch (error) {
+          const canRetry = !abort.signal.aborted && attempt < options.config.modelRetryAttempts && isRetryableModelFailure(error, emittedEvent);
+          if (!canRetry) throw error;
+          const delayMs = Math.min(options.config.modelRetryBackoffMs * (2 ** (attempt - 1)), 30_000);
+          const reason = bounded(safeErrorMessage(error), 1_000);
+          abort.clearFirstEventTimer();
+          await turn.appendEvent("ModelRetryScheduled", { round, attempt, nextAttempt: attempt + 1, delayMs, reason });
+          options.onEvent?.({ type: "retry", round, attempt, delayMs, reason });
+          await waitForRetry(delayMs, abort.signal);
         }
       }
       await turn.appendRound({

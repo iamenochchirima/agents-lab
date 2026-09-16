@@ -269,6 +269,12 @@ export class TerminalUi {
         this.statusRound = event.round;
         this.printActivity("◌", `waiting for model · round ${event.round}`);
         break;
+      case "retry":
+        this.waiting = true;
+        this.status = `retrying model · attempt ${event.attempt}`;
+        this.statusRound = event.round;
+        this.printActivity("↻", `model retry · attempt ${event.attempt} · ${event.reason}${event.delayMs > 0 ? ` · waiting ${event.delayMs}ms` : ""}`, "33;1");
+        break;
       case "text":
         this.status = "streaming";
         this.statusRound = event.round;

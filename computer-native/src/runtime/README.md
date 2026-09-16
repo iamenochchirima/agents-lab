@@ -11,6 +11,10 @@ states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
 Interrupted turns are recorded after restart and are never automatically resent because
 the provider or tool may have completed after the process stopped.
 
+Model transport failures may retry only before the provider emits its first event. Each
+attempt and scheduled delay is recorded as lifecycle evidence. A failure after partial
+text or a tool call is never replayed automatically.
+
 The `run_command` tool is a foreground process turn within this lifecycle. Its approval
 wait pauses the turn deadline, while the process itself has separate timeout, output,
 argument, and termination-grace limits. Process events are persisted before the turn

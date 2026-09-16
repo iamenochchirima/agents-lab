@@ -33,6 +33,10 @@ contains the exact approved identity and bounded outcome, and its state transiti
 validated before replacement. Restart recovery never starts a process: prepared and
 approved records become approval-unavailable, while running records become ambiguous.
 
+Terminal result writes compare stable serialized values, so repeating the same commit is
+safe after a retry or recovery. The terminal lifecycle event is appended only once, and a
+result cannot be committed with a mismatched terminal event type.
+
 Browser actions use the same immutable-identity and one-way-transition pattern. The
 record stores the session, tab, document, reference, action hash, approval decision,
 bounded outcome, and terminal status. Browser actions that were prepared or approved

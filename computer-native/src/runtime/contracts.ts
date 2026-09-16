@@ -138,6 +138,7 @@ export interface TurnResult {
 export type LifecycleEventType =
   | "TurnStarted"
   | "ModelRequested"
+  | "ModelRetryScheduled"
   | "ModelCompleted"
   | "ProcessPrepared"
   | "ProcessApprovalDecided"
@@ -194,6 +195,7 @@ export interface TurnRecord {
 
 export type TurnEvent =
   | { readonly type: "waiting"; readonly round: number }
+  | { readonly type: "retry"; readonly round: number; readonly attempt: number; readonly delayMs: number; readonly reason: string }
   | { readonly type: "text"; readonly text: string; readonly round: number }
   | { readonly type: "tool_started"; readonly round: number; readonly call: ModelToolCall }
   | { readonly type: "tool_completed"; readonly round: number; readonly callId: string; readonly name: string; readonly ok: boolean; readonly summary: string }

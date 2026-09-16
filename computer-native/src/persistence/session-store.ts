@@ -26,6 +26,7 @@ import {
   readJsonLines,
   redactRecord,
   safePathSegment,
+  stableStringify,
 } from "./json.js";
 import { assertTransition } from "../runtime/state.js";
 import { SessionLock } from "./lock.js";
@@ -540,7 +541,7 @@ export class TurnStore {
     const resultPath = path.join(this.directory, "result.json");
     try {
       const existing = await readJson<TurnResult>(resultPath);
-      if (JSON.stringify(existing) !== JSON.stringify(result)) {
+      if (stableStringify(existing) !== stableStringify(result)) {
         throw new ComputerNativeError("persistence", `Turn '${this.turnId}' already has a different terminal result.`);
       }
       return;
@@ -562,9 +563,19 @@ export class TurnStore {
     terminalType: LifecycleEventType,
     payload: Readonly<Record<string, unknown>> = {},
   ): Promise<void> {
+    const expectedType = terminalEventType(result.status);
+    if (terminalType !== expectedType) {
+      throw new ComputerNativeError(
+        "persistence",
+        `Turn '${this.turnId}' cannot commit '${terminalType}' for a '${result.status}' result.`,
+      );
+    }
     await this.writeResult(result);
     await this.updateState(result.status);
-    await this.appendEvent(terminalType, payload);
+    const events = await this.readEvents();
+    if (!events.some((event) => event.type === terminalType)) {
+      await this.appendEvent(terminalType, payload);
+    }
   }
 }
 
