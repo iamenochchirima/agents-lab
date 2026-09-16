@@ -60,6 +60,8 @@ interface NativeRestateReference {
   readonly nativeStatus?: string;
   readonly retryCount?: number | null;
   readonly lastModifiedAt?: string | null;
+  readonly terminalObservedAt?: string;
+  readonly unknownSince?: string;
   readonly errorCode?: string;
 }
 
@@ -177,6 +179,7 @@ export class RestateBaselineRunner implements PlatformRunner {
         workflowKey,
         invocationId: null,
         submissionOutcome: "unknown",
+        unknownSince: new Date().toISOString(),
         errorCode: classifySubmissionError(error),
       });
     }
@@ -197,6 +200,7 @@ export class RestateBaselineRunner implements PlatformRunner {
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const native = nativeReferenceFromExecution(reference);
+    let terminalOutputError: unknown = null;
     try {
       const output = await this.workflowClient(native.workflowKey).workflowOutput();
       if (output.ready && output.result) return inspectionFromResult(reference, output.result);
@@ -205,6 +209,7 @@ export class RestateBaselineRunner implements PlatformRunner {
       // the output endpoint rejects. Temporary ingress failures must remain
       // errors so the common server preserves its last projection.
       if (!isPlatformTerminalError(error)) throw error;
+      terminalOutputError = error;
     }
 
     const invocation = await this.findInvocation(native);
@@ -218,8 +223,12 @@ export class RestateBaselineRunner implements PlatformRunner {
       retryCount: invocation.retryCount,
       lastModifiedAt: invocation.modifiedAt,
     });
+    const nativeStatus = mapNativeStatus(invocation.status, invocation.completionResult);
+    if (nativeStatus === "cancelled" || isRestateCancellationError(terminalOutputError)) {
+      return cancellationInspection(updatedReference, native, invocation);
+    }
     return {
-      status: mapNativeStatus(invocation.status, invocation.completionResult),
+      status: nativeStatus,
       reference: updatedReference,
       eventIntents: [],
       result: null,
@@ -322,6 +331,8 @@ function referenceFromManifest(manifest: RunManifest, native: Pick<NativeRestate
     nativeStatus: native.nativeStatus,
     retryCount: native.retryCount,
     lastModifiedAt: native.lastModifiedAt,
+    terminalObservedAt: native.terminalObservedAt,
+    unknownSince: native.unknownSince,
     errorCode: native.errorCode,
   };
   return { platform: manifest.platform, variant: manifest.variant, executionId: native.workflowKey, native: dropUndefined(value as unknown as Record<string, unknown>) };
@@ -350,8 +361,69 @@ function nativeReferenceFromExecution(reference: PlatformExecutionReference): Na
     nativeStatus: stringValue(native, "nativeStatus") ?? undefined,
     retryCount: numberValue(native, "retryCount"),
     lastModifiedAt: stringValue(native, "lastModifiedAt") ?? undefined,
+    terminalObservedAt: stringValue(native, "terminalObservedAt") ?? undefined,
+    unknownSince: stringValue(native, "unknownSince") ?? undefined,
     errorCode: stringValue(native, "errorCode") ?? undefined,
   };
+}
+
+function cancellationInspection(
+  reference: PlatformExecutionReference,
+  native: NativeRestateReference,
+  invocation: InvocationRecord,
+): RunnerInspection {
+  const runId = reference.executionId.replace(/^agentlab:/, "");
+  const finishedAt = invocation.modifiedAt ?? native.terminalObservedAt ?? new Date().toISOString();
+  const terminalReference = updateReference(reference, { terminalObservedAt: finishedAt });
+  const attemptCount = Math.max(1, (invocation.retryCount ?? 0) + 1);
+  const eventIntents: RunEventIntent[] = [
+    {
+      source: "restate-runner",
+      sourceSequence: 1,
+      kind: "AgentCancelled",
+      runId,
+      occurredAt: finishedAt,
+      payload: { invocationId: invocation.id, nativeStatus: invocation.status },
+    },
+    {
+      source: "restate-runner",
+      sourceSequence: 2,
+      kind: "RunCancelled",
+      runId,
+      occurredAt: finishedAt,
+      payload: { invocationId: invocation.id, nativeStatus: invocation.status },
+    },
+  ];
+  const result: RunResult = {
+    schemaVersion: 1,
+    runId,
+    status: "cancelled",
+    startedAt: null,
+    finishedAt,
+    output: null,
+    error: {
+      code: "RESTATE_INVOCATION_CANCELLED",
+      message: "Restate cancelled the invocation before the workflow returned a result.",
+      failureKind: "cancelled",
+      retryable: false,
+    },
+    attemptCount,
+    usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+  };
+  const trajectory: RunTrajectory = { schemaVersion: 1, runId, phases: [] };
+  const metrics: RunMetrics = {
+    schemaVersion: 1,
+    runId,
+    status: "cancelled",
+    durationMs: null,
+    modelCallCount: 0,
+    modelAttemptCount: attemptCount,
+    inputTokens: null,
+    outputTokens: null,
+    totalTokens: null,
+    costUsd: null,
+  };
+  return { status: "cancelled", reference: terminalReference, eventIntents, result, trajectory, metrics };
 }
 
 function inspectionFromResult(reference: PlatformExecutionReference, result: RestateWorkflowResult): RunnerInspection {
@@ -361,7 +433,8 @@ function inspectionFromResult(reference: PlatformExecutionReference, result: Res
 
 function unknownSubmissionInspection(reference: PlatformExecutionReference, errorCode?: string): RunnerInspection {
   const runId = reference.executionId.replace(/^agentlab:/, "");
-  const finishedAt = new Date().toISOString();
+  const native = nativeReferenceFromExecution(reference);
+  const finishedAt = native.unknownSince ?? native.lastModifiedAt ?? new Date().toISOString();
   const result: RunResult = {
     schemaVersion: 1,
     runId,
@@ -432,6 +505,13 @@ function isAmbiguousSubmissionError(error: unknown): boolean {
 function isPlatformTerminalError(error: unknown): boolean {
   if (!isRecord(error) || typeof error.status !== "number") return false;
   return error.status >= 400 && error.status < 500;
+}
+
+function isRestateCancellationError(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  const responseText = typeof error.responseText === "string" ? error.responseText : "";
+  const message = typeof error.message === "string" ? error.message : "";
+  return /cancel+ed|cancel+ation/i.test(`${message} ${responseText}`);
 }
 
 function sqlString(value: string): string { return value.replace(/'/g, "''"); }

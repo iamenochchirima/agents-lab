@@ -69,6 +69,7 @@ test(
         prompt: "integration prompt",
         systemInstruction: "Be concise.",
         model: { provider: "fake", model: "fake-success" },
+        tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 },
       };
       const runner = RestateBaselineRunner.fromOptions({
         config: loadRestateConfig({
@@ -98,6 +99,34 @@ test(
       assert.deepEqual(state, { status: "completed", runId: RUN_ID, finishedAt: result.finishedAt });
       assert.equal(inspection.status, "completed");
       assert.equal(cancellation.alreadyTerminal, true);
+
+      const toolRunId = `${RUN_ID}-tool-loop`;
+      const toolInput: RestateWorkflowInput = {
+        runId: toolRunId,
+        prompt: "Calculate twenty plus twenty-two.",
+        systemInstruction: "Use the calculator when appropriate.",
+        model: { provider: "fake", model: "fake-tool-call" },
+        tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 },
+      };
+      const toolManifest = buildRunManifest({
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: toolInput.prompt },
+        model: toolInput.model,
+      }, { runId: toolRunId, platformConfig: runner.manifestConfiguration() });
+      const toolReference = await runner.start(toolManifest);
+      const toolWorkflow = ingress.workflowClient(baselineWorkflow, toolReference.executionId);
+      const toolResult = await toolWorkflow.workflowAttach();
+
+      assert.equal(toolResult.status, "completed");
+      assert.equal(toolResult.output, 'The calculator returned {"value":42}.');
+      assert.deepEqual(
+        toolResult.eventIntents.filter((event) => event.kind.startsWith("Tool")).map((event) => event.kind),
+        ["ToolCallRequested", "ToolCallValidated", "ToolExecutionStarted", "ToolExecutionCompleted"],
+      );
+      assert.equal(toolResult.eventIntents.filter((event) => event.kind === "ModelRequested").length, 2);
+      assert.equal(toolResult.metrics.toolCallCount, 1);
+      assert.equal(toolResult.metrics.toolAttemptCount, 1);
     } finally {
       await environment.stop();
     }
@@ -123,8 +152,8 @@ test(
       {
         platform: "restate",
         variant: "baseline",
-        task: { kind: "prompt", prompt: "Produce one short native Restate sentence." },
-        model: { provider: "fake", model: "fake-success" },
+        task: { kind: "prompt", prompt: "Calculate twenty plus twenty-two." },
+        model: { provider: "fake", model: "fake-tool-call" },
       },
       { runId, platformConfig: runner.manifestConfiguration() },
     );
@@ -156,8 +185,50 @@ test(
       assert.equal(terminal, true, "native Restate workflow did not reach a terminal result");
       const snapshot = await evidence.readSnapshot(runId);
       assert.equal(snapshot.result?.status, "completed");
-      assert.equal(snapshot.result?.output, "Fake response: Produce one short native Restate sentence.");
+      assert.equal(snapshot.result?.output, 'The calculator returned {"value":42}.');
+      assert.deepEqual(snapshot.events.filter((event) => event.kind.startsWith("Tool")).map((event) => event.kind), [
+        "ToolCallRequested",
+        "ToolCallValidated",
+        "ToolExecutionStarted",
+        "ToolExecutionCompleted",
+      ]);
+      assert.equal(snapshot.metrics?.toolCallCount, 1);
+      assert.equal(snapshot.metrics?.toolAttemptCount, 1);
       assert.equal(snapshot.executionReference?.native.serviceName, "AgentLabRestateBaseline");
+
+      const duplicateReference = await runner.start(manifest);
+      assert.equal(duplicateReference.executionId, reference.executionId);
+      assert.equal(duplicateReference.native.submissionOutcome, "already_accepted");
+      const duplicateInspection = await runner.inspect(duplicateReference);
+      assert.equal(duplicateInspection.result?.output, 'The calculator returned {"value":42}.');
+      assert.equal(duplicateInspection.metrics?.toolCallCount, 1);
+
+      // Native Restate retains completed workflow keys. Keep the cancellation
+      // fixture unique so a previous local test run cannot turn this active
+      // cancellation check into an already-terminal invocation.
+      const cancelRunId = `restate-native-${Date.now()}-cancel`;
+      const cancelManifest = buildRunManifest({
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Cancel this delayed run." },
+        model: { provider: "fake", model: "fake-delay" },
+      }, { runId: cancelRunId, platformConfig: runner.manifestConfiguration() });
+      const cancelReference = await runner.start(cancelManifest);
+      let cancellation = await runner.cancel(cancelReference, "integration cancellation");
+      for (let attempt = 0; attempt < 20 && !cancellation.accepted && !cancellation.alreadyTerminal; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        cancellation = await runner.cancel(cancelReference, "integration cancellation");
+      }
+      assert.equal(cancellation.accepted, true, cancellation.message);
+
+      let cancelledInspection = await runner.inspect(cancelReference);
+      for (let attempt = 0; attempt < 100 && !cancelledInspection.result; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        cancelledInspection = await runner.inspect(cancelReference);
+      }
+      assert.equal(cancelledInspection.result?.status, "cancelled");
+      assert.equal(cancelledInspection.result?.error?.failureKind, "cancelled");
+      assert.equal(cancelledInspection.eventIntents.at(-1)?.kind, "RunCancelled");
     } finally {
       await rm(runRoot, { recursive: true, force: true });
     }
@@ -195,13 +266,19 @@ test(
         payload: {
           platform: "restate",
           variant: "baseline",
-          task: { kind: "prompt", prompt: "Return one generic Restate API sentence." },
-          model: { provider: "fake", model: "fake-success" },
+          task: { kind: "prompt", prompt: "Calculate twenty plus twenty-two." },
+          model: { provider: "fake", model: "fake-tool-call" },
         },
       });
       assert.equal(createdResponse.statusCode, 202, createdResponse.body);
 
-      let run = createdResponse.json() as { runId: string; status: string; result: { output: string } | null; executionReference: { executionId: string } | null };
+      let run = createdResponse.json() as {
+        runId: string;
+        status: string;
+        events: readonly { kind: string }[];
+        result: { output: string } | null;
+        executionReference: { executionId: string } | null;
+      };
       for (let attempt = 0; attempt < 100 && !run.result; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
         const inspectionResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}` });
@@ -210,12 +287,24 @@ test(
       }
 
       assert.equal(run.status, "completed");
-      assert.equal(run.result?.output, "Fake response: Return one generic Restate API sentence.");
+      assert.equal(run.result?.output, 'The calculator returned {"value":42}.');
+      assert.deepEqual(run.events.filter((event) => event.kind.startsWith("Tool")).map((event) => event.kind), [
+        "ToolCallRequested",
+        "ToolCallValidated",
+        "ToolExecutionStarted",
+        "ToolExecutionCompleted",
+      ]);
       assert.match(run.executionReference?.executionId ?? "", /^agentlab:/);
       for (const file of ["config.json", "events.jsonl", "trajectory.json", "metrics.json", "result.json", "native/restate.json"]) {
         const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/${file}` });
         assert.equal(response.statusCode, 200, `${file}: ${response.body}`);
       }
+      const configResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/config.json` });
+      const storedManifest = configResponse.json() as { platformConfig?: { tools?: { enabledNames?: readonly string[] } } };
+      assert.deepEqual(storedManifest.platformConfig?.tools?.enabledNames, ["calculator"]);
+      assert.equal(configResponse.body.includes("OPENROUTER_API_KEY"), false);
+      const contextResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/context.json` });
+      assert.equal(contextResponse.statusCode, 404, contextResponse.body);
     } finally {
       await app.close();
       await rm(runRoot, { recursive: true, force: true });

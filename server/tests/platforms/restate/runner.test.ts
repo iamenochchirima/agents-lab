@@ -118,6 +118,65 @@ test("runner maps a durable workflow result into the common inspection seam", as
   assert.equal(inspection.eventIntents[0]?.kind, "RunCompleted");
 });
 
+test("runner projects native cancellation when Restate stops before workflow output", async () => {
+  const config = loadRestateConfig();
+  const runId = "restate-native-cancelled-test";
+  const runner = RestateBaselineRunner.fromOptions({
+    config,
+    ingress: new FakeIngress(new FakeWorkflowClient()),
+    fetchImplementation: async (url) => String(url).endsWith("/query")
+      ? response({ rows: [{ id: "inv-cancelled", status: "cancelled", retry_count: 0, modified_at: "2026-09-16T12:00:00.000Z" }] })
+      : response({}, 200),
+  });
+
+  const inspection = await runner.inspect(await runner.start(manifestFor(runner, runId)));
+
+  assert.equal(inspection.status, "cancelled");
+  assert.equal(inspection.result?.status, "cancelled");
+  assert.equal(inspection.result?.error?.failureKind, "cancelled");
+  assert.deepEqual(inspection.eventIntents.map((event) => event.kind), ["AgentCancelled", "RunCancelled"]);
+  assert.equal(inspection.eventIntents.at(-1)?.occurredAt, "2026-09-16T12:00:00.000Z");
+  assert.equal(inspection.metrics?.status, "cancelled");
+});
+
+test("runner preserves cancellation when Restate exposes it as a terminal output error", async () => {
+  const config = loadRestateConfig();
+  const runId = "restate-terminal-cancelled-test";
+  const runner = RestateBaselineRunner.fromOptions({
+    config,
+    ingress: new FakeIngress(new FakeWorkflowClient(
+      { invocationId: "inv-terminal-cancelled", status: "Accepted", attachable: true },
+      { ready: false },
+      Object.assign(new Error('Request failed: 409 {"message":"Cancelled"}'), {
+        status: 409,
+        responseText: '{"code":409,"message":"Cancelled","source":"invocation"}',
+      }),
+    )),
+    fetchImplementation: async (url) => String(url).endsWith("/query")
+      ? response({ rows: [{ id: "inv-terminal-cancelled", status: "completed", completion_result: "failure", retry_count: null, modified_at: "2026-09-16T12:01:00.000Z" }] })
+      : response({}, 200),
+  });
+
+  const inspection = await runner.inspect(await runner.start(manifestFor(runner, runId)));
+
+  assert.equal(inspection.status, "cancelled");
+  assert.equal(inspection.result?.error?.code, "RESTATE_INVOCATION_CANCELLED");
+  assert.equal(inspection.result?.finishedAt, "2026-09-16T12:01:00.000Z");
+  assert.equal(inspection.eventIntents.at(-1)?.kind, "RunCancelled");
+});
+
+test("runner does not treat an accepted but missing workflow as terminal success", async () => {
+  const config = loadRestateConfig();
+  const runner = RestateBaselineRunner.fromOptions({
+    config,
+    ingress: new FakeIngress(new FakeWorkflowClient()),
+    fetchImplementation: async () => response({ columns: ["id", "status"], rows: [] }),
+  });
+  const reference = await runner.start(manifestFor(runner, "restate-missing-workflow-test"));
+
+  await assert.rejects(() => runner.inspect(reference), /execution was not found/);
+});
+
 test("runner preserves an ambiguous submission as reconciliation-required", async () => {
   const config = loadRestateConfig();
   const ingress: RestateIngress = {
@@ -137,10 +196,14 @@ test("runner preserves an ambiguous submission as reconciliation-required", asyn
   });
   const reference = await runner.start(manifestFor(runner, "restate-ambiguous-test"));
   const inspection = await runner.inspect(reference);
+  const repeatedInspection = await runner.inspect(reference);
 
   assert.equal(reference.native.submissionOutcome, "unknown");
+  assert.equal(typeof reference.native.unknownSince, "string");
   assert.equal(inspection.result?.status, "reconciliation_required");
   assert.equal(inspection.result?.error?.failureKind, "outcome_unknown");
+  assert.deepEqual(repeatedInspection.result, inspection.result);
+  assert.deepEqual(repeatedInspection.eventIntents, inspection.eventIntents);
   assert.ok(calls.some((url) => url.endsWith("/query")));
 });
 
