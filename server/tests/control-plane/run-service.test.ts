@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { loadServerConfig } from "../../src/control-plane/bootstrap/config.js";
+import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../../src/capabilities/context/index.js";
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
 import type {
   PlatformExecutionReference,
@@ -15,6 +16,7 @@ import type {
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
+import { ContextSessionBusyError, ContextSessionConflictError } from "../../src/capabilities/context/session-store.js";
 import type { ModelMetadataResolver } from "../../src/control-plane/ports/model-metadata.js";
 import type {
   PlatformRunner,
@@ -31,6 +33,7 @@ class FakeRunner implements PlatformRunner {
   unavailable = false;
   unavailableOnFirstInspection = false;
   missingExecution = false;
+  startCalls = 0;
 
   manifestConfiguration(): Readonly<Record<string, unknown>> {
     return { profile: "test" };
@@ -45,6 +48,7 @@ class FakeRunner implements PlatformRunner {
   }
 
   async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
+    this.startCalls += 1;
     return referenceFor(manifest);
   }
 
@@ -179,14 +183,77 @@ async function withService(
     const store = new RunEvidenceStore(root);
     const config = loadServerConfig({
       AGENTLAB_RUN_ROOT: root,
+      AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
       ...(options.allowOpenRouter ? { AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake,openrouter" } : {}),
     }, "/repo");
-    const service = new RunService({ config, evidence: store, modelMetadata: options.modelMetadata, registry: new PlatformRegistry([runner]) });
+    const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+    const service = new RunService({ config, context, evidence: store, modelMetadata: options.modelMetadata, registry: new PlatformRegistry([runner]) });
     await run(service, store, runner, root);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("client turn keys replay one durable run and reject a changed prompt", async () => {
+  await withService(async (service, _store, runner) => {
+    const request = {
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-client-replay",
+      clientTurnId: "client-turn-1",
+      task: { kind: "prompt" as const, prompt: "Retry this safely" },
+      model: { provider: "fake", model: "fake-success" },
+    };
+
+    const first = await service.createRun(request);
+    const replay = await service.createRun({ ...request, task: { kind: "prompt", prompt: "Retry this safely" } });
+
+    assert.equal(replay.runId, first.runId);
+    assert.equal(runner.startCalls, 1);
+    await assert.rejects(
+      () => service.createRun({ ...request, task: { kind: "prompt", prompt: "A different prompt" } }),
+      ContextSessionConflictError,
+    );
+  });
+});
+
+test("a different client turn cannot overtake an active session turn", async () => {
+  await withService(async (service, _store, runner) => {
+    runner.state = "running";
+    const first = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-client-busy",
+      clientTurnId: "client-turn-1",
+      task: { kind: "prompt", prompt: "Keep this running" },
+      model: { provider: "fake", model: "fake-success" },
+    });
+    assert.equal(first.status, "running");
+
+    await assert.rejects(
+      () => service.createRun({
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-client-busy",
+        clientTurnId: "client-turn-2",
+        task: { kind: "prompt", prompt: "Do not overtake" },
+        model: { provider: "fake", model: "fake-success" },
+      }),
+      ContextSessionBusyError,
+    );
+
+    const replay = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-client-busy",
+      clientTurnId: "client-turn-1",
+      task: { kind: "prompt", prompt: "Keep this running" },
+      model: { provider: "fake", model: "fake-success" },
+    });
+    assert.equal(replay.runId, first.runId);
+    assert.equal(runner.startCalls, 1);
+  });
+});
 
 test("creates a run before dispatch and projects a completed runner result", async () => {
   await withService(async (service, store) => {

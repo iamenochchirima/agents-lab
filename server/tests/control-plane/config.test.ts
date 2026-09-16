@@ -18,6 +18,8 @@ test("configuration has safe local defaults and resolves the run root", () => {
   assert.equal(config.openRouter.catalogLimit, 40);
   assert.equal(config.runsRoot, "/repo/lab/runs");
   assert.equal(config.contextRoot, "/repo/lab/sessions");
+  assert.equal(config.context.maxSessionBytes, DEFAULTS.context.maxSessionBytes);
+  assert.equal(config.context.maxTranscriptBytes, DEFAULTS.context.maxTranscriptBytes);
   assert.equal(config.studioRunsRoot, "/repo/lab/studio-runs");
 });
 
@@ -27,6 +29,8 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
       AGENTLAB_API_PORT: "5000",
       AGENTLAB_RUN_ROOT: "var/runs",
       AGENTLAB_CONTEXT_ROOT: "var/sessions",
+      AGENTLAB_CONTEXT_MAX_SESSION_BYTES: "200000",
+      AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES: "100000",
       AGENTLAB_STUDIO_RUN_ROOT: "var/studio-runs",
       AGENTLAB_TEMPORAL_ENDPOINT: "127.0.0.1:7233",
       AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake, openrouter, fake",
@@ -42,6 +46,8 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   assert.equal(config.api.port, 5000);
   assert.equal(config.runsRoot, "/repo/var/runs");
   assert.equal(config.contextRoot, "/repo/var/sessions");
+  assert.equal(config.context.maxSessionBytes, 200000);
+  assert.equal(config.context.maxTranscriptBytes, 100000);
   assert.equal(config.studioRunsRoot, "/repo/var/studio-runs");
   assert.deepEqual(config.allowedModelProviders, ["fake", "openrouter"]);
   assert.equal(config.openRouter.apiKey, "test-secret");
@@ -62,6 +68,10 @@ test("invalid or missing explicit configuration fails before startup", () => {
   );
   assert.throws(
     () => loadServerConfig({ AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake,unknown" }),
+    (error: unknown) => error instanceof InvalidServerConfigError,
+  );
+  assert.throws(
+    () => loadServerConfig({ AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES: "not-a-size" }),
     (error: unknown) => error instanceof InvalidServerConfigError,
   );
 });

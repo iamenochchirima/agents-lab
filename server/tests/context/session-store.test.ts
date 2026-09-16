@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { ContextSessionBusyError, ContextSessionStore } from "../../src/capabilities/context/session-store.js";
+import {
+  ContextSessionBusyError,
+  ContextSessionConflictError,
+  ContextSessionLimitError,
+  ContextSessionStore,
+} from "../../src/capabilities/context/session-store.js";
 import type { ContextSnapshot } from "../../src/capabilities/context/contracts.js";
 
 async function withStore(run: (store: ContextSessionStore, root: string) => Promise<void>): Promise<void> {
@@ -91,6 +96,80 @@ test("duplicate admission and settlement are idempotent, while concurrent turns 
     await store.settleTurn(session.sessionId, first.turn.turnId, { status: "completed", output: "Done" });
     const transcript = await store.readTranscript(session.sessionId);
     assert.equal(transcript.filter((message) => message.role === "assistant").length, 1);
+  });
+});
+
+test("a client turn key replays after store restart and rejects a changed prompt", async () => {
+  await withStore(async (store, root) => {
+    const session = await store.create({
+      sessionId: "session-client-key",
+      platform: "temporal",
+      variant: "baseline",
+      model: "fake/fake-success",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 100,
+      reservedOutputTokens: 10,
+      safetyMarginTokens: 5,
+      compactionThresholdPercent: 20,
+    });
+    const first = await store.admitTurn(session.sessionId, "run-client-key", "Same prompt", undefined, "client-key-1");
+
+    const reloaded = new ContextSessionStore(root);
+    const replay = await reloaded.admitTurn(session.sessionId, "new-run-id", "Same prompt", undefined, "client-key-1");
+    assert.equal(replay.turn.turnId, first.turn.turnId);
+    assert.equal(replay.turn.runId, "run-client-key");
+    assert.equal(replay.turn.clientTurnId, "client-key-1");
+    assert.equal((await reloaded.read(session.sessionId)).maxTranscriptBytes > 0, true);
+    assert.equal((await reloaded.readTranscript(session.sessionId)).length, 1);
+
+    await assert.rejects(
+      () => reloaded.admitTurn(session.sessionId, "another-run", "Changed prompt", undefined, "client-key-1"),
+      ContextSessionConflictError,
+    );
+  });
+});
+
+test("transcript and aggregate session limits reject writes before persistence", async () => {
+  await withStore(async (_defaultStore, root) => {
+    const transcriptLimited = new ContextSessionStore(root, { maxSessionBytes: 50_000, maxTranscriptBytes: 300 });
+    const transcriptSession = await transcriptLimited.create({
+      sessionId: "session-transcript-limit",
+      platform: "temporal",
+      variant: "baseline",
+      model: "fake/fake-success",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 100,
+      reservedOutputTokens: 10,
+      safetyMarginTokens: 5,
+      compactionThresholdPercent: 20,
+    });
+    await assert.rejects(
+      () => transcriptLimited.admitTurn(transcriptSession.sessionId, "run-large-prompt", "x".repeat(500)),
+      (error: unknown) => error instanceof ContextSessionLimitError
+        && error.kind === "transcript"
+        && error.attemptedBytes > error.limitBytes,
+    );
+    assert.equal((await transcriptLimited.readTranscript(transcriptSession.sessionId)).length, 0);
+
+    const sessionLimited = new ContextSessionStore(root, { maxSessionBytes: 1_024, maxTranscriptBytes: 50_000 });
+    const session = await sessionLimited.create({
+      sessionId: "session-aggregate-limit",
+      platform: "temporal",
+      variant: "baseline",
+      model: "fake/fake-success",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 100,
+      reservedOutputTokens: 10,
+      safetyMarginTokens: 5,
+      compactionThresholdPercent: 20,
+    });
+    await assert.rejects(
+      () => sessionLimited.admitTurn(session.sessionId, "run-aggregate-limit", "x".repeat(100)),
+      (error: unknown) => error instanceof ContextSessionLimitError
+        && error.kind === "session"
+        && error.attemptedBytes > error.limitBytes,
+    );
+    assert.equal((await sessionLimited.readTranscript(session.sessionId)).length, 0);
   });
 });
 

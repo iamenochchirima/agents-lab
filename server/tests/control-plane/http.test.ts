@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { loadServerConfig } from "../../src/control-plane/bootstrap/config.js";
+import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../../src/capabilities/context/index.js";
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
@@ -18,6 +19,8 @@ class HttpRunner implements PlatformRunner {
   readonly variant = "baseline" as const;
   reachable = true;
   cancelled = false;
+  running = false;
+  startCalls = 0;
 
   manifestConfiguration(): Readonly<Record<string, unknown>> {
     return { profile: "http-test" };
@@ -25,7 +28,10 @@ class HttpRunner implements PlatformRunner {
 
   validate() { return { valid: true, reason: null } as const; }
   async checkConnection() { return { reachable: this.reachable, message: this.reachable ? "ok" : "offline" }; }
-  async start(manifest: RunManifest): Promise<PlatformExecutionReference> { return referenceFor(manifest); }
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
+    this.startCalls += 1;
+    return referenceFor(manifest);
+  }
   async cancel() { this.cancelled = true; return { accepted: true, alreadyTerminal: false, message: "accepted" }; }
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const runId = reference.executionId.replace("agentlab:", "");
@@ -33,16 +39,16 @@ class HttpRunner implements PlatformRunner {
       schemaVersion: 1, runId, status: "cancelled", startedAt: "2026-09-15T08:00:00.000Z", finishedAt: "2026-09-15T08:00:01.000Z", output: null,
       error: { code: "RUN_CANCELLED", message: "cancelled", failureKind: "cancelled", retryable: false }, attemptCount: 1,
       usage: { inputTokens: null, outputTokens: null, totalTokens: null },
-    } : {
+    } : this.running ? null : {
       schemaVersion: 1, runId, status: "completed", startedAt: "2026-09-15T08:00:00.000Z", finishedAt: "2026-09-15T08:00:01.000Z", output: "hello", error: null, attemptCount: 1,
       usage: { inputTokens: null, outputTokens: null, totalTokens: null },
     };
     return {
-      status: this.cancelled ? "cancelled" : "completed",
+      status: this.cancelled ? "cancelled" : this.running ? "running" : "completed",
       reference,
       eventIntents: [
         { source: "temporal-workflow", sourceSequence: 1, kind: "AgentStarted", runId, occurredAt: "2026-09-15T08:00:00.000Z", payload: {} },
-        { source: "temporal-workflow", sourceSequence: 2, kind: this.cancelled ? "RunCancelled" : "RunCompleted", runId, occurredAt: "2026-09-15T08:00:01.000Z", payload: {} },
+        ...(this.running && !this.cancelled ? [] : [{ source: "temporal-workflow", sourceSequence: 2, kind: this.cancelled ? "RunCancelled" : "RunCompleted", runId, occurredAt: "2026-09-15T08:00:01.000Z", payload: {} }]),
       ],
       result,
       trajectory: { schemaVersion: 1, runId, phases: [] },
@@ -61,19 +67,27 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
 }
 
 async function withApp(
-  run: (app: ReturnType<typeof buildControlPlaneServer>, runner: HttpRunner) => Promise<void>,
+  run: (app: ReturnType<typeof buildControlPlaneServer>, runner: HttpRunner, root: string) => Promise<void>,
   modelCatalog?: OpenRouterCatalogClient,
+  options: { readonly context?: boolean; readonly environment?: NodeJS.ProcessEnv } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "agentlab-http-"));
   try {
     const runner = new HttpRunner();
     const evidence = new RunEvidenceStore(root);
-    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
-    const service = new RunService({ config, evidence, registry: new PlatformRegistry([runner]) });
+    const config = loadServerConfig({
+      AGENTLAB_RUN_ROOT: root,
+      AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+      ...options.environment,
+    }, "/repo");
+    const context = options.context
+      ? new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator())
+      : undefined;
+    const service = new RunService({ config, context, evidence, registry: new PlatformRegistry([runner]) });
     const app = buildControlPlaneServer({ config, service, evidence, registry: new PlatformRegistry([runner]), modelCatalog });
     await app.ready();
     try {
-      await run(app, runner);
+      await run(app, runner, root);
     } finally {
       await app.close();
     }
@@ -222,6 +236,123 @@ test("HTTP API returns structured validation and health responses", async () => 
     const degraded = await app.inject({ method: "GET", url: "/health" });
     assert.equal(degraded.statusCode, 503);
     assert.equal(degraded.json().platforms[0].reachable, false);
+  });
+});
+
+test("HTTP API classifies idempotent replays, concurrent turns, and context limits", async () => {
+  await withApp(async (app, runner, root) => {
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-http-idempotency",
+        clientTurnId: "client-turn-1",
+        task: { kind: "prompt", prompt: "Keep this turn" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(first.statusCode, 202);
+    const firstRun = first.json();
+
+    const replay = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-http-idempotency",
+        clientTurnId: "client-turn-1",
+        task: { kind: "prompt", prompt: "Keep this turn" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(replay.statusCode, 202);
+    assert.equal(replay.json().runId, firstRun.runId);
+    assert.equal(runner.startCalls, 1);
+
+    const changed = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-http-idempotency",
+        clientTurnId: "client-turn-1",
+        task: { kind: "prompt", prompt: "Changed turn" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(changed.statusCode, 409);
+    assert.equal(changed.json().error.code, "CONTEXT_CONFLICT");
+
+    runner.running = true;
+    const active = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-http-busy",
+        clientTurnId: "client-turn-1",
+        task: { kind: "prompt", prompt: "Active turn" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(active.statusCode, 202);
+    const busy = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-http-busy",
+        clientTurnId: "client-turn-2",
+        task: { kind: "prompt", prompt: "Overtake" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(busy.statusCode, 409);
+    assert.equal(busy.json().error.code, "CONTEXT_BUSY");
+
+    const sessionsBeforeInvalid = await readdir(join(root, "sessions"));
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        clientTurnId: "client-without-session",
+        task: { kind: "prompt", prompt: "Must not create a session" },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.deepEqual(await readdir(join(root, "sessions")), sessionsBeforeInvalid);
+  }, undefined, { context: true });
+
+  await withApp(async (app, runner) => {
+    const limited = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        sessionId: "session-http-limit",
+        task: { kind: "prompt", prompt: "x".repeat(500) },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+    assert.equal(limited.statusCode, 413);
+    assert.equal(limited.json().error.code, "CONTEXT_LIMIT_EXCEEDED");
+    assert.equal(runner.startCalls, 0);
+  }, undefined, {
+    context: true,
+    environment: {
+      AGENTLAB_CONTEXT_MAX_SESSION_BYTES: "1024",
+      AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES: "50000",
+    },
   });
 });
 
