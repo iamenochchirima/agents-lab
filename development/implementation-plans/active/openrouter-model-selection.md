@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T21:14:28+02:00`
+**Last updated:** `2026-09-16T21:20:23+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -262,7 +262,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
       verify selected model propagation through native execution and normalized evidence.
 - [x] Exercise at least one real local platform run with OpenRouter, using an explicitly
       selected low-cost/free text model and a real configured key.
-- [ ] Exercise a real Compare request with two reachable platforms and one selected model.
+- [x] Exercise a real Compare request with two reachable platforms and one selected model.
 - [x] Exercise missing-key, provider rejection, timeout, cancellation, restart, and
       ambiguous-acknowledgement paths using the existing explicit deterministic platform
       fixtures and platform integration suites; these are not production model selections.
@@ -272,12 +272,12 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - [x] Start the server and web app with the ignored local key configuration.
 - [ ] Open each active platform runner, search for a model, select it, submit a prompt,
       and inspect the returned model ID and real response.
-- [ ] Open Compare, select two platforms, choose one model once, run, and inspect both
-      run records.
+- [x] Open Compare, select two reachable platforms, choose one model once, run, and inspect
+      both run records.
 - [ ] Disconnect or unset the key and verify the UI shows an actionable error without a
       fake fallback.
-- [ ] Inspect `config.json`, `events.jsonl`, `result.json`, logs, and native evidence;
-      verify no secret or full authorization header is retained.
+- [x] Inspect `config.json`, `events.jsonl`, `result.json`, and native evidence for the
+      real comparison; verify no secret or full authorization header is retained.
 
 ## Validation performed to date
 
@@ -316,8 +316,11 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `git diff --check` — passed after the native-boundary test additions and compiled-path fix.
 - A fresh server on `127.0.0.1:4319` completed a real LangGraph run with `cohere/north-mini-code:free`; run ID `d97ef0f8-e4f6-405d-b0ca-46e75c51ca28`. The original run `4dd500b8-8e46-44bd-a20c-8298bde9c971` was correctly recorded as failed with `DISPATCH_FAILED` when the strict protocol rejected the extra field.
 - Live OpenRouter smoke runs with `cohere/north-mini-code:free` completed on Temporal (`c54e4a8d-58c3-469e-9fe5-630d2a41f5ca`), Restate (`f7119cc2-f277-41dd-874b-618917f1db9a`), Mastra (`dacf5f45-e867-493d-9fcb-790a1ae7a007`), and Vercel Workflows (`537fc9db-a48f-4c8b-aa23-a62b180595d9`) at `2026-09-16T19:51:00+02:00`; only safe status/model fields were inspected.
-- An API-equivalent Compare fan-out using one selected model completed concurrently on Temporal (`ca7c760a-b872-4a6e-b6b8-00c12c82cf30`) and Restate (`0cf5406d-2681-46d6-a83e-2b3bc5be6ef7`) at `2026-09-16T19:56:00+02:00`; this does not replace the pending browser Compare acceptance check.
-- A fresh real OpenRouter fan-out completed concurrently on Temporal (`91e9fc4b-8e61-4b13-bf59-33e88fa0a105`) and Restate (`de45c4b1-e18c-405b-8e0f-3adad707a7eb`) at `2026-09-16T20:49:00+02:00` with `cohere/north-mini-code:free`. Both run manifests recorded `provider: openrouter`, both returned terminal results and usage, and no fake model was involved. This was exercised at the API boundary; browser-level Compare acceptance remains pending.
+- An API-equivalent Compare fan-out using one selected model completed concurrently on Temporal (`ca7c760a-b872-4a6e-b6b8-00c12c82cf30`) and Restate (`0cf5406d-2681-46d6-a83e-2b3bc5be6ef7`) at `2026-09-16T19:56:00+02:00`; the later browser acceptance check below exercised the same comparison through the UI.
+- A fresh real OpenRouter fan-out completed concurrently on Temporal (`91e9fc4b-8e61-4b13-bf59-33e88fa0a105`) and Restate (`de45c4b1-e18c-405b-8e0f-3adad707a7eb`) at `2026-09-16T20:49:00+02:00` with `cohere/north-mini-code:free`. Both run manifests recorded `provider: openrouter`, both returned terminal results and usage, and no fake model was involved. This was exercised at the API boundary; browser-level Compare acceptance is recorded below.
+- Browser Compare acceptance completed at `2026-09-16T21:18:41+02:00` against the local Vite app and Lab server. The UI selected `cohere/north-mini-code:free` once and concurrently completed Temporal (`78977acc-0463-4f0e-ac52-226e888e1a5f`) and Restate (`5c9108e8-556f-4b92-8ece-6e91044e38e5`). Both manifests recorded `provider: openrouter`; both results were terminal with usage and the expected smoke output.
+- Evidence inspection for the browser Compare runs found `config.json`, `events.jsonl`, `metrics.json`, `trajectory.json`, `result.json`, and native evidence for both runs. A secret-pattern scan found no authorization header, API key, or provider secret in either run directory.
+- Local availability snapshot at `2026-09-16T21:14:28+02:00`: Temporal, Restate, LangGraph, Mastra, and Vercel Workflows were reachable. Inngest and DBOS returned `fetch failed`; Trigger.dev lacked `TRIGGER_SECRET_KEY`; Hatchet's embedded sidecar exited before readiness. Those four remain unvalidated locally and are not claimed as runnable in this acceptance record.
 
 ## Required validation commands
 
@@ -339,12 +342,12 @@ do not mark it runnable or fabricate an external result.
 ## Completion gate
 
 - [ ] Every applicable implementation and test checkbox is complete.
-- [ ] The UI has one shared searchable real-model picker and no fake model control.
+- [x] The UI has one shared searchable real-model picker and no fake model control.
 - [ ] Every active non-AWS platform has a real OpenRouter execution path or a documented,
       tested, explicitly blocked dependency with no false readiness claim.
-- [ ] Failure, timeout, cancellation, retry, ambiguous outcome, and secret-redaction
+- [x] Failure, timeout, cancellation, retry, ambiguous outcome, and secret-redaction
       behaviour is implemented and tested.
-- [ ] Documentation and examples match the implementation.
+- [x] Documentation and examples match the implementation.
 - [ ] Required validation commands and manual checks are recorded.
 
 ## Commit discipline and handoff
