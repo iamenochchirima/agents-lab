@@ -10,7 +10,9 @@ When a plan reaches its completion gate, add its completion record and move it t
 
 ## Current Computer Native slice
 
-The browser-interaction and memory slices are complete and archived in
+The current Computer Native implementation slice is
+[core hardening and production foundation](computer-native-core-hardening.md). The
+browser-interaction and memory slices are complete and archived in
 [`../completed/computer-native-browser-interaction.md`](../completed/computer-native-browser-interaction.md)
 and [`../completed/computer-native-memory.md`](../completed/computer-native-memory.md).
 The queue can now advance to the next Computer Native module. Overall maturity is not

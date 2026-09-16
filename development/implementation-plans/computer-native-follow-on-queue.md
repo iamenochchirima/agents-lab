@@ -9,20 +9,26 @@ The current maturity status and the full list of remaining product gaps are trac
 The completed plans below record slice completion only. They do not mean that Computer
 Native is production-ready.
 
-The next Computer Native components after the completed workspace and filesystem
-category are:
+The next active Computer Native implementation is the core hardening slice. The
+completed capability slices remain listed below so their order and scope stay visible.
 
-1. **Shell and process execution** — completed in
+1. **Core hardening and production foundation** — active plan:
+   [Computer Native core hardening and production foundation](active/computer-native-core-hardening.md).
+   - Shared runtime lifecycle, persistence and recovery, structured approvals, TUI
+     cancellation and lifecycle states, provider reliability, remaining filesystem
+     operations, resource limits, security evidence, and failure-injection tests.
+
+2. **Shell and process execution** — completed in
    [Computer Native process execution](completed/computer-native-process-execution.md).
    - Approved command execution, working-directory policy, environment redaction,
      timeouts, output limits, cancellation, and process-result evidence.
 
-2. **Browser interaction** — completed in
+3. **Browser interaction** — completed in
    [Computer Native browser interaction](completed/computer-native-browser-interaction.md).
    - Explicit browser/session ownership, navigation and interaction approval, page-content
      limits, download handling, credential boundaries, and browser-run evidence.
 
-3. **Memory** — the first memory foundation slice is complete in
+4. **Memory** — the first memory foundation slice is complete in
    [Computer Native memory](completed/computer-native-memory.md).
    - Compact user and durable stores, dated working notes, bounded retrieval, explicit
      mutation approval, provenance, retention, deletion, recovery, and memory-operation
@@ -30,15 +36,15 @@ category are:
      privacy, migration, and lifecycle work is tracked in the production-readiness gaps
      document.
 
-4. **Skills**
+5. **Skills**
    - Skill discovery, instruction loading, trust and scope policy, versioning, isolation,
      lifecycle, and skill-use evidence.
 
-5. **Plugins**
+6. **Plugins**
    - Plugin discovery, manifest and capability policy, dependency boundaries, lifecycle,
      failure isolation, permissions, and plugin-specific evidence.
 
-6. **External integrations**
+7. **External integrations**
    - Provider/API connectors, credential handling, request limits, retries, idempotency,
      webhook or callback handling, failure recovery, and external-operation evidence.
 

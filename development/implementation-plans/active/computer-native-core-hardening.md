@@ -1,0 +1,502 @@
+# Computer Native core hardening and production foundation
+
+**Created:** 2026-09-16T12:15:00+02:00
+**Last updated:** 2026-09-16T12:15:00+02:00
+**Status:** Active
+**Owner:** Computer Native standalone product
+
+## Start here
+
+Read these before changing code:
+
+- [Repository rules](../../../AGENTS.md)
+- [Computer Native rules](../../../computer-native/AGENTS.md)
+- [Production-readiness gap register](computer-native-production-readiness-gaps.md)
+- [Runtime ownership](../../../computer-native/src/runtime/README.md)
+- [Persistence ownership](../../../computer-native/src/persistence/README.md)
+- [Security ownership](../../../computer-native/src/security/README.md)
+- [CLI ownership](../../../computer-native/src/cli/README.md)
+- [Workspace ownership](../../../computer-native/src/workspace/README.md)
+- [Computer Native package commands](../../../computer-native/package.json)
+
+References for established agent-harness practice:
+
+- [Hermes code map](../../../docs/research/harness-code-maps/hermes.md)
+- [OpenClaw code map](../../../docs/research/harness-code-maps/openclaw.md)
+- [Completed process execution plan](../completed/computer-native-process-execution.md)
+- [Completed filesystem plan](../completed/computer-native-workspace-filesystem.md)
+- [Completed browser plan](../completed/computer-native-browser-interaction.md)
+- [Completed memory plan](../completed/computer-native-memory.md)
+
+These references inform boundaries and failure semantics. They do not make Computer
+Native equivalent to either project. Computer Native must keep its own contracts,
+evidence, and tests.
+
+## Purpose
+
+Close the foundational gaps that would make the next Computer Native capabilities
+expensive to build or unsafe to expose. This slice hardens the existing local runtime,
+approval path, real model path, and workspace tools before Skills, Plugins, and External
+Integrations become active implementation targets.
+
+The goal is not to claim that the whole product is production-ready. The goal is to
+make the core trustworthy enough that later capabilities can use one lifecycle, one
+approval contract, one evidence model, and one failure policy.
+
+## Definition of done
+
+From a normal `pnpm run chat` session using a configured real provider, a user can submit
+a turn, review an exact approved action, cancel it, observe its lifecycle, restart after
+an injected interruption, and inspect an honest final result. Model retries do not
+silently replay a tool side effect. Filesystem actions include the required directory
+operations and report partial or ambiguous outcomes rather than pretending that a
+multi-file change was atomic when it was not.
+
+```text
+user input
+  -> one typed runtime state machine
+  -> persisted request/attempt/action records
+  -> exact approval or fail-closed denial
+  -> bounded model or filesystem operation
+  -> recovery-aware result and evidence
+  -> TUI status, artifact, and final outcome
+```
+
+The implementation is complete only when the same behaviour is covered by automated
+tests and by a short manual TUI acceptance flow. A deterministic provider may control
+tests, but it must never replace a configured real provider silently.
+
+## Scope
+
+- [ ] Define and enforce durable turn, attempt, tool-action, approval, and terminal-result
+      state transitions.
+- [ ] Record stable identities, attempt numbers, action hashes, timestamps, limits, and
+      outcomes needed for restart reconciliation.
+- [ ] Add bounded model retry for transport failures with visible attempt evidence and
+      no automatic replay of an approved or started side effect.
+- [ ] Make cancellation, timeout, restart, duplicate events, and ambiguous outcomes
+      explicit runtime results.
+- [ ] Replace the current bare approval answer flow with a structured review interaction
+      that shows the exact prepared operation and fails closed on unsupported input.
+- [ ] Improve the existing TUI around lifecycle state, approval focus, cancellation,
+      errors, and long output. Keep the renderer separate from the runtime.
+- [ ] Complete required local filesystem operations: directory creation, regular-file
+      and directory rename, regular-file and directory move, and regular-file and
+      directory copy where policy allows.
+- [ ] Define multi-file mutation semantics and implement reconciliation for partial
+      completion. Use atomic replacement only where the underlying operation can prove it.
+- [ ] Add shared resource limits for turns, requests, output, files, directory entries,
+      bytes, depth, and operation duration.
+- [ ] Recheck approved identities immediately before side effects and reject stale or
+      changed approvals.
+- [ ] Extend security and telemetry evidence for retries, cancellation, recovery,
+      partial results, and denied operations.
+- [ ] Add the unit, integration, failure-injection, security, manual, and real-provider
+      acceptance tests required by this plan.
+- [ ] Update Computer Native documentation and the follow-on queue so the next slice
+      cannot accidentally bypass this foundation.
+
+## Explicitly out of scope
+
+- Skills, Plugins, and External Integrations. They start only after this plan's
+  completion gate passes.
+- Semantic or hosted memory retrieval, automatic memory promotion, and the full context
+  compaction lifecycle. The current memory foundation remains available behind its
+  existing boundary.
+- New browser profiles, personal Chrome/CDP control, extensions, arbitrary JavaScript,
+  credential storage, or remote browser providers.
+- Interactive PTYs, shell-language parsing, durable background jobs, remote execution,
+  or container execution. This plan hardens the current bounded local process contract
+  and records its host-execution limitation.
+- General OS sandboxing or network isolation implementation. This plan defines the
+  deployment decision, keeps the local profile honest, adds resource-policy seams, and
+  fails closed where the declared profile cannot make a required guarantee. A separate
+  isolation plan is required before claiming a sandboxed production profile.
+- Main Agent Harness Lab UI integration. The standalone TUI and runner contracts are
+  the target here; the shared UI consumes them in a later integration slice.
+- Session-wide "always allow" grants. The first hardened approval path remains exact
+  action approval with explicit scope and expiry decisions.
+
+Do not add a partial version of any deferred capability merely to make the interface
+look complete.
+
+## Design decisions to preserve
+
+### One lifecycle owner
+
+`src/runtime` owns turn admission, state transitions, cancellation, and terminal
+outcomes. The TUI, provider adapters, tools, and persistence modules do not implement
+their own agent loops or competing retry policies.
+
+### Persistence before interpretation
+
+Persist the identity and prepared state of a turn, model attempt, tool action, and
+approval before the next side effect. Persist the bounded outcome before exposing a
+terminal result. Recovery must be able to distinguish "not started", "started", and
+"outcome unknown".
+
+### Retry model transport, not side effects
+
+Model transport failures may be retried within a bounded policy because a model request
+does not itself authorize a tool action. Once a tool or filesystem action is approved or
+started, the runtime must not blindly replay it. It must reconcile its operation-specific
+record or report an ambiguous outcome.
+
+### Approval binds to prepared work
+
+An approval identifies the exact prepared operation, resolved target, limits, and action
+hash. A changed path, executable, argument vector, environment profile, or operation
+payload invalidates the approval. The approval view is a review surface, not a yes/no
+prompt hidden inside a tool implementation.
+
+### Local execution is not a sandbox
+
+The current local process adapter may access host resources available to its executable.
+Workspace containment, approval, and environment filtering reduce risk but do not create
+OS isolation. The TUI and evidence must say this plainly.
+
+### Filesystem atomicity must be earned
+
+Single-file replacement can use an atomic temporary-file and rename sequence where the
+platform supports it. A multi-file mutation uses a journal, preconditions, ordered
+operations, and reconciliation. It must report partial completion unless rollback is
+actually proven for the supported filesystem profile.
+
+## Ownership and boundaries
+
+```text
+runtime/       -> turn admission, state transitions, retry/cancel policy, final outcome
+persistence/   -> durable records, atomic record writes, recovery scan, reconciliation
+models/        -> provider transport, response parsing, provider-specific diagnostics
+tools/         -> tool contracts and dispatch, never direct TUI rendering
+workspace/     -> filesystem preparation and operation execution
+security/      -> policy, approval inputs, identity rechecks, limits, redaction
+cli/           -> input, rendering, approval interaction, terminal cancellation
+telemetry/     -> normalized lifecycle events and provider/tool-native details
+```
+
+State explicitly in code and tests:
+
+- `runtime` is the sole owner of turn and action lifecycle transitions.
+- `persistence` is the sole writer of durable lifecycle records.
+- `security` prepares and validates policy decisions but does not execute side effects.
+- `workspace` executes only a prepared operation whose identity was revalidated.
+- `models` never dispatches tools and never decides whether an action is approved.
+- `cli` renders events and collects decisions but cannot bypass policy or persistence.
+
+## State, persistence, and evidence
+
+Extend the existing session layout without creating a second record format:
+
+```text
+sessions/<session-id>/
+  session.json
+  transcript.jsonl
+  turns/<turn-id>/
+    turn.json
+    events.jsonl
+    attempts/<attempt-id>.json
+    executions/<execution-id>.json
+    workspace-actions/<action-id>.json
+    result.json
+```
+
+The exact directory names may follow existing code if equivalent ownership is preserved.
+Each durable record must define:
+
+- Stable identity and parent identity.
+- State, legal next states, and terminal states.
+- Creation and transition timestamps.
+- Prepared payload hash and approved payload hash where approval applies.
+- Scope, limits, redacted configuration, and effective provider/model identity.
+- Attempt number and retry reason where a retry is allowed.
+- Bounded output and an artifact reference instead of unbounded inline content.
+- Recovery classification: not started, completed, failed, cancelled, interrupted, or
+  outcome unknown.
+
+Write rules:
+
+- Use atomic replacement for JSON records and append-only JSONL for event streams.
+- Validate state transitions before replacing a record.
+- Never persist API keys, cookies, authorization headers, raw secret environment values,
+  or unbounded model/page/file content.
+- Recovery must be idempotent. Running recovery twice must not launch a process, repeat a
+  filesystem mutation, or append duplicate terminal events.
+- Preserve provider-native error details and normalized evidence together.
+
+## Failure, retry, and recovery semantics
+
+Implement and document these outcomes:
+
+| Failure point | Required result |
+| --- | --- |
+| Before model request is accepted | Bounded retry if policy permits, otherwise failed with attempt evidence |
+| Provider disconnect after request may have been accepted | Outcome unknown or bounded provider recovery, never an invisible retry loop |
+| Before tool approval | Approval unavailable or denied on restart; no side effect |
+| After approval, before side effect | Revalidate identity and limits; execute once or close as not started |
+| During filesystem mutation | Reconcile journal and preconditions; report completed, rolled back, partial, or unknown |
+| During process execution | Terminate within the configured grace period; report confirmed or ambiguous termination |
+| During TUI approval | Keep the action pending until decision, cancellation, or process shutdown; shutdown fails closed |
+| Duplicate or out-of-order event | Ignore or record as a diagnostic without changing a terminal state |
+| User cancellation | Stop admission and active work where supported, persist cancellation, and clean up |
+
+Retry limits, backoff, and jitter must be configuration with safe defaults. Every retry
+must have a reason, attempt identity, and final disposition. There is no exactly-once
+claim in this plan.
+
+## Security and configuration
+
+- Validate all configured limits at startup and reject unsafe combinations.
+- Keep provider keys in the existing local development configuration path. Do not add
+  keys to records, logs, tests, plans, fixtures, or commits.
+- Redact secrets before persistence, rendering, error reporting, and artifacts.
+- Keep workspace paths canonical and reject traversal, symlink escape, unsupported
+  special files, and targets outside the configured root.
+- Recheck the canonical target, executable identity, argv, cwd, limits, and operation
+  hash after approval and immediately before execution.
+- Enforce aggregate file count, byte, depth, request, output, tool-round, and duration
+  limits before approval and during execution where possible.
+- Make the local host-execution limitation visible in approval text and evidence.
+- Fail closed when there is no interactive approval channel for a mutation or process
+  operation.
+- Treat model output, file contents, browser content, and recovered records as untrusted
+  data. They cannot alter policy or approval state directly.
+
+## Implementation checklist
+
+### 1. Contracts and configuration
+
+- [ ] Define typed lifecycle states and legal transitions for turns, model attempts,
+      approvals, workspace actions, and terminal results.
+- [ ] Add stable attempt/action identities and idempotency or reconciliation keys where
+      an operation needs them.
+- [ ] Define retry, timeout, backoff, output, file, directory, and tool-round limits.
+- [ ] Define error categories that distinguish denied, invalid, failed, interrupted,
+      cancelled, partial, and outcome-unknown results.
+- [ ] Add configuration validation with safe defaults and actionable error messages.
+
+### 2. Runtime and persistence
+
+- [ ] Implement the shared lifecycle transition helpers in `src/runtime`.
+- [ ] Persist model attempts before sending and after each bounded response or failure.
+- [ ] Persist approval preparation and decision before tool execution.
+- [ ] Record recovery classification and operation-specific reconciliation data.
+- [ ] Add restart recovery that is safe to run repeatedly and never auto-replays a side
+      effect.
+- [ ] Add duplicate/out-of-order event handling and terminal-state protection.
+- [ ] Add cancellation propagation from the TUI through runtime to model/tool/process
+      work.
+- [ ] Expose normalized lifecycle events while retaining provider and tool diagnostics.
+
+### 3. Approval and TUI
+
+- [ ] Replace bare `y`/`yes` handling with a focused approval interaction using named
+      choices such as approve, reject, inspect, and cancel.
+- [ ] Show the exact operation, resolved path or argv, scope, limits, risk warning,
+      action hash, and expiry in the approval view.
+- [ ] Bind the selected decision to the prepared action identity and reject stale
+      decisions.
+- [ ] Show retry, waiting, cancelling, interrupted, partial, and outcome-unknown states
+      distinctly from success and failure.
+- [ ] Make Ctrl+C work while idle, during model transport, during approval, and during
+      active tool execution without terminating the shell unexpectedly.
+- [ ] Keep the renderer driven by typed runtime events and preserve the current honest
+      capability list. Do not add fake activity or health panels.
+- [ ] Improve long-output handling, scrollback, error visibility, and terminal redraw
+      within the current renderer boundary. A complete alternate-screen redesign remains
+      a later TUI plan.
+
+### 4. Provider reliability
+
+- [ ] Add provider capability metadata and validate provider/model combinations before
+      admission.
+- [ ] Add bounded retry for eligible transport failures, rate limits, and transient
+      provider errors.
+- [ ] Handle partial streams, empty responses, malformed tool calls, disconnects,
+      context overflow, and provider refusal without hanging the turn.
+- [ ] Record provider, model, attempt, request identifier when available, latency,
+      usage, retry reason, and final disposition without secrets.
+- [ ] Make deterministic providers test-only or explicitly selected. No silent
+      deterministic fallback is allowed in a real-provider run.
+- [ ] Add provider contract fixtures and one documented real-provider acceptance path.
+
+### 5. Filesystem completion
+
+- [ ] Add directory creation with root, parent, depth, entry, and approval checks.
+- [ ] Add regular-file and directory rename with same-filesystem preconditions.
+- [ ] Add regular-file and directory move with destination and overwrite policy.
+- [ ] Add regular-file and directory copy with bounded recursive traversal and explicit
+      symlink/special-file behaviour.
+- [ ] Reuse existing quarantine and recovery rules for destructive replacement or
+      deletion paths.
+- [ ] Add prepared operation manifests, precondition checks, operation journals, and
+      reconciliation records for multi-file changes.
+- [ ] Report partial completion and recovery instructions when a transaction cannot
+      roll back fully.
+- [ ] Add large-input streaming and aggregate limits without loading an entire tree into
+      memory.
+
+### 6. Security, limits, and telemetry
+
+- [ ] Centralize shared limit evaluation and include effective limits in approval and
+      evidence records.
+- [ ] Add tests for traversal, symlink escape, stale approvals, secret leakage,
+      oversized inputs, hostile output, and cross-scope record access.
+- [ ] Add lifecycle events for retry, cancellation, recovery, partial completion, and
+      ambiguous outcomes.
+- [ ] Add correlation IDs that connect TUI messages, runtime events, provider attempts,
+      tool actions, and persisted records.
+- [ ] Document which controls are policy controls and which guarantees require a future
+      OS/container isolation profile.
+
+### 7. Documentation and inspection
+
+- [ ] Update runtime, persistence, security, CLI, workspace, and model READMEs with the
+      final state and failure semantics.
+- [ ] Add a short playground or manual acceptance procedure using `pnpm run chat`.
+- [ ] Update the production-readiness gap register with delivered evidence and remaining
+      limitations.
+- [ ] Keep the follow-on queue pointed at Skills only after this plan is archived.
+
+## Test coverage
+
+### Unit and contract tests
+
+- [ ] Legal and illegal lifecycle transitions.
+- [ ] Attempt numbering, action hashes, idempotency/reconciliation keys, and redaction.
+- [ ] Retry eligibility, backoff limits, provider error classification, and no silent
+      fallback.
+- [ ] Approval choice parsing, stale approval rejection, exact identity binding, and
+      fail-closed behaviour.
+- [ ] Path, symlink, special-file, destination, overwrite, size, depth, and aggregate
+      limit policy.
+- [ ] Filesystem operation manifests and partial-result classification.
+- [ ] TUI state rendering for waiting, approved, rejected, retrying, cancelling,
+      interrupted, partial, ambiguous, failed, and completed states.
+
+### Integration tests
+
+- [ ] A real local model adapter and deterministic provider use the same model contract.
+- [ ] A model response leads to an approved workspace operation through the runtime,
+      approval, security, workspace, persistence, and TUI boundaries.
+- [ ] Directory create, copy, move, rename, and multi-file failure paths produce
+      bounded evidence and recoverable outcomes.
+- [ ] Provider disconnect, rate limit, malformed response, empty response, and context
+      overflow paths terminate within configured limits.
+- [ ] Ctrl+C cancels idle input, model transport, approval, and active filesystem work.
+- [ ] Rebuilt evidence and TUI history agree after a restart.
+
+### Failure-injection and recovery tests
+
+- [ ] Stop before and after each durable record write.
+- [ ] Stop before and after model send, provider response, approval decision, and
+      filesystem side effect.
+- [ ] Recover twice and confirm no duplicate terminal event or side effect.
+- [ ] Inject duplicate, missing, and out-of-order events.
+- [ ] Change a target after approval and confirm the action is rejected as stale.
+- [ ] Fail one operation in a multi-file change and verify the exact partial state and
+      recovery path.
+- [ ] Cancel during retry backoff, approval, copy, move, and cleanup.
+
+### Security and resource tests
+
+- [ ] Attempt traversal and symlink escape for every new filesystem operation.
+- [ ] Attempt special-file access, oversized trees, deep trees, output exhaustion,
+      oversized model responses, and excessive tool rounds.
+- [ ] Confirm secrets do not appear in TUI output, records, events, artifacts, or error
+      messages.
+- [ ] Confirm a prepared approval cannot be reused for a changed operation or scope.
+- [ ] Confirm a local process operation is labelled as host execution and does not claim
+      sandboxing.
+
+### Manual acceptance
+
+With the normal local provider configuration already stored for development:
+
+1. Run `pnpm run chat`.
+2. Ask the agent to create a directory, write a file, copy it, rename it, move it, and
+   remove or restore it in a throwaway workspace.
+3. Inspect each approval before accepting it. Change one target after approval and
+   confirm the stale decision is rejected.
+4. Press Ctrl+C while idle, while an approval is visible, and while a real model turn is
+   running. The process must return to a usable prompt or exit cleanly.
+5. Interrupt a run using the documented failure-injection fixture, restart the TUI, and
+   inspect the recovered status and evidence.
+6. Repeat one safe flow with the real model. The transcript must identify the actual
+   provider and model, and must not show a deterministic fallback.
+
+## Required validation commands
+
+Run from `computer-native/`:
+
+```bash
+pnpm run typecheck
+pnpm run build
+pnpm test
+pnpm run coverage
+git diff --check
+```
+
+The real-provider acceptance path is an additional manual check. It must use a locally
+configured secret, never a committed key, and its output must identify the actual
+provider/model path. If the provider is unavailable, the test must report unavailable,
+not substitute a fake response.
+
+## Completion gate
+
+Before moving this plan to `completed/`, verify:
+
+- [ ] Runtime state transitions, retries, cancellation, persistence, and recovery are
+      implemented behind one shared lifecycle owner.
+- [ ] Recovery is repeatable and never silently replays a side effect.
+- [ ] Approval is structured, exact, auditable, stale-safe, and fail-closed.
+- [ ] The TUI exposes lifecycle and error states without inventing capabilities.
+- [ ] Real-provider behaviour is bounded and visible, with no silent deterministic
+      fallback.
+- [ ] Directory create, copy, move, and rename are implemented or explicitly removed
+      from the declared product contract with a recorded reason.
+- [ ] Multi-file operations report proven rollback or honest partial/ambiguous outcomes.
+- [ ] Shared limits, redaction, identity rechecks, and host-execution boundaries are
+      enforced and tested.
+- [ ] Unit, integration, failure-injection, security, manual, and real-provider tests
+      pass.
+- [ ] Required documentation and the queue match the implementation.
+- [ ] The production-readiness gap register records what this plan delivered and what
+      still remains for maturity.
+
+Passing this gate means the core foundation is ready for the next capability slice. It
+does not mean Skills, Plugins, External Integrations, durable jobs, OS sandboxing, or the
+whole Computer Native product are production-ready.
+
+## Commit discipline and handoff
+
+- [ ] Commit contracts and configuration separately from runtime/persistence changes
+      where practical.
+- [ ] Commit approval/TUI work separately from filesystem operations where practical.
+- [ ] Keep provider, filesystem, and security tests with the implementation they verify.
+- [ ] Review `git status` and each diff before committing. Preserve unrelated user work.
+- [ ] Record changed files, validation results, manual observations, and known limits in
+      the completion record.
+
+## Completion record
+
+Complete this section only when archiving the plan.
+
+**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`
+**Commits:** `[commit hashes or contiguous range]`
+
+### Validation
+
+- `[command]`: `[result]`
+- `[manual check]`: `[result]`
+
+### Known limitations
+
+- `[remaining limitation]`
+
+### Historical-scope note
+
+This plan hardens the shared local foundation. Later plans may add capabilities that
+need stronger isolation, durable background execution, or different approval semantics.
+Those changes must update the production-readiness gap register instead of silently
+expanding this completion record.

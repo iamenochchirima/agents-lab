@@ -58,6 +58,7 @@ browser interaction slice and used local Hermes and OpenClaw code as design refe
 Those completed Computer Native plans describe bounded implementation slices, not a
 production-ready product. The current maturity gate and remaining work are recorded in
 [Computer Native production-readiness gaps](active/computer-native-production-readiness-gaps.md).
+The next active Computer Native slice is [core hardening and production foundation](active/computer-native-core-hardening.md).
 
 The next context slice is tracked in the
 [session context and compaction plan](active/context-management.md). It covers the
