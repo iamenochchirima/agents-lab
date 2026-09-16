@@ -16,6 +16,7 @@ import { loadConfig } from "../src/config/config.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import { runTurn } from "../src/runtime/turn.js";
+import { atomicWriteJson } from "../src/persistence/json.js";
 
 const limits: ProcessLimits = {
   timeoutMs: 500,
@@ -506,6 +507,54 @@ test("restart reconciles an incomplete process without replaying it", async () =
   }
 });
 
+test("recovery rejects a malformed process record before interpreting its PID", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-malformed-record-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("malformed process", "deterministic", "deterministic/process");
+    const base: ProcessExecutionRecord = {
+      schemaVersion: 1,
+      executionId: "execution_malformed",
+      callId: "call_malformed",
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      command: process.execPath,
+      displayArgs: ["-e", "process.exit(0)"],
+      cwd: ".",
+      executablePath: process.execPath,
+      environmentProfile: "sanitized-default",
+      environmentKeys: ["PATH"],
+      limits,
+      argvHash: "malformed-hash",
+      status: "prepared",
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeProcess(base);
+    await atomicWriteJson(path.join(turn.directory, "executions", "execution_malformed.json"), {
+      ...base,
+      status: "running",
+      pid: "not-a-pid",
+    });
+
+    await assert.rejects(
+      () => session.recoverInterruptedTurns(),
+      /invalid durable record/u,
+    );
+    await atomicWriteJson(path.join(turn.directory, "executions", "execution_malformed.json"), {
+      ...base,
+      status: "failed",
+      errorCode: "not-a-process-error",
+    });
+    await assert.rejects(
+      () => session.recoverInterruptedTurns(),
+      /invalid durable record/u,
+    );
+    assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"submitting"/u);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("restart reconciles a running process after its durable record acknowledgement is lost", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-ack-recovery-"));
   try {
@@ -928,7 +977,7 @@ test("process execution records preserve identity and one-way transitions", asyn
     );
     await turn.writeProcess({ ...base, status: "failed", errorCode: "process-policy", recordedAt: new Date().toISOString() });
     await assert.rejects(
-      turn.writeProcess({ ...base, status: "running", recordedAt: new Date().toISOString() }),
+      turn.writeProcess({ ...base, status: "running", pid: 1, startedAt: new Date().toISOString(), recordedAt: new Date().toISOString() }),
       /cannot transition/u,
     );
     await turn.writeProcess({ ...base, status: "failed", errorCode: "process-policy", recordedAt: new Date().toISOString() });

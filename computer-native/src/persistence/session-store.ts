@@ -610,6 +610,85 @@ function assertTurnBoundRecord(
   assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, kind);
 }
 
+function assertProcessExecutionRecord(
+  record: unknown,
+  expectedSessionId: SessionId,
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is ProcessExecutionRecord {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Process execution", "executionId");
+  const candidate = record as Record<string, unknown>;
+  if (candidate.sessionId !== expectedSessionId) {
+    throw new ComputerNativeError("persistence", `Process execution '${String(candidate.executionId)}' does not belong to session '${expectedSessionId}'.`);
+  }
+  const limits = candidate.limits as Record<string, unknown> | undefined;
+  const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
+  const validNonNegativeInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+  const validStatus = candidate.status === "prepared"
+    || candidate.status === "approved"
+    || candidate.status === "running"
+    || candidate.status === "completed"
+    || candidate.status === "failed"
+    || candidate.status === "cancelled"
+    || candidate.status === "ambiguous";
+  const validErrorCode = candidate.errorCode === "process-exit"
+    || candidate.errorCode === "process-signal"
+    || candidate.errorCode === "process-start"
+    || candidate.errorCode === "process-timeout"
+    || candidate.errorCode === "process-output-limit"
+    || candidate.errorCode === "process-cancelled"
+    || candidate.errorCode === "process-ambiguous"
+    || candidate.errorCode === "process-approval-denied"
+    || candidate.errorCode === "process-approval-unavailable"
+    || candidate.errorCode === "process-policy";
+  const processIdentity = candidate.processIdentity as Record<string, unknown> | undefined;
+  const validProcessIdentity = processIdentity === undefined
+    || (processIdentity !== null
+      && typeof processIdentity === "object"
+      && typeof processIdentity.platform === "string"
+      && processIdentity.platform.trim().length > 0
+      && typeof processIdentity.executablePath === "string"
+      && processIdentity.executablePath.trim().length > 0
+      && typeof processIdentity.startTime === "string"
+      && processIdentity.startTime.trim().length > 0);
+  if (typeof candidate.callId !== "string" || candidate.callId.trim().length === 0
+    || typeof candidate.command !== "string" || candidate.command.trim().length === 0
+    || !Array.isArray(candidate.displayArgs) || candidate.displayArgs.some((value) => typeof value !== "string")
+    || typeof candidate.cwd !== "string" || candidate.cwd.trim().length === 0
+    || typeof candidate.executablePath !== "string" || candidate.executablePath.trim().length === 0
+    || candidate.environmentProfile !== "sanitized-default"
+    || !Array.isArray(candidate.environmentKeys) || candidate.environmentKeys.some((value) => typeof value !== "string")
+    || limits === undefined || limits === null || typeof limits !== "object"
+    || !validPositiveInteger(limits.timeoutMs)
+    || !validPositiveInteger(limits.terminationGraceMs)
+    || !validPositiveInteger(limits.maxOutputBytes)
+    || !validPositiveInteger(limits.maxArgumentCount)
+    || !validPositiveInteger(limits.maxArgumentBytes)
+    || typeof candidate.argvHash !== "string" || candidate.argvHash.trim().length === 0
+    || !validStatus
+    || (candidate.errorCode !== undefined && !validErrorCode)
+    || (candidate.errorMessage !== undefined && typeof candidate.errorMessage !== "string")
+    || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
+    || (candidate.approvalTimeoutMs !== undefined && !validPositiveInteger(candidate.approvalTimeoutMs))
+    || (candidate.pid !== undefined && !validPositiveInteger(candidate.pid))
+    || (candidate.processIdentity !== undefined && !validProcessIdentity)
+    || (candidate.stdout !== undefined && typeof candidate.stdout !== "string")
+    || (candidate.stderr !== undefined && typeof candidate.stderr !== "string")
+    || (candidate.stdoutBytes !== undefined && !validNonNegativeInteger(candidate.stdoutBytes))
+    || (candidate.stderrBytes !== undefined && !validNonNegativeInteger(candidate.stderrBytes))
+    || (candidate.outputTruncated !== undefined && typeof candidate.outputTruncated !== "boolean")
+    || (candidate.durationMs !== undefined && !validNonNegativeInteger(candidate.durationMs))
+    || (candidate.exitCode !== undefined && candidate.exitCode !== null && !Number.isSafeInteger(candidate.exitCode))
+    || (candidate.signal !== undefined && candidate.signal !== null && typeof candidate.signal !== "string")
+    || (candidate.terminationConfirmed !== undefined && typeof candidate.terminationConfirmed !== "boolean")
+    || (candidate.startedAt !== undefined && typeof candidate.startedAt !== "string")
+    || (candidate.finishedAt !== undefined && typeof candidate.finishedAt !== "string")
+    || typeof candidate.recordedAt !== "string" || candidate.recordedAt.trim().length === 0
+    || (candidate.status === "running" && (!validPositiveInteger(candidate.pid) || typeof candidate.startedAt !== "string" || candidate.startedAt.trim().length === 0))) {
+    throw new ComputerNativeError("persistence", `Process execution '${String(candidate.executionId)}' has an invalid durable record.`);
+  }
+}
+
 export type BrowserArtifactEvidence = BrowserArtifactInfo & {
   readonly turnId: TurnRecord["turnId"];
   readonly correlationId?: CorrelationId;
@@ -1144,13 +1223,7 @@ export class TurnStore {
   }
 
   async writeProcess(record: ProcessExecutionRecord): Promise<void> {
-    if (record.schemaVersion !== 1 || record.executionId.trim().length === 0 || record.callId.trim().length === 0) {
-      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid process execution record.`);
-    }
-    assertRecordCorrelation(this.correlationId, record.correlationId, "Process execution");
-    if (record.sessionId !== this.sessionId || record.turnId !== this.turnId) {
-      throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' does not belong to turn '${this.turnId}'.`);
-    }
+    assertProcessExecutionRecord(record, this.sessionId, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "executions");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.executionId, "Execution ID")}.json`);
@@ -1162,6 +1235,7 @@ export class TurnStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     if (previous) {
+      assertProcessExecutionRecord(previous, this.sessionId, this.turnId, this.correlationId);
       try {
         assertProcessTransition(previous, record);
       } catch (error) {
@@ -1180,10 +1254,7 @@ export class TurnStore {
     const records: ProcessExecutionRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
       const record = await readJson<ProcessExecutionRecord>(path.join(directory, entry.name));
-      assertTurnBoundRecord(record, this.turnId, this.correlationId, "Process execution", "executionId");
-      if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
-        throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' does not belong to turn '${this.turnId}'.`);
-      }
+      assertProcessExecutionRecord(record, this.sessionId, this.turnId, this.correlationId);
       records.push(record);
     }
     return records;

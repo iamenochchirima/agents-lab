@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:34:49+02:00
+**Last updated:** 2026-09-16T22:48:42+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -192,6 +192,10 @@ tests, but it must never replace a configured real provider silently.
 - Process records now carry a Linux executable/start-token identity. Recovery verifies
   it before signalling a process group and fails closed on a mismatch or unsupported
   identity source.
+- Persisted process records are now validated on both write and recovery. Ownership,
+  immutable command context, limits, status, timestamps, optional outcome fields, and
+  running PID evidence must match the durable contract before recovery interprets the
+  record. A malformed PID therefore fails closed without changing the interrupted turn.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
@@ -969,6 +973,35 @@ Persistence slice limitations:
   current evidence proves the supported local acknowledgement-loss and operation-specific
   recovery paths, not an exactly-once guarantee or cross-file transaction.
 
+### Current slice boundary: process record integrity
+
+Delivered in this slice:
+
+- `TurnStore.writeProcess` validates a complete process record before creating or
+  replacing its durable evidence. Existing records are validated again before a state
+  transition is accepted, so a damaged prior record cannot be used as transition input.
+- Recovery validates process ownership, immutable execution context, sanitized-environment
+  metadata, effective limits, state/decision values, bounded outcome fields, and the
+  required PID/start timestamp for `running` records before reconciliation begins.
+- A foreign-session record receives an explicit ownership error. A malformed PID or
+  malformed record fails closed without interpreting the PID, signalling a process, or
+  advancing the interrupted turn.
+- Tests cover the public write/transition path, foreign-session rejection, and recovery
+  of a malformed running record.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is operation-specific durable-record validation at the existing process/recovery
+  boundary, matching the references' preference for explicit lifecycle and guard checks.
+  It does not add a generic schema framework, workflow engine, process sandbox, or
+  exactly-once ledger.
+
+Still open after this slice:
+
+- The full per-write and host-side process crash matrix, cross-platform process identity
+  and process-tree guarantees, OS/network isolation, PTY/background jobs, shell policy,
+  and operational repair procedures remain open.
+
 ### Current slice boundary: model payload resource limits
 
 Delivered in this slice:
@@ -1334,6 +1367,8 @@ claim in this plan.
 - [x] Persist model attempts before sending and after each bounded response or failure.
 - [ ] Persist approval preparation and decision before tool execution.
 - [ ] Record recovery classification and operation-specific reconciliation data.
+- [x] Validate persisted process ownership, execution context, limits, state, and
+      running-process identity before transitions or restart reconciliation.
 - [x] Add repeatable recovery for durable terminal result/event acknowledgement failures;
       recovery does not auto-replay the turn or duplicate terminal evidence.
 - [x] Reconstruct one missing terminal lifecycle event for each current persisted action
@@ -1435,6 +1470,8 @@ claim in this plan.
 
 - [ ] Legal and illegal lifecycle transitions.
 - [ ] Attempt numbering, action hashes, idempotency/reconciliation keys, and redaction.
+- [x] Reject malformed or foreign-session process records before PID interpretation or
+      recovery-side process reconciliation.
 - [ ] Retry eligibility, backoff limits, provider error classification, and no silent
       fallback.
 - [ ] Approval choice parsing, stale approval rejection, exact identity binding, and

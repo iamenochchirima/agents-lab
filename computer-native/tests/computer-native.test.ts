@@ -526,7 +526,7 @@ test("restart rejects a process record from another session", async () => {
   await atomicWriteJson(path.join(turn.directory, "executions", `${processRecord.executionId}.json`), processRecord);
 
   const reopened = await SessionStore.open(stateDir, session.metadata.sessionId);
-  await assert.rejects(() => reopened.recoverInterruptedTurns(), /does not belong to turn/u);
+  await assert.rejects(() => reopened.recoverInterruptedTurns(), /does not belong to session/u);
 });
 
 test("lifecycle events enforce process, browser, and memory action ordering", async () => {

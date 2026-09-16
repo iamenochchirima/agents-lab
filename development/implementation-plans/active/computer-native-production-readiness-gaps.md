@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T22:34:49+02:00
+**Last updated:** 2026-09-16T22:48:42+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 320 tests passed after the atomic-replacement cleanup increment.
-- `pnpm run coverage`: 320 tests passed, with 89.20% line coverage, 77.90% branch
-  coverage, and 84.84% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 321 tests passed.
+- `pnpm run coverage`: 321 tests passed, with 89.21% line coverage, 78.20% branch
+  coverage, and 85.01% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs; one earlier run was discarded because
   instrumentation caused timing-sensitive browser and admission tests to fail.
 - `pnpm run typecheck`: passed.
@@ -80,6 +80,10 @@ readiness:
   record is durable.
 - Linux process records carry an executable/start-token identity, and recovery refuses
   to signal a PID whose current identity does not match the persisted record.
+- Persisted process records are now schema- and ownership-validated before writes,
+  transitions, or recovery reconciliation. Invalid limits, state/decision values,
+  outcome fields, running timestamps, or PIDs fail closed without interpreting the
+  process record or advancing the interrupted turn.
 - Model requests are rejected before provider transport when their serialized size
   exceeds `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`; streamed response text and tool-call
   fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
@@ -208,7 +212,7 @@ provider, browser-profile, and operational acceptance evidence.
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
 | Models and providers | Real OpenRouter path, provider registry, explicit model validation, capability metadata, bounded request/response/usage evidence, deterministic tests, and one local real-provider acceptance profile | Broader malformed-response fixtures, fallback policy, cost accounting, and credential-expiry operations |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
-| Process execution | Bounded foreground local commands with approval, limits, launch-failure cleanup, and restart cleanup for the detached foreground process group | Cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
+| Process execution | Bounded foreground local commands with approval, limits, durable-record validation, launch-failure cleanup, and restart cleanup for the detached foreground process group | Full process crash matrix, cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
 | Memory | Durable Markdown, local lexical retrieval, and bounded evidence maintenance | Mature retrieval, promotion, privacy, deletion, migration, backup/restore, and real-model acceptance |
 | Skills and plugins | Planned boundaries only | Trust, manifests, permissions, isolation, lifecycle, and evidence |
