@@ -1,7 +1,7 @@
 # Tool-enabled turn loop
 
 **Created:** `2026-09-16T13:37:32+02:00`
-**Last updated:** `2026-09-16T19:08:34+02:00`
+**Last updated:** `2026-09-16T19:10:43+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -390,7 +390,7 @@ runtime-profile check; browser acceptance is recorded as complete below.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/control-plane/evidence-store.test.ts tests/control-plane/run-service.test.ts tests/platforms/restate/runner.test.ts tests/platforms/restate/models.test.ts` — 38 passed.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/control-plane/evidence-store.test.ts tests/control-plane/run-service.test.ts tests/platforms/restate/workflow.test.ts tests/platforms/restate/models.test.ts` — 37 passed.
 - `pnpm --filter @agent-harness-lab/lab-server run test:temporal` — 1 passed.
-- `pnpm --filter @agent-harness-lab/lab-server run test` — 213 passed, 0 failed. This includes the Studio tests that were previously blocked by the concurrent untracked route file.
+- `pnpm --filter @agent-harness-lab/lab-server run test` — 219 passed, 0 failed. This includes the Studio tests that were previously blocked by the concurrent untracked route file; the expected failure-fixture logs did not fail the suite.
 - `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server run test:restate` — 33 passed, 1 skipped. Native workflow and generic HTTP checks passed; the one skipped test is the Docker-backed replay test because Docker is unavailable in this environment.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/restate/models.test.ts tests/platforms/restate/workflow.test.ts tests/platforms/restate/runner.test.ts` — 29 passed after adding the abortable `fake-tool-call-delay` recovery fixture.
 - The earlier combined typecheck/test attempt was blocked by concurrent untracked Studio work-in-progress at `server/src/studio/http/routes.ts`; that blocker is cleared and the full checks above now pass.
@@ -407,6 +407,11 @@ runtime-profile check; browser acceptance is recorded as complete below.
 - Isolated native worker-restart probe — with the temporary service left running and Restate 1.7.10 using the persistent base directory `/tmp/agentlab-restate-restart-data-2`, the node was stopped during `restate-worker-restart-1789577191093` and restarted on the same ingress/admin/message-fabric ports. Restate replayed the invocation and the service completed the tool loop; inspection returned two model rounds, one calculator call, and `The calculator returned {"value":42}.` The temporary probe used ports `18080`, `19070`, `19080`, and `19522`, and did not touch the user’s `8080`/`9080` stack.
 - Post-restart Lab projection — a fresh `RunService` and `RunEvidenceStore` connected to the restarted native journal and projected the retained run above into the common evidence contract. It returned `completed`, the same calculator result, and the ordered 13-event sequence from `AgentStarted` through `RunCompleted`.
 - Firefox WebDriver smoke — passed in an isolated headless session using Firefox 155. The Restate chat route loaded at desktop and requested narrow sizes without a route error; the model-selection dialog filtered `Claude Sonnet 5` to four matching models and closed on Escape. The existing user Firefox process was not touched. Firefox's 390px request produced a 500px minimum content viewport, which is recorded as the browser constraint rather than treated as a 390px layout claim.
+
+Follow-up repository checks on `2026-09-16T19:10:43+02:00` — server typecheck,
+the full server test command (219 passed, 0 failed), web typecheck, web build,
+`git diff --check`, and `bash -n scripts/run_local_stack.sh` all passed. The web
+build retained only the existing large-chunk warning.
 
 The release-process document referenced by the repository guidance is not
 present in this checkout, so no release, migration, rollout, or rollback claim
