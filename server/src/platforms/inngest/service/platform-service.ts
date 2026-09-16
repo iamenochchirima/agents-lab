@@ -454,6 +454,7 @@ export class InngestPlatformService {
     return completeOpenRouterModel(input, {
       apiKey: this.config.openRouterApiKey,
       baseUrl: this.config.openRouterBaseUrl,
+      fetchImplementation: this.fetchImplementation,
     });
   }
 
