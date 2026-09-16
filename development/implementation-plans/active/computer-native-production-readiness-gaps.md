@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T19:26:00+02:00
+**Last updated:** 2026-09-16T19:28:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -346,6 +346,11 @@ separate writes, patch journaling, quarantine-backed deletion and restore, bound
 directory handling, policy checks, restart reconciliation, detailed records, and
 normalized workspace lifecycle events in the turn evidence stream.
 
+The current hardening increment also makes regular-file, search, mutation, copy, and
+tree-manifest reads descriptor-backed and limit-enforced during consumption. A file that
+grows after the initial metadata check cannot bypass the configured cap; changed-size
+reads fail closed.
+
 Remaining work:
 
 - Extend the now-defined journal semantics beyond `apply_patch_set` if future operations
@@ -354,8 +359,9 @@ Remaining work:
   not claim rollback or cross-file atomicity.
 - Decide and document symlink, hard-link, device-file, socket, special-file, and mount
   behaviour. Fail closed for unsupported types.
-- Stream large files and bound memory, path depth, file count, archive size, and total
-  mutation size.
+- Add true stream-to-staging transfer and aggregate mutation limits. Current reads still
+  materialize one bounded file at a time for hashing, comparison, and atomic staging; no
+  OS-level immutable snapshot is claimed.
 - Add race handling for changed files, concurrent writers, locks, and stale approvals.
 - Add dry-run, diff/preview, restore, and reconciliation commands that remain useful
   after a crash.

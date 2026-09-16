@@ -275,6 +275,7 @@ export const MAX_QUARANTINE_ENTRIES = 100;
 export const DEFAULT_MAX_TREE_ENTRIES = 2_000;
 export const DEFAULT_MAX_TREE_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_TREE_DEPTH = 32;
+const BOUNDED_READ_CHUNK_BYTES = 64 * 1024;
 interface QuarantineManifest {
   readonly schemaVersion: 1;
   readonly mutationId: string;
@@ -392,6 +393,25 @@ async function atomicCreateFile(absolutePath: string, content: Uint8Array, mode:
   await unlink(temporaryPath).catch(() => undefined);
 }
 
+/**
+ * Read from an already opened descriptor without allowing a growing file to
+ * bypass the caller's byte limit. One extra byte is probed so callers can
+ * distinguish an exact-bound read from an over-limit read.
+ */
+async function readHandleAtMost(handle: Awaited<ReturnType<typeof open>>, maxBytes: number): Promise<Buffer | undefined> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const readSize = Math.min(BOUNDED_READ_CHUNK_BYTES, Math.max(1, maxBytes - totalBytes + 1));
+    const chunk = Buffer.alloc(readSize);
+    const { bytesRead } = await handle.read(chunk, 0, chunk.byteLength, null);
+    if (bytesRead === 0) return Buffer.concat(chunks, totalBytes);
+    totalBytes += bytesRead;
+    if (totalBytes > maxBytes) return undefined;
+    chunks.push(chunk.subarray(0, bytesRead));
+  }
+}
+
 export class Workspace {
   constructor(
     readonly policy: WorkspaceSecurityPolicy,
@@ -467,20 +487,34 @@ export class Workspace {
         return;
       }
       if (!metadata.isFile()) throw new WorkspaceAccessError(`Workspace directory tree '${displayPath}' contains an unsupported filesystem entry at '${currentPath}'.`);
-      totalBytes += metadata.size;
+      let handle: Awaited<ReturnType<typeof open>> | undefined;
+      try {
+        handle = await open(currentAbsolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+        const fileStats = await handle.stat();
+        if (!fileStats.isFile()) throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`);
+        const remainingBytes = maxBytes - totalBytes;
+        if (fileStats.size > remainingBytes) {
+          throw new WorkspaceAccessError(`Workspace directory tree '${displayPath}' exceeds the ${maxBytes}-byte limit.`);
+        }
+        const bytes = await readHandleAtMost(handle, remainingBytes);
+        if (!bytes || bytes.byteLength !== fileStats.size) {
+          throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`);
+        }
+        const after = await handle.stat();
+        if (!after.isFile() || after.size !== fileStats.size) {
+          throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`);
+        }
+        totalBytes += bytes.byteLength;
+        addEntry({ path: currentPath, kind: "file", bytes: bytes.byteLength, mode: fileStats.mode & 0o7777, hash: contentHashBytes(bytes) });
+      } catch (error) {
+        if (error instanceof WorkspaceAccessError) throw error;
+        throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' cannot be read for its manifest.`, { cause: error });
+      } finally {
+        await handle?.close().catch(() => undefined);
+      }
       if (totalBytes > maxBytes) {
         throw new WorkspaceAccessError(`Workspace directory tree '${displayPath}' exceeds the ${maxBytes}-byte limit.`);
       }
-      const bytes = await readFile(currentAbsolutePath).catch((error) => {
-        throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' cannot be read for its manifest.`, { cause: error });
-      });
-      const after = await lstat(currentAbsolutePath).catch((error) => {
-        throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`, { cause: error });
-      });
-      if (!after.isFile() || after.size !== metadata.size) {
-        throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`);
-      }
-      addEntry({ path: currentPath, kind: "file", bytes: bytes.byteLength, mode: metadata.mode & 0o7777, hash: contentHashBytes(bytes) });
     };
     const rootMetadata = await lstat(absolutePath).catch((error) => {
       throw new WorkspaceAccessError(`Workspace directory tree '${displayPath}' cannot be inspected safely.`, { cause: error });
@@ -531,16 +565,7 @@ export class Workspace {
 
   async readFile(relativePath: string): Promise<WorkspaceFile> {
     const resolved = await this.policy.resolve(relativePath);
-    const fileStats = await stat(resolved.absolutePath).catch((error) => {
-      throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be inspected.`, { cause: error });
-    });
-    if (!fileStats.isFile()) throw new WorkspaceAccessError(`Workspace path '${relativePath}' is not a regular file.`);
-    if (fileStats.size > this.policy.limits.maxFileBytes) {
-      throw new WorkspaceAccessError(`Workspace file '${relativePath}' is ${fileStats.size} bytes; the limit is ${this.policy.limits.maxFileBytes} bytes.`);
-    }
-    const bytes = await readFile(resolved.absolutePath).catch((error) => {
-      throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be read.`, { cause: error });
-    });
+    const bytes = await this.readMutationBytes(resolved.absolutePath, relativePath);
     let content: string;
     try {
       content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -1787,7 +1812,15 @@ export class Workspace {
       if (fileStats.size > this.policy.limits.maxFileBytes) {
         throw new WorkspaceAccessError(`Workspace file '${relativePath}' is ${fileStats.size} bytes; the limit is ${this.policy.limits.maxFileBytes} bytes.`);
       }
-      return await handle.readFile();
+      const bytes = await readHandleAtMost(handle, this.policy.limits.maxFileBytes);
+      if (!bytes) {
+        throw new WorkspaceAccessError(`Workspace file '${relativePath}' grew beyond the ${this.policy.limits.maxFileBytes}-byte limit while it was being read.`);
+      }
+      const afterStats = await handle.stat();
+      if (!afterStats.isFile() || afterStats.size !== fileStats.size || bytes.byteLength !== fileStats.size) {
+        throw new WorkspaceAccessError(`Workspace file '${relativePath}' changed while it was being read safely.`);
+      }
+      return bytes;
     } catch (error) {
       if (error instanceof WorkspaceAccessError) throw error;
       throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be read safely.`, { cause: error });
@@ -1797,29 +1830,11 @@ export class Workspace {
   }
 
   private async readMutationContent(absolutePath: string, relativePath: string): Promise<string> {
-    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    const bytes = await this.readMutationBytes(absolutePath, relativePath);
     try {
-      handle = await open(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } catch (error) {
-      throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be opened for a safe read.`, { cause: error });
-    }
-    try {
-      const fileStats = await handle.stat();
-      if (!fileStats.isFile()) throw new WorkspaceAccessError(`Workspace path '${relativePath}' is not a regular file.`);
-      if (fileStats.size > this.policy.limits.maxFileBytes) {
-        throw new WorkspaceAccessError(`Workspace file '${relativePath}' is ${fileStats.size} bytes; the limit is ${this.policy.limits.maxFileBytes} bytes.`);
-      }
-      const bytes = await handle.readFile();
-      try {
-        return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      } catch (error) {
-        throw new WorkspaceAccessError(`Workspace file '${relativePath}' is not valid UTF-8 text.`, { cause: error });
-      }
-    } catch (error) {
-      if (error instanceof WorkspaceAccessError) throw error;
-      throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be read safely.`, { cause: error });
-    } finally {
-      await handle?.close().catch(() => undefined);
+      throw new WorkspaceAccessError(`Workspace file '${relativePath}' is not valid UTF-8 text.`, { cause: error });
     }
   }
 
@@ -1830,7 +1845,10 @@ export class Workspace {
       handle = await open(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
       const fileStats = await handle.stat();
       if (!fileStats.isFile() || fileStats.size > this.policy.limits.maxFileBytes) return undefined;
-      const bytes = await handle.readFile();
+      const bytes = await readHandleAtMost(handle, this.policy.limits.maxFileBytes);
+      if (!bytes || bytes.byteLength !== fileStats.size) return undefined;
+      const afterStats = await handle.stat();
+      if (!afterStats.isFile() || afterStats.size !== fileStats.size) return undefined;
       try {
         return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       } catch {

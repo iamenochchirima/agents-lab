@@ -2186,6 +2186,18 @@ test("workspace policy rejects symlink escapes, oversized files, and invalid UTF
   await assert.rejects(() => workspace.readFile("invalid.txt"), /not valid UTF-8/);
 });
 
+test("workspace reads an exact multi-chunk file at the configured byte limit", async () => {
+  const root = path.join(tempDirectory(), "workspace");
+  const bytes = Buffer.alloc((64 * 1024) + 17, 0x61);
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, "bounded.txt"), bytes);
+  const workspace = await Workspace.open(root, { maxFileBytes: bytes.byteLength, maxDirectoryEntries: 10 });
+
+  const file = await workspace.readFile("bounded.txt");
+  assert.equal(file.sizeBytes, bytes.byteLength);
+  assert.equal(file.content, bytes.toString("utf8"));
+});
+
 test("workspace listing is stable and bounded", async () => {
   const root = path.join(tempDirectory(), "workspace");
   await mkdir(path.join(root, "nested"), { recursive: true });

@@ -14,7 +14,9 @@ permanently purged only by exact token after a second approval.
 symbolic-link target. `searchFiles` returns bounded literal content matches, bounded
 relative path-name matches, or both. Name patterns support only `*` and `?`; traversal,
 absolute paths, bracket expressions, and oversized patterns are rejected. Both operations
-are read-only and do not use the approval gate.
+are read-only and do not use the approval gate. File content and tree-manifest reads use
+no-follow descriptors and enforce the byte cap while reading, so a file that grows after
+the initial metadata check is rejected rather than read past the configured limit.
 
 `apply_patch` and `write_file` prepare the exact before/after content and hashes in memory.
 The runtime must supply an explicit approval decision before `commitPatch` can write. Commit rechecks
@@ -79,6 +81,12 @@ both files and directories. All three operations require approval through the to
 registry and carry source identity, kind, manifest, and byte evidence into the mutation
 record. Restart reconciliation distinguishes source-only, destination-only, and
 ambiguous states for both file hashes and directory manifests.
+
+Reads are bounded in the descriptor loop, but the current copy and manifest contracts still
+materialize one bounded file at a time so they can hash, compare, and stage exact bytes.
+They do not provide an OS-level immutable snapshot or claim cross-file atomicity. True
+stream-to-staging transfer, aggregate mutation budgets, and platform-specific immutable
+file-handle support remain separate hardening work.
 
 The process slice reuses this module's security policy only to authorize and describe a
 workspace-relative process cwd. It does not turn the workspace into a host sandbox and

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T19:26:00+02:00
+**Last updated:** 2026-09-16T19:28:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -101,6 +101,11 @@ tests, but it must never replace a configured real provider silently.
   response text and tool-call fields are counted as UTF-8 bytes across the turn, and an
   over-limit response fails without persisting a partial assistant message. The
   OpenRouter adapter enforces its response bound while reading the stream as well.
+- Workspace file, search, mutation, copy, and tree-manifest reads now use no-follow file
+  descriptors with a bounded chunk loop. The loop probes at most one byte beyond the
+  configured limit, so a file that grows after its initial metadata check fails closed
+  instead of bypassing the limit. Exact multi-chunk reads are covered by the workspace
+  contract tests.
 - The normalized lifecycle stream now validates process, browser, and memory action
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
@@ -418,6 +423,34 @@ Still open after this slice:
 - The fingerprint is bounded markup evidence, not a proof of semantic equivalence or an
   immutable browser element handle. Staged upload snapshots, auth/profile policy,
   cross-platform isolation, and the full crash/navigation/modal race matrix remain open.
+
+### Current slice boundary: bounded workspace reads
+
+Delivered in this slice:
+
+- `readFile`, mutation/hash reads, search reads, and directory-tree manifest reads open
+  regular files with `O_NOFOLLOW` and enforce their byte limit during descriptor reads,
+  not only from a preceding path-size check.
+- A file that grows beyond the configured per-file or remaining tree budget is rejected
+  without returning the over-limit bytes. A file whose size changes during a bounded read
+  is rejected as changed rather than treated as a stable snapshot.
+- A multi-chunk file exactly at the configured limit is covered by an automated workspace
+  test, while existing tree, copy, search, and mutation tests exercise their public
+  callers.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This keeps the resource guard at the concrete filesystem operation boundary, alongside
+  the existing workspace policy and evidence. It does not add a generic transaction
+  manager, a virtual filesystem, or a new cross-component abstraction.
+
+Still open after this slice:
+
+- Copy and manifest operations still materialize one bounded file at a time because they
+  need exact hashes and staged bytes. True stream-to-staging transfer, aggregate mutation
+  budgets, and an OS-level immutable snapshot/file-handle contract remain open.
+- The remaining filesystem race, crash, cross-platform, and platform-isolation matrix is
+  broader than this read-time limit check.
 
 ### Current slice boundary: memory evidence maintenance
 
@@ -900,8 +933,9 @@ claim in this plan.
       reconciliation records for the supported multi-file `apply_patch_set` boundary.
 - [x] Report partial completion and recovery instructions when an `apply_patch_set`
       transaction cannot roll back fully.
-- [ ] Add large-input streaming and aggregate limits without loading an entire tree into
-      memory.
+- [ ] Add true stream-to-staging transfer and aggregate mutation limits for large inputs;
+      the current slice only bounds descriptor reads and materializes one bounded file at
+      a time.
 
 ### 6. Security, limits, and telemetry
 
