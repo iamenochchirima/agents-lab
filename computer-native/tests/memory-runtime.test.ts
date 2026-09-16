@@ -13,6 +13,15 @@ import { RuntimeInterruptionError } from "../src/runtime/errors.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 
+async function openRuntimeMemory(root: string, writeHooks?: Parameters<typeof MemoryStore.open>[0]["writeHooks"]) {
+  const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+  const session = await SessionStore.open(config.stateDir);
+  const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test", ...(writeHooks ? { writeHooks } : {}) });
+  const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+  const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+  return { config, session, memory, tools };
+}
+
 test("runtime dispatches a real memory tool call through approval and persists its lifecycle evidence", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-runtime-"));
   try {
@@ -161,6 +170,112 @@ test("diagnostic interruption after memory commit does not repeat the write", as
     assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
     assert.equal((await memory.search({ query: "persist exactly once" })).length, 1);
     await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("canonical memory publication interruption reconciles the durable entry without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-canonical-runtime-"));
+  try {
+    let canonicalWrites = 0;
+    const { config, session, memory, tools } = await openRuntimeMemory(root, {
+      afterWrite: (operation, filePath) => {
+        if (operation === "canonical-replace" && filePath.endsWith("MEMORY.md") && canonicalWrites++ === 0) {
+          throw new RuntimeInterruptionError("stopped after canonical memory publication");
+        }
+      },
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-canonical-boundary", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "add", scope: "workspace", content: "canonical memory was published" }),
+            finalResponse: "The memory entry was stored.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Store this memory entry.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped after canonical memory publication/u,
+    );
+    await memory.close();
+
+    const reopenedMemory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)))[0]?.status, "interrupted");
+    assert.equal((await reopenedMemory.search({ query: "canonical memory was published" })).length, 1);
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionFile = (await readdir(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions")))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions", actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string });
+    assert.equal(history.at(-1)?.status, "committed");
+    const events = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload?: { recovered?: boolean } });
+    assert.equal(events.filter((event) => event.type === "MemoryCommitted").length, 1);
+    assert.equal(events.find((event) => event.type === "MemoryCommitted")?.payload?.recovered, true);
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)), []);
+    await reopenedMemory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory removal interruption before canonical publication leaves the entry in place", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-remove-boundary-"));
+  try {
+    const seeded = await MemoryStore.open({ stateDir: path.join(root, "state"), profileId: "default", workspaceId: "workspace-test" });
+    const existing = await seeded.add({ scope: "workspace", content: "keep this memory", provenance: { source: "user", sourceId: "seed", trust: "user" } });
+    await seeded.close();
+    let canonicalWrites = 0;
+    const { config, session, memory, tools } = await openRuntimeMemory(root, {
+      beforeWrite: (operation, filePath) => {
+        if (operation === "canonical-replace" && filePath.endsWith("MEMORY.md") && canonicalWrites++ === 0) {
+          throw new RuntimeInterruptionError("stopped before canonical memory removal");
+        }
+      },
+    });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-remove-boundary", {
+          toolCall: {
+            name: "memory_forget",
+            argumentsJson: JSON.stringify({ recordId: existing.id, expectedContentHash: existing.contentHash }),
+            finalResponse: "The memory entry was kept.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Remove this memory entry only after its canonical file is ready.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before canonical memory removal/u,
+    );
+    await memory.close();
+
+    const reopenedMemory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)))[0]?.status, "interrupted");
+    assert.ok(await reopenedMemory.get(existing.id));
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionFile = (await readdir(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions")))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions", actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; decision?: string });
+    assert.equal(history.at(-1)?.status, "denied");
+    assert.equal(history.at(-1)?.decision, "unavailable");
+    const events = await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8");
+    assert.match(events, /MemoryFailed/u);
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => reopenedMemory.reconcileAction(record)), []);
+    await reopenedMemory.close();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

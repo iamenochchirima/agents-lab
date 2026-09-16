@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:06:00+02:00
+**Last updated:** 2026-09-16T18:14:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -208,10 +208,11 @@ Exit evidence:
 - A fault-injection test can stop the process at each persistence and side-effect
   boundary and reconcile the result on restart.
 - Current evidence covers acknowledgement loss after durable terminal-result, terminal-
-  event, process, workspace-mutation, browser-action, and memory-action writes. Selected
-  before/after boundaries are now covered for workspace and browser actions, but this is
-  still narrower than the required full persistence/side-effect boundary matrix because
-  it does not yet stop before every write or at every underlying side-effect boundary.
+  event, process, workspace-mutation, browser-action, and memory-action writes. Direct and
+  runtime tests now also cover before/after memory canonical Markdown publication and
+  deletion-evidence append boundaries. This is still narrower than the required full
+  persistence/side-effect matrix because it does not stop before every write or at every
+  underlying side-effect boundary.
 - Current evidence also covers reconstruction of one missing terminal lifecycle event per
   action family. It does not yet prove reconstruction after a process-level crash at
   every write boundary or across all future action types.
@@ -222,9 +223,10 @@ Exit evidence:
 - Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
   writes, process approval before launch, process execution while running, workspace
   applying and committed-record boundaries, browser start and completion-record
-  boundaries, completed filesystem/browser/memory side effects, and a committed multi-file
-  member boundary. It does not yet cover every individual persistence write or every
-  possible host-side side-effect boundary.
+  boundaries, memory canonical publication and deletion-evidence append boundaries,
+  completed filesystem/browser/memory side effects, and a committed multi-file member
+  boundary. It does not yet cover every individual persistence write or every possible
+  host-side side-effect boundary.
 - Current process crash evidence covers a completed-side-effect acknowledgement loss,
   a crash after a running record becomes durable, and an in-process launch-record
   acknowledgement failure. It does not yet cover every pre-write crash point,
@@ -426,12 +428,15 @@ Exit evidence:
 
 Current state: bounded Markdown stores, a rebuildable local lexical index, explicit
 approval-gated add/replace/remove operations, provenance, retention checks, append-only
-memory evidence, and a shared approval/cancellation path.
+memory evidence, operation-specific recovery at canonical and deletion-evidence write
+boundaries, and a shared approval/cancellation path.
 
 Remaining work:
 
 - Add bounded retention, migration, and repair procedures for the deletion-evidence
   ledger and batch manifests; the current local ledger is durable but append-only.
+- Prove cross-file daily-memory batch publication and recovery. The current implementation
+  reconciles members individually and does not claim cross-file atomicity or rollback.
 - Replace the experimental `node:sqlite` dependency path with a supported persistence
   profile, or document and accept the runtime/version requirement for production.
 - Add session and transcript search without mixing short-term history into compact

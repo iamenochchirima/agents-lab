@@ -68,6 +68,88 @@ test("memory replacement and removal require the current content hash", async ()
   await store.close();
 });
 
+test("memory canonical publication faults never replay a write", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-canonical-boundary-"));
+  temporaryDirectories.push(stateDir);
+  let beforeWrites = 0;
+  const beforeStore = await MemoryStore.open({
+    stateDir,
+    profileId: "default",
+    workspaceId: "workspace-test",
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (operation === "canonical-replace" && filePath.endsWith("MEMORY.md") && beforeWrites++ === 0) {
+          throw new Error("stopped before canonical memory publication");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    beforeStore.add({ scope: "workspace", content: "must not be published", provenance: { source: "model", sourceId: "boundary-before", trust: "model" } }),
+    /stopped before canonical memory publication/u,
+  );
+  await beforeStore.close();
+  const unchanged = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test" });
+  assert.deepEqual(await unchanged.search({ query: "must not be published" }), []);
+  await unchanged.close();
+
+  let afterWrites = 0;
+  const afterStore = await MemoryStore.open({
+    stateDir,
+    profileId: "default",
+    workspaceId: "workspace-test",
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "canonical-replace" && filePath.endsWith("MEMORY.md") && afterWrites++ === 0) {
+          throw new Error("canonical memory publication acknowledgement was lost");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    afterStore.add({ scope: "workspace", content: "published before acknowledgement", provenance: { source: "model", sourceId: "boundary-after", trust: "model" } }),
+    /canonical memory publication acknowledgement was lost/u,
+  );
+  await afterStore.close();
+  const published = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test" });
+  assert.equal((await published.search({ query: "published before acknowledgement" })).length, 1);
+  await published.close();
+});
+
+test("memory deletion evidence remains sufficient after its committed acknowledgement is lost", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-deletion-boundary-"));
+  temporaryDirectories.push(stateDir);
+  const initial = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test" });
+  const record = await initial.add({ scope: "workspace", content: "remove exactly once", provenance: { source: "user", sourceId: "seed", trust: "user" } });
+  await initial.close();
+
+  let evidenceWrites = 0;
+  const faulty = await MemoryStore.open({
+    stateDir,
+    profileId: "default",
+    workspaceId: "workspace-test",
+    writeHooks: {
+      afterWrite: (operation) => {
+        if (operation === "deletion-evidence-append" && evidenceWrites++ === 1) {
+          throw new Error("committed deletion evidence acknowledgement was lost");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    faulty.remove({ id: record.id, expectedContentHash: record.contentHash, sourceId: "boundary-remove" }),
+    /committed deletion evidence acknowledgement was lost/u,
+  );
+  await faulty.close();
+
+  const reopened = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test" });
+  assert.equal(await reopened.get(record.id), undefined);
+  const evidence = (await readFile(path.join(stateDir, "memory", "deletions.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { status: string });
+  assert.deepEqual(evidence.map((entry) => entry.status), ["prepared", "committed"]);
+  await reopened.close();
+});
+
 test("memory rejects duplicate entries in the same scope", async () => {
   const { store } = await openMemory();
   const input = { scope: "user" as const, content: "The user prefers concise answers.", provenance: { source: "user" as const, sourceId: "turn_1", trust: "user" as const } };

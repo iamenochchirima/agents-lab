@@ -25,7 +25,15 @@ const MAX_SEARCH_RESULTS = 50;
 const MEMORY_START = "<!-- computer-native-memory: ";
 const MEMORY_END = "<!-- /computer-native-memory -->";
 
-interface MemoryStoreOptions {
+export type MemoryWriteOperation = "canonical-replace" | "deletion-evidence-append";
+
+/** Diagnostic-only seam for stopping memory at a durable file boundary. */
+export interface MemoryWriteHooks {
+  readonly beforeWrite?: (operation: MemoryWriteOperation, filePath: string) => Promise<void> | void;
+  readonly afterWrite?: (operation: MemoryWriteOperation, filePath: string) => Promise<void> | void;
+}
+
+export interface MemoryStoreOptions {
   readonly stateDir: string;
   readonly profileId: string;
   readonly workspaceId: string;
@@ -33,6 +41,7 @@ interface MemoryStoreOptions {
   readonly workspaceMaxChars?: number;
   readonly dailyMaxChars?: number;
   readonly dailyRetentionDays?: number;
+  readonly writeHooks?: MemoryWriteHooks;
 }
 
 interface MemoryMutation {
@@ -561,7 +570,9 @@ export class MemoryStore {
   }
 
   private async appendDeletionEvidence(evidence: MemoryDeletionEvidence): Promise<void> {
+    await this.options.writeHooks?.beforeWrite?.("deletion-evidence-append", this.deletionEvidencePath);
     await appendJsonLine(this.deletionEvidencePath, evidence);
+    await this.options.writeHooks?.afterWrite?.("deletion-evidence-append", this.deletionEvidencePath);
   }
 
   async close(): Promise<void> {
@@ -606,8 +617,14 @@ export class MemoryStore {
     ];
     for (const filePath of new Set(paths)) {
       const records = byPath.get(filePath) ?? [];
-      await atomicWriteText(filePath, renderMemoryFile(filePath, records));
+      await this.writeCanonicalFile(filePath, renderMemoryFile(filePath, records));
     }
+  }
+
+  private async writeCanonicalFile(filePath: string, content: string): Promise<void> {
+    await this.options.writeHooks?.beforeWrite?.("canonical-replace", filePath);
+    await atomicWriteText(filePath, content);
+    await this.options.writeHooks?.afterWrite?.("canonical-replace", filePath);
   }
 
   private rebuildIndex(): void {

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:06:00+02:00
+**Last updated:** 2026-09-16T18:14:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 285 passing tests across the package, with 88.72% line
-  coverage, 77.31% branch coverage, and 84.30% function coverage. Coverage is from
+- The latest validation is 289 passing tests across the package, with 88.74% line
+  coverage, 77.52% branch coverage, and 84.30% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -289,12 +289,23 @@ Delivered in this increment:
   immediately after approval when hash reconciliation proves that application never began.
 - Browser runtime-interruption errors are no longer converted into ordinary adapter
   failures, preserving the restart path when persistence fails around a browser side effect.
+- Memory canonical Markdown replacement and deletion-evidence append now have a narrow,
+  diagnostic-only before/after write seam. Direct and runtime tests prove that a stop before
+  canonical publication leaves the old state in place, a stop after publication is reconciled
+  without replay, and a lost committed-deletion acknowledgement still recovers from the
+  append-only evidence.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This uses operation-specific durable boundaries and existing action reconciliation, matching
+  their explicit lifecycle/policy approach. It does not introduce a general transaction manager,
+  a second memory index, or an exactly-once claim that the underlying files do not support.
 
 Still open after this increment:
 
 - The complete stop-before/after matrix for every durable write and every underlying host
   side effect, including process-level crash injection at each boundary.
-- Memory canonical/deletion-evidence write faults, cross-file batch publication, browser
+- Cross-file daily-memory batch publication, deletion-ledger retention/compaction, browser
   profile/artifact crash recovery, and cross-platform process isolation.
 
 ### Current slice boundary: persistence acknowledgement recovery
@@ -328,19 +339,22 @@ Delivered in this slice:
   publication. Batch actions persist a bounded hash-only member manifest and reconcile
   add, replace, and remove members as one approved action. Mixed batches emit one
   terminal lifecycle event, and recovery never replays a member.
+- Direct memory boundary tests now cover before/after canonical Markdown publication and
+  before/after deletion-evidence append behaviour. Runtime tests exercise the same boundaries
+  through approved model tool calls and restart recovery, including the fail-closed removal case.
 
 Persistence slice limitations:
 
 - Failure injection before and after every persistence write, and at every model-send,
   approval-decision, and underlying filesystem/process/browser/memory side-effect boundary,
-  remains open. This increment covers selected workspace and browser boundaries only.
+  remains open. This increment adds the memory canonical/deletion-evidence boundaries but
+  still covers only selected boundaries across the complete runtime.
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, and an exactly-once execution guarantee remain
   open.
-- Direct fault injection around memory canonical/deletion-evidence writes, deletion-ledger
-  retention/compaction, and cross-file daily-memory batch publication remain open. The
-  current evidence proves the supported local acknowledgement-loss path, not an
-  exactly-once guarantee or cross-file transaction.
+- Deletion-ledger retention/compaction and cross-file daily-memory batch publication remain
+  open. The current evidence proves the supported local acknowledgement-loss and
+  operation-specific recovery paths, not an exactly-once guarantee or cross-file transaction.
 
 ### Current slice boundary: model payload resource limits
 
