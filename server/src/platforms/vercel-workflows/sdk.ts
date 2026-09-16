@@ -34,7 +34,7 @@ export function requirePlatformDependency<T>(specifier: string): T {
     }
   }
   throw new Error(
-    `Unable to resolve ${specifier} for Vercel Workflows. Install it with npm --prefix server/src/platforms/vercel-workflows install.`,
+    `Unable to resolve ${specifier} for Vercel Workflows. Install workspace dependencies with pnpm install from the repository root.`,
   );
 }
 
@@ -45,7 +45,7 @@ const workflowLocalWorld = requirePlatformDependency<WorkflowLocalWorld>("@workf
 const workflowBuilders = requirePlatformDependency<WorkflowBuilders>("@workflow/builders");
 
 export const { getRun, start } = workflowApi;
-export const { setWorld } = workflowRuntime;
+export const setWorld: WorkflowRuntime["setWorld"] = workflowRuntime.setWorld;
 export const { FatalError, getStepMetadata, sleep } = workflowPackage;
 export const { createWorld } = workflowLocalWorld;
 export const { StandaloneBuilder } = workflowBuilders;

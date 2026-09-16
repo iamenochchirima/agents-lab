@@ -7,15 +7,15 @@ directory and uses an in-memory queue that delivers through the local service.
 From this directory:
 
 ```sh
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 Install and run the focused platform suite from this directory as well:
 
 ```sh
-npm install
-npm test
+pnpm install
+pnpm test
 ```
 
 The shared `server` package does not install the Workflow SDK. The service uses `sdk.ts`
@@ -60,6 +60,6 @@ optional and is called only from the `executeModelStep` step. Its response conte
 is returned as the run output, but credentials and request headers are not stored in
 the Lab manifest or native reference.
 
-`npm run build:workflow` shows the standalone compilation independently. It writes
+`pnpm run build:workflow` shows the standalone compilation independently. It writes
 ignored generated files under `.workflow-build/` and the Workflow manifest under
 `variants/baseline/execution/.well-known/`.

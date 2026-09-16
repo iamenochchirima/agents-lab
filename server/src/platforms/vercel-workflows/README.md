@@ -10,11 +10,15 @@ messages through the local service's flow route. The service is a learning and
 reproducibility profile; it is not a claim that a local process provides Vercel's
 managed production durability.
 
+The Platform UI selects an OpenRouter model from the shared server catalog. The
+provider request runs inside the explicit Workflow step; fake models remain
+available only as deterministic test fixtures.
+
 Start it from this directory with:
 
 ```sh
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
 The default readiness endpoint is `http://127.0.0.1:9094/ready`. The runner adapter

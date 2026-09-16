@@ -1,6 +1,8 @@
 import { loadVercelWorkflowsConfig } from "./config.js";
 import { VercelWorkflowsPlatformService } from "./service/platform-service.js";
+import { loadLocalServerEnvironment } from "../../control-plane/bootstrap/local-env.js";
 
+loadLocalServerEnvironment();
 const service = new VercelWorkflowsPlatformService({ config: loadVercelWorkflowsConfig() });
 await service.start();
 console.log(`Vercel Workflows baseline listening at ${service.address}`);

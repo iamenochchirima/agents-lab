@@ -4,8 +4,8 @@ The baseline is one prompt workflow:
 
 1. The service validates and durably reserves the Lab run ID.
 2. `workflow` executes the durable orchestration function.
-3. `executeModelStep` performs either a deterministic fake response or an explicit
-   OpenRouter request.
+3. `executeModelStep` performs the selected OpenRouter request; deterministic fake
+   responses remain available for tests.
 4. The workflow returns normalized result, trajectory, metrics, and event intents.
 5. The runner reads native Workflow status and preserves the native IDs in evidence.
 

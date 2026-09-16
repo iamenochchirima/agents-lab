@@ -87,7 +87,7 @@ export function safeManifestConfiguration(config: VercelWorkflowsConfig): Readon
     localWorldPackage: "@workflow/world-local",
     localWorldVersion: VERCEL_WORKFLOW_LOCAL_WORLD_VERSION,
     world: "local",
-    modelProvider: "fake-by-default",
+    modelProvider: "selected-run-provider",
   });
 }
 
