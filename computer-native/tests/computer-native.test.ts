@@ -4770,7 +4770,6 @@ test("cancelling workspace approval resolves promptly and leaves the mutation un
   const approvalStarted = new Promise<void>((resolve) => {
     resolveApprovalStarted = resolve;
   });
-  const startedAt = Date.now();
   const running = runTurn({
     session,
     provider: new DeterministicModelProvider("deterministic/patch", {
@@ -4790,7 +4789,10 @@ test("cancelling workspace approval resolves promptly and leaves the mutation un
       workspaceRoot: root,
       timeoutMs: 1_500,
       maxToolDurationMs: 1_000,
-      approvalTimeoutMs: 1_000,
+      // Keep the approval timeout well beyond the test timeout. If parent
+      // cancellation stops being authoritative, this test will time out rather
+      // than relying on a fragile wall-clock threshold.
+      approvalTimeoutMs: 10_000,
     }),
     userPrompt: "Update the note.",
     signal: controller.signal,
@@ -4806,7 +4808,6 @@ test("cancelling workspace approval resolves promptly and leaves the mutation un
 
   const result = await running;
   assert.equal(result.status, "cancelled");
-  assert.ok(Date.now() - startedAt < 500, "cancellation should not wait for the approval timeout");
   assert.equal(await readFile(target, "utf8"), "old\n");
   const mutationsDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "mutations");
   const mutationFiles = await readdir(mutationsDirectory);

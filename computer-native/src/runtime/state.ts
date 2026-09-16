@@ -1,5 +1,5 @@
-import { ComputerNativeError } from "./errors.js";
 import type { TurnStatus } from "./contracts.js";
+import { assertLifecycleTransition } from "./lifecycle.js";
 
 const transitions: Readonly<Record<TurnStatus, readonly TurnStatus[]>> = {
   idle: ["submitting"],
@@ -12,9 +12,7 @@ const transitions: Readonly<Record<TurnStatus, readonly TurnStatus[]>> = {
 };
 
 export function assertTransition(from: TurnStatus, to: TurnStatus): void {
-  if (!transitions[from].includes(to)) {
-    throw new ComputerNativeError("persistence", `Invalid turn transition: ${from} → ${to}.`);
-  }
+  assertLifecycleTransition(transitions, from, to, (previous, next) => `Invalid turn transition: ${previous} → ${next}.`);
 }
 export function allowedTransitions(from: TurnStatus): readonly TurnStatus[] {
   return transitions[from];

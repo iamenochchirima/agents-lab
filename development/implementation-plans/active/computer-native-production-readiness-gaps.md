@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:56:46+02:00
+**Last updated:** 2026-09-17T00:05:27+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 329 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 329 tests passed, with 89.62% line coverage, 79.12% branch
+- `pnpm test`: 331 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 331 tests passed, with 89.64% line coverage, 79.12% branch
   coverage, and 85.11% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
@@ -165,6 +165,9 @@ readiness:
   and no destination is published. This verifies the existing no-follow hash/manifest
   checks and no-replace destination boundary; it does not claim an OS-level immutable
   snapshot between observation and commit.
+- Legal state transitions now pass through one small shared runtime checker used by the
+  turn, process, browser, memory, and workspace validators. Domain-specific identity,
+  outcome, and recovery checks remain local; this is not a generic workflow engine.
 - Managed Playwright element references now carry bounded adapter-side markup identity
   and are rechecked immediately before side-effecting actions; same-document DOM
   replacement fails as `stale-reference` rather than acting through an ordinal locator.

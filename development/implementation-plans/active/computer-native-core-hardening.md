@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:56:46+02:00
+**Last updated:** 2026-09-17T00:05:27+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -305,8 +305,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 329 passing tests across the package, with 89.62% line
-  coverage, 79.12% branch coverage, and 85.11% function coverage. Coverage is from
+- The latest validation is 331 passing tests across the package, with 89.64% line
+  coverage, 79.12% branch coverage, and 85.19% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs. The
   latest full suite and coverage run both pass; one earlier coverage run was discarded
   because instrumentation caused timing-sensitive browser and admission tests to fail.
@@ -1296,6 +1296,34 @@ Still open after this increment:
   support. The operation still cannot claim an OS-level snapshot between the final
   observation and the host filesystem commit.
 
+### Current slice boundary: shared lifecycle transition checking
+
+Delivered in this increment:
+
+- Added `src/runtime/lifecycle.ts` with one small, fail-closed transition checker used
+  by turn, process, browser, memory, and workspace record validators.
+- Repeated state writes are treated as idempotent at this primitive, which matches the
+  existing acknowledgement-loss model. Component validators still own immutable
+  identity, outcome, and recovery-specific checks.
+- Added direct contract tests for legal, repeated, and illegal transitions, and kept
+  the existing component-specific transition tests green.
+- Relaxed the workspace-cancellation test's wall-clock assertion. It now uses a
+  deliberately longer approval timeout than the test timeout, so a regression still
+  fails by timing out while coverage instrumentation no longer creates a false failure.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is shared lifecycle validation at an existing module boundary. It does not add
+  an event-sourcing framework, workflow engine, scheduler, lease coordinator, or
+  exactly-once execution abstraction.
+
+Still open after this increment:
+
+- The helper does not unify the domain-specific identity or recovery state machines.
+  Full turn-level lifecycle ownership, durable write/side-effect crash coverage,
+  concurrency/lease semantics, and remaining security and operational gates remain
+  active work.
+
 ## Scope
 
 - [ ] Define and enforce durable turn, attempt, tool-action, approval, and terminal-result
@@ -1514,7 +1542,8 @@ claim in this plan.
 
 ### 2. Runtime and persistence
 
-- [ ] Implement the shared lifecycle transition helpers in `src/runtime`.
+- [x] Implement the shared lifecycle transition helper in `src/runtime`; keep
+      component-specific identity and recovery validators at their owning boundaries.
 - [x] Persist model attempts before sending and after each bounded response or failure.
 - [ ] Persist approval preparation and decision before tool execution.
 - [ ] Record recovery classification and operation-specific reconciliation data.
@@ -1626,7 +1655,8 @@ claim in this plan.
 
 ### Unit and contract tests
 
-- [ ] Legal and illegal lifecycle transitions.
+- [x] Legal, repeated, and illegal lifecycle transitions through the shared checker and
+      the existing turn, process, browser, memory, and workspace validators.
 - [ ] Attempt numbering, action hashes, idempotency/reconciliation keys, and redaction.
 - [x] Reject malformed or foreign-session process records before PID interpretation or
       recovery-side process reconciliation.

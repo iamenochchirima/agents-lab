@@ -1,6 +1,7 @@
 import type { BrowserApprovalAction, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserSessionId, BrowserTabId } from "./contracts.js";
 import type { BrowserDiagnostic, BrowserErrorCode } from "./errors.js";
 import type { CorrelationId } from "../runtime/contracts.js";
+import { assertLifecycleTransition } from "../runtime/lifecycle.js";
 
 export type BrowserActionStatus =
   | "prepared"
@@ -81,8 +82,5 @@ export function assertBrowserActionTransition(previous: BrowserActionRecord, nex
   if (changedFields.length > 0) {
     throw new Error(`Browser action identity cannot change after it is recorded (${changedFields.join(", ")}).`);
   }
-  if (previous.status === next.status) return;
-  if (!BROWSER_ACTION_TRANSITIONS[previous.status].includes(next.status)) {
-    throw new Error(`Browser action cannot transition from ${previous.status} to ${next.status}.`);
-  }
+  assertLifecycleTransition(BROWSER_ACTION_TRANSITIONS, previous.status, next.status, (from, to) => `Browser action cannot transition from ${from} to ${to}.`);
 }

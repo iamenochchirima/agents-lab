@@ -29,6 +29,13 @@ process stopping at that boundary; the runtime deliberately leaves the turn non-
 so the normal restart recovery path can classify it. This seam is unset in normal CLI
 operation and is not a retry or fallback mechanism.
 
+Legal state transitions are checked by the small shared `lifecycle.ts` primitive used by
+turn, process, browser, memory, and workspace persistence validators. It treats an
+acknowledgement retry that repeats the current state as idempotent and fails closed for
+an unlisted transition. Each owning component still validates its own immutable action
+identity, terminal outcome fields, and recovery exceptions; the helper is not a generic
+workflow engine.
+
 Model lifecycle writes are safe to repeat after an acknowledgement loss when the same
 attempt identity and payload are supplied. A conflicting repeat is rejected as
 persistence corruption; it cannot create a second observation for the same attempt.

@@ -1,4 +1,5 @@
 import type { CorrelationId, ProcessErrorCode } from "../runtime/contracts.js";
+import { assertLifecycleTransition } from "../runtime/lifecycle.js";
 
 export type ProcessState =
   | "prepared"
@@ -158,10 +159,7 @@ export function assertProcessTransition(previous: ProcessExecutionRecord, next: 
     previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
   ].filter((field): field is string => field !== undefined);
   if (changedFields.length > 0) throw new Error("Process execution identity cannot change after it is recorded (" + changedFields.join(", ") + ").");
-  if (previous.status === next.status) return;
-  if (!PROCESS_TRANSITIONS[previous.status].includes(next.status)) {
-    throw new Error("Process execution cannot transition from " + previous.status + " to " + next.status + ".");
-  }
+  assertLifecycleTransition(PROCESS_TRANSITIONS, previous.status, next.status, (from, to) => `Process execution cannot transition from ${from} to ${to}.`);
 }
 
 export type ProcessEvent =

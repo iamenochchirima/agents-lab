@@ -1,5 +1,6 @@
 import type { MemoryScope, MemoryTrust, MemorySource } from "./types.js";
 import type { CorrelationId } from "../runtime/contracts.js";
+import { assertLifecycleTransition } from "../runtime/lifecycle.js";
 
 export type { MemoryScope, MemoryTrust, MemorySource } from "./types.js";
 
@@ -214,7 +215,5 @@ export function assertMemoryActionTransition(previous: MemoryActionRecord, next:
     }
     return;
   }
-  if (!MEMORY_ACTION_TRANSITIONS[previous.status].includes(next.status)) {
-    throw new Error(`Memory action cannot transition from ${previous.status} to ${next.status}.`);
-  }
+  assertLifecycleTransition(MEMORY_ACTION_TRANSITIONS, previous.status, next.status, (from, to) => `Memory action cannot transition from ${from} to ${to}.`);
 }

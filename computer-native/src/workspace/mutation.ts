@@ -1,6 +1,7 @@
 import type { PreparedPatch, WorkspaceMutationOperation } from "./patch.js";
 import type { CorrelationId, MutationErrorCode } from "../runtime/contracts.js";
 import { ComputerNativeError } from "../runtime/errors.js";
+import { assertLifecycleTransition } from "../runtime/lifecycle.js";
 
 export const MAX_PATCH_REQUEST_BYTES = 256 * 1024;
 export const MAX_WRITE_FILE_REQUEST_BYTES = 256 * 1024;
@@ -195,10 +196,7 @@ export function assertMutationTransition(previous: WorkspaceMutationRecord, next
   if (changedFields.length > 0) {
     throw new ComputerNativeError("persistence", `Mutation '${previous.mutationId}' identity cannot be changed after it is recorded (${changedFields.join(", ")}).`);
   }
-  if (previous.status === next.status) return;
-  if (!mutationTransitions[previous.status].includes(next.status)) {
-    throw new ComputerNativeError("persistence", `Mutation '${previous.mutationId}' cannot transition from ${previous.status} to ${next.status}.`);
-  }
+  assertLifecycleTransition(mutationTransitions, previous.status, next.status, (from, to) => `Mutation '${previous.mutationId}' cannot transition from ${from} to ${to}.`);
 }
 
 export function mutationRequest(mutationId: string, prepared: PreparedPatch): MutationApprovalRequest {
