@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T19:57:00+02:00`
+**Last updated:** `2026-09-16T19:58:00+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -281,7 +281,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 ## Validation performed to date
 
 - `pnpm --dir server exec tsx --test tests/models/openrouter/catalog.test.ts tests/control-plane/http.test.ts tests/control-plane/config.test.ts tests/platforms/trigger-dev/trigger-dev-runner.test.ts tests/platforms/trigger-dev/openrouter.test.ts` — 21 passed.
-- `pnpm --dir server test` — 148 passed.
+- `pnpm --filter @agent-harness-lab/lab-server test` — 233 passed after the LangGraph wire-boundary fix.
 - `pnpm --dir apps/web run typecheck` — passed; document catalog generated 59 documents.
 - `pnpm --dir apps/web run build` — passed; Vite emitted only the existing large-chunk warning.
 - `bash -n scripts/run_local_stack.sh` — passed.
@@ -291,6 +291,8 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - The live run evidence was scanned for API keys, bearer headers, and provider secret prefixes; none were present.
 - `server/src/platforms/langgraph/.local311/bin/pytest -q` — 22 passed, 1 deprecation warning; the provider response limit and parsing tests are included. The `.local` Python 3.12 environment remains unusable because its interpreter lacks `_sqlite3`.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/langgraph/runner-adapter.test.ts` — 4 passed after verifying that UI-only context metadata is stripped from LangGraph's strict wire request.
+- `pnpm --dir apps/web exec tsx --test tests/chatState.test.ts` — 8 passed, including stale-run, duplicate-message, and model-selection stability checks.
+- `pnpm --dir apps/web run typecheck` and `pnpm --dir apps/web run build` — passed after the shared picker request-lifecycle fix; Vite emitted only the existing large-chunk warning.
 - A fresh server on `127.0.0.1:4319` completed a real LangGraph run with `cohere/north-mini-code:free`; run ID `d97ef0f8-e4f6-405d-b0ca-46e75c51ca28`. The original run `4dd500b8-8e46-44bd-a20c-8298bde9c971` was correctly recorded as failed with `DISPATCH_FAILED` when the strict protocol rejected the extra field.
 - Live OpenRouter smoke runs with `cohere/north-mini-code:free` completed on Temporal (`c54e4a8d-58c3-469e-9fe5-630d2a41f5ca`), Restate (`f7119cc2-f277-41dd-874b-618917f1db9a`), Mastra (`dacf5f45-e867-493d-9fcb-790a1ae7a007`), and Vercel Workflows (`537fc9db-a48f-4c8b-aa23-a62b180595d9`) at `2026-09-16T19:51:00+02:00`; only safe status/model fields were inspected.
 
@@ -338,6 +340,7 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit streamed response bounds and model-level tests for DBOS in `cd10341` (`fix(dbos): bound OpenRouter responses`).
 - [x] Commit streamed response bounds and model-level tests for Vercel Workflows in `7832961` (`fix(vercel): bound OpenRouter responses`).
 - [x] Commit the LangGraph wire-boundary fix and regression test in `363e50b` (`fix(langgraph): strip UI metadata from wire model`).
+- [x] Commit the shared model picker, runner/Compare wiring, browser chat, context meter, and web regression state tests in `d0c47ce` (`feat(web): connect platform chat and model controls`).
 - [ ] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [ ] Commit the shared web picker and runner/Compare integration separately.
