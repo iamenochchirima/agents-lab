@@ -60,6 +60,16 @@ function now(): string {
   return new Date().toISOString();
 }
 
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 function id(prefix: string): string {
   return `${prefix}_${randomUUID().replaceAll("-", "")}`;
 }
@@ -793,12 +803,7 @@ export class SessionStore {
         throw new ComputerNativeError("persistence", `Turn '${entry.name}' has no valid turn record. Repair it before continuing.`, { cause: error });
       }
       const resultPath = path.join(directory, "result.json");
-      let result: TurnResult | undefined;
-      try {
-        result = await readJson<TurnResult>(resultPath);
-      } catch (error) {
-        if (!(error instanceof ComputerNativeError) || !error.message.startsWith("Could not read")) throw error;
-      }
+      const result = await fileExists(resultPath) ? await readJson<TurnResult>(resultPath) : undefined;
       const turn = new TurnStore(this, directory, record);
       if (result) validateTurnResult(result, record);
       for (const execution of await turn.readProcesses()) {
@@ -1334,14 +1339,12 @@ export class TurnStore {
   async writeResult(result: TurnResult): Promise<void> {
     validateTurnResult(result, this.record);
     const resultPath = path.join(this.directory, "result.json");
-    try {
+    if (await fileExists(resultPath)) {
       const existing = await readJson<TurnResult>(resultPath);
       if (stableStringify(existing) !== stableStringify(result)) {
         throw new ComputerNativeError("persistence", `Turn '${this.turnId}' already has a different terminal result.`);
       }
       return;
-    } catch (error) {
-      if (error instanceof ComputerNativeError && !error.message.startsWith("Could not read")) throw error;
     }
     await this.session.replaceJson(resultPath, result);
   }

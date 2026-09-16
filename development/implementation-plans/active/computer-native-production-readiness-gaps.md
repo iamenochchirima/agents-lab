@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:52:09+02:00
+**Last updated:** 2026-09-16T21:57:47+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,11 +51,11 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 313 tests passed after the memory-search evidence recovery increment.
-- `pnpm run coverage`: 313 tests passed, with 89.16% line coverage, 77.84% branch
-  coverage, and 84.92% function coverage in the latest successful run. Node's experimental
-  coverage runner can vary slightly between runs; one earlier instrumentation run left the
-  known TUI tests pending, and an immediate rerun passed all 313 tests.
+- `pnpm test`: 314 tests passed after the malformed terminal-result increment.
+- `pnpm run coverage`: 314 tests passed, with 89.16% line coverage, 77.90% branch
+  coverage, and 84.93% function coverage in the latest successful run. Node's experimental
+  coverage runner can vary slightly between runs; an earlier instrumentation run left the
+  known TUI tests pending, and an immediate rerun passed all 313 tests before this slice.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -155,6 +155,9 @@ readiness:
 - Terminal commits validate the requested turn-state transition before writing
   `result.json`; an invalid terminal transition leaves the durable state and terminal
   result evidence unchanged.
+- Missing and malformed terminal results are now distinguished; an existing malformed
+  `result.json` fails closed during direct writes and restart recovery instead of being
+  overwritten.
 - Transcript messages are validated against session ownership and stable message IDs;
   identical acknowledgement retries do not duplicate conversation evidence, while
   conflicting message reuse fails closed.

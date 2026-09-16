@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:52:09+02:00
+**Last updated:** 2026-09-16T21:57:47+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -260,14 +260,17 @@ tests, but it must never replace a configured real provider silently.
   terminal result. An invalid transition leaves both the durable turn state and
   `result.json` unchanged; a lost acknowledgement after a valid terminal write remains
   recoverable without replaying the model or tool.
+- Malformed `result.json` is now distinct from a missing result. Direct terminal writes
+  and restart recovery fail closed without overwriting malformed evidence or changing the
+  durable turn state.
 - Transcript messages are validated against the owning session and stable message ID;
   identical acknowledgement retries are ignored, while conflicting message reuse fails
   closed instead of duplicating durable conversation evidence.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 313 passing tests across the package, with 89.16% line
-  coverage, 77.84% branch coverage, and 84.92% function coverage. Coverage is from
+- The latest validation is 314 passing tests across the package, with 89.16% line
+  coverage, 77.90% branch coverage, and 84.93% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
   pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
@@ -322,6 +325,29 @@ Practice check against the local Hermes and OpenClaw references:
 - This is the existing round record's operation-local acknowledgement behavior. It uses
   the stable call/round identity already emitted by the runtime and does not add a
   generic event store, replay engine, or exactly-once execution claim.
+
+Still open after this slice:
+
+- The complete process-level crash matrix across every durable write and host-side
+  effect, plus deterministic replay, concurrency/lease acceptance, and remaining
+  security and production-operation gates.
+
+### Current slice boundary: malformed terminal-result handling
+
+Delivered in this increment:
+
+- `SessionStore` checks whether `result.json` exists before reading it, so only an absent
+  file is treated as not-yet-written.
+- A malformed or unreadable existing terminal result is surfaced as persistence
+  corruption; it cannot be replaced by a later result or silently adopted as an
+  interrupted turn during recovery.
+- Tests cover the direct `TurnStore.writeResult` seam and restart recovery, including
+  preservation of the malformed file and the non-terminal durable state.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This keeps recovery fail-closed at the existing durable-record boundary. It does not
+  add a database, migration layer, or generalized corruption-repair service.
 
 Still open after this slice:
 

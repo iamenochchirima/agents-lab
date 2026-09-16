@@ -1995,6 +1995,34 @@ test("malformed turn records are rejected without overwriting the evidence", asy
   assert.equal(await readFile(turnPath, "utf8"), "{not-json\n");
 });
 
+test("malformed terminal results are rejected without overwriting or recovery adoption", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("malformed result", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const result = {
+    schemaVersion: 1 as const,
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    status: "completed" as const,
+    provider: "deterministic" as const,
+    model: "deterministic/echo",
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    assistantText: "done",
+  };
+  const resultPath = path.join(turn.directory, "result.json");
+  await writeFile(resultPath, "{not-json\n", "utf8");
+  await assert.rejects(() => turn.writeResult(result), /Could not read durable record/u);
+  assert.equal(await readFile(resultPath, "utf8"), "{not-json\n");
+
+  const reopened = await SessionStore.open(stateDir, session.metadata.sessionId);
+  await assert.rejects(() => reopened.recoverInterruptedTurns(), /Could not read durable record/u);
+  assert.equal(await readFile(resultPath, "utf8"), "{not-json\n");
+  const turnRecord = JSON.parse(await readFile(path.join(turn.directory, "turn.json"), "utf8")) as { state: string };
+  assert.equal(turnRecord.state, "streaming");
+});
+
 test("provider errors redact authorization material", async () => {
   const provider = new OpenRouterModelProvider("openai/example", "secret-key", async () => new Response("Bearer secret-key", { status: 401 }));
   const request: ModelRequest = {
