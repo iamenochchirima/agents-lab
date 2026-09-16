@@ -109,7 +109,9 @@ test("OpenRouter adapter records safe response metadata and keeps the key out of
 
   assert.equal(requestUrl, "https://openrouter.ai/api/v1/chat/completions");
   assert.equal((requestInit?.headers as Record<string, string>).authorization, "Bearer test-openrouter-secret");
-  assert.equal(JSON.stringify(requestInit?.body).includes("test-openrouter-secret"), false);
+  const requestBody = JSON.parse(String(requestInit?.body)) as Record<string, unknown>;
+  assert.equal(requestBody.model, "openai/test-model");
+  assert.equal(JSON.stringify(requestBody).includes("test-openrouter-secret"), false);
   assert.deepEqual(result, {
     kind: "success",
     output: "A real-shaped response.",

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -104,6 +105,7 @@ def test_openrouter_response_is_parsed_at_the_provider_boundary() -> None:
     assert usage == {"inputTokens": 4, "outputTokens": 5, "totalTokens": 9}
     request = urlopen.call_args.args[0]
     assert request.full_url.endswith("/chat/completions")
+    assert json.loads(request.data)["model"] == "openai/test-model"
     assert b"test-openrouter-secret" not in request.data
 
 

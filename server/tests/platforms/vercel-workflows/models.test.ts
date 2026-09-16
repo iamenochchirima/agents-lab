@@ -17,12 +17,14 @@ const request: VercelWorkflowModelRequest = {
 };
 
 test("Vercel Workflows OpenRouter model parses a normal bounded JSON response", async () => {
+  let requestBody: Record<string, unknown> | null = null;
   const result = await completeOpenRouterModel(request, {
     apiKey: "test-secret",
     baseUrl: "https://openrouter.example/v1",
     fetchImplementation: async (url, init) => {
       assert.equal(url, "https://openrouter.example/v1/chat/completions");
       assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-secret");
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return new Response(JSON.stringify({
         id: "provider-id",
         choices: [{ message: { content: "hello" } }],
@@ -37,6 +39,8 @@ test("Vercel Workflows OpenRouter model parses a normal bounded JSON response", 
     providerRequestId: "provider-id",
     usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
   });
+  assert.equal((requestBody as Record<string, unknown> | null)?.model, "openai/test-model");
+  assert.equal(JSON.stringify(requestBody).includes("test-secret"), false);
 });
 
 test("Vercel Workflows OpenRouter model rejects an oversized response without retaining it", async () => {

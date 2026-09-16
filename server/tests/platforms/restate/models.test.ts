@@ -171,7 +171,9 @@ test("OpenRouter adapter preserves safe usage metadata and does not put the key 
 
   const result = await model.complete({ ...input, provider: "openrouter", model: "openai/test-model" }, new AbortController().signal);
 
-  assert.equal(JSON.stringify(requestInit?.body).includes("test-openrouter-secret"), false);
+  const requestBody = JSON.parse(String(requestInit?.body)) as Record<string, unknown>;
+  assert.equal(requestBody.model, "openai/test-model");
+  assert.equal(JSON.stringify(requestBody).includes("test-openrouter-secret"), false);
   assert.deepEqual(result, {
     kind: "success",
     output: "A real-shaped response.",

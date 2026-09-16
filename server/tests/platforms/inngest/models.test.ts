@@ -30,6 +30,7 @@ test("fake model is deterministic and has explicit failure modes", async () => {
 });
 
 test("OpenRouter model does not expose provider response details", async () => {
+  let requestBody: Record<string, unknown> | null = null;
   const response = await completeOpenRouterModel(
     { ...request, provider: "openrouter", model: "openai/gpt-4o-mini" },
     {
@@ -38,6 +39,7 @@ test("OpenRouter model does not expose provider response details", async () => {
       fetchImplementation: async (url, init) => {
         assert.equal(url, "https://openrouter.example/v1/chat/completions");
         assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-secret");
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return new Response(JSON.stringify({ id: "provider-id", choices: [{ message: { content: "hello" } },], usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } }), { status: 200 });
       },
     },
@@ -48,6 +50,8 @@ test("OpenRouter model does not expose provider response details", async () => {
     providerRequestId: "provider-id",
     usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
   });
+  assert.equal((requestBody as Record<string, unknown> | null)?.model, "openai/gpt-4o-mini");
+  assert.equal(JSON.stringify(requestBody).includes("test-secret"), false);
 });
 
 test("OpenRouter model rejects an oversized response before it enters the run result", async () => {

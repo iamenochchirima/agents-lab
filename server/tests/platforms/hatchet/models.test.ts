@@ -65,14 +65,18 @@ test("OpenRouter network ambiguity contains no provider secret", async () => {
 });
 
 test("OpenRouter adapter parses a successful response and usage", async () => {
+  let requestBody: Record<string, unknown> | null = null;
   const adapter = new OpenRouterHatchetModelAdapter({
     apiKey: "test-openrouter-secret",
     baseUrl: "https://openrouter.ai/api/v1",
-    fetchImplementation: async () => new Response(JSON.stringify({
-      id: "hatchet-provider-id",
-      choices: [{ message: { content: "hello from OpenRouter" } }],
-      usage: { prompt_tokens: 4, completion_tokens: 5, total_tokens: 9 },
-    }), { status: 200 }),
+    fetchImplementation: async (_url, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({
+        id: "hatchet-provider-id",
+        choices: [{ message: { content: "hello from OpenRouter" } }],
+        usage: { prompt_tokens: 4, completion_tokens: 5, total_tokens: 9 },
+      }), { status: 200 });
+    },
   });
 
   assert.deepEqual(await adapter.complete(
@@ -84,6 +88,8 @@ test("OpenRouter adapter parses a successful response and usage", async () => {
     providerRequestId: "hatchet-provider-id",
     usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
   });
+  assert.equal((requestBody as Record<string, unknown> | null)?.model, "openai/test-model");
+  assert.equal(JSON.stringify(requestBody).includes("test-openrouter-secret"), false);
 });
 
 test("OpenRouter adapter rejects an oversized response", async () => {
