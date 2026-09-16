@@ -43,6 +43,16 @@ committed, reconciled, or failed event closes that mutation's lifecycle. Reading
 stream validates these rules again, so persisted corruption is reported instead of being
 silently treated as a valid recovery state.
 
+Process, browser, and memory lifecycle events use the same identity-scoped ordering
+checks. Process events follow prepared → approval → started → optional terminating →
+completed; browser events follow prepared → approval → started → completed; memory events
+follow prepared → approval → committed, forgotten, or failed. A recovery-only terminal
+event may be inserted directly from a durable action record and must carry `recovered:
+true`; normal events cannot skip their preparation or approval phase, and a terminal
+action cannot be extended with a later event. This keeps the normalized event stream
+consistent with the immutable action records while still allowing recovery to reconstruct
+missing evidence after an acknowledgement loss.
+
 If an interrupted turn contains a mutation that was still `proposed`, recovery closes
 that approval lifecycle as `denied` with `approval-unavailable`; the filesystem proposal
 is never replayed. Mutations that reached `approved` or `applying` use their operation-

@@ -96,6 +96,86 @@ function isWorkspaceMutationLifecycleEvent(type: LifecycleEventType): boolean {
   return WORKSPACE_MUTATION_LIFECYCLE_EVENTS.has(type);
 }
 
+type ActionIdentityField = "executionId" | "actionId" | "operationId";
+
+const ACTION_LIFECYCLE_IDENTITY_FIELDS: Readonly<Partial<Record<LifecycleEventType, ActionIdentityField>>> = {
+  ProcessPrepared: "executionId",
+  ProcessApprovalDecided: "executionId",
+  ProcessStarted: "executionId",
+  ProcessTerminating: "executionId",
+  ProcessCompleted: "executionId",
+  BrowserPrepared: "actionId",
+  BrowserApprovalDecided: "actionId",
+  BrowserStarted: "actionId",
+  BrowserCompleted: "actionId",
+  MemoryPrepared: "operationId",
+  MemoryApprovalDecided: "operationId",
+  MemoryCommitted: "operationId",
+  MemoryForgotten: "operationId",
+  MemoryFailed: "operationId",
+};
+
+const ACTION_LIFECYCLE_PREVIOUS: Readonly<Partial<Record<LifecycleEventType, readonly LifecycleEventType[]>>> = {
+  ProcessPrepared: [],
+  ProcessApprovalDecided: ["ProcessPrepared"],
+  ProcessStarted: ["ProcessApprovalDecided"],
+  ProcessTerminating: ["ProcessStarted"],
+  // Recovery may close a prepared/approved process directly when it never reached
+  // a launch record. A started process may also be completed without a terminating
+  // event when the child exits normally.
+  ProcessCompleted: ["ProcessPrepared", "ProcessApprovalDecided", "ProcessStarted", "ProcessTerminating"],
+  BrowserPrepared: [],
+  BrowserApprovalDecided: ["BrowserPrepared"],
+  BrowserStarted: ["BrowserApprovalDecided"],
+  // Recovery and denied approvals can produce a terminal browser observation without
+  // a started event; the action must still have been prepared first.
+  BrowserCompleted: ["BrowserPrepared", "BrowserApprovalDecided", "BrowserStarted"],
+  MemoryPrepared: [],
+  MemoryApprovalDecided: ["MemoryPrepared"],
+  // A durable memory commit may be recovered after its approval or terminal write
+  // acknowledgement was lost, so the terminal evidence accepts either predecessor.
+  MemoryCommitted: ["MemoryPrepared", "MemoryApprovalDecided"],
+  MemoryForgotten: ["MemoryPrepared", "MemoryApprovalDecided"],
+  MemoryFailed: ["MemoryPrepared", "MemoryApprovalDecided"],
+};
+
+function isActionLifecycleEvent(type: LifecycleEventType): boolean {
+  return ACTION_LIFECYCLE_IDENTITY_FIELDS[type] !== undefined;
+}
+
+function assertActionLifecycleEventOrder(
+  existing: readonly LifecycleEvent[],
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): void {
+  if (!isActionLifecycleEvent(type)) return;
+  const identityField = ACTION_LIFECYCLE_IDENTITY_FIELDS[type];
+  const identity = identityField ? payload[identityField] : undefined;
+  if (typeof identity !== "string" || identity.trim().length === 0) {
+    throw new ComputerNativeError("persistence", `${type} requires a non-empty ${identityField ?? "action"} identity.`);
+  }
+  if (!identityField) throw new ComputerNativeError("persistence", `${type} has no configured action identity field.`);
+  const related = existing.filter((event) => {
+    const eventIdentityField = ACTION_LIFECYCLE_IDENTITY_FIELDS[event.type];
+    if (eventIdentityField !== identityField) return false;
+    return event.payload[identityField] === identity;
+  });
+  const previous = related.at(-1)?.type;
+  const allowedPrevious = ACTION_LIFECYCLE_PREVIOUS[type] ?? [];
+  if (previous === undefined) {
+    const recoveredTerminal = payload.recovered === true
+      && (type === "ProcessCompleted" || type === "BrowserCompleted" || type === "MemoryCommitted" || type === "MemoryForgotten" || type === "MemoryFailed");
+    if (recoveredTerminal) return;
+    if (allowedPrevious.length > 0) {
+      throw new ComputerNativeError("persistence", `${type} for '${identity}' cannot be recorded before ${allowedPrevious.join(" or ")}.`);
+    }
+    return;
+  }
+  if (!allowedPrevious.includes(previous)) {
+    throw new ComputerNativeError("persistence", `${type} for '${identity}' cannot follow ${previous}.`);
+  }
+}
+
 function assertWorkspaceMutationLifecycleEventOrder(
   existing: readonly LifecycleEvent[],
   type: LifecycleEventType,
@@ -134,12 +214,14 @@ function assertWorkspaceMutationLifecycleEventOrder(
     }
     return;
   }
+  if (type === "WorkspaceMutationFailed" && previous === "WorkspaceMutationApprovalDecided") return;
   if (previous !== "WorkspaceMutationApplying" && previous !== "WorkspaceMutationProgress") {
     throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot finish before application starts.`);
   }
 }
 
 function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): void {
+  assertActionLifecycleEventOrder(existing, type, payload);
   assertWorkspaceMutationLifecycleEventOrder(existing, type, payload);
   if (type === "ModelAttemptCompleted") {
     const attemptId = payload.attemptId;
@@ -792,7 +874,7 @@ export class TurnStore {
   }
 
   async ensureMutationTerminalEvent(record: WorkspaceMutationRecord): Promise<void> {
-    if (record.status !== "committed" && record.status !== "failed" && record.status !== "reconciled" && record.status !== "reconciliation_required") return;
+    if (record.status !== "committed" && record.status !== "failed" && record.status !== "denied" && record.status !== "reconciled" && record.status !== "reconciliation_required") return;
     const events = await this.readEvents();
     const terminalTypes: readonly LifecycleEventType[] = ["WorkspaceMutationCommitted", "WorkspaceMutationFailed", "WorkspaceMutationReconciled"];
     if (events.some((event) => terminalTypes.includes(event.type) && event.payload.mutationId === record.mutationId)) return;

@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T14:30:45+02:00
+**Last updated:** 2026-09-16T14:53:58+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 235 tests passed after the current model-resource-limit slice.
-- `pnpm run coverage`: 235 tests passed, with 87.90% line coverage, 75.16% branch
-  coverage, and 82.97% function coverage.
+- `pnpm test`: 238 tests passed after the current lifecycle-ordering slice.
+- `pnpm run coverage`: 238 tests passed, with 88.19% line coverage, 75.49% branch
+  coverage, and 83.03% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -80,6 +80,11 @@ readiness:
   fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
   partial assistant transcript. The OpenRouter adapter applies the response bound while
   reading the provider stream.
+- Process, browser, and memory lifecycle events now enforce identity-scoped ordering and
+  reject skipped phases or post-terminal events. Recovery-only direct terminal evidence
+  is accepted only with an explicit `recovered: true` marker.
+- Normal denied or unavailable process, workspace, and memory approvals now emit a
+  terminal lifecycle outcome instead of leaving only an approval event.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -156,6 +161,10 @@ Exit evidence:
 - Current evidence also covers reconstruction of one missing terminal lifecycle event per
   action family. It does not yet prove reconstruction after a process-level crash at
   every write boundary or across all future action types.
+- Current event-order evidence covers process, browser, and memory action lifecycles,
+  including identity omission, skipped phases, post-terminal writes, and direct
+  recovered-terminal reconstruction. It does not yet cover every persistence and
+  underlying side-effect boundary.
 - Current process crash evidence covers a completed-side-effect acknowledgement loss,
   a crash after a running record becomes durable, and an in-process launch-record
   acknowledgement failure. It does not yet cover every pre-write crash point,

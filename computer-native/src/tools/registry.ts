@@ -935,13 +935,21 @@ export class ToolRegistry {
     await context.onProcess?.({ type: "approval_decided", request, decision });
     if (decision.decision !== "allow-once") {
       const reason = decision.reason ? " " + decision.reason : "";
+      const result = processResultForFailure(
+        request,
+        "failed",
+        decision.decision === "deny" ? "process-approval-denied" : "process-approval-unavailable",
+        decision.reason ?? "The process was not approved.",
+        false,
+      );
+      await context.onProcess?.({ type: "completed", request, result });
       return {
         callId: call.callId,
         name: call.name,
         ok: false,
         content: "Process not started." + reason,
         summary: decision.decision === "deny" ? "Command approval denied for " + request.command + "." : "Command approval unavailable for " + request.command + ".",
-        errorCode: decision.decision === "deny" ? "process-approval-denied" : "process-approval-unavailable",
+        errorCode: result.errorCode,
       };
     }
     if (context.signal?.aborted) {

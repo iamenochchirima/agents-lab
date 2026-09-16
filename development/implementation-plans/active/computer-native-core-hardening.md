@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T14:30:45+02:00
+**Last updated:** 2026-09-16T14:53:58+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -101,6 +101,12 @@ tests, but it must never replace a configured real provider silently.
   response text and tool-call fields are counted as UTF-8 bytes across the turn, and an
   over-limit response fails without persisting a partial assistant message. The
   OpenRouter adapter enforces its response bound while reading the stream as well.
+- The normalized lifecycle stream now validates process, browser, and memory action
+  ordering by stable identity. Normal events cannot skip preparation or approval or
+  extend a terminal action; recovery may insert a direct terminal observation only when
+  it carries `recovered: true`.
+- Denied or unavailable process, workspace, and memory approvals now emit their terminal
+  lifecycle outcome during the normal turn, not only during restart recovery.
 - The initial model instruction now describes the implemented bounded directory
   transfer and same-parent rename tools instead of limiting them to regular files.
 - Multi-file patch commits now check cancellation before starting and between members;
@@ -138,8 +144,8 @@ tests, but it must never replace a configured real provider silently.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
-- The current validation is 235 passing tests across the package, with 87.90% line
-  coverage, 75.16% branch coverage, and 82.97% function coverage.
+- The current validation is 238 passing tests across the package, with 88.19% line
+  coverage, 75.49% branch coverage, and 83.03% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -160,6 +166,15 @@ Delivered in this slice:
   restart recovery without replaying it, plus a launch-acknowledgement failure test
   proving the in-process runner cleans up after spawn.
 
+Persistence slice limitations:
+
+- Failure injection before and after every persistence write, and at the model-send,
+  approval-decision, and underlying filesystem/process/browser/memory side-effect
+  boundaries, remains open.
+- Complete per-write and per-side-effect process crash coverage, cross-platform process
+  identity/process-group durability proof, and an exactly-once execution guarantee remain
+  open.
+
 ### Current slice boundary: model payload resource limits
 
 Delivered in this slice:
@@ -174,6 +189,30 @@ Delivered in this slice:
 - Tests for defaults, invalid configuration, pre-provider rejection, partial-output
   failure, and provider-level stream enforcement.
 
+### Current slice boundary: identity-scoped lifecycle ordering
+
+Delivered in this slice:
+
+- Shared persistence validation for process, browser, and memory lifecycle events,
+  keyed by execution, action, or operation identity rather than global event position.
+- Explicit normal ordering for preparation, approval, start, termination, and terminal
+  outcomes, including recovery-compatible direct terminal reconstruction.
+- Fail-closed rejection of missing identities, skipped approval/start phases, and events
+  appended after a terminal action.
+- Normal denied/unavailable approvals for process, workspace, and memory actions now
+  persist a terminal lifecycle event, while recovery can still reconstruct one when
+  only the durable action record survived.
+- Contract tests covering all three action families and the recovered-terminal exception.
+- An end-to-end denied process turn test proving the normal approval decision writes a
+  terminal process outcome, leaves no `ProcessStarted` event, and does not launch the
+  command.
+
+Still not delivered by this slice:
+
+- Failure injection at every pre-write, post-write, and underlying side-effect boundary.
+- Full turn-level state-machine validation, concurrency limits, deterministic replay,
+  and cross-platform process recovery evidence.
+
 Broader gates still open after this slice:
 
 - OS-level process/container limits, network isolation, or a sandbox guarantee.
@@ -181,16 +220,6 @@ Broader gates still open after this slice:
   provider resilience work listed in the model/provider section.
 - The remaining full runtime crash matrix, structured approval/TUI gates, and real-
   provider/manual acceptance gates.
-
-Still not delivered by the persistence acknowledgement slice:
-
-- Failure injection before and after every persistence write, and at the model-send,
-  approval-decision, and underlying filesystem/process/browser/memory side-effect
-  boundaries.
-- Complete per-write and per-side-effect process crash coverage, cross-platform process
-  identity/process-group durability proof, or an exactly-once execution guarantee.
-- The remaining shared lifecycle, approval/TUI, provider, security,
-  real-provider, and manual acceptance gates listed below.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.

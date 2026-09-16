@@ -460,6 +460,16 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       } : {}),
     };
     await turn.appendEvent(lifecycleType, lifecyclePayload);
+    if (event.type === "approval_decided" && event.decision.decision !== "allow-once") {
+      await turn.appendEvent("WorkspaceMutationFailed", {
+        mutationId: request.mutationId,
+        operation: request.operation,
+        path: request.path,
+        status: "denied",
+        ...(errorCode ? { errorCode } : {}),
+        ...(reason ? { reason } : {}),
+      });
+    }
     await options.onMutation?.(event);
   };
   const recordProcess = async (event: ProcessToolEvent): Promise<void> => {
@@ -552,6 +562,14 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
                 ? { executionId: request.executionId, callId: request.callId, status: event.result.state, errorCode: event.result.errorCode ?? null, stdoutBytes: event.result.stdoutBytes, stderrBytes: event.result.stderrBytes }
                 : { executionId: request.executionId, callId: request.callId, cwd: request.cwd, command: request.command };
         await turn.appendEvent(lifecycleType, payload);
+        if (event.type === "approval_decided" && event.decision.decision !== "allow-once") {
+          await turn.appendEvent("ProcessCompleted", {
+            executionId: request.executionId,
+            callId: request.callId,
+            status: record.status,
+            errorCode: record.errorCode ?? null,
+          });
+        }
       }
     }
     await options.onProcess?.(event);
@@ -718,6 +736,13 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       await turn.appendEvent("MemoryPrepared", { ...base, contentPreview: bounded(redactSecrets(request.contentPreview, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]), 2_000) });
     } else if (event.type === "approval_decided") {
       await turn.appendEvent("MemoryApprovalDecided", { ...base, decision: event.decision.decision });
+      if (event.decision.decision !== "allow-once") {
+        await turn.appendEvent("MemoryFailed", {
+          ...base,
+          status: "denied",
+          ...(event.decision.reason ? { reason: event.decision.reason } : {}),
+        });
+      }
     } else if (event.type === "committed") {
       await turn.appendEvent("MemoryCommitted", { ...base, recordId: event.record.id, contentHash: event.record.contentHash });
     } else if (event.type === "forgotten") {

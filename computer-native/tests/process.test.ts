@@ -290,7 +290,7 @@ test("process approval timeout fails closed and records no launch", async () => 
       onProcess: (event) => { events.push(event.type); },
     });
     assert.equal(result.errorCode, "process-approval-unavailable");
-    assert.deepEqual(events, ["prepared", "approval_decided"]);
+    assert.deepEqual(events, ["prepared", "approval_decided", "completed"]);
   } finally {
     await harness.cleanup();
   }
@@ -410,6 +410,56 @@ test("model run persists bounded process evidence and returns the real result", 
     assert.match(events, /ProcessApprovalDecided/u);
     assert.match(events, /ProcessStarted/u);
     assert.match(events, /ProcessCompleted/u);
+  } finally {
+    await harness.cleanup();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("model run persists a terminal process outcome when approval is denied", async () => {
+  const harness = await createHarness();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-denial-state-"));
+  try {
+    const config = loadConfig({
+      stateDir,
+      workspaceRoot: harness.root,
+      processMode: "approval",
+      processDurationMs: limits.timeoutMs,
+      processTerminationGraceMs: limits.terminationGraceMs,
+      processOutputBytes: limits.maxOutputBytes,
+      processArgumentCount: limits.maxArgumentCount,
+      processArgumentBytes: limits.maxArgumentBytes,
+    }, {});
+    const session = await SessionStore.open(stateDir);
+    const result = await runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/process-denied", {
+        toolCall: {
+          name: "run_command",
+          argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "process.exit(0)"] }),
+          finalResponse: "The command was not run.",
+        },
+      }),
+      config,
+      userPrompt: "Run the command only if approved.",
+      approveProcess: async () => ({ decision: "deny", reason: "not approved for this turn" }),
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(result.assistantText, "The command was not run.");
+
+    const events = await readFile(path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "events.jsonl"), "utf8");
+    assert.match(events, /ProcessPrepared/u);
+    assert.match(events, /ProcessApprovalDecided/u);
+    assert.match(events, /ProcessCompleted/u);
+    assert.match(events, /"errorCode":"process-approval-denied"/u);
+    assert.doesNotMatch(events, /ProcessStarted/u);
+
+    const executionDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "executions");
+    const executionEntry = (await readdir(executionDirectory))[0];
+    assert.ok(executionEntry);
+    const record = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; errorCode?: string };
+    assert.equal(record.status, "failed");
+    assert.equal(record.errorCode, "process-approval-denied");
   } finally {
     await harness.cleanup();
     await rm(stateDir, { recursive: true, force: true });

@@ -77,3 +77,39 @@ test("runtime dispatches a real memory tool call through approval and persists i
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("denied memory approval records a terminal lifecycle outcome without writing memory", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-denial-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    const session = await SessionStore.open(config.stateDir);
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    const result = await runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/deny-memory", {
+        toolCall: {
+          name: "memory",
+          argumentsJson: JSON.stringify({ operation: "add", scope: "workspace", content: "must not be stored" }),
+          finalResponse: "The memory write was denied.",
+        },
+      }),
+      tools,
+      memory,
+      config,
+      userPrompt: "Remember this only if approved.",
+      approveMemory: async () => ({ decision: "deny", reason: "not now" }),
+    });
+    assert.equal(result.status, "completed");
+    assert.equal((await memory.search({ query: "must not be stored" })).length, 0);
+    const events = await readFile(path.join(session.sessionDirectory, "turns", result.turnId, "events.jsonl"), "utf8");
+    assert.match(events, /MemoryPrepared/u);
+    assert.match(events, /MemoryApprovalDecided/u);
+    assert.match(events, /MemoryFailed/u);
+    assert.match(events, /"status":"denied"/u);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

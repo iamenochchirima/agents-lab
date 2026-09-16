@@ -235,6 +235,59 @@ test("lifecycle events reject out-of-order model attempt evidence", async () => 
   await turn.appendEvent("ModelCompleted");
 });
 
+test("lifecycle events enforce process, browser, and memory action ordering", async () => {
+  const session = await openSession(tempDirectory());
+  const turn = await session.admitTurn("side-effect event order", "deterministic", "deterministic/echo");
+
+  await assert.rejects(
+    () => turn.appendEvent("ProcessPrepared", { callId: "process_call" }),
+    /requires a non-empty executionId/u,
+  );
+  await assert.rejects(
+    () => turn.appendEvent("ProcessStarted", { executionId: "process_order", callId: "process_call", pid: 123 }),
+    /before ProcessApprovalDecided|cannot follow ProcessPrepared/u,
+  );
+  await turn.appendEvent("ProcessPrepared", { executionId: "process_order", callId: "process_call" });
+  await assert.rejects(
+    () => turn.appendEvent("ProcessStarted", { executionId: "process_order", callId: "process_call", pid: 123 }),
+    /before ProcessApprovalDecided|cannot follow ProcessPrepared/u,
+  );
+  await turn.appendEvent("ProcessApprovalDecided", { executionId: "process_order", callId: "process_call", decision: "allow-once" });
+  await turn.appendEvent("ProcessStarted", { executionId: "process_order", callId: "process_call", pid: 123 });
+  await turn.appendEvent("ProcessCompleted", { executionId: "process_order", callId: "process_call", status: "completed" });
+  await assert.rejects(
+    () => turn.appendEvent("ProcessTerminating", { executionId: "process_order", callId: "process_call", reason: "late" }),
+    /cannot follow ProcessCompleted/u,
+  );
+
+  await assert.rejects(
+    () => turn.appendEvent("BrowserStarted", { actionId: "browser_order", callId: "browser_call" }),
+    /before BrowserApprovalDecided|before BrowserPrepared/u,
+  );
+  await turn.appendEvent("BrowserPrepared", { actionId: "browser_order", callId: "browser_call" });
+  await assert.rejects(
+    () => turn.appendEvent("BrowserStarted", { actionId: "browser_order", callId: "browser_call" }),
+    /before BrowserApprovalDecided|cannot follow BrowserPrepared/u,
+  );
+  await turn.appendEvent("BrowserApprovalDecided", { actionId: "browser_order", callId: "browser_call", decision: "deny" });
+  await turn.appendEvent("BrowserCompleted", { actionId: "browser_order", callId: "browser_call", status: "failed" });
+  await assert.rejects(
+    () => turn.appendEvent("BrowserStarted", { actionId: "browser_order", callId: "browser_call" }),
+    /cannot follow BrowserCompleted/u,
+  );
+
+  await assert.rejects(
+    () => turn.appendEvent("MemoryCommitted", { operationId: "memory_order", callId: "memory_call" }),
+    /before MemoryPrepared or MemoryApprovalDecided/u,
+  );
+  await turn.appendEvent("MemoryPrepared", { operationId: "memory_order", callId: "memory_call" });
+  await turn.appendEvent("MemoryCommitted", { operationId: "memory_order", callId: "memory_call", status: "committed" });
+  await assert.rejects(
+    () => turn.appendEvent("MemoryApprovalDecided", { operationId: "memory_order", callId: "memory_call", decision: "allow-once" }),
+    /cannot follow MemoryCommitted/u,
+  );
+});
+
 test("workspace mutation lifecycle events require approval before side effects", async () => {
   const session = await openSession(tempDirectory());
   const turn = await session.admitTurn("workspace event order", "deterministic", "deterministic/echo");
@@ -3229,6 +3282,13 @@ test("model apply_patch fails closed without an approval channel", async () => {
   assert.equal(mutation.status, "denied");
   assert.equal(mutation.decision, "unavailable");
   assert.equal(mutation.errorCode, "approval-unavailable");
+  const events = (await readFile(path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  assert.deepEqual(events.filter((event) => event.type.startsWith("WorkspaceMutation")).map((event) => event.type), [
+    "WorkspaceMutationProposed",
+    "WorkspaceMutationApprovalDecided",
+    "WorkspaceMutationFailed",
+  ]);
 });
 
 test("approval timeout aborts a late approval before it can commit", async () => {
