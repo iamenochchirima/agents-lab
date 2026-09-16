@@ -4,6 +4,9 @@ import type {
   HatchetModelRequestInput,
 } from "../contracts.js";
 
+const MAX_RESPONSE_BYTES = 1_048_576;
+const MAX_OUTPUT_CHARS = 100_000;
+
 export interface OpenRouterHatchetModelAdapterOptions {
   readonly apiKey: string | null;
   readonly baseUrl: string;
@@ -79,10 +82,17 @@ export class OpenRouterHatchetModelAdapter implements HatchetModelAdapter {
       };
     }
 
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
+    const body = await readJson(response);
+    if (body.kind === "too_large") {
+      return {
+        kind: "failure",
+        failureKind: "provider",
+        code: "OPENROUTER_RESPONSE_TOO_LARGE",
+        message: "OpenRouter returned a response larger than the configured safety limit.",
+        requestSent: true,
+      };
+    }
+    if (body.kind === "invalid") {
       return {
         kind: "failure",
         failureKind: "provider",
@@ -92,7 +102,7 @@ export class OpenRouterHatchetModelAdapter implements HatchetModelAdapter {
       };
     }
 
-    const output = extractOutput(body);
+    const output = extractOutput(body.value);
     if (output === null) {
       return {
         kind: "failure",
@@ -102,15 +112,61 @@ export class OpenRouterHatchetModelAdapter implements HatchetModelAdapter {
         requestSent: true,
       };
     }
+    if (output.length > MAX_OUTPUT_CHARS) {
+      return {
+        kind: "failure",
+        failureKind: "provider",
+        code: "OPENROUTER_OUTPUT_TOO_LARGE",
+        message: "OpenRouter assistant output exceeded the configured safety limit.",
+        requestSent: true,
+      };
+    }
 
     return {
       kind: "success",
       output,
-      providerRequestId: readString(body, "id"),
-      usage: readUsage(body),
+      providerRequestId: readString(body.value, "id"),
+      usage: readUsage(body.value),
     };
   }
 }
+
+async function readJson(response: Response): Promise<JsonReadResult> {
+  if (!response.body) return { kind: "invalid" };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) return { kind: "too_large" };
+      chunks.push(chunk.value);
+    }
+  } catch {
+    return { kind: "invalid" };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return { kind: "ok", value: JSON.parse(new TextDecoder().decode(bytes)) };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+type JsonReadResult =
+  | { readonly kind: "ok"; readonly value: unknown }
+  | { readonly kind: "too_large" }
+  | { readonly kind: "invalid" };
 
 function extractOutput(body: unknown): string | null {
   if (

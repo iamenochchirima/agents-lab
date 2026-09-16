@@ -63,3 +63,45 @@ test("OpenRouter network ambiguity contains no provider secret", async () => {
     false,
   );
 });
+
+test("OpenRouter adapter parses a successful response and usage", async () => {
+  const adapter = new OpenRouterHatchetModelAdapter({
+    apiKey: "test-openrouter-secret",
+    baseUrl: "https://openrouter.ai/api/v1",
+    fetchImplementation: async () => new Response(JSON.stringify({
+      id: "hatchet-provider-id",
+      choices: [{ message: { content: "hello from OpenRouter" } }],
+      usage: { prompt_tokens: 4, completion_tokens: 5, total_tokens: 9 },
+    }), { status: 200 }),
+  });
+
+  assert.deepEqual(await adapter.complete(
+    { ...input, provider: "openrouter", model: "openai/test-model" },
+    new AbortController().signal,
+  ), {
+    kind: "success",
+    output: "hello from OpenRouter",
+    providerRequestId: "hatchet-provider-id",
+    usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+  });
+});
+
+test("OpenRouter adapter rejects an oversized response", async () => {
+  const adapter = new OpenRouterHatchetModelAdapter({
+    apiKey: "test-openrouter-secret",
+    baseUrl: "https://openrouter.ai/api/v1",
+    fetchImplementation: async () => new Response("x".repeat(1_048_577), { status: 200 }),
+  });
+
+  const result = await adapter.complete(
+    { ...input, provider: "openrouter", model: "openai/test-model" },
+    new AbortController().signal,
+  );
+  assert.deepEqual(result, {
+    kind: "failure",
+    failureKind: "provider",
+    code: "OPENROUTER_RESPONSE_TOO_LARGE",
+    message: "OpenRouter returned a response larger than the configured safety limit.",
+    requestSent: true,
+  });
+});
