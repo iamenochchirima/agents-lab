@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T19:02:20+02:00
+**Last updated:** 2026-09-16T19:12:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 299 passing tests across the package, with 88.95% line
-  coverage, 77.66% branch coverage, and 84.81% function coverage. Coverage is from
+- The latest validation is 300 passing tests across the package, with 88.75% line
+  coverage, 77.62% branch coverage, and 84.73% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -366,6 +366,31 @@ Still open after this slice:
   browser crash/navigation race matrix.
 - Cross-platform process isolation and the complete per-write/per-side-effect crash
   matrix remain outside this slice.
+
+### Current slice boundary: browser upload approval identity
+
+Delivered in this slice:
+
+- Browser upload preparation now captures the source file's device/inode/mode, size,
+  modification time, and SHA-256 content identity through the workspace policy.
+- After approval and immediately before the adapter call, the source is resolved and
+  hashed again. A changed, replaced, symlinked, unavailable, or oversized source fails
+  closed without emitting a browser start or calling the adapter.
+- Tests cover identity capture and a same-size content replacement between approval and
+  execution; the adapter call count remains zero and the terminal failure is visible.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is the smallest operation-specific prepared-input recheck at the side-effect
+  boundary. It uses the existing workspace policy and browser action lifecycle rather
+  than adding a generic approval broker or transaction manager.
+
+Still open after this slice:
+
+- A hash recheck narrows the approval race but does not provide an OS-level immutable
+  file handle across the browser adapter's path read. Staged upload snapshots,
+  cross-platform process isolation, profile/authentication policy, and the full browser
+  crash/navigation matrix remain separate work.
 
 ### Current slice boundary: memory evidence maintenance
 

@@ -61,8 +61,11 @@ future non-local browser backend does not inherit local profile-file assumptions
 
 Upload sources are resolved by `BrowserFilePolicy` through the workspace mutation
 policy, so absolute paths, traversal, symbolic links, non-regular files, and oversized
-files are rejected before approval. Downloads use a preallocated managed artifact target
-and Playwright's download event; the model cannot provide an arbitrary destination.
+files are rejected before approval. The prepared source includes device/inode/mode,
+size, modification time, and a SHA-256 content identity; that identity is resolved again
+after approval and before the adapter receives the source. A changed or unavailable
+source fails closed and is not uploaded. Downloads use a preallocated managed artifact
+target and Playwright's download event; the model cannot provide an arbitrary destination.
 
 Adapter failures are typed at the browser boundary. A bounded operation that exceeds its
 timeout returns `browser-timeout`; a wait or preflight cancelled through an `AbortSignal`

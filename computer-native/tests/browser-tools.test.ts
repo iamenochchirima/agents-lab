@@ -145,7 +145,7 @@ class InjectionToolAdapter extends ToolTestAdapter {
   }
 }
 
-function createTools(adapter: ToolTestAdapter, artifactStore?: BrowserArtifactStore, resolveUpload?: (requestedPath: string) => Promise<{ readonly requestedPath: string; readonly absolutePath: string; readonly byteSize: number }>, redactionSecrets?: readonly string[]): BrowserTools {
+function createTools(adapter: ToolTestAdapter, artifactStore?: BrowserArtifactStore, resolveUpload?: (requestedPath: string) => Promise<{ readonly requestedPath: string; readonly absolutePath: string; readonly byteSize: number; readonly identity: { readonly device: number; readonly inode: number; readonly mode: number; readonly size: number; readonly modifiedAtMs: number; readonly contentHash: string } }>, redactionSecrets?: readonly string[]): BrowserTools {
   const urlPolicy = new BrowserUrlPolicy({
     allowedLocalHosts: ["127.0.0.1"],
     dnsLookup: async () => ["127.0.0.1"],
@@ -405,7 +405,7 @@ test("browser upload and download bind exact file paths to approval", async () =
     const requestedPaths: string[] = [];
     const tools = createTools(new ToolTestAdapter(), artifactStore, async (requestedPath) => {
       requestedPaths.push(requestedPath);
-      return { requestedPath, absolutePath: "/managed/workspace/safe.txt", byteSize: 4 };
+      return { requestedPath, absolutePath: "/managed/workspace/safe.txt", byteSize: 4, identity: { device: 1, inode: 2, mode: 0o644, size: 4, modifiedAtMs: 3, contentHash: "safe-content" } };
     });
     await tools.execute("browser_start", "call_start", {}, {});
     await tools.execute("browser_open", "call_open", { url: "http://127.0.0.1:4173/fixture" }, {});
@@ -419,7 +419,7 @@ test("browser upload and download bind exact file paths to approval", async () =
       },
     });
     assert.equal(upload.ok, true);
-    assert.deepEqual(requestedPaths, ["safe.txt"]);
+    assert.deepEqual(requestedPaths, ["safe.txt", "safe.txt"]);
     assert.equal(uploadPath, "safe.txt");
 
     await tools.execute("browser_snapshot", "call_snapshot_again", {}, {});
@@ -437,6 +437,33 @@ test("browser upload and download bind exact file paths to approval", async () =
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("browser upload rejects a source changed after approval before calling the adapter", async () => {
+  let resolutionCount = 0;
+  const adapter = new ToolTestAdapter();
+  const guardedTools = createTools(adapter, undefined, async (requestedPath) => {
+    resolutionCount += 1;
+    return {
+      requestedPath,
+      absolutePath: "/managed/workspace/safe.txt",
+      byteSize: 4,
+      identity: { device: 1, inode: 2, mode: 0o644, size: 4, modifiedAtMs: 3, contentHash: resolutionCount === 1 ? "before" : "after" },
+    };
+  });
+  await guardedTools.execute("browser_start", "call_start", {}, {});
+  await guardedTools.execute("browser_open", "call_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+  await guardedTools.execute("browser_snapshot", "call_snapshot", {}, {});
+  const events: import("../src/browser/index.js").BrowserToolEvent[] = [];
+  const result = await guardedTools.execute("browser_upload", "call_upload", { ref: "@e1", path: "safe.txt" }, {
+    approveBrowser: async () => ({ decision: "allow-once" }),
+    onBrowser: (event) => { events.push(event); },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.errorCode, "artifact-violation");
+  assert.equal(adapter.actionCount, 0);
+  assert.equal(events.some((event) => event.type === "started"), false);
+  assert.equal(events.some((event) => event.type === "completed" && !event.ok), true);
 });
 
 test("browser interaction fails closed when no approval channel exists", async () => {

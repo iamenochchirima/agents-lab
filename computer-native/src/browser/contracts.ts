@@ -90,6 +90,17 @@ export interface BrowserUploadSource {
   readonly requestedPath: string;
   readonly absolutePath: string;
   readonly byteSize: number;
+  /** Content and filesystem identity captured before approval and rechecked before upload. */
+  readonly identity: BrowserFileIdentity;
+}
+
+export interface BrowserFileIdentity {
+  readonly device: number;
+  readonly inode: number;
+  readonly mode: number;
+  readonly size: number;
+  readonly modifiedAtMs: number;
+  readonly contentHash: string;
 }
 
 export interface BrowserSessionInfo {

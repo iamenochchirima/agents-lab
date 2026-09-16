@@ -254,6 +254,8 @@ test("browser upload policy accepts bounded regular workspace files and rejects 
     const source = await policy.resolveUpload("safe.txt");
     assert.equal(source.requestedPath, "safe.txt");
     assert.equal(source.byteSize, 4);
+    assert.equal(source.identity.size, 4);
+    assert.equal(source.identity.contentHash.length, 64);
     await assert.rejects(policy.resolveUpload("link.txt"), /symbolic link/u);
     await assert.rejects(policy.resolveUpload("../outside.txt"), /outside/u);
     await assert.rejects(policy.resolveUpload("missing.txt"), /existing regular workspace file/u);

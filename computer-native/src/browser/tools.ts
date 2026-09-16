@@ -21,6 +21,7 @@ import type {
 import type { BrowserArtifactInfo } from "./artifacts.js";
 import type { BrowserDownloadTarget } from "./artifacts.js";
 import { BrowserError, type BrowserDiagnostic, type BrowserErrorCode } from "./errors.js";
+import { sameBrowserFileIdentity } from "./files.js";
 import { BrowserSessionManager } from "./session.js";
 import { asBrowserDocumentId } from "./contracts.js";
 
@@ -378,8 +379,15 @@ export class BrowserTools {
     const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };
     const decision = await this.obtainApproval(request, context);
     if (decision.decision !== "allow-once") return this.deniedAction(request, decision, "upload", context);
-    await context.onBrowser?.({ type: "started", request });
     try {
+      const currentSource = await this.options.resolveUpload(requestedPath);
+      if (currentSource.requestedPath !== source.requestedPath
+        || currentSource.absolutePath !== source.absolutePath
+        || currentSource.byteSize !== source.byteSize
+        || !sameBrowserFileIdentity(currentSource.identity, source.identity)) {
+        throw new BrowserError("artifact-violation", "The approved browser upload source changed while approval was pending; the file was not sent.");
+      }
+      await context.onBrowser?.({ type: "started", request });
       const result = await this.options.manager.upload(sessionId, tabId, {
         kind: "upload",
         reference: { value: ref, documentId: asBrowserDocumentId(snapshot.documentId) },
