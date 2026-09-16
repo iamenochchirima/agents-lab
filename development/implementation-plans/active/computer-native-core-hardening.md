@@ -110,6 +110,9 @@ tests, but it must never replace a configured real provider silently.
   temporary inode while hashing, enforcing the source byte cap, and checking the
   prepared hash before atomically linking the destination. A multi-chunk copy is covered
   by the workspace contract tests.
+- File-transfer preparation and directory-manifest generation now hash through the same
+  bounded descriptor pattern, so identity checks do not retain full file buffers. Text
+  reads and patch preparation remain content-producing operations by contract.
 - The normalized lifecycle stream now validates process, browser, and memory action
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
@@ -441,6 +444,8 @@ Delivered in this slice:
 - A multi-chunk file exactly at the configured limit is covered by an automated workspace
   test, while existing tree, copy, search, and mutation tests exercise their public
   callers.
+- File-transfer preparation and tree-manifest generation hash bounded files in chunks and
+  retain only byte counts and digests for their identity evidence.
 
 Practice check against the local Hermes and OpenClaw references:
 
@@ -450,9 +455,9 @@ Practice check against the local Hermes and OpenClaw references:
 
 Still open after this slice:
 
-- Copy and manifest operations still materialize one bounded file at a time because they
-  need exact hashes and staged bytes. True stream-to-staging transfer, aggregate mutation
-  budgets, and an OS-level immutable snapshot/file-handle contract remain open.
+- Text reads and patch preparation still materialize bounded content where their contracts
+  require it. Aggregate mutation budgets and an OS-level immutable snapshot/file-handle
+  contract remain open.
 - The remaining filesystem race, crash, cross-platform, and platform-isolation matrix is
   broader than this read-time limit check.
 
@@ -464,6 +469,8 @@ Delivered in this slice:
   the destination. They stream bounded chunks into a temporary inode, update the SHA-256
   source identity as they go, flush the temporary file, and publish it with a no-replace
   link.
+- The same bounded hash loop is used by file-transfer preparation and directory-manifest
+  generation, keeping those identity-only paths from retaining complete file contents.
 - The source is opened with `O_NOFOLLOW`, checked against the prepared byte count and
   hash, and checked again after the stream. A changed source, over-limit growth, write
   failure, or destination collision leaves no successful copy result.
@@ -478,9 +485,8 @@ Practice check against the local Hermes and OpenClaw references:
 
 Still open after this slice:
 
-- File-copy preparation and directory-manifest generation still materialize one bounded
-  file at a time. Aggregate mutation budgets, streamed preparation/manifest hashing, and
-  an OS-level immutable snapshot remain open.
+- Text reads and patch preparation still materialize bounded content where their contracts
+  require it. Aggregate mutation budgets and an OS-level immutable snapshot remain open.
 
 ### Current slice boundary: memory evidence maintenance
 
@@ -963,9 +969,10 @@ claim in this plan.
       reconciliation records for the supported multi-file `apply_patch_set` boundary.
 - [x] Report partial completion and recovery instructions when an `apply_patch_set`
       transaction cannot roll back fully.
-- [ ] Extend streaming to preparation and directory-manifest paths and add aggregate
-      mutation limits for large inputs; regular-file copy commit streaming is now
-      implemented, but the broader filesystem contract is not complete.
+- [ ] Add aggregate mutation limits for large inputs; bounded streaming now covers
+      regular-file copy commits, file-transfer preparation, and directory-manifest hashes,
+      but text reads, patch preparation, and the broader filesystem contract remain
+      content- or evidence-bound.
 
 ### 6. Security, limits, and telemetry
 

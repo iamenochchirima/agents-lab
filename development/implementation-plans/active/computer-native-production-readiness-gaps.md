@@ -360,9 +360,10 @@ Remaining work:
   not claim rollback or cross-file atomicity.
 - Decide and document symlink, hard-link, device-file, socket, special-file, and mount
   behaviour. Fail closed for unsupported types.
-- Extend streaming to copy preparation and directory-manifest generation, then add
-  aggregate mutation limits. Those paths still materialize one bounded file at a time for
-  exact evidence; no OS-level immutable snapshot is claimed.
+- Add aggregate mutation limits. Copy preparation and directory-manifest generation now
+  hash through bounded descriptors; text reads and patch preparation still materialize
+  bounded content where their contracts require it. No OS-level immutable snapshot is
+  claimed.
 - Add race handling for changed files, concurrent writers, locks, and stale approvals.
 - Add dry-run, diff/preview, restore, and reconciliation commands that remain useful
   after a crash.

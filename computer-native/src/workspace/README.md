@@ -84,10 +84,11 @@ ambiguous states for both file hashes and directory manifests.
 
 Reads are bounded in the descriptor loop, and regular-file copy commits stream into a
 same-directory temporary inode while hashing and enforcing the approved source size.
-Preparation and directory-manifest generation still materialize one bounded file at a
-time so they can produce exact evidence. These operations do not provide an OS-level
-immutable snapshot or claim cross-file atomicity. Streaming preparation, aggregate
-mutation budgets, and platform-specific immutable file-handle support remain separate
+File-transfer preparation and directory-manifest generation also hash through bounded
+descriptor reads instead of retaining file contents. Text reads and patch preparation
+still materialize bounded content where their contracts require it. These operations do
+not provide an OS-level immutable snapshot or claim cross-file atomicity. Aggregate
+mutation budgets and platform-specific immutable file-handle support remain separate
 hardening work.
 
 The process slice reuses this module's security policy only to authorize and describe a

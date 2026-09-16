@@ -4,7 +4,7 @@ import { lstat, link, mkdir, open, readFile, readdir, rename, rmdir, stat, unlin
 import path from "node:path";
 import { isRuntimeInterruptionError, MutationError, WorkspaceAccessError } from "../runtime/errors.js";
 import { WORKSPACE_QUARANTINE_DIRECTORY, WORKSPACE_TRANSACTION_DIRECTORY, WorkspaceSecurityPolicy, type WorkspaceLimits } from "../security/workspace-policy.js";
-import { contentHash, contentHashBytes, describePatch, prepareFileWrite, preparePatch as preparePurePatch, type PreparedPatch } from "./patch.js";
+import { contentHash, describePatch, prepareFileWrite, preparePatch as preparePurePatch, type PreparedPatch } from "./patch.js";
 import { MAX_MUTATION_SET_FILES, MAX_MUTATION_SET_REQUEST_BYTES, type MutationJournal, type MutationJournalMember, type MutationJournalState, type MutationMember, type WorkspaceMutationRecord } from "./mutation.js";
 
 export interface WorkspaceDirectoryEntry {
@@ -412,6 +412,20 @@ async function readHandleAtMost(handle: Awaited<ReturnType<typeof open>>, maxByt
   }
 }
 
+async function hashHandleAtMost(handle: Awaited<ReturnType<typeof open>>, maxBytes: number): Promise<{ readonly bytes: number; readonly hash: string } | undefined> {
+  const hash = createHash("sha256");
+  let totalBytes = 0;
+  while (true) {
+    const readSize = Math.min(BOUNDED_READ_CHUNK_BYTES, Math.max(1, maxBytes - totalBytes + 1));
+    const chunk = Buffer.alloc(readSize);
+    const { bytesRead } = await handle.read(chunk, 0, chunk.byteLength, null);
+    if (bytesRead === 0) return { bytes: totalBytes, hash: hash.digest("hex") };
+    totalBytes += bytesRead;
+    if (totalBytes > maxBytes) return undefined;
+    hash.update(chunk.subarray(0, bytesRead));
+  }
+}
+
 /**
  * Stream a prepared regular-file copy into a same-directory temporary inode.
  * The source is hashed while it is copied, so the approved source identity is
@@ -564,16 +578,16 @@ export class Workspace {
         if (fileStats.size > remainingBytes) {
           throw new WorkspaceAccessError(`Workspace directory tree '${displayPath}' exceeds the ${maxBytes}-byte limit.`);
         }
-        const bytes = await readHandleAtMost(handle, remainingBytes);
-        if (!bytes || bytes.byteLength !== fileStats.size) {
+        const observation = await hashHandleAtMost(handle, remainingBytes);
+        if (!observation || observation.bytes !== fileStats.size) {
           throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`);
         }
         const after = await handle.stat();
         if (!after.isFile() || after.size !== fileStats.size) {
           throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' changed while it was being inspected.`);
         }
-        totalBytes += bytes.byteLength;
-        addEntry({ path: currentPath, kind: "file", bytes: bytes.byteLength, mode: fileStats.mode & 0o7777, hash: contentHashBytes(bytes) });
+        totalBytes += observation.bytes;
+        addEntry({ path: currentPath, kind: "file", bytes: observation.bytes, mode: fileStats.mode & 0o7777, hash: observation.hash });
       } catch (error) {
         if (error instanceof WorkspaceAccessError) throw error;
         throw new WorkspaceAccessError(`Workspace tree file '${currentPath}' cannot be read for its manifest.`, { cause: error });
@@ -1060,15 +1074,14 @@ export class Workspace {
     if (!target.exists || target.kind !== "file") {
       throw new WorkspaceAccessError(`Workspace deletion target '${relativePath}' must be an existing regular file.`);
     }
-    const bytes = await this.readMutationBytes(target.absolutePath, relativePath);
-    const beforeHash = contentHashBytes(bytes);
+    const observation = await this.readMutationHash(target.absolutePath, relativePath);
     const quarantinePath = path.join(WORKSPACE_QUARANTINE_DIRECTORY, mutationId, "payload");
     return {
       operation: "delete",
       path: target.relativePath,
       preview: `Delete file: ${target.relativePath}\nThe file will be moved to workspace quarantine and can be restored with token ${mutationId}.`,
-      beforeHash,
-      bytes: bytes.byteLength,
+      beforeHash: observation.hash,
+      bytes: observation.bytes,
       mode: target.mode ?? 0o600,
       mutationId,
       quarantinePath,
@@ -1080,8 +1093,8 @@ export class Workspace {
     if (!target.exists || target.kind !== "file") {
       throw new MutationError("mutation-stale", `Workspace deletion target '${prepared.path}' changed before quarantine.`);
     }
-    const currentBytes = await this.readMutationBytes(target.absolutePath, prepared.path);
-    if (contentHashBytes(currentBytes) !== prepared.beforeHash) {
+    const current = await this.readMutationHash(target.absolutePath, prepared.path);
+    if (current.hash !== prepared.beforeHash) {
       throw new MutationError("mutation-stale", `Workspace file '${prepared.path}' changed after the deletion proposal was prepared; refusing to quarantine it.`);
     }
     const quarantine = await this.createQuarantineEntry(prepared.mutationId);
@@ -1114,8 +1127,8 @@ export class Workspace {
     const target = await this.policy.resolveMutationTarget(manifest.originalPath);
     if (target.exists) throw new WorkspaceAccessError(`Workspace restore target '${manifest.originalPath}' already exists; refusing to overwrite it.`);
     const quarantinePath = path.join(WORKSPACE_QUARANTINE_DIRECTORY, mutationId, "payload");
-    const payload = await this.readMutationBytes(await this.quarantineAbsolutePath(mutationId, "payload"), quarantinePath);
-    if (contentHashBytes(payload) !== manifest.beforeHash) {
+    const payload = await this.readMutationHash(await this.quarantineAbsolutePath(mutationId, "payload"), quarantinePath);
+    if (payload.hash !== manifest.beforeHash) {
       throw new WorkspaceAccessError(`Quarantined file '${mutationId}' failed its recorded hash check.`);
     }
     return {
@@ -1123,7 +1136,7 @@ export class Workspace {
       path: target.relativePath,
       preview: `Restore file: ${target.relativePath}\nThe quarantined file for token ${mutationId} will be restored without overwriting an existing path.`,
       beforeHash: manifest.beforeHash,
-      bytes: payload.byteLength,
+      bytes: payload.bytes,
       mode: manifest.mode,
       sourceMutationId: mutationId,
       quarantinePath,
@@ -1134,8 +1147,8 @@ export class Workspace {
     const target = await this.policy.resolveMutationTarget(prepared.path);
     if (target.exists) throw new MutationError("mutation-stale", `Workspace restore target '${prepared.path}' appeared before restore; refusing to overwrite it.`);
     const payloadPath = await this.quarantineAbsolutePath(prepared.sourceMutationId, "payload");
-    const payload = await this.readMutationBytes(payloadPath, prepared.quarantinePath);
-    if (contentHashBytes(payload) !== prepared.beforeHash) {
+    const payload = await this.readMutationHash(payloadPath, prepared.quarantinePath);
+    if (payload.hash !== prepared.beforeHash) {
       throw new MutationError("mutation-stale", `Quarantined file '${prepared.sourceMutationId}' changed before restore; refusing to restore it.`);
     }
     const quarantineDirectory = path.dirname(payloadPath);
@@ -1204,8 +1217,8 @@ export class Workspace {
       }
       return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: scanned.totalBytes };
     }
-    const bytes = await this.readMutationBytes(source.absolutePath, prepared.sourcePath);
-    if (contentHashBytes(bytes) !== prepared.beforeHash) {
+    const observation = await this.readMutationHash(source.absolutePath, prepared.sourcePath);
+    if (observation.hash !== prepared.beforeHash) {
       throw new MutationError("mutation-stale", `Workspace file '${prepared.sourcePath}' changed after the move proposal was prepared; refusing to move it.`);
     }
     try {
@@ -1217,7 +1230,7 @@ export class Workspace {
     } catch (error) {
       throw new MutationError("mutation-failed", `Workspace file '${prepared.sourcePath}' could not be moved atomically.`, { cause: error });
     }
-    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: bytes.byteLength };
+    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: observation.bytes };
   }
 
   async commitRename(prepared: PreparedRename): Promise<FileTransferCommit> {
@@ -1238,8 +1251,8 @@ export class Workspace {
       }
       return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: scanned.totalBytes };
     }
-    const bytes = await this.readMutationBytes(source.absolutePath, prepared.sourcePath);
-    if (contentHashBytes(bytes) !== prepared.beforeHash) {
+    const observation = await this.readMutationHash(source.absolutePath, prepared.sourcePath);
+    if (observation.hash !== prepared.beforeHash) {
       throw new MutationError("mutation-stale", `Workspace file '${prepared.sourcePath}' changed after the rename proposal was prepared; refusing to rename it.`);
     }
     try {
@@ -1248,7 +1261,7 @@ export class Workspace {
     } catch (error) {
       throw new MutationError("mutation-failed", `Workspace file '${prepared.sourcePath}' could not be renamed atomically.`, { cause: error });
     }
-    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: bytes.byteLength };
+    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: observation.bytes };
   }
 
   async preparePatchSet(patchTexts: readonly string[], mutationId: string): Promise<PreparedPatchSet> {
@@ -1514,8 +1527,8 @@ export class Workspace {
       return { ...record, status: "committed", reason: "The quarantined payload was present during restart reconciliation; deletion completed before the record update." };
     }
     if (target.exists && target.kind === "file") {
-      const currentHash = contentHashBytes(await this.readMutationBytes(target.absolutePath, record.path));
-      if (currentHash === record.beforeHash) {
+      const current = await this.readMutationHash(target.absolutePath, record.path);
+      if (current.hash === record.beforeHash) {
         return { ...record, status: "reconciled", reason: "The original file was present and unchanged during restart reconciliation; deletion was not replayed." };
       }
     }
@@ -1571,8 +1584,8 @@ export class Workspace {
       return { ...record, status: "reconciled", reason: "The quarantined payload was present and the restore target was absent; restore was not replayed." };
     }
     if (target.exists && target.kind === "file") {
-      const currentHash = contentHashBytes(await this.readMutationBytes(target.absolutePath, record.path));
-      if (currentHash === record.beforeHash) {
+      const current = await this.readMutationHash(target.absolutePath, record.path);
+      if (current.hash === record.beforeHash) {
         return { ...record, status: "committed", reason: "The restored file was present during restart reconciliation; restoration completed before the record update." };
       }
     }
@@ -1621,7 +1634,7 @@ export class Workspace {
     const destinationMatches = target.exists && target.kind === "directory" && record.manifestHash
       ? (await this.scanDirectoryTree(target.absolutePath, record.path)).manifestHash === record.manifestHash
       : target.exists && target.kind === "file"
-        && contentHashBytes(await this.readMutationBytes(target.absolutePath, record.path)) === record.afterHash;
+        && (await this.readMutationHash(target.absolutePath, record.path)).hash === record.afterHash;
     if (record.operation === "copy" && destinationMatches) {
       return { ...record, status: "committed", reason: "The copied destination matched its recorded hash during restart reconciliation." };
     }
@@ -1632,7 +1645,7 @@ export class Workspace {
       const sourceHash = source.kind === "directory" && record.manifestHash
         ? (await this.scanDirectoryTree(source.absolutePath, record.sourcePath)).manifestHash
         : source.kind === "file"
-          ? contentHashBytes(await this.readMutationBytes(source.absolutePath, record.sourcePath))
+          ? (await this.readMutationHash(source.absolutePath, record.sourcePath)).hash
           : undefined;
       if (sourceHash === record.sourceHash) return { ...record, status: "reconciled", reason: "The source was present and the destination was absent during restart reconciliation; the transfer was not replayed." };
     }
@@ -1660,7 +1673,7 @@ export class Workspace {
     for (const member of record.members) {
       const target = await this.policy.resolveMutationTarget(member.path);
       let currentHash = contentHash("");
-      if (target.exists && target.kind === "file") currentHash = contentHashBytes(await this.readMutationBytes(target.absolutePath, member.path));
+      if (target.exists && target.kind === "file") currentHash = (await this.readMutationHash(target.absolutePath, member.path)).hash;
       else if (target.exists) conflict = true;
       const prior = existingJournal.members.find((candidate) => candidate.path === member.path);
       const state = currentHash === member.afterHash ? "committed" : currentHash === member.beforeHash ? "pending" : "pending";
@@ -1742,18 +1755,17 @@ export class Workspace {
       } as const;
       return prepared;
     }
-    const bytes = await this.readMutationBytes(source.absolutePath, source.relativePath);
-    const sourceHash = contentHashBytes(bytes);
+    const observation = await this.readMutationHash(source.absolutePath, source.relativePath);
     const action = operation === "copy" ? "Copy" : operation === "move" ? "Move" : "Rename";
     return {
       operation,
       kind: source.kind,
       path: destination.relativePath,
       sourcePath: source.relativePath,
-      preview: `${action} file: ${source.relativePath} → ${destination.relativePath}\nSource hash: ${sourceHash}\nThe destination must remain absent until approval.`,
-      beforeHash: sourceHash,
-      afterHash: sourceHash,
-      bytes: bytes.byteLength,
+      preview: `${action} file: ${source.relativePath} → ${destination.relativePath}\nSource hash: ${observation.hash}\nThe destination must remain absent until approval.`,
+      beforeHash: observation.hash,
+      afterHash: observation.hash,
+      bytes: observation.bytes,
       mode: source.mode ?? 0o600,
     };
   }
@@ -1876,6 +1888,36 @@ export class Workspace {
       || (manifest.kind === "directory" && (typeof manifest.manifestHash !== "string" || !Array.isArray(manifest.entries) || typeof manifest.entryCount !== "number" || typeof manifest.maxDepth !== "number"))
     ) throw new WorkspaceAccessError(`Recovery manifest '${mutationId}' is invalid.`);
     return manifest as QuarantineManifest;
+  }
+
+  private async readMutationHash(absolutePath: string, relativePath: string): Promise<{ readonly bytes: number; readonly hash: string }> {
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      handle = await open(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    } catch (error) {
+      throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be opened for a safe read.`, { cause: error });
+    }
+    try {
+      const fileStats = await handle.stat();
+      if (!fileStats.isFile()) throw new WorkspaceAccessError(`Workspace path '${relativePath}' is not a regular file.`);
+      if (fileStats.size > this.policy.limits.maxFileBytes) {
+        throw new WorkspaceAccessError(`Workspace file '${relativePath}' is ${fileStats.size} bytes; the limit is ${this.policy.limits.maxFileBytes} bytes.`);
+      }
+      const observation = await hashHandleAtMost(handle, this.policy.limits.maxFileBytes);
+      if (!observation) {
+        throw new WorkspaceAccessError(`Workspace file '${relativePath}' grew beyond the ${this.policy.limits.maxFileBytes}-byte limit while it was being read.`);
+      }
+      const afterStats = await handle.stat();
+      if (!afterStats.isFile() || afterStats.size !== fileStats.size || observation.bytes !== fileStats.size) {
+        throw new WorkspaceAccessError(`Workspace file '${relativePath}' changed while it was being read safely.`);
+      }
+      return observation;
+    } catch (error) {
+      if (error instanceof WorkspaceAccessError) throw error;
+      throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be read safely.`, { cause: error });
+    } finally {
+      await handle?.close().catch(() => undefined);
+    }
   }
 
   private async readMutationBytes(absolutePath: string, relativePath: string): Promise<Buffer> {
