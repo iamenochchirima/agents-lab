@@ -82,6 +82,12 @@ export interface MemorySearchEvidence {
 
 export type MemoryOperation = "add" | "replace" | "remove" | "batch";
 
+export interface MemoryBatchOutcome {
+  readonly operation: Exclude<MemoryOperation, "batch">;
+  readonly record?: MemoryRecord;
+  readonly recordId?: string;
+}
+
 export interface MemoryBatchApprovalItem {
   readonly operation: Exclude<MemoryOperation, "batch">;
   readonly scope: MemoryScope;
@@ -91,6 +97,9 @@ export interface MemoryBatchApprovalItem {
   readonly afterContentHash?: string;
   readonly contentPreview: string;
 }
+
+/** Redacted, hash-only manifest retained for restart reconciliation. */
+export type MemoryBatchActionItem = Omit<MemoryBatchApprovalItem, "contentPreview">;
 
 export interface MemoryApprovalRequest {
   readonly operationId: string;
@@ -122,6 +131,7 @@ export type MemoryEvent =
   | { readonly type: "approval_decided"; readonly request: MemoryApprovalRequest; readonly decision: MemoryApprovalDecision }
   | { readonly type: "committed"; readonly request: MemoryApprovalRequest; readonly record: MemoryRecord }
   | { readonly type: "forgotten"; readonly request: MemoryApprovalRequest }
+  | { readonly type: "batch_committed"; readonly request: MemoryApprovalRequest; readonly results: readonly MemoryBatchOutcome[] }
   | { readonly type: "failed"; readonly request: MemoryApprovalRequest; readonly reason: string };
 
 export type MemoryActionStatus = "proposed" | "approved" | "denied" | "committed" | "failed";
@@ -139,6 +149,7 @@ export interface MemoryActionRecord {
   readonly beforeContentHash?: string;
   readonly afterContentHash?: string;
   readonly inputHash: string;
+  readonly batch?: readonly MemoryBatchActionItem[];
   readonly approvalTimeoutMs?: number;
   readonly status: MemoryActionStatus;
   readonly decision?: MemoryApprovalDecision["decision"];

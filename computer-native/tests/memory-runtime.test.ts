@@ -286,7 +286,7 @@ test("memory replace acknowledgement loss reconciles the durable entry without r
   }
 });
 
-test("memory recovery fails closed for unsupported mutation evidence", async () => {
+test("memory recovery fails closed without deletion evidence", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-unsupported-recovery-"));
   try {
     const memory = await MemoryStore.open({ stateDir: path.join(root, "state"), profileId: "default", workspaceId: "workspace-test" });
@@ -308,7 +308,178 @@ test("memory recovery fails closed for unsupported mutation evidence", async () 
     };
     const reconciled = await memory.reconcileAction(base);
     assert.equal(reconciled.status, "failed");
-    assert.match(reconciled.reason ?? "", /cannot yet be reconciled automatically/u);
+    assert.match(reconciled.reason ?? "", /No durable deletion evidence/u);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory removal acknowledgement loss reconciles the deletion without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-remove-ack-recovery-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    let actionWrites = 0;
+    const session = await SessionStore.open(config.stateDir, undefined, {
+      writeHooks: {
+        beforeWrite: (operation, filePath) => {
+          if (operation === "append-json-line" && filePath.includes(`${path.sep}memory-actions${path.sep}`) && actionWrites++ === 2) {
+            throw new RuntimeInterruptionError("stopped before memory removal evidence");
+          }
+        },
+      },
+    });
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const existing = await memory.add({ scope: "workspace", content: "remove this durable note", provenance: { source: "user", sourceId: "seed", trust: "user" } });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-remove-ack-interruption", {
+          toolCall: {
+            name: "memory_forget",
+            argumentsJson: JSON.stringify({ recordId: existing.id, expectedContentHash: existing.contentHash }),
+            finalResponse: "The memory entry was removed.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Remove this memory entry.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before memory removal evidence/u,
+    );
+    assert.equal(await memory.get(existing.id), undefined);
+
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)))[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionDirectory = path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions");
+    const actionFile = (await readdir(actionDirectory))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(actionDirectory, actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; recordId?: string });
+    assert.equal(history.at(-1)?.status, "committed");
+    assert.equal(history.at(-1)?.recordId, existing.id);
+    const events = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    assert.equal(events.filter((event) => event.type === "MemoryForgotten").length, 1);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)), []);
+    assert.equal(await memory.get(existing.id), undefined);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory batch acknowledgement loss reconciles every approved member without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-batch-ack-recovery-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    let actionWrites = 0;
+    const session = await SessionStore.open(config.stateDir, undefined, {
+      writeHooks: {
+        beforeWrite: (operation, filePath) => {
+          if (operation === "append-json-line" && filePath.includes(`${path.sep}memory-actions${path.sep}`) && actionWrites++ === 2) {
+            throw new RuntimeInterruptionError("stopped before memory batch evidence");
+          }
+        },
+      },
+    });
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const removed = await memory.add({ scope: "workspace", content: "batch legacy note", provenance: { source: "user", sourceId: "seed-remove", trust: "user" } });
+    const replaced = await memory.add({ scope: "workspace", content: "batch old note", provenance: { source: "user", sourceId: "seed-replace", trust: "user" } });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-batch-ack-interruption", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "batch", items: [
+              { operation: "add", scope: "workspace", content: "batch first durable note" },
+              { operation: "replace", scope: "workspace", recordId: replaced.id, expectedContentHash: replaced.contentHash, content: "batch current note" },
+              { operation: "remove", scope: "workspace", recordId: removed.id, expectedContentHash: removed.contentHash },
+            ] }),
+            finalResponse: "The memory batch was applied.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Store these two memory entries.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before memory batch evidence/u,
+    );
+    assert.equal((await memory.search({ query: "first" })).length, 1);
+    assert.equal((await memory.search({ query: "current" })).length, 1);
+    assert.equal((await memory.search({ query: "legacy" })).length, 0);
+
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)))[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionDirectory = path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions");
+    const actionFile = (await readdir(actionDirectory))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(actionDirectory, actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; batch?: unknown[] });
+    assert.equal(history.at(-1)?.status, "committed");
+    assert.equal(history.at(-1)?.batch?.length, 3);
+    const events = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    assert.equal(events.filter((event) => event.type === "MemoryCommitted").length, 1);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)), []);
+    assert.equal((await memory.search({ query: "first" })).length, 1);
+    assert.equal((await memory.search({ query: "current" })).length, 1);
+    assert.equal((await memory.search({ query: "legacy" })).length, 0);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory batch runtime records one terminal action event for mixed members", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-batch-runtime-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    const session = await SessionStore.open(config.stateDir);
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const removed = await memory.add({ scope: "workspace", content: "normal batch legacy", provenance: { source: "user", sourceId: "seed-remove", trust: "user" } });
+    const replaced = await memory.add({ scope: "workspace", content: "normal batch old", provenance: { source: "user", sourceId: "seed-replace", trust: "user" } });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    const result = await runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/memory-batch-runtime", {
+        toolCall: {
+          name: "memory",
+          argumentsJson: JSON.stringify({ operation: "batch", items: [
+            { operation: "add", scope: "workspace", content: "normal batch first" },
+            { operation: "replace", scope: "workspace", recordId: replaced.id, expectedContentHash: replaced.contentHash, content: "normal batch current" },
+            { operation: "remove", scope: "workspace", recordId: removed.id, expectedContentHash: removed.contentHash },
+          ] }),
+          finalResponse: "The memory batch was applied.",
+        },
+      }),
+      tools,
+      memory,
+      config,
+      userPrompt: "Apply this memory batch.",
+      approveMemory: async () => ({ decision: "allow-once" }),
+    });
+    assert.equal(result.status, "completed");
+    const events = (await readFile(path.join(session.sessionDirectory, "turns", result.turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    assert.equal(events.filter((event) => event.type === "MemoryCommitted").length, 1);
+    assert.equal(events.filter((event) => event.type === "MemoryForgotten").length, 0);
+    assert.equal((await memory.search({ query: "current" })).length, 1);
+    assert.equal((await memory.search({ query: "legacy" })).length, 0);
     await memory.close();
   } finally {
     await rm(root, { recursive: true, force: true });

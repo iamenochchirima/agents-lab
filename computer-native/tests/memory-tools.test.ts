@@ -113,7 +113,7 @@ test("memory consolidation batches are bounded, exact, and approval-gated", asyn
     },
   );
   assert.equal(result.ok, true);
-  assert.deepEqual(events, ["prepared", "approval_decided", "committed", "committed"]);
+  assert.deepEqual(events, ["prepared", "approval_decided", "batch_committed"]);
   assert.equal((await store.search({ query: "project", scopes: ["workspace"] })).length, 2);
   await store.close();
 });

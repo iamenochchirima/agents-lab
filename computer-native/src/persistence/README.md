@@ -107,8 +107,11 @@ Memory action recovery is operation-specific. An approved `add` or `replace` can
 reconciled after the canonical Markdown write succeeded but acknowledgement of its
 memory-action record was lost: recovery reloads canonical memory and requires exactly one
 entry matching the approved scope, source path, model call provenance, content hash, and
-record identity for replacement before recording `committed`. It then reconstructs
-missing lifecycle evidence without replaying the write. Approved `remove` and `batch`
-actions do not yet have equivalent commit evidence; recovery marks them failed closed
-rather than guessing or repeating a side effect. This is deliberately not an exactly-once
-guarantee.
+record identity for replacement before recording `committed`. Removal writes hash-only
+deletion evidence before and after canonical publication, allowing recovery to verify
+that the exact file moved from its recorded before-hash to its after-hash without treating
+absence alone as proof. Batch actions persist a bounded member manifest and reconcile
+add, replace, and remove members together; normal and recovered batches emit one terminal
+action event. Direct fault injection around the memory store's own writes, ledger
+retention, and cross-file batch publication remain open. This is deliberately not an
+exactly-once guarantee.

@@ -809,10 +809,7 @@ export class ToolRegistry {
     if (context.signal?.aborted) return { callId: call.callId, name: call.name, ok: false, content: "Memory batch not written; the active turn was cancelled before commit.", summary: "Memory batch cancelled." };
     try {
       const results = await this.memory.store.applyBatch(mutations);
-      for (const result of results) {
-        if (result.record) await context.onMemory?.({ type: "committed", request, record: result.record });
-        else if (result.recordId) await context.onMemory?.({ type: "forgotten", request: { ...request, recordId: result.recordId } });
-      }
+      await context.onMemory?.({ type: "batch_committed", request, results });
       return { callId: call.callId, name: call.name, ok: true, content: stableStringify({ status: "applied", results }), summary: `Applied ${results.length} durable memory operations.` };
     } catch (error) {
       if (isRuntimeInterruptionError(error)) throw error;

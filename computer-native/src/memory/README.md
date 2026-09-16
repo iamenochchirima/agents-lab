@@ -24,12 +24,18 @@ bounded accordingly.
 
 The `memory` tool also accepts one bounded same-scope consolidation batch of up to
 eight add, replace, or remove operations. The batch is validated and approved as one
-exact proposal, but canonical files are still published individually; this does not
-claim a cross-file transaction.
+exact proposal, and its durable action record retains a hash-only member manifest for
+restart reconciliation. Canonical files are still published individually; this does not
+claim a cross-file transaction. Mixed batches emit one terminal action event so the
+normalized lifecycle does not close one operation identity multiple times.
 
 Search evidence stores a query digest, scopes, result references, and truncation status
 without persisting the query text. Memory lifecycle evidence is append-only JSONL so
 proposal, approval timeout, and terminal outcomes remain inspectable after a restart.
+Removal also keeps hash-only deletion evidence under the managed memory directory: a
+prepared marker and a committed marker bind the record ID, source call, pre/post content
+hashes, and pre/post canonical-file hashes. Recovery uses this evidence rather than
+assuming that a missing record proves a deletion.
 
 The implementation uses Node's built-in `node:sqlite` module so this extracted
 package does not add a native database dependency. The schema is ordinary

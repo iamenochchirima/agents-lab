@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:35:52+02:00
+**Last updated:** 2026-09-16T15:47:29+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -158,8 +158,8 @@ tests, but it must never replace a configured real provider silently.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
-- The current validation is 252 passing tests across the package, with 88.34% line
-  coverage, 76.50% branch coverage, and 83.17% function coverage.
+- The current validation is 255 passing tests across the package, with 88.62% line
+  coverage, 76.83% branch coverage, and 83.50% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -188,6 +188,10 @@ Delivered in this slice:
   identity where applicable, model call provenance, and content hash, records the commit,
   reconstructs missing lifecycle evidence, and never replays the write. Recovery is safe
   to run twice.
+- Memory removal now records hash-only deletion evidence before and after canonical
+  publication. Batch actions persist a bounded hash-only member manifest and reconcile
+  add, replace, and remove members as one approved action. Mixed batches emit one
+  terminal lifecycle event, and recovery never replays a member.
 
 Persistence slice limitations:
 
@@ -197,10 +201,10 @@ Persistence slice limitations:
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, and an exactly-once execution guarantee remain
   open.
-- Memory `remove` and `batch` operations do not yet have operation-specific commit
-  evidence for this acknowledgement-loss boundary. Recovery fails those approved
-  operations closed without replay; only `add` and `replace` reconciliation are delivered
-  in this sub-slice.
+- Direct fault injection around memory canonical/deletion-evidence writes, deletion-ledger
+  retention/compaction, and cross-file daily-memory batch publication remain open. The
+  current evidence proves the supported local acknowledgement-loss path, not an
+  exactly-once guarantee or cross-file transaction.
 
 ### Current slice boundary: model payload resource limits
 

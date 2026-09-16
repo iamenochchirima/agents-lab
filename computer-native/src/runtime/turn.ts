@@ -788,12 +788,24 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       ...(request.afterContentHash ? { afterContentHash: request.afterContentHash } : {}),
       inputHash: request.afterContentHash ?? request.beforeContentHash ?? "unknown",
       ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
+      ...(request.batch ? {
+        batch: request.batch.map((item) => ({
+          operation: item.operation,
+          scope: item.scope,
+          ...(item.recordId ? { recordId: item.recordId } : {}),
+          sourcePath: item.sourcePath,
+          ...(item.beforeContentHash ? { beforeContentHash: item.beforeContentHash } : {}),
+          ...(item.afterContentHash ? { afterContentHash: item.afterContentHash } : {}),
+        })),
+      } : {}),
       status: event.type === "prepared"
         ? "proposed"
         : event.type === "approval_decided"
           ? event.decision.decision === "allow-once" ? "approved" : "denied"
           : event.type === "committed" || event.type === "forgotten"
             ? "committed"
+            : event.type === "batch_committed"
+              ? "committed"
             : "failed",
       ...(event.type === "approval_decided" ? { decision: event.decision.decision } : {}),
       ...(event.type === "approval_decided" && "reason" in event.decision && event.decision.reason ? { reason: event.decision.reason } : {}),
@@ -824,6 +836,15 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       await turn.appendEvent("MemoryCommitted", { ...base, recordId: event.record.id, contentHash: event.record.contentHash });
     } else if (event.type === "forgotten") {
       await turn.appendEvent("MemoryForgotten", base);
+    } else if (event.type === "batch_committed") {
+      await turn.appendEvent("MemoryCommitted", {
+        ...base,
+        memberResults: event.results.map((result) => ({
+          operation: result.operation,
+          recordId: result.record?.id ?? result.recordId ?? null,
+          contentHash: result.record?.contentHash ?? null,
+        })),
+      });
     } else {
       await turn.appendEvent("MemoryFailed", { ...base, reason: event.reason });
     }

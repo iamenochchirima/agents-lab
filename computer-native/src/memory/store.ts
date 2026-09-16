@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { chmod, lstat, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { ComputerNativeError } from "../runtime/errors.js";
-import { ensureDirectory } from "../persistence/json.js";
+import { appendJsonLine, ensureDirectory, readJsonLines } from "../persistence/json.js";
 import { SessionLock } from "../persistence/lock.js";
 import type {
   MemoryProvenance,
@@ -14,6 +14,8 @@ import type {
   MemoryFlushRequest,
   MemoryFlushResult,
   MemoryActionRecord,
+  MemoryBatchActionItem,
+  MemoryBatchOutcome,
 } from "./contracts.js";
 
 const DEFAULT_USER_MAX_CHARS = 1_375;
@@ -45,11 +47,7 @@ export type MemoryBatchMutation =
   | { readonly operation: "replace"; readonly id: string; readonly content: string; readonly expectedContentHash: string; readonly provenance: MemoryProvenance }
   | { readonly operation: "remove"; readonly id: string; readonly expectedContentHash: string; readonly sourceId: string };
 
-export interface MemoryBatchResult {
-  readonly operation: MemoryBatchMutation["operation"];
-  readonly record?: MemoryRecord;
-  readonly recordId?: string;
-}
+export type MemoryBatchResult = MemoryBatchOutcome;
 
 interface StoredMemoryRecord extends MemoryRecord {
   readonly status: "active";
@@ -65,6 +63,19 @@ interface MemoryFileMetadata {
   readonly date?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+interface MemoryDeletionEvidence {
+  readonly schemaVersion: 1;
+  readonly recordId: string;
+  readonly scope: MemoryScope;
+  readonly sourcePath: string;
+  readonly beforeContentHash: string;
+  readonly sourceId: string;
+  readonly beforeFileHash: string;
+  readonly afterFileHash: string;
+  readonly status: "prepared" | "committed";
+  readonly recordedAt: string;
 }
 
 type IndexRow = Record<string, string | number | null>;
@@ -86,6 +97,7 @@ export class MemoryStore {
   private readonly memoryDir: string;
   private readonly databasePath: string;
   private readonly lockPath: string;
+  private readonly deletionEvidencePath: string;
   private readonly limits: Record<MemoryScope, number>;
   private readonly dailyRetentionDays: number;
   private database: DatabaseSync;
@@ -96,6 +108,7 @@ export class MemoryStore {
     this.memoryDir = path.join(options.stateDir, "memory");
     this.databasePath = path.join(this.memoryDir, "index.sqlite");
     this.lockPath = path.join(this.memoryDir, ".memory.lock");
+    this.deletionEvidencePath = path.join(this.memoryDir, "deletions.jsonl");
     this.limits = {
       user: options.userMaxChars ?? DEFAULT_USER_MAX_CHARS,
       workspace: options.workspaceMaxChars ?? DEFAULT_WORKSPACE_MAX_CHARS,
@@ -269,8 +282,14 @@ export class MemoryStore {
       const current = index >= 0 ? this.records[index] : undefined;
       if (!current) throw new MemoryPolicyError("Memory entry was not found in this profile and workspace.");
       assertCurrentHash(current, input.expectedContentHash);
-      this.records.splice(index, 1);
+      const before = this.records;
+      const working = [...this.records];
+      working.splice(index, 1);
+      const evidence = this.createDeletionEvidence(current, before, working, input.sourceId);
+      await this.appendDeletionEvidence({ ...evidence, status: "prepared" });
+      this.records = working;
       await this.persistCanonicalRecords();
+      await this.appendDeletionEvidence({ ...evidence, status: "committed" });
     });
   }
 
@@ -284,6 +303,7 @@ export class MemoryStore {
     const results: MemoryBatchResult[] = [];
     await this.withLockedRecords(async () => {
       const working = [...this.records];
+      const deletions: Array<{ readonly record: StoredMemoryRecord; readonly sourceId: string }> = [];
       for (const mutation of mutations) {
         if (mutation.operation === "add") {
           validateMutation(mutation, this.limits);
@@ -328,11 +348,15 @@ export class MemoryStore {
           results.push({ operation: mutation.operation, record: toPublicRecord(replaced) });
         } else {
           working.splice(index, 1);
+          deletions.push({ record: current, sourceId: mutation.sourceId });
           results.push({ operation: mutation.operation, recordId: current.id });
         }
       }
+      const deletionEvidence = deletions.map(({ record, sourceId }) => this.createDeletionEvidence(record, this.records, working, sourceId));
+      for (const evidence of deletionEvidence) await this.appendDeletionEvidence({ ...evidence, status: "prepared" });
       this.records = working;
       await this.persistCanonicalRecords();
+      for (const evidence of deletionEvidence) await this.appendDeletionEvidence({ ...evidence, status: "committed" });
     });
     return results;
   }
@@ -377,6 +401,8 @@ export class MemoryStore {
     this.assertOpen();
     if (action.status !== "approved") return action;
     await this.refreshFromCanonical();
+    if (action.operation === "remove") return this.reconcileRemoval(action);
+    if (action.operation === "batch") return this.reconcileBatch(action);
     if (action.operation !== "add" && action.operation !== "replace") {
       return {
         ...action,
@@ -414,6 +440,128 @@ export class MemoryStore {
       reason: "No durable memory entry matched the approved call during restart reconciliation; the write was not replayed.",
       recordedAt: new Date().toISOString(),
     };
+  }
+
+  private async reconcileRemoval(action: MemoryActionRecord): Promise<MemoryActionRecord> {
+    if (!action.recordId || !action.beforeContentHash) return this.failedReconciliation(action, "The approved memory removal did not contain a complete record identity.");
+    const evidence = await this.latestDeletionEvidence(action.recordId, action.scope, action.sourcePath, action.beforeContentHash, action.callId);
+    if (!evidence) return this.failedReconciliation(action, "No durable deletion evidence matched the approved memory removal; the write was not replayed.");
+    const current = this.records.find((record) => this.isOwned(record) && record.id === action.recordId);
+    const currentFileHash = await this.canonicalFileHash(action.sourcePath);
+    if (!current && currentFileHash === evidence.afterFileHash) {
+      return {
+        ...action,
+        status: "committed",
+        decision: "allow-once",
+        reason: "The canonical memory file matched its recorded post-removal hash during restart reconciliation.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    if (current?.contentHash === action.beforeContentHash && currentFileHash === evidence.beforeFileHash) {
+      return {
+        ...action,
+        status: "denied",
+        decision: "unavailable",
+        reason: "The canonical memory file still matched its pre-removal hash during restart reconciliation; the removal was not replayed.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    return this.failedReconciliation(action, "The approved memory removal has an ambiguous canonical-file outcome; it was not replayed.");
+  }
+
+  private async reconcileBatch(action: MemoryActionRecord): Promise<MemoryActionRecord> {
+    if (!action.batch || action.batch.length === 0) return this.failedReconciliation(action, "The approved memory batch has no durable member manifest; it was not replayed.");
+    const outcomes = await Promise.all(action.batch.map((item) => this.reconcileBatchItem(item, action.callId)));
+    if (outcomes.every((outcome) => outcome === "committed")) {
+      return {
+        ...action,
+        status: "committed",
+        decision: "allow-once",
+        reason: "Every approved memory batch member matched its canonical record or deletion evidence during restart reconciliation.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    if (outcomes.every((outcome) => outcome === "not-applied")) {
+      return {
+        ...action,
+        status: "denied",
+        decision: "unavailable",
+        reason: "No approved memory batch member had been applied when restart reconciliation ran; the batch was not replayed.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    return this.failedReconciliation(action, "The approved memory batch has a partial or ambiguous canonical outcome; it was not replayed.");
+  }
+
+  private async reconcileBatchItem(item: MemoryBatchActionItem, sourceId: string): Promise<"committed" | "not-applied" | "ambiguous"> {
+    if (item.operation === "remove") {
+      if (!item.recordId || !item.beforeContentHash) return "ambiguous";
+      const evidence = await this.latestDeletionEvidence(item.recordId, item.scope, item.sourcePath, item.beforeContentHash, sourceId);
+      if (!evidence) return "ambiguous";
+      const current = this.records.find((record) => this.isOwned(record) && record.id === item.recordId);
+      const currentFileHash = await this.canonicalFileHash(item.sourcePath);
+      if (!current && currentFileHash === evidence.afterFileHash) return "committed";
+      if (current?.contentHash === item.beforeContentHash && currentFileHash === evidence.beforeFileHash) return "not-applied";
+      return "ambiguous";
+    }
+    const matches = this.records.filter((record) =>
+      this.isOwned(record)
+      && record.scope === item.scope
+      && record.sourcePath === item.sourcePath
+      && record.provenance.sourceId === sourceId
+      && record.contentHash === item.afterContentHash
+      && (item.operation === "add" || record.id === item.recordId),
+    );
+    return matches.length === 1 ? "committed" : "ambiguous";
+  }
+
+  private failedReconciliation(action: MemoryActionRecord, reason: string): MemoryActionRecord {
+    return { ...action, status: "failed", reason, recordedAt: new Date().toISOString() };
+  }
+
+  private async latestDeletionEvidence(recordId: string, scope: MemoryScope, sourcePath: string, beforeContentHash: string, sourceId: string): Promise<MemoryDeletionEvidence | undefined> {
+    const evidence = await readJsonLines<MemoryDeletionEvidence>(this.deletionEvidencePath);
+    return evidence.reverse().find((candidate) =>
+      candidate.schemaVersion === 1
+      && candidate.recordId === recordId
+      && candidate.scope === scope
+      && candidate.sourcePath === sourcePath
+      && candidate.beforeContentHash === beforeContentHash
+      && candidate.sourceId === sourceId
+      && (candidate.status === "prepared" || candidate.status === "committed"),
+    );
+  }
+
+  private async canonicalFileHash(filePath: string): Promise<string> {
+    const relative = path.relative(this.memoryDir, path.resolve(filePath));
+    if (relative.startsWith("..") || path.isAbsolute(relative)) throw new ComputerNativeError("persistence", "Memory recovery referenced a path outside the managed memory directory.");
+    try {
+      return hashMemoryContent(await readFile(filePath, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return hashMemoryContent("");
+      throw new ComputerNativeError("persistence", "Could not inspect the canonical memory file during recovery.", { cause: error });
+    }
+  }
+
+  private createDeletionEvidence(record: StoredMemoryRecord, before: readonly StoredMemoryRecord[], after: readonly StoredMemoryRecord[], sourceId: string): MemoryDeletionEvidence {
+    const beforeFile = renderMemoryFile(record.sourcePath, before.filter((candidate) => candidate.sourcePath === record.sourcePath));
+    const afterFile = renderMemoryFile(record.sourcePath, after.filter((candidate) => candidate.sourcePath === record.sourcePath));
+    return {
+      schemaVersion: 1,
+      recordId: record.id,
+      scope: record.scope,
+      sourcePath: record.sourcePath,
+      beforeContentHash: record.contentHash,
+      sourceId,
+      beforeFileHash: hashMemoryContent(beforeFile),
+      afterFileHash: hashMemoryContent(afterFile),
+      status: "prepared",
+      recordedAt: new Date().toISOString(),
+    };
+  }
+
+  private async appendDeletionEvidence(evidence: MemoryDeletionEvidence): Promise<void> {
+    await appendJsonLine(this.deletionEvidencePath, evidence);
   }
 
   async close(): Promise<void> {
