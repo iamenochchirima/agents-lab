@@ -21,9 +21,14 @@ const PLATFORMS = [
   "dbos",
   "hatchet",
 ];
+const SELECTED_PLATFORMS = (process.env.AGENTLAB_LIVE_PLATFORM_IDS ?? "")
+  .split(",")
+  .map((platform) => platform.trim())
+  .filter(Boolean);
+const PLATFORMS_TO_CHECK = SELECTED_PLATFORMS.length > 0 ? SELECTED_PLATFORMS : PLATFORMS;
 
 test("live platform runners use the selected OpenRouter model", { skip: !process.env.AGENTLAB_RUN_LIVE_PLATFORM_UI }, async (t) => {
-  const availability = await Promise.all(PLATFORMS.map(checkPlatform));
+  const availability = await Promise.all(PLATFORMS_TO_CHECK.map(checkPlatform));
   const reachable = availability.filter((platform) => platform.reachable);
   const unavailable = availability.filter((platform) => !platform.reachable);
 

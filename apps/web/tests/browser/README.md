@@ -27,4 +27,5 @@ This opens each configured non-AWS platform runner in Chromium, selects
 provider/model, terminal status, run ID, and output. It queries each platform's health
 endpoint first; unavailable services are reported as diagnostics and are not claimed as
 validated. The test makes real provider requests and is intentionally skipped without
-the opt-in flag.
+the opt-in flag. Set `AGENTLAB_LIVE_PLATFORM_IDS=inngest` (comma-separated) to repeat
+one platform after its local dependency becomes available.
