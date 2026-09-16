@@ -29,6 +29,9 @@ import {
 } from "./json.js";
 import { assertTransition } from "../runtime/state.js";
 import { SessionLock } from "./lock.js";
+import { assertMutationTransition, type WorkspaceMutationRecord } from "../workspace/mutation.js";
+import { assertProcessTransition, type ProcessExecutionRecord } from "../process/process.js";
+import { assertBrowserActionTransition, type BrowserActionRecord } from "../browser/records.js";
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
@@ -174,7 +177,7 @@ export class SessionStore {
     return new TurnStore(this, directory, { ...record, userMessagePersisted: true });
   }
 
-  async recoverInterruptedTurns(): Promise<TurnResult[]> {
+  async recoverInterruptedTurns(reconcileMutation?: (record: WorkspaceMutationRecord) => Promise<WorkspaceMutationRecord>): Promise<TurnResult[]> {
     const turnsDirectory = path.join(this.sessionDirectory, "turns");
     await ensureDirectory(turnsDirectory);
     const entries = await readdir(turnsDirectory, { withFileTypes: true });
@@ -198,6 +201,45 @@ export class SessionStore {
         if (!(error instanceof ComputerNativeError) || !error.message.startsWith("Could not read")) throw error;
       }
       const turn = new TurnStore(this, directory, record);
+      for (const execution of await turn.readProcesses()) {
+        if (execution.status === "prepared") {
+          await turn.writeProcess({ ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The process approval ended when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() });
+        } else if (execution.status === "approved") {
+          await turn.writeProcess({ ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The approved process had not reached a launch record when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() });
+        } else if (execution.status === "running") {
+          await turn.writeProcess({ ...execution, status: "ambiguous", errorCode: "process-ambiguous", errorMessage: "The process was running when the parent process stopped; its outcome is unknown and the command was not replayed.", finishedAt: now(), recordedAt: now() });
+        }
+      }
+      for (const action of await turn.readBrowserActions()) {
+        if (action.status === "prepared") {
+          await turn.writeBrowserAction({
+            ...action,
+            status: "failed",
+            errorCode: "browser-approval-unavailable",
+            errorMessage: "The browser approval ended when the parent process stopped; the action was not replayed.",
+            finishedAt: now(),
+            recordedAt: now(),
+          });
+        } else if (action.status === "approved") {
+          await turn.writeBrowserAction({
+            ...action,
+            status: "failed",
+            errorCode: "browser-approval-unavailable",
+            errorMessage: "The approved browser action had not started when the parent process stopped; the action was not replayed.",
+            finishedAt: now(),
+            recordedAt: now(),
+          });
+        } else if (action.status === "running") {
+          await turn.writeBrowserAction({
+            ...action,
+            status: "ambiguous",
+            errorCode: "browser-ambiguous",
+            errorMessage: "The browser action was running when the parent process stopped; its outcome is unknown and the action was not replayed.",
+            finishedAt: now(),
+            recordedAt: now(),
+          });
+        }
+      }
       if (result) {
         if (!isTerminalStatus(record.state)) await turn.updateState(terminalStateFromResult(result));
         await turn.ensureTerminalEvent(result);
@@ -205,6 +247,19 @@ export class SessionStore {
       }
       if (isTerminalStatus(record.state)) {
         throw new ComputerNativeError("persistence", `Turn '${record.turnId}' is terminal but has no result record.`);
+      }
+      for (const mutation of await turn.readMutations()) {
+        if (mutation.status === "proposed") {
+          await turn.writeMutation({
+            ...mutation,
+            status: "denied",
+            decision: "unavailable",
+            errorCode: "approval-unavailable",
+            reason: "The process stopped before approval was decided; the mutation was not applied.",
+          });
+        } else if (reconcileMutation && (mutation.status === "approved" || mutation.status === "applying")) {
+          await turn.writeMutation(await reconcileMutation(mutation));
+        }
       }
       const hasUserMessage = transcript.some((message) => message.turnId === record.turnId && message.role === "user");
       if (!record.userMessagePersisted && !hasUserMessage) {
@@ -284,6 +339,114 @@ export class TurnStore {
     const rounds = await readJsonLines<RoundEvidence>(path.join(this.directory, "rounds.jsonl"));
     validateRoundOrder(rounds, this.sessionId, this.turnId);
     return rounds;
+  }
+
+  async writeMutation(record: WorkspaceMutationRecord): Promise<void> {
+    if (record.schemaVersion !== 1 || record.mutationId.trim().length === 0 || record.diff.length === 0) {
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid workspace mutation record.`);
+    }
+    const directory = path.join(this.directory, "mutations");
+    await ensureDirectory(directory);
+    const recordPath = path.join(directory, `${safePathSegment(record.mutationId, "Mutation ID")}.json`);
+    let previous: WorkspaceMutationRecord | undefined;
+    try {
+      await stat(recordPath);
+      previous = await readJson<WorkspaceMutationRecord>(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (previous) assertMutationTransition(previous, record);
+    await atomicWriteJson(recordPath, record);
+  }
+
+  async writeProcess(record: ProcessExecutionRecord): Promise<void> {
+    if (record.schemaVersion !== 1 || record.executionId.trim().length === 0 || record.callId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid process execution record.`);
+    }
+    const directory = path.join(this.directory, "executions");
+    await ensureDirectory(directory);
+    const recordPath = path.join(directory, `${safePathSegment(record.executionId, "Execution ID")}.json`);
+    let previous: ProcessExecutionRecord | undefined;
+    try {
+      await stat(recordPath);
+      previous = await readJson<ProcessExecutionRecord>(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (previous) {
+      try {
+        assertProcessTransition(previous, record);
+      } catch (error) {
+        throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+      }
+    }
+    await atomicWriteJson(recordPath, record);
+  }
+
+  async readProcesses(): Promise<ProcessExecutionRecord[]> {
+    const directory = path.join(this.directory, "executions");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' process records cannot be listed.`, { cause: error });
+    });
+    const records: ProcessExecutionRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
+      records.push(await readJson<ProcessExecutionRecord>(path.join(directory, entry.name)));
+    }
+    return records;
+  }
+
+  async writeBrowserAction(record: BrowserActionRecord): Promise<void> {
+    if (record.schemaVersion !== 1 || record.actionId.trim().length === 0 || record.callId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid browser action record.`);
+    }
+    if (record.turnId !== this.turnId) {
+      throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' does not belong to turn '${this.turnId}'.`);
+    }
+    const directory = path.join(this.directory, "browser-actions");
+    await ensureDirectory(directory);
+    const recordPath = path.join(directory, `${safePathSegment(record.actionId, "Browser action ID")}.json`);
+    let previous: BrowserActionRecord | undefined;
+    try {
+      await stat(recordPath);
+      previous = await readJson<BrowserActionRecord>(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (previous) {
+      try {
+        assertBrowserActionTransition(previous, record);
+      } catch (error) {
+        throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+      }
+    }
+    await atomicWriteJson(recordPath, record);
+  }
+
+  async readBrowserActions(): Promise<BrowserActionRecord[]> {
+    const directory = path.join(this.directory, "browser-actions");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' browser action records cannot be listed.`, { cause: error });
+    });
+    const records: BrowserActionRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
+      records.push(await readJson<BrowserActionRecord>(path.join(directory, entry.name)));
+    }
+    return records;
+  }
+
+  async readMutations(): Promise<WorkspaceMutationRecord[]> {
+    const directory = path.join(this.directory, "mutations");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' mutation records cannot be listed.`, { cause: error });
+    });
+    const records: WorkspaceMutationRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
+      records.push(await readJson<WorkspaceMutationRecord>(path.join(directory, entry.name)));
+    }
+    return records;
   }
 
   async updateState(nextState: Exclude<TurnStatus, "idle">): Promise<void> {

@@ -10,3 +10,9 @@ states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
 `interrupted`. Model and tool rounds are recorded before and after tool execution.
 Interrupted turns are recorded after restart and are never automatically resent because
 the provider or tool may have completed after the process stopped.
+
+The `run_command` tool is a foreground process turn within this lifecycle. Its approval
+wait pauses the turn deadline, while the process itself has separate timeout, output,
+argument, and termination-grace limits. Process events are persisted before the turn
+can be treated as complete; an interrupted prepared/approved process is closed without
+launch, and an interrupted running process is marked ambiguous rather than replayed.

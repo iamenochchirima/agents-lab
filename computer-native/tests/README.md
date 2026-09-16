@@ -6,8 +6,8 @@ They must run independently of Agent Harness Lab.
 The first terminal slice is validated from this package directory with:
 
 ```bash
-npm run typecheck
-npm test
+pnpm run typecheck
+pnpm test
 ```
 
 The test suite uses the deterministic local provider for repeatable success, failure,

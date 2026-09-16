@@ -1,6 +1,6 @@
-import type { TurnError } from "./contracts.js";
+import type { MutationErrorCode, ProcessErrorCode, TurnError } from "./contracts.js";
 
-export type ComputerNativeErrorCode = TurnError["code"] | "session-not-found" | "invalid-input" | "lock";
+export type ComputerNativeErrorCode = TurnError["code"] | "session-not-found" | "invalid-input" | "lock" | "browser";
 
 export class ComputerNativeError extends Error {
   readonly code: ComputerNativeErrorCode;
@@ -24,6 +24,26 @@ export class ToolExecutionError extends ComputerNativeError {
   constructor(message: string, options?: { cause?: unknown }) {
     super("tool", message, options);
     this.name = "ToolExecutionError";
+  }
+}
+
+export class ProcessExecutionError extends ToolExecutionError {
+  readonly processCode: ProcessErrorCode;
+
+  constructor(code: ProcessErrorCode, message: string, options?: { readonly cause?: unknown }) {
+    super(message, options);
+    this.name = "ProcessExecutionError";
+    this.processCode = code;
+  }
+}
+
+export class MutationError extends ComputerNativeError {
+  readonly mutationCode: MutationErrorCode;
+
+  constructor(code: MutationErrorCode, message: string, options?: { cause?: unknown }) {
+    super(code, message, options);
+    this.name = "MutationError";
+    this.mutationCode = code;
   }
 }
 

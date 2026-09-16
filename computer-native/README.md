@@ -21,24 +21,50 @@ The current slice is a standalone terminal agent with a small stateful terminal
 interface. It uses Node's standard readline interface, so there is no terminal UI
 dependency to install. The deterministic local provider is the default when no local
 development configuration is present. OpenRouter is available as the first real
-provider through the same model contract. The agent can inspect files through bounded,
-read-only workspace tools.
+provider through the same model contract. The agent can inspect files through bounded
+workspace tools and can propose one-file `apply_patch`, complete `write_file`,
+one-directory `mkdir`, empty-only non-recursive `delete_directory`, bounded quarantine
+inspection, recoverable `delete`/`restore`, bounded recoverable
+`delete_directory_tree`/`restore_directory`, or exact-token `purge_quarantine` changes
+that require interactive approval; regular-file `copy` and `move`/rename are also
+approval-gated and refuse destination replacement. A bounded `apply_patch_set` can
+prepare several file patches under one approval and records partial outcomes for
+reconciliation rather than claiming multi-file atomicity. When process mode is
+`approval`, `run_command` can execute one exact, non-interactive local executable and
+argument list after approval, with a sanitized environment, workspace-relative cwd,
+bounded output/time, no shell interpretation, and durable execution evidence. The
+workspace is not an operating-system sandbox, so the approval panel states that an
+approved command may access other host resources.
+
+The active browser slice adds an isolated local Chromium capability behind the same tool
+loop. It exposes browser session lifecycle, navigation, bounded snapshots with element
+references, waits/screenshots, approval-gated click/type/press actions, and controlled
+upload/download artifacts. Browser URLs are checked for unsafe schemes, credentials,
+private targets, metadata addresses, and unsafe redirects.
+The browser adapter is Playwright-backed, but Playwright is not exposed to the model.
+Timeouts, cancellation, and browser crashes have distinct outcomes; a crashed session
+is quarantined and cleaned rather than reused. Personal browser profiles, remote browser
+providers, arbitrary JavaScript, and page-dialog decisions remain later slices in the
+active implementation plan.
 
 ```bash
 cd computer-native
-npm install
-npm test
-npm run chat -- --message "Explain durable execution in one sentence."
+pnpm install
+pnpm test
+pnpm run chat
 ```
 
 The command creates a new session unless `--session <session-id>` is supplied. Set
 `--state-dir <path>` when the evidence should live somewhere other than the default
 `~/.agent-harness-lab/computer-native`.
 
-The interactive terminal shows the session, model, workspace, and evidence location.
-Type `/help` for commands. A line ending in `\\` continues into a multiline prompt;
-Ctrl-C cancels an active turn and Ctrl-D exits. The default workspace is the current
-directory; set `--workspace <path>` or `COMPUTER_NATIVE_WORKSPACE_ROOT` to change it.
+The interactive terminal opens as a compact agent console: a branded context panel shows
+the session, model, workspace, evidence location, and actual registered tools; the status
+ribbon and activity lane show factual turn/tool state; and the composer has a distinct
+prompt. Type `/help` for commands. A line ending in `\\` continues into a multiline
+prompt; Ctrl-C cancels an active turn and Ctrl-D exits. The default workspace is the
+current directory; set `--workspace <path>` or `COMPUTER_NATIVE_WORKSPACE_ROOT` to change
+it.
 
 For repeated local development, copy `.env.example` to `.env`, set the provider, model,
 and key, then run the normal command. The `.env` file is ignored by git and loaded
@@ -50,10 +76,11 @@ cp .env.example .env
 # COMPUTER_NATIVE_PROVIDER=openrouter
 # OPENROUTER_MODEL=cohere/north-mini-code:free
 # OPENROUTER_API_KEY=your-local-key
-npm run chat
+# COMPUTER_NATIVE_PROCESS_MODE=approval
+pnpm run chat
 ```
 
-Use `npm run start -- doctor` to test the configured provider/model without creating a
+Use `pnpm run start doctor` to test the configured provider/model without creating a
 chat session. The check is bounded by the configured first-event and total-request
 deadlines and reports only safe diagnostics.
 

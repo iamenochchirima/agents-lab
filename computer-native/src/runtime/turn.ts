@@ -1,10 +1,16 @@
 import type { AppConfig } from "../config/config.js";
 import { buildInitialContext } from "../context/context.js";
 import type { ModelProvider } from "../models/provider.js";
-import { ToolRegistry, type ToolExecutionResult } from "../tools/registry.js";
+import { ToolRegistry, type ToolExecutionContext, type ToolExecutionResult } from "../tools/registry.js";
+import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionRecord } from "../process/process.js";
+import type { ProcessToolEvent } from "../tools/registry.js";
+import type { BrowserActionRecord, BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolErrorCode, BrowserToolEvent } from "../browser/index.js";
+import { LocalProcessRunner } from "../process/local-runner.js";
+import { ProcessSecurityPolicy } from "../security/process-policy.js";
 import { Workspace } from "../workspace/workspace.js";
+import type { MutationApproval, MutationEvent, WorkspaceMutationRecord } from "../workspace/mutation.js";
 import type { SessionStore } from "../persistence/session-store.js";
-import { ComputerNativeError, ModelProviderError, safeErrorMessage } from "./errors.js";
+import { ComputerNativeError, ModelProviderError, redactSecrets, safeErrorMessage } from "./errors.js";
 import type {
   ModelMessage,
   ModelToolCall,
@@ -16,15 +22,28 @@ import type {
   TurnResult,
 } from "./contracts.js";
 
+function bounded(value: string, maxBytes: number): string {
+  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
+  const marker = "\n[diagnostic truncated]";
+  const bytes = Buffer.from(value, "utf8");
+  return `${bytes.subarray(0, Math.max(0, maxBytes - Buffer.byteLength(marker, "utf8"))).toString("utf8")}${marker}`;
+}
+
 export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxToolOutputBytes">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey">;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
   readonly onText?: (text: string) => void;
   readonly onEvent?: (event: TurnEvent) => void;
+  readonly approveMutation?: MutationApproval;
+  readonly onMutation?: (event: MutationEvent) => void | Promise<void>;
+  readonly approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>;
+  readonly onProcess?: (event: ProcessToolEvent) => void | Promise<void>;
+  readonly approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>;
+  readonly onBrowser?: (event: BrowserToolEvent) => void | Promise<void>;
 }
 
 interface AbortContext {
@@ -32,6 +51,8 @@ interface AbortContext {
   readonly didTimeout: () => boolean;
   readonly didFirstEventTimeout: () => boolean;
   readonly didCancel: () => boolean;
+  readonly pauseTotalDeadline: () => void;
+  readonly resumeTotalDeadline: () => void;
   beginModelRound(): void;
   markFirstEvent(): void;
   dispose(): void;
@@ -43,10 +64,40 @@ function combinedSignal(external: AbortSignal | undefined, timeoutMs: number, fi
   let firstEventTimeout = false;
   let cancelled = false;
   let firstEventTimer: NodeJS.Timeout | undefined;
-  const totalTimer = setTimeout(() => {
+  let totalTimer: NodeJS.Timeout | undefined;
+  let totalRemainingMs = timeoutMs;
+  let totalTimerStartedAt = Date.now();
+  let totalPaused = false;
+  let totalExpired = false;
+  const expireTotal = () => {
+    if (totalExpired) return;
+    totalExpired = true;
+    if (totalTimer) clearTimeout(totalTimer);
+    totalTimer = undefined;
     timeout = true;
     controller.abort("timeout");
-  }, timeoutMs);
+  };
+  const scheduleTotal = () => {
+    if (totalPaused || totalExpired) return;
+    totalTimerStartedAt = Date.now();
+    totalTimer = setTimeout(expireTotal, totalRemainingMs);
+  };
+  scheduleTotal();
+  const pauseTotalDeadline = () => {
+    if (totalPaused || totalExpired) return;
+    totalPaused = true;
+    if (totalTimer) {
+      clearTimeout(totalTimer);
+      totalTimer = undefined;
+      totalRemainingMs = Math.max(0, totalRemainingMs - (Date.now() - totalTimerStartedAt));
+    }
+  };
+  const resumeTotalDeadline = () => {
+    if (!totalPaused || totalExpired) return;
+    totalPaused = false;
+    if (totalRemainingMs === 0) expireTotal();
+    else scheduleTotal();
+  };
   const onExternalAbort = () => {
     cancelled = true;
     controller.abort("cancelled");
@@ -71,10 +122,12 @@ function combinedSignal(external: AbortSignal | undefined, timeoutMs: number, fi
     didTimeout: () => timeout,
     didFirstEventTimeout: () => firstEventTimeout,
     didCancel: () => cancelled,
+    pauseTotalDeadline,
+    resumeTotalDeadline,
     beginModelRound,
     markFirstEvent,
     dispose: () => {
-      clearTimeout(totalTimer);
+      if (totalTimer) clearTimeout(totalTimer);
       if (firstEventTimer) clearTimeout(firstEventTimer);
       external?.removeEventListener("abort", onExternalAbort);
     },
@@ -119,17 +172,61 @@ function metrics(startedAt: string, modelRequestCount: number, toolCallCount: nu
   };
 }
 
-async function executeToolWithDeadline(registry: ToolRegistry, call: ModelToolCall, durationMs: number, signal: AbortSignal): Promise<ToolExecutionResult> {
+async function executeToolWithDeadline(
+  registry: ToolRegistry,
+  call: ModelToolCall,
+  durationMs: number,
+  signal: AbortSignal,
+  context: Omit<ToolExecutionContext, "signal">,
+): Promise<ToolExecutionResult> {
+  const toolController = new AbortController();
+  const onParentAbort = () => toolController.abort(signal.reason);
+  if (signal.aborted) toolController.abort(signal.reason);
+  else signal.addEventListener("abort", onParentAbort, { once: true });
   let timer: NodeJS.Timeout | undefined;
   let onCancelled: (() => void) | undefined;
+  let remainingMs = durationMs;
+  let timerStartedAt = 0;
+  let paused = false;
+  let timedOut = false;
+  let resolveTimeout: (() => void) | undefined;
+  const expire = (): void => {
+    if (timedOut) return;
+    timedOut = true;
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    toolController.abort("tool-timeout");
+    resolveTimeout?.();
+  };
+  const schedule = (): void => {
+    if (paused || timedOut) return;
+    timerStartedAt = Date.now();
+    timer = setTimeout(expire, remainingMs);
+  };
+  const pauseDeadline = (): void => {
+    if (paused || timedOut) return;
+    paused = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+      remainingMs = Math.max(0, remainingMs - (Date.now() - timerStartedAt));
+    }
+  };
+  const resumeDeadline = (): void => {
+    if (!paused || timedOut) return;
+    paused = false;
+    if (remainingMs === 0) expire();
+    else schedule();
+  };
   const timeout = new Promise<ToolExecutionResult>((resolve) => {
-    timer = setTimeout(() => resolve({
-      callId: call.callId,
-      name: call.name,
-      ok: false,
-      content: `Tool error: '${call.name}' exceeded the ${durationMs}ms tool deadline.`,
-      summary: `Timed out after ${durationMs}ms.`,
-    }), durationMs);
+    resolveTimeout = () => resolve({
+        callId: call.callId,
+        name: call.name,
+        ok: false,
+        content: `Tool error: '${call.name}' exceeded the ${durationMs}ms tool deadline.`,
+        summary: `Timed out after ${durationMs}ms.`,
+      });
+    schedule();
   });
   const cancellation = new Promise<never>((_, reject) => {
     if (signal.aborted) {
@@ -139,25 +236,326 @@ async function executeToolWithDeadline(registry: ToolRegistry, call: ModelToolCa
     onCancelled = () => reject(cancellationError());
     signal.addEventListener("abort", onCancelled, { once: true });
   });
+  const execution = registry.execute(call, {
+    ...context,
+    signal: toolController.signal,
+    pauseDeadline,
+    resumeDeadline,
+  });
   try {
-    return await Promise.race([registry.execute(call), timeout, cancellation]);
+    const result = await Promise.race([execution, timeout, cancellation]);
+    if (call.name === "run_command" && timedOut) return await execution;
+    return result;
+  } catch (error) {
+    if (call.name === "run_command" && signal.aborted) await execution.catch(() => undefined);
+    throw error;
   } finally {
     if (timer) clearTimeout(timer);
     if (onCancelled) signal.removeEventListener("abort", onCancelled);
+    signal.removeEventListener("abort", onParentAbort);
   }
 }
 
 export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
   const startedAt = new Date().toISOString();
   const history = await options.session.readTranscript();
-  const tools = options.tools ?? new ToolRegistry(
-    await Workspace.open(options.config.workspaceRoot, {
+  let tools: ToolRegistry;
+  if (options.tools) {
+    tools = options.tools;
+  } else {
+    const workspace = await Workspace.open(options.config.workspaceRoot, {
       maxFileBytes: options.config.maxFileBytes,
       maxDirectoryEntries: options.config.maxDirectoryEntries,
-    }),
-    options.config.maxToolOutputBytes,
-  );
+      maxTreeEntries: options.config.maxTreeEntries,
+      maxTreeBytes: options.config.maxTreeBytes,
+      maxTreeDepth: options.config.maxTreeDepth,
+    });
+    const processPolicy = options.config.processMode === "approval"
+      ? new ProcessSecurityPolicy({
+          workspace: workspace.policy,
+          limits: {
+            timeoutMs: options.config.processDurationMs,
+            terminationGraceMs: options.config.processTerminationGraceMs,
+            maxOutputBytes: options.config.processOutputBytes,
+            maxArgumentCount: options.config.processArgumentCount,
+            maxArgumentBytes: options.config.processArgumentBytes,
+          },
+        })
+      : undefined;
+    tools = new ToolRegistry(
+      workspace,
+      options.config.maxToolOutputBytes,
+      processPolicy ? { policy: processPolicy, runner: new LocalProcessRunner((prepared) => processPolicy.verify(prepared)), redactionSecrets: options.config.openRouterApiKey ? [options.config.openRouterApiKey] : [] } : undefined,
+    );
+  }
   const turn = await options.session.admitTurn(options.userPrompt, options.provider.provider, options.provider.model);
+  const recordMutation = async (event: MutationEvent): Promise<void> => {
+    const request = event.request;
+    const decision = event.type === "approval_decided" ? event.decision.decision : undefined;
+    const reason = event.type === "approval_decided" && "reason" in event.decision
+      ? event.decision.reason
+      : event.type === "failed" ? event.reason : undefined;
+    const errorCode = event.type === "failed"
+      ? event.code
+      : event.type === "approval_decided"
+        ? event.decision.decision === "deny"
+          ? "approval-denied"
+          : event.decision.decision === "unavailable"
+            ? "approval-unavailable"
+            : undefined
+        : undefined;
+    const journal = event.type === "applying" || event.type === "progress" || event.type === "failed" || event.type === "committed" ? event.journal : request.journal;
+    const record: WorkspaceMutationRecord = {
+      schemaVersion: 1,
+      mutationId: request.mutationId,
+      ...(request.callId ? { callId: request.callId } : {}),
+      operation: request.operation,
+      risk: request.risk,
+      ...(request.paths ? { paths: request.paths } : {}),
+      ...(request.members ? { members: request.members } : {}),
+      ...(journal ? { journal } : {}),
+      path: request.path,
+      ...(request.beforeHash ? { beforeHash: request.beforeHash } : {}),
+      ...(request.afterHash ? { afterHash: request.afterHash } : {}),
+      ...(request.quarantinePath ? { quarantinePath: request.quarantinePath } : {}),
+      ...(request.sourceMutationId ? { sourceMutationId: request.sourceMutationId } : {}),
+      ...(request.sourcePath ? { sourcePath: request.sourcePath } : {}),
+      ...(request.sourceHash ? { sourceHash: request.sourceHash } : {}),
+      ...(request.manifestHash ? { manifestHash: request.manifestHash } : {}),
+      ...(request.entryCount !== undefined ? { entryCount: request.entryCount } : {}),
+      ...(request.totalBytes !== undefined ? { totalBytes: request.totalBytes } : {}),
+      ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+      addedLines: request.addedLines,
+      removedLines: request.removedLines,
+      diff: request.diff,
+      status: event.type === "proposed"
+        ? "proposed"
+        : event.type === "applying" || event.type === "progress"
+          ? "applying"
+          : event.type === "committed"
+            ? "committed"
+            : event.type === "failed"
+              ? event.code === "reconciliation-required" ? "reconciliation_required" : "failed"
+              : decision === "allow-once"
+                ? "approved"
+                : "denied",
+      ...(decision ? { decision } : {}),
+      ...(errorCode ? { errorCode } : {}),
+      ...(reason ? { reason } : {}),
+      ...(event.type === "committed" && event.bytesWritten !== undefined ? { bytesWritten: event.bytesWritten } : {}),
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeMutation(record);
+    await options.onMutation?.(event);
+  };
+  const recordProcess = async (event: ProcessToolEvent): Promise<void> => {
+    const request = event.request;
+    const base = {
+      schemaVersion: 1 as const,
+      executionId: request.executionId,
+      callId: request.callId,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      command: request.command,
+      displayArgs: request.displayArgs,
+      cwd: request.cwd,
+      executablePath: request.executablePath,
+      environmentProfile: request.environmentProfile,
+      environmentKeys: request.environmentKeys,
+      limits: request.limits,
+      argvHash: request.argvHash,
+    };
+    let record: ProcessExecutionRecord | undefined;
+    if (event.type === "prepared") {
+      record = { ...base, status: "prepared", recordedAt: new Date().toISOString() };
+    } else if (event.type === "approval_decided") {
+      const denied = event.decision.decision !== "allow-once";
+      record = {
+        ...base,
+        status: denied ? "failed" : "approved",
+        decision: event.decision.decision,
+        ...(denied ? {
+          errorCode: event.decision.decision === "deny" ? "process-approval-denied" as const : "process-approval-unavailable" as const,
+          errorMessage: event.decision.reason ?? "The process was not approved.",
+          finishedAt: new Date().toISOString(),
+        } : {}),
+        recordedAt: new Date().toISOString(),
+      };
+    } else if (event.type === "started") {
+      record = {
+        ...base,
+        status: "running",
+        decision: "allow-once",
+        pid: event.pid,
+        startedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+      };
+    } else if (event.type === "completed") {
+      const result = event.result;
+      record = {
+        ...base,
+        status: result.state,
+        decision: "allow-once",
+        ...(result.pid !== undefined ? { pid: result.pid } : {}),
+        stdout: redactSecrets(result.stdout, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]),
+        stderr: redactSecrets(result.stderr, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]),
+        stdoutBytes: result.stdoutBytes,
+        stderrBytes: result.stderrBytes,
+        outputTruncated: result.outputTruncated,
+        durationMs: result.durationMs,
+        exitCode: result.exitCode,
+        signal: result.signal,
+        terminationConfirmed: result.terminationConfirmed,
+        ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+        ...(result.errorMessage ? { errorMessage: result.errorMessage } : {}),
+        startedAt: new Date(Date.now() - result.durationMs).toISOString(),
+        finishedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    if (record) {
+      await turn.writeProcess(record);
+      if (event.type !== "output") {
+        const lifecycleType = event.type === "prepared"
+          ? "ProcessPrepared"
+          : event.type === "approval_decided"
+            ? "ProcessApprovalDecided"
+            : event.type === "started"
+              ? "ProcessStarted"
+              : event.type === "terminating"
+                ? "ProcessTerminating"
+                : "ProcessCompleted";
+        const payload = event.type === "approval_decided"
+          ? { executionId: request.executionId, callId: request.callId, decision: event.decision.decision }
+          : event.type === "started"
+            ? { executionId: request.executionId, callId: request.callId, pid: event.pid }
+            : event.type === "terminating"
+              ? { executionId: request.executionId, callId: request.callId, reason: event.reason }
+              : event.type === "completed"
+                ? { executionId: request.executionId, callId: request.callId, status: event.result.state, errorCode: event.result.errorCode ?? null, stdoutBytes: event.result.stdoutBytes, stderrBytes: event.result.stderrBytes }
+                : { executionId: request.executionId, callId: request.callId, cwd: request.cwd, command: request.command };
+        await turn.appendEvent(lifecycleType, payload);
+      }
+    }
+    await options.onProcess?.(event);
+  };
+  const recordBrowser = async (event: BrowserToolEvent): Promise<void> => {
+    if (event.type === "artifact") {
+      await turn.appendEvent("BrowserArtifactCreated", {
+        artifactId: event.artifact.artifactId,
+        kind: event.artifact.kind,
+        sessionId: event.artifact.sessionId,
+        tabId: event.artifact.tabId,
+        path: event.artifact.path,
+        mimeType: event.artifact.mimeType,
+        byteSize: event.artifact.byteSize,
+        createdAt: event.artifact.createdAt,
+        ...(event.artifact.width !== undefined ? { width: event.artifact.width } : {}),
+        ...(event.artifact.height !== undefined ? { height: event.artifact.height } : {}),
+        fileName: event.artifact.fileName ?? null,
+      });
+      await options.onBrowser?.(event);
+      return;
+    }
+    const request = event.request;
+    const secrets = [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""];
+    const base = {
+      schemaVersion: 1 as const,
+      actionId: request.actionId,
+      callId: request.callId,
+      sessionId: request.sessionId,
+      turnId: turn.turnId,
+      tabId: request.tabId,
+      action: request.action,
+      reference: request.reference,
+      documentId: request.documentId,
+      ...(request.text !== undefined ? { text: redactSecrets(request.text, secrets) } : {}),
+      ...(request.key !== undefined ? { key: redactSecrets(request.key, secrets) } : {}),
+      ...(request.path !== undefined ? { path: redactSecrets(request.path, secrets) } : {}),
+      ...(request.maxBytes !== undefined ? { maxBytes: request.maxBytes } : {}),
+      ...(request.dialog ? { dialog: {
+        type: request.dialog.type,
+        message: bounded(redactSecrets(request.dialog.message, secrets), 2_000),
+      } } : {}),
+      actionHash: request.actionHash,
+    };
+    const dialog = event.type === "completed" && event.dialog ? {
+      type: event.dialog.type,
+      message: redactSecrets(event.dialog.message, secrets),
+    } : undefined;
+    let record: BrowserActionRecord | undefined;
+    if (event.type === "prepared") {
+      record = { ...base, status: "prepared", recordedAt: new Date().toISOString() };
+    } else if (event.type === "approval_decided") {
+      const denied = event.decision.decision !== "allow-once";
+      record = {
+        ...base,
+        status: denied ? "failed" : "approved",
+        decision: event.decision.decision,
+        ...(denied ? {
+          errorCode: event.decision.decision === "deny" ? "browser-approval-denied" as const : "browser-approval-unavailable" as const,
+          errorMessage: redactSecrets(event.decision.reason ?? "The browser action was not approved.", secrets),
+          finishedAt: new Date().toISOString(),
+        } : {}),
+        recordedAt: new Date().toISOString(),
+      };
+    } else if (event.type === "started") {
+      record = {
+        ...base,
+        status: "running",
+        decision: "allow-once",
+        startedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+      };
+    } else if (event.type === "completed") {
+      const errorCode = event.errorCode as BrowserToolErrorCode | undefined;
+      const status = event.ok
+        ? "completed" as const
+        : errorCode === "browser-cancelled"
+          ? "cancelled" as const
+          : errorCode === "browser-ambiguous"
+            ? "ambiguous" as const
+          : "failed" as const;
+      record = {
+        ...base,
+        status,
+        decision: "allow-once",
+        summary: redactSecrets(event.summary, secrets),
+        ...(errorCode ? { errorCode } : {}),
+        ...(event.underlyingErrorCode ? { underlyingErrorCode: event.underlyingErrorCode } : {}),
+        ...(dialog ? { dialog } : {}),
+        ...(event.dialogDecision ? { dialogDecision: event.dialogDecision } : {}),
+        ...(event.cancellationConfirmed !== undefined ? { cancellationConfirmed: event.cancellationConfirmed } : {}),
+        ...(event.diagnostic ? { diagnostic: {
+          name: bounded(redactSecrets(event.diagnostic.name, secrets), 128),
+          message: bounded(redactSecrets(event.diagnostic.message, secrets), 2_000),
+        } } : {}),
+        ...(!event.ok ? { errorMessage: redactSecrets(event.summary, secrets) } : {}),
+        finishedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    if (record) {
+      await turn.writeBrowserAction(record);
+      const lifecycleType = event.type === "prepared"
+        ? "BrowserPrepared"
+        : event.type === "approval_decided"
+          ? "BrowserApprovalDecided"
+          : event.type === "started"
+            ? "BrowserStarted"
+            : "BrowserCompleted";
+      const payload = event.type === "approval_decided"
+        ? { actionId: request.actionId, callId: request.callId, decision: event.decision.decision }
+        : event.type === "completed"
+          ? { actionId: request.actionId, callId: request.callId, status: record.status, errorCode: event.errorCode ?? null, underlyingErrorCode: event.underlyingErrorCode ?? null, ...(dialog ? { dialog } : {}), ...(event.dialogDecision ? { dialogDecision: event.dialogDecision } : {}), ...(event.cancellationConfirmed !== undefined ? { cancellationConfirmed: event.cancellationConfirmed } : {}), ...(event.diagnostic ? { diagnostic: {
+            name: bounded(redactSecrets(event.diagnostic.name, secrets), 128),
+            message: bounded(redactSecrets(event.diagnostic.message, secrets), 2_000),
+          } } : {}) }
+          : { actionId: request.actionId, callId: request.callId, sessionId: request.sessionId, tabId: request.tabId, action: request.action };
+      await turn.appendEvent(lifecycleType, payload);
+    }
+    await options.onBrowser?.(event);
+  };
   const request = buildInitialContext({
     sessionId: turn.sessionId,
     turnId: turn.turnId,
@@ -174,6 +572,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
 
   const abort = combinedSignal(options.signal, options.config.timeoutMs, options.config.firstEventTimeoutMs);
   const messages: ModelMessage[] = [...request.messages];
+  let processCalls = 0;
   let response = "";
   let usage: ModelUsage | undefined;
   let modelRequestCount = 0;
@@ -234,6 +633,8 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       messages.push(modelMessageForAssistant(roundText.join(""), toolCalls));
       for (const call of toolCalls) {
         toolCallCount += 1;
+        const processCallLimitReached = call.name === "run_command" && processCalls >= options.config.processCallsPerTurn;
+        if (call.name === "run_command") processCalls += 1;
         options.onEvent?.({ type: "tool_started", round, call });
         await turn.appendRound({
           schemaVersion: 1,
@@ -246,7 +647,21 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           toolName: call.name,
           payload: { argumentsJson: call.argumentsJson },
         });
-        const result = await executeToolWithDeadline(tools, call, options.config.maxToolDurationMs, abort.signal);
+        const toolDeadline = call.name === "run_command"
+          ? Math.max(options.config.maxToolDurationMs, options.config.processDurationMs + options.config.processTerminationGraceMs + 1_000)
+          : options.config.maxToolDurationMs;
+        const result = await executeToolWithDeadline(tools, call, toolDeadline, abort.signal, {
+          approvalTimeoutMs: options.config.approvalTimeoutMs,
+          pauseTurnDeadline: abort.pauseTotalDeadline,
+          resumeTurnDeadline: abort.resumeTotalDeadline,
+          approveMutation: options.approveMutation,
+          onMutation: recordMutation,
+          approveProcess: options.approveProcess,
+          onProcess: recordProcess,
+          approveBrowser: options.approveBrowser,
+          onBrowser: recordBrowser,
+          processCallLimitReached,
+        });
         await turn.appendRound({
           schemaVersion: 1,
           sessionId: turn.sessionId,
@@ -256,7 +671,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           recordedAt: new Date().toISOString(),
           callId: call.callId,
           toolName: call.name,
-          payload: { ok: result.ok, summary: result.summary, contentBytes: Buffer.byteLength(result.content, "utf8") },
+          payload: { ok: result.ok, summary: result.summary, contentBytes: Buffer.byteLength(result.content, "utf8"), mutationId: result.mutationId ?? null, errorCode: result.errorCode ?? null },
         });
         options.onEvent?.({ type: "tool_completed", round, callId: call.callId, name: call.name, ok: result.ok, summary: result.summary });
         messages.push({ role: "tool", content: result.content, toolCallId: call.callId, name: call.name });

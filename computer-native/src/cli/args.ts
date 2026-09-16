@@ -1,4 +1,5 @@
 import type { DeterministicBehavior, ProviderName } from "../runtime/contracts.js";
+import type { ProcessMode } from "../config/config.js";
 import { ComputerNativeError } from "../runtime/errors.js";
 
 export interface CliOptions {
@@ -9,6 +10,9 @@ export interface CliOptions {
   readonly model?: string;
   readonly timeoutMs?: number;
   readonly firstEventTimeoutMs?: number;
+  readonly approvalTimeoutMs?: number;
+  readonly processMode?: ProcessMode;
+  readonly processCallsPerTurn?: number;
   readonly workspaceRoot?: string;
   readonly deterministicBehavior?: DeterministicBehavior;
   readonly deterministicDelayMs?: number;
@@ -46,6 +50,9 @@ export function parseArgs(args: readonly string[]): CliOptions {
     model?: string;
     timeoutMs?: number;
     firstEventTimeoutMs?: number;
+    approvalTimeoutMs?: number;
+    processMode?: ProcessMode;
+    processCallsPerTurn?: number;
     workspaceRoot?: string;
     deterministicBehavior?: DeterministicBehavior;
     deterministicDelayMs?: number;
@@ -85,6 +92,21 @@ export function parseArgs(args: readonly string[]): CliOptions {
         break;
       case "--first-event-timeout-ms":
         result.firstEventTimeoutMs = integer(nextValue(args, index, "--first-event-timeout-ms"), "--first-event-timeout-ms");
+        index += 1;
+        break;
+      case "--approval-timeout-ms":
+        result.approvalTimeoutMs = integer(nextValue(args, index, "--approval-timeout-ms"), "--approval-timeout-ms");
+        index += 1;
+        break;
+      case "--process-mode": {
+        const value = nextValue(args, index, "--process-mode");
+        index += 1;
+        if (value !== "deny" && value !== "approval") throw new ComputerNativeError("invalid-input", "--process-mode must be deny or approval.");
+        result.processMode = value;
+        break;
+      }
+      case "--process-calls-per-turn":
+        result.processCallsPerTurn = integer(nextValue(args, index, "--process-calls-per-turn"), "--process-calls-per-turn");
         index += 1;
         break;
       case "--workspace":
@@ -134,7 +156,10 @@ Options:
   --model <provider/model>   Model identifier
   --timeout-ms <milliseconds>
   --first-event-timeout-ms <milliseconds>
-  --workspace <path>         Workspace root for read-only inspection tools
+  --approval-timeout-ms <milliseconds>
+  --process-mode <deny|approval>
+  --process-calls-per-turn <count>
+  --workspace <path>         Workspace root for inspection and approved file changes
   --deterministic-behavior <mode>
                              success, failure, or timeout
   --deterministic-delay-ms <milliseconds>

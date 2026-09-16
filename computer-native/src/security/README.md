@@ -10,5 +10,17 @@ because both are installed in the same process.
 
 The current workspace policy resolves relative paths against a configured workspace root,
 rejects traversal and symlink escapes, and applies file and directory limits before a
-read-only tool can access the filesystem. A workspace root is an authorization boundary,
-not an automatic process sandbox.
+tool can access the filesystem. Directory-tree mutations also enforce aggregate entry,
+byte, and depth limits before approval. Mutation targets additionally require an existing,
+regular-file parent path, reject symbolic-link targets and parents, distinguish new
+paths from existing files, and reserve the workspace-local quarantine and transaction
+directories used by recoverable deletion and journaled patch sets. These internal
+directories are hidden from normal listings and cannot be addressed by model paths. A
+workspace root is an authorization boundary, not an automatic
+process sandbox. The process policy authorizes only the explicit `run_command` shape:
+an executable plus an argument vector, an approved workspace-relative working
+directory, an allowlisted environment, and bounded timeout/output/argument limits. It
+rejects shell grammar because the runner uses `shell: false`; an approved process can
+still access host resources available to that executable, so the approval warning is
+deliberately explicit. Executable and working-directory identity are rechecked after
+approval, and unconfirmed termination is recorded as ambiguous rather than successful.

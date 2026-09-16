@@ -10,12 +10,16 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "npm run build && node --test dist/tests/*.test.js",
-    "chat": "npm run build && node dist/src/cli/main.js chat",
+    "test": "pnpm run build && node --test dist/tests/*.test.js",
+    "coverage": "pnpm run build && node --test --experimental-test-coverage dist/tests/*.test.js",
+    "chat": "pnpm run build && node dist/src/cli/main.js chat",
     "start": "node dist/src/cli/main.js"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "playwright": "1.55.0"
   }
 }

@@ -4,6 +4,26 @@ export type TurnId = string & { readonly __brand: "TurnId" };
 export type ProviderName = "deterministic" | "openrouter";
 export type DeterministicBehavior = "success" | "failure" | "timeout";
 
+export type MutationErrorCode =
+  | "mutation-invalid"
+  | "approval-denied"
+  | "approval-unavailable"
+  | "mutation-stale"
+  | "mutation-failed"
+  | "reconciliation-required";
+
+export type ProcessErrorCode =
+  | "process-exit"
+  | "process-signal"
+  | "process-start"
+  | "process-timeout"
+  | "process-output-limit"
+  | "process-cancelled"
+  | "process-ambiguous"
+  | "process-approval-denied"
+  | "process-approval-unavailable"
+  | "process-policy";
+
 export type TurnStatus =
   | "idle"
   | "submitting"
@@ -92,8 +112,10 @@ export interface TurnError {
     | "cancelled"
     | "interrupted"
     | "tool"
+    | ProcessErrorCode
     | "workspace"
-    | "round-limit";
+    | "round-limit"
+    | MutationErrorCode;
   readonly message: string;
 }
 
@@ -117,6 +139,16 @@ export type LifecycleEventType =
   | "TurnStarted"
   | "ModelRequested"
   | "ModelCompleted"
+  | "ProcessPrepared"
+  | "ProcessApprovalDecided"
+  | "ProcessStarted"
+  | "ProcessTerminating"
+  | "ProcessCompleted"
+  | "BrowserPrepared"
+  | "BrowserApprovalDecided"
+  | "BrowserStarted"
+  | "BrowserCompleted"
+  | "BrowserArtifactCreated"
   | "TurnCompleted"
   | "TurnFailed"
   | "TurnCancelled"

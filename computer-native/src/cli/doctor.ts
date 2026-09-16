@@ -27,6 +27,9 @@ async function probeProvider(config: AppConfig): Promise<DoctorResult> {
   await Workspace.open(config.workspaceRoot, {
     maxFileBytes: config.maxFileBytes,
     maxDirectoryEntries: config.maxDirectoryEntries,
+    maxTreeEntries: config.maxTreeEntries,
+    maxTreeBytes: config.maxTreeBytes,
+    maxTreeDepth: config.maxTreeDepth,
   });
   const request: ModelRequest = {
     sessionId: asSessionId("session_doctor"),
@@ -81,6 +84,20 @@ export async function runDoctor(config: AppConfig, output: Writable): Promise<bo
   output.write(`provider: ${config.provider}\n`);
   output.write(`model: ${config.model}\n`);
   output.write(`workspace: ${config.workspaceRoot}\n`);
+  output.write(`browser: ${config.browserEnabled ? "enabled" : "disabled"}\n`);
+  output.write(`model/tool rounds: ${config.maxModelToolRounds}\n`);
+  output.write(`browser action timeout: ${config.browserActionTimeoutMs}ms\n`);
+  output.write(`browser session timeout: ${config.browserSessionTimeoutMs}ms\n`);
+  output.write(`browser read-only retries: ${config.browserReadRetryCount}\n`);
+  output.write(`browser max tabs: ${config.browserMaxTabs}\n`);
+  output.write(`browser profile retention: ${config.browserProfileRetentionMs}ms\n`);
+  output.write(`browser artifact retention: ${config.browserArtifactRetentionMs}ms\n`);
+  output.write(`browser cleanup maximum: ${config.browserCleanupMaxEntries} entries\n`);
+  output.write(`browser wait maximum: ${config.browserWaitMaxMs}ms\n`);
+  output.write(`browser snapshot: ${config.browserSnapshotMaxChars} chars, ${config.browserMaxSnapshotReferences} references\n`);
+  output.write(`browser screenshots: ${config.browserScreenshotMaxBytes} bytes, ${config.browserScreenshotMaxWidth}x${config.browserScreenshotMaxHeight} pixels\n`);
+  output.write(`browser file artifacts: ${config.browserUploadMaxBytes} upload bytes, ${config.browserDownloadMaxBytes} download bytes\n`);
+  output.write(`browser local hosts: ${config.browserAllowedLocalHosts.join(",") || "none"}\n`);
   try {
     const result = await probeProvider(config);
     if (!result.ok) {

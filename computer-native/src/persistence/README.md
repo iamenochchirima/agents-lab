@@ -13,6 +13,8 @@ sessions/<session-id>/
   turns/<turn-id>/
     turn.json
     events.jsonl
+    executions/<execution-id>.json
+    browser-actions/<action-id>.json
     result.json
 ```
 
@@ -20,3 +22,23 @@ JSON records are written atomically. Transcript and event records append one JSO
 per line. A turn record is created before its user message is appended, so a restart can
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
+
+If an interrupted turn contains a mutation that was still `proposed`, recovery closes
+that approval lifecycle as `denied` with `approval-unavailable`; the filesystem proposal
+is never replayed. Mutations that reached `approved` or `applying` use their operation-
+specific reconciliation checks instead.
+
+Local process executions use the same atomic per-operation record pattern. The record
+contains the exact approved identity and bounded outcome, and its state transition is
+validated before replacement. Restart recovery never starts a process: prepared and
+approved records become approval-unavailable, while running records become ambiguous.
+
+Browser actions use the same immutable-identity and one-way-transition pattern. The
+record stores the session, tab, document, reference, action hash, approval decision,
+bounded outcome, and terminal status. Browser actions that were prepared or approved
+when the parent stopped are closed as approval-unavailable; actions that were running
+become ambiguous and are never replayed. Known configured secrets are redacted before
+browser action records and lifecycle payloads are written. Screenshot and download
+artifacts also emit a durable `BrowserArtifactCreated` event containing only managed
+path, MIME type, size, identity, and timestamp metadata; artifact contents are not
+copied into turn evidence.
