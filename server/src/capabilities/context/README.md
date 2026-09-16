@@ -30,6 +30,14 @@ The file-backed implementation currently stores one session per directory:
   snapshots/<snapshot-id>.json # immutable request-local message list and budget
 ```
 
+Each session stores two independent UTF-8 byte ceilings in `session.json`:
+`maxTranscriptBytes` limits the canonical `transcript.jsonl`, while
+`maxSessionBytes` limits all durable files in the session directory. The store checks
+the projected size before each logical write, so a rejected turn does not append a
+partial user message. The defaults are 10 MiB for the transcript and 50 MiB for the
+session. Configure them with `AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES` and
+`AGENTLAB_CONTEXT_MAX_SESSION_BYTES`.
+
 Admission, snapshot publication, and turn settlement use an in-process queue plus a
 short-lived directory lease. JSONL updates are copy-and-rename writes, so a process
 crash leaves the previous complete file or the complete next file rather than a
@@ -45,3 +53,16 @@ specific tokenizer can replace it behind `ContextTokenCounter` later.
 The browser receives only `ContextProjection`. It sees the latest server-owned budget,
 pressure, compaction revision, and token-count quality; it does not read transcript
 files or calculate the authoritative percentage.
+
+## Turn retries
+
+Clients may send `clientTurnId` with an explicit `sessionId` on a run request. The key
+is scoped to that session. Repeating the same key with the same normalized prompt
+returns the original turn and run identity, including after a server restart. Reusing
+the key with a different prompt is reported as `CONTEXT_CONFLICT`. A different key
+submitted while the session has an active turn is reported as `CONTEXT_BUSY`.
+
+The key does not claim exactly-once model execution. It prevents a safe retry from
+creating a second canonical turn or dispatching a second run after the original run
+is already recorded. A first turn must supply its own stable `sessionId`; sending a
+`clientTurnId` without one is rejected before the server creates a session.
