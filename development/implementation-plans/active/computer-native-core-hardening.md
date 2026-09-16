@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T20:05:00+02:00
+**Last updated:** 2026-09-16T20:13:41+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -1025,8 +1025,11 @@ claim in this plan.
 
 ### 6. Security, limits, and telemetry
 
-- [ ] Centralize shared limit evaluation and include effective limits in approval and
-      evidence records.
+- [x] Validate shared numeric limits at startup and include effective limits at the
+      operation boundary where aggregate mutation approval depends on them (currently
+      directory trees and multi-file patch sets).
+- [ ] Keep future limit additions operation-specific; do not introduce a cross-component
+      limit evaluator until two concrete consumers require the same semantics.
 - [ ] Add tests for traversal, symlink escape, stale approvals, secret leakage,
       oversized inputs, hostile output, and cross-scope record access.
 - [ ] Add lifecycle events for retry, cancellation, recovery, partial completion, and
