@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T17:28:00+02:00
+**Last updated:** 2026-09-16T18:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -202,14 +202,41 @@ tests, but it must never replace a configured real provider silently.
 - Terminal turn events now compare their redacted payload on repeated append: identical
   acknowledgement-loss retries are accepted, while a conflicting terminal payload fails
   closed instead of silently reusing the first outcome.
+- Session locks now persist the owner PID plus a Linux executable/start-time token. A
+  live PID with a mismatched token is reclaimed as stale; unverified or permission-denied
+  live owners fail closed, and invalid PIDs are never probed as process groups.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 274 passing tests across the package, with 88.62% line
-  coverage, 76.95% branch coverage, and 84.25% function coverage. Coverage is from
+- The latest validation is 279 passing tests across the package, with 88.67% line
+  coverage, 77.09% branch coverage, and 84.31% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
+
+### Current increment: session ownership and stale-lock safety
+
+Delivered in this increment:
+
+- Session lock records include the current process identity when the host exposes a safe
+  Linux identity token.
+- Lock acquisition compares the persisted identity before reclaiming a lock whose PID is
+  still numerically live, preventing a reused PID from being mistaken for the original
+  session owner.
+- PID-only legacy locks remain conservative; malformed or non-positive PID values are
+  never probed as process group `0`, while partial metadata and permission-denied owner
+  probes fail closed.
+- Tests cover normal ownership, rejection of a live owner, stale identity reclamation,
+  legacy PID-only compatibility, and invalid PID handling.
+
+Still open after this increment:
+
+- A full cross-platform process-identity contract and an operating-system-level lock
+  lease/renewal protocol.
+- Durable turn admission and concurrent-writer tests beyond the single application
+  session lock; this increment prevents competing session owners but does not claim
+  multi-turn scheduling or durable job leases.
+- Crash, upgrade, and network-filesystem semantics for lock creation and release.
 
 ### Current slice boundary: persistence acknowledgement recovery
 

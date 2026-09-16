@@ -38,6 +38,17 @@ rolled back. Recovery checks the existing result, turn state, and event stream a
 be run repeatedly without replaying a side effect or appending a duplicate terminal
 event. These hooks are a failure-injection seam, not a production retry mechanism.
 
+Each open session also owns an exclusive `.lock` file. The lock records the owner PID
+and, on Linux, the executable path plus `/proc` start-time token. A live PID with a
+different start token is treated as a stale lock and may be reclaimed; a live PID whose
+identity cannot be verified is retained and reported as busy. Older PID-only lock files
+remain conservative for compatibility. Invalid or non-positive PIDs never get passed to
+`process.kill`, and permission-denied owner probes fail closed rather than deleting the
+lock. Lock metadata is published after exclusive creation; competing openers wait for a
+partial metadata write instead of deleting the lock. This prevents common PID-reuse and
+process-group mistakes, but it is not a full cross-platform process identity guarantee
+or a substitute for durable job leases.
+
 Runtime interruption checkpoints complement the write hooks by stopping a turn before
 or after model dispatch, approval, tool execution, terminal commit, process launch, or
 a committed member of a multi-file patch. Recovery uses the records that were already

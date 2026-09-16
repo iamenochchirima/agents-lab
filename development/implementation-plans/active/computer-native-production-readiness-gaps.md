@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T17:40:00+02:00
+**Last updated:** 2026-09-16T18:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 274 tests passed after the persistence identity increment.
-- `pnpm run coverage`: 274 tests passed, with 88.62% line coverage, 76.95% branch
-  coverage, and 84.25% function coverage in the latest run. Node's experimental
+- `pnpm test`: 279 tests passed after the session-lock hardening increment.
+- `pnpm run coverage`: 279 tests passed, with 88.67% line coverage, 77.09% branch
+  coverage, and 84.31% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -126,6 +126,11 @@ readiness:
   are idempotent, while conflicting terminal payloads fail closed.
 - A pre-cancelled turn does not invoke the provider or emit a model-request claim, and
   cancellation during model retry backoff cannot dispatch a later attempt.
+- Session ownership locks now persist a Linux executable/start-time identity alongside
+  the PID. Reused-PID locks are reclaimed only when the identity mismatches; unverified
+  or permission-denied live owners remain locked, and invalid PIDs are never probed as
+  process groups. This hardens session ownership but does not establish durable job
+  leases or full cross-platform process identity.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,
@@ -214,6 +219,10 @@ Exit evidence:
   acknowledgement failure. It does not yet cover every pre-write crash point,
   cross-platform process identity/process-group behaviour, or the complete host-level
   process-isolation story.
+- Session locking now has Linux reused-PID and malformed-PID evidence, but it does not
+  yet cover cross-platform identity, network filesystems, lock renewal, or durable turn
+  leases. A session lock prevents competing application owners; it does not yet define
+  concurrent turn scheduling inside a future long-running worker.
 - The runner reports at-most-once or at-least-once behaviour precisely. It does not claim
   exactly-once execution without proof.
 
