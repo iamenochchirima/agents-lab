@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:28:03+02:00
+**Last updated:** 2026-09-16T23:34:59+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -203,6 +203,10 @@ tests, but it must never replace a configured real provider silently.
   for workspace, process, browser, and memory actions. Repeated Ctrl-C requests one
   cancellation transition, keeps the approval safe-default, and does not add duplicate
   cancellation activity.
+- Workspace approval waiting now resolves on parent-turn cancellation even when the
+  approval surface does not resolve its own promise. The mutation remains uncommitted
+  and durable evidence records approval as unavailable; the broader per-boundary crash
+  matrix remains open.
 - Streamed model text is sanitized at the TUI boundary, including control sequences split
   across chunks, and unfinished assistant lines are closed before lifecycle activity is
   printed. This prevents model output from controlling the terminal or colliding with
@@ -1601,6 +1605,8 @@ claim in this plan.
       fallback.
 - [ ] Approval choice parsing, stale approval rejection, exact identity binding, and
       fail-closed behaviour.
+- [x] Resolve workspace approval on parent cancellation and prove that cancellation
+      cannot write the prepared mutation.
 - [ ] Path, symlink, special-file, destination, overwrite, size, depth, and aggregate
       limit policy.
 - [x] Filesystem operation manifests and partial-result classification for

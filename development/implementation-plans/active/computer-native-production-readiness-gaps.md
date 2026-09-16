@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:28:03+02:00
+**Last updated:** 2026-09-16T23:34:59+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 326 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 326 tests passed, with 89.42% line coverage, 78.90% branch
-  coverage, and 84.90% function coverage. The package commands serialize browser/profile,
+- `pnpm test`: 327 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 327 tests passed, with 89.55% line coverage, 78.97% branch
+  coverage, and 85.00% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -99,6 +99,9 @@ readiness:
 - Persisted memory-search evidence is now schema-validated before publication, duplicate
   acknowledgement, inspection, or recovery event repair. Invalid result bounds, IDs,
   scopes, counts, or truncation metadata fail closed before lifecycle reconstruction.
+- Workspace approval waits now settle on parent cancellation even if the approval
+  callback is uncooperative; the prepared mutation is recorded as unavailable and is
+  not committed. The complete crash/side-effect matrix remains open.
 - Streamed model output is sanitized before it reaches the terminal, including control
   sequences split across provider chunks, and response lines are separated from activity
   output. Full viewport/scrollback, resize redraw, and accessibility work remain open.

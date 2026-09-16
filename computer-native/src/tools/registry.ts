@@ -1444,8 +1444,15 @@ export class ToolRegistry {
     timeoutMs: number,
   ): Promise<Awaited<ReturnType<MutationApproval>>> {
     const approvalController = new AbortController();
-    const onParentAbort = () => approvalController.abort(parentSignal?.reason);
-    if (parentSignal?.aborted) approvalController.abort(parentSignal.reason);
+    let resolveCancellation: ((decision: Awaited<ReturnType<MutationApproval>>) => void) | undefined;
+    const cancellation = new Promise<Awaited<ReturnType<MutationApproval>>>((resolve) => {
+      resolveCancellation = resolve;
+    });
+    const onParentAbort = () => {
+      approvalController.abort(parentSignal?.reason);
+      resolveCancellation?.({ decision: "unavailable", reason: "The active turn ended before workspace mutation approval was completed." });
+    };
+    if (parentSignal?.aborted) onParentAbort();
     else parentSignal?.addEventListener("abort", onParentAbort, { once: true });
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<Awaited<ReturnType<MutationApproval>>>((resolve) => {
@@ -1455,7 +1462,7 @@ export class ToolRegistry {
       }, timeoutMs);
     });
     try {
-      return await Promise.race([approveMutation(request, approvalController.signal), timeout]);
+      return await Promise.race([approveMutation(request, approvalController.signal), timeout, cancellation]);
     } finally {
       if (timer) clearTimeout(timer);
       parentSignal?.removeEventListener("abort", onParentAbort);

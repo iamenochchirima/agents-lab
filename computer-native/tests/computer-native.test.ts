@@ -4707,6 +4707,64 @@ test("approval timeout aborts a late approval before it can commit", async () =>
   assert.equal(await readFile(target, "utf8"), "old\n");
 });
 
+test("cancelling workspace approval resolves promptly and leaves the mutation unchanged", { timeout: 2_000 }, async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const target = path.join(root, "note.md");
+  await writeFile(target, "old\n", "utf8");
+  const session = await openSession(stateDir);
+  const controller = new AbortController();
+  let resolveApprovalStarted: (() => void) | undefined;
+  const approvalStarted = new Promise<void>((resolve) => {
+    resolveApprovalStarted = resolve;
+  });
+  const startedAt = Date.now();
+  const running = runTurn({
+    session,
+    provider: new DeterministicModelProvider("deterministic/patch", {
+      toolCall: {
+        name: "apply_patch",
+        argumentsJson: JSON.stringify({ patch: `*** Begin Patch
+*** Update File: note.md
+@@
+-old
++cancelled
+*** End Patch
+` }),
+        finalResponse: "The patch was cancelled.",
+      },
+    }),
+    config: config(stateDir, {
+      workspaceRoot: root,
+      timeoutMs: 1_500,
+      maxToolDurationMs: 1_000,
+      approvalTimeoutMs: 1_000,
+    }),
+    userPrompt: "Update the note.",
+    signal: controller.signal,
+    // Model an approval surface that is not itself cooperative. The registry
+    // must still stop waiting when the parent turn is cancelled.
+    approveMutation: async () => {
+      resolveApprovalStarted?.();
+      return await new Promise<never>(() => undefined);
+    },
+  });
+  await approvalStarted;
+  controller.abort();
+
+  const result = await running;
+  assert.equal(result.status, "cancelled");
+  assert.ok(Date.now() - startedAt < 500, "cancellation should not wait for the approval timeout");
+  assert.equal(await readFile(target, "utf8"), "old\n");
+  const mutationsDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "mutations");
+  const mutationFiles = await readdir(mutationsDirectory);
+  const mutation = JSON.parse(await readFile(path.join(mutationsDirectory, mutationFiles[0]!), "utf8")) as { status: string; decision?: string; errorCode?: string };
+  assert.equal(mutation.status, "denied");
+  assert.equal(mutation.decision, "unavailable");
+  assert.equal(mutation.errorCode, "approval-unavailable");
+});
+
 test("human approval does not consume the total turn deadline", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");
