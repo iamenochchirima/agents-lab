@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createServer, type Server } from "node:http";
+import { createServer, request as httpRequest, type Server } from "node:http";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -50,6 +50,7 @@ async function listen(server: Server): Promise<number> {
 }
 
 test("managed Playwright browser opens a local fixture, snapshots controls, and acts by reference", async () => {
+  let mutableChangeRequested = false;
   const server = createServer((request, response) => {
     if (request.url === "/download") {
       response.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-disposition": "attachment; filename=fixture.txt" }).end("download fixture");
@@ -92,6 +93,33 @@ test("managed Playwright browser opens a local fixture, snapshots controls, and 
           </script>
         </body></html>
       `);
+      return;
+    }
+    if (request.url === "/mutable") {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(`
+        <!doctype html>
+        <html><body>
+          <button id="mutable" type="button">Initial action</button>
+          <script>
+            const poll = setInterval(async () => {
+              const state = await fetch('/mutable-state').then((response) => response.text());
+              if (state === 'change') {
+                clearInterval(poll);
+                document.querySelector('#mutable').textContent = 'Replacement action';
+              }
+            }, 10);
+          </script>
+        </body></html>
+      `);
+      return;
+    }
+    if (request.url === "/mutable-state") {
+      response.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end(mutableChangeRequested ? "change" : "wait");
+      return;
+    }
+    if (request.url === "/trigger-mutable") {
+      mutableChangeRequested = true;
+      response.writeHead(204).end();
       return;
     }
     if (request.url !== "/fixture") {
@@ -226,6 +254,26 @@ test("managed Playwright browser opens a local fixture, snapshots controls, and 
         && error.dialogDecision === "accept",
     );
     assert.equal(manager.get(session.sessionId).status, "active");
+
+    const mutableTab = await manager.open(session.sessionId, `http://127.0.0.1:${port}/mutable`);
+    const mutableSnapshot = await manager.snapshot(session.sessionId, mutableTab.tabId);
+    const mutableRef = mutableSnapshot.references.find((reference) => reference.value === "@e1");
+    assert.ok(mutableRef);
+    await new Promise<void>((resolve, reject) => {
+      const trigger = httpRequest({ host: "127.0.0.1", port, path: "/trigger-mutable", method: "GET" }, (response) => {
+        response.resume();
+        response.once("end", resolve);
+      });
+      trigger.once("error", reject);
+      trigger.end();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await assert.rejects(
+      manager.act(session.sessionId, mutableTab.tabId, { kind: "click", reference: mutableRef }),
+      (error: unknown) => error instanceof BrowserError
+        && error.browserCode === "stale-reference"
+        && /changed after the snapshot/u.test(error.message),
+    );
 
     const cancellationTab = await manager.open(session.sessionId, `http://127.0.0.1:${port}/navigate-slow`);
     const cancellationSnapshot = await manager.snapshot(session.sessionId, cancellationTab.tabId);

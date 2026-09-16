@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T19:12:00+02:00
+**Last updated:** 2026-09-16T19:26:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 300 passing tests across the package, with 88.75% line
-  coverage, 77.62% branch coverage, and 84.73% function coverage. Coverage is from
+- The latest validation is 300 passing tests across the package, with 88.88% line
+  coverage, 77.74% branch coverage, and 84.68% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -391,6 +391,33 @@ Still open after this slice:
   file handle across the browser adapter's path read. Staged upload snapshots,
   cross-platform process isolation, profile/authentication policy, and the full browser
   crash/navigation matrix remain separate work.
+
+### Current slice boundary: browser element-reference integrity
+
+Delivered in this slice:
+
+- The managed Playwright adapter records a bounded SHA-256 fingerprint of each
+  snapshot-assigned element after its reference marker is installed.
+- Immediately before click, type, press, upload, or download, the adapter recomputes
+  that fingerprint. A same-document DOM replacement therefore fails as
+  `stale-reference` instead of allowing an ordinal locator to act on a different
+  element.
+- Navigation invalidation remains independent: the existing document identity still
+  clears all references on a main-frame navigation.
+- A real Playwright fixture test covers an element whose markup changes after the
+  snapshot; no action is dispatched against the replacement.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This keeps browser reference validity inside the adapter/session boundary, matching
+  their explicit session and tool ownership. It adds no browser workflow scheduler,
+  generic DOM abstraction, or model-facing page-content state.
+
+Still open after this slice:
+
+- The fingerprint is bounded markup evidence, not a proof of semantic equivalence or an
+  immutable browser element handle. Staged upload snapshots, auth/profile policy,
+  cross-platform isolation, and the full crash/navigation/modal race matrix remain open.
 
 ### Current slice boundary: memory evidence maintenance
 

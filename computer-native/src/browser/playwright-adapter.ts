@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { rm, stat } from "node:fs/promises";
 import { chromium, type BrowserContext, type Dialog, type Locator, type Page } from "playwright";
 import { BrowserError } from "./errors.js";
@@ -35,7 +35,12 @@ interface ManagedPage {
   readonly tabId: BrowserTabId;
   readonly page: Page;
   documentId: BrowserDocumentId;
-  readonly references: Map<string, Locator>;
+  readonly references: Map<string, ManagedReference>;
+}
+
+interface ManagedReference {
+  readonly locator: Locator;
+  readonly fingerprint: string;
 }
 
 interface ManagedSession {
@@ -127,6 +132,10 @@ function mapPlaywrightError(
 
 function throwIfCancelled(signal: AbortSignal | undefined, message: string): void {
   if (signal?.aborted) throw new BrowserError("browser-cancelled", message);
+}
+
+function referenceFingerprint(source: string): string {
+  return createHash("sha256").update(source, "utf8").digest("hex");
 }
 
 export function browserStartFailureMessage(error: unknown): string {
@@ -251,17 +260,23 @@ export class PlaywrightBrowserAdapter implements BrowserAdapter {
         const locator = interactive.nth(index);
         if (!(await locator.isVisible().catch(() => false))) continue;
         const ref = `@e${references.length + 1}`;
-        const description = await locator.evaluate((element) => {
+        await locator.evaluate((element, value) => element.setAttribute("data-computer-native-ref", value), ref).catch(() => undefined);
+        const descriptor = await locator.evaluate((element) => {
           const node = element as HTMLElement;
           const role = node.getAttribute("role") ?? node.tagName.toLowerCase();
           const label = node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "";
           const type = node instanceof HTMLInputElement ? node.type : "";
-          return [role, type, label].filter(Boolean).join(" ").replace(/\s+/gu, " ").trim();
-        }).catch(() => "interactive element");
-        await locator.evaluate((element, value) => element.setAttribute("data-computer-native-ref", value), ref).catch(() => undefined);
-        managed.references.set(ref, locator);
+          const outerHTML = node.outerHTML;
+          return {
+            description: [role, type, label].filter(Boolean).join(" ").replace(/\s+/gu, " ").trim(),
+            // Keep page-side identity bounded. Only the digest leaves this
+            // boundary, so page text is not persisted as reference metadata.
+            fingerprintSource: `${outerHTML.length}:${outerHTML.slice(0, 8_192)}`,
+          };
+        }).catch(() => ({ description: "interactive element", fingerprintSource: "interactive element" }));
+        managed.references.set(ref, { locator, fingerprint: referenceFingerprint(descriptor.fingerprintSource) });
         references.push({ value: ref, documentId: managed.documentId });
-        lines.push(`[${ref}] ${description}`);
+        lines.push(`[${ref}] ${descriptor.description}`);
       }
       const bodyText = await managed.page.locator("body").innerText({ timeout: this.actionTimeoutMs }).catch(() => "");
       const content = this.boundSnapshot(`${bodyText.trim()}\n\n${lines.join("\n")}`);
@@ -281,12 +296,13 @@ export class PlaywrightBrowserAdapter implements BrowserAdapter {
     throwIfCancelled(signal, "The browser action was cancelled before it started.");
     const managed = this.requirePage(sessionId, tabIdValue);
     const reference = request.reference;
-    const locator = reference ? managed.references.get(reference.value) : undefined;
-    if (!reference || !locator) {
+    const managedReference = reference ? managed.references.get(reference.value) : undefined;
+    if (!reference || !managedReference) {
       throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before acting.");
     }
     try {
       return await this.runCancellableAction(managed, signal, () => this.withDialogGuard(managed.page, async () => {
+        const locator = await this.requireFreshReference(managedReference, reference.value);
         if (request.kind === "click") {
           await locator.click({ timeout: this.actionTimeoutMs });
         } else if (request.kind === "type") {
@@ -347,12 +363,13 @@ export class PlaywrightBrowserAdapter implements BrowserAdapter {
 
   async upload(sessionId: BrowserSessionId, tabIdValue: BrowserTabId, request: BrowserActionRequest, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserActionResult> {
     const managed = this.requirePage(sessionId, tabIdValue);
-    const locator = request.reference ? managed.references.get(request.reference.value) : undefined;
-    if (!request.reference || !locator) throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before uploading.");
+    const managedReference = request.reference ? managed.references.get(request.reference.value) : undefined;
+    if (!request.reference || !managedReference) throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before uploading.");
     if (!request.sourcePath) throw new BrowserError("invalid-action", "A browser upload requires a source path.");
     if (signal?.aborted) throw new BrowserError("browser-cancelled", "The browser upload was cancelled before it started.");
     try {
       return await this.runCancellableAction(managed, signal, () => this.withDialogGuard(managed.page, async () => {
+        const locator = await this.requireFreshReference(managedReference, request.reference?.value ?? "");
         await locator.setInputFiles(request.sourcePath as string, { timeout: this.actionTimeoutMs });
         const tab = await this.toTabInfo(sessionId, managed);
         return { sessionId, tab, summary: `upload completed on ${request.reference?.value}.` };
@@ -365,11 +382,12 @@ export class PlaywrightBrowserAdapter implements BrowserAdapter {
 
   async download(sessionId: BrowserSessionId, tabIdValue: BrowserTabId, request: BrowserActionRequest, target: BrowserDownloadTarget, signal?: AbortSignal, approveDialog?: BrowserDialogApproval) {
     const managed = this.requirePage(sessionId, tabIdValue);
-    const locator = request.reference ? managed.references.get(request.reference.value) : undefined;
-    if (!request.reference || !locator) throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before downloading.");
+    const managedReference = request.reference ? managed.references.get(request.reference.value) : undefined;
+    if (!request.reference || !managedReference) throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before downloading.");
     if (signal?.aborted) throw new BrowserError("browser-cancelled", "The browser download was cancelled before it started.");
     try {
       return await this.runCancellableAction(managed, signal, () => this.withDialogGuard(managed.page, async () => {
+        const locator = await this.requireFreshReference(managedReference, request.reference?.value ?? "");
         const [download] = await Promise.all([
           managed.page.waitForEvent("download", { timeout: this.actionTimeoutMs }),
           locator.click({ timeout: this.actionTimeoutMs }),
@@ -409,6 +427,22 @@ export class PlaywrightBrowserAdapter implements BrowserAdapter {
     });
     session.pages.set(managed.tabId, managed);
     return managed;
+  }
+
+  private async requireFreshReference(reference: ManagedReference, value: string): Promise<Locator> {
+    try {
+      const current = await reference.locator.evaluate((element) => {
+        const outerHTML = (element as HTMLElement).outerHTML;
+        return `${outerHTML.length}:${outerHTML.slice(0, 8_192)}`;
+      });
+      if (referenceFingerprint(current) !== reference.fingerprint) {
+        throw new BrowserError("stale-reference", `The browser element reference '${value}' changed after the snapshot; take a new snapshot before acting.`);
+      }
+      return reference.locator;
+    } catch (error) {
+      if (error instanceof BrowserError) throw error;
+      throw new BrowserError("stale-reference", `The browser element reference '${value}' is no longer stable; take a new snapshot before acting.`, { cause: error });
+    }
   }
 
   private async toTabInfo(sessionId: BrowserSessionId, managed: ManagedPage): Promise<BrowserTabInfo> {

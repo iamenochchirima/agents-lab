@@ -67,6 +67,12 @@ after approval and before the adapter receives the source. A changed or unavaila
 source fails closed and is not uploaded. Downloads use a preallocated managed artifact
 target and Playwright's download event; the model cannot provide an arbitrary destination.
 
+The managed Playwright adapter also fingerprints the bounded element markup when a
+snapshot assigns a reference. Immediately before click, type, press, upload, or
+download, it checks that fingerprint again; a same-document DOM replacement is reported
+as `stale-reference` instead of allowing an ordinal locator to act on a different
+element. The digest stays in adapter state and is not exposed as page content.
+
 Adapter failures are typed at the browser boundary. A bounded operation that exceeds its
 timeout returns `browser-timeout`; a wait or preflight cancelled through an `AbortSignal`
 returns `browser-cancelled`; and a closed browser/page is reported as `browser-crash`.

@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T19:12:00+02:00
+**Last updated:** 2026-09-16T19:26:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 300 tests passed after the browser upload identity increment.
-- `pnpm run coverage`: 300 tests passed, with 88.75% line coverage, 77.62% branch
-  coverage, and 84.73% function coverage in the latest run. Node's experimental
+- `pnpm test`: 300 tests passed after the browser element-reference increment.
+- `pnpm run coverage`: 300 tests passed, with 88.88% line coverage, 77.74% branch
+  coverage, and 84.68% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -113,6 +113,9 @@ readiness:
 - Browser upload approvals now bind a source file identity (device/inode/mode, size,
   modification time, and SHA-256) and recheck it immediately before adapter dispatch;
   changed or unavailable sources fail closed without an upload.
+- Managed Playwright element references now carry bounded adapter-side markup identity
+  and are rechecked immediately before side-effecting actions; same-document DOM
+  replacement fails as `stale-reference` rather than acting through an ordinal locator.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 - Built-in provider adapters now expose capability metadata. The factory validates
