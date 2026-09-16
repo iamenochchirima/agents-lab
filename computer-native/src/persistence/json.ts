@@ -28,12 +28,17 @@ export async function atomicWriteJson(filePath: string, value: unknown): Promise
   const temporaryPath = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const handle = await open(temporaryPath, "wx", 0o600);
   try {
-    await handle.writeFile(`${stableStringify(value)}\n`, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
+    try {
+      await handle.writeFile(`${stableStringify(value)}\n`, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporaryPath, filePath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
   }
-  await rename(temporaryPath, filePath);
 }
 
 export async function atomicWriteJsonLines(filePath: string, values: readonly unknown[]): Promise<void> {
@@ -41,13 +46,18 @@ export async function atomicWriteJsonLines(filePath: string, values: readonly un
   const temporaryPath = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const handle = await open(temporaryPath, "wx", 0o600);
   try {
-    const content = values.length === 0 ? "" : `${values.map((value) => stableStringify(value)).join("\n")}\n`;
-    await handle.writeFile(content, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
+    try {
+      const content = values.length === 0 ? "" : `${values.map((value) => stableStringify(value)).join("\n")}\n`;
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporaryPath, filePath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
   }
-  await rename(temporaryPath, filePath);
 }
 
 export async function appendJsonLine(filePath: string, value: unknown): Promise<void> {

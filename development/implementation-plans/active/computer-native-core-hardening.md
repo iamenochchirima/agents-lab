@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:23:25+02:00
+**Last updated:** 2026-09-16T22:34:49+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -277,14 +277,17 @@ tests, but it must never replace a configured real provider silently.
 - The shared JSONL reader now rejects internal or extra blank records instead of silently
   dropping evidence, and empty journal replacements write an empty stream rather than a
   misleading blank record.
+- Atomic JSON and JSONL replacement now remove their known temporary file when a handled
+  write or rename failure occurs, preserving the previous destination and preventing a
+  failed artifact-metadata publication from leaving a stale temporary record behind.
 - Transcript messages are validated against the owning session and stable message ID;
   identical acknowledgement retries are ignored, while conflicting message reuse fails
   closed instead of duplicating durable conversation evidence.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 318 passing tests across the package, with 89.20% line
-  coverage, 77.84% branch coverage, and 85.08% function coverage. Coverage is from
+- The latest validation is 320 passing tests across the package, with 89.20% line
+  coverage, 77.90% branch coverage, and 84.84% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs. The
   latest full suite and coverage run both pass; one earlier coverage run was discarded
   because instrumentation caused timing-sensitive browser and admission tests to fail.
@@ -344,6 +347,29 @@ Still open after this slice:
 - The complete process-level crash matrix across every durable write and host-side
   effect, plus deterministic replay, concurrency/lease acceptance, and remaining
   security and production-operation gates.
+
+### Current slice boundary: atomic replacement failure cleanup
+
+Delivered in this increment:
+
+- `atomicWriteJson` and `atomicWriteJsonLines` now clean up the exact temporary path
+  they created when writing, closing, syncing, or renaming fails. The original target is
+  not replaced by a failed candidate.
+- A focused regression test covers failed publication for both JSON and JSONL records and
+  verifies that no `.tmp-*` evidence remains beside the original destination.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is standard operation-local temporary-file hygiene at the existing atomic-write
+  boundary. It does not claim crash-time cleanup, add a background janitor, or introduce
+  a transaction coordinator. A process killed before the cleanup handler can still leave
+  a temporary file; operation-specific cleanup and future crash tests remain separate.
+
+Still open after this slice:
+
+- Complete process-level crash coverage around every durable write and host side effect,
+  including killed-process temporary files, plus deterministic replay, concurrency/lease
+  acceptance, and remaining security and production-operation gates.
 
 ### Current slice boundary: turn-state acknowledgement ordering
 
@@ -629,9 +655,12 @@ Delivered in this slice:
   is lost, restart recovery reconstructs the missing `BrowserArtifactCreated` event before
   writing the interrupted turn result; recovery is idempotent and does not recreate the
   browser artifact.
+- Bounded artifact cleanup now recognizes the atomic writer's temporary metadata files,
+  associates them with their artifact, uses their mtime when they are the only remaining
+  evidence, and removes them under the existing artifact lease and entry bound.
 - Tests cover the live in-flight lease boundary, direct artifact-evidence recovery, and
-  an integrated screenshot turn; existing tests continue to cover malformed, oversized,
-  symlinked, orphaned, and bounded cleanup cases.
+  an integrated screenshot turn, plus expired temporary metadata cleanup; existing tests
+  continue to cover malformed, oversized, symlinked, orphaned, and bounded cleanup cases.
 
 Practice check against the local Hermes and OpenClaw references:
 
@@ -644,8 +673,9 @@ Practice check against the local Hermes and OpenClaw references:
 
 Still open after this slice:
 
-- Durable browser profile ownership/authentication policy, metadata migration, interrupted
-  external metadata publication, and the full browser crash/navigation race matrix.
+- Durable browser profile ownership/authentication policy, lock-corruption handling,
+  hard-kill validation across data/metadata/temp-file states, metadata migration, and the
+  full browser crash/navigation race matrix.
 - Cross-platform process isolation and the complete per-write/per-side-effect crash
   matrix remain outside this slice.
 

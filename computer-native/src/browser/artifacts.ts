@@ -295,10 +295,20 @@ export class BrowserArtifactStore {
         }
         const dataExtension = kind === "screenshots" ? ".png" : ".download";
         const candidates = new Set<string>();
+        const temporaryMetadataByDataName = new Map<string, string[]>();
         for (const entry of artifactEntries) {
           if (entry.isDirectory() || entry.isSymbolicLink()) continue;
           if (entry.name.endsWith(dataExtension)) candidates.add(entry.name);
           else if (entry.name.endsWith(`${dataExtension}.json`)) candidates.add(entry.name.slice(0, -5));
+          else {
+            const dataName = temporaryMetadataDataName(entry.name, dataExtension);
+            if (dataName) {
+              candidates.add(dataName);
+              const paths = temporaryMetadataByDataName.get(dataName) ?? [];
+              paths.push(path.join(kindDirectory, entry.name));
+              temporaryMetadataByDataName.set(dataName, paths);
+            }
+          }
         }
         for (const dataName of candidates) {
           if (result.scanned >= options.maxEntries) {
@@ -315,13 +325,14 @@ export class BrowserArtifactStore {
           }
           const dataPath = path.join(kindDirectory, dataName);
           const metadataPath = path.join(kindDirectory, `${dataName}.json`);
+          const temporaryMetadataPaths = temporaryMetadataByDataName.get(dataName) ?? [];
           const dataExists = await regularFile(dataPath);
           const metadataExists = await regularFile(metadataPath);
-          if (!dataExists && !metadataExists) {
+          if (!dataExists && !metadataExists && temporaryMetadataPaths.length === 0) {
             result.skipped += 1;
             continue;
           }
-          const timestamp = await artifactTimestamp(metadataPath, dataPath);
+          const timestamp = await artifactTimestamp(metadataPath, dataPath, temporaryMetadataPaths);
           if (timestamp > now() - options.maxAgeMs) {
             result.retained += 1;
             continue;
@@ -334,6 +345,9 @@ export class BrowserArtifactStore {
           try {
             if (dataExists) await rm(dataPath, { force: true });
             if (metadataExists) await rm(metadataPath, { force: true });
+            for (const temporaryMetadataPath of temporaryMetadataPaths) {
+              await rm(temporaryMetadataPath, { force: true });
+            }
             result.removed += 1;
           } catch {
             result.failed += 1;
@@ -450,7 +464,7 @@ async function regularFile(filePath: string): Promise<boolean> {
   }
 }
 
-async function artifactTimestamp(metadataPath: string, dataPath: string): Promise<number> {
+async function artifactTimestamp(metadataPath: string, dataPath: string, temporaryMetadataPaths: readonly string[] = []): Promise<number> {
   try {
     const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as { readonly createdAt?: unknown };
     if (typeof metadata.createdAt === "string") {
@@ -463,8 +477,23 @@ async function artifactTimestamp(metadataPath: string, dataPath: string): Promis
   try {
     return (await lstat(dataPath)).mtimeMs;
   } catch {
-    return Date.now();
+    let latestTemporaryTimestamp = 0;
+    for (const temporaryMetadataPath of temporaryMetadataPaths) {
+      try {
+        latestTemporaryTimestamp = Math.max(latestTemporaryTimestamp, (await lstat(temporaryMetadataPath)).mtimeMs);
+      } catch {
+        // A concurrent cleanup may remove a temporary candidate before its timestamp is read.
+      }
+    }
+    return latestTemporaryTimestamp > 0 ? latestTemporaryTimestamp : Date.now();
   }
+}
+
+function temporaryMetadataDataName(name: string, dataExtension: ".png" | ".download"): string | undefined {
+  const marker = `${dataExtension}.json.tmp-`;
+  const markerIndex = name.indexOf(marker);
+  if (markerIndex <= 0 || markerIndex + marker.length >= name.length) return undefined;
+  return name.slice(0, markerIndex + dataExtension.length);
 }
 
 function sanitizeFileName(value: string): string {

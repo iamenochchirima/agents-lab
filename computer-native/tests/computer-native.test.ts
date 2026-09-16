@@ -15,7 +15,7 @@ import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { OpenRouterModelProvider } from "../src/models/openrouter.js";
 import { createModelProvider } from "../src/models/factory.js";
 import { getModelProviderSummary, listModelProviderSummaries } from "../src/models/registry.js";
-import { atomicWriteJson, redactRecord } from "../src/persistence/json.js";
+import { atomicWriteJson, atomicWriteJsonLines, redactRecord } from "../src/persistence/json.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import type { BrowserArtifactEvidence } from "../src/persistence/session-store.js";
 import { ToolRegistry } from "../src/tools/registry.js";
@@ -284,6 +284,22 @@ test("initial context carries only bounded prior transcript history", () => {
     ...Array.from({ length: 12 }, (_, index) => `history ${index + 2}`),
     "Current question",
   ]);
+});
+
+test("atomic replacements remove temporary files when publication fails", async () => {
+  const root = tempDirectory();
+  const destination = path.join(root, "metadata.json");
+  await mkdir(destination);
+  const linesDestination = path.join(root, "events.jsonl");
+  await mkdir(linesDestination);
+
+  await assert.rejects(() => atomicWriteJson(destination, { value: "replacement" }));
+  await assert.rejects(() => atomicWriteJsonLines(linesDestination, [{ value: "replacement" }]));
+
+  const entries = await readdir(root);
+  assert.equal(entries.includes("metadata.json"), true);
+  assert.equal(entries.includes("events.jsonl"), true);
+  assert.equal(entries.some((entry) => entry.includes(".tmp-")), false);
 });
 
 test("turn state transitions accept the first lifecycle and reject terminal rewrites", () => {

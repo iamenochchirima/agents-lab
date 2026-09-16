@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T22:23:25+02:00
+**Last updated:** 2026-09-16T22:34:49+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 318 tests passed after the browser-artifact evidence increment.
-- `pnpm run coverage`: 318 tests passed, with 89.20% line coverage, 77.84% branch
-  coverage, and 85.08% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 320 tests passed after the atomic-replacement cleanup increment.
+- `pnpm run coverage`: 320 tests passed, with 89.20% line coverage, 77.90% branch
+  coverage, and 84.84% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs; one earlier run was discarded because
   instrumentation caused timing-sensitive browser and admission tests to fail.
 - `pnpm run typecheck`: passed.
@@ -118,6 +118,9 @@ readiness:
   per-turn record after an acknowledgement loss and does not recreate the browser file;
   an interruption before the per-turn checkpoint can still leave an orphan for bounded
   artifact cleanup, so external artifact creation is not claimed to be transactional.
+- Bounded browser cleanup also recognizes and removes expired atomic-writer temporary
+  metadata files under the artifact lease and entry bound. This covers handled publication
+  failures and cleanup of known temp-file shapes, but is not a hard-kill proof.
 - Managed local browser profiles now hold lock-backed ownership leases for the browser
   session lifetime. Startup cleanup retains old profiles with live owners and reclaims
   only stale profiles; the generic session manager keeps leasing optional for other
@@ -484,9 +487,10 @@ Remaining work:
   disconnected sessions, duplicate submissions, and unknown outcomes after a network
   failure.
 - Complete the browser artifact/profile crash matrix, including lock corruption,
-  interrupted external metadata publication, and recovery across process restarts.
-  Per-turn artifact-event recovery is now covered, but lock corruption, orphan cleanup
-  after a pre-checkpoint stop, and profile/authentication policy remain incomplete.
+  hard-kill data/metadata/temp-file states, and recovery across process restarts.
+  Per-turn artifact-event recovery and bounded temp-file cleanup are now covered, but
+  lock corruption, orphan cleanup after a pre-checkpoint stop, and profile/authentication
+  policy remain incomplete.
 - Pin and manage browser versions, launch flags, permissions, and cleanup.
 - Add human-in-the-loop paths for CAPTCHA, MFA, payment, destructive submission, and
   other actions the agent must not silently complete.

@@ -198,6 +198,25 @@ test("browser artifact cleanup removes expired pairs and orphans while retaining
   }
 });
 
+test("browser artifact cleanup removes an expired temporary metadata publication", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-artifacts-metadata-temp-"));
+  try {
+    const directory = path.join(root, "browser_metadata_temp", "screenshots");
+    await mkdir(directory, { recursive: true });
+    const temporaryMetadata = path.join(directory, "artifact_partial.png.json.tmp-123-abcd");
+    await writeFile(temporaryMetadata, "{\"createdAt\":\"not-finished\"");
+    const now = Date.parse("2026-09-15T00:00:00.000Z");
+    await utimes(temporaryMetadata, (now - 5_000) / 1_000, (now - 5_000) / 1_000);
+
+    const result = await new BrowserArtifactStore(root).cleanupExpired({ maxAgeMs: 1_000, maxEntries: 10, now: () => now });
+
+    assert.equal(result.removed, 1);
+    await assert.rejects(stat(temporaryMetadata), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("browser artifact cleanup stops at its candidate bound", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-artifacts-bound-"));
   try {
