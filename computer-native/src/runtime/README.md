@@ -46,6 +46,13 @@ Provider context-limit, refusal, and authentication outcomes are terminal provid
 classifications, not transient retries; pre-output transport failure is the only
 disconnect case eligible for the existing bounded retry policy.
 
+When a provider reports token usage, the terminal result repeats its input, output, and
+total token counts in `TurnMetrics`, and the model attempt/round evidence retains the
+bounded usage object. Missing usage remains missing; the runtime does not estimate it.
+Attempt and completion evidence also records observed request/output bytes and the
+effective configured limits. Cost remains `null` until a pricing source is explicitly
+configured, so the TUI and evidence never imply a cost estimate that was not measured.
+
 Model requests and streamed model output are bounded independently from tool output.
 `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES` is checked before a provider call and emits
 `ModelRequestRejected` when the serialized request is too large. The runtime also counts

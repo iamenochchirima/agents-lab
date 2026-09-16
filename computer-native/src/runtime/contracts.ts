@@ -91,6 +91,9 @@ export interface TurnMetrics {
   readonly toolCallCount: number;
   readonly roundCount: number;
   readonly durationMs: number;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
   readonly cost: null;
 }
 

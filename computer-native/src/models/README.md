@@ -41,6 +41,13 @@ bounded error outcomes. A disconnect before output may be retried by the runtime
 disconnect after output is not retried because the provider may already have accepted
 and partially executed the request.
 
+Provider-reported token usage is normalized to `inputTokens`, `outputTokens`, and
+`totalTokens` when present and is copied into the turn metrics and bounded lifecycle
+evidence. Providers that omit usage remain valid; the harness does not infer token
+counts or cost. Request/output byte observations and effective limits are recorded by
+the runtime so a run can be inspected without persisting the request body or response
+body.
+
 The adapter does not provide fallback models. If the selected provider is unavailable,
 the turn fails with provider evidence rather than silently switching to deterministic
 output.

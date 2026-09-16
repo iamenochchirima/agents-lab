@@ -105,3 +105,6 @@ The key is never written to session records.
 See [`docs/quick-start.md`](docs/quick-start.md) and
 [`docs/turn-lifecycle.md`](docs/turn-lifecycle.md) for the evidence layout and recovery
 rules.
+
+For a short real-provider check using the stored local development environment, see the
+[Computer Native provider acceptance playground](../development/playground/computer-native-provider-acceptance/README.md).

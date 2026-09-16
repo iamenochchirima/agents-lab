@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T17:25:00+02:00
+**Last updated:** 2026-09-16T17:40:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -173,8 +173,15 @@ tests, but it must never replace a configured real provider silently.
   provider selection remains explicit at session start with no automatic fallback.
 - OpenRouter now classifies rejected credentials as `provider-auth` and rejects malformed
   choices, deltas, and tool-call shapes as bounded non-retryable provider errors.
-- The current validation is 266 passing tests across the package, with 88.81% line
-  coverage, 76.84% branch coverage, and 83.87% function coverage. The full suite and
+- Provider-reported token usage is copied into terminal turn metrics when supplied;
+  attempt and round evidence also records observed request/output bytes and the effective
+  configured limits. Cost remains explicitly `null` because no pricing source is configured.
+- A runnable provider-acceptance playground documents the normal `pnpm run chat` flow,
+  `/models`, `/status`, safe real-model prompts, evidence inspection, and restart-based
+  credential rotation without storing a secret in the repository.
+- The latest validation is 266 passing tests across the package, with 88.86% line
+  coverage, 76.92% branch coverage, and 83.87% function coverage. Coverage is from
+  Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
 
@@ -284,8 +291,9 @@ Still not delivered by the runtime interruption increment:
 Broader gates still open after the current increments:
 
 - OS-level process/container limits, network isolation, or a sandbox guarantee.
-- Provider capability metadata, fallback policy, usage/cost accounting, or the full
-  provider resilience work listed in the model/provider section.
+- Fallback policy, cost accounting, or the full provider resilience work listed in the
+  model/provider section. Provider capability metadata and reported token usage are now
+  delivered, but they are not a pricing or provider-acceptance guarantee.
 - The remaining full runtime crash matrix, structured approval/TUI gates, and real-
   provider/manual acceptance gates.
 
@@ -308,6 +316,11 @@ Delivered in this increment:
   renders the active selection and declared capabilities without claiming fallback.
 - Malformed stream-shape and rejected-credential fixtures prove these failures terminate
   as typed provider outcomes without a transport retry.
+- Provider usage is surfaced in `TurnMetrics` when reported, while absent usage and
+  unconfigured cost remain explicit rather than estimated.
+- A manual acceptance procedure is documented in the provider-acceptance playground;
+  its real-provider result is intentionally still an unchecked acceptance gate until it
+  is run against the locally configured provider.
 
 Still open after this increment:
 
@@ -596,7 +609,8 @@ claim in this plan.
       usage, retry reason, and final disposition without secrets.
 - [x] Make deterministic providers explicitly selected. No silent deterministic fallback
       is allowed in a real-provider run.
-- [ ] Add provider contract fixtures and one documented real-provider acceptance path.
+- [ ] Add provider contract fixtures and complete one documented real-provider acceptance
+      run using the local development environment.
 
 ### 5. Filesystem completion
 
@@ -631,7 +645,7 @@ claim in this plan.
 
 - [ ] Update runtime, persistence, security, CLI, workspace, and model READMEs with the
       final state and failure semantics.
-- [ ] Add a short playground or manual acceptance procedure using `pnpm run chat`.
+- [x] Add a short playground or manual acceptance procedure using `pnpm run chat`.
 - [ ] Update the production-readiness gap register with delivered evidence and remaining
       limitations.
 - [ ] Keep the follow-on queue pointed at Skills only after this plan is archived.

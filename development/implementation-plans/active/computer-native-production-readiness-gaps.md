@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T17:25:00+02:00
+**Last updated:** 2026-09-16T17:40:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -52,8 +52,9 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 266 tests passed after the provider error-classification increment.
-- `pnpm run coverage`: 266 tests passed, with 88.81% line coverage, 76.84% branch
-  coverage, and 83.87% function coverage.
+- `pnpm run coverage`: 266 tests passed, with 88.86% line coverage, 76.92% branch
+  coverage, and 83.87% function coverage in the latest run. Node's experimental
+  coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -103,7 +104,10 @@ readiness:
   runner. The deterministic provider remains useful for repeatable tests.
 - Built-in provider adapters now expose capability metadata. The factory validates
   namespaced provider/model selection before admission, and the OpenRouter adapter
-  records bounded request identity and latency when available.
+  records bounded request identity, latency, and response usage when available.
+- The built-in registry exposes credential-free provider summaries and the TUI `/models`
+  view shows the explicit active selection without automatic fallback. Runtime evidence
+  also retains observed request/output bytes and effective configured limits.
 - OpenRouter context-limit responses, HTTP and streamed refusals, incomplete streams,
   and pre-output versus post-output disconnects now have bounded classifications. The
   runtime does not retry context/refusal outcomes and does not retry a disconnect after
@@ -119,7 +123,7 @@ provider, browser-profile, and operational acceptance evidence.
 | --- | --- | --- |
 | Runtime and turns | Bounded local foundation with normalized lifecycle evidence, durable-record acknowledgement recovery, and terminal-event reconstruction across current action families | Full per-boundary crash matrix, durable lifecycle unification, concurrency, and replay semantics |
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
-| Models and providers | Real OpenRouter path, explicit model validation, capability metadata, bounded evidence, and deterministic tests | Provider registry, broader malformed-response fixtures, fallback policy, usage/cost evidence, credential operations, and documented real-provider acceptance |
+| Models and providers | Real OpenRouter path, provider registry, explicit model validation, capability metadata, bounded request/response/usage evidence, and deterministic tests | Broader malformed-response fixtures, fallback policy, cost accounting, credential-expiry operations, and documented real-provider acceptance |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, launch-failure cleanup, and restart cleanup for the detached foreground process group | Cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
@@ -247,7 +251,10 @@ Remaining work:
   policy; if fallback is added, persist the decision and surface it in the TUI.
 - Provide documented credential rotation and recovery when a local key is rotated,
   missing, or expired; rejected credentials now have a typed `provider-auth` outcome.
-- Add token/cost accounting once the provider contract and pricing source are explicit.
+- [x] Normalize provider-reported input/output/total token usage into turn metrics and
+  bounded evidence when supplied; missing usage is not estimated.
+- Add cost accounting once the provider contract and pricing source are explicit. Cost
+  remains `null` until that source and its versioning/retention rules are defined.
 - Add provider contract tests with deterministic local fixtures and a small real-provider
   acceptance profile. Real-provider tests must never depend on a committed key.
 
@@ -260,6 +267,9 @@ Delivered in the current foundation increment, but not yet sufficient for produc
 - Bounded request identifier and latency evidence on successful model attempts.
 - Context-limit and refusal classifications, plus pre/post-output disconnect handling.
 - Rejected-credential and malformed stream-shape contract fixtures for these cases.
+- Observed request/output bytes, effective configured limits, provider latency, and
+  provider-reported token usage are retained in bounded attempt/round/turn evidence;
+  provider cost is deliberately not claimed.
 
 Exit evidence:
 

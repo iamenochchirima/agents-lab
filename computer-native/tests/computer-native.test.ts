@@ -425,6 +425,7 @@ test("successful turn persists ordered transcript, events, and result", async ()
 test("turn persists provider request identity and latency in model evidence", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);
+  const turnConfig = config(stateDir);
   const provider = {
     provider: "deterministic" as const,
     model: "deterministic/evidence",
@@ -433,16 +434,24 @@ test("turn persists provider request identity and latency in model evidence", as
       yield { type: "completed", usage: { outputTokens: 1, totalTokens: 1 }, providerRequestId: "req_evidence", latencyMs: 17 };
     },
   };
-  const result = await runTurn({ session, provider, config: config(stateDir), userPrompt: "record evidence" });
+  const result = await runTurn({ session, provider, config: turnConfig, userPrompt: "record evidence" });
   assert.equal(result.status, "completed");
+  assert.equal(result.metrics?.outputTokens, 1);
+  assert.equal(result.metrics?.totalTokens, 1);
   const events = (await readFile(path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "events.jsonl"), "utf8"))
     .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
   const attempt = events.find((event) => event.type === "ModelAttemptCompleted");
   const completed = events.find((event) => event.type === "ModelCompleted");
   assert.equal(attempt?.payload.providerRequestId, "req_evidence");
   assert.equal(attempt?.payload.latencyMs, 17);
+  assert.equal(typeof attempt?.payload.requestBytes, "number");
+  assert.equal(attempt?.payload.maxRequestBytes, turnConfig.maxModelRequestBytes);
+  assert.equal(typeof attempt?.payload.responseBytes, "number");
+  assert.equal(attempt?.payload.maxOutputBytes, turnConfig.maxModelOutputBytes);
   assert.equal(completed?.payload.providerRequestId, "req_evidence");
   assert.equal(completed?.payload.latencyMs, 17);
+  assert.equal(typeof completed?.payload.outputBytes, "number");
+  assert.equal(completed?.payload.maxOutputBytes, turnConfig.maxModelOutputBytes);
 });
 
 test("committing the same terminal result twice does not duplicate the terminal event", async () => {

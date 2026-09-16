@@ -221,12 +221,15 @@ async function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void>
   });
 }
 
-function metrics(startedAt: string, modelRequestCount: number, toolCallCount: number, roundCount: number): TurnMetrics {
+function metrics(startedAt: string, modelRequestCount: number, toolCallCount: number, roundCount: number, usage?: ModelUsage): TurnMetrics {
   return {
     modelRequestCount,
     toolCallCount,
     roundCount,
     durationMs: Math.max(0, Date.now() - Date.parse(startedAt)),
+    ...(usage?.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
+    ...(usage?.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+    ...(usage?.totalTokens !== undefined ? { totalTokens: usage.totalTokens } : {}),
     cost: null,
   };
 }
@@ -921,6 +924,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       const roundText: string[] = [];
       const toolCalls: ModelToolCall[] = [];
       const callIds = new Set<string>();
+      let roundOutputBytes = 0;
       const roundRequest = { ...request, messages, tools: tools.definitions };
       const requestBytes = Buffer.byteLength(JSON.stringify(roundRequest), "utf8");
       if (requestBytes > options.config.maxModelRequestBytes) {
@@ -939,7 +943,16 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         modelRequestCount += 1;
         abort.beginModelRound();
         options.onEvent?.({ type: "waiting", round });
-        await turn.appendEvent("ModelRequested", { provider: request.provider, model: request.model, round, attempt, attemptId });
+        await turn.appendEvent("ModelRequested", {
+          provider: request.provider,
+          model: request.model,
+          round,
+          attempt,
+          attemptId,
+          requestBytes,
+          maxRequestBytes: options.config.maxModelRequestBytes,
+          maxOutputBytes: options.config.maxModelOutputBytes,
+        });
         let emittedEvent = false;
         try {
           await checkpoint(options.diagnostics, { type: "before-model-send", round, attempt, attemptId });
@@ -952,6 +965,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
                 throw new ComputerNativeError("resource-limit", `The model response exceeded the ${options.config.maxModelOutputBytes}-byte limit.`);
               }
               modelOutputBytes += chunkBytes;
+              roundOutputBytes += chunkBytes;
               roundText.push(event.text);
               response += event.text;
               options.onText?.(event.text);
@@ -962,6 +976,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
                 throw new ComputerNativeError("resource-limit", `The model response exceeded the ${options.config.maxModelOutputBytes}-byte limit.`);
               }
               modelOutputBytes += callBytes;
+              roundOutputBytes += callBytes;
               if (callIds.has(event.call.callId)) {
                 throw new ModelProviderError(`The provider returned duplicate tool call ID '${event.call.callId}'.`, { code: "provider-incomplete" });
               }
@@ -981,6 +996,10 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
             status: "completed",
             emittedEvent,
             usage: usage ?? null,
+            requestBytes,
+            maxRequestBytes: options.config.maxModelRequestBytes,
+            responseBytes: roundOutputBytes,
+            maxOutputBytes: options.config.maxModelOutputBytes,
             ...(providerRequestId ? { providerRequestId } : {}),
             ...(providerLatencyMs !== undefined ? { latencyMs: providerLatencyMs } : {}),
           });
@@ -998,6 +1017,10 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
             retryScheduled: canRetry,
             errorCode: error instanceof ComputerNativeError ? error.code : "provider",
             reason,
+            requestBytes,
+            maxRequestBytes: options.config.maxModelRequestBytes,
+            responseBytes: roundOutputBytes,
+            maxOutputBytes: options.config.maxModelOutputBytes,
           });
           if (!canRetry) throw error;
           const delayMs = Math.min(options.config.modelRetryBackoffMs * (2 ** (attempt - 1)), 30_000);
@@ -1014,7 +1037,15 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         round,
         phase: "model_completed",
         recordedAt: new Date().toISOString(),
-        payload: { textBytes: Buffer.byteLength(roundText.join(""), "utf8"), toolCallCount: toolCalls.length, usage: usage ?? null },
+        payload: {
+          textBytes: Buffer.byteLength(roundText.join(""), "utf8"),
+          outputBytes: roundOutputBytes,
+          requestBytes,
+          maxRequestBytes: options.config.maxModelRequestBytes,
+          maxOutputBytes: options.config.maxModelOutputBytes,
+          toolCallCount: toolCalls.length,
+          usage: usage ?? null,
+        },
       });
       if (toolCalls.length === 0) {
         if (response.trim().length === 0) throw new ModelProviderError("The provider completed without text or a tool call.", { code: "provider-empty" });
@@ -1110,10 +1141,12 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       assistantMessageId,
       assistantText: response,
       usage,
-      metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount),
+      metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount, usage),
     };
     await turn.appendEvent("ModelCompleted", {
       usage: usage ?? null,
+      outputBytes: modelOutputBytes,
+      maxOutputBytes: options.config.maxModelOutputBytes,
       ...(providerRequestId ? { providerRequestId } : {}),
       ...(providerLatencyMs !== undefined ? { latencyMs: providerLatencyMs } : {}),
     });
@@ -1133,7 +1166,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       model: request.model,
       startedAt,
       finishedAt: new Date().toISOString(),
-      metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount),
+      metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount, usage),
       error: { code: failure.code, message: failure.message },
     };
     await checkpoint(options.diagnostics, { type: "before-terminal-commit", status: result.status, turnId: turn.turnId });
