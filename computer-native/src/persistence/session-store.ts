@@ -889,8 +889,8 @@ export class SessionStore {
         await turn.ensureMemorySearchEvent(search);
       }
       if (result) {
-        if (!isTerminalStatus(record.state)) await turn.updateState(terminalStateFromResult(result));
         await turn.ensureTerminalEvent(result);
+        if (!isTerminalStatus(record.state)) await turn.updateState(terminalStateFromResult(result));
         continue;
       }
       if (isTerminalStatus(record.state)) {
@@ -1356,7 +1356,19 @@ export class TurnStore {
   async ensureTerminalEvent(result: TurnResult): Promise<void> {
     const events = await this.readEvents();
     const expected = terminalEventType(result.status);
-    if (events.some((event) => event.type === expected)) return;
+    const existing = events.find((event) => event.type === expected);
+    if (existing) {
+      if (existing.payload.status !== undefined && existing.payload.status !== result.status) {
+        throw new ComputerNativeError("persistence", `Terminal event '${expected}' does not match terminal result status '${result.status}'.`);
+      }
+      if (existing.payload.assistantMessageId !== undefined && existing.payload.assistantMessageId !== result.assistantMessageId) {
+        throw new ComputerNativeError("persistence", `Terminal event '${expected}' does not match the terminal assistant message.`);
+      }
+      if (existing.payload.error !== undefined && stableStringify(existing.payload.error) !== stableStringify(redactRecord(result.error))) {
+        throw new ComputerNativeError("persistence", `Terminal event '${expected}' does not match the terminal error.`);
+      }
+      return;
+    }
     await this.appendEvent(expected, { status: result.status, recovered: true });
   }
 

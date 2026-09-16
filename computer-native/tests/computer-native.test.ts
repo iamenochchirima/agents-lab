@@ -2058,6 +2058,32 @@ test("malformed terminal results are rejected without overwriting or recovery ad
   assert.equal(turnRecord.state, "streaming");
 });
 
+test("recovery rejects a terminal event that conflicts with the durable result", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("conflicting terminal evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
+  const result = {
+    schemaVersion: 1 as const,
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    status: "completed" as const,
+    provider: "deterministic" as const,
+    model: "deterministic/echo",
+    startedAt: new Date(0).toISOString(),
+    finishedAt: new Date(1).toISOString(),
+    assistantText: "done",
+  };
+  await turn.writeResult(result);
+  await turn.appendEvent("TurnCompleted", { status: "failed" });
+
+  const reopened = await SessionStore.open(stateDir, session.metadata.sessionId);
+  await assert.rejects(() => reopened.recoverInterruptedTurns(), /does not match terminal result status/u);
+  const turnRecord = JSON.parse(await readFile(path.join(turn.directory, "turn.json"), "utf8")) as { state: string };
+  assert.equal(turnRecord.state, "streaming");
+});
+
 test("provider errors redact authorization material", async () => {
   const provider = new OpenRouterModelProvider("openai/example", "secret-key", async () => new Response("Bearer secret-key", { status: 401 }));
   const request: ModelRequest = {

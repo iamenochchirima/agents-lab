@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:03:01+02:00
+**Last updated:** 2026-09-16T22:06:13+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -263,6 +263,9 @@ tests, but it must never replace a configured real provider silently.
 - Malformed `result.json` is now distinct from a missing result. Direct terminal writes
   and restart recovery fail closed without overwriting malformed evidence or changing the
   durable turn state.
+- Restart recovery now validates an existing terminal event against the durable result
+  before advancing the turn state; contradictory status, assistant identity, or error
+  payload is treated as persistence corruption.
 - Turn state transitions now update the in-memory record only after the durable `turn.json`
   replacement returns. Before-write failures leave memory and disk aligned; after-write
   acknowledgement loss leaves the durable state ahead and makes an explicit retry safe.
@@ -272,8 +275,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 315 passing tests across the package, with 89.01% line
-  coverage, 77.78% branch coverage, and 84.93% function coverage. Coverage is from
+- The latest validation is 316 passing tests across the package, with 89.16% line
+  coverage, 77.92% branch coverage, and 84.93% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   latest coverage rerun pass. One earlier instrumentation run left the known TUI tests
   pending, so it was not treated as evidence. The browser fixture navigation timeout is 1 second so it
@@ -366,8 +369,12 @@ Delivered in this increment:
 - A malformed or unreadable existing terminal result is surfaced as persistence
   corruption; it cannot be replaced by a later result or silently adopted as an
   interrupted turn during recovery.
+- An existing same-type terminal event must agree with the durable result on any recorded
+  status, assistant-message identity, and error payload. Recovery performs this check
+  before changing the durable turn state.
 - Tests cover the direct `TurnStore.writeResult` seam and restart recovery, including
-  preservation of the malformed file and the non-terminal durable state.
+  preservation of the malformed file, conflicting terminal evidence, and the
+  non-terminal durable state.
 
 Practice check against the local Hermes and OpenClaw references:
 

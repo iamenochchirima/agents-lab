@@ -172,7 +172,9 @@ result cannot be committed with a mismatched terminal event type. `commitTermina
 the current durable turn-state transition before writing `result.json`; an invalid
 transition is rejected without creating a terminal result artifact. A missing result file
 is distinguished from a malformed one; malformed terminal evidence fails closed and is
-never replaced by a recovery result.
+never replaced by a recovery result. Recovery also checks any existing terminal event's
+status, assistant-message identity, and error payload against the durable result before
+advancing the turn state.
 
 Browser actions use the same immutable-identity and one-way-transition pattern. The
 record stores the session, tab, document, reference, action hash, approval decision,
