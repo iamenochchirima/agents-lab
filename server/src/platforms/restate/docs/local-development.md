@@ -102,6 +102,9 @@ substitute as passing. The Docker-backed replay test remains opt-in with
 
 ## Optional OpenRouter path
 
-Set `OPENROUTER_API_KEY` only in the service process environment. It is never sent
-in a Lab manifest, workflow input, native reference, event, or result. The default
-and all tests use the deterministic fake provider.
+Set `OPENROUTER_API_KEY` in the Lab server and Restate service environments (the
+ignored `server/.env` is loaded into both by the local launcher). The server uses
+it for the safe model catalog; the Restate service uses it for model completion.
+It is never sent in a Lab manifest, workflow input, native reference, event, or
+result. The default deterministic tests and failure exercises use the fake
+provider explicitly; the Platform UI exposes only OpenRouter models.
