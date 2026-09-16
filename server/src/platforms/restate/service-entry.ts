@@ -1,9 +1,11 @@
 import * as restate from "@restatedev/restate-sdk/node";
 
+import { loadLocalServerEnvironment } from "../../control-plane/bootstrap/local-env.js";
 import { loadRestateConfig } from "./config.js";
 import { restateServices } from "./service/baseline-service.js";
 
 export async function startRestateService(environment: NodeJS.ProcessEnv = process.env): Promise<number> {
+  loadLocalServerEnvironment(environment);
   const config = loadRestateConfig(environment);
   return restate.serve({ services: [...restateServices], port: config.servicePort });
 }

@@ -1,11 +1,23 @@
 import type { ModelAdapter, ModelCallResult, ModelRequest } from "../contracts.js";
 
+/**
+ * Deterministic fixtures for automated tests and local failure exercises.
+ * Production runs select the OpenRouter adapter and never enter this class.
+ */
 export class FakeRestateModel implements ModelAdapter {
   async complete(input: ModelRequest, signal: AbortSignal): Promise<ModelCallResult> {
     if (signal.aborted) return cancelledResult();
 
-    if (input.model === "fake-delay") {
-      await waitWithAbort(250, signal);
+    const hasToolResult = input.messages.some((message) => message.role === "tool");
+    if (input.model === "fake-delay" || (input.model === "fake-tool-call-delay" && hasToolResult)) {
+      // Keep this fixture long enough for the native cancellation exercise and
+      // browser playground to observe an active run. It remains abortable.
+      try {
+        await waitWithAbort(input.model === "fake-tool-call-delay" ? 15_000 : 5_000, signal);
+      } catch (error) {
+        if (signal.aborted) return cancelledResult();
+        throw error;
+      }
     }
 
     if (input.model === "fake-failure") {
@@ -30,7 +42,7 @@ export class FakeRestateModel implements ModelAdapter {
       };
     }
 
-    if (input.model === "fake-pre-dispatch-retry") {
+    if (input.model === "fake-pre-dispatch-retry" || (input.model === "fake-pre-dispatch-retry-once" && input.attempt === 1)) {
       return {
         kind: "failure",
         code: "FAKE_PRE_DISPATCH_RETRY",
@@ -41,7 +53,61 @@ export class FakeRestateModel implements ModelAdapter {
       };
     }
 
-    if (input.model !== "fake-success" && input.model !== "fake-delay") {
+    if (input.model === "fake-tool-call" || input.model === "fake-tool-call-delay") {
+      const toolResult = input.messages.find((message) => message.role === "tool");
+      if (!toolResult || toolResult.role !== "tool") {
+        return {
+          kind: "success",
+          output: null,
+          toolCalls: [{
+            toolCallId: "call-calculator-1",
+            name: "calculator",
+            arguments: { operation: "add", left: 20, right: 22 },
+          }],
+          providerRequestId: null,
+          usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+        };
+      }
+      return {
+        kind: "success",
+        output: `The calculator returned ${toolResult.content}.`,
+        toolCalls: [],
+        providerRequestId: null,
+        usage: { inputTokens: 20, outputTokens: 9, totalTokens: 29 },
+      };
+    }
+
+    if (input.model === "fake-tool-malformed") {
+      return toolFixtureCall("call-malformed-1", "calculator", { operation: "add", left: 20 });
+    }
+
+    if (input.model === "fake-tool-unknown") {
+      return toolFixtureCall("call-unknown-1", "unknown_tool", { value: 1 });
+    }
+
+    if (input.model === "fake-tool-duplicate") {
+      return {
+        kind: "success",
+        output: null,
+        toolCalls: [
+          { toolCallId: "call-duplicate-1", name: "calculator", arguments: { operation: "add", left: 1, right: 1 } },
+          { toolCallId: "call-duplicate-1", name: "calculator", arguments: { operation: "add", left: 2, right: 2 } },
+        ],
+        providerRequestId: null,
+        usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+      };
+    }
+
+    if (input.model === "fake-tool-loop") {
+      return toolFixtureCall(`call-loop-${input.round}`, "calculator", { operation: "add", left: input.round, right: 1 });
+    }
+
+    if (
+      input.model !== "fake-success" &&
+      input.model !== "fake-delay" &&
+      input.model !== "fake-tool-call-delay" &&
+      input.model !== "fake-pre-dispatch-retry-once"
+    ) {
       return {
         kind: "failure",
         code: "UNKNOWN_FAKE_MODEL",
@@ -55,6 +121,7 @@ export class FakeRestateModel implements ModelAdapter {
     return {
       kind: "success",
       output: `Fake response: ${input.prompt}`,
+      toolCalls: [],
       providerRequestId: null,
       usage: { inputTokens: null, outputTokens: null, totalTokens: null },
     };
@@ -81,5 +148,15 @@ function cancelledResult(): ModelCallResult {
     failureKind: "cancelled",
     retryable: false,
     requestSent: false,
+  };
+}
+
+function toolFixtureCall(toolCallId: string, name: string, argumentsValue: unknown): ModelCallResult {
+  return {
+    kind: "success",
+    output: null,
+    toolCalls: [{ toolCallId, name, arguments: argumentsValue }],
+    providerRequestId: null,
+    usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
   };
 }

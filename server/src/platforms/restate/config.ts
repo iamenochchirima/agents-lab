@@ -1,5 +1,8 @@
 import { URL } from "node:url";
 
+import { calculatorTool } from "../../capabilities/tools/calculator.js";
+import { TOOL_SCHEMA_VERSION } from "../../capabilities/tools/contracts.js";
+
 export const RESTATE_SERVICE_NAME = "AgentLabRestateBaseline";
 export const RESTATE_WORKFLOW_HANDLER = "run";
 export const RESTATE_PLATFORM = "restate" as const;
@@ -14,6 +17,8 @@ export const RESTATE_DEFAULT_RUN_MAX_RETRY_ATTEMPTS = 3;
 export const RESTATE_DEFAULT_RUN_RETRY_INTERVAL_MS = 250;
 export const RESTATE_DEFAULT_RUN_MAX_RETRY_INTERVAL_MS = 3_000;
 export const RESTATE_DEFAULT_INGRESS_RETRY_ATTEMPTS = 3;
+export const RESTATE_DEFAULT_TOOL_ROUNDS = 6;
+export const RESTATE_DEFAULT_TOOL_CALLS = 8;
 
 export interface RestateConfig {
   readonly ingressUrl: string;
@@ -100,7 +105,15 @@ export function safeManifestConfiguration(config: RestateConfig): Readonly<Recor
     runRetryIntervalMs: config.runRetryIntervalMs,
     runMaxRetryIntervalMs: config.runMaxRetryIntervalMs,
     ingressRetryAttempts: config.ingressRetryAttempts,
-    modelProvider: "fake-by-default",
+    modelProvider: "selected-run-provider",
+    tools: {
+      schemaVersion: TOOL_SCHEMA_VERSION,
+      enabledNames: ["calculator"],
+      maxRounds: RESTATE_DEFAULT_TOOL_ROUNDS,
+      maxCalls: RESTATE_DEFAULT_TOOL_CALLS,
+      limits: { calculator: calculatorTool.definition.limits },
+      redactionPolicyVersion: "tool-redaction-v1",
+    },
   });
 }
 

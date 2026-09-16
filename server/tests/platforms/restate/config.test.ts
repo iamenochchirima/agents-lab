@@ -19,6 +19,14 @@ test("Restate configuration has bounded local defaults and redacts provider cred
   assert.equal(safe.workflowHandler, "run");
   assert.equal(JSON.stringify(safe).includes("test-secret"), false);
   assert.equal("openRouterApiKey" in safe, false);
+  assert.deepEqual(safe.tools, {
+    schemaVersion: 1,
+    enabledNames: ["calculator"],
+    maxRounds: 6,
+    maxCalls: 8,
+    limits: { calculator: { maxArgumentBytes: 512, maxResultBytes: 256, timeoutMs: 1_000 } },
+    redactionPolicyVersion: "tool-redaction-v1",
+  });
 });
 
 test("Restate configuration rejects invalid URLs and retry intervals", () => {
