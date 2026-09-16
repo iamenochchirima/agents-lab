@@ -32,10 +32,10 @@ visible from the retrieved Trigger run.
 ## Retries and model calls
 
 The baseline task allows two Trigger attempts for the deterministic fake fixtures.
-`fake-retry` fails on the first task attempt and succeeds on the second. This tests
-Trigger retry behavior without claiming that an external provider call is safe to
-repeat. OpenRouter is not enabled in this baseline; a future model adapter must
-define provider request idempotency before enabling it.
+`fake-retry` fails on the first task attempt and succeeds on the second. OpenRouter
+requests run inside the task and therefore remain subject to Trigger's task retry
+boundary. A lost response is classified as an unknown provider outcome; this does
+not claim that an external provider call is safe to repeat.
 
 ## Cancellation and restart
 
@@ -52,7 +52,7 @@ the run ID is not safely knowable from the client error alone.
 ## Limits of this baseline
 
 - It validates local Trigger execution, not hosted scale, availability, or security.
-- It does not implement OpenRouter, tools, schedules, child tasks, or production
+- It does not implement tools, schedules, child tasks, or production
   deployment.
 - The common server currently persists the initial execution reference; updated
   native status remains observable through the runner inspection and normalized

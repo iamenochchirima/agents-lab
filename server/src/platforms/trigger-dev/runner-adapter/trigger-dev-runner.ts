@@ -131,8 +131,11 @@ export class TriggerDevBaselineRunner implements PlatformRunner {
     if (manifest.platform !== this.platform || manifest.variant !== this.variant) {
       return { valid: false, reason: "The Trigger.dev baseline runner only accepts trigger-dev/baseline manifests." };
     }
-    if (manifest.model.provider !== "fake") {
-      return { valid: false, reason: "The Trigger.dev baseline currently supports only the deterministic fake model." };
+    if (manifest.model.provider === "openrouter" && !this.options.config.openRouterApiKey) {
+      return { valid: false, reason: "OPENROUTER_API_KEY is required for the Trigger.dev OpenRouter task." };
+    }
+    if (manifest.model.provider !== "fake" && manifest.model.provider !== "openrouter") {
+      return { valid: false, reason: "The Trigger.dev baseline model provider is unsupported." };
     }
     if (manifest.platformConfig.taskIdentifier !== this.options.config.taskIdentifier) {
       return { valid: false, reason: "The run task identifier does not match the configured Trigger.dev task." };
@@ -366,7 +369,7 @@ function synthesizedEvents(
   ];
   if (startedAt) {
     events.push({ source: "trigger-dev-runner", sourceSequence: 2, kind: "TaskStarted", runId, occurredAt: startedAt, payload: { status: run.status, attemptCount: run.attemptCount ?? null } });
-    events.push({ source: "trigger-dev-runner", sourceSequence: 3, kind: "ModelRequested", runId, occurredAt: startedAt, payload: { provider: "fake" } });
+    events.push({ source: "trigger-dev-runner", sourceSequence: 3, kind: "ModelRequested", runId, occurredAt: startedAt, payload: { provider: "unknown" } });
   }
   if (finishedAt && isTerminal(run.status)) {
     events.push({ source: "trigger-dev-runner", sourceSequence: 4, kind: status === "completed" ? "RunCompleted" : status === "cancelled" ? "RunCancelled" : "RunFailed", runId, occurredAt: finishedAt, payload: { nativeStatus: run.status } });
@@ -379,6 +382,9 @@ function errorForRun(run: TriggerRunRecord): NonNullable<RunResult["error"]> {
   if (run.status === "CANCELED") return { code: "TRIGGER_RUN_CANCELLED", message, failureKind: "cancelled", retryable: false };
   if (run.status === "EXPIRED" || run.status === "TIMED_OUT") return { code: "TRIGGER_RUN_TIMED_OUT", message, failureKind: "timeout", retryable: run.status === "EXPIRED" };
   if (run.status === "CRASHED" || run.status === "SYSTEM_FAILURE") return { code: "TRIGGER_RUN_OUTCOME_UNKNOWN", message, failureKind: "outcome_unknown", retryable: true };
+  if (run.error?.name === "TRIGGER_OPENROUTER_NOT_CONFIGURED") return { code: "TRIGGER_OPENROUTER_NOT_CONFIGURED", message, failureKind: "configuration", retryable: false };
+  if (run.error?.name === "TRIGGER_OPENROUTER_OUTCOME_UNKNOWN") return { code: "TRIGGER_OPENROUTER_OUTCOME_UNKNOWN", message, failureKind: "outcome_unknown", retryable: false };
+  if (run.error?.name?.startsWith("TRIGGER_OPENROUTER_")) return { code: "TRIGGER_OPENROUTER_PROVIDER_FAILURE", message, failureKind: "provider", retryable: false };
   if (run.error?.name === "TRIGGER_FAKE_PROVIDER_FAILURE") return { code: "TRIGGER_PROVIDER_FAILURE", message, failureKind: "provider", retryable: false };
   if (run.error?.name === "TRIGGER_FAKE_OUTCOME_UNKNOWN") return { code: "TRIGGER_OUTCOME_UNKNOWN", message, failureKind: "outcome_unknown", retryable: false };
   return { code: "TRIGGER_RUN_FAILED", message, failureKind: "internal", retryable: false };

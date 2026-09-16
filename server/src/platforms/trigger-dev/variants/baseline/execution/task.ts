@@ -6,6 +6,7 @@ import {
   type TriggerPromptPayload,
   type TriggerTaskOutput,
 } from "../contracts.js";
+import { completeTriggerOpenRouterModel } from "./openrouter.js";
 
 const FAKE_MODEL_NAMES = new Set([
   "fake",
@@ -42,6 +43,45 @@ export const triggerBaselineTask = task({
       event(payload, 1, "TaskStarted", startedAt, { attempt: attemptCount }),
       event(payload, 2, "ModelRequested", startedAt, { provider: payload.model.provider, model: payload.model.model }),
     ];
+
+    if (payload.model.provider === "openrouter") {
+      const completion = await completeTriggerOpenRouterModel(payload, signal);
+      const finishedAt = new Date().toISOString();
+      events.push(
+        event(payload, 3, "ModelCompleted", finishedAt, { outputLength: completion.output.length }),
+        event(payload, 4, "TaskCompleted", finishedAt, { attempt: attemptCount }),
+      );
+      return {
+        schemaVersion: 1,
+        runId: payload.runId,
+        output: completion.output,
+        startedAt,
+        finishedAt,
+        attemptCount,
+        usage: completion.usage,
+        eventIntents: events,
+        trajectory: {
+          schemaVersion: 1,
+          runId: payload.runId,
+          phases: [
+            { name: "trigger.task", startedAt, finishedAt },
+            { name: "model.openrouter", startedAt, finishedAt },
+          ],
+        },
+        metrics: {
+          schemaVersion: 1,
+          runId: payload.runId,
+          status: "completed",
+          durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+          modelCallCount: 1,
+          modelAttemptCount: attemptCount,
+          inputTokens: completion.usage.inputTokens,
+          outputTokens: completion.usage.outputTokens,
+          totalTokens: completion.usage.totalTokens,
+          costUsd: null,
+        },
+      };
+    }
 
     if (payload.model.model === "fake-provider-failure") {
       throw new TriggerBaselineTaskError(
@@ -112,11 +152,12 @@ export const triggerBaselineTask = task({
 });
 
 function assertPayload(payload: TriggerPromptPayload): void {
-  if (!payload || typeof payload !== "object" || payload.model.provider !== "fake" || !FAKE_MODEL_NAMES.has(payload.model.model)) {
+  if (!payload || typeof payload !== "object" || !payload.model || typeof payload.model.model !== "string" ||
+    (payload.model.provider !== "openrouter" && (payload.model.provider !== "fake" || !FAKE_MODEL_NAMES.has(payload.model.model)))) {
     throw new TriggerBaselineTaskError(
       "TRIGGER_INVALID_TASK_PAYLOAD",
       "configuration",
-      "The Trigger.dev baseline task received an unsupported fake model payload.",
+      "The Trigger.dev baseline task received an unsupported model payload.",
     );
   }
 }

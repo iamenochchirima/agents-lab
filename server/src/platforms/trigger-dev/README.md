@@ -13,8 +13,9 @@ The platform boundary is deliberately local to this directory:
   status mapping, cancellation, and native references.
 - `docs/` records local operation and failure semantics.
 
-The baseline currently supports deterministic fake models only. An OpenRouter task
-adapter is intentionally deferred until its provider-call and duplicate-call rules
-are defined.
+The baseline supports the real OpenRouter task path when `OPENROUTER_API_KEY` is
+available in the Trigger task process. Deterministic fake models remain available
+only for tests and failure experiments. Provider requests stay inside the task
+boundary and retain Trigger's retry and unknown-outcome semantics.
 
 Start with [`docs/local-development.md`](docs/local-development.md).

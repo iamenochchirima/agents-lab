@@ -8,6 +8,7 @@ export const DEFAULT_TRIGGER_API_URL = "http://127.0.0.1:3040";
 export const DEFAULT_TRIGGER_MAX_ATTEMPTS = 2;
 export const DEFAULT_TRIGGER_MAX_DURATION_SECONDS = 60;
 export const DEFAULT_TRIGGER_IDEMPOTENCY_TTL = "1h";
+export const DEFAULT_TRIGGER_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 export interface TriggerDevConfig {
   readonly apiUrl: string;
@@ -17,6 +18,8 @@ export interface TriggerDevConfig {
   readonly maxAttempts: number;
   readonly maxDurationSeconds: number;
   readonly idempotencyKeyTtl: string;
+  readonly openRouterApiKey: string | null;
+  readonly openRouterBaseUrl: string;
   readonly sdkVersion: typeof TRIGGER_DEV_VERSION;
   readonly cliVersion: typeof TRIGGER_DEV_VERSION;
 }
@@ -52,6 +55,12 @@ export function loadTriggerDevConfig(environment: NodeJS.ProcessEnv = process.en
       environment.AGENTLAB_TRIGGER_IDEMPOTENCY_KEY_TTL,
       DEFAULT_TRIGGER_IDEMPOTENCY_TTL,
     ),
+    openRouterApiKey: environment.OPENROUTER_API_KEY?.trim() || null,
+    openRouterBaseUrl: parseUrl(
+      environment.AGENTLAB_OPENROUTER_BASE_URL,
+      DEFAULT_TRIGGER_OPENROUTER_BASE_URL,
+      "AGENTLAB_OPENROUTER_BASE_URL",
+    ),
     sdkVersion: TRIGGER_DEV_VERSION,
     cliVersion: TRIGGER_DEV_VERSION,
   } satisfies TriggerDevConfig;
@@ -72,6 +81,7 @@ export function safeManifestConfiguration(config: TriggerDevConfig): Readonly<Re
     runtime: "node",
     localExecution: true,
     secretConfigured: config.secretKey !== null,
+    openRouterConfigured: config.openRouterApiKey !== null,
   });
 }
 

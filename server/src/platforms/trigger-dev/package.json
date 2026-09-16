@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "trigger dev start --skip-update-check"
+    "dev": "trigger dev start --skip-update-check --env-file ../../../.env"
   },
   "engines": {
     "node": ">=22.13.0"

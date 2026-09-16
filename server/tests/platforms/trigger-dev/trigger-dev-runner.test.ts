@@ -167,17 +167,37 @@ test("availability distinguishes an authenticated API from an unavailable server
   assert.deepEqual(await unavailable.checkConnection(), { reachable: false, message: "Trigger.dev API returned HTTP 503." });
 });
 
-test("validation rejects OpenRouter until the platform model adapter is implemented", () => {
-  const runner = new TriggerDevBaselineRunner({ config, client: fakeClient() });
+test("validation accepts OpenRouter when the task has a provider key", () => {
+  const runner = new TriggerDevBaselineRunner({
+    config: loadTriggerDevConfig({
+      TRIGGER_API_URL: "http://127.0.0.1:3040",
+      TRIGGER_SECRET_KEY: "tr_dev_test_secret",
+      TRIGGER_PROJECT_REF: "proj_test",
+      OPENROUTER_API_KEY: "openrouter_test_secret",
+    }),
+    client: fakeClient(),
+  });
   const manifest = buildRunManifest({
     platform: "trigger-dev",
     variant: "baseline",
     task: { kind: "prompt", prompt: "hello" },
     model: { provider: "openrouter", model: "openai/gpt-4o-mini" },
   }, { runId: "run-openrouter", platformConfig: runner.manifestConfiguration() });
+  assert.deepEqual(runner.validate(manifest), { valid: true, reason: null });
+});
+
+test("validation rejects OpenRouter when the task process has no provider key", () => {
+  const runner = new TriggerDevBaselineRunner({ config, client: fakeClient() });
+  const manifest = buildRunManifest({
+    platform: "trigger-dev",
+    variant: "baseline",
+    task: { kind: "prompt", prompt: "hello" },
+    model: { provider: "openrouter", model: "openai/gpt-4o-mini" },
+  }, { runId: "run-openrouter-missing-key", platformConfig: runner.manifestConfiguration() });
+
   assert.deepEqual(runner.validate(manifest), {
     valid: false,
-    reason: "The Trigger.dev baseline currently supports only the deterministic fake model.",
+    reason: "OPENROUTER_API_KEY is required for the Trigger.dev OpenRouter task.",
   });
 });
 

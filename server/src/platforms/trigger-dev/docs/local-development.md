@@ -23,6 +23,8 @@ environment file that is not committed:
 TRIGGER_API_URL=http://127.0.0.1:3040
 TRIGGER_SECRET_KEY=tr_dev_...
 TRIGGER_PROJECT_REF=proj_...
+OPENROUTER_API_KEY=...
+AGENTLAB_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
 
 `TRIGGER_SECRET_KEY` is never included in `config.json` or
@@ -34,12 +36,14 @@ From the repository root:
 
 ```bash
 cd server/src/platforms/trigger-dev
-npx trigger@4.5.14 dev start --skip-update-check --env-file ../../../../.env
+pnpm dlx trigger@4.5.14 dev start --skip-update-check --env-file ../../../../.env
 ```
 
 The command discovers `variants/baseline/execution/task.ts` through
-`trigger.config.ts`. If the local server or credentials are unavailable, the Lab
-runner reports Trigger as unavailable; it does not produce a completed run.
+`trigger.config.ts`. The task reads the OpenRouter key from its own process
+environment; it is never included in the Lab run request. If the local server,
+Trigger credentials, or provider key is unavailable, the Lab runner reports the
+failure and does not produce a fabricated completed run.
 
 ## Real integration check
 
@@ -47,7 +51,7 @@ With the server and worker running in separate terminals:
 
 ```bash
 AGENTLAB_RUN_TRIGGER_DEV_INTEGRATION=1 \
-  npm --prefix server run build && \
+  pnpm --filter @agent-harness-lab/lab-server run build && \
   AGENTLAB_RUN_TRIGGER_DEV_INTEGRATION=1 node \
     server/dist/integration-tests/trigger-dev-baseline.test.js
 ```
