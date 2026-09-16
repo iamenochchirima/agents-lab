@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ProcessEvent, PreparedProcess, ProcessResult, ProcessRunner } from "./process.js";
+import { readProcessIdentity } from "./recovery.js";
 
 function elapsed(startedAt: number): number {
   return Math.max(0, Date.now() - startedAt);
@@ -90,6 +91,7 @@ export class LocalProcessRunner implements ProcessRunner {
         errorMessage: "The child process did not expose a process identifier.",
       };
     }
+    const processIdentity = await readProcessIdentity(childPid);
     const capture = (stream: "stdout" | "stderr", chunk: Buffer): void => {
       const remaining = prepared.limits.maxOutputBytes - capturedBytes;
       const accepted = Math.max(0, Math.min(chunk.byteLength, remaining));
@@ -117,7 +119,7 @@ export class LocalProcessRunner implements ProcessRunner {
     });
 
     try {
-      await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid });
+      await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid, ...(processIdentity ? { processIdentity } : {}) });
     } catch (error) {
       // The started event is the acknowledgement boundary for durable launch
       // evidence. If that acknowledgement fails, do not leave the child alive
@@ -154,6 +156,7 @@ export class LocalProcessRunner implements ProcessRunner {
       state: cancelled ? "cancelled" : "failed",
       started: true,
       pid: childPid,
+      ...(processIdentity ? { processIdentity } : {}),
       command: prepared.command,
       displayArgs: prepared.displayArgs,
       cwd: prepared.cwd,

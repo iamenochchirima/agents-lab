@@ -33,9 +33,12 @@ The durable states are `prepared`, `approved`, `running`, `completed`, `failed`,
 `cancelled`, and `ambiguous`. Identity and resource limits are immutable after the
 first record. Restart recovery closes `prepared` and `approved` executions as
 approval-unavailable. For a `running` execution, the application recovery path attempts
-to terminate the recorded foreground process group (or child PID on Windows), records
-whether termination was confirmed, and still marks the outcome `ambiguous`. It never
-replays a process automatically because the child may have completed after its
+to terminate the recorded foreground process group only after the persisted process
+identity matches the current OS identity. Linux records the
+executable path and `/proc` start token to defend against PID reuse; a missing or
+unsupported identity source fails closed and does not signal the target. Recovery
+records whether termination was confirmed and still marks the outcome `ambiguous`. It
+never replays a process automatically because the child may have completed after its
 acknowledgement was lost.
 
 `terminationConfirmed` means that no process remained in the recorded target after the

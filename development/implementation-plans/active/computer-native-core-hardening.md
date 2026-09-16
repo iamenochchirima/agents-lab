@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T14:08:56+02:00
+**Last updated:** 2026-09-16T14:18:22+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -127,8 +127,11 @@ tests, but it must never replace a configured real provider silently.
   outcome remains ambiguous, and `terminationConfirmed` is persisted separately.
 - If the launch lifecycle acknowledgement fails after spawn, `LocalProcessRunner`
   terminates the child before returning the persistence failure.
-- The current validation is 230 passing tests across the package, with 87.96% line
-  coverage, 75.26% branch coverage, and 82.90% function coverage.
+- Process records now carry a Linux executable/start-token identity. Recovery verifies
+  it before signalling a process group and fails closed on a mismatch or unsupported
+  identity source.
+- The current validation is 231 passing tests across the package, with 87.94% line
+  coverage, 75.13% branch coverage, and 82.96% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -155,7 +158,7 @@ Still not delivered by this slice:
   approval-decision, and underlying filesystem/process/browser/memory side-effect
   boundaries.
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
-  group durability proof, PID-reuse defence, or an exactly-once execution guarantee.
+  identity/process-group durability proof, or an exactly-once execution guarantee.
 - The remaining shared lifecycle, approval/TUI, provider, resource-limit, security,
   real-provider, and manual acceptance gates listed below.
 

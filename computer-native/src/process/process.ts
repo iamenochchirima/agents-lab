@@ -33,6 +33,23 @@ export interface ProcessIdentity {
   readonly contentHash?: string;
 }
 
+/**
+ * Operating-system evidence used to avoid signalling a reused PID during
+ * restart recovery. The token is optional because the current platform may not
+ * expose a safe process identity source.
+ */
+export interface ProcessIdentityToken {
+  readonly platform: NodeJS.Platform;
+  readonly executablePath: string;
+  readonly startTime: string;
+}
+
+function sameProcessIdentity(left: ProcessIdentityToken | undefined, right: ProcessIdentityToken | undefined): boolean {
+  return left?.platform === right?.platform
+    && left?.executablePath === right?.executablePath
+    && left?.startTime === right?.startTime;
+}
+
 export interface PreparedProcess {
   readonly executionId: string;
   readonly command: string;
@@ -89,6 +106,7 @@ export interface ProcessExecutionRecord {
   readonly status: ProcessState;
   readonly decision?: "allow-once" | "deny" | "unavailable";
   readonly pid?: number;
+  readonly processIdentity?: ProcessIdentityToken;
   readonly stdout?: string;
   readonly stderr?: string;
   readonly stdoutBytes?: number;
@@ -132,6 +150,7 @@ export function assertProcessTransition(previous: ProcessExecutionRecord, next: 
     previous.executablePath !== next.executablePath ? "executablePath" : undefined,
     previous.environmentProfile !== next.environmentProfile ? "environmentProfile" : undefined,
     JSON.stringify(previous.environmentKeys) !== JSON.stringify(next.environmentKeys) ? "environmentKeys" : undefined,
+    previous.processIdentity !== undefined && !sameProcessIdentity(previous.processIdentity, next.processIdentity) ? "processIdentity" : undefined,
     !sameLimits ? "limits" : undefined,
     previous.argvHash !== next.argvHash ? "argvHash" : undefined,
     previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
@@ -144,7 +163,7 @@ export function assertProcessTransition(previous: ProcessExecutionRecord, next: 
 }
 
 export type ProcessEvent =
-  | { readonly type: "started"; readonly executionId: string; readonly pid: number }
+  | { readonly type: "started"; readonly executionId: string; readonly pid: number; readonly processIdentity?: ProcessIdentityToken }
   | { readonly type: "output"; readonly executionId: string; readonly stream: "stdout" | "stderr"; readonly bytes: number }
   | { readonly type: "terminating"; readonly executionId: string; readonly reason: "timeout" | "output-limit" | "cancelled" }
   | { readonly type: "completed"; readonly executionId: string; readonly result: ProcessResult };
@@ -152,7 +171,7 @@ export type ProcessEvent =
 export type ProcessToolEvent =
   | { readonly type: "prepared"; readonly request: ProcessApprovalRequest }
   | { readonly type: "approval_decided"; readonly request: ProcessApprovalRequest; readonly decision: ProcessApprovalDecision }
-  | { readonly type: "started"; readonly request: ProcessApprovalRequest; readonly pid: number }
+  | { readonly type: "started"; readonly request: ProcessApprovalRequest; readonly pid: number; readonly processIdentity?: ProcessIdentityToken }
   | { readonly type: "output"; readonly request: ProcessApprovalRequest; readonly stream: "stdout" | "stderr"; readonly bytes: number }
   | { readonly type: "terminating"; readonly request: ProcessApprovalRequest; readonly reason: "timeout" | "output-limit" | "cancelled" }
   | { readonly type: "completed"; readonly request: ProcessApprovalRequest; readonly result: ProcessResult };
@@ -162,6 +181,7 @@ export interface ProcessResult {
   readonly state: Extract<ProcessState, "completed" | "failed" | "cancelled" | "ambiguous">;
   readonly started: boolean;
   readonly pid?: number;
+  readonly processIdentity?: ProcessIdentityToken;
   readonly command: string;
   readonly displayArgs: readonly string[];
   readonly cwd: string;

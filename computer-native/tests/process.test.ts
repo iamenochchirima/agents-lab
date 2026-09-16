@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { LocalProcessRunner } from "../src/process/local-runner.js";
-import { reconcileRunningProcess } from "../src/process/recovery.js";
+import { readProcessIdentity, reconcileRunningProcess } from "../src/process/recovery.js";
 import type { ProcessLimits } from "../src/process/process.js";
 import type { ProcessExecutionRecord } from "../src/process/process.js";
 import { ProcessSecurityPolicy } from "../src/security/process-policy.js";
@@ -688,13 +688,15 @@ test("a crashed process is recovered without replaying a completed side effect",
         COMPUTER_NATIVE_CRASH_STATE: stateDir,
         COMPUTER_NATIVE_CRASH_WORKSPACE: harness.root,
       },
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
+    let childStderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => { childStderr += chunk.toString("utf8"); });
     const childExit = await new Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>((resolve, reject) => {
       child.once("error", reject);
       child.once("close", (code, signal) => resolve({ code, signal }));
     });
-    assert.equal(childExit.code, 42);
+    assert.equal(childExit.code, 42, childStderr);
     assert.equal(childExit.signal, null);
     assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran\n");
 
@@ -723,7 +725,7 @@ test("a crashed process is recovered without replaying a completed side effect",
   }
 });
 
-test("recovery terminates a still-running child without replaying it", async () => {
+test("recovery terminates a still-running child without replaying it", { skip: process.platform !== "linux" }, async () => {
   const harness = await createHarness();
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-orphan-recovery-"));
   try {
@@ -776,13 +778,15 @@ test("recovery terminates a still-running child without replaying it", async () 
         COMPUTER_NATIVE_CRASH_STATE: stateDir,
         COMPUTER_NATIVE_CRASH_WORKSPACE: harness.root,
       },
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
+    let childStderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => { childStderr += chunk.toString("utf8"); });
     const childExit = await new Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>((resolve, reject) => {
       child.once("error", reject);
       child.once("close", (code, signal) => resolve({ code, signal }));
     });
-    assert.equal(childExit.code, 43);
+    assert.equal(childExit.code, 43, childStderr);
     assert.equal(childExit.signal, null);
 
     const sessionId = (await readdir(path.join(stateDir, "sessions"))).find((entry) => entry !== ".lock");
@@ -793,13 +797,14 @@ test("recovery terminates a still-running child without replaying it", async () 
     assert.ok(turnId);
     const recovered = await restarted.recoverInterruptedTurns(undefined, reconcileRunningProcess);
     assert.equal(recovered[0]?.status, "interrupted");
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    await assert.rejects(() => readFile(path.join(harness.root, "marker.txt"), "utf8"), { code: "ENOENT" });
-
     const turnDirectory = path.join(stateDir, "sessions", sessionId, "turns", turnId);
     const executionEntry = (await readdir(path.join(turnDirectory, "executions")))[0];
     assert.ok(executionEntry);
     const processRecord = JSON.parse(await readFile(path.join(turnDirectory, "executions", executionEntry), "utf8")) as ProcessExecutionRecord;
+    assert.ok(processRecord.processIdentity);
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    await assert.rejects(() => readFile(path.join(harness.root, "marker.txt"), "utf8"), { code: "ENOENT" }, JSON.stringify(processRecord));
+
     assert.equal(processRecord.status, "ambiguous");
     assert.equal(processRecord.terminationConfirmed, true);
     assert.match(processRecord.errorMessage ?? "", /termination was confirmed/u);
@@ -808,6 +813,36 @@ test("recovery terminates a still-running child without replaying it", async () 
     await harness.cleanup();
     await rm(stateDir, { recursive: true, force: true });
   }
+});
+
+test("process recovery fails closed when the persisted identity does not match the PID", { skip: process.platform !== "linux" }, async () => {
+  const identity = await readProcessIdentity(process.pid);
+  assert.ok(identity);
+  const record: ProcessExecutionRecord = {
+    schemaVersion: 1,
+    executionId: "execution_pid_reuse",
+    callId: "call_pid_reuse",
+    sessionId: "session_pid_reuse",
+    turnId: "turn_pid_reuse",
+    command: process.execPath,
+    displayArgs: ["-e", "setTimeout(() => {}, 1000)"],
+    cwd: ".",
+    executablePath: identity.executablePath,
+    environmentProfile: "sanitized-default",
+    environmentKeys: ["PATH"],
+    limits,
+    argvHash: "pid-reuse-hash",
+    status: "running",
+    decision: "allow-once",
+    pid: process.pid,
+    processIdentity: { ...identity, startTime: `${identity.startTime}:different` },
+    startedAt: new Date().toISOString(),
+    recordedAt: new Date().toISOString(),
+  };
+  const reconciled = await reconcileRunningProcess(record);
+  assert.equal(reconciled.status, "ambiguous");
+  assert.equal(reconciled.terminationConfirmed, false);
+  assert.match(reconciled.errorMessage ?? "", /identity does not match/u);
 });
 
 test("process execution records preserve identity and one-way transitions", async () => {

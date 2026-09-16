@@ -502,6 +502,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         status: "running",
         decision: "allow-once",
         pid: event.pid,
+        ...(event.processIdentity ? { processIdentity: event.processIdentity } : {}),
         startedAt: new Date().toISOString(),
         recordedAt: new Date().toISOString(),
       };
@@ -512,6 +513,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         status: result.state,
         decision: "allow-once",
         ...(result.pid !== undefined ? { pid: result.pid } : {}),
+        ...(result.processIdentity ? { processIdentity: result.processIdentity } : {}),
         stdout: redactSecrets(result.stdout, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]),
         stderr: redactSecrets(result.stderr, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]),
         stdoutBytes: result.stdoutBytes,

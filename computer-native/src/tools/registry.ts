@@ -967,7 +967,7 @@ export class ToolRegistry {
           case "started":
             started = true;
             startedPid = event.pid;
-            await context.onProcess?.({ type: "started", request, pid: event.pid });
+            await context.onProcess?.({ type: "started", request, pid: event.pid, ...(event.processIdentity ? { processIdentity: event.processIdentity } : {}) });
             break;
           case "output": await context.onProcess?.({ type: "output", request, stream: event.stream, bytes: event.bytes }); break;
           case "terminating": await context.onProcess?.({ type: "terminating", request, reason: event.reason }); break;

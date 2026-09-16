@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 230 tests passed after the current process-lifecycle slice.
-- `pnpm run coverage`: 230 tests passed, with 87.96% line coverage, 75.26% branch
-  coverage, and 82.90% function coverage.
+- `pnpm test`: 231 tests passed after the current process-lifecycle slice.
+- `pnpm run coverage`: 231 tests passed, with 87.94% line coverage, 75.13% branch
+  coverage, and 82.96% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -73,6 +73,8 @@ readiness:
   missing lifecycle event is repaired before an already durable turn-terminal event.
 - A launch-record acknowledgement failure after spawn now terminates the child before
   the failure returns to the runtime.
+- Linux process records carry an executable/start-token identity, and recovery refuses
+  to signal a PID whose current identity does not match the persisted record.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -152,7 +154,8 @@ Exit evidence:
 - Current process crash evidence covers a completed-side-effect acknowledgement loss,
   a crash after a running record becomes durable, and an in-process launch-record
   acknowledgement failure. It does not yet cover every pre-write crash point,
-  cross-platform process-group behaviour, or a host-level PID-reuse defence.
+  cross-platform process identity/process-group behaviour, or the complete host-level
+  process-isolation story.
 - The runner reports at-most-once or at-least-once behaviour precisely. It does not claim
   exactly-once execution without proof.
 
