@@ -188,8 +188,11 @@ tests, but it must never replace a configured real provider silently.
   events, model requests, lifecycle/round evidence, terminal results, and action records;
   persistence rejects explicit cross-turn correlation mismatches while retaining a
   turn-ID fallback for older records.
-- The latest validation is 268 passing tests across the package, with 88.91% line
-  coverage, 76.91% branch coverage, and 83.95% function coverage. Coverage is from
+- Model request, attempt completion, retry, and completion events are now idempotent by
+  their stable identity when the repeated payload is identical; conflicting repeats fail
+  closed instead of appending duplicate model evidence.
+- The latest validation is 268 passing tests across the package, with 88.82% line
+  coverage, 76.92% branch coverage, and 83.99% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -647,6 +650,8 @@ claim in this plan.
       ambiguous outcomes.
 - [x] Add correlation IDs that connect TUI messages, runtime events, provider attempts,
       tool actions, and persisted records.
+- [x] Make model lifecycle evidence idempotent for identical acknowledgement-loss retries
+      and reject conflicting duplicate payloads.
 - [ ] Document which controls are policy controls and which guarantees require a future
       OS/container isolation profile.
 

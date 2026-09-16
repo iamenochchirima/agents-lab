@@ -275,9 +275,17 @@ test("lifecycle events reject out-of-order model attempt evidence", async () => 
   await assert.rejects(() => turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test" }), /before its request/);
   await turn.appendEvent("ModelRequested", { attemptId: "attempt_test" });
   await assert.rejects(() => turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" }), /before the failed attempt/);
-  await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test", status: "failed" });
-  await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" });
-  await turn.appendEvent("ModelCompleted");
+  const completedAttempt = await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test", status: "failed" });
+  const replayedAttempt = await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test", status: "failed" });
+  assert.equal(replayedAttempt.eventId, completedAttempt.eventId);
+  await assert.rejects(
+    () => turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test", status: "completed" }),
+    /repeated with a different payload/u,
+  );
+  const retry = await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" });
+  assert.equal((await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" })).eventId, retry.eventId);
+  const modelCompleted = await turn.appendEvent("ModelCompleted");
+  assert.equal((await turn.appendEvent("ModelCompleted")).eventId, modelCompleted.eventId);
 });
 
 test("lifecycle events enforce process, browser, and memory action ordering", async () => {

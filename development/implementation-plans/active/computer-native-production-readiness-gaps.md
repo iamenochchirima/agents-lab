@@ -52,8 +52,8 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 268 tests passed after the correlation increment.
-- `pnpm run coverage`: 268 tests passed, with 88.91% line coverage, 76.91% branch
-  coverage, and 83.95% function coverage in the latest run. Node's experimental
+- `pnpm run coverage`: 268 tests passed, with 88.82% line coverage, 76.92% branch
+  coverage, and 83.99% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -115,6 +115,8 @@ readiness:
 - New turns carry a stable correlation ID through TUI events, model requests, lifecycle
   and round evidence, terminal results, and action records. Older records use a turn-ID
   compatibility fallback, while explicit cross-turn correlation mismatches fail closed.
+- Model request, attempt completion, retry, and completion evidence is idempotent for an
+  identical repeated payload and rejects conflicting duplicates by stable identity.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,

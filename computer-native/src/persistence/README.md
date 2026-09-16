@@ -50,7 +50,10 @@ Lifecycle append validates the ordering of model attempt evidence: a
 `ModelAttemptCompleted` event must follow its matching `ModelRequested` event, and a
 `ModelRetryScheduled` event must follow that attempt's completion. Once a terminal turn
 event exists, the same terminal event is idempotent and any different or later lifecycle
-event is rejected. Workspace mutation events are also ordered and checked when read back:
+event is rejected. Model request, attempt completion, retry, and completion evidence is
+also idempotent by its stable attempt or event identity: an identical retry returns the
+durable event, while a conflicting payload is rejected. Workspace mutation events are
+also ordered and checked when read back:
 `WorkspaceMutationProposed` must precede its approval decision, an allow-once decision
 must precede application, progress may repeat only after application starts, and a
 committed, reconciled, or failed event closes that mutation's lifecycle. Reading an existing event

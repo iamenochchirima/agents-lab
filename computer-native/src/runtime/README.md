@@ -25,6 +25,10 @@ process stopping at that boundary; the runtime deliberately leaves the turn non-
 so the normal restart recovery path can classify it. This seam is unset in normal CLI
 operation and is not a retry or fallback mechanism.
 
+Model lifecycle writes are safe to repeat after an acknowledgement loss when the same
+attempt identity and payload are supplied. A conflicting repeat is rejected as
+persistence corruption; it cannot create a second observation for the same attempt.
+
 Terminal persistence is also recovery-aware at the acknowledgement boundary. A durable
 result or terminal event may already exist when the caller reports a write error. On
 restart, persistence reconciles the result, turn state, and event history; repeating
