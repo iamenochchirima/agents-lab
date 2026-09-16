@@ -137,6 +137,28 @@ function validateTurnResult(result: unknown, record: TurnRecord): asserts result
   assertRecordCorrelation(record.correlationId ?? asCorrelationId(record.turnId), candidate.correlationId as CorrelationId | undefined, "Terminal result");
 }
 
+function validateTranscriptMessage(message: unknown, expectedSessionId: SessionId): asserts message is TranscriptMessage {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    throw new ComputerNativeError("persistence", "A durable transcript message is not an object.");
+  }
+  const candidate = message as Record<string, unknown>;
+  if (candidate.schemaVersion !== 1
+    || typeof candidate.messageId !== "string"
+    || candidate.messageId.trim().length === 0
+    || typeof candidate.turnId !== "string"
+    || candidate.turnId.trim().length === 0
+    || (candidate.role !== "user" && candidate.role !== "assistant")
+    || typeof candidate.content !== "string"
+    || typeof candidate.createdAt !== "string"
+    || candidate.createdAt.trim().length === 0) {
+    throw new ComputerNativeError("persistence", "A durable transcript message has an invalid record.");
+  }
+  if (candidate.sessionId !== expectedSessionId) {
+    throw new ComputerNativeError("persistence", `Transcript message '${candidate.messageId}' does not belong to session '${expectedSessionId}'.`);
+  }
+  safePathSegment(candidate.turnId, "Turn ID");
+}
+
 function isTerminalLifecycleEvent(type: LifecycleEventType): boolean {
   return type === "TurnCompleted" || type === "TurnFailed" || type === "TurnCancelled" || type === "TurnInterrupted";
 }
@@ -646,7 +668,16 @@ export class SessionStore {
   }
 
   async readTranscript(): Promise<TranscriptMessage[]> {
-    return readJsonLines<TranscriptMessage>(path.join(this.sessionDirectory, "transcript.jsonl"));
+    const transcript = await readJsonLines<TranscriptMessage>(path.join(this.sessionDirectory, "transcript.jsonl"));
+    const messageIds = new Set<string>();
+    for (const message of transcript) {
+      validateTranscriptMessage(message, this.metadata.sessionId);
+      if (messageIds.has(message.messageId)) {
+        throw new ComputerNativeError("persistence", `Transcript message '${message.messageId}' is duplicated.`);
+      }
+      messageIds.add(message.messageId);
+    }
+    return transcript;
   }
 
   async admitTurn(userPrompt: string, provider: TurnRecord["provider"], model: string): Promise<TurnStore> {
@@ -679,7 +710,7 @@ export class SessionStore {
       content,
       createdAt,
     };
-    await this.appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
+    await this.appendMessage(message);
     await this.replaceJson(path.join(directory, "turn.json"), { ...record, userMessagePersisted: true, updatedAt: now() });
     return new TurnStore(this, directory, { ...record, userMessagePersisted: true });
   }
@@ -875,6 +906,15 @@ export class SessionStore {
   }
 
   async appendMessage(message: TranscriptMessage): Promise<void> {
+    validateTranscriptMessage(message, this.metadata.sessionId);
+    const transcript = await this.readTranscript();
+    const existing = transcript.find((candidate) => candidate.messageId === message.messageId);
+    if (existing) {
+      if (stableStringify(existing) !== stableStringify(message)) {
+        throw new ComputerNativeError("persistence", `Transcript message '${message.messageId}' already has different content.`);
+      }
+      return;
+    }
     await this.appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
   }
 }

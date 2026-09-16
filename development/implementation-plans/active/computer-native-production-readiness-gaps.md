@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:10:04+02:00
+**Last updated:** 2026-09-16T21:15:18+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 307 tests passed after the terminal commit precondition increment.
-- `pnpm run coverage`: 307 tests passed, with 89.00% line coverage, 77.85% branch
-  coverage, and 84.76% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 308 tests passed after the transcript evidence identity increment.
+- `pnpm run coverage`: 308 tests passed, with 89.00% line coverage, 77.82% branch
+  coverage, and 84.79% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -149,6 +149,9 @@ readiness:
 - Terminal commits validate the requested turn-state transition before writing
   `result.json`; an invalid terminal transition leaves the durable state and terminal
   result evidence unchanged.
+- Transcript messages are validated against session ownership and stable message IDs;
+  identical acknowledgement retries do not duplicate conversation evidence, while
+  conflicting message reuse fails closed.
 - A pre-cancelled turn does not invoke the provider or emit a model-request claim, and
   cancellation during model retry backoff cannot dispatch a later attempt.
 - Session ownership locks now persist a Linux executable/start-time identity alongside

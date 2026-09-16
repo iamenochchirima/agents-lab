@@ -772,6 +772,26 @@ test("terminal commit validates the turn transition before writing a result", as
   assert.equal(turn.state, "submitting");
 });
 
+test("transcript append is idempotent by message identity and rejects conflicting reuse", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("persist one assistant message", "deterministic", "deterministic/echo");
+  const assistantMessageId = await turn.appendAssistantMessage("first response", new Date(2).toISOString());
+  const assistant = (await session.readTranscript()).find((message) => message.messageId === assistantMessageId);
+  assert.ok(assistant);
+
+  await session.appendMessage(assistant);
+  assert.equal((await session.readTranscript()).filter((message) => message.messageId === assistantMessageId).length, 1);
+  await assert.rejects(
+    () => session.appendMessage({ ...assistant, content: "conflicting response" }),
+    /already has different content/u,
+  );
+  await assert.rejects(
+    () => session.appendMessage({ ...assistant, sessionId: asSessionId("session_other") }),
+    /does not belong to session/u,
+  );
+});
+
 test("restart recovery repairs terminal evidence after a durable write acknowledgement fails", async () => {
   const stateDir = tempDirectory();
   let resultAcknowledgements = 0;

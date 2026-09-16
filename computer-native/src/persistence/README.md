@@ -23,6 +23,11 @@ per line. A turn record is created before its user message is appended, so a res
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
 
+Transcript messages are validated for schema, session ownership, turn identity, role, and
+content before they are read or appended. Their stable message IDs make an identical
+acknowledgement retry a no-op; reusing an ID with different content or metadata is
+reported as persistence corruption instead of creating a duplicate transcript entry.
+
 New turns receive a stable correlation ID. It is written to the turn record and copied
 to lifecycle events, round evidence, terminal results, and persisted process, browser,
 memory, workspace, and memory-search records. The persistence layer accepts older

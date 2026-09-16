@@ -28,6 +28,9 @@ operation and is not a retry or fallback mechanism.
 Model lifecycle writes are safe to repeat after an acknowledgement loss when the same
 attempt identity and payload are supplied. A conflicting repeat is rejected as
 persistence corruption; it cannot create a second observation for the same attempt.
+Transcript writes use the same narrow identity rule: an acknowledged user or assistant
+message can be retried without duplication, while conflicting reuse of its message ID
+fails closed.
 
 Terminal persistence is also recovery-aware at the acknowledgement boundary. A durable
 result or terminal event may already exist when the caller reports a write error. On

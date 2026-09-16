@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:10:04+02:00
+**Last updated:** 2026-09-16T21:15:18+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -255,8 +255,11 @@ tests, but it must never replace a configured real provider silently.
   terminal result. An invalid transition leaves both the durable turn state and
   `result.json` unchanged; a lost acknowledgement after a valid terminal write remains
   recoverable without replaying the model or tool.
-- The latest validation is 307 passing tests across the package, with 89.00% line
-  coverage, 77.85% branch coverage, and 84.76% function coverage. Coverage is from
+- Transcript messages are validated against the owning session and stable message ID;
+  identical acknowledgement retries are ignored, while conflicting message reuse fails
+  closed instead of duplicating durable conversation evidence.
+- The latest validation is 308 passing tests across the package, with 89.00% line
+  coverage, 77.82% branch coverage, and 84.79% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -335,6 +338,30 @@ Practice check against the local Hermes and OpenClaw references:
   explicit lifecycle validation and fail-closed recovery practice without adding a
   transaction manager, rollback service, workflow engine, event-sourcing layer, or
   exactly-once guarantee.
+
+Still open after this slice:
+
+- Full turn-level transition helpers, the complete persistence/side-effect crash matrix,
+  deterministic replay, concurrency/lease semantics, and remaining security and
+  production-operation gates.
+
+### Current slice boundary: transcript evidence identity
+
+Delivered in this increment:
+
+- Transcript records are validated for schema, session ownership, turn identity, role,
+  content, and timestamp before they are read or appended.
+- Repeating an identical user or assistant message after an acknowledgement loss is a
+  no-op keyed by the existing stable `messageId`; conflicting reuse of that ID fails
+  closed and cannot add a second entry.
+- Tests cover idempotent assistant-message append, conflicting content, and cross-session
+  record rejection.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is a narrow identity check on the existing session transcript. It uses the current
+  append-only JSONL format and does not add a database, event-sourcing layer, transcript
+  compaction service, or exactly-once execution claim.
 
 Still open after this slice:
 
