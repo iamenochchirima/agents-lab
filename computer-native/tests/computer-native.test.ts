@@ -2506,6 +2506,32 @@ test("OpenRouter adapter rejects malformed stream shapes as non-retryable provid
     (error: unknown) => error instanceof ModelProviderError && error.code === "provider-incomplete" && error.retryable === false,
   );
 
+  const nullChoiceStream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[null]}\n\n'));
+      controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  const nullChoice = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(nullChoiceStream, { status: 200 }));
+  await assert.rejects(
+    async () => { for await (const _event of nullChoice.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-incomplete" && error.retryable === false,
+  );
+
+  const nullDeltaStream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":null}]}\n\n'));
+      controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  const nullDelta = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(nullDeltaStream, { status: 200 }));
+  await assert.rejects(
+    async () => { for await (const _event of nullDelta.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-incomplete" && error.retryable === false,
+  );
+
   const malformedFieldStream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"read_file","arguments":{}}}]}}]}\n\n'));

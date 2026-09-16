@@ -75,11 +75,11 @@ function parseChunk(data: string): { readonly text?: string; readonly refusal?: 
     throw new ModelProviderError("OpenRouter returned an invalid choices field.", { code: "provider-incomplete", retryable: false });
   }
   const firstChoice = parsed.choices?.[0];
-  if (firstChoice !== undefined && firstChoice !== null && (typeof firstChoice !== "object" || Array.isArray(firstChoice))) {
+  if (firstChoice !== undefined && (firstChoice === null || typeof firstChoice !== "object" || Array.isArray(firstChoice))) {
     throw new ModelProviderError("OpenRouter returned an invalid choice entry.", { code: "provider-incomplete", retryable: false });
   }
   const delta = firstChoice?.delta;
-  if (delta !== undefined && delta !== null && (typeof delta !== "object" || Array.isArray(delta))) {
+  if (delta !== undefined && (delta === null || typeof delta !== "object" || Array.isArray(delta))) {
     throw new ModelProviderError("OpenRouter returned an invalid delta.", { code: "provider-incomplete", retryable: false });
   }
   if (delta?.tool_calls !== undefined && !Array.isArray(delta.tool_calls)) {

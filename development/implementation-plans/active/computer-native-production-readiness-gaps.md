@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T01:49:41+02:00
+**Last updated:** 2026-09-17T01:53:11+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -52,7 +52,7 @@ The following evidence establishes the current local foundation, not production
 readiness:
 
 - `pnpm test`: 347 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 347 tests passed with 89.89% line coverage, 79.82% branch
+- `pnpm run coverage`: 347 tests passed with 89.89% line coverage, 79.81% branch
   coverage, and 85.62% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
@@ -218,9 +218,10 @@ readiness:
   argument-fragment types at the adapter boundary as non-retryable `provider-incomplete`
   outcomes. Usage metadata also rejects malformed containers and token-count types while
   preserving omitted/null fields. Streamed content and refusal fields also reject
-  malformed non-string values. This closes only the tested provider-shape gaps; broader
-  malformed response-shape fixtures, fallback policy, cost accounting, and credential-
-  expiry operations remain open.
+  malformed non-string values, while null choice entries and deltas are rejected as
+  malformed structural placeholders. This closes only the tested provider-shape gaps;
+  broader malformed response-shape fixtures, fallback policy, cost accounting, and
+  credential-expiry operations remain open.
 - New turns carry a stable correlation ID through TUI events, model requests, lifecycle
   and round evidence, terminal results, and action records. Older records use a turn-ID
   compatibility fallback, while explicit cross-turn correlation mismatches fail closed.

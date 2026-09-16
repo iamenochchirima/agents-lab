@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:49:41+02:00
+**Last updated:** 2026-09-17T01:53:11+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -123,6 +123,9 @@ tests, but it must never replace a configured real provider silently.
 - OpenRouter streamed `content` and `refusal` fields now reject non-string, non-null
   values at the adapter boundary as non-retryable `provider-incomplete` errors rather
   than silently dropping malformed provider output.
+- OpenRouter streamed chunks now also reject `null` choice entries and `null` deltas;
+  usage-only chunks remain supported, but malformed structural placeholders cannot be
+  accepted as a completed stream. Contract fixtures cover both shapes.
 - Workspace file, search, mutation, copy, and tree-manifest reads now use no-follow file
   descriptors with a bounded chunk loop. The loop probes at most one byte beyond the
   configured limit, so a file that grows after its initial metadata check fails closed
