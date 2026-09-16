@@ -432,10 +432,15 @@ function findIdempotentActionEvent(
 }
 
 function validateRound(round: RoundEvidence, sessionId: SessionId, turnId: TurnRecord["turnId"]): void {
-  if (round.schemaVersion !== 1 || round.sessionId !== sessionId || round.turnId !== turnId || !Number.isInteger(round.round) || round.round < 1) {
+  const validPhase = round.phase === "model_requested"
+    || round.phase === "model_completed"
+    || round.phase === "tool_requested"
+    || round.phase === "tool_completed";
+  if (round.schemaVersion !== 1 || round.sessionId !== sessionId || round.turnId !== turnId || !Number.isInteger(round.round) || round.round < 1 || !validPhase) {
     throw new ComputerNativeError("persistence", `Turn '${turnId}' contains an invalid round record. Repair it before continuing.`);
   }
-  if ((round.phase === "tool_requested" || round.phase === "tool_completed") && (!round.callId || !round.toolName)) {
+  if ((round.phase === "tool_requested" || round.phase === "tool_completed")
+    && (typeof round.callId !== "string" || round.callId.trim().length === 0 || typeof round.toolName !== "string" || round.toolName.trim().length === 0)) {
     throw new ComputerNativeError("persistence", `Turn '${turnId}' contains a tool round without call identity. Repair it before continuing.`);
   }
 }
@@ -443,8 +448,11 @@ function validateRound(round: RoundEvidence, sessionId: SessionId, turnId: TurnR
 function validateRoundOrder(rounds: readonly RoundEvidence[], sessionId: SessionId, turnId: TurnRecord["turnId"]): void {
   let previous: RoundEvidence | undefined;
   const callIds = new Set<string>();
-  for (const round of rounds) {
+  for (const [index, round] of rounds.entries()) {
     validateRound(round, sessionId, turnId);
+    if (index === 0 && (round.round !== 1 || round.phase !== "model_requested")) {
+      throw new ComputerNativeError("persistence", `Turn '${turnId}' must begin with model request evidence for round 1.`);
+    }
     if (previous) {
       if (round.round < previous.round || round.round > previous.round + 1) {
         throw new ComputerNativeError("persistence", `Turn '${turnId}' contains out-of-order round evidence. Repair it before continuing.`);
@@ -460,6 +468,10 @@ function validateRoundOrder(rounds: readonly RoundEvidence[], sessionId: Session
           (previous.phase === "tool_completed" && round.phase === "tool_requested");
         if (!validSameRoundTransition) {
           throw new ComputerNativeError("persistence", `Turn '${turnId}' contains out-of-order phase evidence. Repair it before continuing.`);
+        }
+        if (previous.phase === "tool_requested" && round.phase === "tool_completed"
+          && (round.callId !== previous.callId || round.toolName !== previous.toolName)) {
+          throw new ComputerNativeError("persistence", `Turn '${turnId}' contains tool completion evidence that does not match its request.`);
         }
       }
     }

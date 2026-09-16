@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T20:39:53+02:00
+**Last updated:** 2026-09-16T20:49:40+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -87,6 +87,10 @@ tests, but it must never replace a configured real provider silently.
 - The runtime now rejects model attempt completion and retry events when their request
   evidence is missing or out of order, and refuses any event that would follow a
   terminal lifecycle event.
+- Persisted model/tool round evidence now rejects unknown phases, a first record that is
+  not `model_requested` round `1`, and a tool completion whose call ID or tool name does
+  not match its immediately preceding request. This tightens the existing evidence
+  validator; it does not add a generic workflow or transaction framework.
 - Mutation records now persist the effective approval timeout, and the TUI renders that
   timeout as part of the review context. A changed timeout is treated as an identity
   change during durable mutation transitions.
@@ -242,11 +246,40 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 304 passing tests across the package, with 88.82% line
-  coverage, 77.48% branch coverage, and 84.73% function coverage. Coverage is from
+- The latest validation is 304 passing tests across the package, with 88.99% line
+  coverage, 77.66% branch coverage, and 84.83% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
+
+### Current slice boundary: model/tool round evidence ordering
+
+Delivered in this increment:
+
+- Round records validate their known phase, owning session/turn identity, positive round
+  number, and required tool-call identity.
+- A turn's first round record must be `model_requested` for round `1`.
+- A `tool_completed` record must match the call ID and tool name from the immediately
+  preceding `tool_requested` record; existing legal multi-call and next-round transitions
+  remain supported.
+- Tests cover an unknown phase, an invalid first phase, missing tool identity, a mismatched
+  tool completion, duplicate tool calls, and phase reordering.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is an operation-local integrity check on evidence the runtime already persists.
+  It follows explicit lifecycle validation and fail-closed recovery patterns without
+  adding a generic workflow engine, event-sourcing layer, transaction manager, rollback
+  service, scheduler, or exactly-once claim.
+
+Still open after this slice:
+
+- Full turn-level transition helpers, the complete persistence/side-effect crash matrix,
+  deterministic replay, concurrency/lease semantics, and remaining security and
+  production-operation gates.
+
+The plan remains active. This increment hardens an existing contract; it does not expand
+Computer Native into a general durable workflow system.
 
 ### Current increment: session ownership and stale-lock safety
 

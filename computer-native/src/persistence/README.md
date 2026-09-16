@@ -80,6 +80,12 @@ committed, reconciled, or failed event closes that mutation's lifecycle. Reading
 stream validates these rules again, so persisted corruption is reported instead of being
 silently treated as a valid recovery state.
 
+Persisted model/tool round evidence starts with `model_requested` for round `1`. Within a
+round, phases follow the existing model/tool loop, and every `tool_completed` record must
+match the immediately preceding `tool_requested` call ID and tool name. Unknown phases,
+skipped round starts, and mismatched completions are persistence corruption; this validates
+the current round contract without introducing a generic workflow or transaction engine.
+
 Event records are also checked for schema identity, known event type, contiguous sequence,
 owning session, owning turn, and correlation. Terminal results are checked against the
 admitted session, turn, provider, model, and correlation before they are written or used

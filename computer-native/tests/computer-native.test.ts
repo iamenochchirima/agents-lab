@@ -5330,10 +5330,15 @@ test("round evidence rejects missing identity, duplicate calls, and phase reorde
   const session = await openSession(stateDir);
   const turn = await session.admitTurn("evidence", "deterministic", "deterministic/echo");
   const base = { schemaVersion: 1 as const, sessionId: turn.sessionId, turnId: turn.turnId, round: 1, recordedAt: new Date().toISOString(), payload: {} };
+  await assert.rejects(() => turn.appendRound({ ...base, phase: "unknown" as never }), /invalid round record/);
+  await assert.rejects(() => turn.appendRound({ ...base, phase: "tool_requested", callId: "call_before_model", toolName: "read_file" }), /must begin with model request/);
   await turn.appendRound({ ...base, phase: "model_requested" });
   await assert.rejects(() => turn.appendRound({ ...base, phase: "tool_completed" }), /without call identity/);
   await turn.appendRound({ ...base, phase: "model_completed" });
+  await assert.rejects(() => turn.appendRound({ ...base, phase: "model_requested" }), /out-of-order phase evidence/);
+  await assert.rejects(() => turn.appendRound({ ...base, round: 3, phase: "model_requested" }), /out-of-order round evidence/);
   await turn.appendRound({ ...base, phase: "tool_requested", callId: "call_1", toolName: "read_file" });
+  await assert.rejects(() => turn.appendRound({ ...base, phase: "tool_completed", callId: "call_2", toolName: "read_file" }), /does not match its request/);
   await turn.appendRound({ ...base, phase: "tool_completed", callId: "call_1", toolName: "read_file" });
   await assert.rejects(() => turn.appendRound({ ...base, phase: "tool_requested", callId: "call_1", toolName: "read_file" }), /duplicate tool call/);
 });
