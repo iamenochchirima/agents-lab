@@ -1,7 +1,9 @@
 import { loadInngestConfig } from "./config.js";
 import { InngestPlatformService } from "./service/platform-service.js";
+import { loadLocalServerEnvironment } from "../../control-plane/bootstrap/local-env.js";
 
 export async function startInngestService(environment: NodeJS.ProcessEnv = process.env): Promise<void> {
+  loadLocalServerEnvironment(environment);
   const service = new InngestPlatformService({ config: loadInngestConfig(environment) });
   await service.initialize();
   const server = service.createHttpServer();

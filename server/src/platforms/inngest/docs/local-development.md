@@ -20,13 +20,13 @@ the service on the host first:
 ```bash
 AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
 AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9091 \
-npx --prefix server tsx server/src/platforms/inngest/service-entry.ts
+pnpm --filter @agent-harness-lab/lab-server run dev:inngest
 ```
 
 Then, in another terminal, start the pinned Dev Server:
 
 ```bash
-npx --yes inngest-cli@1.44.0 dev \
+pnpm dlx --yes inngest-cli@1.44.0 dev \
   --no-discovery \
   -u http://127.0.0.1:9091/api/inngest
 ```

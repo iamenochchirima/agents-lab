@@ -1,7 +1,7 @@
 # Inngest baseline
 
-The baseline accepts one prompt event and runs one deterministic model step through
-the official Inngest TypeScript SDK. It covers event admission, durable step
+The baseline accepts one prompt event and runs one selected OpenRouter model step
+through the official Inngest TypeScript SDK. It covers event admission, durable step
 replay, bounded retries, event cancellation, native status projection, and safe
 reconciliation.
 

@@ -20,12 +20,16 @@ the HTTP adapter and translates the service's safe native projection into the La
 runner contract. The common evidence store remains the writer of
 `lab/runs/<run-id>/` after shared registration is added by the composition owner.
 
+The Platform UI selects an OpenRouter model from the shared server catalog. The
+provider request runs inside Inngest's durable model step; fake models remain
+available only as deterministic test fixtures.
+
 ## Local operation
 
 Install the platform-local SDK dependency:
 
 ```bash
-npm install --prefix server/src/platforms/inngest
+pnpm install
 ```
 
 Start the platform service first so the Dev Server can register its function
@@ -34,13 +38,13 @@ endpoint. The version is pinned for this baseline rather than using `latest`:
 ```bash
 AGENTLAB_INNGEST_DEV_SERVER_URL=http://127.0.0.1:8288 \
 AGENTLAB_INNGEST_SERVICE_URL=http://127.0.0.1:9091 \
-npx --prefix server tsx server/src/platforms/inngest/service-entry.ts
+pnpm --filter @agent-harness-lab/lab-server run dev:inngest
 ```
 
 In another terminal, start the official Dev Server:
 
 ```bash
-npx --yes inngest-cli@1.44.0 dev \
+pnpm dlx --yes inngest-cli@1.44.0 dev \
   --no-discovery \
   -u http://127.0.0.1:9091/api/inngest
 ```

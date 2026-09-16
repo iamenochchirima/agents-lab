@@ -89,7 +89,7 @@ export function safeManifestConfiguration(config: InngestConfig): Readonly<Recor
     eventIdempotencyRetentionMs: INNGEST_EVENT_RETENTION_MS,
     functionRetries: config.functionRetries,
     functionTimeoutMs: config.functionTimeoutMs,
-    modelProvider: "fake-by-default",
+    modelProvider: "selected-run-provider",
   });
 }
 
