@@ -97,7 +97,7 @@ export interface TurnMetrics {
 export type ModelStreamEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "tool_call"; readonly call: ModelToolCall }
-  | { readonly type: "completed"; readonly usage?: ModelUsage };
+  | { readonly type: "completed"; readonly usage?: ModelUsage; readonly providerRequestId?: string; readonly latencyMs?: number };
 
 export type RuntimeActionKind = "workspace" | "process" | "browser" | "memory";
 
@@ -128,6 +128,8 @@ export interface TurnError {
     | "provider"
     | "provider-empty"
     | "provider-incomplete"
+    | "provider-context"
+    | "provider-refusal"
     | "rate-limit"
     | "first-event-timeout"
     | "timeout"

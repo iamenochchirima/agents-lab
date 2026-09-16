@@ -903,6 +903,8 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
   let toolCallCount = 0;
   let roundCount = 0;
   let modelOutputBytes = 0;
+  let providerRequestId: string | undefined;
+  let providerLatencyMs: number | undefined;
   try {
     for (let round = 1; round <= options.config.maxModelToolRounds; round += 1) {
       roundCount = round;
@@ -967,10 +969,21 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
               toolCalls.push(event.call);
             } else {
               usage = event.usage ?? usage;
+              providerRequestId = event.providerRequestId ?? providerRequestId;
+              providerLatencyMs = event.latencyMs ?? providerLatencyMs;
             }
           }
           await checkpoint(options.diagnostics, { type: "after-model-response", round, attempt, attemptId, emittedEvent });
-          await turn.appendEvent("ModelAttemptCompleted", { round, attempt, attemptId, status: "completed", emittedEvent, usage: usage ?? null });
+          await turn.appendEvent("ModelAttemptCompleted", {
+            round,
+            attempt,
+            attemptId,
+            status: "completed",
+            emittedEvent,
+            usage: usage ?? null,
+            ...(providerRequestId ? { providerRequestId } : {}),
+            ...(providerLatencyMs !== undefined ? { latencyMs: providerLatencyMs } : {}),
+          });
           break;
         } catch (error) {
           if (isRuntimeInterruptionError(error)) throw error;
@@ -1099,7 +1112,11 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       usage,
       metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount),
     };
-    await turn.appendEvent("ModelCompleted", { usage: usage ?? null });
+    await turn.appendEvent("ModelCompleted", {
+      usage: usage ?? null,
+      ...(providerRequestId ? { providerRequestId } : {}),
+      ...(providerLatencyMs !== undefined ? { latencyMs: providerLatencyMs } : {}),
+    });
     await checkpoint(options.diagnostics, { type: "before-terminal-commit", status: result.status, turnId: turn.turnId });
     await turn.commitTerminal(result, "TurnCompleted", { assistantMessageId });
     options.onEvent?.({ type: "status", status: "completed", round: 0 });

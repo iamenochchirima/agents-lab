@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T16:06:30+02:00
+**Last updated:** 2026-09-16T16:34:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 258 tests passed after the current approval/TUI increment.
-- `pnpm run coverage`: 258 tests passed, with 88.60% line coverage, 76.70% branch
-  coverage, and 83.70% function coverage.
+- `pnpm test`: 263 tests passed after the provider-reliability increment.
+- `pnpm run coverage`: 263 tests passed, with 88.66% line coverage, 76.86% branch
+  coverage, and 83.78% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -101,6 +101,13 @@ readiness:
   injection and cross-file batch publication remain open.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
+- Built-in provider adapters now expose capability metadata. The factory validates
+  namespaced provider/model selection before admission, and the OpenRouter adapter
+  records bounded request identity and latency when available.
+- OpenRouter context-limit responses, HTTP and streamed refusals, incomplete streams,
+  and pre-output versus post-output disconnects now have bounded classifications. The
+  runtime does not retry context/refusal outcomes and does not retry a disconnect after
+  partial output.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,
@@ -112,7 +119,7 @@ provider, browser-profile, and operational acceptance evidence.
 | --- | --- | --- |
 | Runtime and turns | Bounded local foundation with normalized lifecycle evidence, durable-record acknowledgement recovery, and terminal-event reconstruction across current action families | Full per-boundary crash matrix, durable lifecycle unification, concurrency, and replay semantics |
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
-| Models and providers | Real OpenRouter path plus deterministic tests | Provider registry, resilient transport, fallback policy, usage/cost evidence, and credential operations |
+| Models and providers | Real OpenRouter path, explicit model validation, capability metadata, bounded evidence, and deterministic tests | Provider registry, broader malformed-response fixtures, fallback policy, usage/cost evidence, credential operations, and documented real-provider acceptance |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, launch-failure cleanup, and restart cleanup for the detached foreground process group | Cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
@@ -249,6 +256,13 @@ Remaining work:
   rejected.
 - Add provider contract tests with deterministic local fixtures and a small real-provider
   acceptance profile. Real-provider tests must never depend on a committed key.
+
+Delivered in the current foundation increment, but not yet sufficient for production:
+
+- Built-in capability metadata and explicit provider/model validation.
+- Bounded request identifier and latency evidence on successful model attempts.
+- Context-limit and refusal classifications, plus pre/post-output disconnect handling.
+- Deterministic contract fixtures for these cases.
 
 Exit evidence:
 

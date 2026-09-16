@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T16:06:30+02:00
+**Last updated:** 2026-09-16T16:30:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -164,8 +164,14 @@ tests, but it must never replace a configured real provider silently.
   cancellation activity.
 - The TUI now labels interrupted turns, partial/uncertain filesystem mutations, and
   outcome-unknown process or browser actions distinctly from ordinary failure.
-- The current validation is 258 passing tests across the package, with 88.60% line
-  coverage, 76.70% branch coverage, and 83.70% function coverage.
+- Built-in model adapters now expose capability metadata, and the factory validates
+  namespaced provider/model selection before a turn starts. The OpenRouter adapter now
+  classifies context-limit and refusal responses, preserves bounded request IDs and
+  latency evidence, and classifies pre-output versus post-output stream disconnects.
+- The current validation is 263 passing tests across the package, with 88.66% line
+  coverage, 76.86% branch coverage, and 83.78% function coverage. The full suite and
+  coverage run both pass; a prior real-browser tab-close timeout was timing-sensitive
+  and passed on the clean reruns.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -280,6 +286,26 @@ Broader gates still open after the current increments:
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
+
+### Current slice boundary: provider reliability and evidence
+
+Delivered in this increment:
+
+- Capability metadata for the deterministic and OpenRouter adapters, with explicit
+  provider/model validation and no silent deterministic fallback.
+- Bounded provider request ID and latency metadata on successful model attempt and
+  model-completion evidence.
+- Classification of transport failures, incomplete streams, context overflow, and
+  provider refusal, including retry eligibility and post-output disconnect handling.
+- Tests for factory validation, adapter metadata, provider evidence, HTTP and streamed
+  refusal/context errors, and pre/post-output disconnects.
+
+Still open after this increment:
+
+- A documented real-provider acceptance run without a committed credential.
+- Broader provider fixtures for malformed response shapes, usage anomalies, fallback
+  policy, credential rotation, cost accounting, and provider-native diagnostic retention.
+- A provider registry and model-selection UX beyond the current explicit configuration.
 
 ### Current slice boundary: approval identity and cancellation UX
 
@@ -550,16 +576,17 @@ claim in this plan.
 
 ### 4. Provider reliability
 
-- [ ] Add provider capability metadata and validate provider/model combinations before
+- [x] Add provider capability metadata and validate provider/model combinations before
       admission.
 - [x] Add bounded retry for eligible transport failures, rate limits, and transient
       provider errors.
-- [ ] Handle partial streams, empty responses, malformed tool calls, disconnects,
-      context overflow, and provider refusal without hanging the turn.
-- [ ] Record provider, model, attempt, request identifier when available, latency,
+- [x] Handle partial streams, empty responses, incomplete tool calls, disconnects,
+      context overflow, and provider refusal without hanging the turn. Broader malformed
+      response-shape coverage remains open.
+- [x] Record provider, model, attempt, request identifier when available, latency,
       usage, retry reason, and final disposition without secrets.
-- [ ] Make deterministic providers test-only or explicitly selected. No silent
-      deterministic fallback is allowed in a real-provider run.
+- [x] Make deterministic providers explicitly selected. No silent deterministic fallback
+      is allowed in a real-provider run.
 - [ ] Add provider contract fixtures and one documented real-provider acceptance path.
 
 ### 5. Filesystem completion

@@ -38,7 +38,7 @@ export function isRuntimeInterruptionError(error: unknown): error is RuntimeInte
 export class ModelProviderError extends ComputerNativeError {
   readonly retryable: boolean | undefined;
 
-  constructor(message: string, options?: { cause?: unknown; code?: Extract<TurnError["code"], "provider" | "provider-empty" | "provider-incomplete" | "rate-limit">; retryable?: boolean }) {
+  constructor(message: string, options?: { cause?: unknown; code?: Extract<TurnError["code"], "provider" | "provider-empty" | "provider-incomplete" | "provider-context" | "provider-refusal" | "rate-limit">; retryable?: boolean }) {
     super(options?.code ?? "provider", message, options);
     this.name = "ModelProviderError";
     this.retryable = options?.retryable;

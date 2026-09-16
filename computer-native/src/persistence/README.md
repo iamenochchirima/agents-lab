@@ -51,6 +51,12 @@ committed, reconciled, or failed event closes that mutation's lifecycle. Reading
 stream validates these rules again, so persisted corruption is reported instead of being
 silently treated as a valid recovery state.
 
+Model attempt evidence may carry bounded `providerRequestId` and `latencyMs` fields when
+the adapter reports them. They describe transport observation only and do not authorize
+replay or imply exactly-once model execution. Provider and model identity remain part of
+the request/turn evidence, while credentials and unbounded provider response bodies are
+excluded from durable records.
+
 Process, browser, and memory lifecycle events use the same identity-scoped ordering
 checks. Process events follow prepared → approval → started → optional terminating →
 completed; browser events follow prepared → approval → started → completed; memory events

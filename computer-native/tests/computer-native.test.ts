@@ -13,6 +13,7 @@ import type { BrowserDocumentId, BrowserSessionId, BrowserTabId } from "../src/b
 import { buildInitialContext } from "../src/context/context.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { OpenRouterModelProvider } from "../src/models/openrouter.js";
+import { createModelProvider } from "../src/models/factory.js";
 import { atomicWriteJson, redactRecord } from "../src/persistence/json.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import { ToolRegistry } from "../src/tools/registry.js";
@@ -20,7 +21,7 @@ import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
 import { MAX_PATCH_REQUEST_BYTES, type MutationEvent, type WorkspaceMutationRecord } from "../src/workspace/mutation.js";
 import { ComputerNativeError, ModelProviderError, MutationError, RuntimeInterruptionError } from "../src/runtime/errors.js";
-import { asSessionId, asTurnId, type ModelRequest, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
+import { asSessionId, asTurnId, type ModelRequest, type ModelStreamEvent, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
 import { allowedTransitions, assertTransition } from "../src/runtime/state.js";
 import { openChatApplication } from "../src/runtime/application.js";
 import { runTurn } from "../src/runtime/turn.js";
@@ -118,6 +119,38 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.throws(
     () => config(tempDirectory(), { maxModelOutputBytes: 0 }),
     /max model output bytes must be a positive integer/u,
+  );
+});
+
+test("model factory validates explicit provider/model selection and exposes capabilities", () => {
+  const deterministic = createModelProvider(config(tempDirectory()));
+  assert.deepEqual(deterministic.capabilities, {
+    streaming: true,
+    toolCalls: true,
+    structuredOutput: false,
+    vision: false,
+    reasoningControls: false,
+    usageReporting: true,
+    contextWindow: "harness-bounded",
+  });
+
+  const openrouter = createModelProvider(loadConfig({
+    stateDir: tempDirectory(),
+    provider: "openrouter",
+    model: "nvidia/test-model:free",
+    openRouterApiKey: "test-key",
+  }, {}));
+  assert.equal(openrouter.capabilities?.streaming, true);
+  assert.equal(openrouter.capabilities?.toolCalls, true);
+  assert.equal(openrouter.capabilities?.contextWindow, "unknown");
+
+  assert.throws(
+    () => createModelProvider(loadConfig({ stateDir: tempDirectory(), provider: "openrouter", model: "free", openRouterApiKey: "test-key" }, {})),
+    /namespaced OpenRouter model/u,
+  );
+  assert.throws(
+    () => createModelProvider(loadConfig({ stateDir: tempDirectory(), provider: "deterministic", model: "openai/test" }, {})),
+    /deterministic model must start with deterministic\//u,
   );
 });
 
@@ -376,6 +409,29 @@ test("successful turn persists ordered transcript, events, and result", async ()
   assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequested", "ModelAttemptCompleted", "ModelCompleted", "TurnCompleted"]);
   assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5]);
   assert.ok(events.every((event) => event.sessionId === result.sessionId && event.turnId === result.turnId));
+});
+
+test("turn persists provider request identity and latency in model evidence", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/evidence",
+    async *stream(): AsyncIterable<ModelStreamEvent> {
+      yield { type: "text", text: "evidence" };
+      yield { type: "completed", usage: { outputTokens: 1, totalTokens: 1 }, providerRequestId: "req_evidence", latencyMs: 17 };
+    },
+  };
+  const result = await runTurn({ session, provider, config: config(stateDir), userPrompt: "record evidence" });
+  assert.equal(result.status, "completed");
+  const events = (await readFile(path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  const attempt = events.find((event) => event.type === "ModelAttemptCompleted");
+  const completed = events.find((event) => event.type === "ModelCompleted");
+  assert.equal(attempt?.payload.providerRequestId, "req_evidence");
+  assert.equal(attempt?.payload.latencyMs, 17);
+  assert.equal(completed?.payload.providerRequestId, "req_evidence");
+  assert.equal(completed?.payload.latencyMs, 17);
 });
 
 test("committing the same terminal result twice does not duplicate the terminal event", async () => {
@@ -1439,11 +1495,40 @@ test("OpenRouter adapter parses streamed text and usage without exposing credent
   };
   const events = [];
   for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
-  assert.deepEqual(events, [
-    { type: "text", text: "hello" },
-    { type: "completed", usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 } },
-  ]);
+  assert.deepEqual(events[0], { type: "text", text: "hello" });
+  assert.equal(events[1]?.type, "completed");
+  assert.deepEqual(events[1]?.usage, { inputTokens: 2, outputTokens: 1, totalTokens: 3 });
+  assert.equal(typeof events[1]?.latencyMs, "number");
+  assert.ok((events[1]?.latencyMs ?? -1) >= 0);
   assert.equal(requestHeaders?.get("authorization"), "Bearer stream-secret");
+});
+
+test("OpenRouter adapter preserves bounded request identity and latency metadata", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'));
+      controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  const provider = new OpenRouterModelProvider("openai/example", "metadata-secret", async () => new Response(stream, {
+    status: 200,
+    headers: { "x-request-id": "req_model_123" },
+  }));
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "hello" }],
+  };
+  const events = [];
+  for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
+  const completed = events.at(-1);
+  assert.equal(completed?.type, "completed");
+  assert.equal(completed?.providerRequestId, "req_model_123");
+  assert.equal(typeof completed?.latencyMs, "number");
+  assert.ok((completed?.latencyMs ?? -1) >= 0);
 });
 
 test("OpenRouter adapter normalizes streamed tool calls and serializes the provider wire format", async () => {
@@ -1473,10 +1558,10 @@ test("OpenRouter adapter normalizes streamed tool calls and serializes the provi
   };
   const events = [];
   for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
-  assert.deepEqual(events, [
-    { type: "tool_call", call: { callId: "call_1", name: "read_file", argumentsJson: '{"path":"README.txt"}' } },
-    { type: "completed", usage: undefined },
-  ]);
+  assert.deepEqual(events[0], { type: "tool_call", call: { callId: "call_1", name: "read_file", argumentsJson: '{"path":"README.txt"}' } });
+  assert.equal(events[1]?.type, "completed");
+  assert.equal(events[1]?.usage, undefined);
+  assert.equal(typeof events[1]?.latencyMs, "number");
   assert.deepEqual(requestBody?.tools, [{ type: "function", function: { name: "read_file", description: "Read a file.", parameters: { type: "object" } } }]);
   assert.deepEqual(requestBody?.messages, [
     { role: "assistant", content: null, tool_calls: [{ id: "call_0", type: "function", function: { name: "list_directory", arguments: "{}" } }] },
@@ -1536,6 +1621,80 @@ test("OpenRouter adapter classifies incomplete streams and rate limits", async (
     async () => { for await (const _event of unauthorized.stream(request, new AbortController().signal)) void _event; },
     (error: unknown) => error instanceof ModelProviderError && error.retryable === false,
   );
+  const contextLimited = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(
+    JSON.stringify({ error: { message: "maximum context length exceeded" } }),
+    { status: 400, headers: { "content-type": "application/json" } },
+  ));
+  await assert.rejects(
+    async () => { for await (const _event of contextLimited.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-context" && error.retryable === false,
+  );
+  const refusal = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(
+    JSON.stringify({ error: { message: "request blocked by content policy" } }),
+    { status: 400, headers: { "content-type": "application/json" } },
+  ));
+  await assert.rejects(
+    async () => { for await (const _event of refusal.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-refusal" && error.retryable === false,
+  );
+});
+
+test("OpenRouter adapter classifies a streamed refusal without retrying it", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"refusal":"I cannot help with that request."}}]}\n\n'));
+      controller.close();
+    },
+  });
+  const provider = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(stream, { status: 200 }));
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "hello" }],
+  };
+  await assert.rejects(
+    async () => { for await (const _event of provider.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider-refusal" && error.retryable === false,
+  );
+});
+
+test("OpenRouter adapter classifies stream disconnects without leaking raw transport errors", async () => {
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "hello" }],
+  };
+  const disconnectedBeforeOutput = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error("socket closed before output"));
+    },
+  }), { status: 200 }));
+  await assert.rejects(
+    async () => { for await (const _event of disconnectedBeforeOutput.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider" && error.retryable === true && !error.message.includes("socket closed before output"),
+  );
+
+  let sent = false;
+  const disconnectedAfterOutput = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!sent) {
+        sent = true;
+        controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+        return;
+      }
+      controller.error(new Error("socket closed after output"));
+    },
+  }), { status: 200 }));
+  const events: unknown[] = [];
+  await assert.rejects(
+    async () => { for await (const event of disconnectedAfterOutput.stream(request, new AbortController().signal)) events.push(event); },
+    (error: unknown) => error instanceof ModelProviderError && error.code === "provider" && error.retryable === false,
+  );
+  assert.deepEqual(events, [{ type: "text", text: "partial" }]);
 });
 
 test("non-interactive CLI runs against the deterministic local provider", async () => {

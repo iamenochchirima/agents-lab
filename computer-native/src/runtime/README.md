@@ -38,6 +38,14 @@ provider call and `ModelAttemptCompleted` records success or bounded failure. Sc
 delays are separate lifecycle evidence. A failure after partial text or a tool call is
 never replayed automatically.
 
+Successful model attempt and `ModelCompleted` evidence may also include a provider request
+identifier and adapter latency when the selected adapter supplies them. The identifier is
+bounded and redacted before persistence. Usage remains normalized in the existing model
+usage shape, while provider-native diagnostics stay in the adapter error/evidence path.
+Provider context-limit and refusal outcomes are terminal provider classifications, not
+transient retries; pre-output transport failure is the only disconnect case eligible for
+the existing bounded retry policy.
+
 Model requests and streamed model output are bounded independently from tool output.
 `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES` is checked before a provider call and emits
 `ModelRequestRejected` when the serialized request is too large. The runtime also counts

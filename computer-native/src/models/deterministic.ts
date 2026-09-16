@@ -36,6 +36,15 @@ function usageFor(text: string): ModelUsage {
 
 export class DeterministicModelProvider implements ModelProvider {
   readonly provider = "deterministic" as const;
+  readonly capabilities = {
+    streaming: true,
+    toolCalls: true,
+    structuredOutput: false,
+    vision: false,
+    reasoningControls: false,
+    usageReporting: true,
+    contextWindow: "harness-bounded" as const,
+  };
   readonly model: string;
   private readonly behavior: DeterministicBehavior;
   private readonly delayMs: number;

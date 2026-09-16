@@ -1,9 +1,9 @@
-import { ComputerNativeError, ModelProviderError, redactSecrets } from "../runtime/errors.js";
+import { ComputerNativeError, isAbortError, ModelProviderError, redactSecrets } from "../runtime/errors.js";
 import type { ModelMessage, ModelRequest, ModelStreamEvent, ModelToolCall, ModelUsage } from "../runtime/contracts.js";
 import type { ModelProvider } from "./provider.js";
 
 interface OpenRouterChunk {
-  readonly choices?: readonly [{ readonly delta?: { readonly content?: unknown; readonly tool_calls?: readonly OpenRouterToolCallDelta[] } }?];
+  readonly choices?: readonly [{ readonly delta?: { readonly content?: unknown; readonly refusal?: unknown; readonly tool_calls?: readonly OpenRouterToolCallDelta[] } }?];
   readonly usage?: { readonly prompt_tokens?: unknown; readonly completion_tokens?: unknown; readonly total_tokens?: unknown };
 }
 
@@ -30,7 +30,21 @@ function retryableHttpStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-function parseChunk(data: string): { readonly text?: string; readonly usage?: ModelUsage; readonly toolCalls: readonly OpenRouterToolCallDelta[]; readonly done: boolean } | undefined {
+function providerHttpFailure(status: number, body: string): { readonly code: "provider" | "provider-context" | "provider-refusal" | "rate-limit"; readonly retryable: boolean } {
+  const normalized = body.toLowerCase();
+  if (status === 429) return { code: "rate-limit", retryable: true };
+  if (status === 400 || status === 413) {
+    if (/context|token limit|maximum .*length|prompt .*too (large|long)|request .*too (large|long)/u.test(normalized)) {
+      return { code: "provider-context", retryable: false };
+    }
+    if (/refus|safety|content policy|blocked/u.test(normalized)) {
+      return { code: "provider-refusal", retryable: false };
+    }
+  }
+  return { code: "provider", retryable: retryableHttpStatus(status) };
+}
+
+function parseChunk(data: string): { readonly text?: string; readonly refusal?: string; readonly usage?: ModelUsage; readonly toolCalls: readonly OpenRouterToolCallDelta[]; readonly done: boolean } | undefined {
   if (data.length === 0) return undefined;
   if (data === "[DONE]") return { toolCalls: [], done: true };
   let parsed: OpenRouterChunk;
@@ -40,9 +54,11 @@ function parseChunk(data: string): { readonly text?: string; readonly usage?: Mo
     throw new ModelProviderError("OpenRouter returned an invalid streaming event.");
   }
   const content = parsed.choices?.[0]?.delta?.content;
+  const refusal = parsed.choices?.[0]?.delta?.refusal;
   const text = typeof content === "string" && content.length > 0 ? content : undefined;
+  const refusalText = typeof refusal === "string" && refusal.length > 0 ? refusal : undefined;
   const usage = usageFrom(parsed.usage);
-  return { text, usage, toolCalls: parsed.choices?.[0]?.delta?.tool_calls ?? [], done: false };
+  return { text, refusal: refusalText, usage, toolCalls: parsed.choices?.[0]?.delta?.tool_calls ?? [], done: false };
 }
 
 function toolCallFrom(index: number, value: { readonly id?: string; readonly name: string; readonly argumentsJson: string }): ModelToolCall {
@@ -71,6 +87,15 @@ function wireMessages(messages: readonly ModelMessage[]): readonly Record<string
 
 export class OpenRouterModelProvider implements ModelProvider {
   readonly provider = "openrouter" as const;
+  readonly capabilities = {
+    streaming: true,
+    toolCalls: true,
+    structuredOutput: false,
+    vision: false,
+    reasoningControls: false,
+    usageReporting: true,
+    contextWindow: "unknown" as const,
+  };
 
   constructor(
     readonly model: string,
@@ -80,6 +105,7 @@ export class OpenRouterModelProvider implements ModelProvider {
   ) {}
 
   async *stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent> {
+    const requestStartedAt = Date.now();
     let response: Response;
     try {
       response = await this.fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
@@ -111,18 +137,23 @@ export class OpenRouterModelProvider implements ModelProvider {
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
+      const failure = providerHttpFailure(response.status, body);
       throw new ModelProviderError(
         `OpenRouter returned HTTP ${response.status}: ${redactSecrets(body.slice(0, 500), [this.apiKey])}`,
-        { code: response.status === 429 ? "rate-limit" : "provider", retryable: retryableHttpStatus(response.status) },
+        { code: failure.code, retryable: failure.retryable },
       );
     }
     if (!response.body) throw new ModelProviderError("OpenRouter returned no response stream.");
 
+    const providerRequestId = [response.headers.get("x-request-id"), response.headers.get("x-openrouter-request-id")]
+      .map((value) => value?.trim())
+      .find((value): value is string => value !== undefined && value.length > 0);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let lastUsage: ModelUsage | undefined;
     let sawDone = false;
+    let sawOutputEvent = false;
     let responseBytes = 0;
     const toolCalls = new Map<number, { id?: string; name: string; argumentsJson: string }>();
     const countResponseBytes = (value: string): void => {
@@ -143,12 +174,15 @@ export class OpenRouterModelProvider implements ModelProvider {
           const event = parseChunk(line.slice(5).trim());
           if (!event) continue;
           if (event.done) sawDone = true;
+          if (event.refusal) throw new ModelProviderError("OpenRouter refused the request.", { code: "provider-refusal", retryable: false });
           if (event.text) {
+            sawOutputEvent = true;
             countResponseBytes(event.text);
             yield { type: "text", text: event.text };
           }
           lastUsage = event.usage ?? lastUsage;
           for (const delta of event.toolCalls) {
+            sawOutputEvent = true;
             const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : toolCalls.size;
             const existing = toolCalls.get(index) ?? { name: "", argumentsJson: "" };
             if (typeof delta.id === "string") countResponseBytes(delta.id);
@@ -165,12 +199,15 @@ export class OpenRouterModelProvider implements ModelProvider {
       if (trailing.startsWith("data:")) {
         const event = parseChunk(trailing.slice(5).trim());
         if (event?.done) sawDone = true;
+        if (event?.refusal) throw new ModelProviderError("OpenRouter refused the request.", { code: "provider-refusal", retryable: false });
         if (event?.text) {
+          sawOutputEvent = true;
           countResponseBytes(event.text);
           yield { type: "text", text: event.text };
         }
         if (event?.usage) lastUsage = event.usage;
         for (const delta of event?.toolCalls ?? []) {
+          sawOutputEvent = true;
           const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : toolCalls.size;
           const existing = toolCalls.get(index) ?? { name: "", argumentsJson: "" };
           if (typeof delta.id === "string") countResponseBytes(delta.id);
@@ -182,6 +219,12 @@ export class OpenRouterModelProvider implements ModelProvider {
           toolCalls.set(index, { id, name, argumentsJson });
         }
       }
+    } catch (error) {
+      if (error instanceof ComputerNativeError || isAbortError(error)) throw error;
+      throw new ModelProviderError("OpenRouter response stream disconnected before completion.", {
+        cause: error,
+        retryable: !sawOutputEvent,
+      });
     } finally {
       reader.releaseLock();
     }
@@ -190,6 +233,11 @@ export class OpenRouterModelProvider implements ModelProvider {
       if (value.name.length === 0) throw new ModelProviderError("OpenRouter returned an incomplete tool call.", { code: "provider-incomplete" });
       yield { type: "tool_call", call: toolCallFrom(index, value) };
     }
-    yield { type: "completed", usage: lastUsage };
+    yield {
+      type: "completed",
+      usage: lastUsage,
+      ...(providerRequestId ? { providerRequestId: redactSecrets(providerRequestId, [this.apiKey]).slice(0, 256) } : {}),
+      latencyMs: Math.max(0, Date.now() - requestStartedAt),
+    };
   }
 }

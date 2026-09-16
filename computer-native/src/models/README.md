@@ -20,3 +20,26 @@ within the configured attempt and backoff limits. A failure after text or a tool
 has been emitted is not retried because replay could duplicate visible output or obscure
 an already-started side effect. Every scheduled retry is recorded in lifecycle evidence
 and shown in the TUI.
+
+## Provider contract
+
+Concrete adapters expose capability metadata for the features they actually implement:
+streaming, tool calls, structured output, vision, reasoning controls, usage reporting,
+and context-window knowledge. An unknown provider context window is represented as
+`unknown`; the harness still applies its own serialized request and streamed-output
+limits. Custom providers used in tests may omit metadata, but the built-in factory
+always validates the provider/model pairing before a turn is admitted. OpenRouter model
+IDs must be namespaced (for example `nvidia/model:free` or `openrouter/free`), and the
+deterministic provider must be selected with a `deterministic/` model ID.
+
+The OpenRouter adapter records a bounded provider request identifier when the response
+supplies one and measures adapter latency. These values are attached to model attempt
+and completion evidence; credentials are never persisted. HTTP context-limit and
+provider-refusal responses, streamed refusals, empty completions, incomplete streams,
+and transport disconnects have distinct bounded error outcomes. A disconnect before
+output may be retried by the runtime; a disconnect after output is not retried because
+the provider may already have accepted and partially executed the request.
+
+The adapter does not provide fallback models. If the selected provider is unavailable,
+the turn fails with provider evidence rather than silently switching to deterministic
+output.
