@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:03:16+02:00
+**Last updated:** 2026-09-16T23:10:08+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,11 +51,13 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 323 tests passed.
-- `pnpm run coverage`: 323 tests passed, with 89.18% line coverage, 78.61% branch
-  coverage, and 84.98% function coverage in the latest successful run. Node's experimental
-  coverage runner can vary slightly between runs; one earlier run was discarded because
-  instrumentation caused timing-sensitive browser and admission tests to fail.
+- The latest concurrent `pnpm test` run executed 324 tests: 322 passed and two
+  timing-sensitive browser/admission tests failed under concurrent load. The affected
+  browser files pass when run individually, and the serialized full suite passes 324/324.
+- The serialized equivalent of `pnpm run coverage` passes 324 tests, with 89.47% line
+  coverage, 78.87% branch coverage, and 85.14% function coverage. The default concurrent
+  coverage command hit the same timing-sensitive browser/admission failures; the coverage
+  runner is experimental and can vary with host contention.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -92,6 +94,10 @@ readiness:
   or recovery reconciliation. Invalid operation/risk values, path/member or journal
   evidence, limits, counters, decisions, or outcomes fail closed before filesystem outcome
   classification.
+- Persisted memory action records are now schema-validated before append, transition, or
+  recovery reconciliation. Invalid ownership, operation/scope, source or content hashes,
+  batch members, limits, statuses, decisions, reasons, or timestamps fail closed before
+  memory outcome classification.
 - Model requests are rejected before provider transport when their serialized size
   exceeds `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`; streamed response text and tool-call
   fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
@@ -222,7 +228,7 @@ provider, browser-profile, and operational acceptance evidence.
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery and durable mutation-record validation | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, durable-record validation, launch-failure cleanup, and restart cleanup for the detached foreground process group | Full process crash matrix, cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability with durable action-record validation | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
-| Memory | Durable Markdown, local lexical retrieval, and bounded evidence maintenance | Mature retrieval, promotion, privacy, deletion, migration, backup/restore, and real-model acceptance |
+| Memory | Durable Markdown, local lexical retrieval, bounded evidence maintenance, and durable action-record validation | Mature retrieval, promotion, privacy, deletion, migration, backup/restore, and real-model acceptance |
 | Skills and plugins | Planned boundaries only | Trust, manifests, permissions, isolation, lifecycle, and evidence |
 | External integrations | Not implemented as a product layer | Credentials, retries, idempotency, webhooks, queues, and connector recovery |
 | Durable jobs and delegation | Foreground turns only | Scheduling, leases, restart recovery, budgets, child-agent policy, and operator controls |

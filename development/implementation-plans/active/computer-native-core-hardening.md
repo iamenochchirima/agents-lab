@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:03:16+02:00
+**Last updated:** 2026-09-16T23:10:08+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -1118,6 +1118,32 @@ Still open after this slice:
 - The broader per-write and host-side crash matrix, schema migration/repair tooling,
   backup/restore, and the remaining memory retrieval/privacy/compaction work remain open.
 
+### Current slice boundary: memory action record integrity
+
+Delivered in this slice:
+
+- `TurnStore.writeMemoryAction` validates each action record before appending it to the
+  operation's JSONL history. `readMemoryActions` validates every historical record before
+  returning the latest state for inspection or recovery.
+- Validation covers session/turn/correlation ownership, operation and scope, source and
+  content hashes, batch member manifests, approval timeout, lifecycle status, decision,
+  reason, and timestamp fields. A batch operation must carry a non-empty member manifest.
+- Malformed memory evidence fails closed before recovery can reconcile or close the action;
+  it cannot be mistaken for an approved operation or used to infer a memory side effect.
+- Tests cover malformed persisted evidence and the existing transition, denial,
+  acknowledgement-loss, interruption, and batch recovery paths.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is operation-specific validation at the existing memory persistence/recovery
+  boundary. It follows explicit lifecycle and fail-closed recovery patterns without adding
+  a generic schema framework, workflow engine, rollback service, or exactly-once claim.
+
+Still open after this slice:
+
+- The broader per-write and host-side crash matrix, schema migration/repair tooling,
+  backup/restore, and the remaining memory retrieval/privacy/compaction work remain open.
+
 ### Current slice boundary: runtime interruption checkpoints
 
 Delivered in this slice:
@@ -1536,6 +1562,8 @@ claim in this plan.
       event reconstruction.
 - [x] Reject malformed workspace mutation records before recovery reconciliation or
       filesystem outcome classification.
+- [x] Reject malformed memory action records before recovery reconciliation or terminal
+      lifecycle reconstruction.
 - [ ] Retry eligibility, backoff limits, provider error classification, and no silent
       fallback.
 - [ ] Approval choice parsing, stale approval rejection, exact identity binding, and

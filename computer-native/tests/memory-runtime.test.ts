@@ -12,6 +12,7 @@ import { runTurn } from "../src/runtime/turn.js";
 import { RuntimeInterruptionError } from "../src/runtime/errors.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
+import { atomicWriteJsonLines } from "../src/persistence/json.js";
 
 async function openRuntimeMemory(root: string, writeHooks?: Parameters<typeof MemoryStore.open>[0]["writeHooks"]) {
   const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
@@ -126,6 +127,42 @@ test("memory action evidence rejects skipped transitions and identity drift", as
     );
     await turn.writeMemoryAction({ ...base, status: "committed", decision: "allow-once" });
     assert.equal((await turn.readMemoryActions())[0]?.status, "committed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recovery rejects malformed memory action evidence before reconciliation", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-action-integrity-"));
+  try {
+    const session = await SessionStore.open(path.join(root, "state"));
+    const turn = await session.admitTurn("reject malformed memory action evidence", "deterministic", "deterministic/echo");
+    await turn.updateState("streaming");
+    const base: MemoryActionRecord = {
+      schemaVersion: 1,
+      operationId: "memory_malformed",
+      sessionId: session.metadata.sessionId,
+      turnId: turn.turnId,
+      correlationId: turn.correlationId,
+      callId: "memory_malformed_call",
+      operation: "add",
+      scope: "workspace",
+      sourcePath: "MEMORY.md",
+      afterContentHash: "after-hash",
+      inputHash: "after-hash",
+      status: "approved",
+      decision: "allow-once",
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeMemoryAction({ ...base, status: "proposed" });
+    const recordPath = path.join(turn.directory, "memory-actions", `${base.operationId}.jsonl`);
+    await atomicWriteJsonLines(recordPath, [{ ...base, inputHash: 42 }]);
+
+    await assert.rejects(
+      () => session.recoverInterruptedTurns(),
+      /invalid durable record/u,
+    );
+    assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"streaming"/u);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -771,6 +771,65 @@ function assertBrowserActionRecord(
   }
 }
 
+function assertMemoryActionRecord(
+  record: unknown,
+  expectedSessionId: SessionMetadata["sessionId"],
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is MemoryActionRecord {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Memory action", "operationId");
+  const candidate = record as Record<string, unknown>;
+  const validNonEmptyString = (value: unknown): boolean => typeof value === "string" && value.trim().length > 0;
+  const validOptionalString = (value: unknown): boolean => value === undefined || validNonEmptyString(value);
+  const validMemoryScope = (value: unknown): boolean => value === "user" || value === "workspace" || value === "daily";
+  const validOperation = candidate.operation === "add"
+    || candidate.operation === "replace"
+    || candidate.operation === "remove"
+    || candidate.operation === "batch";
+  const validScope = validMemoryScope(candidate.scope);
+  const validStatus = candidate.status === "proposed"
+    || candidate.status === "approved"
+    || candidate.status === "denied"
+    || candidate.status === "committed"
+    || candidate.status === "failed";
+  const validDecision = candidate.decision === undefined
+    || candidate.decision === "allow-once"
+    || candidate.decision === "deny"
+    || candidate.decision === "unavailable";
+  const validBatch = candidate.batch === undefined
+    || (Array.isArray(candidate.batch)
+      && candidate.batch.length > 0
+      && candidate.batch.every((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        const item = value as Record<string, unknown>;
+        return (item.operation === "add" || item.operation === "replace" || item.operation === "remove")
+          && validMemoryScope(item.scope)
+          && validOptionalString(item.recordId)
+          && validNonEmptyString(item.sourcePath)
+          && validOptionalString(item.beforeContentHash)
+          && validOptionalString(item.afterContentHash);
+      }));
+  if (candidate.sessionId !== expectedSessionId
+    || !validNonEmptyString(candidate.callId)
+    || !validOperation
+    || (candidate.recordId !== undefined && !validNonEmptyString(candidate.recordId))
+    || !validScope
+    || !validNonEmptyString(candidate.sourcePath)
+    || !validOptionalString(candidate.beforeContentHash)
+    || !validOptionalString(candidate.afterContentHash)
+    || !validNonEmptyString(candidate.inputHash)
+    || !validBatch
+    || (candidate.operation === "batch" && candidate.batch === undefined)
+    || (candidate.approvalTimeoutMs !== undefined && (!Number.isSafeInteger(candidate.approvalTimeoutMs) || (candidate.approvalTimeoutMs as number) <= 0))
+    || !validStatus
+    || !validDecision
+    || (candidate.reason !== undefined && !validNonEmptyString(candidate.reason))
+    || !validNonEmptyString(candidate.recordedAt)) {
+    throw new ComputerNativeError("persistence", `Memory action '${String(candidate.operationId)}' has an invalid durable record.`);
+  }
+  assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, "Memory action");
+}
+
 function assertWorkspaceMutationRecord(
   record: unknown,
   expectedCorrelationId: CorrelationId,
@@ -946,10 +1005,7 @@ function assertMemoryActionHistory(
 ): void {
   let previous: MemoryActionRecord | undefined;
   for (const record of history) {
-    assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Memory action", "operationId");
-    if (record.sessionId !== expectedSessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
-      throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${expectedTurnId}'.`);
-    }
+    assertMemoryActionRecord(record, expectedSessionId, expectedTurnId, expectedCorrelationId);
     if (previous) {
       try {
         assertMemoryActionTransition(previous, record);
@@ -1491,13 +1547,7 @@ export class TurnStore {
   }
 
   async writeMemoryAction(record: MemoryActionRecord): Promise<void> {
-    if (record.schemaVersion !== 1 || record.operationId.trim().length === 0 || record.callId.trim().length === 0) {
-      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid memory action record.`);
-    }
-    assertRecordCorrelation(this.correlationId, record.correlationId, "Memory action");
-    if (record.turnId !== this.turnId || record.sessionId !== this.sessionId) {
-      throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${this.turnId}'.`);
-    }
+    assertMemoryActionRecord(record, this.sessionId, this.turnId, this.correlationId);
     const directory = path.join(this.directory, "memory-actions");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`);
