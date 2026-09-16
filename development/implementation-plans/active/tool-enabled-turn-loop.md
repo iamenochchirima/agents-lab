@@ -1,7 +1,7 @@
 # Tool-enabled turn loop
 
 **Created:** `2026-09-16T13:37:32+02:00`
-**Last updated:** `2026-09-16T19:12:18+02:00`
+**Last updated:** `2026-09-16T19:14:06+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -344,7 +344,7 @@ remaining checks are either completed or explicitly deferred with evidence.
 - [x] Deterministic tool-call fixture executes calculator, performs the second model request, and returns the final answer through the native local Restate service and generic HTTP API.
 - [x] The actual OpenRouter request body contains the tool schema and, on the second request, the assistant tool call plus matching tool result. Use a local fetch fixture, not a live API key, in automated tests.
 - [x] Unknown tool, malformed arguments, duplicate IDs, calculator failure, and loop-limit paths produce model-visible tool results or terminal classified failures as specified.
-- [ ] Restate journal replay does not execute a completed model/tool step twice. Native worker restart and post-restart Lab projection passed; the exact completed-step non-duplication assertion remains deferred to the Docker `alwaysReplay` profile because Docker is unavailable in this environment.
+- [ ] Restate journal replay does not execute a completed model/tool step twice. The deterministic journal-cache seam now proves stable action names and zero second execution in `f3a6d59`; native worker restart and post-restart projection passed. The exact completed-step non-duplication assertion against Restate's `alwaysReplay` runtime remains deferred because Docker is unavailable in this environment.
 - [x] Duplicate run submission reuses the same workflow key and does not duplicate logical tool calls; the native test submits the completed tool workflow again and confirms `already_accepted`, the same output, and one logical tool call.
 - [x] An accepted workflow that disappears is classified as `reconciliation_required`; repeated reads preserve the same retained result.
 - [x] Restart the Restate worker between model/tool steps, then inspect the run and verify recovery from native state. The persistent native Restate 1.7.10 probe replayed `restate-worker-restart-1789577191093` after the node restarted; it completed with two model rounds, one logical calculator call, and the same final answer. Service-process interruption remains recorded as a separate observed limitation below.
@@ -413,6 +413,10 @@ the full server test command (219 passed, 0 failed), web typecheck, web build,
 `git diff --check`, and `bash -n scripts/run_local_stack.sh` all passed. The web
 build retained only the existing large-chunk warning.
 
+The focused replay check `pnpm --filter @agent-harness-lab/lab-server exec tsx
+--test tests/platforms/restate/workflow.test.ts` passed with 10 tests, including
+the deterministic journal-cache assertion added in `f3a6d59`.
+
 The release-process document referenced by the repository guidance is not
 present in this checkout, so no release, migration, rollout, or rollback claim
 is made for this active slice. That reference must be resolved before the plan
@@ -444,7 +448,7 @@ Use separate reviewable commits. Do not wait until the end for one large commit:
 - [ ] Record the final contiguous commit set in the completion record when the remaining shared/server and browser sections are committed and the plan is archived. Preserve existing user and other-agent changes in the dirty worktree.
 
 Focused commits already landed: `cb6c430`, `8c78c73`, `9b41bb5`, `2a7194c`,
-`0788d37`, and `43607f2`.
+`0788d37`, `43607f2`, and `f3a6d59`.
 
 ## Completion record
 
