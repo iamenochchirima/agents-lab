@@ -157,7 +157,11 @@ test("the Inngest function executes the selected OpenRouter model and records no
     assert.equal(record?.modelProvider, "openrouter");
     assert.equal(record?.model, "cohere/north-mini-code:free");
     const requested = record?.events.find((event) => event.kind === "ModelRequested");
-    assert.deepEqual(requested?.payload, { attempt: 0 });
+    assert.deepEqual(requested?.payload, {
+      provider: "openrouter",
+      model: "cohere/north-mini-code:free",
+      attempt: 0,
+    });
     assert.equal(JSON.stringify(record).includes("test-secret"), false);
   } finally {
     await rm(directory, { recursive: true, force: true });

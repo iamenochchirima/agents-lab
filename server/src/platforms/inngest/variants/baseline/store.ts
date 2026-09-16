@@ -159,7 +159,11 @@ export class InngestRunStore {
         // from the observed model request, not only from function admission.
         attemptCount: Math.max(record.attemptCount, attempt + 1),
       }, this.now().toISOString());
-      return this.recordEventInMemory(updated, `model-requested:${attempt}`, "ModelRequested", { attempt });
+      return this.recordEventInMemory(updated, `model-requested:${attempt}`, "ModelRequested", {
+        provider: record.modelProvider,
+        model: record.model,
+        attempt,
+      });
     });
   }
 
@@ -168,6 +172,8 @@ export class InngestRunStore {
       const record = this.requireRun(runId);
       const updated = completeModelPhase(record, this.now().toISOString());
       return this.recordEventInMemory(updated, `model-completed:${attempt}`, "ModelCompleted", {
+        provider: record.modelProvider,
+        model: record.model,
         attempt,
         providerRequestId,
       });
@@ -179,6 +185,8 @@ export class InngestRunStore {
       const record = this.requireRun(runId);
       const updated = completeModelPhase(record, this.now().toISOString());
       return this.recordEventInMemory(updated, `model-failed:${attempt}`, "ModelFailed", {
+        provider: record.modelProvider,
+        model: record.model,
         attempt,
         code: result.code,
         failureKind: result.failureKind,
