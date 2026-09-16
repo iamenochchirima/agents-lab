@@ -16,9 +16,11 @@ After that category reaches its completion gate, the next Computer Native compon
    - Explicit browser/session ownership, navigation and interaction approval, page-content
      limits, download handling, credential boundaries, and browser-run evidence.
 
-3. **Memory**
-   - Explicit memory stores, read/write approval boundaries, provenance, retention,
-     deletion, retrieval limits, and memory-operation evidence.
+3. **Memory** — active plan:
+   [Computer Native memory](active/computer-native-memory.md).
+   - Compact user and durable stores, dated working notes, bounded retrieval, explicit
+     mutation approval, provenance, retention, deletion, recovery, and memory-operation
+     evidence. The plan is grounded in the local Hermes and OpenClaw implementations.
 
 4. **Skills**
    - Skill discovery, instruction loading, trust and scope policy, versioning, isolation,

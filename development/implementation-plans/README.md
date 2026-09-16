@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-16T08:34:37+02:00
+**Last updated:** 2026-09-16T09:18:07+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -50,6 +50,10 @@ batch are archived below.
 
 The current shared model slice is tracked in the
 [OpenRouter model selection plan](active/openrouter-model-selection.md).
+
+The current Computer Native memory slice is tracked in
+[the active memory plan](active/computer-native-memory.md). It follows the completed
+browser interaction slice and uses local Hermes and OpenClaw code as design references.
 
 The next context slice is tracked in the
 [session context and compaction plan](active/context-management.md). It covers the
