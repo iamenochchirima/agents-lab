@@ -1,8 +1,12 @@
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from variants.baseline.graph import ModelConfig, build_baseline_graph
+from variants.baseline import graph as graph_module
+from variants.baseline.graph import ModelConfig, ProviderError, build_baseline_graph, complete_openrouter
 
 
 def test_baseline_graph_uses_real_langgraph_and_persists_checkpoint(tmp_path: Path) -> None:
@@ -61,3 +65,52 @@ def test_pre_dispatch_retry_is_bounded_and_observable() -> None:
 
     requests = [payload for kind, payload in events if kind == "ModelRequested"]
     assert [payload["attempt"] for payload in requests] == [1, 2]
+
+
+class _FakeProviderResponse:
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def __enter__(self) -> "_FakeProviderResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self, _size: int) -> bytes:
+        body, self.body = self.body, b""
+        return body
+
+
+def _openrouter_model() -> ModelConfig:
+    return ModelConfig(
+        provider="openrouter",
+        model="openai/test-model",
+        api_key="test-openrouter-secret",
+        timeout_ms=5_000,
+    )
+
+
+def _openrouter_state() -> graph_module.GraphState:
+    return {"prompt": "hello", "system_instruction": "answer directly"}
+
+
+def test_openrouter_response_is_parsed_at_the_provider_boundary() -> None:
+    response_body = b'{"id":"provider-1","choices":[{"message":{"content":"hello from OpenRouter"}}],"usage":{"prompt_tokens":4,"completion_tokens":5,"total_tokens":9}}'
+    with patch.object(graph_module.urllib_request, "urlopen", return_value=_FakeProviderResponse(response_body)) as urlopen:
+        output, usage = complete_openrouter(_openrouter_model(), _openrouter_state(), lambda: False)
+
+    assert output == "hello from OpenRouter"
+    assert usage == {"inputTokens": 4, "outputTokens": 5, "totalTokens": 9}
+    request = urlopen.call_args.args[0]
+    assert request.full_url.endswith("/chat/completions")
+    assert b"test-openrouter-secret" not in request.data
+
+
+def test_openrouter_response_is_rejected_before_unbounded_state_growth() -> None:
+    oversized = b"x" * (graph_module.MAX_RESPONSE_BYTES + 1)
+    with patch.object(graph_module.urllib_request, "urlopen", return_value=_FakeProviderResponse(oversized)):
+        with pytest.raises(ProviderError, match="larger than the configured safety limit") as error:
+            complete_openrouter(_openrouter_model(), _openrouter_state(), lambda: False)
+
+    assert error.value.code == "LANGGRAPH_RESPONSE_TOO_LARGE"

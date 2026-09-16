@@ -20,6 +20,8 @@ from langgraph.types import RetryPolicy
 
 
 EventEmitter = Callable[[str, dict[str, Any]], None]
+MAX_RESPONSE_BYTES = 1_048_576
+MAX_OUTPUT_CHARS = 100_000
 
 
 class GraphState(TypedDict, total=False):
@@ -75,12 +77,17 @@ class ConfigurationError(LangGraphModelError):
     code = "LANGGRAPH_MODEL_CONFIGURATION"
 
 
+class ResponseTooLargeError(ProviderError):
+    code = "LANGGRAPH_RESPONSE_TOO_LARGE"
+
+
 @dataclass(frozen=True)
 class ModelConfig:
     provider: str
     model: str
     api_key: str | None
     timeout_ms: int
+    base_url: str = "https://openrouter.ai/api/v1"
 
 
 def build_baseline_graph(
@@ -206,7 +213,7 @@ def complete_openrouter(
         }
     ).encode()
     request = urllib_request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
+        f"{model.base_url.rstrip('/')}/chat/completions",
         data=payload,
         headers={
             "Authorization": f"Bearer {model.api_key}",
@@ -218,19 +225,25 @@ def complete_openrouter(
     )
     try:
         with urllib_request.urlopen(request, timeout=model.timeout_ms / 1000) as response:
-            body = json.loads(response.read().decode("utf-8"))
+            body = json.loads(read_bounded_response(response).decode("utf-8"))
     except urllib_error.HTTPError as exc:
         if 400 <= exc.code < 500:
             raise ProviderError(f"OpenRouter rejected the request with HTTP {exc.code}.") from exc
         raise OutcomeUnknownError("OpenRouter returned an ambiguous server-side response.") from exc
+    except ResponseTooLargeError:
+        raise
+    except json.JSONDecodeError as exc:
+        raise ProviderError("OpenRouter returned an invalid JSON response.") from exc
     except (urllib_error.URLError, TimeoutError, OSError) as exc:
         raise OutcomeUnknownError("The OpenRouter response outcome could not be established.") from exc
 
     try:
         output = body["choices"][0]["message"]["content"]
         usage = body.get("usage") or {}
-        if not isinstance(output, str):
+        if not isinstance(output, str) or not output.strip():
             raise TypeError
+        if len(output) > MAX_OUTPUT_CHARS:
+            raise ResponseTooLargeError("OpenRouter assistant output exceeded the configured safety limit.")
         return output, {
             "inputTokens": _optional_int(usage.get("prompt_tokens")),
             "outputTokens": _optional_int(usage.get("completion_tokens")),
@@ -238,6 +251,20 @@ def complete_openrouter(
         }
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise OutcomeUnknownError("OpenRouter returned an invalid response shape.") from exc
+
+
+def read_bounded_response(response: Any) -> bytes:
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while True:
+        chunk = response.read(64 * 1024)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > MAX_RESPONSE_BYTES:
+            raise ResponseTooLargeError("OpenRouter returned a response larger than the configured safety limit.")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def empty_usage() -> dict[str, int | None]:
