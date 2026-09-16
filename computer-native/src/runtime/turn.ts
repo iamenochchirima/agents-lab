@@ -13,12 +13,14 @@ import type { MutationApproval, MutationEvent, WorkspaceMutationRecord } from ".
 import type { SessionStore } from "../persistence/session-store.js";
 import type { MemoryActionRecord, MemoryApproval, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import type { MemoryStore } from "../memory/store.js";
-import { ComputerNativeError, ModelProviderError, redactSecrets, safeErrorMessage } from "./errors.js";
+import { ComputerNativeError, isRuntimeInterruptionError, ModelProviderError, redactSecrets, safeErrorMessage } from "./errors.js";
 import type {
   ModelMessage,
   ModelToolCall,
   TurnMetrics,
   ModelUsage,
+  RuntimeCheckpoint,
+  RuntimeDiagnostics,
   TerminalTurnStatus,
   LifecycleEventType,
   TurnError,
@@ -41,6 +43,7 @@ export interface RunTurnOptions {
   readonly memory?: MemoryStore;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
+  readonly diagnostics?: RuntimeDiagnostics;
   readonly onText?: (text: string) => void;
   readonly onEvent?: (event: TurnEvent) => void;
   readonly approveMutation?: MutationApproval;
@@ -52,6 +55,10 @@ export interface RunTurnOptions {
   readonly approveMemory?: MemoryApproval;
   readonly onMemory?: (event: MemoryEvent) => void | Promise<void>;
   readonly onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void | Promise<void>;
+}
+
+async function checkpoint(diagnostics: RuntimeDiagnostics | undefined, value: RuntimeCheckpoint): Promise<void> {
+  await diagnostics?.onCheckpoint?.(value);
 }
 
 interface AbortContext {
@@ -470,6 +477,16 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         ...(reason ? { reason } : {}),
       });
     }
+    if (event.type === "approval_decided") {
+      await checkpoint(options.diagnostics, {
+        type: "after-approval",
+        actionKind: "workspace",
+        toolName: request.operation,
+        callId: request.callId ?? "",
+        identity: request.mutationId,
+        decision: event.decision.decision,
+      });
+    }
     await options.onMutation?.(event);
   };
   const recordProcess = async (event: ProcessToolEvent): Promise<void> => {
@@ -570,6 +587,16 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
             errorCode: record.errorCode ?? null,
           });
         }
+      }
+      if (event.type === "approval_decided") {
+        await checkpoint(options.diagnostics, {
+          type: "after-approval",
+          actionKind: "process",
+          toolName: "run_command",
+          callId: request.callId,
+          identity: request.executionId,
+          decision: event.decision.decision,
+        });
       }
     }
     await options.onProcess?.(event);
@@ -689,6 +716,16 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           } } : {}) }
           : { actionId: request.actionId, callId: request.callId, sessionId: request.sessionId, tabId: request.tabId, action: request.action };
       await turn.appendEvent(lifecycleType, payload);
+      if (event.type === "approval_decided") {
+        await checkpoint(options.diagnostics, {
+          type: "after-approval",
+          actionKind: "browser",
+          toolName: request.action,
+          callId: request.callId,
+          identity: request.actionId,
+          decision: event.decision.decision,
+        });
+      }
     }
     await options.onBrowser?.(event);
   };
@@ -743,6 +780,14 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           ...(event.decision.reason ? { reason: event.decision.reason } : {}),
         });
       }
+      await checkpoint(options.diagnostics, {
+        type: "after-approval",
+        actionKind: "memory",
+        toolName: "memory",
+        callId: request.callId,
+        identity: request.operationId,
+        decision: event.decision.decision,
+      });
     } else if (event.type === "committed") {
       await turn.appendEvent("MemoryCommitted", { ...base, recordId: event.record.id, contentHash: event.record.contentHash });
     } else if (event.type === "forgotten") {
@@ -842,6 +887,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         await turn.appendEvent("ModelRequested", { provider: request.provider, model: request.model, round, attempt, attemptId });
         let emittedEvent = false;
         try {
+          await checkpoint(options.diagnostics, { type: "before-model-send", round, attempt, attemptId });
           for await (const event of options.provider.stream(roundRequest, abort.signal)) {
             emittedEvent = true;
             abort.markFirstEvent();
@@ -870,9 +916,11 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
               usage = event.usage ?? usage;
             }
           }
+          await checkpoint(options.diagnostics, { type: "after-model-response", round, attempt, attemptId, emittedEvent });
           await turn.appendEvent("ModelAttemptCompleted", { round, attempt, attemptId, status: "completed", emittedEvent, usage: usage ?? null });
           break;
         } catch (error) {
+          if (isRuntimeInterruptionError(error)) throw error;
           const canRetry = !abort.signal.aborted && attempt < options.config.modelRetryAttempts && isRetryableModelFailure(error, emittedEvent);
           const reason = bounded(safeErrorMessage(error), 1_000);
           await turn.appendEvent("ModelAttemptCompleted", {
@@ -927,21 +975,43 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         const toolDeadline = call.name === "run_command"
           ? Math.max(options.config.maxToolDurationMs, options.config.processDurationMs + options.config.processTerminationGraceMs + 1_000)
           : options.config.maxToolDurationMs;
+        await checkpoint(options.diagnostics, { type: "before-tool-execution", round, toolName: call.name, callId: call.callId });
         const result = await executeToolWithDeadline(tools, call, toolDeadline, abort.signal, {
           approvalTimeoutMs: options.config.approvalTimeoutMs,
           pauseTurnDeadline: abort.pauseTotalDeadline,
           resumeTurnDeadline: abort.resumeTotalDeadline,
-          approveMutation: options.approveMutation,
+          approveMutation: options.approveMutation
+            ? async (approvalRequest, signal) => {
+                await checkpoint(options.diagnostics, { type: "before-approval", actionKind: "workspace", toolName: call.name, callId: call.callId, identity: approvalRequest.mutationId });
+                return options.approveMutation!(approvalRequest, signal);
+              }
+            : undefined,
           onMutation: recordMutation,
-          approveProcess: options.approveProcess,
+          approveProcess: options.approveProcess
+            ? async (approvalRequest, signal) => {
+                await checkpoint(options.diagnostics, { type: "before-approval", actionKind: "process", toolName: call.name, callId: call.callId, identity: approvalRequest.executionId });
+                return options.approveProcess!(approvalRequest, signal);
+              }
+            : undefined,
           onProcess: recordProcess,
-          approveBrowser: options.approveBrowser,
+          approveBrowser: options.approveBrowser
+            ? async (approvalRequest, signal) => {
+                await checkpoint(options.diagnostics, { type: "before-approval", actionKind: "browser", toolName: call.name, callId: call.callId, identity: approvalRequest.actionId });
+                return options.approveBrowser!(approvalRequest, signal);
+              }
+            : undefined,
           onBrowser: recordBrowser,
-          approveMemory: options.approveMemory,
+          approveMemory: options.approveMemory
+            ? async (approvalRequest, signal) => {
+                await checkpoint(options.diagnostics, { type: "before-approval", actionKind: "memory", toolName: call.name, callId: call.callId, identity: approvalRequest.operationId });
+                return options.approveMemory!(approvalRequest, signal);
+              }
+            : undefined,
           onMemory: recordMemory,
           onMemorySearch: recordMemorySearch,
           processCallLimitReached,
         });
+        await checkpoint(options.diagnostics, { type: "after-tool-execution", round, toolName: call.name, callId: call.callId, ok: result.ok, ...(result.errorCode ? { errorCode: result.errorCode } : {}) });
         await turn.appendRound({
           schemaVersion: 1,
           sessionId: turn.sessionId,
@@ -977,10 +1047,12 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount),
     };
     await turn.appendEvent("ModelCompleted", { usage: usage ?? null });
+    await checkpoint(options.diagnostics, { type: "before-terminal-commit", status: result.status, turnId: turn.turnId });
     await turn.commitTerminal(result, "TurnCompleted", { assistantMessageId });
     options.onEvent?.({ type: "status", status: "completed", round: 0 });
     return result;
   } catch (error) {
+    if (isRuntimeInterruptionError(error)) throw error;
     const failure = failureStatus(error, abort);
     const result: TurnResult = {
       schemaVersion: 1,
@@ -994,6 +1066,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       metrics: metrics(startedAt, modelRequestCount, toolCallCount, roundCount),
       error: { code: failure.code, message: failure.message },
     };
+    await checkpoint(options.diagnostics, { type: "before-terminal-commit", status: result.status, turnId: turn.turnId });
     await turn.commitTerminal(result, statusEvent(failure.status), { error: result.error });
     options.onEvent?.({ type: "status", status: failure.status, round: 0 });
     return result;

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stableStringify } from "../persistence/json.js";
-import { MutationError, ProcessExecutionError, redactSecrets, safeErrorMessage, ToolExecutionError } from "../runtime/errors.js";
+import { isRuntimeInterruptionError, MutationError, ProcessExecutionError, redactSecrets, safeErrorMessage, ToolExecutionError } from "../runtime/errors.js";
 import type { ModelToolCall, ModelToolDefinition, ProcessErrorCode } from "../runtime/contracts.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessEvent, ProcessResult, ProcessRunner, ProcessToolEvent } from "../process/process.js";
@@ -593,6 +593,7 @@ export class ToolRegistry {
                             : this.unknown(call);
       return result;
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       const message = error instanceof ToolExecutionError ? error.safeMessage : error instanceof Error ? error.message : "Tool execution failed.";
       return {
         callId: call.callId,

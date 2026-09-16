@@ -19,7 +19,7 @@ import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
 import { MAX_PATCH_REQUEST_BYTES, type MutationEvent, type WorkspaceMutationRecord } from "../src/workspace/mutation.js";
-import { ComputerNativeError, ModelProviderError, MutationError } from "../src/runtime/errors.js";
+import { ComputerNativeError, ModelProviderError, MutationError, RuntimeInterruptionError } from "../src/runtime/errors.js";
 import { asSessionId, asTurnId, type ModelRequest, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
 import { allowedTransitions, assertTransition } from "../src/runtime/state.js";
 import { openChatApplication } from "../src/runtime/application.js";
@@ -930,6 +930,247 @@ test("restart during a recorded tool round interrupts without replay", async () 
   const recovered = await restarted.recoverInterruptedTurns();
   assert.equal(recovered[0]?.status, "interrupted");
   assert.equal((await restarted.readTranscript()).filter((message) => message.role === "assistant").length, 0);
+});
+
+test("diagnostic interruption before model send recovers without invoking the provider", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let providerCalls = 0;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/interruption-boundary",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string }> {
+      providerCalls += 1;
+      yield { type: "text", text: "must not be requested" };
+    },
+  };
+
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider,
+      config: config(stateDir),
+      userPrompt: "stop before model transport",
+      diagnostics: {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.type === "before-model-send") throw new RuntimeInterruptionError("stopped before model transport");
+        },
+      },
+    }),
+    /stopped before model transport/u,
+  );
+  assert.equal(providerCalls, 0);
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered[0]?.status, "interrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  const turnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", (await session.readTranscript())[0]!.turnId);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequested", "TurnInterrupted"]);
+});
+
+test("pre-write interruption before the terminal event repairs the completed result", async () => {
+  const stateDir = tempDirectory();
+  let eventWrites = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (operation === "append-json-line" && filePath.endsWith("/events.jsonl") && eventWrites++ === 4) {
+          throw new RuntimeInterruptionError("stopped before terminal event durability");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/pre-write-event", { response: "durable response" }),
+      config: config(stateDir),
+      userPrompt: "persist the terminal event",
+    }),
+    /stopped before terminal event durability/u,
+  );
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  assert.deepEqual(await restarted.recoverInterruptedTurns(), []);
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const turnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId);
+  const result = JSON.parse(await readFile(path.join(turnDirectory, "result.json"), "utf8")) as { status: string; assistantText?: string };
+  assert.equal(result.status, "completed");
+  assert.equal(result.assistantText, "durable response");
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  assert.equal(events.filter((event) => event.type === "TurnCompleted").length, 1);
+  assert.equal(events.at(-1)?.type, "TurnCompleted");
+  assert.equal(events.at(-1)?.payload.recovered, true);
+});
+
+test("diagnostic interruption after model response does not replay the provider", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let providerCalls = 0;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/response-interruption",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string } | { readonly type: "completed" }> {
+      providerCalls += 1;
+      yield { type: "text", text: "response was produced" };
+      yield { type: "completed" };
+    },
+  };
+
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider,
+      config: config(stateDir),
+      userPrompt: "stop after the provider responds",
+      diagnostics: {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.type === "after-model-response") throw new RuntimeInterruptionError("stopped after model response");
+        },
+      },
+    }),
+    /stopped after model response/u,
+  );
+  assert.equal(providerCalls, 1);
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  assert.equal((await restarted.readTranscript()).filter((message) => message.role === "assistant").length, 0);
+});
+
+test("pre-write interruption before the terminal result leaves the turn recoverable", async () => {
+  const stateDir = tempDirectory();
+  let interrupted = false;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (!interrupted && operation === "replace-json" && filePath.endsWith("/result.json")) {
+          interrupted = true;
+          throw new RuntimeInterruptionError("stopped before terminal result durability");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/result-interruption", { response: "result not yet durable" }),
+      config: config(stateDir),
+      userPrompt: "stop before the result write",
+    }),
+    /stopped before terminal result durability/u,
+  );
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered[0]?.status, "interrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const turnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId);
+  assert.equal((await readFile(path.join(turnDirectory, "result.json"), "utf8")).includes('"status":"interrupted"'), true);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.equal(events.at(-1)?.type, "TurnInterrupted");
+});
+
+test("diagnostic interruption after approval closes the process as not started", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const marker = path.join(root, "must-not-run.txt");
+  const session = await openSession(stateDir);
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/process-interruption", {
+        toolCall: {
+          name: "run_command",
+          argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "require('node:fs').writeFileSync('must-not-run.txt', 'ran')"] }),
+          finalResponse: "The command was not run.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root }),
+      userPrompt: "approve only after the process is ready",
+      approveProcess: async () => ({ decision: "allow-once" }),
+      diagnostics: {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.type === "after-approval" && checkpoint.actionKind === "process") {
+            throw new RuntimeInterruptionError("stopped after process approval");
+          }
+        },
+      },
+    }),
+    /stopped after process approval/u,
+  );
+  await assert.rejects(() => readFile(marker, "utf8"), { code: "ENOENT" });
+
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered[0]?.status, "interrupted");
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const turn = await restarted.readTranscript();
+  assert.equal(turn.filter((message) => message.role === "assistant").length, 0);
+  const executionDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "executions");
+  const executionEntry = (await readdir(executionDirectory))[0];
+  assert.ok(executionEntry);
+  const execution = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; errorCode?: string };
+  assert.equal(execution.status, "failed");
+  assert.equal(execution.errorCode, "process-approval-unavailable");
+  const events = await restarted.readTranscript();
+  assert.equal(events.filter((message) => message.role === "assistant").length, 0);
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+});
+
+test("diagnostic interruption after a filesystem side effect recovers without replay", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const session = await openSession(stateDir);
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/write-interruption", {
+        toolCall: {
+          name: "write_file",
+          argumentsJson: JSON.stringify({ path: "once.txt", content: "written once\n" }),
+          finalResponse: "The file was written.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 1_000 }),
+      userPrompt: "write the file",
+      approveMutation: async () => ({ decision: "allow-once" }),
+      diagnostics: {
+        onCheckpoint: (checkpoint) => {
+          if (checkpoint.type === "after-tool-execution" && checkpoint.toolName === "write_file") {
+            throw new RuntimeInterruptionError("stopped after filesystem side effect");
+          }
+        },
+      },
+    }),
+    /stopped after filesystem side effect/u,
+  );
+  assert.equal(await readFile(path.join(root, "once.txt"), "utf8"), "written once\n");
+
+  const workspace = await Workspace.open(root, { maxFileBytes: 64 * 1024, maxDirectoryEntries: 50, maxTreeEntries: 100, maxTreeBytes: 256 * 1024, maxTreeDepth: 8 });
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns((record) => workspace.reconcileMutation(record));
+  assert.equal(recovered[0]?.status, "interrupted");
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const mutationDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "mutations");
+  const mutationEntry = (await readdir(mutationDirectory))[0];
+  assert.ok(mutationEntry);
+  const mutation = JSON.parse(await readFile(path.join(mutationDirectory, mutationEntry), "utf8")) as { status: string; mutationId: string };
+  assert.equal(mutation.status, "committed");
+  const eventLines = (await readFile(path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  assert.equal(eventLines.filter((event) => event.type === "WorkspaceMutationCommitted").length, 1);
+  assert.equal(eventLines.at(-1)?.type, "TurnInterrupted");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
 });
 
 test("missing user message is reported as a repairable incomplete record", async () => {

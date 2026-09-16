@@ -13,6 +13,25 @@ export class ComputerNativeError extends Error {
     this.safeMessage = message;
   }
 }
+
+/**
+ * Diagnostic-only interruption used to model an abrupt parent-process stop in
+ * deterministic recovery tests. It intentionally bypasses normal terminalisation;
+ * the persisted non-terminal turn is then handled by SessionStore recovery.
+ */
+export class RuntimeInterruptionError extends Error {
+  readonly runtimeInterruption = true as const;
+
+  constructor(message = "The runtime was interrupted by diagnostic fault injection.") {
+    super(message);
+    this.name = "RuntimeInterruptionError";
+  }
+}
+
+export function isRuntimeInterruptionError(error: unknown): error is RuntimeInterruptionError {
+  return error instanceof RuntimeInterruptionError;
+}
+
 export class ModelProviderError extends ComputerNativeError {
   readonly retryable: boolean | undefined;
 

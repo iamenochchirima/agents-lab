@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T14:53:58+02:00
+**Last updated:** 2026-09-16T15:16:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -107,6 +107,15 @@ tests, but it must never replace a configured real provider silently.
   it carries `recovered: true`.
 - Denied or unavailable process, workspace, and memory approvals now emit their terminal
   lifecycle outcome during the normal turn, not only during restart recovery.
+- Runtime diagnostics now expose explicit checkpoints before model transport, after a
+  model response, before and after approval, before and after tool execution, and before
+  terminal commit. `RuntimeInterruptionError` leaves the turn non-terminal so restart
+  recovery—not normal failure handling—classifies the stop.
+- The recovery matrix now exercises pre-write terminal-result and terminal-event stops,
+  pre-model and post-model stops, a post-approval process stop before launch, and
+  post-side-effect stops for filesystem, browser, and memory actions. Each case
+  recovers twice without replaying the provider, process, filesystem mutation, browser
+  action, or memory write.
 - The initial model instruction now describes the implemented bounded directory
   transfer and same-parent rename tools instead of limiting them to regular files.
 - Multi-file patch commits now check cancellation before starting and between members;
@@ -144,8 +153,8 @@ tests, but it must never replace a configured real provider silently.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
-- The current validation is 238 passing tests across the package, with 88.19% line
-  coverage, 75.49% branch coverage, and 83.03% function coverage.
+- The current validation is 246 passing tests across the package, with 88.30% line
+  coverage, 75.99% branch coverage, and 83.16% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -165,6 +174,9 @@ Delivered in this slice:
 - A process-level crash test proving a still-running detached child is terminated during
   restart recovery without replaying it, plus a launch-acknowledgement failure test
   proving the in-process runner cleans up after spawn.
+- Diagnostic-stop tests covering model dispatch/response, terminal result/event
+  durability, process approval before launch, and completed filesystem, browser, and
+  memory side effects.
 
 Persistence slice limitations:
 
@@ -207,9 +219,27 @@ Delivered in this slice:
   terminal process outcome, leaves no `ProcessStarted` event, and does not launch the
   command.
 
+### Current slice boundary: runtime interruption checkpoints
+
+Delivered in this slice:
+
+- A diagnostic-only checkpoint contract for the model-send, model-response, approval,
+  tool-execution, and terminal-commit boundaries.
+- An explicit interruption error that bypasses ordinary failure terminalisation, leaving
+  the durable turn available for the same restart recovery used by the CLI.
+- Tool-dispatch propagation that does not convert a diagnostic interruption into a
+  model-visible tool error.
+- Recovery tests for stops before model transport, after model response, before terminal
+  result durability, before terminal event durability, after process approval but before
+  launch, and after a real filesystem side effect.
+- Recover-twice assertions showing no provider replay, no process launch, no duplicate
+  terminal event, and no repeated filesystem mutation.
+
 Still not delivered by this slice:
 
-- Failure injection at every pre-write, post-write, and underlying side-effect boundary.
+- Failure injection at every pre-write, post-write, and underlying side-effect boundary;
+  process-running and multi-file member boundaries still need their own process-stop
+  cases.
 - Full turn-level state-machine validation, concurrency limits, deterministic replay,
   and cross-platform process recovery evidence.
 

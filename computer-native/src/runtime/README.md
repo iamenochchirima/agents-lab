@@ -11,6 +11,13 @@ states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
 Interrupted turns are recorded after restart and are never automatically resent because
 the provider or tool may have completed after the process stopped.
 
+The runtime exposes an optional diagnostic checkpoint hook for deterministic failure
+injection. Checkpoints cover model dispatch and response completion, approval boundaries,
+tool execution, and terminal commit. A diagnostic may throw `RuntimeInterruptionError`
+to model the parent process stopping at that boundary; the runtime deliberately leaves
+the turn non-terminal so the normal restart recovery path can classify it. This seam is
+unset in normal CLI operation and is not a retry or fallback mechanism.
+
 Terminal persistence is also recovery-aware at the acknowledgement boundary. A durable
 result or terminal event may already exist when the caller reports a write error. On
 restart, persistence reconciles the result, turn state, and event history; repeating

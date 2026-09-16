@@ -8,6 +8,7 @@ import { MemoryStore } from "../src/memory/store.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import { runTurn } from "../src/runtime/turn.js";
+import { RuntimeInterruptionError } from "../src/runtime/errors.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 
@@ -108,6 +109,56 @@ test("denied memory approval records a terminal lifecycle outcome without writin
     assert.match(events, /MemoryApprovalDecided/u);
     assert.match(events, /MemoryFailed/u);
     assert.match(events, /"status":"denied"/u);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("diagnostic interruption after memory commit does not repeat the write", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-interruption-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    const session = await SessionStore.open(config.stateDir);
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-interruption", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "add", scope: "workspace", content: "persist exactly once" }),
+            finalResponse: "The memory entry was stored.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Store this memory entry.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+        diagnostics: {
+          onCheckpoint: (checkpoint) => {
+            if (checkpoint.type === "after-tool-execution" && checkpoint.toolName === "memory") {
+              throw new RuntimeInterruptionError("stopped after memory commit");
+            }
+          },
+        },
+      }),
+      /stopped after memory commit/u,
+    );
+    assert.equal((await memory.search({ query: "persist exactly once" })).length, 1);
+
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const events = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    assert.equal(events.filter((event) => event.type === "MemoryCommitted").length, 1);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+    assert.equal((await memory.search({ query: "persist exactly once" })).length, 1);
     await memory.close();
   } finally {
     await rm(root, { recursive: true, force: true });

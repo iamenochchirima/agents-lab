@@ -99,6 +99,26 @@ export type ModelStreamEvent =
   | { readonly type: "tool_call"; readonly call: ModelToolCall }
   | { readonly type: "completed"; readonly usage?: ModelUsage };
 
+export type RuntimeActionKind = "workspace" | "process" | "browser" | "memory";
+
+export type RuntimeCheckpoint =
+  | { readonly type: "before-model-send"; readonly round: number; readonly attempt: number; readonly attemptId: string }
+  | { readonly type: "after-model-response"; readonly round: number; readonly attempt: number; readonly attemptId: string; readonly emittedEvent: boolean }
+  | { readonly type: "before-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string }
+  | { readonly type: "after-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string; readonly decision: "allow-once" | "deny" | "unavailable" }
+  | { readonly type: "before-tool-execution"; readonly round: number; readonly toolName: string; readonly callId: string }
+  | { readonly type: "after-tool-execution"; readonly round: number; readonly toolName: string; readonly callId: string; readonly ok: boolean; readonly errorCode?: string }
+  | { readonly type: "before-terminal-commit"; readonly status: TerminalTurnStatus; readonly turnId: TurnId };
+
+export interface RuntimeDiagnostics {
+  /**
+   * Diagnostic-only checkpoint seam used by deterministic failure-injection tests.
+   * Production callers leave this unset; throwing RuntimeInterruptionError models
+   * the parent process stopping before the next durable lifecycle boundary.
+   */
+  readonly onCheckpoint?: (checkpoint: RuntimeCheckpoint) => Promise<void> | void;
+}
+
 export interface TurnError {
   readonly code:
     | "configuration"

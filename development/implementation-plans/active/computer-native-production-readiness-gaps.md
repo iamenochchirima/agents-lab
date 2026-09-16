@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T14:53:58+02:00
+**Last updated:** 2026-09-16T15:16:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 238 tests passed after the current lifecycle-ordering slice.
-- `pnpm run coverage`: 238 tests passed, with 88.19% line coverage, 75.49% branch
-  coverage, and 83.03% function coverage.
+- `pnpm test`: 246 tests passed after the current runtime-recovery slice.
+- `pnpm run coverage`: 246 tests passed, with 88.30% line coverage, 75.99% branch
+  coverage, and 83.16% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -85,6 +85,10 @@ readiness:
   is accepted only with an explicit `recovered: true` marker.
 - Normal denied or unavailable process, workspace, and memory approvals now emit a
   terminal lifecycle outcome instead of leaving only an approval event.
+- Diagnostic runtime checkpoints now stop turns at model, approval, tool, and terminal
+  boundaries without converting the stop into a normal failure; recovery tests prove
+  that a stopped approved process is not launched and completed filesystem, browser,
+  and memory side effects are not replayed.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -165,6 +169,10 @@ Exit evidence:
   including identity omission, skipped phases, post-terminal writes, and direct
   recovered-terminal reconstruction. It does not yet cover every persistence and
   underlying side-effect boundary.
+- Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
+  writes, process approval before launch, and completed filesystem, browser, and memory
+  side effects. It does not yet cover process execution while running or each member
+  of a multi-file mutation.
 - Current process crash evidence covers a completed-side-effect acknowledgement loss,
   a crash after a running record becomes durable, and an in-process launch-record
   acknowledgement failure. It does not yet cover every pre-write crash point,

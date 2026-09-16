@@ -32,6 +32,12 @@ rolled back. Recovery checks the existing result, turn state, and event stream a
 be run repeatedly without replaying a side effect or appending a duplicate terminal
 event. These hooks are a failure-injection seam, not a production retry mechanism.
 
+Runtime interruption checkpoints complement the write hooks by stopping a turn before
+or after model dispatch, approval, tool execution, and terminal commit. Recovery uses
+the records that were already durable at the stop point: prepared or approved actions
+are closed without execution, completed side effects are reconciled from their records,
+and an interrupted turn is never resent automatically.
+
 Lifecycle append validates the ordering of model attempt evidence: a
 `ModelAttemptCompleted` event must follow its matching `ModelRequested` event, and a
 `ModelRetryScheduled` event must follow that attempt's completion. Once a terminal turn
