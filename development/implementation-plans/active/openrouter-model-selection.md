@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T21:33:32+02:00`
+**Last updated:** `2026-09-16T21:35:23+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -315,6 +315,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `AGENTLAB_RUN_LIVE_PLATFORM_UI=1 node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs` — 1 passed; real Chromium runner acceptance completed Temporal (`b8680ef4-54ff-48df-8bb8-c61fc812d738`), Restate (`1e23992d-d41a-4ea7-88ef-b580d4bf36a7`), LangGraph (`0a114e87-161e-4208-b34e-d941141bcb63`), Mastra (`27c4aec3-4cad-4d26-ba3d-22f6cf09ccf8`), and Vercel Workflows (`d7e237c5-5e98-4d03-8a88-dd0bcef8254e`) with the selected OpenRouter model. Inngest, Trigger.dev, DBOS, and Hatchet were reported unavailable by their individual health checks.
 - `OPENROUTER_API_KEY='' AGENTLAB_ALLOWED_MODEL_PROVIDERS=openrouter AGENTLAB_API_ORIGIN=http://127.0.0.1:5174 AGENTLAB_API_PORT=4320` with an isolated Vite app on `5174` — passed; the browser rendered `OPENROUTER_NOT_CONFIGURED`, showed no model options, and did not expose or substitute a fake model.
 - `pnpm --filter @agent-harness-lab/web run build` — passed after comparison lifecycle guards and responsive modal changes; Vite emitted only the existing large-chunk warning.
+- `git diff --check` — passed after clarifying the Run API and platform provider-boundary documentation.
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Mastra, LangGraph, DBOS, and Vercel native-boundary coverage.
 - `pnpm --filter @agent-harness-lab/lab-server test` — 243 passed, 2 intentionally skipped (the opt-in native LangGraph and Temporal tests); this includes the compiled DBOS and Vercel native-boundary tests.
 - `pnpm --filter @agent-harness-lab/web run typecheck` — passed; the generated documentation catalog contains 63 documents.
@@ -392,6 +393,7 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit the Chromium model-picker browser coverage in `88afa51` (`test(web): cover model picker in Chromium`).
 - [x] Commit the opt-in live platform runner acceptance test in `bd122cc` (`test(web): add live platform runner acceptance`).
 - [x] Commit comparison polling guards and responsive/focusable modal controls in `829e322` (`fix(web): guard comparison lifecycle updates`).
+- [x] Commit the Run API and platform provider-boundary documentation in `ccff5f4` (`docs(server): clarify real and fixture model providers`).
 - [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
