@@ -1026,3 +1026,48 @@ test("restart closes prepared and approved processes without launching them", as
     await rm(stateDir, { recursive: true, force: true });
   }
 });
+
+test("restart repairs a missing first process lifecycle event", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-first-event-recovery-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("recover the process evidence", "deterministic", "deterministic/process");
+    await turn.updateState("streaming");
+    await turn.appendEvent("TurnStarted");
+    await turn.writeProcess({
+      schemaVersion: 1,
+      executionId: "execution_first_event_recovery",
+      callId: "call_first_event_recovery",
+      sessionId: session.metadata.sessionId,
+      turnId: turn.turnId,
+      command: process.execPath,
+      displayArgs: ["-e", "process.exit(0)"],
+      cwd: ".",
+      executablePath: process.execPath,
+      environmentProfile: "sanitized-default",
+      environmentKeys: ["PATH"],
+      limits,
+      argvHash: "first-event-recovery-hash",
+      status: "prepared",
+      recordedAt: new Date().toISOString(),
+    });
+
+    const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+    const record = (await turn.readProcesses())[0];
+    assert.equal(record?.status, "failed");
+    assert.equal(record?.errorCode, "process-approval-unavailable");
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "ProcessPrepared",
+      "ProcessApprovalDecided",
+      "ProcessCompleted",
+      "TurnInterrupted",
+    ]);
+    assert.ok(events.filter((event) => event.type.startsWith("Process")).every((event) => event.payload.recovered === true));
+    assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});

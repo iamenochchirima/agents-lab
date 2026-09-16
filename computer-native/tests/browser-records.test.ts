@@ -83,6 +83,35 @@ test("restart marks a running browser action ambiguous without replaying it", as
   }
 });
 
+test("restart repairs a missing first browser lifecycle event", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-first-event-recovery-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("recover the browser evidence", "deterministic", "deterministic/browser");
+    await turn.updateState("streaming");
+    await turn.appendEvent("TurnStarted");
+    await turn.writeBrowserAction(record("prepared", turn.turnId));
+
+    const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+    const action = (await turn.readBrowserActions())[0];
+    assert.equal(action?.status, "failed");
+    assert.equal(action?.errorCode, "browser-approval-unavailable");
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "BrowserPrepared",
+      "BrowserApprovalDecided",
+      "BrowserCompleted",
+      "TurnInterrupted",
+    ]);
+    assert.ok(events.filter((event) => event.type.startsWith("Browser")).every((event) => event.payload.recovered === true));
+    assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("recovery rejects a malformed browser action before classifying it", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-malformed-record-"));
   try {

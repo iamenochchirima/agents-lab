@@ -136,12 +136,14 @@ excluded from durable records.
 Process, browser, and memory lifecycle events use the same identity-scoped ordering
 checks. Process events follow prepared → approval → started → optional terminating →
 completed; browser events follow prepared → approval → started → completed; memory events
-follow prepared → approval → committed, forgotten, or failed. A recovery-only terminal
-event may be inserted directly from a durable action record and must carry `recovered:
-true`; normal events cannot skip their preparation or approval phase, and a terminal
-action cannot be extended with a later event. This keeps the normalized event stream
-consistent with the immutable action records while still allowing recovery to reconstruct
-missing evidence after an acknowledgement loss.
+follow prepared → approval → committed, forgotten, or failed. Recovery can reconstruct a
+missing prepared/approval prelude from a bounded action record when the first lifecycle
+append was not acknowledged, and every reconstructed event carries `recovered: true`.
+A recovery-only terminal event may also be inserted directly from a durable action record.
+Normal events cannot skip their preparation or approval phase, and a terminal action
+cannot be extended with a later event. This keeps the normalized event stream
+consistent with the immutable action records while allowing idempotent recovery after
+acknowledgement loss.
 
 If an interrupted turn contains a mutation that was still `proposed`, recovery closes
 that approval lifecycle as `denied` with `approval-unavailable`; the filesystem proposal

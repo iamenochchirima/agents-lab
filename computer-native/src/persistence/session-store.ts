@@ -1819,8 +1819,33 @@ export class TurnStore {
 
   async ensureProcessTerminalEvent(record: ProcessExecutionRecord): Promise<void> {
     if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
-    const events = await this.readEvents();
-    if (events.some((event) => event.type === "ProcessCompleted" && event.payload.executionId === record.executionId)) return;
+    let events = await this.readEvents();
+    const processEvents = () => events.filter((event) => event.payload.executionId === record.executionId);
+    if (processEvents().some((event) => event.type === "ProcessCompleted")) return;
+
+    // A process record can be durable even when its first lifecycle append was
+    // interrupted. Rebuild the approval prelude from the immutable request
+    // fields before closing the action, while keeping the recovery marker
+    // visible and never launching the command.
+    if (!processEvents().some((event) => event.type === "ProcessPrepared")) {
+      await this.appendRecoveredEvent("ProcessPrepared", {
+        executionId: record.executionId,
+        callId: record.callId,
+        cwd: record.cwd,
+        command: record.command,
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
+    if (!processEvents().some((event) => event.type === "ProcessApprovalDecided")) {
+      await this.appendRecoveredEvent("ProcessApprovalDecided", {
+        executionId: record.executionId,
+        callId: record.callId,
+        decision: record.decision ?? (record.status === "failed" ? "unavailable" : "allow-once"),
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
     await this.appendRecoveredEvent("ProcessCompleted", {
       executionId: record.executionId,
       callId: record.callId,
@@ -1834,8 +1859,34 @@ export class TurnStore {
 
   async ensureBrowserTerminalEvent(record: BrowserActionRecord): Promise<void> {
     if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
-    const events = await this.readEvents();
-    if (events.some((event) => event.type === "BrowserCompleted" && event.payload.actionId === record.actionId)) return;
+    let events = await this.readEvents();
+    const browserEvents = () => events.filter((event) => event.payload.actionId === record.actionId);
+    if (browserEvents().some((event) => event.type === "BrowserCompleted")) return;
+
+    // Browser action records are persisted before their lifecycle event. Repair
+    // the approval prelude when that first acknowledgement is lost; recovery
+    // records observation only and never reopens a tab or dispatches an action.
+    if (!browserEvents().some((event) => event.type === "BrowserPrepared")) {
+      await this.appendRecoveredEvent("BrowserPrepared", {
+        actionId: record.actionId,
+        callId: record.callId,
+        sessionId: record.sessionId,
+        tabId: record.tabId,
+        action: record.action,
+        reference: record.reference,
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
+    if (!browserEvents().some((event) => event.type === "BrowserApprovalDecided")) {
+      await this.appendRecoveredEvent("BrowserApprovalDecided", {
+        actionId: record.actionId,
+        callId: record.callId,
+        decision: record.decision ?? (record.status === "failed" ? "unavailable" : "allow-once"),
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
     await this.appendRecoveredEvent("BrowserCompleted", {
       actionId: record.actionId,
       callId: record.callId,
@@ -1848,9 +1899,46 @@ export class TurnStore {
 
   async ensureMemoryTerminalEvent(record: MemoryActionRecord): Promise<void> {
     if (record.status !== "committed" && record.status !== "denied" && record.status !== "failed") return;
-    const events = await this.readEvents();
+    let events = await this.readEvents();
+    const memoryEvents = () => events.filter((event) => event.payload.operationId === record.operationId);
     const terminalTypes: readonly LifecycleEventType[] = ["MemoryCommitted", "MemoryForgotten", "MemoryFailed"];
-    if (events.some((event) => terminalTypes.includes(event.type) && event.payload.operationId === record.operationId)) return;
+    if (memoryEvents().some((event) => terminalTypes.includes(event.type))) return;
+
+    // The action history is durable before its normalized event. Reconstruct
+    // the prepared/approval prelude from hash-only evidence after an
+    // acknowledgement loss; memory contents are intentionally not recovered
+    // from this record and no memory write is replayed.
+    const risk = record.operation === "add"
+      ? "remember"
+      : record.operation === "replace"
+        ? "replace"
+        : record.operation === "remove"
+          ? "forget"
+          : "batch";
+    const basePayload: Record<string, unknown> = {
+      operationId: record.operationId,
+      callId: record.callId,
+      ...(record.correlationId ? { correlationId: record.correlationId } : {}),
+      operation: record.operation,
+      recordId: record.recordId ?? null,
+      scope: record.scope,
+      sourcePath: record.sourcePath,
+      beforeContentHash: record.beforeContentHash ?? null,
+      afterContentHash: record.afterContentHash ?? null,
+      risk,
+    };
+    if (!memoryEvents().some((event) => event.type === "MemoryPrepared")) {
+      await this.appendRecoveredEvent("MemoryPrepared", { ...basePayload, recovered: true });
+      events = await this.readEvents();
+    }
+    if (!memoryEvents().some((event) => event.type === "MemoryApprovalDecided")) {
+      await this.appendRecoveredEvent("MemoryApprovalDecided", {
+        ...basePayload,
+        decision: record.decision ?? (record.status === "denied" ? "unavailable" : "allow-once"),
+        recovered: true,
+      });
+      events = await this.readEvents();
+    }
     const type: LifecycleEventType = record.status === "committed"
       ? record.operation === "remove" ? "MemoryForgotten" : "MemoryCommitted"
       : "MemoryFailed";

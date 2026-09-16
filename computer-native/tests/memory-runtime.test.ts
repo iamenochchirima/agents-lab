@@ -90,6 +90,50 @@ test("runtime dispatches a real memory tool call through approval and persists i
   }
 });
 
+test("restart repairs a missing first memory lifecycle event", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-first-event-recovery-"));
+  try {
+    const session = await SessionStore.open(path.join(root, "state"));
+    const turn = await session.admitTurn("recover the memory evidence", "deterministic", "deterministic/memory");
+    await turn.updateState("streaming");
+    await turn.appendEvent("TurnStarted");
+    const action: MemoryActionRecord = {
+      schemaVersion: 1,
+      operationId: "memory_first_event_recovery",
+      sessionId: session.metadata.sessionId,
+      turnId: turn.turnId,
+      correlationId: turn.correlationId,
+      callId: "memory_first_event_call",
+      operation: "add",
+      scope: "workspace",
+      sourcePath: "MEMORY.md",
+      afterContentHash: "after-hash",
+      inputHash: "after-hash",
+      status: "proposed",
+      recordedAt: new Date().toISOString(),
+    };
+    await turn.writeMemoryAction(action);
+
+    const restarted = await SessionStore.open(path.join(root, "state"), session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns())[0]?.status, "interrupted");
+    const actions = await turn.readMemoryActions();
+    assert.equal(actions.at(-1)?.status, "denied");
+    assert.equal(actions.at(-1)?.decision, "unavailable");
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "MemoryPrepared",
+      "MemoryApprovalDecided",
+      "MemoryFailed",
+      "TurnInterrupted",
+    ]);
+    assert.ok(events.filter((event) => event.type.startsWith("Memory")).every((event) => event.payload.recovered === true));
+    assert.deepEqual(await (await SessionStore.open(path.join(root, "state"), session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("memory action evidence rejects skipped transitions and identity drift", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-action-transition-"));
   try {

@@ -53,10 +53,12 @@ the current durable turn state must permit the requested transition; an invalid 
 transition leaves the result evidence and turn state unchanged.
 
 The same recovery boundary applies to terminal process, browser, memory, and workspace
-action records. If their normalized terminal event was not durable, recovery rebuilds it
-from the record. Workspace reconciliation uses `WorkspaceMutationReconciled` when the
-before-state proves that the mutation was not applied; it does not label that outcome as
-a commit.
+action records. If a record was durable but its first lifecycle append was not, recovery
+rebuilds the prepared/approval prelude before its terminal observation, using
+`recovered: true` and the bounded record as the source of truth. Workspace
+reconciliation uses `WorkspaceMutationReconciled` when the before-state proves that
+the mutation was not applied; it does not label that outcome as a commit. Recovery
+never replays the action.
 
 Model transport failures may retry only before the provider emits its first event. Each
 attempt gets a durable `attempt_<hex>` identity; `ModelRequested` is written before the

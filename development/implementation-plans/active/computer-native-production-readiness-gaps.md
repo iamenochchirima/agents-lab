@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T00:45:00+02:00
+**Last updated:** 2026-09-17T01:30:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,11 +51,11 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 333 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 333 tests passed, with 89.72% line coverage, 79.28% branch
-  coverage, and 85.25% function coverage. The package commands serialize browser/profile,
-  process, and admission fixtures for reproducibility; Node's coverage runner remains
-  experimental and can vary slightly between runs.
+- `pnpm test`: 336 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 336 tests passed with 89.85% line coverage, 79.47% branch
+  coverage, and 85.39% function coverage. The package commands serialize
+  browser/profile, process, and admission fixtures for reproducibility; Node's coverage
+  runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -173,6 +173,10 @@ readiness:
   before its safe terminal outcome. An approved mutation without a durable applying
   boundary closes as approval-unavailable when no workspace reconciler is configured;
   recovery never replays the mutation.
+- Process, browser, and memory action recovery now repairs the same missing prepared and
+  approval prelude from bounded action records before writing their recovered terminal
+  observations. This preserves the approval boundary without replaying a command,
+  browser action, or memory write.
 - Managed Playwright element references now carry bounded adapter-side markup identity
   and are rechecked immediately before side-effecting actions; same-document DOM
   replacement fails as `stale-reference` rather than acting through an ordinal locator.
@@ -315,6 +319,10 @@ Exit evidence:
 - Current evidence also covers reconstruction of one missing terminal lifecycle event per
   action family. It does not yet prove reconstruction after a process-level crash at
   every write boundary or across all future action types.
+- Current action evidence now also covers a missing first lifecycle append for process,
+  browser, memory, and workspace records. These repairs are operation-local and
+  idempotent; they do not cover a terminal event whose earlier action prelude is already
+  malformed, or a crash at every persistence and host-side boundary.
 - Current event-order evidence covers process, browser, and memory action lifecycles,
   including identity omission, skipped phases, post-terminal writes, and direct
   recovered-terminal reconstruction. Persisted model/tool round evidence also rejects
@@ -726,7 +734,7 @@ Exit evidence:
 
 ## Cross-cutting test and release gate
 
-The approximately 88.86% current line coverage is a baseline metric, not the completion gate. Before
+The approximately 89.85% current line coverage is a baseline metric, not the completion gate. Before
 calling the product production-ready, the test programme must include the following:
 
 ### Contract and unit tests
