@@ -209,8 +209,12 @@ function dbosTestHooks(): {
   readonly runWithTopContext: <T>(context: Record<string, unknown>, callback: () => Promise<T>) => Promise<T>;
 } {
   const require = createRequire(import.meta.url);
-  const platformDirectory = new URL("../../../src/platforms/dbos/", import.meta.url).pathname;
-  const packageEntry = require.resolve("@dbos-inc/dbos-sdk", { paths: [platformDirectory] });
+  const packageEntry = require.resolve("@dbos-inc/dbos-sdk", {
+    paths: [
+      join(process.cwd(), "src/platforms/dbos"),
+      join(process.cwd(), "server/src/platforms/dbos"),
+    ],
+  });
   const packageRoot = dirname(packageEntry);
   return {
     ...require(join(packageRoot, "decorators.js")) as {
