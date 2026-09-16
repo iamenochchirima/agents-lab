@@ -15,7 +15,7 @@ Read these before changing code:
 - [`platform ownership`](../../../server/src/platforms/README.md)
 - [`runner interface`](../../../server/src/control-plane/ports/README.md)
 - [`server platform foundation`](../completed/server-platform-foundation.md)
-- [`platform batch plan`](platform-parallel-implementation.md)
+- [`platform batch plan`](../active/platform-parallel-implementation.md)
 
 First-party OpenRouter references used for this slice:
 

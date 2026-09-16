@@ -25,14 +25,14 @@ agent writes code.
 
 | Platform | Plan | Initial runtime shape | Recommended wave |
 | --- | --- | --- | --- |
-| Restate | [Restate baseline](restate-baseline.md) | TypeScript platform service + HTTP runner adapter | 1 |
-| LangGraph | [LangGraph baseline](langgraph-baseline.md) | Python graph service + TypeScript HTTP runner adapter | 1 |
-| Mastra | [Mastra baseline](mastra-baseline.md) | TypeScript platform service + HTTP runner adapter | 1 |
-| Inngest | [Inngest baseline](inngest-baseline.md) | TypeScript function service + local dev server | 2 |
+| Restate | [Restate baseline](../completed/restate-baseline.md) | TypeScript platform service + HTTP runner adapter | 1 |
+| LangGraph | [LangGraph baseline](../completed/langgraph-baseline.md) | Python graph service + TypeScript HTTP runner adapter | 1 |
+| Mastra | [Mastra baseline](../completed/mastra-baseline.md) | TypeScript platform service + HTTP runner adapter | 1 |
+| Inngest | [Inngest baseline](../completed/inngest-baseline.md) | TypeScript function service + local dev server | 2 |
 | Trigger.dev | [Trigger.dev baseline](trigger-dev-baseline.md) | TypeScript task service + local dev server | 2 |
-| DBOS | [DBOS baseline](dbos-baseline.md) | TypeScript service + local Postgres | 2 |
-| Hatchet | [Hatchet baseline](hatchet-baseline.md) | TypeScript worker/service + local Hatchet server | 2 |
-| Vercel Workflows | [Vercel Workflows baseline](vercel-workflows-baseline.md) | TypeScript service + Vercel local/deployment profile | 3 |
+| DBOS | [DBOS baseline](../completed/dbos-baseline.md) | TypeScript service + local Postgres | 2 |
+| Hatchet | [Hatchet baseline](../completed/hatchet-baseline.md) | TypeScript worker/service + local Hatchet server | 2 |
+| Vercel Workflows | [Vercel Workflows baseline](../completed/vercel-workflows-baseline.md) | TypeScript service + Vercel local/deployment profile | 3 |
 | AWS Step Functions | [AWS Step Functions baseline](aws-step-functions-baseline.md) | Explicitly skipped in this implementation wave | — |
 
 Temporal is already implemented and is not reopened by this batch. OpenAI Agents
