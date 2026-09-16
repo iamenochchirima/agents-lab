@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T20:43:16+02:00`
+**Last updated:** `2026-09-16T20:49:13+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -64,7 +64,7 @@ fallback for a missing or failed OpenRouter request.
 - [x] Make local service and worker entry points load the same ignored local provider
       configuration so real runs work outside the Fastify process as well.
 - [x] Update platform, server, UI, local-development, and plan documentation.
-- [ ] Verify one real run and one real comparison path with configured OpenRouter access.
+- [x] Verify one real run and one real comparison path with configured OpenRouter access.
 
 ## Explicitly out of scope
 
@@ -314,6 +314,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - A fresh server on `127.0.0.1:4319` completed a real LangGraph run with `cohere/north-mini-code:free`; run ID `d97ef0f8-e4f6-405d-b0ca-46e75c51ca28`. The original run `4dd500b8-8e46-44bd-a20c-8298bde9c971` was correctly recorded as failed with `DISPATCH_FAILED` when the strict protocol rejected the extra field.
 - Live OpenRouter smoke runs with `cohere/north-mini-code:free` completed on Temporal (`c54e4a8d-58c3-469e-9fe5-630d2a41f5ca`), Restate (`f7119cc2-f277-41dd-874b-618917f1db9a`), Mastra (`dacf5f45-e867-493d-9fcb-790a1ae7a007`), and Vercel Workflows (`537fc9db-a48f-4c8b-aa23-a62b180595d9`) at `2026-09-16T19:51:00+02:00`; only safe status/model fields were inspected.
 - An API-equivalent Compare fan-out using one selected model completed concurrently on Temporal (`ca7c760a-b872-4a6e-b6b8-00c12c82cf30`) and Restate (`0cf5406d-2681-46d6-a83e-2b3bc5be6ef7`) at `2026-09-16T19:56:00+02:00`; this does not replace the pending browser Compare acceptance check.
+- A fresh real OpenRouter fan-out completed concurrently on Temporal (`91e9fc4b-8e61-4b13-bf59-33e88fa0a105`) and Restate (`de45c4b1-e18c-405b-8e0f-3adad707a7eb`) at `2026-09-16T20:49:00+02:00` with `cohere/north-mini-code:free`. Both run manifests recorded `provider: openrouter`, both returned terminal results and usage, and no fake model was involved. This was exercised at the API boundary; browser-level Compare acceptance remains pending.
 
 ## Required validation commands
 
