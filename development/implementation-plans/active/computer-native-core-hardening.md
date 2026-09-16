@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T17:40:00+02:00
+**Last updated:** 2026-09-16T17:18:52+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -194,8 +194,14 @@ tests, but it must never replace a configured real provider silently.
 - One-shot process, browser, memory, workspace, search, and artifact lifecycle events
   now have the same idempotent identity check. Workspace progress remains append-only so
   repeated journal observations are preserved rather than collapsed.
-- The latest validation is 268 passing tests across the package, with 88.84% line
-  coverage, 77.08% branch coverage, and 84.04% function coverage. Coverage is from
+- Terminal turn events now compare their redacted payload on repeated append: identical
+  acknowledgement-loss retries are accepted, while a conflicting terminal payload fails
+  closed instead of silently reusing the first outcome.
+- Cancellation requested before model dispatch now records only the durable turn start and
+  cancellation outcome; it does not invoke the provider or claim that a model request was
+  attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
+- The latest validation is 270 passing tests across the package, with 88.52% line
+  coverage, 76.94% branch coverage, and 84.23% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.

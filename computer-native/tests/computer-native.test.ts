@@ -548,6 +548,10 @@ test("committing the same terminal result twice does not duplicate the terminal 
 
   await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
   await turn.commitTerminal(result, "TurnCompleted", { assistantText: "done" });
+  await assert.rejects(
+    () => turn.appendEvent("TurnCompleted", { assistantText: "different final evidence" }),
+    /TurnCompleted evidence was repeated with a different payload/u,
+  );
   await assert.rejects(() => turn.appendEvent("TurnFailed"), /already has terminal event/);
 
   const events = await turn.readEvents();
@@ -960,6 +964,47 @@ test("turn retries a provider failure before the first event and records the ret
   assert.notEqual(attempts[0]?.payload.attemptId, attempts[1]?.payload.attemptId);
 });
 
+test("cancellation during model retry backoff does not dispatch another attempt", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const controller = new AbortController();
+  let calls = 0;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/cancel-retry",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string }> {
+      calls += 1;
+      throw new ModelProviderError("temporary provider failure", { code: "provider" });
+    },
+  };
+  const lifecycle: TurnEvent[] = [];
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir, { modelRetryAttempts: 2, modelRetryBackoffMs: 100 }),
+    userPrompt: "cancel retry",
+    signal: controller.signal,
+    onEvent: (event) => {
+      lifecycle.push(event);
+      if (event.type === "retry") controller.abort("cancelled during retry backoff");
+    },
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.equal(calls, 1);
+  assert.equal(lifecycle.filter((event) => event.type === "retry").length, 1);
+  const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.deepEqual(events.map((event) => event.type), [
+    "TurnStarted",
+    "ModelRequested",
+    "ModelAttemptCompleted",
+    "ModelRetryScheduled",
+    "TurnCancelled",
+  ]);
+});
+
 test("turn does not retry a provider failure after partial output", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);
@@ -1015,6 +1060,39 @@ test("timeout and cancellation produce distinct terminal results", async () => {
   });
   assert.equal(cancelled.status, "cancelled");
   assert.equal(cancelled.error?.code, "cancelled");
+});
+
+test("pre-cancelled turns do not dispatch a model request", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const controller = new AbortController();
+  controller.abort("cancelled before dispatch");
+  let providerCalls = 0;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/pre-cancelled",
+    async *stream(): AsyncIterable<{ readonly type: "text"; readonly text: string }> {
+      providerCalls += 1;
+      yield { type: "text", text: "must not be requested" };
+    },
+  };
+
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir),
+    userPrompt: "cancel before dispatch",
+    signal: controller.signal,
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.equal(providerCalls, 0);
+  const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "TurnCancelled"]);
+  const turnRecord = JSON.parse(await readFile(path.join(turnDirectory, "turn.json"), "utf8")) as { state: string };
+  assert.equal(turnRecord.state, "cancelled");
 });
 
 test("restart finalizes a non-terminal turn as interrupted without a model call", async () => {
@@ -4979,11 +5057,13 @@ test("cancellation interrupts a waiting read-only tool without committing an ass
 test("cancellation waits for an in-flight side-effecting tool to settle", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);
+  const controller = new AbortController();
   let settled = false;
   const tools = {
     definitions: [],
     execute: async (call: { readonly name: string }) => {
       assert.equal(call.name, "apply_patch_set");
+      controller.abort("cancelled after side effect start");
       await new Promise((resolve) => setTimeout(resolve, 25));
       settled = true;
       return {
@@ -5003,8 +5083,6 @@ test("cancellation waits for an in-flight side-effecting tool to settle", async 
       yield { type: "tool_call", call: { callId: "patch_set_call", name: "apply_patch_set", argumentsJson: "{}" } };
     },
   };
-  const controller = new AbortController();
-  setTimeout(() => controller.abort("cancelled"), 10);
   const result = await runTurn({ session, tools, provider, config: config(stateDir, { timeoutMs: 1_000 }), userPrompt: "cancel patch set", signal: controller.signal });
   assert.equal(result.status, "cancelled");
   assert.equal(settled, true);

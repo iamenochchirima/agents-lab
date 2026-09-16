@@ -919,6 +919,11 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
   let providerRequestId: string | undefined;
   let providerLatencyMs: number | undefined;
   try {
+    // Admission and the initial lifecycle event are durable before this check,
+    // but an already-cancelled turn must not create model-attempt evidence or
+    // invoke the provider. This keeps cancellation-before-dispatch distinct
+    // from a provider failure and avoids implying that transport was attempted.
+    if (abort.signal.aborted) throw cancellationError();
     for (let round = 1; round <= options.config.maxModelToolRounds; round += 1) {
       roundCount = round;
       await turn.appendRound({

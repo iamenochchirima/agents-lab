@@ -649,7 +649,13 @@ export class TurnStore {
     for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
     if (terminal) {
-      if (terminal.type === type) return terminal;
+      if (terminal.type === type) {
+        const normalizedPayload = redactRecord(payload);
+        if (stableStringify(terminal.payload) !== stableStringify(normalizedPayload)) {
+          throw new ComputerNativeError("persistence", `${type} evidence was repeated with a different payload for the same terminal turn.`);
+        }
+        return terminal;
+      }
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' already has terminal event '${terminal.type}'; '${type}' cannot be appended.`);
     }
     const existingModelEvent = findIdempotentModelEvent(existing, type, payload);
