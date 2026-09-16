@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T20:49:40+02:00
+**Last updated:** 2026-09-16T21:03:57+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -91,6 +91,11 @@ tests, but it must never replace a configured real provider silently.
   not `model_requested` round `1`, and a tool completion whose call ID or tool name does
   not match its immediately preceding request. This tightens the existing evidence
   validator; it does not add a generic workflow or transaction framework.
+- Model request, attempt-completion, and retry evidence now requires stable attempt IDs,
+  exact request matching, and a successful latest attempt before `ModelCompleted` can be
+  recorded. Retry evidence must follow the latest non-successful attempt. This validates
+  provider evidence already emitted by the runtime without adding replay or exactly-once
+  execution machinery.
 - Mutation records now persist the effective approval timeout, and the TUI renders that
   timeout as part of the review context. A changed timeout is treated as an identity
   change during durable mutation transitions.
@@ -246,8 +251,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 304 passing tests across the package, with 88.99% line
-  coverage, 77.66% branch coverage, and 84.83% function coverage. Coverage is from
+- The latest validation is 306 passing tests across the package, with 88.96% line
+  coverage, 77.77% branch coverage, and 84.76% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -280,6 +285,32 @@ Still open after this slice:
 
 The plan remains active. This increment hardens an existing contract; it does not expand
 Computer Native into a general durable workflow system.
+
+### Current slice boundary: model attempt lifecycle identity
+
+Delivered in this increment:
+
+- Model request, attempt-completion, and retry lifecycle events require a non-empty,
+  stable `attemptId` and follow `TurnStarted`.
+- Attempt completion must match an existing request with the same identity; retry evidence
+  must match the latest attempt completion and cannot follow a successful attempt.
+- `ModelCompleted` requires the latest attempt completion to have status `completed`.
+- Tests cover missing identities, model evidence before turn start, mismatched attempts,
+  retries for the wrong/latest attempt, and completion after failed versus successful
+  attempts.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is the smallest useful integrity check for the model evidence Computer Native
+  already persists. It follows explicit attempt identity and fail-closed lifecycle
+  practices without importing a provider scheduler, replay system, event-sourcing layer,
+  or exactly-once guarantee.
+
+Still open after this slice:
+
+- Full turn-level transition helpers, the complete persistence/side-effect crash matrix,
+  deterministic replay, concurrency/lease semantics, and remaining security and
+  production-operation gates.
 
 ### Current increment: session ownership and stale-lock safety
 

@@ -48,6 +48,11 @@ provider call and `ModelAttemptCompleted` records success or bounded failure. Sc
 delays are separate lifecycle evidence. A failure after partial text or a tool call is
 never replayed automatically.
 
+Persistence requires model request, completion, and retry evidence to carry that attempt
+identity and match the existing attempt order. `ModelCompleted` is recorded only after
+the latest attempt completes successfully; this protects the evidence contract without
+claiming that provider execution itself is replayable or exactly once.
+
 Successful model attempt and `ModelCompleted` evidence may also include a provider request
 identifier and adapter latency when the selected adapter supplies them. The identifier is
 bounded and redacted before persistence. Usage remains normalized in the existing model

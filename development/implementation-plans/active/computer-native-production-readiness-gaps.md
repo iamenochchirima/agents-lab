@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T20:49:40+02:00
+**Last updated:** 2026-09-16T21:03:57+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 304 tests passed after the memory action lifecycle increment.
-- `pnpm run coverage`: 304 tests passed, with 88.99% line coverage, 77.66% branch
-  coverage, and 84.83% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 306 tests passed after the model lifecycle evidence increment.
+- `pnpm run coverage`: 306 tests passed, with 88.96% line coverage, 77.77% branch
+  coverage, and 84.76% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -242,8 +242,10 @@ Exit evidence:
   including identity omission, skipped phases, post-terminal writes, and direct
   recovered-terminal reconstruction. Persisted model/tool round evidence also rejects
   unknown phases, invalid round starts, skipped round transitions, and tool completions
-  whose call identity does not match their request. It does not yet cover every
-  persistence and underlying side-effect boundary.
+  whose call identity does not match their request. Model request, attempt-completion,
+  and retry evidence also requires exact attempt identity and a successful latest attempt
+  before model completion. It does not yet cover every persistence and underlying
+  side-effect boundary.
 - Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
   writes, process approval before launch, process execution while running, workspace
   applying and committed-record boundaries, browser start and completion-record

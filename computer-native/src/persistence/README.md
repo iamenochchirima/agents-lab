@@ -86,6 +86,12 @@ match the immediately preceding `tool_requested` call ID and tool name. Unknown 
 skipped round starts, and mismatched completions are persistence corruption; this validates
 the current round contract without introducing a generic workflow or transaction engine.
 
+Model request, attempt-completion, and retry events also require a stable non-empty
+`attemptId`. Completion and retry evidence must refer to the matching request and latest
+attempt outcome; a model can complete only after its latest attempt completed successfully.
+These checks protect the existing transport evidence and do not imply model replay or
+exactly-once provider execution.
+
 Event records are also checked for schema identity, known event type, contiguous sequence,
 owning session, owning turn, and correlation. Terminal results are checked against the
 admitted session, turn, provider, model, and correlation before they are written or used

@@ -295,6 +295,7 @@ test("turn state transitions accept the first lifecycle and reject terminal rewr
 test("lifecycle events reject out-of-order model attempt evidence", async () => {
   const session = await openSession(tempDirectory());
   const turn = await session.admitTurn("event order", "deterministic", "deterministic/echo");
+  await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
   await assert.rejects(() => turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_test" }), /before its request/);
   await turn.appendEvent("ModelRequested", { attemptId: "attempt_test" });
   await assert.rejects(() => turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" }), /before the failed attempt/);
@@ -307,8 +308,65 @@ test("lifecycle events reject out-of-order model attempt evidence", async () => 
   );
   const retry = await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" });
   assert.equal((await turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_test" })).eventId, retry.eventId);
+  await turn.appendEvent("ModelRequested", { attemptId: "attempt_success", round: 1, attempt: 2 });
+  await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_success", status: "completed" });
   const modelCompleted = await turn.appendEvent("ModelCompleted");
   assert.equal((await turn.appendEvent("ModelCompleted")).eventId, modelCompleted.eventId);
+});
+
+test("model lifecycle evidence requires a started turn and exact attempt identities", async () => {
+  const session = await openSession(tempDirectory());
+  const turn = await session.admitTurn("model evidence identity", "deterministic", "deterministic/echo");
+  await assert.rejects(
+    () => turn.appendEvent("ModelRequested", { attemptId: "attempt_before_start" }),
+    /before TurnStarted/u,
+  );
+  await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
+  await assert.rejects(
+    () => turn.appendEvent("ModelRequested"),
+    /requires a non-empty attemptId/u,
+  );
+  await turn.appendEvent("ModelRequested", { attemptId: "attempt_one", round: 1, attempt: 1 });
+  await assert.rejects(
+    () => turn.appendEvent("ModelAttemptCompleted", { status: "failed" }),
+    /requires a non-empty attemptId/u,
+  );
+  await assert.rejects(
+    () => turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_other", status: "failed" }),
+    /before its request/u,
+  );
+  await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_one", status: "failed" });
+  await assert.rejects(
+    () => turn.appendEvent("ModelRetryScheduled"),
+    /requires a non-empty attemptId/u,
+  );
+  await assert.rejects(
+    () => turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_other" }),
+    /before the failed attempt/u,
+  );
+});
+
+test("model lifecycle evidence rejects a failed latest attempt as model completion", async () => {
+  const session = await openSession(tempDirectory());
+  const turn = await session.admitTurn("model completion status", "deterministic", "deterministic/echo");
+  await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
+  await turn.appendEvent("ModelRequested", { attemptId: "attempt_failed", round: 1, attempt: 1 });
+  await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_failed", status: "failed" });
+  await assert.rejects(
+    () => turn.appendEvent("ModelCompleted"),
+    /final model attempt did not complete successfully/u,
+  );
+  await turn.appendEvent("ModelRequested", { attemptId: "attempt_success", round: 1, attempt: 2 });
+  await turn.appendEvent("ModelAttemptCompleted", { attemptId: "attempt_success", status: "completed" });
+  await assert.rejects(
+    () => turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_failed" }),
+    /before the failed attempt/u,
+  );
+  await assert.rejects(
+    () => turn.appendEvent("ModelRetryScheduled", { attemptId: "attempt_success" }),
+    /only follow a failed attempt/u,
+  );
+  await turn.appendEvent("ModelCompleted");
 });
 
 test("lifecycle history rejects cross-turn, unknown, and out-of-sequence durable events", async () => {
@@ -1228,7 +1286,7 @@ test("restart finalizes a non-terminal turn as interrupted without a model call"
   const session = await openSession(stateDir);
   const turn = await session.admitTurn("crash after admission", "deterministic", "deterministic/echo");
   await turn.appendEvent("TurnStarted", { provider: "deterministic", model: "deterministic/echo" });
-  await turn.appendEvent("ModelRequested", { provider: "deterministic", model: "deterministic/echo" });
+  await turn.appendEvent("ModelRequested", { provider: "deterministic", model: "deterministic/echo", attemptId: "attempt_restart" });
   await turn.updateState("streaming");
   const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
   const recovered = await restarted.recoverInterruptedTurns();

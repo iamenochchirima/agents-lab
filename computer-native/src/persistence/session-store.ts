@@ -321,22 +321,54 @@ function assertWorkspaceMutationLifecycleEventOrder(
   }
 }
 
+function assertModelLifecycleEventOrder(
+  existing: readonly LifecycleEvent[],
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): void {
+  const isModelEvidence = type === "ModelRequested"
+    || type === "ModelRequestRejected"
+    || type === "ModelAttemptCompleted"
+    || type === "ModelRetryScheduled"
+    || type === "ModelCompleted";
+  if (!isModelEvidence) return;
+  if (!existing.some((event) => event.type === "TurnStarted")) {
+    throw new ComputerNativeError("persistence", `${type} cannot be recorded before TurnStarted.`);
+  }
+  if (type === "ModelAttemptCompleted" || type === "ModelRetryScheduled" || type === "ModelRequested") {
+    const attemptId = payload.attemptId;
+    if (typeof attemptId !== "string" || attemptId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `${type} requires a non-empty attemptId.`);
+    }
+    if (type === "ModelAttemptCompleted") {
+      const requested = existing.some((event) => event.type === "ModelRequested" && event.payload.attemptId === attemptId);
+      if (!requested) throw new ComputerNativeError("persistence", "A model attempt cannot complete before its request is recorded.");
+    }
+    if (type === "ModelRetryScheduled") {
+      const completed = existing.filter((event) => event.type === "ModelAttemptCompleted").at(-1);
+      if (!completed || completed.payload.attemptId !== attemptId) {
+        throw new ComputerNativeError("persistence", "A model retry cannot be scheduled before the failed attempt is recorded.");
+      }
+      if (completed.payload.status === "completed") {
+        throw new ComputerNativeError("persistence", "A model retry can only follow a failed attempt.");
+      }
+    }
+  }
+  if (type === "ModelCompleted") {
+    const completed = existing.filter((event) => event.type === "ModelAttemptCompleted").at(-1);
+    if (!completed) {
+      throw new ComputerNativeError("persistence", "A model cannot complete before at least one model attempt is recorded.");
+    }
+    if (completed.payload.status !== "completed") {
+      throw new ComputerNativeError("persistence", "A model cannot complete because the final model attempt did not complete successfully.");
+    }
+  }
+}
+
 function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): void {
+  assertModelLifecycleEventOrder(existing, type, payload);
   assertActionLifecycleEventOrder(existing, type, payload);
   assertWorkspaceMutationLifecycleEventOrder(existing, type, payload);
-  if (type === "ModelAttemptCompleted") {
-    const attemptId = payload.attemptId;
-    const requested = existing.some((event) => event.type === "ModelRequested" && (attemptId === undefined || event.payload.attemptId === attemptId));
-    if (!requested) throw new ComputerNativeError("persistence", "A model attempt cannot complete before its request is recorded.");
-  }
-  if (type === "ModelRetryScheduled") {
-    const attemptId = payload.attemptId;
-    const completed = existing.some((event) => event.type === "ModelAttemptCompleted" && (attemptId === undefined || event.payload.attemptId === attemptId));
-    if (!completed) throw new ComputerNativeError("persistence", "A model retry cannot be scheduled before the failed attempt is recorded.");
-  }
-  if (type === "ModelCompleted" && !existing.some((event) => event.type === "ModelAttemptCompleted")) {
-    throw new ComputerNativeError("persistence", "A model cannot complete before at least one model attempt is recorded.");
-  }
 }
 
 function validateLifecycleEventHistory(
