@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T15:17:27+02:00
+**Last updated:** 2026-09-16T15:25:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,8 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 248 tests passed after the current runtime-recovery slice.
-- `pnpm run coverage`: 248 tests passed, with 88.37% line coverage, 76.19% branch
+- `pnpm test`: 249 tests passed after the current runtime-recovery slice.
+- `pnpm run coverage`: 249 tests passed, with 88.36% line coverage, 76.15% branch
   coverage, and 83.22% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -73,6 +73,9 @@ readiness:
   missing lifecycle event is repaired before an already durable turn-terminal event.
 - A launch-record acknowledgement failure after spawn now terminates the child before
   the failure returns to the runtime.
+- A diagnostic interruption before the durable running process record also terminates
+  the spawned child; a process is left for restart reconciliation only after its running
+  record is durable.
 - Linux process records carry an executable/start-token identity, and recovery refuses
   to signal a PID whose current identity does not match the persisted record.
 - Model requests are rejected before provider transport when their serialized size

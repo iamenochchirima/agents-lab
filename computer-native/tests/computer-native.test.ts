@@ -1181,6 +1181,51 @@ test("diagnostic interruption after process start recovers the running child wit
   assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, reconcileRunningProcess), []);
 });
 
+test("interruption before the durable running process record cleans up the spawned child", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const marker = path.join(root, "must-not-leak.txt");
+  let executionWrites = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.includes(`${path.sep}executions${path.sep}`) && executionWrites++ === 2) {
+          throw new RuntimeInterruptionError("stopped before running process evidence");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/process-record-interruption", {
+        toolCall: {
+          name: "run_command",
+          argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "setTimeout(() => require('node:fs').writeFileSync('must-not-leak.txt', 'leaked'), 300)"] }),
+          finalResponse: "The command was not started.",
+        },
+      }),
+      config: config(stateDir, { workspaceRoot: root, processDurationMs: 5_000, processTerminationGraceMs: 100 }),
+      userPrompt: "run the command",
+      approveProcess: async () => ({ decision: "allow-once" }),
+    }),
+    /stopped before running process evidence/u,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await assert.rejects(() => readFile(marker, "utf8"), { code: "ENOENT" });
+  const restarted = await SessionStore.open(stateDir, session.metadata.sessionId);
+  const recovered = await restarted.recoverInterruptedTurns();
+  assert.equal(recovered[0]?.status, "interrupted");
+  const turnId = (await session.readTranscript())[0]!.turnId;
+  const executionDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "executions");
+  const executionEntry = (await readdir(executionDirectory))[0];
+  assert.ok(executionEntry);
+  const execution = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; errorCode?: string };
+  assert.equal(execution.status, "failed");
+  assert.equal(execution.errorCode, "process-approval-unavailable");
+});
+
 test("diagnostic interruption after a filesystem side effect recovers without replay", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");

@@ -21,10 +21,13 @@ export class ComputerNativeError extends Error {
  */
 export class RuntimeInterruptionError extends Error {
   readonly runtimeInterruption = true as const;
+  /** Only set after the side effect's durable start evidence is known to exist. */
+  readonly preserveSideEffect: boolean;
 
-  constructor(message = "The runtime was interrupted by diagnostic fault injection.") {
+  constructor(message = "The runtime was interrupted by diagnostic fault injection.", options?: { readonly preserveSideEffect?: boolean }) {
     super(message);
     this.name = "RuntimeInterruptionError";
+    this.preserveSideEffect = options?.preserveSideEffect === true;
   }
 }
 

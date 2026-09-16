@@ -61,4 +61,5 @@ can be treated as complete; an interrupted prepared/approved process is closed w
 launch, and an interrupted running process is reconciled by terminating its recorded
 foreground process group where possible, then marked ambiguous rather than replayed.
 If launch evidence fails after spawn, the runner cleans up the child before the failure
-is returned to this lifecycle.
+is returned to this lifecycle; only a diagnostic stop after durable running evidence is
+allowed to leave the child for restart reconciliation.

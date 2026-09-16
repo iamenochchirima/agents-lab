@@ -13,7 +13,7 @@ import type { MutationApproval, MutationEvent, WorkspaceMutationRecord } from ".
 import type { SessionStore } from "../persistence/session-store.js";
 import type { MemoryActionRecord, MemoryApproval, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import type { MemoryStore } from "../memory/store.js";
-import { ComputerNativeError, isRuntimeInterruptionError, ModelProviderError, redactSecrets, safeErrorMessage } from "./errors.js";
+import { ComputerNativeError, isRuntimeInterruptionError, ModelProviderError, redactSecrets, RuntimeInterruptionError, safeErrorMessage } from "./errors.js";
 import type {
   ModelMessage,
   ModelToolCall,
@@ -606,12 +606,19 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         }
       }
       if (event.type === "started") {
-        await checkpoint(options.diagnostics, {
-          type: "after-process-start",
-          callId: request.callId,
-          executionId: request.executionId,
-          pid: event.pid,
-        });
+        try {
+          await checkpoint(options.diagnostics, {
+            type: "after-process-start",
+            callId: request.callId,
+            executionId: request.executionId,
+            pid: event.pid,
+          });
+        } catch (error) {
+          if (isRuntimeInterruptionError(error)) {
+            throw new RuntimeInterruptionError(error.message, { preserveSideEffect: true });
+          }
+          throw error;
+        }
       }
       if (event.type === "approval_decided") {
         await checkpoint(options.diagnostics, {

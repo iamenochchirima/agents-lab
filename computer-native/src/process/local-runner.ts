@@ -122,7 +122,7 @@ export class LocalProcessRunner implements ProcessRunner {
     try {
       await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid, ...(processIdentity ? { processIdentity } : {}) });
     } catch (error) {
-      if (isRuntimeInterruptionError(error)) throw error;
+      if (isRuntimeInterruptionError(error) && error.preserveSideEffect) throw error;
       // The started event is the acknowledgement boundary for durable launch
       // evidence. If that acknowledgement fails, do not leave the child alive
       // while the caller records the failed/ambiguous tool result.

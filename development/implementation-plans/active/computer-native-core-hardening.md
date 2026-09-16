@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:17:27+02:00
+**Last updated:** 2026-09-16T15:25:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -149,14 +149,17 @@ tests, but it must never replace a configured real provider silently.
   outcome remains ambiguous, and `terminationConfirmed` is persisted separately.
 - If the launch lifecycle acknowledgement fails after spawn, `LocalProcessRunner`
   terminates the child before returning the persistence failure.
+- If a diagnostic stop occurs before the durable running process record, the runner
+  still terminates the spawned child; only a stop after that record is durable leaves
+  the child for restart reconciliation.
 - Process records now carry a Linux executable/start-token identity. Recovery verifies
   it before signalling a process group and fails closed on a mismatch or unsupported
   identity source.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
-- The current validation is 248 passing tests across the package, with 88.37% line
-  coverage, 76.19% branch coverage, and 83.22% function coverage.
+- The current validation is 249 passing tests across the package, with 88.36% line
+  coverage, 76.15% branch coverage, and 83.22% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
