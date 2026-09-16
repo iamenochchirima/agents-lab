@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T15:10:00+02:00
+**Last updated:** 2026-09-16T15:35:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 216 tests passed.
-- `pnpm run coverage`: 216 tests passed, with 87.62% line coverage, 74.18% branch
-  coverage, and 82.15% function coverage.
+- `pnpm test`: 217 tests passed.
+- `pnpm run coverage`: 217 tests passed, with 87.50% line coverage, 74.50% branch
+  coverage, and 82.26% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -68,7 +68,7 @@ provider, browser-profile, and operational acceptance evidence.
 
 | Area | Current level | What still blocks production readiness |
 | --- | --- | --- |
-| Runtime and turns | Bounded local foundation | Durable lifecycle, retries, restart reconciliation, concurrency, and replay semantics |
+| Runtime and turns | Bounded local foundation with normalized workspace lifecycle evidence | Durable lifecycle unification, concurrency, and replay semantics |
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
 | Models and providers | Real OpenRouter path plus deterministic tests | Provider registry, resilient transport, fallback policy, usage/cost evidence, and credential operations |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
@@ -199,7 +199,8 @@ Exit evidence:
 
 Current state: the strongest local area. It has approval-gated reads and mutations,
 separate writes, patch journaling, quarantine-backed deletion and restore, bounded
-directory handling, policy checks, restart reconciliation, and evidence.
+directory handling, policy checks, restart reconciliation, detailed records, and
+normalized workspace lifecycle events in the turn evidence stream.
 
 Remaining work:
 

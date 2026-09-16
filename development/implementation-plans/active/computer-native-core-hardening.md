@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:15:00+02:00
+**Last updated:** 2026-09-16T15:35:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -104,10 +104,13 @@ tests, but it must never replace a configured real provider silently.
 - Side-effecting tool execution now settles before a cancelled turn becomes terminal,
   so filesystem, process, browser, and memory evidence cannot be written after the
   caller has already observed cancellation.
-- The current validation is 216 passing tests across the package, 87.62% line coverage,
-  74.18% branch coverage, and 82.15% function coverage. The multi-file cases include
-  direct journal recovery, cancellation boundaries, tool-loop durable evidence, and
-  final-journal acknowledgement failure.
+- Workspace mutations now emit normalized lifecycle events into the turn event stream,
+  with ordered proposal, approval, application/progress, and completion/failure phases;
+  event history is validated again when read during recovery.
+- The current validation is 217 passing tests across the package, 87.50% line coverage,
+  74.50% branch coverage, and 82.26% function coverage. The suite includes direct
+  journal recovery, cancellation boundaries, tool-loop durable evidence, lifecycle
+  ordering, and final-journal acknowledgement failure.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
@@ -335,7 +338,8 @@ claim in this plan.
 - [ ] Add duplicate/out-of-order event handling and terminal-state protection.
 - [ ] Add cancellation propagation from the TUI through runtime to model/tool/process
       work.
-- [ ] Expose normalized lifecycle events while retaining provider and tool diagnostics.
+- [x] Expose normalized lifecycle events for model, workspace, process, browser, and
+      memory actions while retaining provider and tool diagnostics.
 
 ### 3. Approval and TUI
 

@@ -65,7 +65,64 @@ function isTerminalLifecycleEvent(type: LifecycleEventType): boolean {
   return type === "TurnCompleted" || type === "TurnFailed" || type === "TurnCancelled" || type === "TurnInterrupted";
 }
 
+const WORKSPACE_MUTATION_LIFECYCLE_EVENTS: ReadonlySet<LifecycleEventType> = new Set([
+  "WorkspaceMutationProposed",
+  "WorkspaceMutationApprovalDecided",
+  "WorkspaceMutationApplying",
+  "WorkspaceMutationProgress",
+  "WorkspaceMutationCommitted",
+  "WorkspaceMutationFailed",
+]);
+
+function isWorkspaceMutationLifecycleEvent(type: LifecycleEventType): boolean {
+  return WORKSPACE_MUTATION_LIFECYCLE_EVENTS.has(type);
+}
+
+function assertWorkspaceMutationLifecycleEventOrder(
+  existing: readonly LifecycleEvent[],
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): void {
+  if (!isWorkspaceMutationLifecycleEvent(type)) return;
+  const mutationId = payload.mutationId;
+  if (typeof mutationId !== "string" || mutationId.trim().length === 0) {
+    throw new ComputerNativeError("persistence", `${type} requires a mutation identity.`);
+  }
+  const related = existing.filter((event) => isWorkspaceMutationLifecycleEvent(event.type) && event.payload.mutationId === mutationId);
+  const previous = related.at(-1)?.type;
+  if (type === "WorkspaceMutationProposed") {
+    if (previous !== undefined) throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' was proposed more than once.`);
+    return;
+  }
+  if (previous === undefined) {
+    throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot record '${type}' before its proposal.`);
+  }
+  if (previous === "WorkspaceMutationCommitted" || previous === "WorkspaceMutationFailed") {
+    throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot record '${type}' after its terminal lifecycle event.`);
+  }
+  if (type === "WorkspaceMutationApprovalDecided") {
+    if (previous !== "WorkspaceMutationProposed") throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' approval must follow its proposal.`);
+    return;
+  }
+  if (type === "WorkspaceMutationApplying") {
+    if (previous !== "WorkspaceMutationApprovalDecided" || payload.decision !== "allow-once") {
+      throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot start before an allow-once approval.`);
+    }
+    return;
+  }
+  if (type === "WorkspaceMutationProgress") {
+    if (previous !== "WorkspaceMutationApplying" && previous !== "WorkspaceMutationProgress") {
+      throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' progress must follow application start.`);
+    }
+    return;
+  }
+  if (previous !== "WorkspaceMutationApplying" && previous !== "WorkspaceMutationProgress") {
+    throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot finish before application starts.`);
+  }
+}
+
 function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): void {
+  assertWorkspaceMutationLifecycleEventOrder(existing, type, payload);
   if (type === "ModelAttemptCompleted") {
     const attemptId = payload.attemptId;
     const requested = existing.some((event) => event.type === "ModelRequested" && (attemptId === undefined || event.payload.attemptId === attemptId));
@@ -78,6 +135,17 @@ function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: Li
   }
   if (type === "ModelCompleted" && !existing.some((event) => event.type === "ModelAttemptCompleted")) {
     throw new ComputerNativeError("persistence", "A model cannot complete before at least one model attempt is recorded.");
+  }
+}
+
+function validateLifecycleEventHistory(events: readonly LifecycleEvent[]): void {
+  const prefix: LifecycleEvent[] = [];
+  for (const event of events) {
+    if (prefix.some((candidate) => isTerminalLifecycleEvent(candidate.type))) {
+      throw new ComputerNativeError("persistence", `Lifecycle event '${event.type}' appears after a terminal turn event.`);
+    }
+    assertLifecycleEventOrder(prefix, event.type, event.payload);
+    prefix.push(event);
   }
 }
 
@@ -344,6 +412,7 @@ export class TurnStore {
   async appendEvent(type: LifecycleEventType, payload: Readonly<Record<string, unknown>> = {}): Promise<LifecycleEvent> {
     const eventsPath = path.join(this.directory, "events.jsonl");
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
+    validateLifecycleEventHistory(existing);
     const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
     if (terminal) {
       if (terminal.type === type) return terminal;
@@ -365,7 +434,9 @@ export class TurnStore {
   }
 
   async readEvents(): Promise<LifecycleEvent[]> {
-    return readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
+    const events = await readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
+    validateLifecycleEventHistory(events);
+    return events;
   }
 
   async appendRound(round: RoundEvidence): Promise<void> {

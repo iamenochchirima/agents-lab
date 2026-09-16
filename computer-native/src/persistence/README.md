@@ -27,12 +27,22 @@ Lifecycle append validates the ordering of model attempt evidence: a
 `ModelAttemptCompleted` event must follow its matching `ModelRequested` event, and a
 `ModelRetryScheduled` event must follow that attempt's completion. Once a terminal turn
 event exists, the same terminal event is idempotent and any different or later lifecycle
-event is rejected.
+event is rejected. Workspace mutation events are also ordered and checked when read back:
+`WorkspaceMutationProposed` must precede its approval decision, an allow-once decision
+must precede application, progress may repeat only after application starts, and a
+committed or failed event closes that mutation's lifecycle. Reading an existing event
+stream validates these rules again, so persisted corruption is reported instead of being
+silently treated as a valid recovery state.
 
 If an interrupted turn contains a mutation that was still `proposed`, recovery closes
 that approval lifecycle as `denied` with `approval-unavailable`; the filesystem proposal
 is never replayed. Mutations that reached `approved` or `applying` use their operation-
 specific reconciliation checks instead.
+
+Workspace mutation records and their normalized lifecycle events are both retained. The
+record carries the full bounded diff and operation-specific evidence; the event stream
+links the action to the turn timeline using the mutation identity, operation, hashes,
+limits, and journal state without duplicating the full diff.
 
 Local process executions use the same atomic per-operation record pattern. The record
 contains the exact approved identity and bounded outcome, and its state transition is

@@ -216,6 +216,29 @@ test("lifecycle events reject out-of-order model attempt evidence", async () => 
   await turn.appendEvent("ModelCompleted");
 });
 
+test("workspace mutation lifecycle events require approval before side effects", async () => {
+  const session = await openSession(tempDirectory());
+  const turn = await session.admitTurn("workspace event order", "deterministic", "deterministic/echo");
+  const base = { mutationId: "mutation_event_order", operation: "write", path: "note.txt" };
+  await assert.rejects(
+    () => turn.appendEvent("WorkspaceMutationApplying", { ...base, decision: "allow-once" }),
+    /before its proposal/,
+  );
+  await turn.appendEvent("WorkspaceMutationProposed", base);
+  await assert.rejects(
+    () => turn.appendEvent("WorkspaceMutationApplying", { ...base, decision: "allow-once" }),
+    /before an allow-once approval/,
+  );
+  await turn.appendEvent("WorkspaceMutationApprovalDecided", { ...base, decision: "allow-once" });
+  await turn.appendEvent("WorkspaceMutationApplying", { ...base, decision: "allow-once" });
+  await turn.appendEvent("WorkspaceMutationProgress", { ...base, journal: { state: "committing" } });
+  await turn.appendEvent("WorkspaceMutationCommitted", { ...base, journal: { state: "committed" } });
+  await assert.rejects(
+    () => turn.appendEvent("WorkspaceMutationProgress", { ...base, journal: { state: "committed" } }),
+    /after its terminal lifecycle event/,
+  );
+});
+
 test("deterministic local provider produces repeatable chunks without network access", async () => {
   const request = buildInitialContext({
     sessionId: asSessionId("session_test"),
@@ -2393,7 +2416,7 @@ test("model apply_patch flow persists the exact mutation record and keeps denial
   const mutationsDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "mutations");
   const mutationFiles = await readdir(mutationsDirectory);
   assert.equal(mutationFiles.length, 1);
-  const mutation = JSON.parse(await readFile(path.join(mutationsDirectory, mutationFiles[0]!), "utf8")) as { status: string; path: string; diff: string; beforeHash: string; afterHash: string };
+  const mutation = JSON.parse(await readFile(path.join(mutationsDirectory, mutationFiles[0]!), "utf8")) as { mutationId: string; status: string; path: string; diff: string; beforeHash: string; afterHash: string };
   assert.equal(mutation.status, "committed");
   assert.equal(mutation.path, "note.md");
   assert.match(mutation.diff, /\+new/);
@@ -2402,6 +2425,15 @@ test("model apply_patch flow persists the exact mutation record and keeps denial
   const rounds = (await readFile(roundsPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { phase: string; payload: Record<string, unknown> });
   const completedRound = rounds.find((round) => round.phase === "tool_completed");
   assert.equal(typeof completedRound?.payload.mutationId, "string");
+  const lifecycleEvents = (await readFile(path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
+  assert.deepEqual(lifecycleEvents.filter((event) => event.type.startsWith("WorkspaceMutation")).map((event) => event.type), [
+    "WorkspaceMutationProposed",
+    "WorkspaceMutationApprovalDecided",
+    "WorkspaceMutationApplying",
+    "WorkspaceMutationCommitted",
+  ]);
+  assert.ok(lifecycleEvents.filter((event) => event.type.startsWith("WorkspaceMutation")).every((event) => event.payload.mutationId === mutation.mutationId));
 });
 
 test("model apply_patch_set flow persists the member journal and bounded path set", async () => {

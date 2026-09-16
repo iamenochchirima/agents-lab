@@ -20,6 +20,7 @@ import type {
   TurnMetrics,
   ModelUsage,
   TerminalTurnStatus,
+  LifecycleEventType,
   TurnError,
   TurnEvent,
   TurnResult,
@@ -406,6 +407,59 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       recordedAt: new Date().toISOString(),
     };
     await turn.writeMutation(record);
+    const lifecycleType: LifecycleEventType = event.type === "proposed"
+      ? "WorkspaceMutationProposed"
+      : event.type === "approval_decided"
+        ? "WorkspaceMutationApprovalDecided"
+        : event.type === "applying"
+          ? "WorkspaceMutationApplying"
+          : event.type === "progress"
+            ? "WorkspaceMutationProgress"
+            : event.type === "committed"
+              ? "WorkspaceMutationCommitted"
+              : "WorkspaceMutationFailed";
+    const lifecyclePayload: Record<string, unknown> = {
+      mutationId: request.mutationId,
+      ...(request.callId ? { callId: request.callId } : {}),
+      operation: request.operation,
+      risk: request.risk,
+      path: request.path,
+      ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
+      ...(request.paths ? { paths: request.paths } : {}),
+      ...(request.members ? {
+        members: request.members.map((member) => ({
+          path: member.path,
+          operation: member.operation,
+          beforeHash: member.beforeHash,
+          afterHash: member.afterHash,
+        })),
+      } : {}),
+      ...(request.beforeHash ? { beforeHash: request.beforeHash } : {}),
+      ...(request.afterHash ? { afterHash: request.afterHash } : {}),
+      ...(request.sourcePath ? { sourcePath: request.sourcePath } : {}),
+      ...(request.sourceHash ? { sourceHash: request.sourceHash } : {}),
+      ...(request.manifestHash ? { manifestHash: request.manifestHash } : {}),
+      ...(request.entryCount !== undefined ? { entryCount: request.entryCount } : {}),
+      ...(request.totalBytes !== undefined ? { totalBytes: request.totalBytes } : {}),
+      ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
+      ...(event.type === "approval_decided" ? {
+        decision: event.decision.decision,
+        ...("reason" in event.decision && event.decision.reason ? { reason: event.decision.reason } : {}),
+      } : {}),
+      ...(event.type === "applying" ? { decision: "allow-once" } : {}),
+      ...(event.type === "applying" || event.type === "progress" || event.type === "failed" || event.type === "committed"
+        ? { journal: event.journal ?? null }
+        : {}),
+      ...(event.type === "failed" ? {
+        ...(event.code ? { errorCode: event.code } : {}),
+        reason: event.reason,
+      } : {}),
+      ...(event.type === "committed" ? {
+        ...(event.afterHash ? { committedAfterHash: event.afterHash } : {}),
+        ...(event.bytesWritten !== undefined ? { bytesWritten: event.bytesWritten } : {}),
+      } : {}),
+    };
+    await turn.appendEvent(lifecycleType, lifecyclePayload);
     await options.onMutation?.(event);
   };
   const recordProcess = async (event: ProcessToolEvent): Promise<void> => {

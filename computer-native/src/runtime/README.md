@@ -17,6 +17,13 @@ provider call and `ModelAttemptCompleted` records success or bounded failure. Sc
 delays are separate lifecycle evidence. A failure after partial text or a tool call is
 never replayed automatically.
 
+Workspace actions use the same turn event stream as model, process, browser, and memory
+work. The runtime persists `WorkspaceMutationProposed`, approval, application/progress,
+and committed or failed events alongside the detailed mutation record. The event payload
+contains action identity, scope, hashes, limits, and bounded journal metadata, but not the
+full diff; the mutation record remains the source for the reviewable diff. Cancellation
+and partial multi-file outcomes therefore remain inspectable after the turn ends.
+
 The `run_command` tool is a foreground process turn within this lifecycle. Its approval
 wait pauses the turn deadline, while the process itself has separate timeout, output,
 argument, and termination-grace limits. Process events are persisted before the turn
