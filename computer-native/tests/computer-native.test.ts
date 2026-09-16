@@ -6095,6 +6095,56 @@ test("TUI renders the public turn lifecycle as styled activity", async () => {
   assert.match(rendered, /✓ completed/);
 });
 
+test("TUI sanitizes streamed output and separates it from activity", async () => {
+  const chunks: string[] = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  });
+  const application = {
+    sessionId: "session_tui_stream_safety",
+    modelLabel: "deterministic/echo",
+    providerLabel: "deterministic/deterministic/echo",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["read_file"],
+    runTurn: async (
+      _message: string,
+      _signal: AbortSignal | undefined,
+      onText?: (text: string) => void,
+      onEvent?: (event: TurnEvent) => void,
+    ) => {
+      onText?.("answer\u001b]0;attacker-controlled title");
+      onText?.("\u0007\u0007\u0001");
+      onEvent?.({
+        type: "tool_started",
+        round: 1,
+        call: { callId: "call_stream_safety", name: "read_file", argumentsJson: '{"path":"note.txt"}' },
+      });
+      return {
+        schemaVersion: 1 as const,
+        sessionId: asSessionId("session_tui_stream_safety"),
+        turnId: asTurnId("turn_tui_stream_safety"),
+        status: "completed" as const,
+        provider: "deterministic" as const,
+        model: "deterministic/echo",
+        startedAt: new Date(0).toISOString(),
+        finishedAt: new Date(1).toISOString(),
+        assistantText: "answer",
+      };
+    },
+    close: async () => undefined,
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runSingle("show safe output");
+
+  const rendered = chunks.join("");
+  assert.doesNotMatch(rendered, /\u001b|attacker-controlled title|\u0001|\u0007/u);
+  assert.match(rendered, /Agent › answer\n.*read_file · started/su);
+});
+
 test("interactive TUI reviews and renders a local process execution", { timeout: 2_000 }, async () => {
   const chunks: string[] = [];
   const input = new PassThrough();

@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T23:19:20+02:00
+**Last updated:** 2026-09-16T23:28:03+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -203,6 +203,10 @@ tests, but it must never replace a configured real provider silently.
   for workspace, process, browser, and memory actions. Repeated Ctrl-C requests one
   cancellation transition, keeps the approval safe-default, and does not add duplicate
   cancellation activity.
+- Streamed model text is sanitized at the TUI boundary, including control sequences split
+  across chunks, and unfinished assistant lines are closed before lifecycle activity is
+  printed. This prevents model output from controlling the terminal or colliding with
+  tool/progress lines; full viewport/scrollback work remains open.
 - The TUI now labels interrupted turns, partial/uncertain filesystem mutations, and
   outcome-unknown process or browser actions distinctly from ordinary failure.
 - Built-in model adapters now expose capability metadata, and the factory validates
@@ -1604,6 +1608,8 @@ claim in this plan.
       recovery paths.
 - [ ] TUI state rendering for waiting, approved, rejected, retrying, cancelling,
       interrupted, partial, ambiguous, failed, and completed states.
+- [x] Sanitize streamed model control sequences, including sequences split across chunks,
+      and terminate assistant output before rendering lifecycle activity.
 
 ### Integration tests
 

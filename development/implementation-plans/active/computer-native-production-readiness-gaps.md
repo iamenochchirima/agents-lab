@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T23:19:20+02:00
+**Last updated:** 2026-09-16T23:28:03+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 324 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 325 tests passed, with 89.35% line coverage, 78.83% branch
-  coverage, and 85.03% function coverage. The package commands serialize browser/profile,
+- `pnpm test`: 326 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 326 tests passed, with 89.42% line coverage, 78.90% branch
+  coverage, and 84.90% function coverage. The package commands serialize browser/profile,
   process, and admission fixtures for reproducibility; Node's coverage runner remains
   experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -99,6 +99,9 @@ readiness:
 - Persisted memory-search evidence is now schema-validated before publication, duplicate
   acknowledgement, inspection, or recovery event repair. Invalid result bounds, IDs,
   scopes, counts, or truncation metadata fail closed before lifecycle reconstruction.
+- Streamed model output is sanitized before it reaches the terminal, including control
+  sequences split across provider chunks, and response lines are separated from activity
+  output. Full viewport/scrollback, resize redraw, and accessibility work remain open.
 - Model requests are rejected before provider transport when their serialized size
   exceeds `COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES`; streamed response text and tool-call
   fields are bounded by `COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES` and fail without a
@@ -224,7 +227,7 @@ provider, browser-profile, and operational acceptance evidence.
 | Area | Current level | What still blocks production readiness |
 | --- | --- | --- |
 | Runtime and turns | Bounded local foundation with normalized lifecycle evidence, durable-record acknowledgement recovery, and terminal-event reconstruction across current action families | Full per-boundary crash matrix, durable lifecycle unification, concurrency, and replay semantics |
-| TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
+| TUI and approvals | Useful standalone interface with structured approvals, cancellation, and sanitized streaming output | Full-screen workflow, richer navigation, scrollback, accessibility, and recovery UX |
 | Models and providers | Real OpenRouter path, provider registry, explicit model validation, capability metadata, bounded request/response/usage evidence, deterministic tests, and one local real-provider acceptance profile | Broader malformed-response fixtures, fallback policy, cost accounting, and credential-expiry operations |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery and durable mutation-record validation | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, durable-record validation, launch-failure cleanup, and restart cleanup for the detached foreground process group | Full process crash matrix, cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |

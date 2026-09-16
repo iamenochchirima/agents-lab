@@ -67,6 +67,55 @@ function singleLine(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
 
+function isCsiFinal(value: string): boolean {
+  const code = value.charCodeAt(0);
+  return code >= 0x40 && code <= 0x7e;
+}
+
+function sanitizeTerminalChunk(value: string, pending: string): { readonly text: string; readonly pending: string } {
+  const input = pending + value;
+  let text = "";
+  let index = 0;
+  while (index < input.length) {
+    if (input[index] !== "\u001b") {
+      const code = input.charCodeAt(index);
+      if (code === 0x09 || code === 0x0a || code >= 0x20 && code !== 0x7f) text += input[index];
+      index += 1;
+      continue;
+    }
+    if (index + 1 >= input.length) return { text, pending: input.slice(index) };
+    const kind = input[index + 1];
+    if (kind === "[") {
+      let end = index + 2;
+      while (end < input.length && !isCsiFinal(input[end] ?? "")) end += 1;
+      if (end >= input.length) return { text, pending: input.slice(index) };
+      index = end + 1;
+      continue;
+    }
+    if (kind === "]" || kind === "P" || kind === "^" || kind === "_" || kind === "X") {
+      let end = index + 2;
+      let terminator = -1;
+      while (end < input.length) {
+        if (input[end] === "\u0007") {
+          terminator = end;
+          break;
+        }
+        if (input[end] === "\u001b" && input[end + 1] === "\\") {
+          terminator = end + 1;
+          break;
+        }
+        end += 1;
+      }
+      if (terminator < 0) return { text, pending: input.slice(index) };
+      index = terminator + 1;
+      continue;
+    }
+    // Drop an unrecognised two-byte escape rather than allowing it to reach the terminal.
+    index += 2;
+  }
+  return { text, pending: "" };
+}
+
 function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): string {
   const supported = [
     capabilities.streaming ? "streaming" : undefined,
@@ -108,6 +157,7 @@ export class TerminalUi {
   private status: string = "ready";
   private statusRound = 0;
   private startedAt = 0;
+  private pendingTerminalEscape = "";
   private readonly colour: boolean;
   private approvalQuestion: MutationApproval | undefined;
   private processApprovalQuestion: ((request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>) | undefined;
@@ -146,7 +196,14 @@ export class TerminalUi {
   }
 
   private printActivity(icon: string, message: string, colour = "2"): void {
+    this.closeResponseLine();
     this.write(`${this.style(colour, icon)} ${this.style("2", message)}\n`);
+  }
+
+  private closeResponseLine(): void {
+    if (!this.responseStarted) return;
+    this.write("\n");
+    this.responseStarted = false;
   }
 
   private statusIcon(): string {
@@ -484,6 +541,7 @@ export class TerminalUi {
   private beginTurn(): void {
     this.startedAt = Date.now();
     this.responseStarted = false;
+    this.pendingTerminalEscape = "";
     this.waiting = false;
     this.cancellationRequested = false;
     this.status = "starting";
@@ -492,14 +550,19 @@ export class TerminalUi {
   }
 
   private appendText(text: string): void {
+    const sanitized = sanitizeTerminalChunk(text, this.pendingTerminalEscape);
+    this.pendingTerminalEscape = sanitized.pending;
+    if (sanitized.text.length === 0) return;
     if (!this.responseStarted) {
       this.write(`${this.style("32;1", "Agent")} ${this.style("2", "›")} `);
       this.responseStarted = true;
     }
-    this.write(text);
+    this.write(sanitized.text);
   }
 
   private finishTurn(result: TurnResult): void {
+    this.closeResponseLine();
+    this.pendingTerminalEscape = "";
     const elapsed = formatDuration(Date.now() - this.startedAt);
     const icon = result.status === "completed" ? "✓" : result.status === "cancelled" ? "■" : result.status === "interrupted" ? "!" : "×";
     const detail = result.status === "completed"
