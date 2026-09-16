@@ -3,6 +3,8 @@ import type {
   VercelWorkflowModelResult,
 } from "../contracts.js";
 
+export const VERCEL_OPENROUTER_MAX_RESPONSE_BYTES = 1_048_576;
+
 export interface OpenRouterModelOptions {
   readonly apiKey: string | null;
   readonly baseUrl: string;
@@ -47,7 +49,19 @@ export async function completeOpenRouterModel(
       signal: controller.signal,
     });
 
-    const body = await readJson(response);
+    const bodyResult = await readJson(response);
+    if (bodyResult.kind === "too_large") {
+      return {
+        kind: "failure",
+        requestSent: true,
+        error: {
+          code: "OPENROUTER_RESPONSE_TOO_LARGE",
+          message: "OpenRouter response exceeded the configured response limit.",
+          failureKind: "provider",
+          retryable: false,
+        },
+      };
+    }
     if (!response.ok) {
       return {
         kind: "failure",
@@ -61,7 +75,7 @@ export async function completeOpenRouterModel(
       };
     }
 
-    const record = asRecord(body);
+    const record = asRecord(bodyResult.kind === "parsed" ? bodyResult.value : null);
     const choices = Array.isArray(record.choices) ? record.choices : [];
     const firstChoice = asRecord(choices[0]);
     const message = asRecord(firstChoice.message);
@@ -107,11 +121,64 @@ export async function completeOpenRouterModel(
   }
 }
 
-async function readJson(response: Response): Promise<unknown> {
+type JsonReadResult =
+  | { readonly kind: "parsed"; readonly value: unknown }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "too_large" };
+
+async function readJson(response: Response): Promise<JsonReadResult> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const bytes = Number(declaredLength);
+    if (Number.isSafeInteger(bytes) && bytes > VERCEL_OPENROUTER_MAX_RESPONSE_BYTES) {
+      await cancelResponseBody(response);
+      return { kind: "too_large" };
+    }
+  }
+
+  if (!response.body) return { kind: "invalid" };
+
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
   try {
-    return await response.json();
+    reader = response.body.getReader();
   } catch {
-    return null;
+    return { kind: "invalid" };
+  }
+  const decoder = new TextDecoder();
+  let text = "";
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      const chunkBytes = chunk.value.byteLength;
+      if (chunkBytes > VERCEL_OPENROUTER_MAX_RESPONSE_BYTES - totalBytes) {
+        await reader.cancel().catch(() => undefined);
+        return { kind: "too_large" };
+      }
+      totalBytes += chunkBytes;
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+    text += decoder.decode();
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    return { kind: "invalid" };
+  } finally {
+    reader.releaseLock();
+  }
+
+  try {
+    return { kind: "parsed", value: JSON.parse(text) };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The response is already being rejected; cancellation is best effort.
   }
 }
 
