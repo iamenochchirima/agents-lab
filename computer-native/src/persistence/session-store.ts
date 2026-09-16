@@ -3,12 +3,14 @@ import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   asSessionId,
+  asCorrelationId,
   asTurnId,
   isTerminalStatus,
   terminalEventType,
   type LifecycleEvent,
   type LifecycleEventType,
   type SessionId,
+  type CorrelationId,
   type SessionMetadata,
   type RoundEvidence,
   type TerminalTurnStatus,
@@ -68,6 +70,10 @@ function sessionId(): SessionId {
 
 function turnId(): string {
   return id("turn");
+}
+
+function correlationId(): CorrelationId {
+  return asCorrelationId(id("corr"));
 }
 
 function turnDirectory(sessionDirectory: string, idValue: string): string {
@@ -291,6 +297,12 @@ function validateRoundOrder(rounds: readonly RoundEvidence[], sessionId: Session
   }
 }
 
+function assertRecordCorrelation(expected: CorrelationId, actual: CorrelationId | undefined, kind: string): void {
+  if (actual !== undefined && actual !== expected) {
+    throw new ComputerNativeError("persistence", `${kind} correlation '${actual}' does not belong to correlation '${expected}'.`);
+  }
+}
+
 export class SessionStore {
   private constructor(
     readonly stateDir: string,
@@ -358,6 +370,7 @@ export class SessionStore {
     const content = userPrompt.trim();
     if (content.length === 0) throw new ComputerNativeError("invalid-input", "A message is required.");
     const selectedTurnId = asTurnId(turnId());
+    const selectedCorrelationId = correlationId();
     const createdAt = now();
     const directory = turnDirectory(this.sessionDirectory, selectedTurnId);
     await ensureDirectory(directory);
@@ -365,6 +378,7 @@ export class SessionStore {
       schemaVersion: 1,
       sessionId: this.metadata.sessionId,
       turnId: selectedTurnId,
+      correlationId: selectedCorrelationId,
       provider,
       model,
       state: "submitting",
@@ -527,6 +541,7 @@ export class SessionStore {
         schemaVersion: 1,
         sessionId: record.sessionId,
         turnId: record.turnId,
+        correlationId: record.correlationId ?? asCorrelationId(record.turnId),
         status: "interrupted",
         provider: record.provider,
         model: record.model,
@@ -562,6 +577,11 @@ export class TurnStore {
     return this.record.turnId;
   }
 
+  /** Older turn records used the turn ID as their only correlation key. */
+  get correlationId(): CorrelationId {
+    return this.record.correlationId ?? asCorrelationId(this.record.turnId);
+  }
+
   get state(): TurnStatus {
     return this.record.state;
   }
@@ -570,6 +590,7 @@ export class TurnStore {
     const eventsPath = path.join(this.directory, "events.jsonl");
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
     validateLifecycleEventHistory(existing);
+    for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     const terminal = existing.find((event) => isTerminalLifecycleEvent(event.type));
     if (terminal) {
       if (terminal.type === type) return terminal;
@@ -584,6 +605,7 @@ export class TurnStore {
       recordedAt: now(),
       sessionId: this.record.sessionId,
       turnId: this.record.turnId,
+      correlationId: this.correlationId,
       payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
     };
     await this.session.appendJsonLine(eventsPath, event);
@@ -594,6 +616,7 @@ export class TurnStore {
     const eventsPath = path.join(this.directory, "events.jsonl");
     const existing = await readJsonLines<LifecycleEvent>(eventsPath);
     validateLifecycleEventHistory(existing);
+    for (const event of existing) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     const terminalIndex = existing.findIndex((event) => isTerminalLifecycleEvent(event.type));
     if (terminalIndex < 0) return this.appendEvent(type, payload);
     const prefix = existing.slice(0, terminalIndex);
@@ -606,6 +629,7 @@ export class TurnStore {
       recordedAt: now(),
       sessionId: this.record.sessionId,
       turnId: this.record.turnId,
+      correlationId: this.correlationId,
       payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
     };
     const repaired = [...prefix, event, existing[terminalIndex]].map((candidate, index) => ({ ...candidate, sequence: index + 1 }));
@@ -616,18 +640,22 @@ export class TurnStore {
   async readEvents(): Promise<LifecycleEvent[]> {
     const events = await readJsonLines<LifecycleEvent>(path.join(this.directory, "events.jsonl"));
     validateLifecycleEventHistory(events);
+    for (const event of events) assertRecordCorrelation(this.correlationId, event.correlationId, "Lifecycle event");
     return events;
   }
 
   async appendRound(round: RoundEvidence): Promise<void> {
     const existing = await this.readRounds();
-    validateRoundOrder([...existing, round], this.sessionId, this.turnId);
-    await this.session.appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(round));
+    assertRecordCorrelation(this.correlationId, round.correlationId, "Round");
+    const normalized = { ...round, correlationId: round.correlationId ?? this.correlationId };
+    validateRoundOrder([...existing, normalized], this.sessionId, this.turnId);
+    await this.session.appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(normalized));
   }
 
   async readRounds(): Promise<RoundEvidence[]> {
     const rounds = await readJsonLines<RoundEvidence>(path.join(this.directory, "rounds.jsonl"));
     validateRoundOrder(rounds, this.sessionId, this.turnId);
+    for (const round of rounds) assertRecordCorrelation(this.correlationId, round.correlationId, "Round");
     return rounds;
   }
 
@@ -635,6 +663,7 @@ export class TurnStore {
     if (record.schemaVersion !== 1 || record.mutationId.trim().length === 0 || record.diff.length === 0) {
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid workspace mutation record.`);
     }
+    assertRecordCorrelation(this.correlationId, record.correlationId, "Workspace mutation");
     const directory = path.join(this.directory, "mutations");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.mutationId, "Mutation ID")}.json`);
@@ -653,6 +682,7 @@ export class TurnStore {
     if (record.schemaVersion !== 1 || record.executionId.trim().length === 0 || record.callId.trim().length === 0) {
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid process execution record.`);
     }
+    assertRecordCorrelation(this.correlationId, record.correlationId, "Process execution");
     const directory = path.join(this.directory, "executions");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.executionId, "Execution ID")}.json`);
@@ -690,6 +720,7 @@ export class TurnStore {
     if (record.schemaVersion !== 1 || record.actionId.trim().length === 0 || record.callId.trim().length === 0) {
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid browser action record.`);
     }
+    assertRecordCorrelation(this.correlationId, record.correlationId, "Browser action");
     if (record.turnId !== this.turnId) {
       throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' does not belong to turn '${this.turnId}'.`);
     }
@@ -717,6 +748,7 @@ export class TurnStore {
     if (record.schemaVersion !== 1 || record.operationId.trim().length === 0 || record.callId.trim().length === 0) {
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid memory action record.`);
     }
+    assertRecordCorrelation(this.correlationId, record.correlationId, "Memory action");
     if (record.turnId !== this.turnId || record.sessionId !== this.sessionId) {
       throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${this.turnId}'.`);
     }
@@ -746,6 +778,7 @@ export class TurnStore {
     if (record.schemaVersion !== 1 || record.searchId.trim().length === 0 || record.callId.trim().length === 0) {
       throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid memory search record.`);
     }
+    assertRecordCorrelation(this.correlationId, record.correlationId, "Memory search");
     if (record.turnId !== this.turnId || record.sessionId !== this.sessionId) {
       throw new ComputerNativeError("persistence", `Memory search '${record.searchId}' does not belong to turn '${this.turnId}'.`);
     }

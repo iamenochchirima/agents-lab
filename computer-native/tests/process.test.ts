@@ -447,19 +447,23 @@ test("model run persists a terminal process outcome when approval is denied", as
     assert.equal(result.status, "completed");
     assert.equal(result.assistantText, "The command was not run.");
 
-    const events = await readFile(path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "events.jsonl"), "utf8");
+    const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+    const events = await readFile(path.join(turnDirectory, "events.jsonl"), "utf8");
     assert.match(events, /ProcessPrepared/u);
     assert.match(events, /ProcessApprovalDecided/u);
     assert.match(events, /ProcessCompleted/u);
     assert.match(events, /"errorCode":"process-approval-denied"/u);
     assert.doesNotMatch(events, /ProcessStarted/u);
 
-    const executionDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "executions");
+    const executionDirectory = path.join(turnDirectory, "executions");
     const executionEntry = (await readdir(executionDirectory))[0];
     assert.ok(executionEntry);
-    const record = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; errorCode?: string };
+    const record = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string; errorCode?: string; correlationId?: string };
     assert.equal(record.status, "failed");
     assert.equal(record.errorCode, "process-approval-denied");
+    assert.equal(record.correlationId, result.correlationId);
+    const lifecycleEvents = events.trim().split("\n").map((line) => JSON.parse(line) as { correlationId?: string });
+    assert.ok(lifecycleEvents.every((event) => event.correlationId === result.correlationId));
   } finally {
     await harness.cleanup();
     await rm(stateDir, { recursive: true, force: true });

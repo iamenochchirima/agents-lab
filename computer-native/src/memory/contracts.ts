@@ -1,4 +1,5 @@
 import type { MemoryScope, MemoryTrust, MemorySource } from "./types.js";
+import type { CorrelationId } from "../runtime/contracts.js";
 
 export type { MemoryScope, MemoryTrust, MemorySource } from "./types.js";
 
@@ -70,6 +71,7 @@ export interface MemorySearchEvidence {
   readonly searchId: string;
   readonly sessionId: string;
   readonly turnId: string;
+  readonly correlationId?: CorrelationId;
   readonly callId: string;
   readonly queryHash: string;
   readonly scopes?: readonly MemoryScope[];
@@ -141,6 +143,7 @@ export interface MemoryActionRecord {
   readonly operationId: string;
   readonly sessionId: string;
   readonly turnId: string;
+  readonly correlationId?: CorrelationId;
   readonly callId: string;
   readonly operation: MemoryOperation;
   readonly recordId?: string;

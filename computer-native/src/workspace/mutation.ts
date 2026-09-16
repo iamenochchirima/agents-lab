@@ -1,5 +1,5 @@
 import type { PreparedPatch, WorkspaceMutationOperation } from "./patch.js";
-import type { MutationErrorCode } from "../runtime/contracts.js";
+import type { CorrelationId, MutationErrorCode } from "../runtime/contracts.js";
 import { ComputerNativeError } from "../runtime/errors.js";
 
 export const MAX_PATCH_REQUEST_BYTES = 256 * 1024;
@@ -100,6 +100,7 @@ export type MutationRecordStatus = "proposed" | "approved" | "applying" | "denie
 export interface WorkspaceMutationRecord {
   readonly schemaVersion: 1;
   readonly mutationId: string;
+  readonly correlationId?: CorrelationId;
   readonly callId?: string;
   readonly operation: WorkspaceMutationOperation;
   readonly risk?: MutationRisk;
@@ -165,6 +166,7 @@ export function assertMutationTransition(previous: WorkspaceMutationRecord, next
   const changedFields = [
     previous.schemaVersion !== next.schemaVersion ? "schemaVersion" : undefined,
     previous.mutationId !== next.mutationId ? "mutationId" : undefined,
+    previous.correlationId !== undefined && previous.correlationId !== next.correlationId ? "correlationId" : undefined,
     previous.operation !== next.operation ? "operation" : undefined,
     previous.risk !== next.risk ? "risk" : undefined,
     previous.kind !== next.kind ? "kind" : undefined,

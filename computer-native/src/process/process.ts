@@ -1,4 +1,4 @@
-import type { ProcessErrorCode } from "../runtime/contracts.js";
+import type { CorrelationId, ProcessErrorCode } from "../runtime/contracts.js";
 
 export type ProcessState =
   | "prepared"
@@ -94,6 +94,7 @@ export interface ProcessExecutionRecord {
   readonly callId: string;
   readonly sessionId: string;
   readonly turnId: string;
+  readonly correlationId?: CorrelationId;
   readonly command: string;
   readonly displayArgs: readonly string[];
   readonly cwd: string;
@@ -144,6 +145,7 @@ export function assertProcessTransition(previous: ProcessExecutionRecord, next: 
     previous.callId !== next.callId ? "callId" : undefined,
     previous.sessionId !== next.sessionId ? "sessionId" : undefined,
     previous.turnId !== next.turnId ? "turnId" : undefined,
+    previous.correlationId !== undefined && previous.correlationId !== next.correlationId ? "correlationId" : undefined,
     previous.command !== next.command ? "command" : undefined,
     JSON.stringify(previous.displayArgs) !== JSON.stringify(next.displayArgs) ? "displayArgs" : undefined,
     previous.cwd !== next.cwd ? "cwd" : undefined,

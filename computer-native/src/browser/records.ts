@@ -1,5 +1,6 @@
 import type { BrowserApprovalAction, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserSessionId, BrowserTabId } from "./contracts.js";
 import type { BrowserDiagnostic, BrowserErrorCode } from "./errors.js";
+import type { CorrelationId } from "../runtime/contracts.js";
 
 export type BrowserActionStatus =
   | "prepared"
@@ -18,6 +19,7 @@ export interface BrowserActionRecord {
   readonly callId: string;
   readonly sessionId: BrowserSessionId;
   readonly turnId: string;
+  readonly correlationId?: CorrelationId;
   readonly tabId: BrowserTabId;
   readonly action: BrowserApprovalAction;
   readonly reference: string;
@@ -64,6 +66,7 @@ export function assertBrowserActionTransition(previous: BrowserActionRecord, nex
     previous.callId !== next.callId ? "callId" : undefined,
     previous.sessionId !== next.sessionId ? "sessionId" : undefined,
     previous.turnId !== next.turnId ? "turnId" : undefined,
+    previous.correlationId !== undefined && previous.correlationId !== next.correlationId ? "correlationId" : undefined,
     previous.tabId !== next.tabId ? "tabId" : undefined,
     previous.action !== next.action ? "action" : undefined,
     previous.reference !== next.reference ? "reference" : undefined,

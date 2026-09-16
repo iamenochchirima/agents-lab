@@ -1,5 +1,6 @@
 export type SessionId = string & { readonly __brand: "SessionId" };
 export type TurnId = string & { readonly __brand: "TurnId" };
+export type CorrelationId = string & { readonly __brand: "CorrelationId" };
 
 export type ProviderName = "deterministic" | "openrouter";
 export type DeterministicBehavior = "success" | "failure" | "timeout";
@@ -74,6 +75,8 @@ export interface ModelToolDefinition {
 export interface ModelRequest {
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  /** Stable trace value shared by runtime events, model attempts, tools, and records. */
+  readonly correlationId?: CorrelationId;
   readonly provider: ProviderName;
   readonly model: string;
   readonly messages: readonly ModelMessage[];
@@ -152,6 +155,7 @@ export interface TurnResult {
   readonly schemaVersion: 1;
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  readonly correlationId?: CorrelationId;
   readonly status: TerminalTurnStatus;
   readonly provider: ProviderName;
   readonly model: string;
@@ -208,6 +212,7 @@ export interface LifecycleEvent {
   readonly recordedAt: string;
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  readonly correlationId?: CorrelationId;
   readonly payload: Readonly<Record<string, unknown>>;
 }
 
@@ -223,6 +228,8 @@ export interface TurnRecord {
   readonly schemaVersion: 1;
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  /** Optional for records written before correlation IDs were introduced. */
+  readonly correlationId?: CorrelationId;
   readonly provider: ProviderName;
   readonly model: string;
   readonly state: Exclude<TurnStatus, "idle">;
@@ -231,18 +238,20 @@ export interface TurnRecord {
   readonly updatedAt: string;
 }
 
-export type TurnEvent =
+export type TurnEvent = (
   | { readonly type: "waiting"; readonly round: number }
   | { readonly type: "retry"; readonly round: number; readonly attempt: number; readonly delayMs: number; readonly reason: string }
   | { readonly type: "text"; readonly text: string; readonly round: number }
   | { readonly type: "tool_started"; readonly round: number; readonly call: ModelToolCall }
   | { readonly type: "tool_completed"; readonly round: number; readonly callId: string; readonly name: string; readonly ok: boolean; readonly summary: string }
-  | { readonly type: "status"; readonly status: TurnStatus; readonly round: number };
+  | { readonly type: "status"; readonly status: TurnStatus; readonly round: number }
+) & { readonly correlationId?: CorrelationId };
 
 export interface RoundEvidence {
   readonly schemaVersion: 1;
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
+  readonly correlationId?: CorrelationId;
   readonly round: number;
   readonly phase: "model_requested" | "model_completed" | "tool_requested" | "tool_completed";
   readonly recordedAt: string;
@@ -257,6 +266,10 @@ export function asSessionId(value: string): SessionId {
 
 export function asTurnId(value: string): TurnId {
   return value as TurnId;
+}
+
+export function asCorrelationId(value: string): CorrelationId {
+  return value as CorrelationId;
 }
 
 export function isTerminalStatus(status: TurnStatus): status is TerminalTurnStatus {

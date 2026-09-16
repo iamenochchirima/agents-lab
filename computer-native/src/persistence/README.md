@@ -23,6 +23,12 @@ per line. A turn record is created before its user message is appended, so a res
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
 
+New turns receive a stable correlation ID. It is written to the turn record and copied
+to lifecycle events, round evidence, terminal results, and persisted process, browser,
+memory, workspace, and memory-search records. The persistence layer accepts older
+records that lack the field by using the turn ID as a compatibility key, but rejects a
+record that explicitly carries another turn's correlation ID.
+
 All durable writes pass through `SessionStore`. Normal application code leaves its
 optional write hooks unset. Tests and diagnostics may install a `beforeWrite` or
 `afterWrite` hook to model a process stopping before a write, or after the filesystem

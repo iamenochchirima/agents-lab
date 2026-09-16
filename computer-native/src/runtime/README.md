@@ -11,6 +11,12 @@ states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
 Interrupted turns are recorded after restart and are never automatically resent because
 the provider or tool may have completed after the process stopped.
 
+Each admitted turn receives a stable `correlationId`. The runtime forwards it on TUI
+events and model requests, and persistence copies it to lifecycle events, round evidence,
+the terminal result, and action records. Older records without this field use their
+turn ID as a compatibility fallback; a non-matching correlation is rejected rather than
+joining evidence from another turn.
+
 The runtime exposes an optional diagnostic checkpoint hook for deterministic failure
 injection. Checkpoints cover model dispatch and response completion, approval boundaries,
 tool execution, terminal commit, process launch, and each committed member of a

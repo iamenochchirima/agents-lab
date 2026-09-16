@@ -184,8 +184,12 @@ tests, but it must never replace a configured real provider silently.
   a read-only workspace listing, and `/status` all behaved as expected. One pre-output
   provider retry was visible and recovered through the same real model path; session
   evidence contained usage/limits and no API key.
-- The latest validation is 266 passing tests across the package, with 88.86% line
-  coverage, 76.92% branch coverage, and 83.87% function coverage. Coverage is from
+- Each newly admitted turn now receives a stable correlation ID propagated through TUI
+  events, model requests, lifecycle/round evidence, terminal results, and action records;
+  persistence rejects explicit cross-turn correlation mismatches while retaining a
+  turn-ID fallback for older records.
+- The latest validation is 268 passing tests across the package, with 88.91% line
+  coverage, 76.91% branch coverage, and 83.95% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -330,7 +334,6 @@ Delivered in this increment:
 
 Still open after this increment:
 
-- A documented real-provider acceptance run without a committed credential.
 - Broader provider fixtures for malformed response shapes, usage anomalies, fallback
   policy, credential rotation, cost accounting, and provider-native diagnostic retention.
 - Broader provider selection UX beyond the read-only registry view.
@@ -642,7 +645,7 @@ claim in this plan.
       oversized inputs, hostile output, and cross-scope record access.
 - [ ] Add lifecycle events for retry, cancellation, recovery, partial completion, and
       ambiguous outcomes.
-- [ ] Add correlation IDs that connect TUI messages, runtime events, provider attempts,
+- [x] Add correlation IDs that connect TUI messages, runtime events, provider attempts,
       tool actions, and persisted records.
 - [ ] Document which controls are policy controls and which guarantees require a future
       OS/container isolation profile.

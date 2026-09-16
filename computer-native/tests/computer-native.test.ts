@@ -22,7 +22,7 @@ import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
 import { MAX_PATCH_REQUEST_BYTES, type MutationEvent, type WorkspaceMutationRecord } from "../src/workspace/mutation.js";
 import { ComputerNativeError, ModelProviderError, MutationError, RuntimeInterruptionError } from "../src/runtime/errors.js";
-import { asSessionId, asTurnId, type ModelRequest, type ModelStreamEvent, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
+import { asCorrelationId, asSessionId, asTurnId, type ModelRequest, type ModelStreamEvent, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
 import { allowedTransitions, assertTransition } from "../src/runtime/state.js";
 import { openChatApplication } from "../src/runtime/application.js";
 import { runTurn } from "../src/runtime/turn.js";
@@ -422,6 +422,46 @@ test("successful turn persists ordered transcript, events, and result", async ()
   assert.ok(events.every((event) => event.sessionId === result.sessionId && event.turnId === result.turnId));
 });
 
+test("one correlation ID links the model request, TUI events, rounds, and durable turn records", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const observed: TurnEvent[] = [];
+  let requestCorrelationId: string | undefined;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/correlation",
+    async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+      requestCorrelationId = request.correlationId;
+      yield { type: "text", text: "correlated" };
+      yield { type: "completed", usage: { outputTokens: 1, totalTokens: 1 } };
+    },
+  };
+
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir),
+    userPrompt: "record correlation",
+    onEvent: (event) => observed.push(event),
+  });
+
+  assert.match(String(result.correlationId), /^corr_[a-f0-9]{32}$/u);
+  assert.equal(requestCorrelationId, result.correlationId);
+  assert.ok(observed.length > 0);
+  assert.ok(observed.every((event) => event.correlationId === result.correlationId));
+  const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
+  const turnRecord = JSON.parse(await readFile(path.join(turnDirectory, "turn.json"), "utf8")) as { correlationId?: string };
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { correlationId?: string });
+  const rounds = (await readFile(path.join(turnDirectory, "rounds.jsonl"), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as { correlationId?: string });
+  const storedResult = JSON.parse(await readFile(path.join(turnDirectory, "result.json"), "utf8")) as { correlationId?: string };
+  assert.equal(turnRecord.correlationId, result.correlationId);
+  assert.equal(storedResult.correlationId, result.correlationId);
+  assert.ok(events.every((event) => event.correlationId === result.correlationId));
+  assert.ok(rounds.every((round) => round.correlationId === result.correlationId));
+});
+
 test("turn persists provider request identity and latency in model evidence", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);
@@ -452,6 +492,25 @@ test("turn persists provider request identity and latency in model evidence", as
   assert.equal(completed?.payload.latencyMs, 17);
   assert.equal(typeof completed?.payload.outputBytes, "number");
   assert.equal(completed?.payload.maxOutputBytes, turnConfig.maxModelOutputBytes);
+});
+
+test("persistence rejects a round correlated to another turn", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("reject mismatched correlation", "deterministic", "deterministic/echo");
+  await assert.rejects(
+    () => turn.appendRound({
+      schemaVersion: 1,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      correlationId: asCorrelationId("corr_other_turn"),
+      round: 1,
+      phase: "model_requested",
+      recordedAt: new Date().toISOString(),
+      payload: {},
+    }),
+    /does not belong to correlation/u,
+  );
 });
 
 test("committing the same terminal result twice does not duplicate the terminal event", async () => {

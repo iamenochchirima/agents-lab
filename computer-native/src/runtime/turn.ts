@@ -377,6 +377,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
     const record: WorkspaceMutationRecord = {
       schemaVersion: 1,
       mutationId: request.mutationId,
+      correlationId: turn.correlationId,
       ...(request.callId ? { callId: request.callId } : {}),
       operation: request.operation,
       risk: request.risk,
@@ -517,6 +518,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       callId: request.callId,
       sessionId: turn.sessionId,
       turnId: turn.turnId,
+      correlationId: turn.correlationId,
       command: request.command,
       displayArgs: request.displayArgs,
       cwd: request.cwd,
@@ -662,6 +664,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       callId: request.callId,
       sessionId: request.sessionId,
       turnId: turn.turnId,
+      correlationId: turn.correlationId,
       tabId: request.tabId,
       action: request.action,
       reference: request.reference,
@@ -769,6 +772,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
     const base = {
       operationId: request.operationId,
       callId: request.callId,
+      correlationId: turn.correlationId,
       operation: request.operation,
       recordId: request.recordId ?? null,
       scope: request.scope,
@@ -782,6 +786,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       operationId: request.operationId,
       sessionId: turn.sessionId,
       turnId: turn.turnId,
+      correlationId: turn.correlationId,
       callId: request.callId,
       operation: request.operation,
       ...(request.recordId ? { recordId: request.recordId } : {}),
@@ -858,6 +863,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       ...evidence,
       sessionId: turn.sessionId,
       turnId: turn.turnId,
+      correlationId: turn.correlationId,
       recordedAt: new Date().toISOString(),
     };
     await turn.writeMemorySearch(record);
@@ -881,21 +887,25 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       maxChars: options.config.memoryBootstrapMaxChars,
     });
   }
-  const request = buildInitialContext({
-    sessionId: turn.sessionId,
-    turnId: turn.turnId,
-    provider: options.provider.provider,
-    model: options.provider.model,
-    initialInstruction: options.config.initialInstruction,
-    userPrompt: options.userPrompt,
-    history,
-    tools: tools.definitions,
-    memory,
-    memoryMaxChars: options.config.memoryBootstrapMaxChars,
-  });
+  const request = {
+    ...buildInitialContext({
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      provider: options.provider.provider,
+      model: options.provider.model,
+      initialInstruction: options.config.initialInstruction,
+      userPrompt: options.userPrompt,
+      history,
+      tools: tools.definitions,
+      memory,
+      memoryMaxChars: options.config.memoryBootstrapMaxChars,
+    }),
+    correlationId: turn.correlationId,
+  };
+  const emit = (event: TurnEvent): void => options.onEvent?.({ ...event, correlationId: turn.correlationId });
   await turn.appendEvent("TurnStarted", { provider: request.provider, model: request.model });
   await turn.updateState("streaming");
-  options.onEvent?.({ type: "status", status: "streaming", round: 0 });
+  emit({ type: "status", status: "streaming", round: 0 });
 
   const abort = combinedSignal(options.signal, options.config.timeoutMs, options.config.firstEventTimeoutMs);
   const messages: ModelMessage[] = [...request.messages];
@@ -942,7 +952,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         const attemptId = `attempt_${randomUUID().replaceAll("-", "")}`;
         modelRequestCount += 1;
         abort.beginModelRound();
-        options.onEvent?.({ type: "waiting", round });
+        emit({ type: "waiting", round });
         await turn.appendEvent("ModelRequested", {
           provider: request.provider,
           model: request.model,
@@ -969,7 +979,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
               roundText.push(event.text);
               response += event.text;
               options.onText?.(event.text);
-              options.onEvent?.({ type: "text", text: event.text, round });
+              emit({ type: "text", text: event.text, round });
             } else if (event.type === "tool_call") {
               const callBytes = Buffer.byteLength(JSON.stringify(event.call), "utf8");
               if (modelOutputBytes + callBytes > options.config.maxModelOutputBytes) {
@@ -1026,7 +1036,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           const delayMs = Math.min(options.config.modelRetryBackoffMs * (2 ** (attempt - 1)), 30_000);
           abort.clearFirstEventTimer();
           await turn.appendEvent("ModelRetryScheduled", { round, attempt, attemptId, nextAttempt: attempt + 1, delayMs, reason });
-          options.onEvent?.({ type: "retry", round, attempt, delayMs, reason });
+          emit({ type: "retry", round, attempt, delayMs, reason });
           await waitForRetry(delayMs, abort.signal);
         }
       }
@@ -1057,7 +1067,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
         toolCallCount += 1;
         const processCallLimitReached = call.name === "run_command" && processCalls >= options.config.processCallsPerTurn;
         if (call.name === "run_command") processCalls += 1;
-        options.onEvent?.({ type: "tool_started", round, call });
+        emit({ type: "tool_started", round, call });
         await turn.appendRound({
           schemaVersion: 1,
           sessionId: turn.sessionId,
@@ -1120,7 +1130,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
           toolName: call.name,
           payload: { ok: result.ok, summary: result.summary, contentBytes: Buffer.byteLength(result.content, "utf8"), mutationId: result.mutationId ?? null, errorCode: result.errorCode ?? null },
         });
-        options.onEvent?.({ type: "tool_completed", round, callId: call.callId, name: call.name, ok: result.ok, summary: result.summary });
+        emit({ type: "tool_completed", round, callId: call.callId, name: call.name, ok: result.ok, summary: result.summary });
         messages.push({ role: "tool", content: result.content, toolCallId: call.callId, name: call.name });
       }
       if (round === options.config.maxModelToolRounds) {
@@ -1133,6 +1143,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       schemaVersion: 1,
       sessionId: turn.sessionId,
       turnId: turn.turnId,
+      correlationId: turn.correlationId,
       status: "completed",
       provider: request.provider,
       model: request.model,
@@ -1152,7 +1163,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
     });
     await checkpoint(options.diagnostics, { type: "before-terminal-commit", status: result.status, turnId: turn.turnId });
     await turn.commitTerminal(result, "TurnCompleted", { assistantMessageId });
-    options.onEvent?.({ type: "status", status: "completed", round: 0 });
+    emit({ type: "status", status: "completed", round: 0 });
     return result;
   } catch (error) {
     if (isRuntimeInterruptionError(error)) throw error;
@@ -1161,6 +1172,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       schemaVersion: 1,
       sessionId: turn.sessionId,
       turnId: turn.turnId,
+      correlationId: turn.correlationId,
       status: failure.status,
       provider: request.provider,
       model: request.model,
@@ -1171,7 +1183,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
     };
     await checkpoint(options.diagnostics, { type: "before-terminal-commit", status: result.status, turnId: turn.turnId });
     await turn.commitTerminal(result, statusEvent(failure.status), { error: result.error });
-    options.onEvent?.({ type: "status", status: failure.status, round: 0 });
+    emit({ type: "status", status: failure.status, round: 0 });
     return result;
   } finally {
     abort.dispose();

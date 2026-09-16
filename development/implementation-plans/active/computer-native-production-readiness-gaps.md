@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 266 tests passed after the provider error-classification increment.
-- `pnpm run coverage`: 266 tests passed, with 88.86% line coverage, 76.92% branch
-  coverage, and 83.87% function coverage in the latest run. Node's experimental
+- `pnpm test`: 268 tests passed after the correlation increment.
+- `pnpm run coverage`: 268 tests passed, with 88.91% line coverage, 76.91% branch
+  coverage, and 83.95% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -112,6 +112,9 @@ readiness:
   and pre-output versus post-output disconnects now have bounded classifications. The
   runtime does not retry context/refusal outcomes and does not retry a disconnect after
   partial output.
+- New turns carry a stable correlation ID through TUI events, model requests, lifecycle
+  and round evidence, terminal results, and action records. Older records use a turn-ID
+  compatibility fallback, while explicit cross-turn correlation mismatches fail closed.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,
@@ -123,7 +126,7 @@ provider, browser-profile, and operational acceptance evidence.
 | --- | --- | --- |
 | Runtime and turns | Bounded local foundation with normalized lifecycle evidence, durable-record acknowledgement recovery, and terminal-event reconstruction across current action families | Full per-boundary crash matrix, durable lifecycle unification, concurrency, and replay semantics |
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
-| Models and providers | Real OpenRouter path, provider registry, explicit model validation, capability metadata, bounded request/response/usage evidence, and deterministic tests | Broader malformed-response fixtures, fallback policy, cost accounting, credential-expiry operations, and documented real-provider acceptance |
+| Models and providers | Real OpenRouter path, provider registry, explicit model validation, capability metadata, bounded request/response/usage evidence, deterministic tests, and one local real-provider acceptance profile | Broader malformed-response fixtures, fallback policy, cost accounting, and credential-expiry operations |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, launch-failure cleanup, and restart cleanup for the detached foreground process group | Cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
@@ -542,7 +545,7 @@ Remaining work:
   incident-response procedures.
 - Add authentication, authorization, tenancy/profile isolation, and audit policy if the
   product serves more than one trusted local user.
-- Add structured logs, metrics, traces, health checks, correlation IDs, and alerts for
+- Add structured logs, metrics, traces, health checks, and alerts for
   stuck work, provider failures, approval backlog, resource exhaustion, and persistence
   errors.
 - Define backup, restore, migration, rollback, data-loss, and disaster-recovery targets.
@@ -557,7 +560,7 @@ Exit evidence:
 
 ## Cross-cutting test and release gate
 
-The 88.00% current line coverage is a baseline metric, not the completion gate. Before
+The approximately 88.86% current line coverage is a baseline metric, not the completion gate. Before
 calling the product production-ready, the test programme must include the following:
 
 ### Contract and unit tests
