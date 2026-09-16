@@ -9,6 +9,10 @@ worker without Docker. Remote/full-stack mode remains available explicitly.
 This is platform-local code. Hatchet SDK types and dependencies stay here rather
 than entering the shared server package.
 
+The Platform UI selects an OpenRouter model from the shared server catalog. The
+provider request runs inside the Hatchet task; deterministic fake models remain
+available only for tests and failure experiments.
+
 Start with:
 
 - [architecture](docs/architecture.md)

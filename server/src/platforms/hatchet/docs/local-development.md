@@ -17,12 +17,17 @@ bundled Postgres. Later runs reuse the cached binary and data under
 explicitly, or `AGENTLAB_HATCHET_EMBEDDED_VERSION` to pin a different compatible
 engine release.
 
+The embedded defaults are API `127.0.0.1:9095` and gRPC
+`127.0.0.1:7078`. They are separate from the local Restate service's default
+port, so both can run in the same Lab stack. Override them with
+`AGENTLAB_HATCHET_API_URL` and `AGENTLAB_HATCHET_HOST_PORT` when needed.
+
 The worker-only command is also available for platform-local inspection:
 
 From `server/`, run:
 
 ```sh
-npx tsx src/platforms/hatchet/service/worker-host.ts
+pnpm exec tsx src/platforms/hatchet/service/worker-host.ts
 ```
 
 It starts its own embedded engine and registers `agentlab-hatchet-baseline`.
@@ -46,7 +51,7 @@ export HATCHET_CLIENT_TOKEN='local-token'
 Start the worker separately with the same variables:
 
 ```sh
-npx tsx src/platforms/hatchet/service/worker-host.ts
+pnpm exec tsx src/platforms/hatchet/service/worker-host.ts
 ```
 
 ## Run focused checks
@@ -54,14 +59,14 @@ npx tsx src/platforms/hatchet/service/worker-host.ts
 Unit and adapter checks do not need Docker:
 
 ```sh
-npx tsx --test tests/platforms/hatchet/*.test.ts
+pnpm exec tsx --test tests/platforms/hatchet/*.test.ts
 ```
 
 The full server/worker integration is opt-in because it starts the embedded
 Hatchet engine:
 
 ```sh
-AGENTLAB_RUN_HATCHET_INTEGRATION=1 npx tsx --test integration-tests/hatchet-baseline.test.ts
+AGENTLAB_RUN_HATCHET_INTEGRATION=1 pnpm exec tsx --test integration-tests/hatchet-baseline.test.ts
 ```
 
 The test exercises real queueing, worker execution, status inspection, native
