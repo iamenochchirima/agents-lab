@@ -1,9 +1,12 @@
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
+const MAX_RESPONSE_BYTES = 1_048_576;
+const MAX_OUTPUT_CHARS = 100_000;
 
 export interface OpenRouterModelAdapterOptions {
   readonly apiKey: string | undefined;
+  readonly baseUrl?: string;
   readonly fetchImplementation?: typeof fetch;
 }
 
@@ -32,7 +35,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
 
     let response: Response;
     try {
-      response = await this.fetchImplementation(OPENROUTER_URL, {
+      response = await this.fetchImplementation(`${this.options.baseUrl?.replace(/\/$/, "") || OPENROUTER_DEFAULT_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${apiKey}`,
@@ -40,7 +43,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
         },
         body: JSON.stringify({
           model: input.model,
-          messages: [
+          messages: input.messages ?? [
             { role: "system", content: input.systemInstruction },
             { role: "user", content: input.prompt },
           ],
@@ -60,7 +63,37 @@ export class OpenRouterModelAdapter implements ModelAdapter {
       };
     }
 
+    const responseBody = await readResponseText(response);
+    if (responseBody.kind === "too_large") {
+      return {
+        kind: "failure",
+        failureKind: "provider",
+        code: "OPENROUTER_RESPONSE_TOO_LARGE",
+        message: "OpenRouter returned a response larger than the configured safety limit.",
+        requestSent: true,
+      };
+    }
+    if (responseBody.kind === "invalid") {
+      return {
+        kind: "failure",
+        failureKind: "provider",
+        code: "OPENROUTER_INVALID_RESPONSE",
+        message: "OpenRouter returned a response that could not be read.",
+        requestSent: true,
+      };
+    }
+
+    const responseText = responseBody.text;
     if (!response.ok) {
+      if ((response.status === 400 || response.status === 413) && isContextOverflowResponse(responseText)) {
+        return {
+          kind: "failure",
+          failureKind: "provider",
+          code: "OPENROUTER_CONTEXT_OVERFLOW",
+          message: "OpenRouter rejected the request because its context window was exceeded.",
+          requestSent: true,
+        };
+      }
       return {
         kind: "failure",
         failureKind: "provider",
@@ -72,7 +105,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
 
     let body: unknown;
     try {
-      body = await response.json();
+      body = JSON.parse(responseText);
     } catch {
       return {
         kind: "failure",
@@ -93,6 +126,15 @@ export class OpenRouterModelAdapter implements ModelAdapter {
         requestSent: true,
       };
     }
+    if (output.length > MAX_OUTPUT_CHARS) {
+      return {
+        kind: "failure",
+        failureKind: "provider",
+        code: "OPENROUTER_OUTPUT_TOO_LARGE",
+        message: "OpenRouter assistant output exceeded the configured safety limit.",
+        requestSent: true,
+      };
+    }
 
     return {
       kind: "success",
@@ -101,6 +143,43 @@ export class OpenRouterModelAdapter implements ModelAdapter {
       usage: readUsage(body),
     };
   }
+}
+
+async function readResponseText(response: Response): Promise<ResponseTextResult> {
+  if (!response.body) return { kind: "invalid" };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      totalBytes += chunk.value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) return { kind: "too_large" };
+      chunks.push(chunk.value);
+    }
+  } catch {
+    return { kind: "invalid" };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { kind: "ok", text: new TextDecoder().decode(bytes) };
+}
+
+type ResponseTextResult =
+  | { readonly kind: "ok"; readonly text: string }
+  | { readonly kind: "too_large" }
+  | { readonly kind: "invalid" };
+
+function isContextOverflowResponse(body: string): boolean {
+  return /context|token limit|maximum tokens|too many tokens|prompt is too long/i.test(body);
 }
 
 function extractOutput(body: unknown): string | null {

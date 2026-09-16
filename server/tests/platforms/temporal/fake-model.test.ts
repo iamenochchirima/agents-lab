@@ -49,6 +49,18 @@ test("fake adapter distinguishes safe pre-dispatch retry from ambiguous outcome"
   assert.equal(ambiguous.kind === "failure" ? ambiguous.requestSent : false, true);
 });
 
+test("fake adapter exposes a deterministic context-overflow recovery fixture", async () => {
+  const adapter = new FakeModelAdapter();
+  const overflow = await adapter.complete({ ...input, model: "fake-context-overflow" }, new AbortController().signal);
+  const recovered = await adapter.complete({ ...input, model: "fake-context-overflow", attemptNumber: 2 }, new AbortController().signal);
+  const summary = await adapter.complete({ ...input, model: "fake-context-overflow", runId: "session-1:context:2" }, new AbortController().signal);
+
+  assert.equal(overflow.kind, "failure");
+  assert.equal(overflow.kind === "failure" ? overflow.code : null, "FAKE_CONTEXT_OVERFLOW");
+  assert.equal(recovered.kind, "success");
+  assert.equal(summary.kind, "success");
+});
+
 test("OpenRouter configuration failure does not expose or send a missing key", async () => {
   let called = false;
   const adapter = new OpenRouterModelAdapter({
@@ -127,4 +139,59 @@ test("OpenRouter network failure is classified as ambiguous without exposing pro
     requestSent: true,
   });
   assert.equal(JSON.stringify(result).includes("test-openrouter-secret"), false);
+});
+
+test("OpenRouter context errors are classified for one changed-input recovery", async () => {
+  const adapter = new OpenRouterModelAdapter({
+    apiKey: "test-openrouter-secret",
+    fetchImplementation: async () => new Response(JSON.stringify({ error: { message: "maximum context length exceeded" } }), { status: 400 }),
+  });
+
+  const result = await adapter.complete(
+    { ...input, provider: "openrouter", model: "openai/test-model" },
+    new AbortController().signal,
+  );
+
+  assert.deepEqual(result, {
+    kind: "failure",
+    failureKind: "provider",
+    code: "OPENROUTER_CONTEXT_OVERFLOW",
+    message: "OpenRouter rejected the request because its context window was exceeded.",
+    requestSent: true,
+  });
+});
+
+test("OpenRouter adapter rejects an oversized response", async () => {
+  const adapter = new OpenRouterModelAdapter({
+    apiKey: "test-openrouter-secret",
+    fetchImplementation: async () => new Response("x".repeat(1_048_577), { status: 200 }),
+  });
+
+  const result = await adapter.complete(
+    { ...input, provider: "openrouter", model: "openai/test-model" },
+    new AbortController().signal,
+  );
+
+  assert.deepEqual(result, {
+    kind: "failure",
+    failureKind: "provider",
+    code: "OPENROUTER_RESPONSE_TOO_LARGE",
+    message: "OpenRouter returned a response larger than the configured safety limit.",
+    requestSent: true,
+  });
+});
+
+test("OpenRouter adapter rejects oversized assistant output", async () => {
+  const adapter = new OpenRouterModelAdapter({
+    apiKey: "test-openrouter-secret",
+    fetchImplementation: async () => new Response(JSON.stringify({ choices: [{ message: { content: "x".repeat(100_001) } }] }), { status: 200 }),
+  });
+
+  const result = await adapter.complete(
+    { ...input, provider: "openrouter", model: "openai/test-model" },
+    new AbortController().signal,
+  );
+
+  assert.equal(result.kind, "failure");
+  if (result.kind === "failure") assert.equal(result.code, "OPENROUTER_OUTPUT_TOO_LARGE");
 });
