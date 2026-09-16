@@ -1,7 +1,7 @@
 # Tool-enabled turn loop
 
 **Created:** `2026-09-16T13:37:32+02:00`
-**Last updated:** `2026-09-16T19:14:06+02:00`
+**Last updated:** `2026-09-16T19:21:01+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -416,6 +416,12 @@ build retained only the existing large-chunk warning.
 The focused replay check `pnpm --filter @agent-harness-lab/lab-server exec tsx
 --test tests/platforms/restate/workflow.test.ts` passed with 10 tests, including
 the deterministic journal-cache assertion added in `f3a6d59`.
+
+The live native check `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 pnpm --filter
+@agent-harness-lab/lab-server exec tsx --test integration-tests/restate-baseline.test.ts`
+passed 2 tests and skipped only the Docker profile. It exercised the current
+persistent local Restate service, generic HTTP projection, duplicate submission,
+and cancellation paths.
 
 The release-process document referenced by the repository guidance is not
 present in this checkout, so no release, migration, rollout, or rollback claim
