@@ -92,6 +92,9 @@ round, phases follow the existing model/tool loop, and every `tool_completed` re
 match the immediately preceding `tool_requested` call ID and tool name. Unknown phases,
 skipped round starts, and mismatched completions are persistence corruption; this validates
 the current round contract without introducing a generic workflow or transaction engine.
+If the caller retries the most recent round append after losing its acknowledgement, an
+identical record is treated as a no-op while a changed payload for the same round/phase
+identity fails closed. A duplicate record after later evidence remains out of order.
 
 Model request, attempt-completion, and retry events also require a stable non-empty
 `attemptId`. Completion and retry evidence must refer to the matching request and latest

@@ -553,6 +553,16 @@ function validateRoundOrder(rounds: readonly RoundEvidence[], sessionId: Session
   }
 }
 
+function roundIdentity(round: RoundEvidence): string {
+  return stableStringify({ round: round.round, phase: round.phase, callId: round.callId ?? null, toolName: round.toolName ?? null });
+}
+
+function roundSemantics(round: RoundEvidence): Readonly<Record<string, unknown>> {
+  const redacted = redactRecord(round) as Record<string, unknown>;
+  const { recordedAt: _recordedAt, ...semantics } = redacted;
+  return semantics;
+}
+
 function assertRecordCorrelation(expected: CorrelationId, actual: CorrelationId | undefined, kind: string): void {
   if (actual !== undefined && actual !== expected) {
     throw new ComputerNativeError("persistence", `${kind} correlation '${actual}' does not belong to correlation '${expected}'.`);
@@ -1033,6 +1043,13 @@ export class TurnStore {
     const existing = await this.readRounds();
     assertRecordCorrelation(this.correlationId, round.correlationId, "Round");
     const normalized = { ...round, correlationId: round.correlationId ?? this.correlationId };
+    const previous = existing.at(-1);
+    if (previous && roundIdentity(previous) === roundIdentity(normalized)) {
+      if (stableStringify(roundSemantics(previous)) !== stableStringify(roundSemantics(normalized))) {
+        throw new ComputerNativeError("persistence", `Round '${round.round}/${round.phase}' evidence was repeated with a different payload for the same identity.`);
+      }
+      return;
+    }
     validateRoundOrder([...existing, normalized], this.sessionId, this.turnId);
     await this.session.appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(normalized));
   }

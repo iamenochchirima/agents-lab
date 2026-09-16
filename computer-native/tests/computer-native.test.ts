@@ -5483,6 +5483,30 @@ test("round evidence rejects missing identity, duplicate calls, and phase reorde
   await assert.rejects(() => turn.appendRound({ ...base, phase: "tool_requested", callId: "call_1", toolName: "read_file" }), /duplicate tool call/);
 });
 
+test("round evidence accepts an identical immediate retry but rejects a conflicting retry", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("retry round evidence", "deterministic", "deterministic/echo");
+  const first = {
+    schemaVersion: 1 as const,
+    sessionId: turn.sessionId,
+    turnId: turn.turnId,
+    round: 1,
+    phase: "model_requested" as const,
+    recordedAt: new Date().toISOString(),
+    payload: { requestBytes: 42 },
+  };
+
+  await turn.appendRound(first);
+  await turn.appendRound({ ...first, recordedAt: new Date(Date.now() + 1).toISOString() });
+
+  assert.equal((await turn.readRounds()).length, 1);
+  await assert.rejects(
+    () => turn.appendRound({ ...first, recordedAt: new Date(Date.now() + 2).toISOString(), payload: { requestBytes: 43 } }),
+    /evidence was repeated with a different payload/u,
+  );
+});
+
 test("cancellation interrupts a waiting read-only tool without committing an assistant", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);

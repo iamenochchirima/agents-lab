@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T21:32:37+02:00
+**Last updated:** 2026-09-16T21:36:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 310 tests passed after the browser approval reservation-cleanup increment.
-- `pnpm run coverage`: 310 tests passed, with 89.10% line coverage, 77.85% branch
-  coverage, and 84.93% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 311 tests passed after the round acknowledgement-retry increment.
+- `pnpm run coverage`: 311 tests passed, with 89.03% line coverage, 77.85% branch
+  coverage, and 84.85% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -251,10 +251,12 @@ Exit evidence:
   including identity omission, skipped phases, post-terminal writes, and direct
   recovered-terminal reconstruction. Persisted model/tool round evidence also rejects
   unknown phases, invalid round starts, skipped round transitions, and tool completions
-  whose call identity does not match their request. Model request, attempt-completion,
-  and retry evidence also requires exact attempt identity and a successful latest attempt
-  before model completion. It does not yet cover every persistence and underlying
-  side-effect boundary.
+  whose call identity does not match their request. An identical retry of the immediately
+  latest round record is now a no-op after acknowledgement loss; conflicting or later
+  duplicate evidence still fails closed. Model request, attempt-completion, and retry
+  evidence also requires exact attempt identity and a successful latest attempt before
+  model completion. It does not yet cover every persistence and underlying side-effect
+  boundary.
 - Current diagnostic-stop evidence covers model dispatch/response, terminal result/event
   writes, process approval before launch, process execution while running, workspace
   applying and committed-record boundaries, browser start and completion-record

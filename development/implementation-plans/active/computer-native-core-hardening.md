@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T21:32:37+02:00
+**Last updated:** 2026-09-16T21:36:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -87,6 +87,9 @@ tests, but it must never replace a configured real provider silently.
 - The runtime now rejects model attempt completion and retry events when their request
   evidence is missing or out of order, and refuses any event that would follow a
   terminal lifecycle event.
+- The round persistence seam now accepts an identical immediate retry after an
+  acknowledgement loss without appending a duplicate record, while a conflicting retry
+  fails closed and later duplicate evidence remains out of order.
 - Persisted model/tool round evidence now rejects unknown phases, a first record that is
   not `model_requested` round `1`, and a tool completion whose call ID or tool name does
   not match its immediately preceding request. This tightens the existing evidence
@@ -261,8 +264,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 310 passing tests across the package, with 89.10% line
-  coverage, 77.85% branch coverage, and 84.93% function coverage. Coverage is from
+- The latest validation is 311 passing tests across the package, with 89.03% line
+  coverage, 77.85% branch coverage, and 84.85% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -295,6 +298,33 @@ Still open after this slice:
 
 The plan remains active. This increment hardens an existing contract; it does not expand
 Computer Native into a general durable workflow system.
+
+### Current slice boundary: round acknowledgement retry
+
+Delivered in this increment:
+
+- `TurnStore.appendRound` compares the latest persisted round identity before applying
+  normal ordering validation.
+- An identical retry of the immediately latest `model_requested`, `model_completed`,
+  `tool_requested`, or `tool_completed` record is a no-op, ignoring only the new
+  acknowledgement-time timestamp.
+- A retry with a different payload for that identity fails closed. A duplicate that is
+  no longer the latest record still goes through the normal out-of-order and duplicate
+  tool-call checks, so this does not weaken the round state machine.
+- Tests cover identical retry, conflicting retry, and the existing invalid ordering
+  cases through the public turn persistence seam.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is the existing round record's operation-local acknowledgement behavior. It uses
+  the stable call/round identity already emitted by the runtime and does not add a
+  generic event store, replay engine, or exactly-once execution claim.
+
+Still open after this slice:
+
+- The complete process-level crash matrix across every durable write and host-side
+  effect, plus deterministic replay, concurrency/lease acceptance, and remaining
+  security and production-operation gates.
 
 ### Current slice boundary: model attempt lifecycle identity
 
