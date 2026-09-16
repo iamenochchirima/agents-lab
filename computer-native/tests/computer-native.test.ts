@@ -5025,6 +5025,38 @@ test("durable mutation records enforce one-way state transitions and immutable i
   });
 });
 
+test("recovery rejects malformed mutation evidence before reconciliation", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("reject malformed mutation evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const base = {
+    schemaVersion: 1 as const,
+    mutationId: "mutation_malformed",
+    operation: "write" as const,
+    path: "note.txt",
+    beforeHash: "before",
+    afterHash: "after",
+    addedLines: 1,
+    removedLines: 1,
+    diff: "--- a/note.txt\n+++ b/note.txt\n@@\n-old\n+new\n",
+    recordedAt: new Date().toISOString(),
+  };
+  await turn.writeMutation({ ...base, status: "approved", decision: "allow-once" });
+  await atomicWriteJson(path.join(turn.directory, "mutations", `${base.mutationId}.json`), {
+    ...base,
+    status: "applying",
+    decision: "allow-once",
+    addedLines: "not-an-integer",
+  });
+
+  await assert.rejects(
+    () => session.recoverInterruptedTurns(),
+    /invalid durable record/u,
+  );
+  assert.match(await readFile(path.join(turn.directory, "turn.json"), "utf8"), /"state":"streaming"/u);
+});
+
 test("restart reconciliation handles interrupted directory creation without replaying it", async () => {
   const stateDir = tempDirectory();
   const root = path.join(stateDir, "workspace");

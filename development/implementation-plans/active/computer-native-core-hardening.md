@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T22:56:12+02:00
+**Last updated:** 2026-09-16T23:03:16+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -1026,9 +1026,36 @@ Practice check against the local Hermes and OpenClaw references:
 
 Still open after this slice:
 
-- Equivalent complete validation for workspace mutation and memory action records, the
-  full per-write/side-effect crash matrix, and broader browser profile/authentication and
-  cross-platform recovery work remain open.
+- Equivalent complete validation for memory action records, the full per-write/side-effect
+  crash matrix, and broader browser profile/authentication and cross-platform recovery work
+  remain open.
+
+### Current slice boundary: workspace mutation record integrity
+
+Delivered in this slice:
+
+- `TurnStore.writeMutation` validates a complete workspace mutation record before creating
+  or replacing durable evidence. Existing records are validated again before a transition,
+  so a damaged prior record cannot become transition input.
+- Recovery validates the mutation operation/risk, path set, patch members, hashes, line
+  counters, byte/depth bounds, decision and error values, and the multi-file journal before
+  reconciliation begins. Optional operation-specific fields are validated when present.
+- Malformed mutation evidence fails closed before the recovery classifier can infer whether
+  a filesystem side effect occurred; the interrupted turn remains unchanged for inspection.
+- Tests cover the public write/transition path and rejection of malformed persisted mutation
+  evidence before recovery reconciliation.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is operation-specific validation at the existing workspace persistence/recovery
+  boundary. It follows their explicit lifecycle and guard-check pattern without adding a
+  generic schema framework, transaction coordinator, or exactly-once ledger.
+
+Still open after this slice:
+
+- Equivalent complete validation for memory action records, the full per-write/side-effect
+  crash matrix, filesystem race testing, and transaction guarantees beyond the existing
+  `apply_patch_set` journal remain open.
 
 ### Current slice boundary: model payload resource limits
 
@@ -1399,6 +1426,9 @@ claim in this plan.
       running-process identity before transitions or restart reconciliation.
 - [x] Validate persisted browser action identity, action/status, limits, nested outcome
       evidence, and running timestamps before transitions or restart reconciliation.
+- [x] Validate persisted workspace mutation identity, operation/risk, path/member and
+      journal evidence, limits, counters, decisions, and outcomes before transitions or
+      restart reconciliation.
 - [x] Add repeatable recovery for durable terminal result/event acknowledgement failures;
       recovery does not auto-replay the turn or duplicate terminal evidence.
 - [x] Reconstruct one missing terminal lifecycle event for each current persisted action
@@ -1504,6 +1534,8 @@ claim in this plan.
       recovery-side process reconciliation.
 - [x] Reject malformed browser action records before recovery classification or terminal
       event reconstruction.
+- [x] Reject malformed workspace mutation records before recovery reconciliation or
+      filesystem outcome classification.
 - [ ] Retry eligibility, backoff limits, provider error classification, and no silent
       fallback.
 - [ ] Approval choice parsing, stale approval rejection, exact identity binding, and

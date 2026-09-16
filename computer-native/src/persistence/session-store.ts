@@ -771,6 +771,131 @@ function assertBrowserActionRecord(
   }
 }
 
+function assertWorkspaceMutationRecord(
+  record: unknown,
+  expectedCorrelationId: CorrelationId,
+): asserts record is WorkspaceMutationRecord {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throw new ComputerNativeError("persistence", "Workspace mutation has an invalid durable record.");
+  }
+  const candidate = record as Record<string, unknown>;
+  const validOperation = candidate.operation === "add"
+    || candidate.operation === "update"
+    || candidate.operation === "write"
+    || candidate.operation === "patch-set"
+    || candidate.operation === "mkdir"
+    || candidate.operation === "delete"
+    || candidate.operation === "delete-directory"
+    || candidate.operation === "delete-directory-tree"
+    || candidate.operation === "restore"
+    || candidate.operation === "restore-directory"
+    || candidate.operation === "purge-quarantine"
+    || candidate.operation === "copy"
+    || candidate.operation === "move"
+    || candidate.operation === "rename";
+  const validRisk = candidate.risk === undefined
+    || candidate.risk === "create-file"
+    || candidate.risk === "replace-file"
+    || candidate.risk === "patch-file"
+    || candidate.risk === "create-directory"
+    || candidate.risk === "quarantine-file"
+    || candidate.risk === "delete-directory"
+    || candidate.risk === "delete-directory-tree"
+    || candidate.risk === "restore-file"
+    || candidate.risk === "restore-directory"
+    || candidate.risk === "purge-quarantine"
+    || candidate.risk === "copy-file"
+    || candidate.risk === "copy-directory"
+    || candidate.risk === "move-file"
+    || candidate.risk === "move-directory"
+    || candidate.risk === "rename-file"
+    || candidate.risk === "rename-directory"
+    || candidate.risk === "multi-file-patch";
+  const validStatus = candidate.status === "proposed"
+    || candidate.status === "approved"
+    || candidate.status === "applying"
+    || candidate.status === "denied"
+    || candidate.status === "failed"
+    || candidate.status === "committed"
+    || candidate.status === "reconciled"
+    || candidate.status === "reconciliation_required";
+  const validErrorCode = candidate.errorCode === "mutation-invalid"
+    || candidate.errorCode === "approval-denied"
+    || candidate.errorCode === "approval-unavailable"
+    || candidate.errorCode === "mutation-stale"
+    || candidate.errorCode === "mutation-failed"
+    || candidate.errorCode === "reconciliation-required";
+  const validNonEmptyString = (value: unknown): boolean => typeof value === "string" && value.trim().length > 0;
+  const validNonNegativeInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+  const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
+  const validOptionalString = (value: unknown): boolean => value === undefined || validNonEmptyString(value);
+  const validMember = (value: unknown): boolean => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const member = value as Record<string, unknown>;
+    return validNonEmptyString(member.path)
+      && (member.operation === "add" || member.operation === "update")
+      && validNonEmptyString(member.beforeHash)
+      && validNonEmptyString(member.afterHash)
+      && validNonNegativeInteger(member.addedLines)
+      && validNonNegativeInteger(member.removedLines)
+      && typeof member.diff === "string"
+      && member.diff.length > 0;
+  };
+  const journal = candidate.journal as Record<string, unknown> | undefined;
+  const validJournal = journal === undefined
+    || (journal !== null
+      && typeof journal === "object"
+      && journal.schemaVersion === 1
+      && (journal.state === "prepared" || journal.state === "staging" || journal.state === "committing" || journal.state === "committed" || journal.state === "reconciled" || journal.state === "reconciliation_required")
+      && validNonEmptyString(journal.transactionPath)
+      && Array.isArray(journal.members)
+      && journal.members.every((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+        const member = value as Record<string, unknown>;
+        return validNonEmptyString(member.path)
+          && validNonEmptyString(member.beforeHash)
+          && validNonEmptyString(member.afterHash)
+          && validPositiveInteger(member.commitOrder)
+          && (member.state === "pending" || member.state === "staged" || member.state === "committed")
+          && (member.temporaryPath === undefined || validNonEmptyString(member.temporaryPath));
+      }));
+  if (candidate.schemaVersion !== 1
+    || !validNonEmptyString(candidate.mutationId)
+    || (candidate.correlationId !== undefined && typeof candidate.correlationId !== "string")
+    || (candidate.callId !== undefined && !validNonEmptyString(candidate.callId))
+    || !validOperation
+    || !validRisk
+    || (candidate.kind !== undefined && candidate.kind !== "file" && candidate.kind !== "directory")
+    || (candidate.approvalTimeoutMs !== undefined && !validPositiveInteger(candidate.approvalTimeoutMs))
+    || (candidate.paths !== undefined && (!Array.isArray(candidate.paths) || candidate.paths.length === 0 || candidate.paths.some((value) => !validNonEmptyString(value))))
+    || (candidate.members !== undefined && (!Array.isArray(candidate.members) || candidate.members.length === 0 || candidate.members.some((value) => !validMember(value))))
+    || !validJournal
+    || !validNonEmptyString(candidate.path)
+    || !validOptionalString(candidate.beforeHash)
+    || !validOptionalString(candidate.afterHash)
+    || !validOptionalString(candidate.quarantinePath)
+    || !validOptionalString(candidate.sourceMutationId)
+    || !validOptionalString(candidate.sourcePath)
+    || !validOptionalString(candidate.sourceHash)
+    || !validOptionalString(candidate.manifestHash)
+    || (candidate.entryCount !== undefined && !validNonNegativeInteger(candidate.entryCount))
+    || (candidate.totalBytes !== undefined && !validNonNegativeInteger(candidate.totalBytes))
+    || (candidate.maxBytes !== undefined && !validNonNegativeInteger(candidate.maxBytes))
+    || (candidate.maxDepth !== undefined && !validNonNegativeInteger(candidate.maxDepth))
+    || !validNonNegativeInteger(candidate.addedLines)
+    || !validNonNegativeInteger(candidate.removedLines)
+    || typeof candidate.diff !== "string" || candidate.diff.length === 0
+    || !validStatus
+    || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
+    || (candidate.errorCode !== undefined && !validErrorCode)
+    || (candidate.reason !== undefined && typeof candidate.reason !== "string")
+    || (candidate.bytesWritten !== undefined && !validNonNegativeInteger(candidate.bytesWritten))
+    || !validNonEmptyString(candidate.recordedAt)) {
+    throw new ComputerNativeError("persistence", `Workspace mutation '${String(candidate.mutationId)}' has an invalid durable record.`);
+  }
+  assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, "Workspace mutation");
+}
+
 export type BrowserArtifactEvidence = BrowserArtifactInfo & {
   readonly turnId: TurnRecord["turnId"];
   readonly correlationId?: CorrelationId;
@@ -1286,10 +1411,7 @@ export class TurnStore {
   }
 
   async writeMutation(record: WorkspaceMutationRecord): Promise<void> {
-    if (record.schemaVersion !== 1 || record.mutationId.trim().length === 0 || record.diff.length === 0) {
-      throw new ComputerNativeError("persistence", `Turn '${this.turnId}' contains an invalid workspace mutation record.`);
-    }
-    assertRecordCorrelation(this.correlationId, record.correlationId, "Workspace mutation");
+    assertWorkspaceMutationRecord(record, this.correlationId);
     const directory = path.join(this.directory, "mutations");
     await ensureDirectory(directory);
     const recordPath = path.join(directory, `${safePathSegment(record.mutationId, "Mutation ID")}.json`);
@@ -1300,7 +1422,10 @@ export class TurnStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    if (previous) assertMutationTransition(previous, record);
+    if (previous) {
+      assertWorkspaceMutationRecord(previous, this.correlationId);
+      assertMutationTransition(previous, record);
+    }
     await this.session.replaceJson(recordPath, record);
   }
 
@@ -1550,17 +1675,7 @@ export class TurnStore {
     const records: WorkspaceMutationRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
       const record = await readJson<WorkspaceMutationRecord>(path.join(directory, entry.name));
-      if (!record || typeof record !== "object" || Array.isArray(record)) {
-        throw new ComputerNativeError("persistence", "Workspace mutation has an invalid durable record.");
-      }
-      const candidate = record as unknown as Record<string, unknown>;
-      if (candidate.schemaVersion !== 1 || typeof candidate.mutationId !== "string" || candidate.mutationId.trim().length === 0 || typeof candidate.diff !== "string" || candidate.diff.length === 0) {
-        throw new ComputerNativeError("persistence", `Workspace mutation '${candidate.mutationId}' has an invalid durable identity.`);
-      }
-      if (candidate.correlationId !== undefined && typeof candidate.correlationId !== "string") {
-        throw new ComputerNativeError("persistence", `Workspace mutation '${candidate.mutationId}' has an invalid correlation.`);
-      }
-      assertRecordCorrelation(this.correlationId, candidate.correlationId as CorrelationId | undefined, "Workspace mutation");
+      assertWorkspaceMutationRecord(record, this.correlationId);
       records.push(record);
     }
     return records;
