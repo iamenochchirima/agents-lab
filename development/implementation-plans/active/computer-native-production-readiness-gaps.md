@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T01:43:20+02:00
+**Last updated:** 2026-09-17T01:49:41+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 346 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 346 tests passed with 89.92% line coverage, 79.75% branch
-  coverage, and 85.61% function coverage. The package commands serialize
+- `pnpm test`: 347 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 347 tests passed with 89.89% line coverage, 79.82% branch
+  coverage, and 85.62% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -79,6 +79,9 @@ readiness:
   awaited; injected callback failures stop the child and surface as failures rather than
   becoming unhandled rejections. This closes only the in-process callback boundary; the
   complete process crash matrix and cross-platform process-group proof remain open.
+- Unexpected runtime/persistence errors are now visible as bounded failed-turn activity,
+  and the interactive composer remains usable for a later prompt. This does not replace
+  the remaining full TUI viewport, scrollback, resize, and accessibility work.
 - A diagnostic interruption before the durable running process record also terminates
   the spawned child; a process is left for restart reconciliation only after its running
   record is durable.

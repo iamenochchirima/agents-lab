@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:43:20+02:00
+**Last updated:** 2026-09-17T01:49:41+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -221,6 +221,9 @@ tests, but it must never replace a configured real provider silently.
   acknowledgement fails after spawn, the runner stops the child and surfaces the
   callback failure instead of creating an unhandled rejection or leaving an untracked
   host process. Direct tests cover both failure boundaries.
+- Unexpected runtime and persistence errors are now rendered as a bounded failed-turn
+  state in the TUI. Interactive input remains available for a subsequent prompt, while
+  programmatic callers still receive the original error.
 - If a diagnostic stop occurs before the durable running process record, the runner
   still terminates the spawned child; only a stop after that record is durable leaves
   the child for restart reconciliation.

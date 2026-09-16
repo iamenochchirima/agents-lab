@@ -7,7 +7,7 @@ import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
-import { redactSecrets } from "../runtime/errors.js";
+import { redactSecrets, safeErrorMessage } from "../runtime/errors.js";
 import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 import type { ModelProviderSummary } from "../models/registry.js";
 import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
@@ -574,6 +574,19 @@ export class TerminalUi {
     this.startedAt = 0;
   }
 
+  private finishUnexpectedError(error: unknown): void {
+    this.closeResponseLine();
+    this.pendingTerminalEscape = "";
+    const message = shorten(sanitizeTerminalSingleLine(safeErrorMessage(error)) || "Unexpected failure.", 1_000);
+    this.status = "failed";
+    this.statusRound = 0;
+    this.cancellationRequested = false;
+    this.write(`${this.style("31;1", "× failed")} ${this.style("2", `· ${message}`)}\n`);
+    this.printStatusLine();
+    this.write(`${this.style("2", "────────────────────────────────────────────────────────────")}\n\n`);
+    this.startedAt = 0;
+  }
+
   private async askForMutationApproval(
     request: MutationApprovalRequest,
     question: (prompt: string, callback: (answer: string) => void) => void,
@@ -807,6 +820,9 @@ export class TerminalUi {
       );
       this.finishTurn(result);
       return result;
+    } catch (error) {
+      this.finishUnexpectedError(error);
+      throw error;
     } finally {
       this.activeController = undefined;
     }
@@ -930,12 +946,23 @@ export class TerminalUi {
         }
         const command = parseTuiCommand(value);
         if (command) {
-          const keepRunning = await this.runCommand(command);
+          let keepRunning = true;
+          try {
+            keepRunning = await this.runCommand(command);
+          } catch (error) {
+            this.finishUnexpectedError(error);
+          }
           if (!keepRunning) break;
           if (this.interactive) readlineInterface.prompt();
           continue;
         }
-        await this.runTurn(value);
+        try {
+          await this.runTurn(value);
+        } catch {
+          // runTurn has already rendered the bounded failure state. Keep the
+          // composer alive so a transient runtime/persistence failure does
+          // not end an otherwise usable interactive session.
+        }
         if (this.interactive) readlineInterface.prompt();
       }
     } finally {

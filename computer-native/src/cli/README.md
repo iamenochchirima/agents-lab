@@ -31,6 +31,11 @@ The activity lane also distinguishes a normal failure from an interrupted turn, 
 partial/uncertain filesystem mutation, and an outcome-unknown process or browser action.
 Those labels are observations, not claims that the external side effect was rolled back.
 
+Unexpected runtime or persistence errors are rendered as a bounded failed-turn state
+instead of silently closing the interactive composer. The loop remains available for a
+subsequent prompt; programmatic `runSingle`/`runTurn` callers still receive the original
+error after it has been rendered.
+
 Live terminal output applies the configured provider secret and the shared bounded
 credential-shape redaction before writing model text, activity summaries, status, and
 approval context. The stream keeps possible secret prefixes across provider chunks so a

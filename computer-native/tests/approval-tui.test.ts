@@ -179,6 +179,36 @@ test("active Ctrl+C cancellation is idempotent and reaches a terminal result", {
   assert.match(rendered, /cancelled/u);
 });
 
+test("interactive TUI renders unexpected turn errors and remains usable", { timeout: 2_000 }, async () => {
+  const input = new PassThrough();
+  const { output, chunks } = captureOutput();
+  let calls = 0;
+  const application = {
+    sessionId: "session_tui_error",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: [],
+    runTurn: async (message: string, _signal: AbortSignal | undefined, onText?: (text: string) => void) => {
+      calls += 1;
+      if (message === "first") throw new Error("simulated persistence failure");
+      onText?.("recovered");
+      return { status: "completed", assistantText: "recovered" };
+    },
+  } as unknown as ChatApplication;
+  const ui = new TerminalUi(application, output, false);
+  const running = ui.runInteractive(input);
+  input.end("first\nsecond\n");
+  await running;
+
+  assert.equal(calls, 2);
+  const rendered = chunks.join("");
+  assert.match(rendered, /× failed · simulated persistence failure/u);
+  assert.match(rendered, /recovered/u);
+  assert.match(rendered, /Session closed\./u);
+});
+
 test("TUI distinguishes partial and outcome-unknown actions from ordinary failure", async () => {
   const { output, chunks } = captureOutput();
   const application = {
