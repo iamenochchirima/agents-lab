@@ -331,6 +331,74 @@ test("committing the same terminal result twice does not duplicate the terminal 
   assert.equal(turn.state, "completed");
 });
 
+test("restart recovery repairs terminal evidence after a durable write acknowledgement fails", async () => {
+  const stateDir = tempDirectory();
+  let resultAcknowledgements = 0;
+  const session = await SessionStore.open(stateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "replace-json" && filePath.endsWith("/result.json") && resultAcknowledgements++ === 0) {
+          throw new Error("simulated result acknowledgement failure");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/echo", { response: "durable result" }),
+      config: config(stateDir),
+      userPrompt: "persist a result",
+    }),
+    /already has a different terminal result/,
+  );
+  const userMessage = (await session.readTranscript())[0];
+  assert.ok(userMessage);
+  const turnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", userMessage.turnId);
+  const recovered = await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+  assert.deepEqual(recovered, []);
+  const result = JSON.parse(await readFile(path.join(turnDirectory, "result.json"), "utf8")) as { status: string; assistantText?: string };
+  const turnRecord = JSON.parse(await readFile(path.join(turnDirectory, "turn.json"), "utf8")) as { state: string };
+  const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.equal(result.status, "completed");
+  assert.equal(result.assistantText, "durable result");
+  assert.equal(turnRecord.state, "completed");
+  assert.equal(events.filter((event) => event.type === "TurnCompleted").length, 1);
+  await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+  const repeatedEvents = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.equal(repeatedEvents.filter((event) => event.type === "TurnCompleted").length, 1);
+
+  const eventStateDir = path.join(stateDir, "event-ack");
+  let eventAcknowledgements = 0;
+  const eventSession = await SessionStore.open(eventStateDir, undefined, {
+    writeHooks: {
+      afterWrite: (operation, filePath) => {
+        if (operation === "append-json-line" && filePath.endsWith("/events.jsonl") && eventAcknowledgements++ === 4) {
+          throw new Error("simulated terminal event acknowledgement failure");
+        }
+      },
+    },
+  });
+  await assert.rejects(
+    () => runTurn({
+      session: eventSession,
+      provider: new DeterministicModelProvider("deterministic/echo", { response: "durable event" }),
+      config: config(eventStateDir),
+      userPrompt: "persist terminal evidence",
+    }),
+    /already has a different terminal result/,
+  );
+  const eventUserMessage = (await eventSession.readTranscript())[0];
+  assert.ok(eventUserMessage);
+  const eventTurnDirectory = path.join(eventStateDir, "sessions", eventSession.metadata.sessionId, "turns", eventUserMessage.turnId);
+  await (await SessionStore.open(eventStateDir, eventSession.metadata.sessionId)).recoverInterruptedTurns();
+  const eventEvidence = (await readFile(path.join(eventTurnDirectory, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.equal(eventEvidence.filter((event) => event.type === "TurnCompleted").length, 1);
+  await (await SessionStore.open(eventStateDir, eventSession.metadata.sessionId)).recoverInterruptedTurns();
+  const repeatedEventEvidence = (await readFile(path.join(eventTurnDirectory, "events.jsonl"), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+  assert.equal(repeatedEventEvidence.filter((event) => event.type === "TurnCompleted").length, 1);
+});
+
 test("resuming a session appends a second ordered turn", async () => {
   const stateDir = tempDirectory();
   const firstSession = await openSession(stateDir);

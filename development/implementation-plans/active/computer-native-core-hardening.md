@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:35:00+02:00
+**Last updated:** 2026-09-16T13:24:33+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -107,10 +107,36 @@ tests, but it must never replace a configured real provider silently.
 - Workspace mutations now emit normalized lifecycle events into the turn event stream,
   with ordered proposal, approval, application/progress, and completion/failure phases;
   event history is validated again when read during recovery.
-- The current validation is 217 passing tests across the package, 87.50% line coverage,
-  74.50% branch coverage, and 82.26% function coverage. The suite includes direct
+- SessionStore now exposes an optional diagnostic write hook. Failure-injection tests
+  simulate acknowledgement loss after a durable terminal result write and after a
+  durable terminal event append; reopening and running recovery twice repairs or
+  preserves the evidence without replaying the turn or duplicating `TurnCompleted`.
+- The current validation is 218 passing tests across the package, 87.57% line coverage,
+  74.60% branch coverage, and 82.40% function coverage. The suite includes direct
   journal recovery, cancellation boundaries, tool-loop durable evidence, lifecycle
-  ordering, and final-journal acknowledgement failure.
+  ordering, and terminal result/event acknowledgement failure. Coverage has also
+  exposed an existing timing-sensitive process test once; the normal suite and the
+  subsequent coverage run both passed.
+
+### Current slice boundary: persistence acknowledgement recovery
+
+Delivered in this slice:
+
+- A scoped `SessionStore` write-hook seam for deterministic before/after durable-write
+  failure injection.
+- Recovery tests for both “result is durable but its acknowledgement is lost” and
+  “terminal event is durable but its acknowledgement is lost.”
+- Repeatable restart checks proving one terminal result, one terminal event, and no
+  model/tool replay.
+
+Still not delivered by this slice:
+
+- Failure injection at every persistence write and every model, approval, filesystem,
+  process, browser, and memory side-effect boundary.
+- A process-level crash harness, cross-platform durability proof, or an exactly-once
+  execution guarantee.
+- The remaining shared lifecycle, approval/TUI, provider, resource-limit, security,
+  real-provider, and manual acceptance gates listed below.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
@@ -333,9 +359,11 @@ claim in this plan.
 - [x] Persist model attempts before sending and after each bounded response or failure.
 - [ ] Persist approval preparation and decision before tool execution.
 - [ ] Record recovery classification and operation-specific reconciliation data.
-- [ ] Add restart recovery that is safe to run repeatedly and never auto-replays a side
-      effect.
-- [ ] Add duplicate/out-of-order event handling and terminal-state protection.
+- [x] Add repeatable recovery for durable terminal result/event acknowledgement failures;
+      recovery does not auto-replay the turn or duplicate terminal evidence.
+- [ ] Extend crash recovery and duplicate/out-of-order handling across every persistence
+      and side-effect boundary; the current completed scope is terminal turn evidence and
+      the lifecycle streams already covered by their operation-specific tests.
 - [ ] Add cancellation propagation from the TUI through runtime to model/tool/process
       work.
 - [x] Expose normalized lifecycle events for model, workspace, process, browser, and
@@ -446,7 +474,10 @@ claim in this plan.
 - [ ] Stop before and after each durable record write.
 - [ ] Stop before and after model send, provider response, approval decision, and
       filesystem side effect.
-- [ ] Recover twice and confirm no duplicate terminal event or side effect.
+- [x] Inject durable terminal result and terminal event acknowledgement failures, recover
+      twice, and confirm no duplicate terminal event or side effect.
+- [ ] Extend the recover-twice assertion to every supported side-effect record and the
+      process-level crash harness.
 - [ ] Inject duplicate, missing, and out-of-order events.
 - [ ] Change a target after approval and confirm the action is rejected as stale.
 - [ ] Fail one operation in a multi-file change and verify the exact partial state and

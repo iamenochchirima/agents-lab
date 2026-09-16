@@ -37,6 +37,22 @@ import type { MemoryActionRecord, MemorySearchEvidence } from "../memory/contrac
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
+export type PersistenceWriteOperation = "replace-json" | "append-json-line";
+
+export interface PersistenceWriteHooks {
+  readonly beforeWrite?: (operation: PersistenceWriteOperation, filePath: string) => Promise<void> | void;
+  readonly afterWrite?: (operation: PersistenceWriteOperation, filePath: string) => Promise<void> | void;
+}
+
+export interface SessionStoreOptions {
+  /**
+   * Optional diagnostic/failure-injection seam. Normal application code leaves this
+   * unset; hooks may throw after a write to model a process stopping after durability
+   * but before the caller receives acknowledgement.
+   */
+  readonly writeHooks?: PersistenceWriteHooks;
+}
+
 function now(): string {
   return new Date().toISOString();
 }
@@ -196,9 +212,10 @@ export class SessionStore {
     readonly stateDir: string,
     readonly sessionDirectory: string,
     readonly metadata: SessionMetadata,
+    private readonly writeHooks?: PersistenceWriteHooks,
   ) {}
 
-  static async open(stateDir: string, requestedSessionId?: string): Promise<SessionStore> {
+  static async open(stateDir: string, requestedSessionId?: string, options: SessionStoreOptions = {}): Promise<SessionStore> {
     await ensureDirectory(path.join(stateDir, "sessions"));
     const selectedId = requestedSessionId ? safePathSegment(requestedSessionId, "Session ID") : sessionId();
     const sessionDirectory = path.join(stateDir, "sessions", selectedId);
@@ -208,7 +225,7 @@ export class SessionStore {
       if (metadata.sessionId !== selectedId || metadata.schemaVersion !== 1) {
         throw new ComputerNativeError("persistence", "The session metadata is invalid.");
       }
-      return new SessionStore(stateDir, sessionDirectory, metadata);
+      return new SessionStore(stateDir, sessionDirectory, metadata, options.writeHooks);
     } catch (error) {
       const metadataExists = await stat(metadataPath).then(() => true).catch(() => false);
       if (metadataExists || (error instanceof ComputerNativeError && !error.message.startsWith("Could not read"))) throw error;
@@ -221,9 +238,22 @@ export class SessionStore {
         profileId: "default",
       };
       await ensureDirectory(path.join(sessionDirectory, "turns"));
-      await atomicWriteJson(metadataPath, metadata);
-      return new SessionStore(stateDir, sessionDirectory, metadata);
+      const store = new SessionStore(stateDir, sessionDirectory, metadata, options.writeHooks);
+      await store.replaceJson(metadataPath, metadata);
+      return store;
     }
+  }
+
+  async replaceJson(filePath: string, value: unknown): Promise<void> {
+    await this.writeHooks?.beforeWrite?.("replace-json", filePath);
+    await atomicWriteJson(filePath, value);
+    await this.writeHooks?.afterWrite?.("replace-json", filePath);
+  }
+
+  async appendJsonLine(filePath: string, value: unknown): Promise<void> {
+    await this.writeHooks?.beforeWrite?.("append-json-line", filePath);
+    await appendJsonLine(filePath, value);
+    await this.writeHooks?.afterWrite?.("append-json-line", filePath);
   }
 
   async acquireLock(): Promise<SessionLock> {
@@ -252,7 +282,7 @@ export class SessionStore {
       createdAt,
       updatedAt: createdAt,
     };
-    await atomicWriteJson(path.join(directory, "turn.json"), record);
+    await this.replaceJson(path.join(directory, "turn.json"), record);
     const message: TranscriptMessage = {
       schemaVersion: 1,
       messageId: `${selectedTurnId}_user`,
@@ -262,8 +292,8 @@ export class SessionStore {
       content,
       createdAt,
     };
-    await appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
-    await atomicWriteJson(path.join(directory, "turn.json"), { ...record, userMessagePersisted: true, updatedAt: now() });
+    await this.appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
+    await this.replaceJson(path.join(directory, "turn.json"), { ...record, userMessagePersisted: true, updatedAt: now() });
     return new TurnStore(this, directory, { ...record, userMessagePersisted: true });
   }
 
@@ -386,7 +416,7 @@ export class SessionStore {
   }
 
   async appendMessage(message: TranscriptMessage): Promise<void> {
-    await appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
+    await this.appendJsonLine(path.join(this.sessionDirectory, "transcript.jsonl"), message);
   }
 }
 
@@ -429,7 +459,7 @@ export class TurnStore {
       turnId: this.record.turnId,
       payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
     };
-    await appendJsonLine(eventsPath, event);
+    await this.session.appendJsonLine(eventsPath, event);
     return event;
   }
 
@@ -442,7 +472,7 @@ export class TurnStore {
   async appendRound(round: RoundEvidence): Promise<void> {
     const existing = await this.readRounds();
     validateRoundOrder([...existing, round], this.sessionId, this.turnId);
-    await appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(round));
+    await this.session.appendJsonLine(path.join(this.directory, "rounds.jsonl"), redactRecord(round));
   }
 
   async readRounds(): Promise<RoundEvidence[]> {
@@ -466,7 +496,7 @@ export class TurnStore {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     if (previous) assertMutationTransition(previous, record);
-    await atomicWriteJson(recordPath, record);
+    await this.session.replaceJson(recordPath, record);
   }
 
   async writeProcess(record: ProcessExecutionRecord): Promise<void> {
@@ -490,7 +520,7 @@ export class TurnStore {
         throw new ComputerNativeError("persistence", `Process execution '${record.executionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
       }
     }
-    await atomicWriteJson(recordPath, record);
+    await this.session.replaceJson(recordPath, record);
   }
 
   async readProcesses(): Promise<ProcessExecutionRecord[]> {
@@ -530,7 +560,7 @@ export class TurnStore {
         throw new ComputerNativeError("persistence", `Browser action '${record.actionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
       }
     }
-    await atomicWriteJson(recordPath, record);
+    await this.session.replaceJson(recordPath, record);
   }
 
   async writeMemoryAction(record: MemoryActionRecord): Promise<void> {
@@ -544,7 +574,7 @@ export class TurnStore {
     await ensureDirectory(directory);
     // Lifecycle updates are append-only. Recovery reads the latest state, while
     // the JSONL history preserves the earlier proposal/approval outcome.
-    await appendJsonLine(path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`), record);
+    await this.session.appendJsonLine(path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`), record);
   }
 
   async readMemoryActions(): Promise<MemoryActionRecord[]> {
@@ -571,7 +601,7 @@ export class TurnStore {
     }
     const directory = path.join(this.directory, "memory-searches");
     await ensureDirectory(directory);
-    await atomicWriteJson(path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`), record);
+    await this.session.replaceJson(path.join(directory, `${safePathSegment(record.searchId, "Memory search ID")}.json`), record);
   }
 
   async readMemorySearches(): Promise<MemorySearchEvidence[]> {
@@ -616,7 +646,7 @@ export class TurnStore {
   async updateState(nextState: Exclude<TurnStatus, "idle">): Promise<void> {
     if (this.record.state !== nextState) assertTransition(this.record.state, nextState);
     this.record = { ...this.record, state: nextState, updatedAt: now() };
-    await atomicWriteJson(path.join(this.directory, "turn.json"), this.record);
+    await this.session.replaceJson(path.join(this.directory, "turn.json"), this.record);
   }
 
   async appendAssistantMessage(content: string, createdAt = now()): Promise<string> {
@@ -645,7 +675,7 @@ export class TurnStore {
     } catch (error) {
       if (error instanceof ComputerNativeError && !error.message.startsWith("Could not read")) throw error;
     }
-    await atomicWriteJson(resultPath, result);
+    await this.session.replaceJson(resultPath, result);
   }
 
   async ensureTerminalEvent(result: TurnResult): Promise<void> {

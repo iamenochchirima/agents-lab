@@ -23,6 +23,15 @@ per line. A turn record is created before its user message is appended, so a res
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
 
+All durable writes pass through `SessionStore`. Normal application code leaves its
+optional write hooks unset. Tests and diagnostics may install a `beforeWrite` or
+`afterWrite` hook to model a process stopping before a write, or after the filesystem
+write succeeds but before the caller receives acknowledgement. An after-write failure
+therefore means that the outcome is uncertain to the caller, not that the write was
+rolled back. Recovery checks the existing result, turn state, and event stream and can
+be run repeatedly without replaying a side effect or appending a duplicate terminal
+event. These hooks are a failure-injection seam, not a production retry mechanism.
+
 Lifecycle append validates the ordering of model attempt evidence: a
 `ModelAttemptCompleted` event must follow its matching `ModelRequested` event, and a
 `ModelRetryScheduled` event must follow that attempt's completion. Once a terminal turn

@@ -11,6 +11,13 @@ states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
 Interrupted turns are recorded after restart and are never automatically resent because
 the provider or tool may have completed after the process stopped.
 
+Terminal persistence is also recovery-aware at the acknowledgement boundary. A durable
+result or terminal event may already exist when the caller reports a write error. On
+restart, persistence reconciles the result, turn state, and event history; repeating
+recovery repairs missing terminal evidence without replaying the model or a tool and
+without appending a second terminal event. This is an at-least-once evidence write
+boundary, not an exactly-once execution guarantee.
+
 Model transport failures may retry only before the provider emits its first event. Each
 attempt gets a durable `attempt_<hex>` identity; `ModelRequested` is written before the
 provider call and `ModelAttemptCompleted` records success or bounded failure. Scheduled
