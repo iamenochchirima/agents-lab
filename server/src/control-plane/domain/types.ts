@@ -39,6 +39,8 @@ export interface RunRequest {
   readonly platform: string;
   readonly variant: string;
   readonly sessionId?: string;
+  /** Stable client-generated key for retrying one turn within a session. */
+  readonly clientTurnId?: string;
   readonly task: {
     readonly kind: "prompt";
     readonly prompt: string;
@@ -67,6 +69,7 @@ export interface RunManifest {
     readonly systemInstruction: string;
     readonly sessionId?: string;
     readonly turnId?: string;
+    readonly clientTurnId?: string;
     readonly snapshotId?: string;
   };
   readonly platformConfig: Readonly<Record<string, unknown>>;

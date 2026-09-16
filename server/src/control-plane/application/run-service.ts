@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { buildRunManifest, DEFAULT_SYSTEM_INSTRUCTION, validateRunRequest } from "../domain/manifest.js";
+import { buildRunManifest, DEFAULT_SYSTEM_INSTRUCTION, InvalidRunRequestError, validateRunRequest } from "../domain/manifest.js";
 import type {
   PlatformExecutionReference,
   RunEvent,
@@ -95,8 +95,20 @@ export class RunService {
     }
 
     const contextTurn = await this.admitContextTurn(effectiveRequest, draftManifest.runId);
+    if (contextTurn && contextTurn.turn.runId !== draftManifest.runId) {
+      // A stable client key can replay a request after the original response was
+      // lost. Reuse the durable run instead of dispatching a second platform run.
+      // If the server crashed before creating the run record, the existing turn
+      // supplies the original run ID and the normal creation path repairs it.
+      try {
+        return await this.getRun(contextTurn.turn.runId);
+      } catch (error) {
+        if (!(error instanceof RunNotFoundError)) throw error;
+      }
+    }
+    const effectiveRunId = contextTurn?.turn.runId ?? draftManifest.runId;
     const manifest = buildRunManifest(effectiveRequest, {
-      runId: draftManifest.runId,
+      runId: effectiveRunId,
       serverVersion: this.dependencies.config.serverVersion,
       platformConfig: runner.manifestConfiguration(),
       context: contextTurn ? {
@@ -332,6 +344,9 @@ export class RunService {
       return null;
     }
 
+    if (request.clientTurnId !== undefined && request.sessionId === undefined) {
+      throw new InvalidRunRequestError("clientTurnId requires an explicit sessionId so a retry can address the same context session.");
+    }
     const sessionId = request.sessionId ?? `session-${randomUUID()}`;
     const session = await this.dependencies.context.sessions.create({
       sessionId,
@@ -345,7 +360,7 @@ export class RunService {
       compactionThresholdPercent: 20,
       recentMessageGroups: 2,
     });
-    return this.dependencies.context.sessions.admitTurn(session.sessionId, runId, request.task.prompt);
+    return this.dependencies.context.sessions.admitTurn(session.sessionId, runId, request.task.prompt, undefined, request.clientTurnId);
   }
 
   private async settleContextTurn(manifest: RunManifest, result: RunResult): Promise<void> {

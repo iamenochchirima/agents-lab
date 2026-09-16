@@ -10,6 +10,20 @@ export type ContextSourceKind = "system" | "transcript" | "memory" | "skills" | 
 export type TokenCountQuality = "exact" | "estimated" | "unknown";
 export type ContextPressure = "normal" | "compaction_due" | "compacting" | "exhausted" | "unknown";
 
+/**
+ * Durable filesystem ceilings for one context session. These are byte limits,
+ * measured from the UTF-8 records written to the session directory.
+ */
+export interface ContextSessionLimits {
+  readonly maxSessionBytes: number;
+  readonly maxTranscriptBytes: number;
+}
+
+export const DEFAULT_CONTEXT_SESSION_LIMITS: ContextSessionLimits = Object.freeze({
+  maxSessionBytes: 50 * 1024 * 1024,
+  maxTranscriptBytes: 10 * 1024 * 1024,
+});
+
 export interface ContextMessage {
   readonly schemaVersion: typeof CONTEXT_SCHEMA_VERSION;
   readonly messageId: string;

@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, sep as pathSeparator } from "node:path";
 
-import type { ContextMessage, ContextProjection, ContextSnapshot } from "./contracts.js";
+import {
+  DEFAULT_CONTEXT_SESSION_LIMITS,
+  type ContextMessage,
+  type ContextProjection,
+  type ContextSessionLimits,
+  type ContextSnapshot,
+} from "./contracts.js";
 
 const SESSION_SCHEMA_VERSION = 1 as const;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -21,6 +27,8 @@ export interface ContextSession {
   readonly safetyMarginTokens: number;
   readonly compactionThresholdPercent: number;
   readonly recentMessageGroups: number;
+  readonly maxSessionBytes: number;
+  readonly maxTranscriptBytes: number;
   readonly revision: number;
   readonly activeTurnId: string | null;
   readonly createdAt: string;
@@ -48,6 +56,8 @@ export interface ContextTurn {
   readonly turnId: string;
   readonly sessionId: string;
   readonly runId: string;
+  /** Stable client key for retrying this turn, or null for legacy callers. */
+  readonly clientTurnId: string | null;
   readonly status: ContextTurnStatus;
   readonly userMessageId: string;
   readonly assistantMessageId: string | null;
@@ -80,6 +90,17 @@ export class ContextSessionConflictError extends Error {
   }
 }
 
+export class ContextSessionLimitError extends Error {
+  constructor(
+    readonly kind: "session" | "transcript",
+    readonly limitBytes: number,
+    readonly attemptedBytes: number,
+  ) {
+    super(`Context ${kind} size limit exceeded: ${attemptedBytes} bytes would exceed the ${limitBytes}-byte limit.`);
+    this.name = "ContextSessionLimitError";
+  }
+}
+
 export class ContextSessionBusyError extends Error {
   constructor(readonly sessionId: string, readonly turnId: string) {
     super(`Context session ${sessionId} already has an active turn: ${turnId}`);
@@ -90,7 +111,12 @@ export class ContextSessionBusyError extends Error {
 export class ContextSessionStore {
   private readonly queues = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly rootDirectory: string) {}
+  constructor(
+    private readonly rootDirectory: string,
+    private readonly limits: ContextSessionLimits = DEFAULT_CONTEXT_SESSION_LIMITS,
+  ) {
+    validateSessionLimits(limits);
+  }
 
   async create(input: CreateContextSessionInput): Promise<ContextSession> {
     const sessionId = input.sessionId ?? `session-${randomUUID()}`;
@@ -102,10 +128,11 @@ export class ContextSessionStore {
     const session = await this.withLock(sessionId, async () => {
       const existing = await this.readOptionalJson<ContextSession>(this.sessionPath(sessionId));
       if (existing) {
-        if (!sameSessionConfiguration(existing, input)) {
+        const normalized = normalizeSession(existing, this.limits);
+        if (!sameSessionConfiguration(normalized, input, this.limits)) {
           throw new ContextSessionConflictError(`Session already exists with different configuration: ${sessionId}`);
         }
-        return existing;
+        return normalized;
       }
 
       const now = input.now ?? new Date().toISOString();
@@ -121,16 +148,27 @@ export class ContextSessionStore {
         safetyMarginTokens: input.safetyMarginTokens,
         compactionThresholdPercent: input.compactionThresholdPercent,
         recentMessageGroups: input.recentMessageGroups ?? 0,
+        maxSessionBytes: this.limits.maxSessionBytes,
+        maxTranscriptBytes: this.limits.maxTranscriptBytes,
         revision: 0,
         activeTurnId: null,
         createdAt: now,
         updatedAt: now,
       };
       await mkdir(join(sessionDirectory, "snapshots"), { recursive: true });
-      await writeFile(join(sessionDirectory, "transcript.jsonl"), "", { encoding: "utf8", flag: "wx" });
-      await writeFile(join(sessionDirectory, "turns.jsonl"), "", { encoding: "utf8", flag: "wx" });
-      await writeFile(join(sessionDirectory, "context-revisions.jsonl"), "", { encoding: "utf8", flag: "wx" });
-      await atomicWriteJson(this.sessionPath(sessionId), created);
+      const transcriptPath = join(sessionDirectory, "transcript.jsonl");
+      const turnsPath = join(sessionDirectory, "turns.jsonl");
+      const revisionsPath = join(sessionDirectory, "context-revisions.jsonl");
+      await assertSessionWritesWithinLimits(sessionDirectory, this.limits, [
+        { path: this.sessionPath(sessionId), contents: serializeJson(created) },
+        { path: transcriptPath, contents: "", transcript: true },
+        { path: turnsPath, contents: "" },
+        { path: revisionsPath, contents: "" },
+      ]);
+      await writeFile(transcriptPath, "", { encoding: "utf8", flag: "wx" });
+      await writeFile(turnsPath, "", { encoding: "utf8", flag: "wx" });
+      await writeFile(revisionsPath, "", { encoding: "utf8", flag: "wx" });
+      await atomicWriteText(this.sessionPath(sessionId), serializeJson(created));
       return created;
     });
     return session;
@@ -139,7 +177,7 @@ export class ContextSessionStore {
   async read(sessionId: string): Promise<ContextSession> {
     assertSafeSessionId(sessionId);
     try {
-      return await this.readJson<ContextSession>(this.sessionPath(sessionId));
+      return normalizeSession(await this.readJson<ContextSession>(this.sessionPath(sessionId)), this.limits);
     } catch (error) {
       if (isNodeError(error, "ENOENT")) throw new ContextSessionNotFoundError(sessionId);
       throw error;
@@ -147,7 +185,7 @@ export class ContextSessionStore {
   }
 
   async readTranscript(sessionId: string): Promise<readonly ContextMessage[]> {
-    await this.read(sessionId);
+    const session = await this.read(sessionId);
     const path = join(this.sessionDirectory(sessionId), "transcript.jsonl");
     let contents: string;
     try {
@@ -156,6 +194,7 @@ export class ContextSessionStore {
       if (isNodeError(error, "ENOENT")) throw new ContextSessionNotFoundError(sessionId);
       throw error;
     }
+    assertTranscriptSize(contents, session.maxTranscriptBytes);
     if (!contents) return [];
     const messages: ContextMessage[] = [];
     const lines = contents.split("\n");
@@ -169,22 +208,43 @@ export class ContextSessionStore {
     return messages;
   }
 
-  async admitTurn(sessionId: string, runId: string, prompt: string, now = new Date().toISOString()): Promise<AdmittedContextTurn> {
+  async admitTurn(
+    sessionId: string,
+    runId: string,
+    prompt: string,
+    now = new Date().toISOString(),
+    clientTurnId?: string,
+  ): Promise<AdmittedContextTurn> {
     assertSafeSessionId(sessionId);
     if (!runId.trim()) throw new ContextSessionConflictError("A context turn requires a run ID.");
     if (!prompt.trim()) throw new ContextSessionConflictError("A context turn requires a non-empty prompt.");
+    validateClientTurnId(clientTurnId);
+    const normalizedPrompt = prompt.trim();
 
     return this.serialized(sessionId, async () => this.withLock(sessionId, async () => {
       const session = await this.read(sessionId);
       const turns = await this.readTurnRecords(sessionId);
-      const existing = turns.find((turn) => turn.runId === runId);
+      const existingByRun = turns.find((turn) => turn.runId === runId);
+      const existingByClient = clientTurnId === undefined
+        ? undefined
+        : turns.find((turn) => turn.clientTurnId === clientTurnId);
+      if (existingByRun && existingByClient && existingByRun.turnId !== existingByClient.turnId) {
+        throw new ContextSessionConflictError(`Run ${runId} and clientTurnId ${clientTurnId} identify different context turns.`);
+      }
+      const existing = existingByClient ?? existingByRun;
       if (existing) {
         const transcript = await this.readTranscript(sessionId);
         const userMessage = transcript.find((message) => message.messageId === existing.userMessageId);
         if (!userMessage) throw new ContextSessionConflictError(`Turn ${existing.turnId} has no persisted user message.`);
+        if (userMessage.content !== normalizedPrompt) {
+          throw new ContextSessionConflictError(`Context turn ${existing.turnId} already has a different prompt.`);
+        }
+        if (clientTurnId !== undefined && existing.clientTurnId !== clientTurnId) {
+          throw new ContextSessionConflictError(`Run ${existing.runId} already has a different clientTurnId.`);
+        }
         if (session.activeTurnId === null && existing.status !== "completed" && existing.status !== "failed" && existing.status !== "cancelled") {
           const repairedSession = { ...session, revision: Math.max(session.revision, userMessage.sequence), activeTurnId: existing.turnId, updatedAt: now };
-          await atomicWriteJson(this.sessionPath(sessionId), repairedSession);
+          await this.writeSessionJson(sessionId, repairedSession, session);
           return { session: repairedSession, turn: existing, userMessage, transcript };
         }
         return { session, turn: existing, userMessage, transcript };
@@ -201,6 +261,7 @@ export class ContextSessionStore {
           turnId,
           sessionId,
           runId,
+          clientTurnId: partiallyAdmitted.metadata?.clientTurnId ?? clientTurnId ?? null,
           status: "admitted",
           userMessageId: partiallyAdmitted.messageId,
           assistantMessageId: null,
@@ -211,9 +272,11 @@ export class ContextSessionStore {
           createdAt: partiallyAdmitted.createdAt,
           updatedAt: now,
         };
-        await appendJsonLine(join(this.sessionDirectory(sessionId), "turns.jsonl"), repairedTurn);
         const repairedSession = { ...session, revision: Math.max(session.revision, partiallyAdmitted.sequence), activeTurnId: turnId, updatedAt: now };
-        await atomicWriteJson(this.sessionPath(sessionId), repairedSession);
+        await this.writeSessionRecords(sessionId, [
+          { path: join(this.sessionDirectory(sessionId), "turns.jsonl"), value: repairedTurn },
+          { path: this.sessionPath(sessionId), value: repairedSession, replace: true },
+        ], session);
         return { session: repairedSession, turn: repairedTurn, userMessage: partiallyAdmitted, transcript };
       }
 
@@ -224,16 +287,21 @@ export class ContextSessionStore {
         sessionId,
         sequence: session.revision + 1,
         role: "user",
-        content: prompt.trim(),
+        content: normalizedPrompt,
         source: "transcript",
         createdAt: now,
-        metadata: { turnId, runId },
+        metadata: {
+          turnId,
+          runId,
+          ...(clientTurnId === undefined ? {} : { clientTurnId }),
+        },
       };
       const turn: ContextTurn = {
         schemaVersion: SESSION_SCHEMA_VERSION,
         turnId,
         sessionId,
         runId,
+        clientTurnId: clientTurnId ?? null,
         status: "admitted",
         userMessageId: userMessage.messageId,
         assistantMessageId: null,
@@ -244,10 +312,12 @@ export class ContextSessionStore {
         createdAt: now,
         updatedAt: now,
       };
-      await appendJsonLine(join(this.sessionDirectory(sessionId), "transcript.jsonl"), userMessage);
-      await appendJsonLine(join(this.sessionDirectory(sessionId), "turns.jsonl"), turn);
       const updatedSession = { ...session, revision: userMessage.sequence, activeTurnId: turnId, updatedAt: now };
-      await atomicWriteJson(this.sessionPath(sessionId), updatedSession);
+      await this.writeSessionRecords(sessionId, [
+        { path: join(this.sessionDirectory(sessionId), "transcript.jsonl"), value: userMessage, transcript: true },
+        { path: join(this.sessionDirectory(sessionId), "turns.jsonl"), value: turn },
+        { path: this.sessionPath(sessionId), value: updatedSession, replace: true },
+      ], session);
       return { session: updatedSession, turn, userMessage, transcript: [...transcript, userMessage] };
     }));
   }
@@ -287,24 +357,26 @@ export class ContextSessionStore {
         const transcript = await this.readTranscript(sessionId);
         const repairedRevision = Math.max(session.revision, transcript.at(-1)?.sequence ?? 0);
         if (session.activeTurnId !== turnId && session.revision === repairedRevision) return turn;
-        await atomicWriteJson(this.sessionPath(sessionId), {
+        await this.writeSessionJson(sessionId, {
           ...session,
           revision: repairedRevision,
           activeTurnId: session.activeTurnId === turnId ? null : session.activeTurnId,
           updatedAt: now,
-        });
+        }, session);
         return turn;
       }
 
       let assistantMessageId: string | null = turn.assistantMessageId;
+      let transcript: readonly ContextMessage[] | null = null;
+      let transcriptContents: string | null = null;
       if (outcome.status === "completed") {
         const output = outcome.output?.trim() ?? "";
         if (!output) throw new ContextSessionConflictError("A completed context turn requires non-empty output.");
-        const transcript = await this.readTranscript(sessionId);
+        transcript = await this.readTranscript(sessionId);
         const existingAssistant = transcript.find((message) => message.role === "assistant" && message.metadata?.turnId === turnId);
         assistantMessageId = existingAssistant?.messageId ?? `message-${randomUUID()}`;
         if (!existingAssistant) {
-          await appendJsonLine(join(this.sessionDirectory(sessionId), "transcript.jsonl"), {
+          const assistantMessage = {
             schemaVersion: 1,
             messageId: assistantMessageId,
             sessionId,
@@ -314,7 +386,11 @@ export class ContextSessionStore {
             source: "transcript",
             createdAt: now,
             metadata: { turnId },
-          } satisfies ContextMessage);
+          } satisfies ContextMessage;
+          transcriptContents = await appendedJsonLineContents(
+            join(this.sessionDirectory(sessionId), "transcript.jsonl"),
+            assistantMessage,
+          );
         } else if (existingAssistant.content !== output) {
           throw new ContextSessionConflictError(`Context turn already has different assistant output: ${turnId}`);
         }
@@ -327,14 +403,21 @@ export class ContextSessionStore {
         error: outcome.error ?? null,
         updatedAt: now,
       };
-      await appendJsonLine(join(this.sessionDirectory(sessionId), "turns.jsonl"), settled);
       const updatedSession = {
         ...session,
         revision: outcome.status === "completed" ? session.revision + 1 : session.revision,
         activeTurnId: session.activeTurnId === turnId ? null : session.activeTurnId,
         updatedAt: now,
       };
-      await atomicWriteJson(this.sessionPath(sessionId), updatedSession);
+      await this.writeSessionRecords(sessionId, [
+        ...(transcriptContents === null ? [] : [{
+          path: join(this.sessionDirectory(sessionId), "transcript.jsonl"),
+          contents: transcriptContents,
+          transcript: true,
+        }]),
+        { path: join(this.sessionDirectory(sessionId), "turns.jsonl"), value: settled },
+        { path: this.sessionPath(sessionId), value: updatedSession, replace: true },
+      ], session);
       return settled;
     }));
   }
@@ -347,12 +430,13 @@ export class ContextSessionStore {
       const existing = await this.readOptionalJson<ContextSnapshot>(path);
       if (existing) {
         if (!deepEqual(existing, snapshot)) throw new ContextSessionConflictError(`Context snapshot already exists with different content: ${snapshot.snapshotId}`);
-        await appendContextRevisionIfMissing(this.sessionDirectory(snapshot.sessionId), snapshot);
+        await appendContextRevisionIfMissing(this.sessionDirectory(snapshot.sessionId), snapshot, session);
         return;
       }
       if (snapshot.sessionRevision > session.revision) throw new ContextSessionConflictError("Context snapshot references a future session revision.");
-      await atomicWriteJson(path, snapshot);
-      await appendJsonLine(join(this.sessionDirectory(snapshot.sessionId), "context-revisions.jsonl"), {
+      await this.writeSessionRecords(snapshot.sessionId, [
+        { path, value: snapshot, replace: true },
+        { path: join(this.sessionDirectory(snapshot.sessionId), "context-revisions.jsonl"), value: {
         snapshotId: snapshot.snapshotId,
         sessionId: snapshot.sessionId,
         sessionRevision: snapshot.sessionRevision,
@@ -360,7 +444,8 @@ export class ContextSessionStore {
         budget: snapshot.budget,
         compaction: snapshot.compaction,
         createdAt: snapshot.createdAt,
-      });
+        } },
+      ], session);
     }));
   }
 
@@ -406,14 +491,43 @@ export class ContextSessionStore {
     };
   }
 
+  private async writeSessionJson(sessionId: string, value: unknown, limits: ContextSessionLimits | ContextSession = this.limits): Promise<void> {
+    await this.writeSessionRecords(sessionId, [{
+      path: this.sessionPath(sessionId),
+      value,
+      replace: true,
+    }], limits);
+  }
+
+  private async writeSessionRecords(
+    sessionId: string,
+    records: readonly SessionRecordWrite[],
+    limits: ContextSessionLimits | ContextSession = this.limits,
+  ): Promise<void> {
+    const pending = await Promise.all(records.map(async (record) => {
+      const contents = record.contents ?? (record.replace
+        ? serializeJson(record.value)
+        : `${await readTextIfPresent(record.path)}${serializeJsonLine(record.value)}`);
+      return {
+        path: record.path,
+        contents,
+        transcript: record.transcript === true,
+      } satisfies SessionFileWrite;
+    }));
+    await assertSessionWritesWithinLimits(this.sessionDirectory(sessionId), limits, pending);
+    for (const record of pending) {
+      await atomicWriteText(record.path, record.contents);
+    }
+  }
+
   private async updateTurn(sessionId: string, turnId: string, update: (turn: ContextTurn) => ContextTurn): Promise<ContextTurn> {
     return this.serialized(sessionId, async () => this.withLock(sessionId, async () => {
-      await this.read(sessionId);
+      const session = await this.read(sessionId);
       const turns = await this.readTurnRecords(sessionId);
       const current = turns.find((turn) => turn.turnId === turnId);
       if (!current) throw new ContextSessionConflictError(`Context turn was not found: ${turnId}`);
       const next = update(current);
-      await appendJsonLine(join(this.sessionDirectory(sessionId), "turns.jsonl"), next);
+      await this.writeSessionRecords(sessionId, [{ path: join(this.sessionDirectory(sessionId), "turns.jsonl"), value: next }], session);
       return next;
     }));
   }
@@ -432,7 +546,7 @@ export class ContextSessionStore {
       if (!line.trim()) continue;
       const turn = JSON.parse(line) as ContextTurn;
       if (turn.sessionId !== sessionId || !turn.turnId) throw new ContextSessionConflictError("Invalid context turn record.");
-      latest.set(turn.turnId, turn);
+      latest.set(turn.turnId, normalizeTurn(turn));
     }
     return [...latest.values()];
   }
@@ -508,15 +622,33 @@ export class ContextSessionStore {
   }
 }
 
-async function appendContextRevisionIfMissing(sessionDirectory: string, snapshot: ContextSnapshot): Promise<void> {
+interface SessionRecordWrite {
+  readonly path: string;
+  readonly value?: unknown;
+  readonly contents?: string;
+  readonly replace?: boolean;
+  readonly transcript?: boolean;
+}
+
+interface SessionFileWrite {
+  readonly path: string;
+  readonly contents: string;
+  readonly transcript?: boolean;
+}
+
+async function appendContextRevisionIfMissing(
+  sessionDirectory: string,
+  snapshot: ContextSnapshot,
+  limits: ContextSessionLimits,
+): Promise<void> {
   const path = join(sessionDirectory, "context-revisions.jsonl");
-  let contents = "";
+  let existingContents = "";
   try {
-    contents = await readFile(path, "utf8");
+    existingContents = await readFile(path, "utf8");
   } catch (error) {
     if (!isNodeError(error, "ENOENT")) throw error;
   }
-  for (const [index, line] of contents.split("\n").entries()) {
+  for (const [index, line] of existingContents.split("\n").entries()) {
     if (!line.trim()) continue;
     let record: { readonly snapshotId?: string };
     try {
@@ -526,7 +658,7 @@ async function appendContextRevisionIfMissing(sessionDirectory: string, snapshot
     }
     if (record.snapshotId === snapshot.snapshotId) return;
   }
-  await appendJsonLine(path, {
+  const nextContents = `${existingContents}${serializeJsonLine({
     snapshotId: snapshot.snapshotId,
     sessionId: snapshot.sessionId,
     sessionRevision: snapshot.sessionRevision,
@@ -534,25 +666,96 @@ async function appendContextRevisionIfMissing(sessionDirectory: string, snapshot
     budget: snapshot.budget,
     compaction: snapshot.compaction,
     createdAt: snapshot.createdAt,
-  });
+  })}`;
+  await assertSessionWritesWithinLimits(sessionDirectory, limits, [{ path, contents: nextContents }]);
+  await atomicWriteText(path, nextContents);
 }
 
-async function atomicWriteJson(path: string, value: unknown): Promise<void> {
-  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(temporaryPath, path);
+async function appendedJsonLineContents(path: string, value: unknown): Promise<string> {
+  return `${await readTextIfPresent(path)}${serializeJsonLine(value)}`;
 }
 
-async function appendJsonLine(path: string, value: unknown): Promise<void> {
-  let existing = "";
+async function readTextIfPresent(path: string): Promise<string> {
   try {
-    existing = await readFile(path, "utf8");
+    return await readFile(path, "utf8");
   } catch (error) {
-    if (!isNodeError(error, "ENOENT")) throw error;
+    if (isNodeError(error, "ENOENT")) return "";
+    throw error;
   }
+}
+
+async function atomicWriteText(path: string, contents: string): Promise<void> {
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-  await writeFile(temporaryPath, `${existing}${JSON.stringify(value)}\n`, "utf8");
+  await writeFile(temporaryPath, contents, "utf8");
   await rename(temporaryPath, path);
+}
+
+function serializeJson(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function serializeJsonLine(value: unknown): string {
+  return `${JSON.stringify(value)}\n`;
+}
+
+async function assertSessionWritesWithinLimits(
+  sessionDirectory: string,
+  limits: ContextSessionLimits,
+  writes: readonly SessionFileWrite[],
+): Promise<void> {
+  const existingFiles = await collectSessionFileSizes(sessionDirectory);
+  const updates = new Map<string, SessionFileWrite>();
+  for (const write of writes) {
+    const pathRelative = relative(sessionDirectory, write.path);
+    if (!pathRelative || pathRelative === ".." || pathRelative.startsWith(`..${pathSeparator}`)) {
+      throw new ContextSessionConflictError("A session write targeted a path outside the session directory.");
+    }
+    const existing = updates.get(write.path);
+    if (existing && existing.contents !== write.contents) {
+      throw new ContextSessionConflictError(`A session write targeted the same file with different content: ${write.path}`);
+    }
+    updates.set(write.path, write);
+  }
+
+  const existingBytes = [...existingFiles.values()].reduce((total, size) => total + size, 0);
+  let projectedBytes = existingBytes;
+  for (const write of updates.values()) {
+    projectedBytes -= existingFiles.get(write.path) ?? 0;
+    projectedBytes += Buffer.byteLength(write.contents, "utf8");
+    if (write.transcript) {
+      assertTranscriptSize(write.contents, limits.maxTranscriptBytes);
+    }
+  }
+  if (projectedBytes > limits.maxSessionBytes) {
+    throw new ContextSessionLimitError("session", limits.maxSessionBytes, projectedBytes);
+  }
+}
+
+async function collectSessionFileSizes(directory: string, result = new Map<string, number>()): Promise<Map<string, number>> {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isNodeError(error, "ENOENT")) return result;
+    throw error;
+  }
+  for (const entry of entries) {
+    if (entry.name === ".lock" || entry.name.endsWith(".tmp")) continue;
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await collectSessionFileSizes(path, result);
+    } else if (entry.isFile()) {
+      result.set(path, (await stat(path)).size);
+    }
+  }
+  return result;
+}
+
+function assertTranscriptSize(contents: string, limitBytes: number): void {
+  const attemptedBytes = Buffer.byteLength(contents, "utf8");
+  if (attemptedBytes > limitBytes) {
+    throw new ContextSessionLimitError("transcript", limitBytes, attemptedBytes);
+  }
 }
 
 function validateSessionInput(input: CreateContextSessionInput): void {
@@ -566,8 +769,46 @@ function validateSessionInput(input: CreateContextSessionInput): void {
   if (!Number.isInteger(input.compactionThresholdPercent) || input.compactionThresholdPercent < 0 || input.compactionThresholdPercent > 100) throw new ContextSessionConflictError("compactionThresholdPercent must be between 0 and 100.");
 }
 
-function sameSessionConfiguration(session: ContextSession, input: CreateContextSessionInput): boolean {
-  return session.platform === input.platform && session.variant === input.variant && session.model === input.model && session.systemInstruction === input.systemInstruction && session.contextWindowTokens === input.contextWindowTokens && session.reservedOutputTokens === input.reservedOutputTokens && session.safetyMarginTokens === input.safetyMarginTokens && session.compactionThresholdPercent === input.compactionThresholdPercent && session.recentMessageGroups === (input.recentMessageGroups ?? 0);
+function sameSessionConfiguration(session: ContextSession, input: CreateContextSessionInput, limits: ContextSessionLimits): boolean {
+  return session.platform === input.platform
+    && session.variant === input.variant
+    && session.model === input.model
+    && session.systemInstruction === input.systemInstruction
+    && session.contextWindowTokens === input.contextWindowTokens
+    && session.reservedOutputTokens === input.reservedOutputTokens
+    && session.safetyMarginTokens === input.safetyMarginTokens
+    && session.compactionThresholdPercent === input.compactionThresholdPercent
+    && session.recentMessageGroups === (input.recentMessageGroups ?? 0)
+    && session.maxSessionBytes === limits.maxSessionBytes
+    && session.maxTranscriptBytes === limits.maxTranscriptBytes;
+}
+
+function normalizeSession(session: ContextSession, limits: ContextSessionLimits): ContextSession {
+  const normalized = {
+    ...session,
+    maxSessionBytes: session.maxSessionBytes ?? limits.maxSessionBytes,
+    maxTranscriptBytes: session.maxTranscriptBytes ?? limits.maxTranscriptBytes,
+  };
+  validateSessionLimits({ maxSessionBytes: normalized.maxSessionBytes, maxTranscriptBytes: normalized.maxTranscriptBytes });
+  return normalized;
+}
+
+function normalizeTurn(turn: ContextTurn): ContextTurn {
+  return { ...turn, clientTurnId: turn.clientTurnId ?? null };
+}
+
+function validateSessionLimits(limits: ContextSessionLimits): void {
+  for (const [name, value] of Object.entries(limits)) {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new ContextSessionConflictError(`${name} must be a positive safe integer.`);
+    }
+  }
+}
+
+function validateClientTurnId(clientTurnId: string | undefined): void {
+  if (clientTurnId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(clientTurnId)) {
+    throw new ContextSessionConflictError("clientTurnId must use letters, numbers, dots, colons, hyphens, or underscores.");
+  }
 }
 
 function validateStoredMessage(message: ContextMessage, sessionId: string, previous: ContextMessage | undefined): void {

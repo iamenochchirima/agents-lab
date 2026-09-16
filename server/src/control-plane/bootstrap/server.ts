@@ -64,7 +64,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     vercelWorkflowsRunner,
   ] as const;
   const evidence = new RunEvidenceStore(config.runsRoot);
-  const context = new ContextService(new ContextSessionStore(config.contextRoot), new CharacterTokenEstimator());
+  const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
   const registry = new PlatformRegistry(runners);
   const modelCatalog = new OpenRouterModelCatalog({
     apiKey: config.openRouter.apiKey,

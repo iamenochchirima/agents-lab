@@ -21,6 +21,7 @@ export interface ManifestOptions {
   readonly context?: {
     readonly sessionId?: string;
     readonly turnId?: string;
+    readonly clientTurnId?: string;
     readonly snapshotId?: string;
   };
 }
@@ -36,7 +37,11 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     platform: request.platform.trim(),
     variant: request.variant.trim(),
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
-    context: { systemInstruction: DEFAULT_SYSTEM_INSTRUCTION, ...options.context },
+    context: {
+      systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+      ...(request.clientTurnId === undefined ? {} : { clientTurnId: request.clientTurnId }),
+      ...options.context,
+    },
     platformConfig: options.platformConfig ?? {},
     selection: request.selection ?? {},
     model: {
@@ -77,6 +82,10 @@ export function validateRunRequest(request: RunRequest): void {
 
   if (request.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(request.sessionId)) {
     throw new InvalidRunRequestError("sessionId must use letters, numbers, hyphens, or underscores.");
+  }
+
+  if (request.clientTurnId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.clientTurnId)) {
+    throw new InvalidRunRequestError("clientTurnId must use letters, numbers, dots, colons, hyphens, or underscores.");
   }
 
   const prompt = request.task.prompt.trim();

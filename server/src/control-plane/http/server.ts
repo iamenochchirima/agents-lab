@@ -7,7 +7,7 @@ import type { ServerConfig } from "../bootstrap/config.js";
 import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
-import { ContextSessionBusyError, ContextSessionConflictError } from "../../capabilities/context/session-store.js";
+import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError } from "../../capabilities/context/session-store.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunRequest, RunSelection } from "../domain/types.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
@@ -174,6 +174,9 @@ function parseRunRequest(body: unknown): RunRequest {
   if (body.sessionId !== undefined && typeof body.sessionId !== "string") {
     throw new InvalidApiRequestError("sessionId must be a string when provided.");
   }
+  if (body.clientTurnId !== undefined && typeof body.clientTurnId !== "string") {
+    throw new InvalidApiRequestError("clientTurnId must be a string when provided.");
+  }
   if (!isRecord(body.task) || body.task.kind !== "prompt" || typeof body.task.prompt !== "string") {
     throw new InvalidApiRequestError("task must contain kind=prompt and a string prompt.");
   }
@@ -191,6 +194,7 @@ function parseRunRequest(body: unknown): RunRequest {
     platform: body.platform,
     variant: body.variant,
     sessionId: body.sessionId,
+    clientTurnId: body.clientTurnId,
     task: { kind: "prompt", prompt: body.task.prompt },
     model: {
       provider: body.model.provider,
@@ -280,7 +284,13 @@ function sendError(reply: FastifyReply, error: unknown) {
   if (error instanceof RunnerUnavailableError) {
     return reply.code(503).send({ error: { code: "RUNNER_UNAVAILABLE", message: error.message } });
   }
-  if (error instanceof ContextSessionBusyError || error instanceof ContextSessionConflictError) {
+  if (error instanceof ContextSessionLimitError) {
+    return reply.code(413).send({ error: { code: "CONTEXT_LIMIT_EXCEEDED", message: error.message, kind: error.kind, limitBytes: error.limitBytes } });
+  }
+  if (error instanceof ContextSessionBusyError) {
+    return reply.code(409).send({ error: { code: "CONTEXT_BUSY", message: error.message } });
+  }
+  if (error instanceof ContextSessionConflictError) {
     return reply.code(409).send({ error: { code: "CONTEXT_CONFLICT", message: error.message } });
   }
   if (error instanceof OpenRouterCatalogError) {

@@ -7,6 +7,7 @@ import {
   OPENROUTER_DEFAULT_CATALOG_LIMIT,
   OPENROUTER_DEFAULT_CATALOG_TIMEOUT_MS,
 } from "../../models/openrouter/catalog.js";
+import { DEFAULT_CONTEXT_SESSION_LIMITS } from "../../capabilities/context/contracts.js";
 
 export const DEFAULTS = {
   apiHost: "127.0.0.1",
@@ -26,6 +27,7 @@ export const DEFAULTS = {
     catalogCacheTtlMs: OPENROUTER_DEFAULT_CATALOG_CACHE_TTL_MS,
     catalogLimit: OPENROUTER_DEFAULT_CATALOG_LIMIT,
   },
+  context: DEFAULT_CONTEXT_SESSION_LIMITS,
 } as const;
 
 export interface ServerConfig {
@@ -37,6 +39,10 @@ export interface ServerConfig {
   };
   readonly runsRoot: string;
   readonly contextRoot: string;
+  readonly context: {
+    readonly maxSessionBytes: number;
+    readonly maxTranscriptBytes: number;
+  };
   readonly studioRunsRoot: string;
   readonly temporal: {
     readonly endpoint: string;
@@ -111,6 +117,22 @@ export function loadServerConfig(
     },
     runsRoot: isAbsolute(runRoot) ? runRoot : resolve(workingDirectory, runRoot),
     contextRoot: isAbsolute(contextRoot) ? contextRoot : resolve(workingDirectory, contextRoot),
+    context: {
+      maxSessionBytes: parseBoundedInteger(
+        "AGENTLAB_CONTEXT_MAX_SESSION_BYTES",
+        environment.AGENTLAB_CONTEXT_MAX_SESSION_BYTES,
+        DEFAULTS.context.maxSessionBytes,
+        1_024,
+        1_073_741_824,
+      ),
+      maxTranscriptBytes: parseBoundedInteger(
+        "AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES",
+        environment.AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES,
+        DEFAULTS.context.maxTranscriptBytes,
+        1_024,
+        1_073_741_824,
+      ),
+    },
     studioRunsRoot: isAbsolute(studioRunsRoot) ? studioRunsRoot : resolve(workingDirectory, studioRunsRoot),
     temporal: {
       endpoint: temporalEndpoint,
