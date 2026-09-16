@@ -34,6 +34,8 @@ lock-and-artifact evidence for the bounded cleanup pass. Download targets are re
 long enough to show the exact managed destination in the approval request, then are
 discarded when approval is denied, unavailable, or fails before the browser starts. This
 keeps an approval that did not start a download from leaking an artifact lease.
+If an artifact lock is corrupt or cannot be inspected, cleanup fails closed and retains
+the artifact for operator repair rather than force-deleting an uncertain owner.
 
 The session manager enforces a configured maximum tab count before opening another tab
 and rejects adapter observations that exceed that bound. The Playwright adapter also

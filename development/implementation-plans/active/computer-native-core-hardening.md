@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:29:48+02:00
+**Last updated:** 2026-09-17T01:34:40+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -742,6 +742,9 @@ Delivered in this slice:
 - Tests cover the live in-flight lease boundary, direct artifact-evidence recovery, and
   an integrated screenshot turn, plus expired temporary metadata cleanup; existing tests
   continue to cover malformed, oversized, symlinked, orphaned, and bounded cleanup cases.
+- Cleanup now has an explicit fail-closed test for corrupt artifact ownership metadata:
+  an expired artifact with an uninspectable lock is retained for operator repair rather
+  than force-deleted under an uncertain ownership state.
 
 Practice check against the local Hermes and OpenClaw references:
 

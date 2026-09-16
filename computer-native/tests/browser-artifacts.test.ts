@@ -261,6 +261,30 @@ test("browser artifact cleanup retains an in-flight artifact with a live lease",
   }
 });
 
+test("browser artifact cleanup retains an expired artifact with corrupt ownership metadata", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-artifacts-corrupt-lock-"));
+  try {
+    const directory = path.join(root, "browser_corrupt_lock", "screenshots");
+    await mkdir(directory, { recursive: true });
+    const artifact = path.join(directory, "artifact_corrupt.png");
+    const lock = `${artifact}.lock`;
+    await writeFile(artifact, "partial capture");
+    await writeFile(lock, "not-json");
+    const oldSeconds = (Date.now() - 10_000) / 1_000;
+    await utimes(artifact, oldSeconds, oldSeconds);
+    await utimes(lock, oldSeconds, oldSeconds);
+
+    const result = await new BrowserArtifactStore(root).cleanupExpired({ maxAgeMs: 1_000, maxEntries: 10 });
+
+    assert.equal(result.retained, 1);
+    assert.equal(result.removed, 0);
+    assert.equal((await stat(artifact)).isFile(), true);
+    assert.equal((await stat(lock)).isFile(), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("browser upload policy accepts bounded regular workspace files and rejects links or traversal", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-browser-upload-"));
   try {
