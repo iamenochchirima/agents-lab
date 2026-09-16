@@ -1250,7 +1250,7 @@ export class ToolRegistry {
         const committed = await this.workspace.commitPatchSet(prepared, async (journal) => {
           latestJournal = journal;
           await context.onMutation?.({ type: "progress", request, journal });
-        });
+        }, context.signal);
         committedPath = committed.paths[0] ?? prepared.path;
         latestJournal = committed.journal;
       } else if (prepared.operation === "mkdir") {
@@ -1310,8 +1310,11 @@ export class ToolRegistry {
       const mutationError = error instanceof MutationError
         ? error
         : new MutationError("mutation-failed", safeErrorMessage(error), { cause: error });
-      await context.onMutation?.({ type: "failed", request, reason: mutationError.safeMessage, code: mutationError.mutationCode, ...(latestJournal ? { journal: latestJournal } : {}) });
-      throw mutationError;
+      const reconciliationError = latestJournal?.state === "reconciliation_required" && mutationError.mutationCode !== "reconciliation-required"
+        ? new MutationError("reconciliation-required", `The multi-file mutation '${request.mutationId}' requires reconciliation after a partial or uncertain commit. Inspect its persisted journal and member hashes before retrying. Do not retry automatically.`, { cause: mutationError })
+        : mutationError;
+      await context.onMutation?.({ type: "failed", request, reason: reconciliationError.safeMessage, code: reconciliationError.mutationCode, ...(latestJournal ? { journal: latestJournal } : {}) });
+      throw reconciliationError;
     }
     await context.onMutation?.({
       type: "committed",

@@ -52,8 +52,10 @@ The current slice exposes five read-only tools and thirteen approval-gated mutat
   approval channel, and writes only after `allow-once`.
 - `apply_patch_set` — prepares 2–16 bounded single-file patches, shows the affected paths
   and aggregate diff, and commits members through a durable journal after one approval.
-  It does not claim all-or-nothing filesystem atomicity; partial outcomes require
-  reconciliation.
+  It does not claim all-or-nothing filesystem atomicity. Cancellation or an interruption
+  after the transaction begins returns `reconciliation-required`, preserves the member
+  journal, and tells the caller not to retry automatically; partial outcomes require
+  inspection and reconciliation from the recorded hashes.
 - `run_command` — prepares one exact executable and argument vector for a real local
   foreground process. It requires approval, starts with a sanitized environment and
   workspace-relative cwd, uses `shell: false`, ignores stdin, and bounds timeout,
@@ -64,8 +66,10 @@ requested path is allowed, and the runtime approval callback decides whether the
 prepared mutation may commit. Missing approval fails closed; a tool response never
 claims a change happened before the atomic commit succeeds. Mutation results include
 typed failure categories where applicable: `mutation-invalid`, `approval-denied`,
-`approval-unavailable`, `mutation-stale`, and `mutation-failed`. Restart conflicts are
-recorded as `reconciliation-required`. Approval requests also carry an operation-specific
+`approval-unavailable`, `mutation-stale`, `mutation-failed`, and
+`reconciliation-required`. Restart conflicts and uncertain multi-file outcomes are
+recorded as `reconciliation-required`; these results are not automatically retried.
+Approval requests also carry an operation-specific
 risk classification such as `patch-file`, `quarantine-file`, `delete-directory`,
 `delete-directory-tree`, `restore-directory`, `purge-quarantine`, `copy-file`,
 `copy-directory`, `move-file`, `move-directory`, `rename-file`, or

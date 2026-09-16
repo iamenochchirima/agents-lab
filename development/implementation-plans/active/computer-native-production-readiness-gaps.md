@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T12:00:00+02:00
+**Last updated:** 2026-09-16T15:10:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,8 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 206 tests passed.
-- `pnpm run coverage`: 206 tests passed, with 87.25% line coverage.
+- `pnpm test`: 216 tests passed.
+- `pnpm run coverage`: 216 tests passed, with 87.62% line coverage, 74.18% branch
+  coverage, and 82.15% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -70,7 +71,7 @@ provider, browser-profile, and operational acceptance evidence.
 | Runtime and turns | Bounded local foundation | Durable lifecycle, retries, restart reconciliation, concurrency, and replay semantics |
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
 | Models and providers | Real OpenRouter path plus deterministic tests | Provider registry, resilient transport, fallback policy, usage/cost evidence, and credential operations |
-| Workspace and filesystem | Broad local capability | Remaining directory operations, transaction guarantees, races, large inputs, and isolation decision |
+| Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands | PTY/background jobs, process-tree cleanup, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
 | Memory | Durable Markdown and local lexical retrieval | Mature retrieval, compaction, promotion, privacy, deletion, migration, and real-model acceptance |
@@ -202,9 +203,10 @@ directory handling, policy checks, restart reconciliation, and evidence.
 
 Remaining work:
 
-- Define transaction semantics for multi-file changes. Either provide a real rollback
-  guarantee within the supported boundary or report partial completion and a recovery
-  plan. Do not call a journal “atomic” unless the side effects prove it.
+- Extend the now-defined journal semantics beyond `apply_patch_set` if future operations
+  need multi-file transactions. The current patch-set boundary reports partial or
+  uncertain completion as `reconciliation-required`, preserves member hashes, and does
+  not claim rollback or cross-file atomicity.
 - Decide and document symlink, hard-link, device-file, socket, special-file, and mount
   behaviour. Fail closed for unsupported types.
 - Stream large files and bound memory, path depth, file count, archive size, and total

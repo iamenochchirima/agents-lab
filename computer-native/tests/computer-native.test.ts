@@ -17,7 +17,7 @@ import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
 import { MAX_PATCH_REQUEST_BYTES, type MutationEvent, type WorkspaceMutationRecord } from "../src/workspace/mutation.js";
-import { ComputerNativeError, ModelProviderError } from "../src/runtime/errors.js";
+import { ComputerNativeError, ModelProviderError, MutationError } from "../src/runtime/errors.js";
 import { asSessionId, asTurnId, type ModelRequest, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
 import { allowedTransitions, assertTransition } from "../src/runtime/state.js";
 import { openChatApplication } from "../src/runtime/application.js";
@@ -369,7 +369,7 @@ test("turn retries a provider failure before the first event and records the ret
   const result = await runTurn({
     session,
     provider,
-    config: config(stateDir, { firstEventTimeoutMs: 10, modelRetryAttempts: 2, modelRetryBackoffMs: 30 }),
+    config: config(stateDir, { firstEventTimeoutMs: 1_000, modelRetryAttempts: 2, modelRetryBackoffMs: 30 }),
     userPrompt: "retry once",
     onEvent: (event) => lifecycle.push(event),
   });
@@ -1537,10 +1537,17 @@ test("multi-file patch interruption records partial progress and requires reconc
 `,
   ], "mutation_patch_set_partial");
   let latestJournal = prepared.journal;
+  let commitError: unknown;
   await assert.rejects(
-    () => workspace.commitPatchSet(prepared, (journal) => { latestJournal = journal; }),
-    /could not be committed atomically/,
+    () => workspace.commitPatchSet(prepared, (journal) => { latestJournal = journal; }).catch((error) => {
+      commitError = error;
+      throw error;
+    }),
+    /requires reconciliation/,
   );
+  assert.ok(commitError instanceof MutationError);
+  assert.equal((commitError as MutationError).mutationCode, "reconciliation-required");
+  assert.match((commitError as MutationError).safeMessage, /Do not retry automatically/u);
   assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "one new\n");
   assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "two old\n");
   assert.equal(latestJournal.state, "reconciliation_required");
@@ -1579,6 +1586,51 @@ test("multi-file patch interruption records partial progress and requires reconc
   assert.match(conflict.reason ?? "", /partial or conflicting/);
 });
 
+test("multi-file patch cancellation stops before the next member and preserves recovery evidence", async () => {
+  const root = path.join(tempDirectory(), "workspace-cancel");
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, "one.txt"), "one old\n", "utf8");
+  await writeFile(path.join(root, "two.txt"), "two old\n", "utf8");
+  const controller = new AbortController();
+  let writes = 0;
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 20 }, {
+    atomicWriter: async (absolutePath, content, _existingMode, temporaryPath) => {
+      writes += 1;
+      assert.ok(temporaryPath);
+      await writeFile(temporaryPath, content, "utf8");
+      await rename(temporaryPath, absolutePath);
+      if (writes === 1) controller.abort("test-cancel");
+    },
+  });
+  const prepared = await workspace.preparePatchSet([
+    `*** Begin Patch
+*** Update File: one.txt
+@@
+-one old
++one new
+*** End Patch
+`,
+    `*** Begin Patch
+*** Update File: two.txt
+@@
+-two old
++two new
+*** End Patch
+`,
+  ], "mutation_patch_set_cancelled");
+  let latestJournal = prepared.journal;
+  await assert.rejects(
+    () => workspace.commitPatchSet(prepared, (journal) => { latestJournal = journal; }, controller.signal),
+    /requires reconciliation/u,
+  );
+  assert.equal(writes, 1);
+  assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "one new\n");
+  assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "two old\n");
+  assert.equal(latestJournal.state, "reconciliation_required");
+  assert.equal(latestJournal.members[0]?.state, "committed");
+  assert.equal(latestJournal.members[1]?.state, "pending");
+});
+
 test("multi-file recovery distinguishes no commit from all members committed before journal acknowledgement", async () => {
   const beforeRoot = path.join(tempDirectory(), "before-workspace");
   await mkdir(beforeRoot, { recursive: true });
@@ -1592,7 +1644,10 @@ test("multi-file recovery distinguishes no commit from all members committed bef
     ["*** Begin Patch", "*** Update File: two.txt", "@@", "-two old", "+two new", "*** End " + "Patch"].join("\n"),
   ], "mutation_patch_set_before_first");
   let beforeJournal = beforePrepared.journal;
-  await assert.rejects(() => beforeWorkspace.commitPatchSet(beforePrepared, (journal) => { beforeJournal = journal; }), /could not be committed atomically/);
+  await assert.rejects(
+    () => beforeWorkspace.commitPatchSet(beforePrepared, (journal) => { beforeJournal = journal; }),
+    (error: unknown) => error instanceof MutationError && error.mutationCode === "reconciliation-required",
+  );
   assert.deepEqual(beforeJournal.members.map((member) => member.state), ["staged", "pending"]);
   const beforeRecord = await beforeWorkspace.reconcileMutation({
     schemaVersion: 1,
@@ -1629,7 +1684,10 @@ test("multi-file recovery distinguishes no commit from all members committed bef
       afterJournal = journal;
       if (journal.state === "committed") throw new Error("simulated final journal acknowledgement failure");
     }),
-    /final journal acknowledgement failure/,
+    (error: unknown) => error instanceof MutationError
+      && error.mutationCode === "reconciliation-required"
+      && error.cause instanceof Error
+      && error.cause.message === "simulated final journal acknowledgement failure",
   );
   assert.equal(afterJournal.state, "reconciliation_required");
   assert.deepEqual(afterJournal.members.map((member) => member.state), ["committed", "committed"]);
@@ -1698,7 +1756,10 @@ test("multi-file commit rejects an unsupported rename without copy-and-delete fa
     ["*** Begin Patch", "*** Update File: one.txt", "@@", "-one old", "+one new", "*** End " + "Patch"].join("\n"),
     ["*** Begin Patch", "*** Update File: two.txt", "@@", "-two old", "+two new", "*** End " + "Patch"].join("\n"),
   ], "mutation_patch_set_exdev");
-  await assert.rejects(() => workspace.commitPatchSet(prepared), /could not be committed atomically/);
+  await assert.rejects(
+    () => workspace.commitPatchSet(prepared),
+    (error: unknown) => error instanceof MutationError && error.mutationCode === "reconciliation-required",
+  );
   assert.equal(attempts, 1);
   assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "one old\n");
   assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "two old\n");
@@ -2401,6 +2462,65 @@ test("model apply_patch_set flow persists the member journal and bounded path se
   assert.equal(mutation.journal.transactionPath, `.computer-native-transactions/${mutation.mutationId}`);
   assert.ok(mutation.journal.members.every((member) => member.state === "committed"));
   assert.ok(mutation.journal.members.every((member) => member.temporaryPath?.startsWith(`${mutation.journal.transactionPath}/member-`)));
+});
+
+test("model apply_patch_set failure persists reconciliation-required evidence", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, "one.txt"), "one old\n", "utf8");
+  await writeFile(path.join(root, "two.txt"), "two old\n", "utf8");
+  let writes = 0;
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 20 }, {
+    atomicWriter: async (absolutePath, content, _existingMode, temporaryPath) => {
+      writes += 1;
+      if (writes === 2) throw new Error("simulated second-member failure");
+      assert.ok(temporaryPath);
+      await writeFile(temporaryPath, content, "utf8");
+      await rename(temporaryPath, absolutePath);
+    },
+  });
+  const session = await openSession(stateDir);
+  const result = await runTurn({
+    session,
+    tools: new ToolRegistry(workspace, 4_000),
+    provider: new DeterministicModelProvider("deterministic/patch-set-failure", {
+      toolCall: {
+        name: "apply_patch_set",
+        argumentsJson: JSON.stringify({ patches: [
+          ["*** Begin Patch", "*** Update File: one.txt", "@@", "-one old", "+one new", "*** End " + "Patch"].join("\n"),
+          ["*** Begin Patch", "*** Update File: two.txt", "@@", "-two old", "+two new", "*** End " + "Patch"].join("\n"),
+        ] }),
+        finalResponse: "The patch set needs manual reconciliation before it can be retried.",
+      },
+    }),
+    config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 4_000 }),
+    userPrompt: "Update both notes.",
+    approveMutation: async () => ({ decision: "allow-once" }),
+  });
+  assert.equal(result.status, "completed");
+  assert.equal(writes, 2);
+  assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "one new\n");
+  assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "two old\n");
+  const mutationsDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "mutations");
+  const mutationFiles = await readdir(mutationsDirectory);
+  assert.equal(mutationFiles.length, 1);
+  const mutation = JSON.parse(await readFile(path.join(mutationsDirectory, mutationFiles[0]!), "utf8")) as {
+    operation: string;
+    status: string;
+    errorCode?: string;
+    reason?: string;
+    journal?: { state: string; members: Array<{ path: string; state: string }> };
+  };
+  assert.equal(mutation.operation, "patch-set");
+  assert.equal(mutation.status, "reconciliation_required");
+  assert.equal(mutation.errorCode, "reconciliation-required");
+  assert.match(mutation.reason ?? "", /Do not retry automatically/u);
+  assert.equal(mutation.journal?.state, "reconciliation_required");
+  assert.deepEqual(mutation.journal?.members.map((member) => ({ path: member.path, state: member.state })), [
+    { path: "one.txt", state: "committed" },
+    { path: "two.txt", state: "staged" },
+  ]);
 });
 
 test("model write_file flow persists a write operation and commits only after approval", async () => {
@@ -3582,6 +3702,41 @@ test("cancellation interrupts a waiting read-only tool without committing an ass
   setTimeout(() => controller.abort("cancelled"), 10);
   const result = await runTurn({ session, tools, provider, config: config(stateDir, { timeoutMs: 1_000 }), userPrompt: "cancel tool" , signal: controller.signal });
   assert.equal(result.status, "cancelled");
+  assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
+});
+
+test("cancellation waits for an in-flight side-effecting tool to settle", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let settled = false;
+  const tools = {
+    definitions: [],
+    execute: async (call: { readonly name: string }) => {
+      assert.equal(call.name, "apply_patch_set");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      settled = true;
+      return {
+        callId: "patch_set_call",
+        name: "apply_patch_set",
+        ok: false,
+        content: "Tool error: patch set requires reconciliation.",
+        summary: "Reconciliation required.",
+        errorCode: "reconciliation-required" as const,
+      };
+    },
+  } as unknown as ToolRegistry;
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/side-effecting-tool",
+    async *stream(): AsyncIterable<{ readonly type: "tool_call"; readonly call: { readonly callId: string; readonly name: string; readonly argumentsJson: string } }> {
+      yield { type: "tool_call", call: { callId: "patch_set_call", name: "apply_patch_set", argumentsJson: "{}" } };
+    },
+  };
+  const controller = new AbortController();
+  setTimeout(() => controller.abort("cancelled"), 10);
+  const result = await runTurn({ session, tools, provider, config: config(stateDir, { timeoutMs: 1_000 }), userPrompt: "cancel patch set", signal: controller.signal });
+  assert.equal(result.status, "cancelled");
+  assert.equal(settled, true);
   assert.deepEqual((await session.readTranscript()).map((message) => message.role), ["user"]);
 });
 

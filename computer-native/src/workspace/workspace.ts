@@ -1210,18 +1210,26 @@ export class Workspace {
     };
   }
 
-  async commitPatchSet(prepared: PreparedPatchSet, onJournal?: (journal: MutationJournal) => Promise<void> | void): Promise<PatchSetCommit> {
+  async commitPatchSet(prepared: PreparedPatchSet, onJournal?: (journal: MutationJournal) => Promise<void> | void, signal?: AbortSignal): Promise<PatchSetCommit> {
     // A complete stale preflight happens before the transaction directory is created,
     // so a rejected proposal does not leave recovery state behind.
     for (const patch of prepared.patches) await this.assertPatchCurrent(patch);
+    if (signal?.aborted) throw new MutationError("mutation-failed", "The multi-file patch set was cancelled before commit; no members were changed.");
 
     const transactionDirectory = await this.createPatchSetTransactionDirectory(prepared.journal.transactionPath);
+    const throwIfCancelled = (): void => {
+      if (signal?.aborted) {
+        throw new MutationError("reconciliation-required", "The multi-file patch set requires reconciliation after cancellation began during its transaction; inspect the persisted journal and member hashes before retrying. Do not retry automatically.");
+      }
+    };
     let journal: MutationJournal = { ...prepared.journal, state: "staging" };
     try {
+      throwIfCancelled();
       await onJournal?.(journal);
       journal = { ...journal, state: "committing" };
       await onJournal?.(journal);
       for (const patch of prepared.patches) {
+        throwIfCancelled();
         const member = journal.members.find((candidate) => candidate.path === patch.path);
         if (!member) throw new MutationError("mutation-failed", `Patch-set journal is missing member '${patch.path}'.`);
         const temporaryPath = path.join(transactionDirectory.absolutePath, `member-${member.commitOrder}.tmp`);
@@ -1252,6 +1260,9 @@ export class Workspace {
         await onJournal?.(journal);
       } catch {
         // The filesystem outcome remains authoritative if durable progress reporting fails.
+      }
+      if (journal.state === "reconciliation_required" && !(error instanceof MutationError && error.mutationCode === "reconciliation-required")) {
+        throw new MutationError("reconciliation-required", "The multi-file patch set requires reconciliation after a partial or uncertain commit. Inspect the persisted journal and member hashes before retrying. Do not retry automatically.", { cause: error });
       }
       throw error;
     }

@@ -29,8 +29,13 @@ paths, and recovery state. The transaction directory is workspace-local, mode-re
 hidden from normal tools, and never exposed as a user path. A member can commit before a
 later member fails; that partial state is journaled and reconciled from hashes. The set
 does not claim all-or-nothing filesystem atomicity and is never automatically replayed.
-Successful or no-op reconciliation removes only an empty transaction directory; a
-non-empty or conflicting directory is retained for manual inspection.
+Cancellation is checked before the transaction and between members; cancellation after
+the transaction begins produces `reconciliation-required` evidence rather than silently
+leaving the caller to infer whether a member committed. Partial, uncertain, and final
+journal-acknowledgement failures use the same classification and explicitly require
+inspection of the persisted journal and member hashes before any manual retry. Successful
+or no-op reconciliation removes only an empty transaction directory; a non-empty or
+conflicting directory is retained for manual inspection.
 
 `prepareDirectory` and `commitDirectory` use the same authorization boundary and approval
 seam. The first version creates only one directory whose parent already exists; it does

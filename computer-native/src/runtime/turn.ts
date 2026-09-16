@@ -171,6 +171,32 @@ function cancellationError(): DOMException {
   return new DOMException("The tool execution was cancelled.", "AbortError");
 }
 
+const SIDE_EFFECTING_TOOLS = new Set([
+  "write_file",
+  "mkdir",
+  "delete_directory",
+  "delete_directory_tree",
+  "delete",
+  "restore",
+  "restore_directory",
+  "purge_quarantine",
+  "copy",
+  "move",
+  "rename",
+  "apply_patch",
+  "apply_patch_set",
+  "run_command",
+  "browser_start",
+  "browser_click",
+  "browser_type",
+  "browser_press",
+  "browser_upload",
+  "browser_download",
+  "browser_close",
+  "memory",
+  "memory_forget",
+]);
+
 async function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) throw cancellationError();
   if (delayMs === 0) return;
@@ -272,7 +298,12 @@ async function executeToolWithDeadline(
     if (call.name === "run_command" && timedOut) return await execution;
     return result;
   } catch (error) {
-    if (call.name === "run_command" && signal.aborted) await execution.catch(() => undefined);
+    // A cancellation is allowed to end the turn promptly for read-only work, but
+    // side-effecting tools must settle before the turn record becomes terminal.
+    // Otherwise a patch, process, browser action, or memory write could continue
+    // after the caller has already observed cancellation and its durable evidence
+    // could be written out of order.
+    if (signal.aborted && SIDE_EFFECTING_TOOLS.has(call.name)) await execution.catch(() => undefined);
     throw error;
   } finally {
     if (timer) clearTimeout(timer);

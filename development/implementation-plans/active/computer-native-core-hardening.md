@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T14:25:00+02:00
+**Last updated:** 2026-09-16T15:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -98,9 +98,16 @@ tests, but it must never replace a configured real provider silently.
   fail before a session starts.
 - The initial model instruction now describes the implemented bounded directory
   transfer and same-parent rename tools instead of limiting them to regular files.
-- The current validation is 213 passing tests across the package, 87.53% line coverage,
-  74.05% branch coverage, and 82.13% function coverage, including directory security,
-  tool approval, and restart-reconciliation cases.
+- Multi-file patch commits now check cancellation before starting and between members;
+  cancellation or partial/uncertain commit failures preserve the journal and return
+  `reconciliation-required` with explicit no-automatic-retry guidance.
+- Side-effecting tool execution now settles before a cancelled turn becomes terminal,
+  so filesystem, process, browser, and memory evidence cannot be written after the
+  caller has already observed cancellation.
+- The current validation is 216 passing tests across the package, 87.62% line coverage,
+  74.18% branch coverage, and 82.15% function coverage. The multi-file cases include
+  direct journal recovery, cancellation boundaries, tool-loop durable evidence, and
+  final-journal acknowledgement failure.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
@@ -122,16 +129,19 @@ remaining runtime, approval, filesystem, or security work below.
 - [x] Complete required local filesystem operations: directory creation, regular-file
       and directory rename, regular-file and directory move, and regular-file and
       directory copy where policy allows.
-- [ ] Define multi-file mutation semantics and implement reconciliation for partial
-      completion. Use atomic replacement only where the underlying operation can prove it.
+- [x] Define multi-file `apply_patch_set` semantics and implement reconciliation for
+      partial completion. Use atomic replacement only where the underlying operation can
+      prove it; the patch set explicitly reports partial or uncertain outcomes rather
+      than claiming cross-file atomicity.
 - [ ] Add shared resource limits for turns, requests, output, files, directory entries,
       bytes, depth, and operation duration.
 - [ ] Recheck approved identities immediately before side effects and reject stale or
       changed approvals.
 - [ ] Extend security and telemetry evidence for retries, cancellation, recovery,
       partial results, and denied operations.
-- [ ] Add the unit, integration, failure-injection, security, manual, and real-provider
-      acceptance tests required by this plan.
+- [ ] Add the remaining unit, integration, failure-injection, security, manual, and
+      real-provider acceptance tests required by this plan. The multi-file patch-set
+      slice now has direct, tool-loop, cancellation, and journal-recovery coverage.
 - [ ] Update Computer Native documentation and the follow-on queue so the next slice
       cannot accidentally bypass this foundation.
 
