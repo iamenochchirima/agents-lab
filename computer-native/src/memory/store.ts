@@ -13,6 +13,7 @@ import type {
   MemoryStatus,
   MemoryFlushRequest,
   MemoryFlushResult,
+  MemoryActionRecord,
 } from "./contracts.js";
 
 const DEFAULT_USER_MAX_CHARS = 1_375;
@@ -363,6 +364,59 @@ export class MemoryStore {
         ...searchLocation(record.content, terms),
         ...(record.date ? { date: record.date } : {}),
       }));
+  }
+
+  /**
+   * Reconcile an approved memory add after the parent stopped before its action
+   * record acknowledged the commit. Provenance is the idempotency evidence: a
+   * matching record is already durable, so recovery records it and never repeats
+   * the write. Other operations remain failed-closed until their operation-specific
+   * evidence is implemented.
+   */
+  async reconcileAction(action: MemoryActionRecord): Promise<MemoryActionRecord> {
+    this.assertOpen();
+    if (action.status !== "approved") return action;
+    await this.refreshFromCanonical();
+    if (action.operation !== "add") {
+      return {
+        ...action,
+        status: "failed",
+        reason: "This memory operation stopped before its terminal evidence was acknowledged and cannot yet be reconciled automatically.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    const matches = this.records.filter((record) =>
+      this.isOwned(record)
+      && record.scope === action.scope
+      && record.sourcePath === action.sourcePath
+      && record.provenance.sourceId === action.callId
+      && record.contentHash === action.afterContentHash,
+    );
+    if (matches.length === 1) {
+      return {
+        ...action,
+        status: "committed",
+        decision: "allow-once",
+        recordId: matches[0]!.id,
+        reason: "The durable memory entry matched its approved content hash and call provenance during restart reconciliation.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        ...action,
+        status: "failed",
+        reason: "Multiple durable memory entries matched the approved call provenance; automatic reconciliation was not safe.",
+        recordedAt: new Date().toISOString(),
+      };
+    }
+    return {
+      ...action,
+      status: "denied",
+      decision: "unavailable",
+      reason: "No durable memory entry matched the approved call during restart reconciliation; the write was not replayed.",
+      recordedAt: new Date().toISOString(),
+    };
   }
 
   async close(): Promise<void> {

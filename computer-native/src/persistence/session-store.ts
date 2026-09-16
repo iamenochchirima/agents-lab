@@ -390,6 +390,7 @@ export class SessionStore {
   async recoverInterruptedTurns(
     reconcileMutation?: (record: WorkspaceMutationRecord) => Promise<WorkspaceMutationRecord>,
     reconcileProcess?: (record: ProcessExecutionRecord) => Promise<ProcessExecutionRecord>,
+    reconcileMemory?: (record: MemoryActionRecord) => Promise<MemoryActionRecord>,
   ): Promise<TurnResult[]> {
     const turnsDirectory = path.join(this.sessionDirectory, "turns");
     await ensureDirectory(turnsDirectory);
@@ -470,7 +471,7 @@ export class SessionStore {
       }
       for (const action of await turn.readMemoryActions()) {
         let reconciledAction = action;
-        if (action.status === "proposed" || action.status === "approved") {
+        if (action.status === "proposed") {
           reconciledAction = {
             ...action,
             status: "denied",
@@ -478,6 +479,17 @@ export class SessionStore {
             reason: "The process stopped before the memory operation committed; it was not replayed.",
             recordedAt: now(),
           };
+          await turn.writeMemoryAction(reconciledAction);
+        } else if (action.status === "approved") {
+          reconciledAction = reconcileMemory
+            ? await reconcileMemory(action)
+            : {
+                ...action,
+                status: "denied",
+                decision: "unavailable",
+                reason: "The process stopped before memory commit evidence was reconciled; the operation was not replayed.",
+                recordedAt: now(),
+              };
           await turn.writeMemoryAction(reconciledAction);
         }
         await turn.ensureMemoryTerminalEvent(reconciledAction);

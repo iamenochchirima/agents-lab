@@ -164,3 +164,62 @@ test("diagnostic interruption after memory commit does not repeat the write", as
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("memory commit acknowledgement loss reconciles the durable entry without replay", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-ack-recovery-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    let actionWrites = 0;
+    const session = await SessionStore.open(config.stateDir, undefined, {
+      writeHooks: {
+        beforeWrite: (operation, filePath) => {
+          if (operation === "append-json-line" && filePath.includes(`${path.sep}memory-actions${path.sep}`) && actionWrites++ === 2) {
+            throw new RuntimeInterruptionError("stopped before memory commit evidence");
+          }
+        },
+      },
+    });
+    const memory = await MemoryStore.open({ stateDir: config.stateDir, profileId: "default", workspaceId: "workspace-test" });
+    const workspace = await Workspace.open(root, { maxFileBytes: config.maxFileBytes, maxDirectoryEntries: config.maxDirectoryEntries, maxTreeEntries: config.maxTreeEntries, maxTreeBytes: config.maxTreeBytes, maxTreeDepth: config.maxTreeDepth });
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, { store: memory, maxResults: config.memoryMaxResults });
+    await assert.rejects(
+      () => runTurn({
+        session,
+        provider: new DeterministicModelProvider("deterministic/memory-ack-interruption", {
+          toolCall: {
+            name: "memory",
+            argumentsJson: JSON.stringify({ operation: "add", scope: "workspace", content: "reconcile this durable memory" }),
+            finalResponse: "The memory entry was stored.",
+          },
+        }),
+        tools,
+        memory,
+        config,
+        userPrompt: "Store this memory entry.",
+        approveMemory: async () => ({ decision: "allow-once" }),
+      }),
+      /stopped before memory commit evidence/u,
+    );
+    assert.equal((await memory.search({ query: "reconcile this durable memory" })).length, 1);
+
+    const restarted = await SessionStore.open(config.stateDir, session.metadata.sessionId);
+    assert.equal((await restarted.recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)))[0]?.status, "interrupted");
+    const turnId = (await session.readTranscript())[0]!.turnId;
+    const actionDirectory = path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "memory-actions");
+    const actionFile = (await readdir(actionDirectory))[0];
+    assert.ok(actionFile);
+    const history = (await readFile(path.join(actionDirectory, actionFile), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { status: string; recordId?: string });
+    assert.equal(history.at(-1)?.status, "committed");
+    assert.ok(history.at(-1)?.recordId);
+    const events = (await readFile(path.join(config.stateDir, "sessions", session.metadata.sessionId, "turns", turnId, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    assert.equal(events.filter((event) => event.type === "MemoryCommitted").length, 1);
+    assert.equal(events.at(-1)?.type, "TurnInterrupted");
+    assert.deepEqual(await (await SessionStore.open(config.stateDir, session.metadata.sessionId)).recoverInterruptedTurns(undefined, undefined, (record) => memory.reconcileAction(record)), []);
+    assert.equal((await memory.search({ query: "reconcile this durable memory" })).length, 1);
+    await memory.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -135,7 +135,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
-      recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess),
+      recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess, activeMemory ? (record) => activeMemory.reconcileAction(record) : undefined),
       readTranscript: () => session.readTranscript(),
       runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch }),
       close: async () => {

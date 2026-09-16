@@ -728,6 +728,7 @@ export class ToolRegistry {
       await context.onMemory?.({ type: "committed", request, record });
       return { callId: call.callId, name: call.name, ok: true, content: stableStringify({ status: "stored", record }), summary: `Stored durable memory ${record.id}.` };
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       const message = error instanceof MemoryPolicyError ? error.safeMessage : safeErrorMessage(error);
       await context.onMemory?.({ type: "failed", request, reason: message });
       throw error;
@@ -814,6 +815,7 @@ export class ToolRegistry {
       }
       return { callId: call.callId, name: call.name, ok: true, content: stableStringify({ status: "applied", results }), summary: `Applied ${results.length} durable memory operations.` };
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       const message = error instanceof MemoryPolicyError ? error.safeMessage : safeErrorMessage(error);
       await context.onMemory?.({ type: "failed", request, reason: message });
       throw error;
@@ -861,6 +863,7 @@ export class ToolRegistry {
       await context.onMemory?.({ type: "forgotten", request });
       return { callId: call.callId, name: call.name, ok: true, content: stableStringify({ status: "removed", recordId }), summary: `Removed durable memory ${recordId}.` };
     } catch (error) {
+      if (isRuntimeInterruptionError(error)) throw error;
       const message = error instanceof MemoryPolicyError ? error.safeMessage : safeErrorMessage(error);
       await context.onMemory?.({ type: "failed", request, reason: message });
       throw error;
