@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T18:29:00+02:00
+**Last updated:** 2026-09-16T18:44:49+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 292 tests passed after the cross-file memory publication increment.
-- `pnpm run coverage`: 292 tests passed, with 88.92% line coverage, 77.65% branch
-  coverage, and 84.57% function coverage in the latest run. Node's experimental
+- `pnpm test`: 295 tests passed after the memory evidence maintenance increment.
+- `pnpm run coverage`: 295 tests passed, with 89.04% line coverage, 77.70% branch
+  coverage, and 85.10% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -157,7 +157,7 @@ provider, browser-profile, and operational acceptance evidence.
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
 | Process execution | Bounded foreground local commands with approval, limits, launch-failure cleanup, and restart cleanup for the detached foreground process group | Cross-platform process-tree proof, PTY/background jobs, resource/network isolation, and shell policy |
 | Browser | Managed local Chromium capability | Profile/auth boundaries, crash recovery, artifact policy, browser lifecycle, and side-effect handling |
-| Memory | Durable Markdown and local lexical retrieval | Mature retrieval, compaction, promotion, privacy, deletion, migration, and real-model acceptance |
+| Memory | Durable Markdown, local lexical retrieval, and bounded evidence maintenance | Mature retrieval, promotion, privacy, deletion, migration, backup/restore, and real-model acceptance |
 | Skills and plugins | Planned boundaries only | Trust, manifests, permissions, isolation, lifecycle, and evidence |
 | External integrations | Not implemented as a product layer | Credentials, retries, idempotency, webhooks, queues, and connector recovery |
 | Durable jobs and delegation | Foreground turns only | Scheduling, leases, restart recovery, budgets, child-agent policy, and operator controls |
@@ -429,15 +429,17 @@ Exit evidence:
 ### 7. Memory and context lifecycle
 
 Current state: bounded Markdown stores, a rebuildable local lexical index, explicit
-approval-gated add/replace/remove operations, provenance, retention checks, append-only
-memory evidence, operation-specific recovery at canonical and deletion-evidence write
-boundaries, and a shared approval/cancellation path.
+approval-gated add/replace/remove operations, provenance, retention checks, operation-
+specific recovery at canonical and deletion-evidence write boundaries, bounded deletion
+and batch-evidence maintenance, and a shared approval/cancellation path.
 
 Remaining work:
 
-- Add bounded retention, migration, and repair procedures for the deletion-evidence
-  ledger and batch publication journals; the current local evidence is durable but
-  append-only.
+- Add versioned migration procedures, operator repair tooling, and backup/restore rules
+  for the deletion-evidence ledger and batch publication journals. The current local
+  implementation repairs only a truncated final JSONL line, rejects other malformed
+  records, deduplicates stable identities, expires completed entries, retains prepared
+  deletion evidence, and fails closed when a safe retained set exceeds its bound.
 - Replace the experimental `node:sqlite` dependency path with a supported persistence
   profile, or document and accept the runtime/version requirement for production.
 - Add session and transcript search without mixing short-term history into compact

@@ -58,6 +58,8 @@ export const DEFAULT_MEMORY_DAILY_MAX_CHARS = 12_000;
 export const DEFAULT_MEMORY_MAX_RESULTS = 10;
 export const DEFAULT_MEMORY_BOOTSTRAP_MAX_CHARS = 4_000;
 export const DEFAULT_MEMORY_DAILY_RETENTION_DAYS = 30;
+export const DEFAULT_MEMORY_EVIDENCE_RETENTION_DAYS = 30;
+export const DEFAULT_MEMORY_EVIDENCE_MAX_ENTRIES = 10_000;
 
 export interface ConfigOverrides {
   readonly stateDir?: string;
@@ -114,6 +116,8 @@ export interface ConfigOverrides {
   readonly memoryMaxResults?: number;
   readonly memoryBootstrapMaxChars?: number;
   readonly memoryDailyRetentionDays?: number;
+  readonly memoryEvidenceRetentionDays?: number;
+  readonly memoryEvidenceMaxEntries?: number;
 }
 
 export interface AppConfig {
@@ -171,6 +175,8 @@ export interface AppConfig {
   readonly memoryMaxResults: number;
   readonly memoryBootstrapMaxChars: number;
   readonly memoryDailyRetentionDays: number;
+  readonly memoryEvidenceRetentionDays: number;
+  readonly memoryEvidenceMaxEntries: number;
 }
 
 function expandHome(value: string): string {
@@ -277,6 +283,8 @@ function validateNumericConfig(config: AppConfig): void {
     ["memory max results", config.memoryMaxResults],
     ["memory bootstrap max chars", config.memoryBootstrapMaxChars],
     ["memory daily retention days", config.memoryDailyRetentionDays],
+    ["memory evidence retention days", config.memoryEvidenceRetentionDays],
+    ["memory evidence max entries", config.memoryEvidenceMaxEntries],
   ];
   for (const [label, value] of positiveValues) {
     if (!Number.isInteger(value) || value <= 0) throw new ComputerNativeError("configuration", `${label} must be a positive integer.`);
@@ -376,6 +384,8 @@ export function loadConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessE
     memoryMaxResults: overrides.memoryMaxResults ?? positiveInteger(env.COMPUTER_NATIVE_MEMORY_MAX_RESULTS, DEFAULT_MEMORY_MAX_RESULTS, "memory max results"),
     memoryBootstrapMaxChars: overrides.memoryBootstrapMaxChars ?? positiveInteger(env.COMPUTER_NATIVE_MEMORY_BOOTSTRAP_MAX_CHARS, DEFAULT_MEMORY_BOOTSTRAP_MAX_CHARS, "memory bootstrap max chars"),
     memoryDailyRetentionDays: overrides.memoryDailyRetentionDays ?? positiveInteger(env.COMPUTER_NATIVE_MEMORY_DAILY_RETENTION_DAYS, DEFAULT_MEMORY_DAILY_RETENTION_DAYS, "memory daily retention days"),
+    memoryEvidenceRetentionDays: overrides.memoryEvidenceRetentionDays ?? positiveInteger(env.COMPUTER_NATIVE_MEMORY_EVIDENCE_RETENTION_DAYS, DEFAULT_MEMORY_EVIDENCE_RETENTION_DAYS, "memory evidence retention days"),
+    memoryEvidenceMaxEntries: overrides.memoryEvidenceMaxEntries ?? positiveInteger(env.COMPUTER_NATIVE_MEMORY_EVIDENCE_MAX_ENTRIES, DEFAULT_MEMORY_EVIDENCE_MAX_ENTRIES, "memory evidence max entries"),
   };
   validateNumericConfig(config);
   return config;
@@ -432,6 +442,8 @@ export function safeConfigSummary(config: AppConfig): Readonly<Record<string, un
     memoryMaxResults: config.memoryMaxResults,
     memoryBootstrapMaxChars: config.memoryBootstrapMaxChars,
     memoryDailyRetentionDays: config.memoryDailyRetentionDays,
+    memoryEvidenceRetentionDays: config.memoryEvidenceRetentionDays,
+    memoryEvidenceMaxEntries: config.memoryEvidenceMaxEntries,
     deterministicBehavior: config.provider === "deterministic" ? config.deterministicBehavior : undefined,
   };
 }

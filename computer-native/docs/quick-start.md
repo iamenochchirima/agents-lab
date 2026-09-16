@@ -92,6 +92,14 @@ injection patterns; rejected content is not written. User and workspace memory a
 loaded as a small advisory snapshot at turn start, while daily notes are retrieved only
 when explicitly searched. Use `/memory` for counts and index/canonical locations; it
 does not print every stored entry.
+Memory deletion and batch-publication journals are maintained on CLI startup after
+interrupted-turn recovery. Only a truncated final JSONL line is repaired automatically;
+other malformed evidence stops startup for deliberate repair. Completed evidence older
+than 30 days is removed and duplicate identities are compacted, with a default bound of
+10,000 entries per journal. Set `COMPUTER_NATIVE_MEMORY_EVIDENCE_RETENTION_DAYS` or
+`COMPUTER_NATIVE_MEMORY_EVIDENCE_MAX_ENTRIES` in `.env` to change those bounds; prepared
+deletion evidence is retained and maintenance fails closed if the safe retained set is
+larger than the configured bound.
 
 When `COMPUTER_NATIVE_PROCESS_MODE=approval` (the development default), the model also
 has `run_command`. It accepts an executable and exact `args` array, not a shell command

@@ -157,4 +157,9 @@ absence alone as proof. Batch actions persist a bounded member manifest and reco
 add, replace, and remove members together; normal and recovered batches emit one terminal
 action event. Cross-file batches also persist expected before/after canonical-file hashes,
 so restart reports all-before, all-after, or partial/ambiguous publication without replay.
-Journal retention and repair remain open. This is deliberately not an exactly-once guarantee.
+Memory-owned maintenance repairs only an unterminated final JSONL line, rejects malformed
+complete evidence, deduplicates stable identities, expires completed entries within a
+configured recovery window, and fails closed when safe retained evidence exceeds its
+bound. The CLI runs that maintenance after turn recovery, so a stale journal is never
+compacted before an interrupted action has been reconciled. Versioned migration and
+backup/restore procedures remain open. This is deliberately not an exactly-once guarantee.

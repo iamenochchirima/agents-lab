@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { chmod, lstat, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { ComputerNativeError } from "../runtime/errors.js";
-import { appendJsonLine, ensureDirectory, readJsonLines } from "../persistence/json.js";
+import { appendJsonLine, atomicWriteJsonLines, ensureDirectory, readJsonLines, stableStringify } from "../persistence/json.js";
 import { SessionLock } from "../persistence/lock.js";
 import type {
   MemoryProvenance,
@@ -21,11 +21,13 @@ import type {
 const DEFAULT_USER_MAX_CHARS = 1_375;
 const DEFAULT_WORKSPACE_MAX_CHARS = 2_200;
 const DEFAULT_DAILY_MAX_CHARS = 12_000;
+const DEFAULT_EVIDENCE_RETENTION_DAYS = 30;
+const DEFAULT_EVIDENCE_MAX_ENTRIES = 10_000;
 const MAX_SEARCH_RESULTS = 50;
 const MEMORY_START = "<!-- computer-native-memory: ";
 const MEMORY_END = "<!-- /computer-native-memory -->";
 
-export type MemoryWriteOperation = "canonical-replace" | "deletion-evidence-append" | "batch-evidence-append";
+export type MemoryWriteOperation = "canonical-replace" | "deletion-evidence-append" | "batch-evidence-append" | "evidence-compaction-replace";
 
 /** Diagnostic-only seam for stopping memory at a durable file boundary. */
 export interface MemoryWriteHooks {
@@ -41,7 +43,20 @@ export interface MemoryStoreOptions {
   readonly workspaceMaxChars?: number;
   readonly dailyMaxChars?: number;
   readonly dailyRetentionDays?: number;
+  readonly evidenceRetentionDays?: number;
+  readonly evidenceMaxEntries?: number;
   readonly writeHooks?: MemoryWriteHooks;
+}
+
+export interface MemoryEvidenceMaintenanceOptions {
+  readonly now?: Date;
+}
+
+export interface MemoryEvidenceMaintenanceResult {
+  readonly deletionEntriesBefore: number;
+  readonly deletionEntriesAfter: number;
+  readonly batchEntriesBefore: number;
+  readonly batchEntriesAfter: number;
 }
 
 interface MemoryMutation {
@@ -130,6 +145,8 @@ export class MemoryStore {
   private readonly batchEvidencePath: string;
   private readonly limits: Record<MemoryScope, number>;
   private readonly dailyRetentionDays: number;
+  private readonly evidenceRetentionDays: number;
+  private readonly evidenceMaxEntries: number;
   private database: DatabaseSync;
   private records: StoredMemoryRecord[];
   private closed = false;
@@ -146,6 +163,8 @@ export class MemoryStore {
       daily: options.dailyMaxChars ?? DEFAULT_DAILY_MAX_CHARS,
     };
     this.dailyRetentionDays = options.dailyRetentionDays ?? 30;
+    this.evidenceRetentionDays = options.evidenceRetentionDays ?? DEFAULT_EVIDENCE_RETENTION_DAYS;
+    this.evidenceMaxEntries = options.evidenceMaxEntries ?? DEFAULT_EVIDENCE_MAX_ENTRIES;
     this.database = database;
     this.records = records;
   }
@@ -153,6 +172,8 @@ export class MemoryStore {
   static async open(options: MemoryStoreOptions): Promise<MemoryStore> {
     validateIdentity(options.profileId, "profileId");
     validateIdentity(options.workspaceId, "workspaceId");
+    validatePositiveInteger(options.evidenceRetentionDays ?? DEFAULT_EVIDENCE_RETENTION_DAYS, "evidenceRetentionDays");
+    validatePositiveInteger(options.evidenceMaxEntries ?? DEFAULT_EVIDENCE_MAX_ENTRIES, "evidenceMaxEntries");
     const memoryDir = path.join(options.stateDir, "memory");
     await ensureManagedDirectory(memoryDir);
     await ensureManagedDirectory(path.join(memoryDir, "daily"));
@@ -164,8 +185,14 @@ export class MemoryStore {
     await chmod(`${databasePath}-shm`, 0o600).catch(() => undefined);
     records = records.map((record) => ({ ...record, status: "active" as const }));
     const store = new MemoryStore(options, database, records);
-    store.rebuildIndex();
-    return store;
+    try {
+      store.rebuildIndex();
+      await store.repairEvidenceTails();
+      return store;
+    } catch (error) {
+      await store.close();
+      throw error;
+    }
   }
 
   async add(mutation: MemoryMutation): Promise<MemoryRecord> {
@@ -263,6 +290,36 @@ export class MemoryStore {
       if (removed.length > 0) await this.persistCanonicalRecords();
     });
     return removed.map(toPublicRecord);
+  }
+
+  /**
+   * Compact completed memory evidence within the configured recovery window.
+   * Prepared deletion evidence is retained because it may still be needed to
+   * classify an interrupted removal. If the safe retained set exceeds the
+   * configured bound, maintenance fails closed instead of discarding evidence.
+   */
+  async maintainEvidence(options: MemoryEvidenceMaintenanceOptions = {}): Promise<MemoryEvidenceMaintenanceResult> {
+    this.assertOpen();
+    const now = options.now ?? new Date();
+    if (Number.isNaN(now.getTime())) throw new MemoryPolicyError("Evidence maintenance requires a valid timestamp.");
+    return this.withMemoryLock(async () => {
+      this.records = (await readCanonicalRecords(this.memoryDir)).map((record) => ({ ...record, status: "active" as const }));
+      this.rebuildIndex();
+      const deletion = await readRepairableJsonLines<MemoryDeletionEvidence>(this.deletionEvidencePath, (value) => isValidDeletionEvidence(value, this.memoryDir));
+      const batches = await readRepairableJsonLines<MemoryBatchPublicationEvidence>(this.batchEvidencePath, (value) => isValidBatchPublicationEvidence(value, this.memoryDir));
+      const cutoff = now.getTime() - this.evidenceRetentionDays * 24 * 60 * 60 * 1_000;
+      const activeRecordIds = new Set(this.records.filter((record) => this.isOwned(record)).map((record) => record.id));
+      const retainedDeletions = compactEvidence(deletion.values, cutoff, this.evidenceMaxEntries, (entry) => `${entry.recordId}\u0000${entry.sourceId}\u0000${entry.sourcePath}\u0000${entry.beforeContentHash}`, (entry) => entry.status === "prepared" || activeRecordIds.has(entry.recordId));
+      const retainedBatches = compactEvidence(batches.values, cutoff, this.evidenceMaxEntries, (entry) => entry.sourceId, () => false);
+      if (!sameJsonValues(deletion.values, retainedDeletions)) await this.replaceEvidenceFile(this.deletionEvidencePath, retainedDeletions);
+      if (!sameJsonValues(batches.values, retainedBatches)) await this.replaceEvidenceFile(this.batchEvidencePath, retainedBatches);
+      return {
+        deletionEntriesBefore: deletion.values.length,
+        deletionEntriesAfter: retainedDeletions.length,
+        batchEntriesBefore: batches.values.length,
+        batchEntriesAfter: retainedBatches.length,
+      };
+    });
   }
 
   /**
@@ -635,22 +692,43 @@ export class MemoryStore {
     await this.options.writeHooks?.afterWrite?.("batch-evidence-append", this.batchEvidencePath);
   }
 
+  private async replaceEvidenceFile(filePath: string, values: readonly unknown[]): Promise<void> {
+    await this.options.writeHooks?.beforeWrite?.("evidence-compaction-replace", filePath);
+    await atomicWriteJsonLines(filePath, values);
+    await this.options.writeHooks?.afterWrite?.("evidence-compaction-replace", filePath);
+  }
+
+  private async repairEvidenceTails(): Promise<void> {
+    await this.withMemoryLock(async () => {
+      const deletion = await readRepairableJsonLines<MemoryDeletionEvidence>(this.deletionEvidencePath, (value) => isValidDeletionEvidence(value, this.memoryDir));
+      const batches = await readRepairableJsonLines<MemoryBatchPublicationEvidence>(this.batchEvidencePath, (value) => isValidBatchPublicationEvidence(value, this.memoryDir));
+      if (deletion.repairedTrailingLine) await this.replaceEvidenceFile(this.deletionEvidencePath, deletion.values);
+      if (batches.repairedTrailingLine) await this.replaceEvidenceFile(this.batchEvidencePath, batches.values);
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closed) return;
     this.database.close();
     this.closed = true;
   }
 
-  private async withLockedRecords(operation: () => Promise<void>): Promise<void> {
+  private async withMemoryLock<T>(operation: () => Promise<T>): Promise<T> {
     const lock = await SessionLock.acquire(this.lockPath, { waitMs: 2_000 });
     try {
+      return await operation();
+    } finally {
+      await lock.release();
+    }
+  }
+
+  private async withLockedRecords(operation: () => Promise<void>): Promise<void> {
+    await this.withMemoryLock(async () => {
       this.records = await readCanonicalRecords(this.memoryDir);
       this.records = this.records.map((record) => ({ ...record, status: "active" as const }));
       await operation();
       this.rebuildIndex();
-    } finally {
-      await lock.release();
-    }
+    });
   }
 
   private async refreshFromCanonical(): Promise<void> {
@@ -939,6 +1017,67 @@ async function ensureManagedDirectory(directory: string): Promise<void> {
   await chmod(directory, 0o700);
 }
 
+async function readRepairableJsonLines<T>(filePath: string, isValid: (value: unknown) => value is T): Promise<{ readonly values: T[]; readonly repairedTrailingLine: boolean }> {
+  let content: string;
+  try {
+    content = await readFile(filePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { values: [], repairedTrailingLine: false };
+    throw new ComputerNativeError("persistence", `Could not read memory evidence '${path.basename(filePath)}'.`, { cause: error });
+  }
+  const lines = content.split("\n");
+  const hasTrailingNewline = content.endsWith("\n");
+  const completeLines = lines.slice(0, -1);
+  const values: T[] = [];
+  for (const line of completeLines) {
+    if (line.length === 0) continue;
+    const value = parseEvidenceLine(line, filePath);
+    if (!isValid(value)) throw new ComputerNativeError("persistence", `Memory evidence '${path.basename(filePath)}' contains invalid evidence.`);
+    values.push(value);
+  }
+  const trailingLine = hasTrailingNewline ? undefined : lines.at(-1);
+  if (trailingLine === undefined || trailingLine.length === 0) return { values, repairedTrailingLine: false };
+  try {
+    const value = JSON.parse(trailingLine) as unknown;
+    if (!isValid(value)) throw new Error("invalid evidence");
+    values.push(value);
+    return { values, repairedTrailingLine: false };
+  } catch {
+    return { values, repairedTrailingLine: true };
+  }
+}
+
+function parseEvidenceLine(line: string, filePath: string): unknown {
+  try {
+    return JSON.parse(line) as unknown;
+  } catch (error) {
+    throw new ComputerNativeError("persistence", `The memory evidence '${path.basename(filePath)}' contains malformed JSON.`, { cause: error });
+  }
+}
+
+function compactEvidence<T extends { readonly recordedAt: string }>(
+  entries: readonly T[],
+  cutoff: number,
+  maxEntries: number,
+  identity: (entry: T) => string,
+  preserve: (entry: T) => boolean,
+): T[] {
+  const latest = new Map<string, { readonly index: number; readonly entry: T }>();
+  entries.forEach((entry, index) => latest.set(identity(entry), { index, entry }));
+  const deduplicated = [...latest.values()].sort((left, right) => left.index - right.index).map(({ entry }) => entry);
+  const retained = deduplicated.filter((entry) => preserve(entry) || Date.parse(entry.recordedAt) >= cutoff);
+  if (retained.length > maxEntries) throw new MemoryPolicyError(`Memory evidence needs ${retained.length} entries after safe compaction, exceeding its ${maxEntries}-entry bound.`);
+  return retained;
+}
+
+function sameJsonValues(left: readonly unknown[], right: readonly unknown[]): boolean {
+  return stableStringify(left) === stableStringify(right);
+}
+
+function validatePositiveInteger(value: number, label: string): void {
+  if (!Number.isInteger(value) || value <= 0) throw new MemoryPolicyError(`${label} must be a positive integer.`);
+}
+
 function batchSourceId(mutations: readonly MemoryBatchMutation[]): string {
   const sourceIds = mutations.map((mutation) => mutation.operation === "remove" ? mutation.sourceId : mutation.provenance.sourceId);
   const sourceId = sourceIds[0];
@@ -948,17 +1087,40 @@ function batchSourceId(mutations: readonly MemoryBatchMutation[]): string {
   return sourceId;
 }
 
-function isValidBatchPublicationEvidence(value: MemoryBatchPublicationEvidence, memoryDir: string): value is MemoryBatchPublicationEvidence {
-  if (value?.schemaVersion !== 1 || typeof value.sourceId !== "string" || value.sourceId.trim().length === 0 || !Array.isArray(value.files) || value.files.length === 0) return false;
+function isValidDeletionEvidence(value: unknown, memoryDir: string): value is MemoryDeletionEvidence {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<MemoryDeletionEvidence>;
+  return candidate.schemaVersion === 1
+    && typeof candidate.recordId === "string" && candidate.recordId.length > 0
+    && isMemoryScope(candidate.scope)
+    && typeof candidate.sourcePath === "string" && path.isAbsolute(candidate.sourcePath) && isCanonicalMemoryPath(candidate.sourcePath, memoryDir)
+    && typeof candidate.beforeContentHash === "string" && /^[a-f0-9]{64}$/u.test(candidate.beforeContentHash)
+    && typeof candidate.sourceId === "string" && candidate.sourceId.trim().length > 0
+    && typeof candidate.beforeFileHash === "string" && /^[a-f0-9]{64}$/u.test(candidate.beforeFileHash)
+    && typeof candidate.afterFileHash === "string" && /^[a-f0-9]{64}$/u.test(candidate.afterFileHash)
+    && (candidate.status === "prepared" || candidate.status === "committed")
+    && typeof candidate.recordedAt === "string" && !Number.isNaN(Date.parse(candidate.recordedAt));
+}
+
+function isValidBatchPublicationEvidence(value: unknown, memoryDir: string): value is MemoryBatchPublicationEvidence {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<MemoryBatchPublicationEvidence>;
+  if (candidate.schemaVersion !== 1 || typeof candidate.sourceId !== "string" || candidate.sourceId.trim().length === 0 || !Array.isArray(candidate.files) || candidate.files.length === 0 || typeof candidate.recordedAt !== "string" || Number.isNaN(Date.parse(candidate.recordedAt))) return false;
   const paths = new Set<string>();
-  return value.files.every((file) => {
-    if (!file || typeof file.sourcePath !== "string" || !path.isAbsolute(file.sourcePath) || !/^[a-f0-9]{64}$/u.test(file.beforeFileHash) || !/^[a-f0-9]{64}$/u.test(file.afterFileHash)) return false;
-    const sourcePath = path.resolve(file.sourcePath);
+  return candidate.files.every((file) => {
+    if (!file || typeof file !== "object") return false;
+    const candidateFile = file as Partial<MemoryBatchPublicationFile>;
+    if (typeof candidateFile.sourcePath !== "string" || !path.isAbsolute(candidateFile.sourcePath) || typeof candidateFile.beforeFileHash !== "string" || !/^[a-f0-9]{64}$/u.test(candidateFile.beforeFileHash) || typeof candidateFile.afterFileHash !== "string" || !/^[a-f0-9]{64}$/u.test(candidateFile.afterFileHash)) return false;
+    const sourcePath = path.resolve(candidateFile.sourcePath);
     const relative = path.relative(memoryDir, sourcePath);
     if (relative.startsWith("..") || path.isAbsolute(relative) || !isCanonicalMemoryPath(sourcePath, memoryDir) || paths.has(sourcePath)) return false;
     paths.add(sourcePath);
     return true;
   });
+}
+
+function isMemoryScope(value: unknown): value is MemoryScope {
+  return value === "user" || value === "workspace" || value === "daily";
 }
 
 function isCanonicalMemoryPath(filePath: string, memoryDir: string): boolean {

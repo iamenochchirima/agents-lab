@@ -40,6 +40,15 @@ prepared marker and a committed marker bind the record ID, source call, pre/post
 hashes, and pre/post canonical-file hashes. Recovery uses this evidence rather than
 assuming that a missing record proves a deletion.
 
+Deletion and batch-publication evidence is maintained under the same memory lock. On
+open, only an unterminated final JSONL line is treated as a crash-truncated append and
+repaired; other malformed or invalid records fail closed. Explicit maintenance
+deduplicates stable operation identities and expires completed evidence after the
+configured retention window. Prepared deletion evidence and entries needed for active
+records are retained, and an entry bound is enforced without dropping evidence silently.
+The CLI invokes maintenance after interrupted-turn recovery; callers of `MemoryStore`
+can invoke `maintainEvidence` directly when they own a different lifecycle.
+
 The implementation uses Node's built-in `node:sqlite` module so this extracted
 package does not add a native database dependency. The schema is ordinary
 SQLite tables rather than FTS5 because FTS5 is not available in every Node

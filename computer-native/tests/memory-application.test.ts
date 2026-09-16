@@ -16,10 +16,17 @@ test("the standalone application wires durable memory without exposing its files
       assert.ok(application.toolNames.includes("memory_get"));
       assert.ok(application.toolNames.includes("memory"));
       assert.ok(application.toolNames.includes("memory_forget"));
+      assert.equal(typeof application.maintainMemoryEvidence, "function");
       const status = await application.readMemoryStatus?.();
       assert.equal(status?.enabled, true);
       assert.equal(status?.entries, 0);
       assert.match(status?.indexPath ?? "", /memory[\\/]index\.sqlite$/u);
+      assert.deepEqual(await application.maintainMemoryEvidence?.(), {
+        deletionEntriesBefore: 0,
+        deletionEntriesAfter: 0,
+        batchEntriesBefore: 0,
+        batchEntriesAfter: 0,
+      });
     } finally {
       await application.close();
     }

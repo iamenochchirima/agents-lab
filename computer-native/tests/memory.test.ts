@@ -150,6 +150,91 @@ test("memory deletion evidence remains sufficient after its committed acknowledg
   await reopened.close();
 });
 
+test("memory evidence maintenance deduplicates and expires completed journal entries", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-evidence-maintenance-"));
+  temporaryDirectories.push(stateDir);
+  const store = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test", evidenceRetentionDays: 30, evidenceMaxEntries: 10 });
+  const removed = await store.add({ scope: "user", content: "old deletion evidence", provenance: { source: "user", sourceId: "seed", trust: "user" } });
+  await store.remove({ id: removed.id, expectedContentHash: removed.contentHash, sourceId: "maintenance-remove" });
+  await store.applyBatch([
+    { operation: "add", scope: "daily", date: "2026-09-16", content: "old batch evidence", provenance: { source: "model", sourceId: "maintenance-batch", trust: "model" } },
+  ]);
+  await store.close();
+
+  const deletionPath = path.join(stateDir, "memory", "deletions.jsonl");
+  const deletionEntries = (await readFile(deletionPath, "utf8")).trim().split("\n").map((line) => ({ ...JSON.parse(line) as Record<string, unknown>, recordedAt: "2026-01-01T00:00:00.000Z" }));
+  await writeFile(deletionPath, `${deletionEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n${deletionEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
+  const batchPath = path.join(stateDir, "memory", "batches.jsonl");
+  const batchEntries = (await readFile(batchPath, "utf8")).trim().split("\n").map((line) => ({ ...JSON.parse(line) as Record<string, unknown>, recordedAt: "2026-01-01T00:00:00.000Z" }));
+  await writeFile(batchPath, `${batchEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n${batchEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
+
+  const maintained = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test", evidenceRetentionDays: 30, evidenceMaxEntries: 10 });
+  const result = await maintained.maintainEvidence({ now: new Date("2026-02-15T00:00:00.000Z") });
+  assert.equal(result.deletionEntriesBefore, 4);
+  assert.equal(result.deletionEntriesAfter, 0);
+  assert.equal(result.batchEntriesBefore, 2);
+  assert.equal(result.batchEntriesAfter, 0);
+  assert.equal((await readFile(deletionPath, "utf8")).trim(), "");
+  assert.equal((await readFile(batchPath, "utf8")).trim(), "");
+  await maintained.close();
+});
+
+test("memory evidence maintenance retains prepared deletion evidence and repairs only a truncated tail", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-evidence-repair-"));
+  temporaryDirectories.push(stateDir);
+  let stopBeforeCanonical = false;
+  const store = await MemoryStore.open({
+    stateDir,
+    profileId: "default",
+    workspaceId: "workspace-test",
+    evidenceRetentionDays: 1,
+    evidenceMaxEntries: 1,
+    writeHooks: {
+      beforeWrite: (operation, filePath) => {
+        if (stopBeforeCanonical && operation === "canonical-replace" && filePath.endsWith("USER.md")) throw new Error("stop before removal publication");
+      },
+    },
+  });
+  const record = await store.add({ scope: "user", content: "prepared evidence", provenance: { source: "user", sourceId: "seed", trust: "user" } });
+  stopBeforeCanonical = true;
+  await assert.rejects(() => store.remove({ id: record.id, expectedContentHash: record.contentHash, sourceId: "prepared-maintenance" }), /stop before removal publication/u);
+  stopBeforeCanonical = false;
+  await store.close();
+  const deletionPath = path.join(stateDir, "memory", "deletions.jsonl");
+  await writeFile(deletionPath, `${await readFile(deletionPath, "utf8")}{"truncated":`, "utf8");
+
+  const repaired = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test", evidenceRetentionDays: 1, evidenceMaxEntries: 1 });
+  const evidence = (await readFile(deletionPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as { status: string });
+  assert.deepEqual(evidence.map((entry) => entry.status), ["prepared"]);
+  const result = await repaired.maintainEvidence({ now: new Date("2026-02-15T00:00:00.000Z") });
+  assert.equal(result.deletionEntriesAfter, 1);
+  await repaired.close();
+
+  const malformed = `${await readFile(deletionPath, "utf8")}not-json\n`;
+  await writeFile(deletionPath, malformed, "utf8");
+  await assert.rejects(
+    () => MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test", evidenceRetentionDays: 1, evidenceMaxEntries: 1 }),
+    /contains malformed JSON/u,
+  );
+  assert.equal(await readFile(deletionPath, "utf8"), malformed);
+});
+
+test("memory evidence maintenance fails closed when recent evidence exceeds its bound", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-evidence-bound-"));
+  temporaryDirectories.push(stateDir);
+  const store = await MemoryStore.open({ stateDir, profileId: "default", workspaceId: "workspace-test", evidenceMaxEntries: 1 });
+  await store.applyBatch([{ operation: "add", scope: "daily", date: "2026-09-16", content: "first evidence", provenance: { source: "model", sourceId: "bound-batch-1", trust: "model" } }]);
+  await store.applyBatch([{ operation: "add", scope: "daily", date: "2026-09-16", content: "second evidence", provenance: { source: "model", sourceId: "bound-batch-2", trust: "model" } }]);
+  const batchPath = path.join(stateDir, "memory", "batches.jsonl");
+  const before = await readFile(batchPath, "utf8");
+  await assert.rejects(
+    () => store.maintainEvidence({ now: new Date("2026-09-16T00:00:00.000Z") }),
+    /exceeding its 1-entry bound/u,
+  );
+  assert.equal(await readFile(batchPath, "utf8"), before);
+  await store.close();
+});
+
 test("memory rejects duplicate entries in the same scope", async () => {
   const { store } = await openMemory();
   const input = { scope: "user" as const, content: "The user prefers concise answers.", provenance: { source: "user" as const, sourceId: "turn_1", trust: "user" as const } };

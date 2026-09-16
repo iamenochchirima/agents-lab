@@ -91,6 +91,14 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.browserCleanupMaxEntries, 100);
   assert.equal(deterministic.browserScreenshotMaxWidth, 1_920);
   assert.equal(deterministic.browserScreenshotMaxHeight, 1_080);
+  assert.equal(deterministic.memoryEvidenceRetentionDays, 30);
+  assert.equal(deterministic.memoryEvidenceMaxEntries, 10_000);
+  const configuredMemoryEvidence = loadConfig({ stateDir: tempDirectory() }, {
+    COMPUTER_NATIVE_MEMORY_EVIDENCE_RETENTION_DAYS: "14",
+    COMPUTER_NATIVE_MEMORY_EVIDENCE_MAX_ENTRIES: "250",
+  });
+  assert.equal(configuredMemoryEvidence.memoryEvidenceRetentionDays, 14);
+  assert.equal(configuredMemoryEvidence.memoryEvidenceMaxEntries, 250);
   assert.equal(disabledBrowser.browserEnabled, false);
   assert.throws(
     () => loadConfig({ stateDir: tempDirectory() }, { COMPUTER_NATIVE_BROWSER_ENABLED: "sometimes" }),
@@ -120,6 +128,14 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.throws(
     () => config(tempDirectory(), { maxModelOutputBytes: 0 }),
     /max model output bytes must be a positive integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { memoryEvidenceRetentionDays: 0 }),
+    /memory evidence retention days must be a positive integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { memoryEvidenceMaxEntries: 0 }),
+    /memory evidence max entries must be a positive integer/u,
   );
 });
 

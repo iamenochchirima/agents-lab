@@ -24,6 +24,7 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
       for (const result of recovered) {
         process.stdout.write(`Recovered interrupted turn ${result.turnId}. No model request was retried.\n`);
       }
+      await application.maintainMemoryEvidence?.();
       const ui = new TerminalUi(application, process.stdout, Boolean(process.stdin.isTTY && process.stdout.isTTY));
       if (options.message !== undefined) {
         const result = await ui.runSingle(options.message);

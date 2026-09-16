@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T18:29:00+02:00
+**Last updated:** 2026-09-16T18:44:49+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -217,8 +217,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 292 passing tests across the package, with 88.92% line
-  coverage, 77.65% branch coverage, and 84.57% function coverage. Coverage is from
+- The latest validation is 295 passing tests across the package, with 89.04% line
+  coverage, 77.70% branch coverage, and 85.10% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -309,8 +309,41 @@ Still open after this increment:
 
 - The complete stop-before/after matrix for every durable write and every underlying host
   side effect, including process-level crash injection at each boundary.
-- Deletion-ledger and batch-journal retention/repair, browser profile/artifact crash
-  recovery, and cross-platform process isolation.
+- Browser profile/artifact crash recovery, cross-platform process isolation, and a
+  complete per-write/per-side-effect crash matrix.
+
+### Current slice boundary: memory evidence maintenance
+
+Delivered in this slice:
+
+- Memory opens with a narrow repair rule for evidence JSONL: only an unterminated final
+  line is treated as a crash-truncated append and removed. A malformed complete line or
+  invalid evidence record fails closed and remains unchanged for deliberate repair.
+- Deletion and cross-file batch evidence can be compacted through one memory-owned,
+  lock-protected maintenance operation. It deduplicates stable operation identities and
+  expires completed entries older than the configured retention window.
+- Prepared deletion evidence and evidence for currently active records are retained even
+  when older than the normal window. If the safe retained set exceeds the configured
+  maximum, maintenance refuses to rewrite the journal rather than discarding evidence.
+- Normal CLI startup runs this maintenance only after interrupted-turn recovery. The
+  retention window and per-journal entry bound are explicit configuration values, and the
+  store exposes the same operation for other standalone application owners.
+- Tests cover expiration, duplicate compaction, prepared-evidence retention, truncated
+  tail repair, malformed-line fail-closed behaviour, and the over-bound no-discard rule.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- The operation is owned by the memory/persistence boundary and ordered after recovery,
+  following their separation of recovery, policy, and housekeeping. It does not add a
+  generic transaction manager, silently rewrite canonical memory, or claim exactly-once
+  execution.
+
+Still open after this slice:
+
+- Versioned migration procedures for future deletion/batch evidence schemas, operator
+  repair tooling, and a broader backup/restore policy.
+- Browser profile/artifact crash recovery, cross-platform process isolation, and the
+  complete per-write/per-side-effect crash matrix remain outside this slice.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -359,9 +392,11 @@ Persistence slice limitations:
 - Complete per-write and per-side-effect process crash coverage, cross-platform process
   identity/process-group durability proof, and an exactly-once execution guarantee remain
   open.
-- Deletion-ledger and batch-journal retention/compaction, repair, and migration remain open.
-  The current evidence proves the supported local acknowledgement-loss and
-  operation-specific recovery paths, not an exactly-once guarantee or cross-file transaction.
+- Evidence retention, safe tail repair, duplicate compaction, and fail-closed bounds are
+  now implemented for the deletion ledger and batch publication journal. Versioned
+  migration, operator repair tooling, and backup/restore procedures remain open. The
+  current evidence proves the supported local acknowledgement-loss and operation-specific
+  recovery paths, not an exactly-once guarantee or cross-file transaction.
 
 ### Current slice boundary: model payload resource limits
 

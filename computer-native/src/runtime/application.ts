@@ -18,7 +18,7 @@ import type { MutationApproval, MutationEvent } from "../workspace/mutation.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
 import type { MemoryApproval, MemoryEvent, MemorySearchEvidence, MemoryStatus } from "../memory/contracts.js";
-import { MemoryStore } from "../memory/store.js";
+import { MemoryStore, type MemoryEvidenceMaintenanceResult } from "../memory/store.js";
 import { runTurn } from "./turn.js";
 
 export interface ChatApplication {
@@ -32,6 +32,7 @@ export interface ChatApplication {
   readonly evidenceDirectory: string;
   readonly toolNames: readonly string[];
   readonly readMemoryStatus?: () => Promise<MemoryStatus>;
+  readonly maintainMemoryEvidence?: () => Promise<MemoryEvidenceMaintenanceResult>;
   recoverInterruptedTurns(): Promise<readonly TurnResult[]>;
   readTranscript(): Promise<readonly TranscriptMessage[]>;
   runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void): Promise<TurnResult>;
@@ -59,6 +60,8 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
           workspaceMaxChars: config.memoryWorkspaceMaxChars,
           dailyMaxChars: config.memoryDailyMaxChars,
           dailyRetentionDays: config.memoryDailyRetentionDays,
+          evidenceRetentionDays: config.memoryEvidenceRetentionDays,
+          evidenceMaxEntries: config.memoryEvidenceMaxEntries,
         })
       : undefined;
     const processPolicy = config.processMode === "approval"
@@ -142,6 +145,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
+      maintainMemoryEvidence: activeMemory ? () => activeMemory.maintainEvidence() : undefined,
       recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess, activeMemory ? (record) => activeMemory.reconcileAction(record) : undefined),
       readTranscript: () => session.readTranscript(),
       runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch }),

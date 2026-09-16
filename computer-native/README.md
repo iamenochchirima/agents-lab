@@ -58,6 +58,13 @@ runtime decision can be revisited without changing the tool or context contracts
 The memory tool also supports a bounded same-scope consolidation batch; its approval
 and append-only evidence cover the complete proposal, while canonical publication does
 not claim cross-file atomicity.
+Memory evidence journals are repaired only for an unterminated final line during open,
+and completed entries are compacted after interrupted-turn recovery on normal CLI
+startup. Retention defaults to 30 days and 10,000 entries per journal; configure
+`COMPUTER_NATIVE_MEMORY_EVIDENCE_RETENTION_DAYS` and
+`COMPUTER_NATIVE_MEMORY_EVIDENCE_MAX_ENTRIES` when needed. Prepared deletion evidence
+is retained, and maintenance fails closed rather than discarding evidence when the
+configured bound is too small.
 
 ```bash
 cd computer-native
