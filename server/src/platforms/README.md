@@ -47,6 +47,18 @@ at startup. Adding a new platform directory does not make it runnable; its adapt
 implement the generic runner contract, be registered by the server bootstrap, and have
 its own implementation plan and validation record.
 
+## Model provider boundary
+
+Production-facing Platform UI runs use an explicitly selected OpenRouter model. Each
+platform keeps its OpenRouter request at the platform-native execution boundary so the
+platform's own retries, workflow history, checkpoints, or task state remain observable.
+
+Every baseline also retains a local `fake` adapter. It is an explicit deterministic test
+fixture, not a production model and not a fallback. Tests use named fixtures to force
+success, timeout, cancellation, retry, tool-call, or ambiguous-outcome behaviour that
+cannot be reproduced reliably with a live provider. A missing key or failed OpenRouter
+request is surfaced as an error.
+
 ## Current runnable baselines
 
 The current server composition registers these baseline adapters. A registered adapter
