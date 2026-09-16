@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T20:17:11+02:00`
+**Last updated:** `2026-09-16T20:33:24+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -298,6 +298,10 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `server/src/platforms/langgraph/.local311/bin/pytest -q server/src/platforms/langgraph/service/tests/test_graph.py` — 4 passed; the Python boundary asserts the selected model ID in the outbound request.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/hatchet/task.test.ts` — 3 passed; a mocked OpenRouter response traversed the Hatchet task and produced normalized result, usage, trajectory, and events for the selected model.
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Trigger.dev response-boundary change.
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/restate/workflow.test.ts` — 12 passed; the in-process durable workflow executed mocked OpenRouter responses, preserved the selected model, recorded normalized evidence, and aggregated usage across model calls.
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Restate usage-aggregation fix.
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/trigger-dev/task.test.ts tests/platforms/trigger-dev/openrouter.test.ts tests/platforms/trigger-dev/trigger-dev-runner.test.ts` — 15 passed; the exact Trigger task handler executed a mocked OpenRouter response and returned normalized task evidence.
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/inngest/store.test.ts tests/platforms/inngest/service.test.ts tests/platforms/inngest/models.test.ts tests/platforms/inngest/inngest-runner.test.ts` — 14 passed; Inngest function execution and persisted lifecycle events retain the selected provider/model identity.
 - A fresh server on `127.0.0.1:4319` completed a real LangGraph run with `cohere/north-mini-code:free`; run ID `d97ef0f8-e4f6-405d-b0ca-46e75c51ca28`. The original run `4dd500b8-8e46-44bd-a20c-8298bde9c971` was correctly recorded as failed with `DISPATCH_FAILED` when the strict protocol rejected the extra field.
 - Live OpenRouter smoke runs with `cohere/north-mini-code:free` completed on Temporal (`c54e4a8d-58c3-469e-9fe5-630d2a41f5ca`), Restate (`f7119cc2-f277-41dd-874b-618917f1db9a`), Mastra (`dacf5f45-e867-493d-9fcb-790a1ae7a007`), and Vercel Workflows (`537fc9db-a48f-4c8b-aa23-a62b180595d9`) at `2026-09-16T19:51:00+02:00`; only safe status/model fields were inspected.
 - An API-equivalent Compare fan-out using one selected model completed concurrently on Temporal (`ca7c760a-b872-4a6e-b6b8-00c12c82cf30`) and Restate (`0cf5406d-2681-46d6-a83e-2b3bc5be6ef7`) at `2026-09-16T19:56:00+02:00`; this does not replace the pending browser Compare acceptance check.
@@ -351,6 +355,9 @@ do not mark it runnable or fabricate an external result.
 - [x] Clarify Restate's deterministic fake fixture boundary in `4987a42` (`docs(restate): clarify fake model fixture boundary`).
 - [x] Commit selected-model assertions across provider boundaries in `042a7b7` (`test(platforms): assert selected model at provider boundaries`).
 - [x] Commit a mocked OpenRouter execution through the Hatchet task in `d551ef2` (`test(hatchet): cover selected OpenRouter task execution`).
+- [x] Commit the Restate native workflow OpenRouter coverage and first-call usage accumulation fix in `7a65729` (`fix(restate): preserve OpenRouter usage across workflow calls`).
+- [x] Commit the Trigger native task OpenRouter coverage in `2789f0e` (`test(trigger): cover selected OpenRouter task execution`).
+- [x] Commit selected provider/model identity in Inngest lifecycle evidence in `9371cc9` (`fix(inngest): retain model identity in lifecycle evidence`).
 - [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
