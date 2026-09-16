@@ -22,6 +22,8 @@ import type { ContextProjection } from "../../capabilities/context/contracts.js"
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
 import { ContextService } from "../../capabilities/context/context-service.js";
 
+const CONTEXT_CAPABLE_BASELINE_PLATFORMS: ReadonlySet<string> = new Set(["temporal", "restate", "langgraph", "mastra"]);
+
 export class RunNotFoundError extends Error {
   constructor(readonly runId: string) {
     super(`Run was not found: ${runId}`);
@@ -337,9 +339,9 @@ export class RunService {
   }
 
   private async admitContextTurn(request: RunRequest, runId: string) {
-    if (!this.dependencies.context || request.platform !== "temporal" || request.variant !== "baseline") {
+    if (!this.dependencies.context || request.variant !== "baseline" || !CONTEXT_CAPABLE_BASELINE_PLATFORMS.has(request.platform)) {
       if (request.sessionId) {
-        throw new Error("Session context is currently available for temporal/baseline only.");
+        throw new Error("Session context is not available for the selected platform variant.");
       }
       return null;
     }

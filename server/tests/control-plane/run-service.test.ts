@@ -359,6 +359,38 @@ test("reconciliation replaces a provisional Restate outcome when the workflow be
   }
 });
 
+test("admits a Restate baseline turn with the shared session contract", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-restate-context-admission-"));
+  try {
+    const runner = new RecoveringRestateRunner();
+    runner.visible = true;
+    const store = new RunEvidenceStore(root);
+    const config = loadServerConfig({
+      AGENTLAB_RUN_ROOT: root,
+      AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+    }, "/repo");
+    const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+    const service = new RunService({ config, context, evidence: store, registry: new PlatformRegistry([runner]) });
+
+    const view = await service.createRun({
+      platform: "restate",
+      variant: "baseline",
+      sessionId: "restate-admission-session",
+      clientTurnId: "client-turn-1",
+      task: { kind: "prompt", prompt: "Continue this Restate session." },
+      model: { provider: "fake", model: "fake-success" },
+      capabilities: { tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 } },
+    });
+
+    assert.equal(view.manifest.context.sessionId, "restate-admission-session");
+    assert.equal(view.manifest.context.clientTurnId, "client-turn-1");
+    assert.equal(view.manifest.capabilities?.tools.enabledNames.length, 0);
+    assert.equal(view.status, "completed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("an immediate post-dispatch outage returns the durable queued projection", async () => {
   await withService(async (service, store, runner) => {
     runner.unavailableOnFirstInspection = true;
