@@ -1,7 +1,7 @@
 # Cross-platform agent conformance — implementation plan
 
 **Created:** `2026-09-17T00:35:55+02:00`
-**Last updated:** `2026-09-17T00:35:55+02:00`
+**Last updated:** `2026-09-17T01:18:41+02:00`
 **Status:** Active
 **Owner:** Primary platform integration owner with one owner per platform
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -126,7 +126,7 @@ fixtures and must be named as such in tests and documentation.
 
 - [ ] Extend the Temporal baseline locally to consume the conformance context snapshot,
       expose the calculator tool, and retain its workflow/activity/retry semantics.
-- [ ] Extend the Restate baseline locally to consume the conformance context snapshot,
+- [x] Extend the Restate baseline locally to consume the conformance context snapshot,
       expose the calculator tool, and retain durable-step/journal replay semantics.
 - [ ] Extend the LangGraph baseline locally to consume the conformance context snapshot,
       add the bounded graph/tool path, and retain checkpoint/thread/restart semantics.
@@ -386,6 +386,23 @@ Platform-specific decisions that must not be flattened:
 | Restate | Workflow key, invocation identity, durable step, journal replay, retry policy, and cancellation observation |
 | LangGraph | Graph/node boundary, thread ID, checkpoint ID, SQLite local limit, service restart, and cooperative graph cancellation |
 | Mastra | Direct `Agent.generate()`/tool API, in-process execution identity, abort behavior, and explicit non-durable process-loss outcome |
+
+#### Restate handoff status
+
+- [x] The manifest-to-workflow adapter carries the shared tool capability and the
+      server-owned context root/session/turn identity.
+- [x] The baseline workflow prepares the canonical context snapshot in one named
+      durable action before the first model request and emits normalized preparation
+      evidence.
+- [x] An explicit empty tool capability disables the default calculator; requests
+      without the new capability field retain the existing native baseline default.
+- [x] Restate unit tests cover context preparation, snapshot identity, tool policy,
+      model usage, bounded tool execution, journal replay, retries, cancellation,
+      and unknown submission outcomes.
+- [x] Restate configuration and local startup pass the shared context root to the
+      submission and service processes without adding a Docker prerequisite.
+- [ ] Run the native Restate server/service acceptance matrix and add the successful
+      tool-turn and two-turn evidence examples to the local playground.
 
 ### 3. Shared server and browser surface
 

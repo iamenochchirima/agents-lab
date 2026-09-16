@@ -30,6 +30,11 @@ export interface RestateWorkflowInput {
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  readonly context?: {
+    readonly rootDirectory: string;
+    readonly sessionId: string;
+    readonly turnId: string;
+  };
 }
 
 export interface RestateWorkflowResult extends RunResult {
@@ -90,7 +95,10 @@ export interface RestateToolCallResult extends ToolExecutionResult {
 }
 
 export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflowInput {
-  const tools = readToolConfiguration(manifest.platformConfig);
+  const tools = manifest.capabilities?.tools ?? readToolConfiguration(manifest.platformConfig);
+  const contextRoot = typeof manifest.platformConfig.contextRoot === "string" && manifest.platformConfig.contextRoot.trim().length > 0
+    ? manifest.platformConfig.contextRoot
+    : process.env.AGENTLAB_CONTEXT_ROOT?.trim() || "lab/sessions";
   return {
     runId: manifest.runId,
     turnId: manifest.context.turnId,
@@ -99,6 +107,13 @@ export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflo
     model: manifest.model,
     modelRetryAttempts: positiveIntegerFromConfig(manifest.platformConfig, "runMaxRetryAttempts", 3),
     tools,
+    ...(manifest.context.sessionId && manifest.context.turnId ? {
+      context: {
+        rootDirectory: contextRoot,
+        sessionId: manifest.context.sessionId,
+        turnId: manifest.context.turnId,
+      },
+    } : {}),
   };
 }
 

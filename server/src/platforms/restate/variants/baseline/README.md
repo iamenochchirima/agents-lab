@@ -37,16 +37,32 @@ rounds and logical tool executions. Calculator failures stop the run; malformed
 or unknown calls can be returned to the model as bounded tool-role error results
 when the provider call can still be paired safely.
 
+## Context continuity
+
+When the common manifest includes a session and turn, the workflow prepares the
+canonical filesystem-backed context snapshot in a named `ctx.run` action before
+the first model request. The snapshot includes the system instruction and
+admitted transcript, records its budget and compaction result as normalized
+events, and supplies those messages to the Restate model adapter. The control
+plane remains responsible for admitting and settling the turn; Restate owns
+durable preparation and the model/tool loop for that invocation.
+
+The shared tool capability in the manifest is authoritative. An explicit empty
+tool list disables the baseline calculator instead of silently re-enabling it.
+Requests without the shared capability field retain the baseline calculator
+default for backwards-compatible native tests and local exercises.
+
 ## What it does not prove
 
 This is not a complete professional agent. It has no side-effecting tools, skills,
 memory, MCP, OAuth, plugins, streaming, or business integrations. It does not
 claim exactly-once execution for an external model provider. A transport failure
 after dispatch is represented as `outcome_unknown`. The current Restate workflow
-does not yet own the shared session-context preparation path; context continuity
-and compaction remain a separate platform integration step. When a provider
-returns usage, the run retains it in normalized metrics without treating it as a
-substitute for the canonical context store.
+does not yet expose provider-overflow recovery or a platform-native context
+store. Context preparation uses the Lab's canonical store as a durable action;
+it does not make filesystem writes transactional with the external model call.
+When a provider returns usage, the run retains it in normalized metrics without
+treating it as a substitute for the canonical context store.
 
 See the [local development guide](../../docs/local-development.md) and
 [semantics](../../docs/semantics.md).

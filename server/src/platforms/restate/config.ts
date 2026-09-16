@@ -1,4 +1,5 @@
 import { URL } from "node:url";
+import { resolve } from "node:path";
 
 import { calculatorTool } from "../../capabilities/tools/calculator.js";
 import { TOOL_SCHEMA_VERSION } from "../../capabilities/tools/contracts.js";
@@ -21,6 +22,7 @@ export const RESTATE_DEFAULT_TOOL_ROUNDS = 6;
 export const RESTATE_DEFAULT_TOOL_CALLS = 8;
 
 export interface RestateConfig {
+  readonly contextRoot: string;
   readonly ingressUrl: string;
   readonly adminUrl: string;
   readonly serviceUrl: string;
@@ -45,6 +47,7 @@ export class InvalidRestateConfigError extends Error {
 
 export function loadRestateConfig(environment: NodeJS.ProcessEnv = process.env): RestateConfig {
   const config: RestateConfig = {
+    contextRoot: resolve(process.cwd(), environment.AGENTLAB_CONTEXT_ROOT?.trim() || "lab/sessions"),
     ingressUrl: parseUrl(environment.AGENTLAB_RESTATE_INGRESS_URL, RESTATE_DEFAULT_INGRESS_URL, "AGENTLAB_RESTATE_INGRESS_URL"),
     adminUrl: parseUrl(environment.AGENTLAB_RESTATE_ADMIN_URL, RESTATE_DEFAULT_ADMIN_URL, "AGENTLAB_RESTATE_ADMIN_URL"),
     serviceUrl: parseUrl(environment.AGENTLAB_RESTATE_SERVICE_URL, RESTATE_DEFAULT_SERVICE_URL, "AGENTLAB_RESTATE_SERVICE_URL"),
@@ -93,6 +96,7 @@ export function loadRestateConfig(environment: NodeJS.ProcessEnv = process.env):
 
 export function safeManifestConfiguration(config: RestateConfig): Readonly<Record<string, unknown>> {
   return Object.freeze({
+    contextRoot: config.contextRoot,
     ingressUrl: config.ingressUrl,
     adminUrl: config.adminUrl,
     serviceUrl: config.serviceUrl,

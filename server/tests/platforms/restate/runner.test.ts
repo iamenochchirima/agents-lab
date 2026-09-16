@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { loadRestateConfig, safeManifestConfiguration } from "../../../src/platforms/restate/config.js";
+import { workflowInputFromManifest } from "../../../src/platforms/restate/variants/baseline/contracts.js";
 import {
   RestateBaselineRunner,
   type RestateIngress,
@@ -101,6 +102,43 @@ test("runner submits through the Restate workflow boundary with a stable key", a
   assert.equal(reference.native.invocationId, "inv-1");
   assert.deepEqual(ingress.keys, ["agentlab:restate-runner-test"]);
   assert.equal(JSON.stringify(reference).includes("OPENROUTER"), false);
+});
+
+test("workflow input carries the shared tool and context contract", () => {
+  const previousRoot = process.env.AGENTLAB_CONTEXT_ROOT;
+  process.env.AGENTLAB_CONTEXT_ROOT = "/tmp/agentlab-restate-context";
+  try {
+    const manifest = buildRunManifest({
+      platform: "restate",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Remember conformance-4318." },
+      model: { provider: "fake", model: "fake-context", contextWindowTokens: 2_048 },
+      sessionId: "restate-context-session",
+      clientTurnId: "turn-1",
+      capabilities: { tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 } },
+    }, {
+      runId: "restate-context-run",
+      context: { sessionId: "restate-context-session", turnId: "turn-1" },
+    });
+
+    assert.deepEqual(workflowInputFromManifest(manifest), {
+      runId: "restate-context-run",
+      turnId: "turn-1",
+      prompt: "Remember conformance-4318.",
+      systemInstruction: manifest.context.systemInstruction,
+      model: { provider: "fake", model: "fake-context", contextWindowTokens: 2_048 },
+      modelRetryAttempts: 3,
+      tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 },
+      context: {
+        rootDirectory: "/tmp/agentlab-restate-context",
+        sessionId: "restate-context-session",
+        turnId: "turn-1",
+      },
+    });
+  } finally {
+    if (previousRoot === undefined) delete process.env.AGENTLAB_CONTEXT_ROOT;
+    else process.env.AGENTLAB_CONTEXT_ROOT = previousRoot;
+  }
 });
 
 test("runner maps a durable workflow result into the common inspection seam", async () => {

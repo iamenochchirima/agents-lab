@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolve } from "node:path";
 
 import {
   InvalidRestateConfigError,
@@ -11,6 +12,7 @@ test("Restate configuration has bounded local defaults and redacts provider cred
   const config = loadRestateConfig({ OPENROUTER_API_KEY: "test-secret" });
   const safe = safeManifestConfiguration(config);
 
+  assert.equal(config.contextRoot, resolve(process.cwd(), "lab/sessions"));
   assert.equal(config.ingressUrl, "http://127.0.0.1:8080");
   assert.equal(config.adminUrl, "http://127.0.0.1:9070");
   assert.equal(config.servicePort, 9080);
@@ -27,6 +29,12 @@ test("Restate configuration has bounded local defaults and redacts provider cred
     limits: { calculator: { maxArgumentBytes: 512, maxResultBytes: 256, timeoutMs: 1_000 } },
     redactionPolicyVersion: "tool-redaction-v1",
   });
+});
+
+test("Restate carries the shared context root into safe workflow configuration", () => {
+  const config = loadRestateConfig({ AGENTLAB_CONTEXT_ROOT: "var/restate-sessions" });
+  assert.equal(config.contextRoot, resolve(process.cwd(), "var/restate-sessions"));
+  assert.equal(safeManifestConfiguration(config).contextRoot, config.contextRoot);
 });
 
 test("Restate configuration rejects invalid URLs and retry intervals", () => {

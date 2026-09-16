@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { CharacterTokenEstimator, ContextSessionStore } from "../../../src/capabilities/context/index.js";
 import { baselineWorkflow } from "../../../src/platforms/restate/variants/baseline/workflow.js";
 import type { RestateWorkflowInput, RestateWorkflowResult } from "../../../src/platforms/restate/variants/baseline/contracts.js";
 
@@ -141,6 +145,51 @@ test("the workflow executes a calculator call durably before requesting the fina
   ]);
 });
 
+test("the workflow prepares the canonical context snapshot before its model request", async () => {
+  const rootDirectory = await mkdtemp(join(tmpdir(), "agentlab-restate-context-"));
+  const sessionId = "restate-context-workflow";
+  const runId = "restate-context-workflow-run";
+  const store = new ContextSessionStore(rootDirectory);
+  try {
+    await store.create({
+      sessionId,
+      platform: "restate",
+      variant: "baseline",
+      model: "fake-context",
+      systemInstruction: "Remember context safely.",
+      contextWindowTokens: 2_048,
+      reservedOutputTokens: 256,
+      safetyMarginTokens: 128,
+      compactionThresholdPercent: 20,
+      now: "2026-09-16T12:00:00.000Z",
+    });
+    const admitted = await store.admitTurn(sessionId, runId, "Remember conformance-4318.", "2026-09-16T12:00:01.000Z", "turn-1");
+    const result = await runWorkflow("fake-context", {
+      prompt: "Remember conformance-4318.",
+      runId,
+      tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 },
+      context: { rootDirectory, sessionId, turnId: admitted.turn.turnId },
+    });
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.output, "Stored the test value.");
+    assert.deepEqual(result.eventIntents.filter((event) => event.kind === "ContextPreparationStarted" || event.kind === "ContextPrepared").map((event) => event.kind), [
+      "ContextPreparationStarted",
+      "ContextPrepared",
+    ]);
+    const prepared = result.eventIntents.find((event) => event.kind === "ContextPrepared");
+    assert.equal(prepared?.payload.sessionId, sessionId);
+    assert.equal(prepared?.payload.turnId, admitted.turn.turnId);
+    assert.equal(prepared?.payload.quality, "estimated");
+    const snapshot = await store.latestSnapshot(sessionId);
+    assert.equal(snapshot?.snapshotId, prepared?.payload.snapshotId);
+    assert.deepEqual(snapshot?.messages.map((message) => message.role), ["system", "user"]);
+    assert.equal((await store.readTurn(sessionId, admitted.turn.turnId))?.contextSnapshotId, snapshot?.snapshotId);
+  } finally {
+    await rm(rootDirectory, { recursive: true, force: true });
+  }
+});
+
 test("the workflow reuses completed named actions during deterministic journal replay", async () => {
   const actionCache = new Map<string, unknown>();
   const firstExecutions: string[] = [];
@@ -240,8 +289,12 @@ async function runWorkflow(
   model: string,
   options: {
     readonly provider?: "fake" | "openrouter";
+    readonly prompt?: string;
+    readonly runId?: string;
     readonly maxRounds?: number;
     readonly maxCalls?: number;
+    readonly tools?: RestateWorkflowInput["tools"];
+    readonly context?: RestateWorkflowInput["context"];
     readonly executionNames?: string[];
     readonly actionCache?: Map<string, unknown>;
     readonly signal?: AbortSignal;
@@ -263,11 +316,12 @@ async function runWorkflow(
     },
   };
   const input: RestateWorkflowInput = {
-    runId: "workflow-in-process",
-    prompt: "calculate twenty plus twenty-two.",
+    runId: options.runId ?? "workflow-in-process",
+    prompt: options.prompt ?? "calculate twenty plus twenty-two.",
     systemInstruction: "Use tools when appropriate.",
     model: { provider: options.provider ?? "fake", model },
-    tools: { enabledNames: ["calculator"], maxRounds: options.maxRounds ?? 6, maxCalls: options.maxCalls ?? 8 },
+    tools: options.tools ?? { enabledNames: ["calculator"], maxRounds: options.maxRounds ?? 6, maxCalls: options.maxCalls ?? 8 },
+    ...(options.context === undefined ? {} : { context: options.context }),
   };
   return workflowRun(context, input);
 }

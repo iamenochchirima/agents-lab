@@ -63,7 +63,7 @@ export class FakeRestateModel implements ModelAdapter {
           toolCalls: [{
             toolCallId: "call-calculator-1",
             name: "calculator",
-            arguments: { operation: "add", left: 20, right: 22 },
+            arguments: { operation: "add", left: 17, right: 25 },
           }],
           providerRequestId: null,
           usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
@@ -103,11 +103,23 @@ export class FakeRestateModel implements ModelAdapter {
       return toolFixtureCall(`call-loop-${input.round}`, "calculator", { operation: "add", left: input.round, right: 1 });
     }
 
+    if (input.model === "fake-context") {
+      const remembered = input.messages.some((message) => typeof message.content === "string" && message.content.includes("conformance-4318"));
+      return {
+        kind: "success",
+        output: /^Remember\b/.test(input.prompt) ? "Stored the test value." : remembered ? "conformance-4318" : "The test value was not present in the context.",
+        toolCalls: [],
+        providerRequestId: null,
+        usage: { inputTokens: 16, outputTokens: 5, totalTokens: 21 },
+      };
+    }
+
     if (
       input.model !== "fake-success" &&
       input.model !== "fake-delay" &&
       input.model !== "fake-tool-call-delay" &&
-      input.model !== "fake-pre-dispatch-retry-once"
+      input.model !== "fake-pre-dispatch-retry-once" &&
+      input.model !== "fake-context"
     ) {
       return {
         kind: "failure",

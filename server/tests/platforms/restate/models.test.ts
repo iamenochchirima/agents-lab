@@ -70,7 +70,7 @@ test("the fake tool fixture requires the tool result before returning final text
   assert.deepEqual(toolCall, {
     kind: "success",
     output: null,
-    toolCalls: [{ toolCallId: "call-calculator-1", name: "calculator", arguments: { operation: "add", left: 20, right: 22 } }],
+    toolCalls: [{ toolCallId: "call-calculator-1", name: "calculator", arguments: { operation: "add", left: 17, right: 25 } }],
     providerRequestId: null,
     usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
   });

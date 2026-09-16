@@ -10,6 +10,7 @@ import {
 } from "../../config.js";
 import type { RunEventIntent, RunError, RunMetrics, RunTrajectory, RunUsage } from "../../../../control-plane/domain/types.js";
 import { calculateContextBudget } from "../../../../capabilities/context/budget.js";
+import { ContextService, ContextSessionStore, CharacterTokenEstimator, type ContextMessage, type ContextSummaryGenerator } from "../../../../capabilities/context/index.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type {
@@ -93,6 +94,31 @@ export const baselineWorkflow = restate.workflow({
       ctx.set("status", { status: "running", runId: input.runId });
 
       try {
+        if (input.context) {
+          const contextPhase = { name: "context_preparation", startedAt: await ctx.date.toJSON(), finishedAt: null as string | null };
+          phases.push(contextPhase);
+          await record("ContextPreparationStarted", {
+            sessionId: input.context.sessionId,
+            turnId: input.context.turnId,
+          });
+          const prepared = await prepareContextSnapshot(ctx, input);
+          messages = prepared.messages.map(toModelMessage);
+          contextPhase.finishedAt = await ctx.date.toJSON();
+          await record("ContextPrepared", {
+            sessionId: input.context.sessionId,
+            turnId: input.context.turnId,
+            snapshotId: prepared.snapshotId,
+            sessionRevision: prepared.sessionRevision,
+            compactionRevision: prepared.compactionRevision,
+            inputTokens: prepared.budget.inputTokens,
+            remainingTokens: prepared.budget.remainingTokens,
+            remainingPercent: prepared.budget.remainingPercent,
+            pressure: prepared.budget.pressure,
+            quality: prepared.budget.quality,
+            compacted: prepared.compaction !== null,
+          });
+        }
+
         for (let round = 1; round <= toolConfiguration.maxRounds; round += 1) {
           const modelPhase = { name: `model_request_${round}`, startedAt: await ctx.date.toJSON(), finishedAt: null as string | null };
           phases.push(modelPhase);
@@ -428,6 +454,49 @@ async function requestModel(
   );
 }
 
+async function prepareContextSnapshot(
+  ctx: restate.WorkflowContext,
+  input: RestateWorkflowInput,
+): Promise<Awaited<ReturnType<ContextService["prepareTurn"]>>["snapshot"]> {
+  if (!input.context) throw new Error("Context preparation requires a context input.");
+  return ctx.run(
+    `context.prepare.${stableStepId(input.context.sessionId)}.${stableStepId(input.context.turnId)}`,
+    async () => {
+      const store = new ContextSessionStore(input.context!.rootDirectory);
+      const context = new ContextService(store, new CharacterTokenEstimator());
+      const summarizer: ContextSummaryGenerator = {
+        async summarize(request) {
+          const adapter = createRestateModel(input.model.provider, input.model.model, {
+            openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || null,
+            openRouterBaseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
+          });
+          const result = await adapter.complete({
+            runId: `${input.runId}:context:${request.sourceRevision}`,
+            prompt: request.messages.map((message) => `[${message.role}]\n${message.content}`).join("\n\n"),
+            systemInstruction: "Summarize the earlier conversation for context continuity. Preserve facts, decisions, unresolved requests, and tool results. Return only the concise summary.",
+            provider: input.model.provider,
+            model: input.model.model,
+            round: 1,
+            attempt: 1,
+            messages: request.messages.map(toModelMessage),
+            tools: [],
+          }, ctx.request().attemptCompletedSignal);
+          if (result.kind !== "success" || !result.output) throw new Error(result.kind === "failure" ? result.message : "The context summarizer returned no text.");
+          return result.output;
+        },
+      };
+      return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer)).snapshot;
+    },
+    { maxRetryAttempts: 1 },
+  );
+}
+
+function toModelMessage(message: ContextMessage): ModelMessage {
+  if (message.role === "assistant") return { role: "assistant", content: message.content };
+  if (message.role === "tool") return { role: "tool", toolCallId: message.metadata?.toolCallId ?? message.messageId, name: message.metadata?.toolName ?? "tool", content: message.content };
+  return { role: message.role === "developer" ? "system" : message.role, content: message.content };
+}
+
 function assistantMessage(result: ModelSuccess): ModelMessage {
   return {
     role: "assistant",
@@ -509,7 +578,7 @@ function normalizeToolConfiguration(input: RestateWorkflowInput["tools"] | undef
   if (!input) return DEFAULT_TOOL_CONFIGURATION;
   const enabledNames = input.enabledNames.filter((name) => typeof name === "string");
   return {
-    enabledNames: enabledNames.length > 0 ? enabledNames : DEFAULT_TOOL_CONFIGURATION.enabledNames,
+    enabledNames,
     maxRounds: positiveInteger(input.maxRounds, DEFAULT_TOOL_CONFIGURATION.maxRounds),
     maxCalls: positiveInteger(input.maxCalls, DEFAULT_TOOL_CONFIGURATION.maxCalls),
   };

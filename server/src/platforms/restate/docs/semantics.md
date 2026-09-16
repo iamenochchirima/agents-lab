@@ -17,7 +17,8 @@
 | Duplicate tool-call ID in one response | Reject the response before any execution and fail with `INVALID_TOOL_CALL_RESPONSE`. |
 | Tool execution timeout/failure | Record one terminal tool execution event, append its bounded error result, and fail the run without continuing the model loop. |
 | Tool round/call limit | Record the limit failure and stop; no unbounded model/tool loop is allowed. |
-| Context usage observation | Record the provider-reported input usage and configured model window after each model response; this is a run projection, not canonical session compaction. |
+| Context preparation with a session turn | Run canonical context preparation in one named `ctx.run` action before the first model request; emit `ContextPreparationStarted` and `ContextPrepared`, then send the snapshot messages to the model adapter. |
+| Context usage observation | Record the provider-reported input usage and configured model window after each model response; the prepared snapshot remains the canonical session record. |
 | Terminal provider failure | Return a non-retryable model failure when the provider has rejected the request. |
 | Pre-dispatch retryable failure | Record a `ModelRetryScheduled` event and issue the next numbered model action. The retry is safe because the adapter has not sent a provider request. |
 | Post-dispatch transport failure | Return `outcome_unknown`; retrying could duplicate a provider request. |
@@ -28,7 +29,10 @@
 | Confirmed missing workflow before retention | Mark reconciliation required, not successful and not silently deleted. |
 | Confirmed terminal result after native retention | Serve the retained Lab result without re-inspecting a purged native workflow. |
 
-The model/provider boundary is at-least-once under an ambiguous acknowledgement
+The context preparation action is idempotent by its session/turn-derived name and
+the context store's deterministic snapshot ID. A replay may re-enter the action,
+but an already written snapshot is checked for identical content. The model/provider
+boundary is at-least-once under an ambiguous acknowledgement
 window. Restate journal replay prevents ordinary replay from re-running a completed
 `ctx.run` step, but it cannot prove whether an external provider received a request
 when the response was lost.

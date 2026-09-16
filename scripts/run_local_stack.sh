@@ -394,6 +394,7 @@ run_restate() {
   require_package "$SERVER_DIR/src/platforms/restate"
 
   echo "Starting Restate baseline service."
+  AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
   exec pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:restate
 }
 
@@ -606,6 +607,7 @@ start_all() {
   stack_processes_alive
 
   start_background "restate" env \
+    AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
     AGENTLAB_RESTATE_INGRESS_URL="$RESTATE_INGRESS_URL" \
     AGENTLAB_RESTATE_ADMIN_URL="$RESTATE_ADMIN_URL" \
     AGENTLAB_RESTATE_SERVICE_URL="$RESTATE_SERVICE_URL" \
