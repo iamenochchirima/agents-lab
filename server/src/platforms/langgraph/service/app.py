@@ -119,6 +119,7 @@ class LangGraphService:
             model=request.model.model,
             api_key=os.environ.get("OPENROUTER_API_KEY"),
             timeout_ms=request.timeout_ms,
+            base_url=os.environ.get("AGENTLAB_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         )
         status = "completed"
         output: str | None = None
@@ -157,6 +158,17 @@ class LangGraphService:
                 snapshot = graph.get_state(graph_config)
                 output = snapshot.values.get("output") if isinstance(snapshot.values, dict) else None
                 attempt_count = max(attempt_count, int(snapshot.values.get("attempt_count", 0)))
+                snapshot_usage = snapshot.values.get("usage") if isinstance(snapshot.values, dict) else None
+                if isinstance(snapshot_usage, dict):
+                    usage = {
+                        key: value if isinstance(value, int) and not isinstance(value, bool) else None
+                        for key, value in snapshot_usage.items()
+                        if key in {"inputTokens", "outputTokens", "totalTokens"}
+                    }
+                    usage = {
+                        key: usage.get(key)
+                        for key in ("inputTokens", "outputTokens", "totalTokens")
+                    }
                 self.store.update_attempt_count(execution_id, attempt_count)
                 self.store.append_event(execution_id, "RunCompleted", {"outputCharacters": len(output or "")})
         except LangGraphModelError as exc:
