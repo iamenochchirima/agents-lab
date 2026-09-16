@@ -1,15 +1,16 @@
 # Computer Native browser interaction
 
 **Created:** 2026-09-15T19:18:16+02:00
-**Last updated:** 2026-09-16T08:17:54+02:00
-**Status:** Active
+**Last updated:** 2026-09-16T08:34:37+02:00
+**Status:** Completed
 **Owner:** Computer Native standalone runtime
 **Filename:** `computer-native-browser-interaction.md`
 
 ## Current implementation status
 
-This plan is active. The first vertical slice is implemented and verified; the plan
-is not complete yet.
+This plan records the completed first local browser-interaction slice. The implementation
+and acceptance evidence below are complete; later browser capabilities require their own
+plan and security boundary.
 
 Implemented in the current slice:
 
@@ -74,11 +75,8 @@ Implemented in the current slice:
 - Deterministic URL-policy, session, tool/approval, and real local-fixture browser
   tests, plus end-to-end turn persistence and TUI approval tests.
 
-Still required before this plan can move to `completed/`:
-
-- Add the completion record and a focused commit or handoff reference. The source tree
-  is intentionally dirty with unrelated user work, so no commit was created during
-  this implementation pass.
+The implementation and acceptance work are complete. Unrelated changes remain in the
+working tree but are intentionally excluded from the commit recorded below.
 
 Current validation snapshot (2026-09-16):
 
@@ -545,30 +543,42 @@ Before moving this plan to `completed/`, verify:
 
 ## Commit discipline and handoff
 
-- [ ] Keep contracts/policy, adapter/session runtime, tools/approval, TUI/evidence, and
+- [x] Keep contracts/policy, adapter/session runtime, tools/approval, TUI/evidence, and
       documentation as reviewable implementation sections.
-- [ ] Run the narrow tests before each coherent commit.
-- [ ] Review `git status` and each diff; preserve unrelated user changes.
-- [ ] Record changed files, validation results, browser setup prerequisites, and known
+- [x] Run the narrow tests before each coherent commit.
+- [x] Review `git status` and each diff; preserve unrelated user changes.
+- [x] Record changed files, validation results, browser setup prerequisites, and known
       limitations in the completion record.
-- [ ] Record all implementation commit hashes or the contiguous commit range before
+- [x] Record all implementation commit hashes or the contiguous commit range before
       archiving this plan.
 
 ## Completion record
 
 Complete this section only when archiving the plan.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-16T08:34:37+02:00`
+**Commits:** `78a90ad`
 
 ### Validation
 
-- `[command]` — `[passed/failed and concise result]`
-- `[manual check]` — `[what was observed]`
+- `pnpm --filter @agent-harness-lab/computer-native run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/computer-native test` — 179 passed, 0 failed.
+- Browser-focused build and tests — 57 passed, 0 failed.
+- `pnpm --filter @agent-harness-lab/computer-native coverage` — 179 passed, 0 failed;
+  package-wide line coverage reported 87.61%.
+- `pnpm --filter @agent-harness-lab/computer-native run build` — passed.
+- `git diff --check` — passed for the committed implementation boundary.
+- Real-model TUI acceptance — navigation, snapshots, click/type/form approvals,
+  alert acceptance, confirmation dismissal, prompt text, screenshot/download artifacts,
+  prompt-injection labeling, approval cancellation, and in-flight browser cancellation
+  were observed against the local fixture.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- Managed Chromium is isolated to a generated profile but is not an OS sandbox; host
+  process and network capabilities remain outside this slice's guarantee.
+- Remote browser providers, personal-profile attachment, credentials, arbitrary
+  JavaScript evaluation, and browser extensions remain out of scope for later plans.
 
 ### Historical-scope note
 
