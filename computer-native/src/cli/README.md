@@ -31,6 +31,12 @@ The activity lane also distinguishes a normal failure from an interrupted turn, 
 partial/uncertain filesystem mutation, and an outcome-unknown process or browser action.
 Those labels are observations, not claims that the external side effect was rolled back.
 
+Live terminal output applies the configured provider secret and the shared bounded
+credential-shape redaction before writing model text, activity summaries, status, and
+approval context. The stream keeps possible secret prefixes across provider chunks so a
+credential split across chunks is still redacted. This is a known-secret and recognized-
+shape boundary; it is not a promise to discover arbitrary secrets in untrusted text.
+
 Mixed durable-memory batches are rendered as one terminal activity line with their bounded
 member count; the renderer does not pretend that the batch is a cross-file transaction.
 

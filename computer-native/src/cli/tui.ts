@@ -106,7 +106,9 @@ export class TerminalUi {
   private statusRound = 0;
   private startedAt = 0;
   private pendingTerminalEscape = "";
+  private pendingRedaction = "";
   private readonly colour: boolean;
+  private readonly redactionSecrets: readonly string[];
   private approvalQuestion: MutationApproval | undefined;
   private processApprovalQuestion: ((request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>) | undefined;
   private browserApprovalQuestion: ((request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>) | undefined;
@@ -119,8 +121,11 @@ export class TerminalUi {
     private readonly application: ChatApplication,
     private readonly output: Writable,
     private readonly interactive: boolean,
+    redactionSecrets: readonly string[] = [],
   ) {
     this.colour = interactive && !process.env.NO_COLOR && process.env.TERM !== "dumb";
+    this.redactionSecrets = [process.env.OPENROUTER_API_KEY ?? "", ...redactionSecrets]
+      .filter((secret, index, values) => secret.length > 0 && values.indexOf(secret) === index);
   }
 
   private style(code: string, value: string): string {
@@ -129,7 +134,7 @@ export class TerminalUi {
   }
 
   private write(value: string): void {
-    this.output.write(value);
+    this.output.write(redactSecrets(value, this.redactionSecrets));
   }
 
   private promptText(): string {
@@ -151,6 +156,7 @@ export class TerminalUi {
   }
 
   private closeResponseLine(): void {
+    this.flushRedactedText();
     if (!this.responseStarted) return;
     this.write("\n");
     this.responseStarted = false;
@@ -452,7 +458,7 @@ export class TerminalUi {
         const outcomeUnknown = !event.ok && event.errorCode === "browser-ambiguous";
         this.status = outcomeUnknown ? "browser action outcome unknown" : event.ok ? "browser action completed" : "browser action failed";
         const dialogText = event.dialog
-          ? ` · dialog ${event.dialog.type}: ${sanitizeTerminalSingleLine(redactSecrets(event.dialog.message, [process.env.OPENROUTER_API_KEY ?? ""]))}`
+          ? ` · dialog ${event.dialog.type}: ${sanitizeTerminalSingleLine(redactSecrets(event.dialog.message, this.redactionSecrets))}`
           : "";
         this.printActivity(outcomeUnknown ? "?" : event.ok ? "✓" : "×", `browser · ${event.request.action} · ${outcomeUnknown ? "outcome unknown" : event.summary}${dialogText}${event.cancellationConfirmed === true ? " · cancellation confirmed" : event.cancellationConfirmed === false ? " · cancellation unconfirmed" : ""}`, outcomeUnknown ? "33;1" : event.ok ? "32;1" : "31;1");
         break;
@@ -498,6 +504,7 @@ export class TerminalUi {
     this.startedAt = Date.now();
     this.responseStarted = false;
     this.pendingTerminalEscape = "";
+    this.pendingRedaction = "";
     this.waiting = false;
     this.cancellationRequested = false;
     this.status = "starting";
@@ -513,7 +520,41 @@ export class TerminalUi {
       this.write(`${this.style("32;1", "Agent")} ${this.style("2", "›")} `);
       this.responseStarted = true;
     }
-    this.write(sanitized.text);
+    this.appendRedactedText(sanitized.text);
+  }
+
+  private redactionSuffixStart(value: string): number {
+    let start = value.length;
+    // Provider chunks can split a credential between writes. Hold only a suffix
+    // that could still become a known secret or a provider-shaped key; ordinary
+    // model text remains streaming instead of waiting for the whole response.
+    for (const secret of this.redactionSecrets) {
+      const maximumPrefixLength = Math.min(secret.length - 1, value.length);
+      for (let length = maximumPrefixLength; length > 0; length -= 1) {
+        if (value.endsWith(secret.slice(0, length))) {
+          start = Math.min(start, value.length - length);
+          break;
+        }
+      }
+    }
+    const providerToken = /(?:^|[\s"'`([{=:])(sk-[A-Za-z0-9._-]*)$/u.exec(value)?.[1];
+    if (providerToken !== undefined) start = Math.min(start, value.length - providerToken.length);
+    return start;
+  }
+
+  private appendRedactedText(text: string): void {
+    const combined = `${this.pendingRedaction}${text}`;
+    const suffixStart = this.redactionSuffixStart(combined);
+    this.pendingRedaction = combined.slice(suffixStart);
+    const safe = combined.slice(0, suffixStart);
+    if (safe.length > 0) this.write(safe);
+  }
+
+  private flushRedactedText(): void {
+    if (this.pendingRedaction.length === 0) return;
+    const pending = this.pendingRedaction;
+    this.pendingRedaction = "";
+    this.write(pending);
   }
 
   private finishTurn(result: TurnResult): void {
@@ -568,7 +609,7 @@ export class TerminalUi {
         `after: ${request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")}`,
         request.diff,
       ].join("\n"),
-      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+      redactionSecrets: this.redactionSecrets,
     };
     const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
@@ -607,7 +648,7 @@ export class TerminalUi {
         `approval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt`,
         `warning: ${request.warning}`,
       ].join("\n"),
-      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+      redactionSecrets: this.redactionSecrets,
     };
     const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
@@ -667,7 +708,7 @@ export class TerminalUi {
         `approval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt`,
         `warning: ${request.warning}`,
       ].filter((value): value is string => value !== undefined).join("\n"),
-      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+      redactionSecrets: this.redactionSecrets,
     };
     const prompt = new ApprovalPrompt({ output: this.output, colour: this.colour });
     const answer = request.dialog
@@ -725,7 +766,7 @@ export class TerminalUi {
       ],
       preview: request.contentPreview,
       details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\napproval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt\nThis entry is advisory context and cannot change policy or permissions.`,
-      redactionSecrets: [process.env.OPENROUTER_API_KEY ?? ""],
+      redactionSecrets: this.redactionSecrets,
     };
     const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
     if (answer.decision === "allow-once") {

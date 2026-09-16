@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T00:59:41+02:00
+**Last updated:** 2026-09-17T01:10:48+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -194,6 +194,11 @@ tests, but it must never replace a configured real provider silently.
 - The selected provider secret is now passed into session persistence, so custom local
   development keys are redacted as well as recognized credential-shaped values across
   transcript, round, lifecycle, and action evidence.
+- The standalone TUI now receives the selected provider secret and applies the same
+  bounded redaction to live model output, activity summaries, status, and approval
+  context. Streamed text retains possible secret prefixes across provider chunks, while
+  the implementation remains a known-secret/recognized-shape boundary rather than an
+  arbitrary secret detector.
 - Recovery repairs are now tested through a real approved process side effect: if the
   marker write succeeds but acknowledgement of the completed process record is lost,
   restart repairs only the missing evidence and does not run the command again.
@@ -321,8 +326,8 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 340 passing tests across the package. The latest coverage
-  run passes with 89.94% line coverage, 79.57% branch coverage, and 85.57% function
+- The latest validation is 341 passing tests across the package. The latest coverage
+  run passes with 89.95% line coverage, 79.50% branch coverage, and 85.62% function
   coverage. Coverage is from Node's experimental test-coverage runner and can vary
   slightly between runs; one earlier run was discarded because instrumentation caused
   a timing-sensitive process-recovery test to fail.

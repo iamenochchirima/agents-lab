@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T00:59:41+02:00
+**Last updated:** 2026-09-17T01:10:48+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 340 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 340 tests passed with 89.94% line coverage, 79.57% branch
-  coverage, and 85.57% function coverage. The package commands serialize
+- `pnpm test`: 341 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 341 tests passed with 89.95% line coverage, 79.50% branch
+  coverage, and 85.62% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -106,8 +106,10 @@ readiness:
   sequences split across provider chunks, and response lines are separated from activity
   output. Full viewport/scrollback, resize redraw, and accessibility work remain open.
 - The same terminal-safety boundary now covers lifecycle summaries, session/history/
-  evidence values, and approval review values. Full viewport/scrollback, resize redraw,
-  and accessibility work remain open.
+  evidence values, approval review values, and live model/activity output. Streamed
+  redaction retains possible configured-secret prefixes across chunks. Full
+  viewport/scrollback, resize redraw, accessibility, and arbitrary secret discovery
+  remain open.
 - Admission coverage now synchronizes on provider start instead of polling for a fixed
   interval, removing an instrumentation-sensitive cleanup race from the reproducible
   package checks.

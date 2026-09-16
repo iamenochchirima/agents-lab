@@ -215,6 +215,35 @@ test("TUI distinguishes partial and outcome-unknown actions from ordinary failur
   assert.match(rendered, /browser · click · outcome unknown/u);
 });
 
+test("TUI redacts configured and provider-shaped secrets from live output", async () => {
+  const { output, chunks } = captureOutput();
+  const application = {
+    sessionId: "session_ui_redaction",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["example_tool"],
+    redactionSecrets: ["configured-ui-secret"],
+    runTurn: async (...args: unknown[]) => {
+      const onText = args[2] as ((text: string) => void) | undefined;
+      const onEvent = args[3] as ((event: unknown) => void) | undefined;
+      onText?.("model output configured-ui-");
+      onText?.("secret sk-or-v1-0123456789abcdef0123456789");
+      onText?.("abcdef");
+      onEvent?.({ type: "tool_completed", name: "example_tool", ok: false, summary: "tool saw configured-ui-secret" });
+      return { status: "completed" };
+    },
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false, ["configured-ui-secret"]).runSingle("show safe output");
+
+  const rendered = chunks.join("");
+  assert.doesNotMatch(rendered, /configured-ui-secret/u);
+  assert.doesNotMatch(rendered, /sk-or-v1-0123456789abcdef0123456789abcdef/u);
+  assert.match(rendered, /\[REDACTED\]/u);
+});
+
 test("TUI renders one terminal activity line for a mixed memory batch", async () => {
   const chunks: string[] = [];
   const output = new Writable({
