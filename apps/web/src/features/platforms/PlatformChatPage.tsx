@@ -15,15 +15,17 @@ import {
   getPlatformConnectivity,
   getRun,
   getRunEvents,
+  getRunEvidenceUrl,
   PlatformApiError,
   type ModelSelection,
   type PlatformConnectivity,
+  type RunEvidenceFile,
   type RunEvent,
   type RunStatus,
   type RunView,
 } from "./platformApi";
 import { ContextBudgetMeter } from "./RunStatusPanel";
-import { deduplicateMessages, isModelPickerDisabled, mergeEvents, reuseRunView, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
+import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
 
 const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled", "reconciliation_required"]);
 
@@ -49,6 +51,10 @@ export function PlatformChatPage() {
   const [connectivityError, setConnectivityError] = useState<string | null>(null);
   const eventCursor = useRef(0);
   const previousPlatformId = useRef(platform.id);
+  const conversationVersion = useRef(0);
+  const searchParamsRef = useRef(searchParams);
+  const ignoredUrlRunId = useRef<string | null>(null);
+  searchParamsRef.current = searchParams;
 
   const preservesSession = platform.id === "temporal" && variantId === "baseline";
   const hasRunnableBaseline = isRunnableBaseline(platform) && variantId === "baseline";
@@ -80,6 +86,8 @@ export function PlatformChatPage() {
     setVariantId(platform.variants[0]?.id ?? "baseline");
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
     eventCursor.current = 0;
+    conversationVersion.current += 1;
+    ignoredUrlRunId.current = searchParams.get("run");
     if (searchParams.has("run")) {
       const next = new URLSearchParams(searchParams);
       next.delete("run");
@@ -127,6 +135,21 @@ export function PlatformChatPage() {
         ]);
         if (stopped) return;
 
+        if (!runBelongsToPlatform(run, platform.id)) {
+          ignoredUrlRunId.current = targetRunId;
+          setActiveRunId((current) => current === targetRunId ? null : current);
+          setLatestRun((current) => current?.runId === targetRunId ? null : current);
+          setLatestEvents([]);
+          eventCursor.current = 0;
+          setError("That run belongs to another platform. Start a new chat.");
+          if (searchParamsRef.current.get("run") === targetRunId) {
+            const next = new URLSearchParams(searchParamsRef.current);
+            next.delete("run");
+            setSearchParams(next, { replace: true });
+          }
+          return;
+        }
+
         eventCursor.current = Math.max(eventCursor.current, eventPage.nextSequence);
         setLatestRun((current) => reuseRunView(current, run));
         setLatestEvents((current) => mergeEvents(mergeEvents(current, run.events), eventPage.events));
@@ -144,13 +167,14 @@ export function PlatformChatPage() {
         if (stopped || isAbortError(requestError)) return;
         setError(toUserMessage(requestError));
         if (requestError instanceof PlatformApiError && requestError.status === 404) {
+          ignoredUrlRunId.current = targetRunId;
           setActiveRunId((current) => current === targetRunId ? null : current);
           setLatestRun((current) => current?.runId === targetRunId ? null : current);
           setLatestEvents([]);
           eventCursor.current = 0;
           setError("That run is no longer available. Start a new chat.");
-          if (searchParams.get("run") === targetRunId) {
-            const next = new URLSearchParams(searchParams);
+          if (searchParamsRef.current.get("run") === targetRunId) {
+            const next = new URLSearchParams(searchParamsRef.current);
             next.delete("run");
             setSearchParams(next, { replace: true });
           }
@@ -166,10 +190,15 @@ export function PlatformChatPage() {
       controller.abort();
       if (timeout !== undefined) window.clearTimeout(timeout);
     };
-  }, [activeRunId, preservesSession]);
+  }, [activeRunId, platform.id, preservesSession, setSearchParams]);
 
   useEffect(() => {
     const runIdFromUrl = searchParams.get("run");
+    if (!runIdFromUrl) {
+      ignoredUrlRunId.current = null;
+      return;
+    }
+    if (runIdFromUrl === ignoredUrlRunId.current) return;
     if (shouldActivateUrlRun(runIdFromUrl, activeRunId, latestRun)) {
       setActiveRunId(runIdFromUrl);
     }
@@ -180,6 +209,9 @@ export function PlatformChatPage() {
     if (!canSubmit || !selectedModel) return;
 
     const text = prompt.trim();
+    const currentConversationVersion = conversationVersion.current;
+    const clientTurnId = createClientTurnId();
+    const requestSessionId = preservesSession ? sessionId ?? createId("session") : undefined;
     const userMessageId = createId("user");
     const assistantMessageId = createId("assistant");
     setMessages((current) => [
@@ -191,6 +223,7 @@ export function PlatformChatPage() {
     setIsSubmitting(true);
     setError(null);
     eventCursor.current = 0;
+    if (requestSessionId && requestSessionId !== sessionId) setSessionId(requestSessionId);
 
     try {
       const run = await createRun({
@@ -198,7 +231,7 @@ export function PlatformChatPage() {
         variant: variantId,
         task: { kind: "prompt", prompt: text },
         model: selectedModel,
-        ...(preservesSession && sessionId ? { sessionId } : {}),
+        ...(preservesSession && requestSessionId ? { sessionId: requestSessionId, clientTurnId } : {}),
         selection: {
           scenarioId,
           ...(backendProfileId ? { backendProfileId } : {}),
@@ -206,17 +239,22 @@ export function PlatformChatPage() {
           ...(experimentId !== "none" ? { experimentId } : {}),
         },
       });
+      if (conversationVersion.current !== currentConversationVersion) return;
+
       setSelectedModel((current) => synchronizeModelSelection(current, run));
       setLatestRun(run);
-      setLatestEvents(run.events.slice());
+      setLatestEvents(mergeEvents([], run.events));
       eventCursor.current = run.events.at(-1)?.recordedSequence ?? 0;
       setActiveRunId(run.runId);
+      ignoredUrlRunId.current = null;
       if (preservesSession) setSessionId(getRunSessionId(run));
       setMessages((current) => upsertRunMessages(current, run, assistantMessageId));
       const next = new URLSearchParams(searchParams);
       next.set("run", run.runId);
       setSearchParams(next, { replace: true });
     } catch (requestError) {
+      if (conversationVersion.current !== currentConversationVersion) return;
+
       setMessages((current) => current.map((message) => message.id === assistantMessageId
         ? { ...message, content: toUserMessage(requestError), status: "failed" }
         : message));
@@ -232,8 +270,9 @@ export function PlatformChatPage() {
     try {
       const cancelled = await cancelRun(latestRun.runId, "Cancellation requested from Chat.");
       setLatestRun(cancelled);
-      setLatestEvents(cancelled.events.slice());
+      setLatestEvents(mergeEvents([], cancelled.events));
       setMessages((current) => upsertRunMessages(current, cancelled));
+      if (terminalStatuses.has(cancelled.status)) setActiveRunId(null);
     } catch (requestError) {
       setError(toUserMessage(requestError));
     } finally {
@@ -242,6 +281,8 @@ export function PlatformChatPage() {
   }
 
   function newConversation() {
+    conversationVersion.current += 1;
+    ignoredUrlRunId.current = searchParams.get("run");
     setPrompt("");
     setMessages([]);
     setSessionId(null);
@@ -254,6 +295,8 @@ export function PlatformChatPage() {
     next.delete("run");
     setSearchParams(next, { replace: true });
   }
+
+  const visibleMessages = deduplicateMessages(messages);
 
   return (
     <div className="chat-page">
@@ -277,7 +320,7 @@ export function PlatformChatPage() {
                 <h2>Start a conversation</h2>
                 <p>Ask the selected agent anything.</p>
               </div>
-            ) : messages.map((message) => <ChatMessageBubble key={message.id} message={message} />)}
+            ) : visibleMessages.map((message) => <ChatMessageBubble key={message.id} message={message} />)}
             <ChatToolActivity events={latestEvents} />
           </div>
 
@@ -353,14 +396,25 @@ export function PlatformChatPage() {
 function ChatMessageBubble({ message }: { message: ChatMessage }) {
   const isAssistant = message.role === "assistant";
   const StatusIcon = message.status === "completed" ? CheckCircle2 : message.status === "failed" ? XCircle : LoaderCircle;
+  const statusLabel = chatMessageStatusLabel(message.status);
   return (
-    <article className={`chat-message chat-message-${message.role}`}>
+    <article aria-label={`${isAssistant ? "Agent" : "You"} message, ${statusLabel}`} className={`chat-message chat-message-${message.role} chat-message-status-${message.status}`}>
       <div className="chat-message-label">{isAssistant ? "Agent" : "You"}</div>
       <div className="chat-message-content">
-        {message.content ? <p>{message.content}</p> : <span className="chat-message-pending"><StatusIcon aria-hidden="true" className={message.status === "running" || message.status === "pending" ? "is-spinning" : undefined} size={14} /> {message.status === "pending" ? "Starting…" : "Working…"}</span>}
+        {message.content ? <p>{message.content}</p> : <span className="chat-message-pending"><StatusIcon aria-hidden="true" className={message.status === "running" || message.status === "pending" ? "is-spinning" : undefined} size={14} /> {statusLabel}</span>}
       </div>
     </article>
   );
+}
+
+function chatMessageStatusLabel(status: ChatMessage["status"]): string {
+  switch (status) {
+    case "pending": return "Starting…";
+    case "running": return "Working…";
+    case "completed": return "Completed";
+    case "failed": return "Failed";
+    case "cancelled": return "Cancelled";
+  }
 }
 
 function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
@@ -380,6 +434,7 @@ function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
 
 function ChatRunDetails({ error, events, run }: { error: string | null; events: readonly RunEvent[]; run: RunView }) {
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
+  const evidenceFiles = availableEvidenceFiles(run);
   return (
     <details className="chat-run-details" open={run.status === "running" || run.status === "queued"}>
       <summary><span>Run details</span><small>{run.status.replaceAll("_", " ")}</small></summary>
@@ -387,21 +442,49 @@ function ChatRunDetails({ error, events, run }: { error: string | null; events: 
         {error && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {error}</p>}
         <dl className="chat-run-meta">
           <div><dt>Run</dt><dd title={run.runId}>{run.runId}</dd></div>
+          <div><dt>Platform status</dt><dd>{formatRunStatus(run.status)}</dd></div>
+          <div><dt>Projection</dt><dd>{run.projection.state === "stale" ? "Stale" : "Current"}</dd></div>
           <div><dt>Events</dt><dd>{events.length}</dd></div>
           <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
         </dl>
         {run.projection.state === "stale" && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {run.projection.reason ?? "The latest platform state is unavailable."}</p>}
+        <details className="chat-activity" open={toolEvents.length > 0}>
+          <summary><Wrench aria-hidden="true" size={13} /> Tool activity <small>{toolEvents.length}</small></summary>
+          {toolEvents.length === 0 ? <p>No tool activity recorded.</p> : <ol>{toolEvents.map((event) => <li key={event.eventId}><strong>{formatEventKind(event.kind)}</strong><small>{event.source}</small></li>)}</ol>}
+        </details>
         <details className="chat-activity">
-          <summary><Wrench aria-hidden="true" size={13} /> Activity</summary>
-          {events.length === 0 ? <p>No activity recorded.</p> : <ol>{events.map((event) => <li key={event.eventId}><strong>{event.kind}</strong><small>{event.source}</small></li>)}</ol>}
+          <summary><span>Run timeline</span><small>{events.length}</small></summary>
+          {events.length === 0 ? <p>No run events recorded.</p> : <ol>{events.map((event) => <li key={event.eventId}><strong>{formatEventKind(event.kind)}</strong><small>{event.source}</small></li>)}</ol>}
+        </details>
+        <details className="chat-activity chat-evidence">
+          <summary><span>Evidence</span><small>Safe files</small></summary>
+          <ul>{evidenceFiles.map((fileName) => <li key={fileName}><a href={getRunEvidenceUrl(run.runId, fileName)} rel="noreferrer" target="_blank">{fileName}</a></li>)}</ul>
         </details>
       </div>
     </details>
   );
 }
 
-function ChatSelect({ children, label, onChange, value }: { children: ReactNode; label: string; onChange: (value: string) => void; value: string }) {
-  return <label className="chat-select"><span>{label}</span><select onChange={(event) => onChange(event.target.value)} value={value}>{children}</select></label>;
+function availableEvidenceFiles(run: RunView): readonly RunEvidenceFile[] {
+  const files: RunEvidenceFile[] = [];
+  files.push("config.json", "events.jsonl");
+  if (run.context) files.push("context.json");
+  if (run.trajectory) files.push("trajectory.json");
+  if (run.metrics) files.push("metrics.json");
+  if (run.result) files.push("result.json");
+  return files;
+}
+
+function ChatSelect({ children, disabled, label, onChange, value }: { children: ReactNode; disabled?: boolean; label: string; onChange: (value: string) => void; value: string }) {
+  return <label className={`chat-select ${disabled ? "is-disabled" : ""}`}><span>{label}</span><select disabled={disabled} onChange={(event) => onChange(event.target.value)} value={value}>{children}</select></label>;
+}
+
+function formatRunStatus(status: RunStatus): string {
+  return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatEventKind(kind: string): string {
+  return kind.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 function getRunSessionId(run: RunView): string | null {

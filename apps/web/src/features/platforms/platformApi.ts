@@ -60,6 +60,8 @@ export interface RunView {
     readonly executionId: string;
     readonly native: Record<string, unknown>;
   } | null;
+  readonly trajectory?: Record<string, unknown> | null;
+  readonly metrics?: Record<string, unknown> | null;
   readonly result: RunResult | null;
   readonly context: ContextProjection | null;
   readonly projection: {
@@ -142,8 +144,21 @@ export interface PlatformRunRequest {
   readonly task: { readonly kind: "prompt"; readonly prompt: string };
   readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
   readonly sessionId?: string;
+  /** Stable browser-generated identity for one submitted turn and its retries. */
+  readonly clientTurnId?: string;
   readonly selection?: RunSelection;
 }
+
+export const RUN_EVIDENCE_FILES = [
+  "config.json",
+  "events.jsonl",
+  "trajectory.json",
+  "metrics.json",
+  "context.json",
+  "result.json",
+] as const;
+
+export type RunEvidenceFile = (typeof RUN_EVIDENCE_FILES)[number];
 
 export class PlatformApiError extends Error {
   constructor(
@@ -218,6 +233,10 @@ export async function getRun(runId: string, signal?: AbortSignal): Promise<RunVi
 
 export async function getRunEvents(runId: string, after: number, signal?: AbortSignal): Promise<RunEventsPage> {
   return requestJson<RunEventsPage>(`/api/runs/${encodeURIComponent(runId)}/events?after=${after}&limit=100`, { signal });
+}
+
+export function getRunEvidenceUrl(runId: string, fileName: RunEvidenceFile): string {
+  return `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/evidence/${fileName}`;
 }
 
 export async function cancelRun(runId: string, reason: string, signal?: AbortSignal): Promise<RunView> {

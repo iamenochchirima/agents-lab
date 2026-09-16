@@ -883,6 +883,14 @@
   gap: 7px;
 }
 
+.chat-message-status-failed .chat-message-pending {
+  color: var(--danger);
+}
+
+.chat-message-status-cancelled .chat-message-pending {
+  color: var(--text-2);
+}
+
 .chat-tool-activity {
   align-items: center;
   color: var(--text-2);
@@ -1052,6 +1060,10 @@
   width: 100%;
 }
 
+.chat-select.is-disabled {
+  opacity: 0.65;
+}
+
 .chat-session-note {
   border-left: 2px solid var(--accent);
   padding-left: 9px;
@@ -1171,6 +1183,32 @@
 .chat-activity li small {
   color: var(--text-3);
   font-size: 0.62rem;
+}
+
+.chat-activity summary small {
+  color: var(--text-3);
+  font-size: 0.62rem;
+  margin-left: auto;
+}
+
+.chat-evidence ul {
+  display: grid;
+  gap: 7px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.chat-evidence a {
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  text-decoration: none;
+}
+
+.chat-evidence a:hover,
+.chat-evidence a:focus-visible {
+  text-decoration: underline;
 }
 
 .quiet-button,

@@ -10,6 +10,13 @@ export interface ChatMessage {
   readonly runId?: string;
 }
 
+export function createClientTurnId(): string {
+  const randomId = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `chat-turn-${randomId}`;
+}
+
 export function modelSelectionFromRun(run: Pick<RunView, "manifest">): ModelSelection | null {
   if (run.manifest.model.provider !== "openrouter") return null;
   return {
@@ -76,6 +83,10 @@ export function reuseRunView(current: RunView | null, next: RunView): RunView {
 export function shouldActivateUrlRun(runIdFromUrl: string | null, activeRunId: string | null, loadedRun: RunView | null): boolean {
   if (!runIdFromUrl || runIdFromUrl === activeRunId) return false;
   return !(loadedRun?.runId === runIdFromUrl && terminalStatuses.has(loadedRun.status));
+}
+
+export function runBelongsToPlatform(run: Pick<RunView, "manifest">, platformId: string): boolean {
+  return run.manifest.platform === platformId;
 }
 
 export function deduplicateMessages(messages: readonly ChatMessage[]): ChatMessage[] {
