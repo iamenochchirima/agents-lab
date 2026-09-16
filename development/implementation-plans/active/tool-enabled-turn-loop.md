@@ -1,7 +1,7 @@
 # Tool-enabled turn loop
 
 **Created:** `2026-09-16T13:37:32+02:00`
-**Last updated:** `2026-09-16T19:10:43+02:00`
+**Last updated:** `2026-09-16T19:12:18+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -443,7 +443,8 @@ Use separate reviewable commits. Do not wait until the end for one large commit:
 - [x] Before each completed commit, inspect `git status`, stage only files owned by the section, run the narrow validation, and record the result in the validation checkpoint above.
 - [ ] Record the final contiguous commit set in the completion record when the remaining shared/server and browser sections are committed and the plan is archived. Preserve existing user and other-agent changes in the dirty worktree.
 
-Focused commits already landed: `cb6c430`, `8c78c73`, `9b41bb5`, and `2a7194c`.
+Focused commits already landed: `cb6c430`, `8c78c73`, `9b41bb5`, `2a7194c`,
+`0788d37`, and `43607f2`.
 
 ## Completion record
 
