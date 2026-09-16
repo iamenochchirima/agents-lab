@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T20:00:00+02:00`
+**Last updated:** `2026-09-16T20:07:00+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -297,6 +297,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Trigger.dev response-boundary change.
 - A fresh server on `127.0.0.1:4319` completed a real LangGraph run with `cohere/north-mini-code:free`; run ID `d97ef0f8-e4f6-405d-b0ca-46e75c51ca28`. The original run `4dd500b8-8e46-44bd-a20c-8298bde9c971` was correctly recorded as failed with `DISPATCH_FAILED` when the strict protocol rejected the extra field.
 - Live OpenRouter smoke runs with `cohere/north-mini-code:free` completed on Temporal (`c54e4a8d-58c3-469e-9fe5-630d2a41f5ca`), Restate (`f7119cc2-f277-41dd-874b-618917f1db9a`), Mastra (`dacf5f45-e867-493d-9fcb-790a1ae7a007`), and Vercel Workflows (`537fc9db-a48f-4c8b-aa23-a62b180595d9`) at `2026-09-16T19:51:00+02:00`; only safe status/model fields were inspected.
+- An API-equivalent Compare fan-out using one selected model completed concurrently on Temporal (`ca7c760a-b872-4a6e-b6b8-00c12c82cf30`) and Restate (`0cf5406d-2681-46d6-a83e-2b3bc5be6ef7`) at `2026-09-16T19:56:00+02:00`; this does not replace the pending browser Compare acceptance check.
 
 ## Required validation commands
 
@@ -344,9 +345,10 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit the LangGraph wire-boundary fix and regression test in `363e50b` (`fix(langgraph): strip UI metadata from wire model`).
 - [x] Commit the shared model picker, runner/Compare wiring, browser chat, context meter, and web regression state tests in `d0c47ce` (`feat(web): connect platform chat and model controls`).
 - [x] Commit Trigger.dev response bounds and provider-boundary tests in `0b03650` (`fix(trigger): bound OpenRouter responses`).
-- [ ] Commit the remaining platform execution changes in coherent platform groups, with their tests and
+- [x] Clarify Restate's deterministic fake fixture boundary in `4987a42` (`docs(restate): clarify fake model fixture boundary`).
+- [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
-- [ ] Commit the shared web picker and runner/Compare integration separately.
+- [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
 - [ ] Commit documentation and plan completion records separately when practical.
 - [ ] Before each commit, inspect status and the exact staged diff; preserve unrelated
       Computer Native and generated `server/lab/` changes.
