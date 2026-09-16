@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T20:49:13+02:00`
+**Last updated:** `2026-09-16T21:14:28+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -251,20 +251,21 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - [x] Verify every active non-AWS platform accepts OpenRouter and retains its existing fake-only
       failure fixtures; add Trigger OpenRouter validation/task tests.
 - [x] Verify run request parsing rejects client-supplied secret/config fields.
-- [ ] Add browser-level coverage for picker loading, empty, error, keyboard selection,
+- [x] Add browser-level coverage for picker loading, empty, error, keyboard selection,
       and stale response cases.
 
 ### Integration tests
 
 - [x] Exercise `GET /api/models` against a mocked OpenRouter HTTP server and verify safe
       response shape, query parameters, cache, and error status mapping.
-- [ ] Exercise one run per active non-AWS platform with a mocked provider boundary and
+- [x] Exercise one run per active non-AWS platform with a mocked provider boundary and
       verify selected model propagation through native execution and normalized evidence.
 - [x] Exercise at least one real local platform run with OpenRouter, using an explicitly
       selected low-cost/free text model and a real configured key.
 - [ ] Exercise a real Compare request with two reachable platforms and one selected model.
-- [ ] Exercise missing-key, provider rejection, timeout, cancellation, restart, and
-      ambiguous-acknowledgement paths using existing deterministic platform fixtures.
+- [x] Exercise missing-key, provider rejection, timeout, cancellation, restart, and
+      ambiguous-acknowledgement paths using the existing explicit deterministic platform
+      fixtures and platform integration suites; these are not production model selections.
 
 ### Manual acceptance checks
 
@@ -306,8 +307,10 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `AGENTLAB_RUN_LANGGRAPH_NATIVE_OPENROUTER=1 pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/langgraph/langgraph-runner.test.ts` — 3 passed; a real LangGraph Python service and `StateGraph` reached the mocked provider, persisted a checkpoint, and retained usage.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/dbos/dbos-runner.test.ts` — 5 passed; the registered DBOS workflow and native step reached the mocked OpenRouter boundary.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test --test-name-pattern='selected OpenRouter model' tests/platforms/vercel-workflows/service.integration.test.ts` — 1 passed; the local Workflow World executed the selected model through its durable step and retained native step identity.
+- `AGENTLAB_RUN_TEMPORAL_NATIVE_OPENROUTER=1 pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/temporal/native-openrouter.test.ts` — 1 passed; an actual local Temporal workflow and activity used an isolated task queue and reached a local mocked OpenRouter boundary with the selected model, usage, native reference, normalized evidence, and redaction checks.
+- `node --test apps/web/tests/browser/model-picker.browser.test.mjs` — 1 passed against the running Vite app in Chromium; the real picker rendered catalog loading, selected by keyboard, rendered empty/error states, and kept the newer result when an older search request was aborted.
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Mastra, LangGraph, DBOS, and Vercel native-boundary coverage.
-- `pnpm --filter @agent-harness-lab/lab-server test` — 243 passed, 1 intentionally skipped (the opt-in native LangGraph test); this includes the compiled DBOS and Vercel native-boundary tests.
+- `pnpm --filter @agent-harness-lab/lab-server test` — 243 passed, 2 intentionally skipped (the opt-in native LangGraph and Temporal tests); this includes the compiled DBOS and Vercel native-boundary tests.
 - `pnpm --filter @agent-harness-lab/web run typecheck` — passed; the generated documentation catalog contains 63 documents.
 - `pnpm --filter @agent-harness-lab/web run build` — passed; Vite emitted only the existing large-chunk warning.
 - `git diff --check` — passed after the native-boundary test additions and compiled-path fix.
@@ -324,6 +327,7 @@ pnpm --filter @agent-harness-lab/lab-server test
 pnpm --filter @agent-harness-lab/web run typecheck
 pnpm --filter @agent-harness-lab/web run build
 bash -n scripts/run_local_stack.sh
+node --test apps/web/tests/browser/model-picker.browser.test.mjs
 git diff --check
 ```
 
@@ -373,6 +377,8 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit DBOS native OpenRouter workflow coverage in `43ede1e` (`test(dbos): cover selected OpenRouter workflow execution`).
 - [x] Commit Vercel Workflows native OpenRouter coverage in `2e9a51e` (`test(vercel): cover selected OpenRouter workflow execution`).
 - [x] Commit the compiled-test DBOS SDK resolution fix in `3e56e25` (`fix(test): resolve DBOS SDK from compiled test paths`).
+- [x] Commit the native Temporal OpenRouter workflow coverage in `22d66eb` (`test(temporal): cover native OpenRouter workflow`).
+- [x] Commit the Chromium model-picker browser coverage in `88afa51` (`test(web): cover model picker in Chromium`).
 - [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
