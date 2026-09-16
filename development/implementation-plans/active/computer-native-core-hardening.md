@@ -1356,7 +1356,7 @@ claim in this plan.
       decisions.
 - [x] Show retry, waiting, cancelling, interrupted, partial, and outcome-unknown states
       distinctly from success and failure.
-- [ ] Make Ctrl+C work while idle, during model transport, during approval, and during
+- [x] Make Ctrl+C work while idle, during model transport, during approval, and during
       active tool execution without terminating the shell unexpectedly.
 - [ ] Keep the renderer driven by typed runtime events and preserve the current honest
       capability list. Do not add fake activity or health panels.
@@ -1425,7 +1425,7 @@ claim in this plan.
 - [ ] Update runtime, persistence, security, CLI, workspace, and model READMEs with the
       final state and failure semantics.
 - [x] Add a short playground or manual acceptance procedure using `pnpm run chat`.
-- [ ] Update the production-readiness gap register with delivered evidence and remaining
+- [x] Update the production-readiness gap register with delivered evidence and remaining
       limitations.
 - [ ] Keep the follow-on queue pointed at Skills only after this plan is archived.
 
