@@ -32,124 +32,131 @@ export const triggerBaselineTask = task({
     randomize: false,
   },
   maxDuration: 60,
-  run: async (
-    payload: TriggerPromptPayload,
-    { ctx, signal }: { readonly ctx: { readonly attempt: { readonly number: number } }; readonly signal: AbortSignal },
-  ): Promise<TriggerTaskOutput> => {
-    assertPayload(payload);
-    const startedAt = new Date().toISOString();
-    const attemptCount = ctx.attempt.number;
-    const events: Array<import("../../../../../control-plane/domain/types.js").RunEventIntent> = [
-      event(payload, 1, "TaskStarted", startedAt, { attempt: attemptCount }),
-      event(payload, 2, "ModelRequested", startedAt, { provider: payload.model.provider, model: payload.model.model }),
-    ];
+  run: executeTriggerBaselineTask,
+});
 
-    if (payload.model.provider === "openrouter") {
-      const completion = await completeTriggerOpenRouterModel(payload, signal);
-      const finishedAt = new Date().toISOString();
-      events.push(
-        event(payload, 3, "ModelCompleted", finishedAt, { outputLength: completion.output.length }),
-        event(payload, 4, "TaskCompleted", finishedAt, { attempt: attemptCount }),
-      );
-      return {
-        schemaVersion: 1,
-        runId: payload.runId,
-        output: completion.output,
-        startedAt,
-        finishedAt,
-        attemptCount,
-        usage: completion.usage,
-        eventIntents: events,
-        trajectory: {
-          schemaVersion: 1,
-          runId: payload.runId,
-          phases: [
-            { name: "trigger.task", startedAt, finishedAt },
-            { name: "model.openrouter", startedAt, finishedAt },
-          ],
-        },
-        metrics: {
-          schemaVersion: 1,
-          runId: payload.runId,
-          status: "completed",
-          durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
-          modelCallCount: 1,
-          modelAttemptCount: attemptCount,
-          inputTokens: completion.usage.inputTokens,
-          outputTokens: completion.usage.outputTokens,
-          totalTokens: completion.usage.totalTokens,
-          costUsd: null,
-        },
-      };
-    }
+/**
+ * The exported handler is the exact function registered with Trigger.dev.
+ * Keeping this boundary callable makes the task contract testable without
+ * pretending that a local unit test is a Trigger scheduler or worker.
+ */
+export async function executeTriggerBaselineTask(
+  payload: TriggerPromptPayload,
+  { ctx, signal }: { readonly ctx: { readonly attempt: { readonly number: number } }; readonly signal: AbortSignal },
+): Promise<TriggerTaskOutput> {
+  assertPayload(payload);
+  const startedAt = new Date().toISOString();
+  const attemptCount = ctx.attempt.number;
+  const events: Array<import("../../../../../control-plane/domain/types.js").RunEventIntent> = [
+    event(payload, 1, "TaskStarted", startedAt, { attempt: attemptCount }),
+    event(payload, 2, "ModelRequested", startedAt, { provider: payload.model.provider, model: payload.model.model }),
+  ];
 
-    if (payload.model.model === "fake-provider-failure") {
-      throw new TriggerBaselineTaskError(
-        "TRIGGER_FAKE_PROVIDER_FAILURE",
-        "provider",
-        "The deterministic Trigger.dev fake model rejected the request.",
-      );
-    }
-
-    if (payload.model.model === "fake-ambiguous") {
-      throw new TriggerBaselineTaskError(
-        "TRIGGER_FAKE_OUTCOME_UNKNOWN",
-        "outcome_unknown",
-        "The deterministic Trigger.dev fake model completed dispatch without a confirmed provider outcome.",
-      );
-    }
-
-    if (payload.model.model === "fake-retry" && attemptCount === 1) {
-      throw new TriggerBaselineTaskError(
-        "TRIGGER_FAKE_RETRYABLE_FAILURE",
-        "internal",
-        "The deterministic Trigger.dev retry fixture fails on its first attempt.",
-      );
-    }
-
-    if (payload.model.model === "fake-slow") {
-      await waitWithSignal(2_000, signal);
-    }
-
+  if (payload.model.provider === "openrouter") {
+    const completion = await completeTriggerOpenRouterModel(payload, signal);
     const finishedAt = new Date().toISOString();
-    const output = `Fake response: ${payload.prompt}`;
     events.push(
-      event(payload, 3, "ModelCompleted", finishedAt, { outputLength: output.length }),
+      event(payload, 3, "ModelCompleted", finishedAt, { outputLength: completion.output.length }),
       event(payload, 4, "TaskCompleted", finishedAt, { attempt: attemptCount }),
     );
-    const trajectory: TriggerTaskOutput["trajectory"] = {
-      schemaVersion: 1,
-      runId: payload.runId,
-      phases: [
-        { name: "trigger.task", startedAt, finishedAt },
-        { name: "model.fake", startedAt, finishedAt },
-      ],
-    };
     return {
       schemaVersion: 1,
       runId: payload.runId,
-      output,
+      output: completion.output,
       startedAt,
       finishedAt,
       attemptCount,
-      usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+      usage: completion.usage,
       eventIntents: events,
-      trajectory,
+      trajectory: {
+        schemaVersion: 1,
+        runId: payload.runId,
+        phases: [
+          { name: "trigger.task", startedAt, finishedAt },
+          { name: "model.openrouter", startedAt, finishedAt },
+        ],
+      },
       metrics: {
         schemaVersion: 1,
         runId: payload.runId,
         status: "completed",
         durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
         modelCallCount: 1,
-        modelAttemptCount: 1,
-        inputTokens: null,
-        outputTokens: null,
-        totalTokens: null,
+        modelAttemptCount: attemptCount,
+        inputTokens: completion.usage.inputTokens,
+        outputTokens: completion.usage.outputTokens,
+        totalTokens: completion.usage.totalTokens,
         costUsd: null,
       },
     };
-  },
-});
+  }
+
+  if (payload.model.model === "fake-provider-failure") {
+    throw new TriggerBaselineTaskError(
+      "TRIGGER_FAKE_PROVIDER_FAILURE",
+      "provider",
+      "The deterministic Trigger.dev fake model rejected the request.",
+    );
+  }
+
+  if (payload.model.model === "fake-ambiguous") {
+    throw new TriggerBaselineTaskError(
+      "TRIGGER_FAKE_OUTCOME_UNKNOWN",
+      "outcome_unknown",
+      "The deterministic Trigger.dev fake model completed dispatch without a confirmed provider outcome.",
+    );
+  }
+
+  if (payload.model.model === "fake-retry" && attemptCount === 1) {
+    throw new TriggerBaselineTaskError(
+      "TRIGGER_FAKE_RETRYABLE_FAILURE",
+      "internal",
+      "The deterministic Trigger.dev retry fixture fails on its first attempt.",
+    );
+  }
+
+  if (payload.model.model === "fake-slow") {
+    await waitWithSignal(2_000, signal);
+  }
+
+  const finishedAt = new Date().toISOString();
+  const output = `Fake response: ${payload.prompt}`;
+  events.push(
+    event(payload, 3, "ModelCompleted", finishedAt, { outputLength: output.length }),
+    event(payload, 4, "TaskCompleted", finishedAt, { attempt: attemptCount }),
+  );
+  const trajectory: TriggerTaskOutput["trajectory"] = {
+    schemaVersion: 1,
+    runId: payload.runId,
+    phases: [
+      { name: "trigger.task", startedAt, finishedAt },
+      { name: "model.fake", startedAt, finishedAt },
+    ],
+  };
+  return {
+    schemaVersion: 1,
+    runId: payload.runId,
+    output,
+    startedAt,
+    finishedAt,
+    attemptCount,
+    usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+    eventIntents: events,
+    trajectory,
+    metrics: {
+      schemaVersion: 1,
+      runId: payload.runId,
+      status: "completed",
+      durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)),
+      modelCallCount: 1,
+      modelAttemptCount: 1,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      costUsd: null,
+    },
+  };
+}
 
 function assertPayload(payload: TriggerPromptPayload): void {
   if (!payload || typeof payload !== "object" || !payload.model || typeof payload.model.model !== "string" ||
