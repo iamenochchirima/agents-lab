@@ -12,6 +12,10 @@ export interface ApprovalPanel {
   readonly action: string;
   readonly target: string;
   readonly scope: string;
+  /** Stable prepared-operation identity shown so the decision is auditable. */
+  readonly identity?: string;
+  /** Human-readable approval lifetime shown next to the identity. */
+  readonly expiry?: string;
   readonly extra?: readonly (readonly [string, string])[];
   readonly preview: string;
   readonly details?: string;
@@ -106,6 +110,8 @@ export function renderApprovalPanel(panel: ApprovalPanel, options: { readonly co
     ["action", panel.action],
     ["target", panel.target],
     ["scope", panel.scope],
+    ...(panel.identity === undefined ? [] : [["identity", panel.identity] as const]),
+    ...(panel.expiry === undefined ? [] : [["expires", panel.expiry] as const]),
     ...(panel.extra ?? []),
     ["preview", preview],
   ];

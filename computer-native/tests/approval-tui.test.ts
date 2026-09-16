@@ -27,6 +27,8 @@ const panel: ApprovalPanel = {
   action: "update",
   target: "notes.md",
   scope: "/tmp/workspace",
+  identity: "mutation mutation_test",
+  expiry: "120000ms from prompt",
   preview: "--- a/notes.md\n+++ b/notes.md\n-old\n+new\nBearer secret-value",
   details: "The exact patch changes one line and writes atomically.",
   redactionSecrets: ["secret-value"],
@@ -49,6 +51,8 @@ test("approval panel renders the required context and redacts secrets", () => {
   assert.match(rendered, /action\s+update/u);
   assert.match(rendered, /target\s+notes\.md/u);
   assert.match(rendered, /scope\s+\/tmp\/workspace/u);
+  assert.match(rendered, /identity\s+mutation mutation_test/u);
+  assert.match(rendered, /expires\s+120000ms from prompt/u);
   assert.match(rendered, /preview\s+--- a\/notes\.md/u);
   assert.match(rendered, /\[REDACTED\]/u);
   assert.doesNotMatch(rendered, /secret-value/u);
@@ -134,6 +138,31 @@ test("idle Ctrl+C closes the interactive TUI", { timeout: 2_000 }, async () => {
   const rendered = chunks.join("").replace(/\u001b\[[0-9;]*m/gu, "");
   assert.match(rendered, /Session closed\./u);
   assert.doesNotMatch(rendered, /Nothing is running/u);
+});
+
+test("active Ctrl+C cancellation is idempotent and reaches a terminal result", { timeout: 2_000 }, async () => {
+  const { output, chunks } = captureOutput();
+  const application = {
+    sessionId: "session_active_ctrl_c",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: [],
+    runTurn: async (_message: string, signal?: AbortSignal) => new Promise((resolve) => {
+      signal?.addEventListener("abort", () => resolve({ status: "cancelled" }), { once: true });
+    }),
+  } as unknown as ChatApplication;
+  const ui = new TerminalUi(application, output, false);
+  const running = ui.runTurn("cancel this turn");
+
+  assert.equal(ui.cancelActiveTurn(), true);
+  assert.equal(ui.cancelActiveTurn(), true);
+  await running;
+
+  const rendered = chunks.join("");
+  assert.equal(rendered.match(/Cancelling current turn…/gu)?.length, 1);
+  assert.match(rendered, /cancelled/u);
 });
 
 test("TUI renders one terminal activity line for a mixed memory batch", async () => {

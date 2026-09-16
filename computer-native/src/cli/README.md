@@ -19,6 +19,13 @@ panel with named approve, deny, inspect, and cancel choices. Unsupported input f
 Non-interactive runs have no approval channel
 and therefore do not perform workspace mutations.
 
+Every approval panel exposes the stable prepared-operation identity and effective approval
+lifetime. Workspace mutations use their mutation ID, local processes show the execution ID
+and argv hash, browser actions show the action ID and action hash, and memory operations
+show their operation and call IDs. Ctrl-C is safe to repeat: the first press requests
+cancellation and later presses do not create duplicate cancellation activity or terminal
+evidence.
+
 Mixed durable-memory batches are rendered as one terminal activity line with their bounded
 member count; the renderer does not pretend that the batch is a cross-file transaction.
 

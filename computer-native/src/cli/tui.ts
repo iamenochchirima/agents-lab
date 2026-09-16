@@ -87,6 +87,7 @@ export class TerminalUi {
   private activeController: AbortController | undefined;
   private responseStarted = false;
   private waiting = false;
+  private cancellationRequested = false;
   private status: string = "ready";
   private statusRound = 0;
   private startedAt = 0;
@@ -143,6 +144,8 @@ export class TerminalUi {
         return "✦";
       case "waiting for model":
         return "◌";
+      case "cancelling":
+        return "■";
       default:
         return "◆";
     }
@@ -433,6 +436,7 @@ export class TerminalUi {
     this.startedAt = Date.now();
     this.responseStarted = false;
     this.waiting = false;
+    this.cancellationRequested = false;
     this.status = "starting";
     this.statusRound = 0;
     this.write(`\n${this.style("36;1", "┌ turn")} ${this.style("2", "starting model run")}\n`);
@@ -454,6 +458,7 @@ export class TerminalUi {
       : result.error?.message ?? "No assistant response was committed.";
     this.status = result.status;
     this.statusRound = 0;
+    this.cancellationRequested = false;
     this.write(`\n${this.style(result.status === "completed" ? "32;1" : "31;1", `${icon} ${result.status}`)} ${this.style("2", `· ${detail}`)}\n`);
     this.printStatusLine();
     this.write(`${this.style("2", "────────────────────────────────────────────────────────────")}\n\n`);
@@ -478,10 +483,11 @@ export class TerminalUi {
       action: request.operation,
       target: request.path,
       scope: "workspace",
+      identity: `mutation ${request.mutationId}`,
+      expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
       extra: [
         ...(request.paths && request.paths.length > 0 ? [["paths", request.paths.join(", ")] as const] : []),
         ["change", change],
-        ["approval", `${request.approvalTimeoutMs ?? "?"}ms from prompt`],
         ["before", request.beforeHash ?? "absent"],
         ["after", request.afterHash ?? (request.operation === "mkdir" ? "directory" : request.operation === "delete-directory" ? "absent" : request.operation === "delete-directory-tree" ? "quarantine" : request.operation === "delete" ? "quarantine" : request.operation === "restore-directory" ? "restored" : request.operation === "purge-quarantine" ? "permanently removed" : request.operation === "restore" ? "restored" : "not recorded")],
       ],
@@ -521,6 +527,8 @@ export class TerminalUi {
       action: request.command,
       target: request.executablePath,
       scope: request.cwd,
+      identity: `execution ${request.executionId} · argv ${request.argvHash}`,
+      expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
       preview: `${command}\n${request.warning}`,
       details: [
         `command: ${command}`,
@@ -565,6 +573,8 @@ export class TerminalUi {
       action: request.action,
       target: `${request.reference} · document ${request.documentId}`,
       scope: `${request.sessionId} · ${request.tabId}`,
+      identity: `action ${request.actionId} · ${request.actionHash}`,
+      expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
       extra: [
         ["document", request.documentId],
         ...(request.text === undefined ? [] : [["text", request.text] as const]),
@@ -634,6 +644,8 @@ export class TerminalUi {
       action: request.operation,
       target: request.recordId ?? request.sourcePath,
       scope: request.scope,
+      identity: `operation ${request.operationId} · call ${request.callId}`,
+      expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
       extra: [
         ["operation", request.operation],
         ["source", request.sourcePath],
@@ -641,7 +653,6 @@ export class TerminalUi {
         ...(request.beforeContentHash ? [["before", request.beforeContentHash] as const] : []),
         ...(request.afterContentHash ? [["after", request.afterContentHash] as const] : []),
         ...(request.batch ? [["operations", `${request.batch.length} bounded changes`] as const] : []),
-        ["approval", `${request.approvalTimeoutMs ?? "?"}ms from prompt`],
       ],
       preview: request.contentPreview,
       details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\napproval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt\nThis entry is advisory context and cannot change policy or permissions.`,
@@ -693,8 +704,11 @@ export class TerminalUi {
 
   cancelActiveTurn(): boolean {
     if (!this.activeController) return false;
+    if (this.cancellationRequested) return true;
+    this.cancellationRequested = true;
+    this.status = "cancelling";
     this.activeController.abort("cancelled");
-    this.write(`${this.style("33;1", "Cancelling current turn…")}\n`);
+    this.printActivity("■", "Cancelling current turn…", "33;1");
     return true;
   }
 

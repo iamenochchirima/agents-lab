@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T15:50:00+02:00
+**Last updated:** 2026-09-16T16:01:30+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -158,8 +158,12 @@ tests, but it must never replace a configured real provider silently.
 - Model request/output limits are covered at configuration, runtime, and OpenRouter
   adapter boundaries, including pre-provider rejection and no-partial-transcript
   failure behavior.
-- The current validation is 256 passing tests across the package, with 88.58% line
-  coverage, 76.68% branch coverage, and 83.70% function coverage.
+- Approval panels now expose the stable prepared-operation identity and effective expiry
+  for workspace, process, browser, and memory actions. Repeated Ctrl-C requests one
+  cancellation transition, keeps the approval safe-default, and does not add duplicate
+  cancellation activity.
+- The current validation is 257 passing tests across the package, with 88.58% line
+  coverage, 76.56% branch coverage, and 83.70% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -256,7 +260,7 @@ Delivered in this slice:
   duplicate terminal event, no repeated filesystem mutation, and no automatic retry of
   a partial patch set.
 
-Still not delivered by this slice:
+Still not delivered by the runtime interruption increment:
 
 - Failure injection at every pre-write, post-write, and underlying side-effect boundary;
   the remaining gaps are full per-write coverage and additional host-side effect
@@ -264,7 +268,7 @@ Still not delivered by this slice:
 - Full turn-level state-machine validation, concurrency limits, deterministic replay,
   and cross-platform process recovery evidence.
 
-Broader gates still open after this slice:
+Broader gates still open after the current increments:
 
 - OS-level process/container limits, network isolation, or a sandbox guarantee.
 - Provider capability metadata, fallback policy, usage/cost accounting, or the full
@@ -274,6 +278,21 @@ Broader gates still open after this slice:
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
+
+### Current slice boundary: approval identity and cancellation UX
+
+Delivered in this increment:
+
+- Approval panels show the identity bound to the prepared operation: mutation ID, process
+  execution ID plus argv hash, browser action ID plus action hash, or memory operation and
+  call IDs.
+- Approval panels show the effective approval lifetime while retaining the detailed
+  timeout context for inspection.
+- Active cancellation is idempotent in the TUI. The first Ctrl-C aborts the active
+  controller and reports cancellation; repeated Ctrl-C input does not emit duplicate
+  cancellation transitions.
+- Tests cover panel identity/expiry rendering, idle Ctrl-C, active cancellation, and
+  cancellation while an interactive approval or browser action is in progress.
 
 ## Scope
 
@@ -508,11 +527,11 @@ claim in this plan.
 
 ### 3. Approval and TUI
 
-- [ ] Replace bare `y`/`yes` handling with a focused approval interaction using named
+- [x] Replace bare `y`/`yes` handling with a focused approval interaction using named
       choices such as approve, reject, inspect, and cancel.
-- [ ] Show the exact operation, resolved path or argv, scope, limits, risk warning,
+- [x] Show the exact operation, resolved path or argv, scope, limits, risk warning,
       action hash, and expiry in the approval view.
-- [ ] Bind the selected decision to the prepared action identity and reject stale
+- [x] Bind the selected decision to the prepared action identity and reject stale
       decisions.
 - [ ] Show retry, waiting, cancelling, interrupted, partial, and outcome-unknown states
       distinctly from success and failure.
