@@ -158,6 +158,43 @@ test("non-Temporal Chat discloses single-turn behavior and requires a model", as
   }
 });
 
+test("Platform Chat opens for every registered platform", async () => {
+  const browser = await openBrowser();
+  await installFixture(browser.cdp);
+
+  try {
+    const platforms = [
+      ["computer-native", "Computer Native"],
+      ["temporal", "Temporal"],
+      ["restate", "Restate"],
+      ["langgraph", "LangGraph"],
+      ["mastra", "Mastra"],
+      ["vercel-workflows", "Vercel Workflow / AI SDK"],
+      ["inngest", "Inngest"],
+      ["trigger-dev", "Trigger.dev"],
+      ["dbos", "DBOS"],
+      ["hatchet", "Hatchet"],
+      ["aws-step-functions", "AWS Step Functions"],
+    ];
+
+    for (const [platformId, platformName] of platforms) {
+      await navigate(browser.cdp, `/platforms/${platformId}/chat`);
+      await waitForElement(browser.cdp, ".chat-page");
+      const route = await browser.cdp.evaluate(`JSON.stringify({
+        name: document.querySelector(".chat-heading .eyebrow")?.textContent?.trim(),
+        setupHref: document.querySelector(".chat-heading a")?.getAttribute("href"),
+      })`).then(JSON.parse);
+      assert.equal(route.name, platformName);
+      assert.equal(route.setupHref, `/platforms/${platformId}`);
+    }
+
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+    assert.equal(browser.dialogs.length, 0, "Chat must not open native browser dialogs");
+  } finally {
+    await browser.close();
+  }
+});
+
 async function installFixture(cdp) {
   const state = {
     createRequests: 0,
