@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T13:42:00+02:00
+**Last updated:** 2026-09-16T13:47:42+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -119,8 +119,11 @@ tests, but it must never replace a configured real provider silently.
   process, browser, memory, or workspace action record. Workspace reconciliation has a
   distinct `WorkspaceMutationReconciled` event, so “not applied and not replayed” is not
   reported as either a commit or a generic failure.
-- The current validation is 226 passing tests across the package, 87.76% line coverage,
-  74.86% branch coverage, and 82.67% function coverage.
+- Recovery repairs are now tested through a real approved process side effect: if the
+  marker write succeeds but acknowledgement of the completed process record is lost,
+  restart repairs only the missing evidence and does not run the command again.
+- The current validation is 227 passing tests across the package, 88.00% line coverage,
+  75.14% branch coverage, and 82.78% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -134,6 +137,9 @@ Delivered in this slice:
   tool, filesystem, process, browser, or memory action is replayed.
 - Recovery reconstruction tests proving missing terminal lifecycle events are restored
   once from persisted action records.
+- An integration recovery test proving a real approved process side effect is not
+  replayed when its terminal record acknowledgement is lost; the repaired event is
+  inserted before an already durable turn-terminal event.
 
 Still not delivered by this slice:
 

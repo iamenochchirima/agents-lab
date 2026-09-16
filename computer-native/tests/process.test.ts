@@ -543,6 +543,74 @@ test("restart repairs missing process completion evidence from a durable termina
   }
 });
 
+test("restart repairs process evidence after a real side effect completes before acknowledgement", async () => {
+  const harness = await createHarness();
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-side-effect-recovery-"));
+  try {
+    let executionWrites = 0;
+    const config = loadConfig({
+      stateDir,
+      workspaceRoot: harness.root,
+      processMode: "approval",
+      processDurationMs: limits.timeoutMs,
+      processTerminationGraceMs: limits.terminationGraceMs,
+      processOutputBytes: limits.maxOutputBytes,
+      processArgumentCount: limits.maxArgumentCount,
+      processArgumentBytes: limits.maxArgumentBytes,
+    }, {});
+    const session = await SessionStore.open(stateDir, undefined, {
+      writeHooks: {
+        afterWrite: (operation, filePath) => {
+          if (operation === "replace-json" && filePath.includes(`${path.sep}executions${path.sep}`) && executionWrites++ === 3) {
+            throw new Error("simulated completed process acknowledgement failure");
+          }
+        },
+      },
+    });
+    const result = await runTurn({
+      session,
+      provider: new DeterministicModelProvider("deterministic/process", {
+        toolCall: {
+          name: "run_command",
+          argumentsJson: JSON.stringify({ command: process.execPath, args: ["-e", "require('node:fs').writeFileSync('marker.txt', 'ran')"] }),
+          finalResponse: "The command completed.",
+        },
+      }),
+      config,
+      userPrompt: "Run the marker command.",
+      approveProcess: async () => ({ decision: "allow-once" }),
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran");
+    const executionDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId, "executions");
+    const executionEntry = (await readdir(executionDirectory))[0];
+    assert.ok(executionEntry);
+    const processRecord = JSON.parse(await readFile(path.join(executionDirectory, executionEntry), "utf8")) as { status: string };
+    assert.equal(processRecord.status, "completed");
+    let recoveryAcknowledgements = 0;
+    const recoverySession = await SessionStore.open(stateDir, result.sessionId, {
+      writeHooks: {
+        afterWrite: (operation, filePath) => {
+          if (operation === "replace-json-lines" && filePath.endsWith(`${path.sep}events.jsonl`) && recoveryAcknowledgements++ === 0) {
+            throw new Error("simulated repaired event acknowledgement failure");
+          }
+        },
+      },
+    });
+    await assert.rejects(() => recoverySession.recoverInterruptedTurns(), /simulated repaired event acknowledgement failure/u);
+    const recovered = await (await SessionStore.open(stateDir, result.sessionId)).recoverInterruptedTurns();
+    assert.deepEqual(recovered, []);
+    assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran");
+    const events = await readFile(path.join(executionDirectory, "..", "events.jsonl"), "utf8");
+    assert.equal((events.match(/ProcessCompleted/g) ?? []).length, 1);
+    assert.deepEqual(await (await SessionStore.open(stateDir, result.sessionId)).recoverInterruptedTurns(), []);
+    assert.equal(await readFile(path.join(harness.root, "marker.txt"), "utf8"), "ran");
+  } finally {
+    await harness.cleanup();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("process execution records preserve identity and one-way transitions", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-transition-"));
   try {

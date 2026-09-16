@@ -57,7 +57,9 @@ and a `WorkspaceMutationReconciled` result proving that the recorded before-stat
 remained authoritative and the mutation was not replayed.
 
 When an action record is terminal but its normalized terminal event is missing, restart
-reconstructs that event before it finalizes an interrupted turn. Reconstruction is
+reconstructs that event before it finalizes an interrupted turn. If the turn-terminal
+event was already acknowledged, recovery atomically inserts the repaired action event
+immediately before it so the turn-terminal event remains last. Reconstruction is
 idempotent and only uses the persisted bounded record; it never launches a process,
 reopens a browser action, mutates the workspace, or changes memory contents.
 

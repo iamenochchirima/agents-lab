@@ -21,6 +21,7 @@ import { ComputerNativeError } from "../runtime/errors.js";
 import {
   appendJsonLine,
   atomicWriteJson,
+  atomicWriteJsonLines,
   ensureDirectory,
   readJson,
   readJsonLines,
@@ -37,7 +38,7 @@ import type { MemoryActionRecord, MemorySearchEvidence } from "../memory/contrac
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
-export type PersistenceWriteOperation = "replace-json" | "append-json-line";
+export type PersistenceWriteOperation = "replace-json" | "replace-json-lines" | "append-json-line";
 
 export interface PersistenceWriteHooks {
   readonly beforeWrite?: (operation: PersistenceWriteOperation, filePath: string) => Promise<void> | void;
@@ -255,6 +256,12 @@ export class SessionStore {
     await this.writeHooks?.beforeWrite?.("append-json-line", filePath);
     await appendJsonLine(filePath, value);
     await this.writeHooks?.afterWrite?.("append-json-line", filePath);
+  }
+
+  async replaceJsonLines(filePath: string, values: readonly unknown[]): Promise<void> {
+    await this.writeHooks?.beforeWrite?.("replace-json-lines", filePath);
+    await atomicWriteJsonLines(filePath, values);
+    await this.writeHooks?.afterWrite?.("replace-json-lines", filePath);
   }
 
   async acquireLock(): Promise<SessionLock> {
@@ -478,6 +485,29 @@ export class TurnStore {
       payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
     };
     await this.session.appendJsonLine(eventsPath, event);
+    return event;
+  }
+
+  private async appendRecoveredEvent(type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): Promise<LifecycleEvent> {
+    const eventsPath = path.join(this.directory, "events.jsonl");
+    const existing = await readJsonLines<LifecycleEvent>(eventsPath);
+    validateLifecycleEventHistory(existing);
+    const terminalIndex = existing.findIndex((event) => isTerminalLifecycleEvent(event.type));
+    if (terminalIndex < 0) return this.appendEvent(type, payload);
+    const prefix = existing.slice(0, terminalIndex);
+    assertLifecycleEventOrder(prefix, type, payload);
+    const event: LifecycleEvent = {
+      schemaVersion: 1,
+      eventId: id("event"),
+      sequence: terminalIndex + 1,
+      type,
+      recordedAt: now(),
+      sessionId: this.record.sessionId,
+      turnId: this.record.turnId,
+      payload: redactRecord(payload) as Readonly<Record<string, unknown>>,
+    };
+    const repaired = [...prefix, event, existing[terminalIndex]].map((candidate, index) => ({ ...candidate, sequence: index + 1 }));
+    await this.session.replaceJsonLines(eventsPath, repaired);
     return event;
   }
 
@@ -707,7 +737,7 @@ export class TurnStore {
     if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
     const events = await this.readEvents();
     if (events.some((event) => event.type === "ProcessCompleted" && event.payload.executionId === record.executionId)) return;
-    await this.appendEvent("ProcessCompleted", {
+    await this.appendRecoveredEvent("ProcessCompleted", {
       executionId: record.executionId,
       callId: record.callId,
       status: record.status,
@@ -722,7 +752,7 @@ export class TurnStore {
     if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
     const events = await this.readEvents();
     if (events.some((event) => event.type === "BrowserCompleted" && event.payload.actionId === record.actionId)) return;
-    await this.appendEvent("BrowserCompleted", {
+    await this.appendRecoveredEvent("BrowserCompleted", {
       actionId: record.actionId,
       callId: record.callId,
       status: record.status,
@@ -740,7 +770,7 @@ export class TurnStore {
     const type: LifecycleEventType = record.status === "committed"
       ? record.operation === "remove" ? "MemoryForgotten" : "MemoryCommitted"
       : "MemoryFailed";
-    await this.appendEvent(type, {
+    await this.appendRecoveredEvent(type, {
       operationId: record.operationId,
       callId: record.callId,
       operation: record.operation,

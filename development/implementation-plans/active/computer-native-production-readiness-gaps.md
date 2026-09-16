@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T13:42:00+02:00
+**Last updated:** 2026-09-16T13:47:42+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 226 tests passed.
-- `pnpm run coverage`: 226 tests passed, with 87.76% line coverage, 74.86% branch
-  coverage, and 82.67% function coverage.
+- `pnpm test`: 227 tests passed.
+- `pnpm run coverage`: 227 tests passed, with 88.00% line coverage, 75.14% branch
+  coverage, and 82.78% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -64,6 +64,9 @@ readiness:
 - Recovery reconstructs missing terminal lifecycle events from durable process, browser,
   memory, and workspace records; workspace “not applied” outcomes use a distinct
   reconciliation event.
+- A real approved process side-effect test proves that losing acknowledgement after the
+  command and terminal record complete does not replay the command on recovery; the
+  missing lifecycle event is repaired before an already durable turn-terminal event.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -480,7 +483,7 @@ Exit evidence:
 
 ## Cross-cutting test and release gate
 
-The 87.25% current line coverage is a baseline metric, not the completion gate. Before
+The 88.00% current line coverage is a baseline metric, not the completion gate. Before
 calling the product production-ready, the test programme must include the following:
 
 ### Contract and unit tests

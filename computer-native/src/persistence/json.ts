@@ -36,6 +36,19 @@ export async function atomicWriteJson(filePath: string, value: unknown): Promise
   await rename(temporaryPath, filePath);
 }
 
+export async function atomicWriteJsonLines(filePath: string, values: readonly unknown[]): Promise<void> {
+  await ensureDirectory(path.dirname(filePath));
+  const temporaryPath = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+  const handle = await open(temporaryPath, "wx", 0o600);
+  try {
+    await handle.writeFile(`${values.map((value) => stableStringify(value)).join("\n")}\n`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename(temporaryPath, filePath);
+}
+
 export async function appendJsonLine(filePath: string, value: unknown): Promise<void> {
   await ensureDirectory(path.dirname(filePath));
   const handle = await open(filePath, "a", 0o600);
