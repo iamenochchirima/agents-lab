@@ -1,6 +1,8 @@
 import { loadDbosConfig } from "./config.js";
 import { DbosBaselineHost } from "./service/dbos-host.js";
+import { loadLocalServerEnvironment } from "../../control-plane/bootstrap/local-env.js";
 
+loadLocalServerEnvironment();
 const host = new DbosBaselineHost({ config: loadDbosConfig() });
 
 await host.start();

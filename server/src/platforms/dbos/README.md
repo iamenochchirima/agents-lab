@@ -10,7 +10,8 @@ directory directly.
 Start with [`docs/local-development.md`](docs/local-development.md) and
 [`docs/semantics.md`](docs/semantics.md).
 
-The baseline uses `@dbos-inc/dbos-sdk@4.27.6`, a deterministic fake model, and a
-separate optional OpenRouter model path. It does not claim exactly-once provider
-calls: PostgreSQL makes workflow progress durable, but an external model call still
-needs explicit idempotency or reconciliation.
+The baseline uses `@dbos-inc/dbos-sdk@4.27.6` and executes the selected OpenRouter
+model inside a DBOS workflow step. It does not claim exactly-once provider calls:
+PostgreSQL makes workflow progress durable, but an external model call still needs
+explicit idempotency or reconciliation. Fake models remain deterministic test
+fixtures.

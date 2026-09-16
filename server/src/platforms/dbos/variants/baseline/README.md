@@ -5,8 +5,8 @@ prompt, performs one model step, and returns a JSON-safe result. The workflow ID
 derived from the Lab run ID, so repeated admission can return the existing workflow
 instead of starting a second one.
 
-The variant currently includes deterministic fake models (`fake-success`,
+The variant includes deterministic fake models (`fake-success`,
 `fake-pre-dispatch-retry`, `fake-failure`, `fake-unknown`, `fake-delay`, and
 `fake-timeout`) and an
-explicit OpenRouter adapter. Provider credentials remain in the service environment
+explicit OpenRouter adapter selected by the Platform UI. Provider credentials remain in the service environment
 and never enter workflow input or native evidence.

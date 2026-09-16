@@ -6,7 +6,7 @@ an in-memory store.
 ## Install
 
 ```bash
-npm install --prefix server/src/platforms/dbos
+pnpm install
 ```
 
 ## Start PostgreSQL
@@ -29,7 +29,7 @@ machine, create the database and point the service at it instead:
 ```bash
 createdb agentlab_dbos
 AGENTLAB_DBOS_SYSTEM_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/agentlab_dbos \
-  npm --prefix server run dev:dbos
+  pnpm --filter @agent-harness-lab/lab-server run dev:dbos
 ```
 
 The same `AGENTLAB_DBOS_SYSTEM_DATABASE_URL` setting can point to an existing
@@ -46,7 +46,7 @@ redacted from manifests and native evidence.
 DBOS uses port `9092` by default so it can run beside the Inngest service on `9091`:
 
 ```bash
-npm --prefix server run dev:dbos
+pnpm --filter @agent-harness-lab/lab-server run dev:dbos
 ```
 
 Check readiness:
@@ -55,7 +55,7 @@ Check readiness:
 node -e "fetch('http://127.0.0.1:9092/ready').then(async r => console.log(r.status, await r.text()))"
 ```
 
-Start the Lab server separately with `npm --prefix server run dev`. It will report
+Start the Lab server separately with `pnpm --filter @agent-harness-lab/lab-server run dev`. It will report
 DBOS as reachable only after both the workflow host and PostgreSQL are ready.
 
 ## Reset local state
