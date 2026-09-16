@@ -481,6 +481,68 @@ test("restart reconciles a running process after its durable record acknowledgem
   }
 });
 
+test("restart repairs missing process completion evidence from a durable terminal record", async () => {
+  const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-event-recovery-"));
+  try {
+    const session = await SessionStore.open(stateDir);
+    const turn = await session.admitTurn("repair process evidence", "deterministic", "deterministic/process");
+    await turn.updateState("streaming");
+    const executionId = "execution_event_recovery";
+    const callId = "call_event_recovery";
+    await turn.appendEvent("TurnStarted");
+    await turn.appendEvent("ProcessPrepared", { executionId, callId, command: process.execPath, cwd: "." });
+    await turn.appendEvent("ProcessApprovalDecided", { executionId, callId, decision: "allow-once" });
+    await turn.appendEvent("ProcessStarted", { executionId, callId, pid: 999999 });
+    await turn.writeProcess({
+      schemaVersion: 1,
+      executionId,
+      callId,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      command: process.execPath,
+      displayArgs: ["-e", "process.exit(0)"],
+      cwd: ".",
+      executablePath: process.execPath,
+      environmentProfile: "sanitized-default",
+      environmentKeys: ["PATH"],
+      limits,
+      argvHash: "event-recovery-hash",
+      status: "completed",
+      decision: "allow-once",
+      pid: 999999,
+      stdout: "done",
+      stderr: "",
+      stdoutBytes: 4,
+      stderrBytes: 0,
+      outputTruncated: false,
+      durationMs: 10,
+      exitCode: 0,
+      signal: null,
+      terminationConfirmed: true,
+      startedAt: new Date(0).toISOString(),
+      finishedAt: new Date(1).toISOString(),
+      recordedAt: new Date(1).toISOString(),
+    });
+
+    await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+    const events = await turn.readEvents();
+    assert.deepEqual(events.map((event) => event.type), [
+      "TurnStarted",
+      "ProcessPrepared",
+      "ProcessApprovalDecided",
+      "ProcessStarted",
+      "ProcessCompleted",
+      "TurnInterrupted",
+    ]);
+    assert.equal(events[4]?.payload.executionId, executionId);
+    assert.equal(events[4]?.payload.status, "completed");
+    assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+    assert.equal((await turn.readEvents()).filter((event) => event.type === "ProcessCompleted").length, 1);
+  } finally {
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
 test("process execution records preserve identity and one-way transitions", async () => {
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-transition-"));
   try {

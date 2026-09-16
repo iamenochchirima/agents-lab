@@ -18,6 +18,12 @@ recovery repairs missing terminal evidence without replaying the model or a tool
 without appending a second terminal event. This is an at-least-once evidence write
 boundary, not an exactly-once execution guarantee.
 
+The same recovery boundary applies to terminal process, browser, memory, and workspace
+action records. If their normalized terminal event was not durable, recovery rebuilds it
+from the record. Workspace reconciliation uses `WorkspaceMutationReconciled` when the
+before-state proves that the mutation was not applied; it does not label that outcome as
+a commit.
+
 Model transport failures may retry only before the provider emits its first event. Each
 attempt gets a durable `attempt_<hex>` identity; `ModelRequested` is written before the
 provider call and `ModelAttemptCompleted` records success or bounded failure. Scheduled

@@ -39,7 +39,7 @@ event exists, the same terminal event is idempotent and any different or later l
 event is rejected. Workspace mutation events are also ordered and checked when read back:
 `WorkspaceMutationProposed` must precede its approval decision, an allow-once decision
 must precede application, progress may repeat only after application starts, and a
-committed or failed event closes that mutation's lifecycle. Reading an existing event
+committed, reconciled, or failed event closes that mutation's lifecycle. Reading an existing event
 stream validates these rules again, so persisted corruption is reported instead of being
 silently treated as a valid recovery state.
 
@@ -51,7 +51,15 @@ specific reconciliation checks instead.
 Workspace mutation records and their normalized lifecycle events are both retained. The
 record carries the full bounded diff and operation-specific evidence; the event stream
 links the action to the turn timeline using the mutation identity, operation, hashes,
-limits, and journal state without duplicating the full diff.
+limits, and journal state without duplicating the full diff. Recovery preserves the
+distinction between a committed mutation, a failed or reconciliation-required mutation,
+and a `WorkspaceMutationReconciled` result proving that the recorded before-state
+remained authoritative and the mutation was not replayed.
+
+When an action record is terminal but its normalized terminal event is missing, restart
+reconstructs that event before it finalizes an interrupted turn. Reconstruction is
+idempotent and only uses the persisted bounded record; it never launches a process,
+reopens a browser action, mutates the workspace, or changes memory contents.
 
 Local process executions use the same atomic per-operation record pattern. The record
 contains the exact approved identity and bounded outcome, and its state transition is

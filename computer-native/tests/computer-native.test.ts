@@ -446,6 +446,49 @@ test("restart reconciles a browser action after its running record acknowledgeme
   assert.equal((await turn.readBrowserActions())[0]?.status, "ambiguous");
 });
 
+test("restart repairs missing browser completion evidence from a durable terminal record", async () => {
+  const stateDir = tempDirectory();
+  const session = await SessionStore.open(stateDir);
+  const turn = await session.admitTurn("repair browser evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const actionId = "browser_action_event_recovery";
+  const callId = "browser_call_event_recovery";
+  await turn.appendEvent("TurnStarted");
+  await turn.appendEvent("BrowserPrepared", { actionId, callId, sessionId: "browser_session_event", tabId: "browser_tab_event", action: "click" });
+  await turn.appendEvent("BrowserApprovalDecided", { actionId, callId, decision: "allow-once" });
+  await turn.appendEvent("BrowserStarted", { actionId, callId });
+  await turn.writeBrowserAction({
+    schemaVersion: 1,
+    actionId,
+    callId,
+    sessionId: "browser_session_event" as BrowserSessionId,
+    turnId: turn.turnId,
+    tabId: "browser_tab_event" as BrowserTabId,
+    action: "click",
+    reference: "save-button",
+    documentId: "browser_document_event" as BrowserDocumentId,
+    actionHash: "browser-event-recovery-hash",
+    status: "completed",
+    summary: "Clicked save-button.",
+    recordedAt: new Date(1).toISOString(),
+  });
+
+  await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+  const events = await turn.readEvents();
+  assert.deepEqual(events.map((event) => event.type), [
+    "TurnStarted",
+    "BrowserPrepared",
+    "BrowserApprovalDecided",
+    "BrowserStarted",
+    "BrowserCompleted",
+    "TurnInterrupted",
+  ]);
+  assert.equal(events[4]?.payload.actionId, actionId);
+  assert.equal(events[4]?.payload.status, "completed");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  assert.equal((await turn.readEvents()).filter((event) => event.type === "BrowserCompleted").length, 1);
+});
+
 test("restart closes an approved memory action after its durable acknowledgement is lost", async () => {
   const stateDir = tempDirectory();
   let actionWrites = 0;
@@ -489,6 +532,48 @@ test("restart closes an approved memory action after its durable acknowledgement
   assert.equal((await readFile(historyPath, "utf8")).trim().split("\n").length, 3);
   assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
   assert.equal((await readFile(historyPath, "utf8")).trim().split("\n").length, 3);
+});
+
+test("restart repairs missing memory completion evidence from a durable terminal record", async () => {
+  const stateDir = tempDirectory();
+  const session = await SessionStore.open(stateDir);
+  const turn = await session.admitTurn("repair memory evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  const operationId = "memory_action_event_recovery";
+  const callId = "memory_call_event_recovery";
+  await turn.appendEvent("TurnStarted");
+  await turn.appendEvent("MemoryPrepared", { operationId, callId, operation: "add", scope: "user", sourcePath: "memory/user.md" });
+  await turn.appendEvent("MemoryApprovalDecided", { operationId, callId, decision: "allow-once" });
+  await turn.writeMemoryAction({
+    schemaVersion: 1,
+    operationId,
+    sessionId: session.metadata.sessionId,
+    turnId: turn.turnId,
+    callId,
+    operation: "add",
+    recordId: "memory_record_event_recovery",
+    scope: "user",
+    sourcePath: "memory/user.md",
+    afterContentHash: "memory-event-after-hash",
+    inputHash: "memory-event-input-hash",
+    status: "committed",
+    decision: "allow-once",
+    recordedAt: new Date(1).toISOString(),
+  });
+
+  await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns();
+  const events = await turn.readEvents();
+  assert.deepEqual(events.map((event) => event.type), [
+    "TurnStarted",
+    "MemoryPrepared",
+    "MemoryApprovalDecided",
+    "MemoryCommitted",
+    "TurnInterrupted",
+  ]);
+  assert.equal(events[3]?.payload.operationId, operationId);
+  assert.equal(events[3]?.payload.status, "committed");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns(), []);
+  assert.equal((await turn.readEvents()).filter((event) => event.type === "MemoryCommitted").length, 1);
 });
 
 test("resuming a session appends a second ordered turn", async () => {
@@ -3245,6 +3330,58 @@ test("restart reconciles a mutation after its applying record acknowledgement is
   const secondRecovery = await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record));
   assert.deepEqual(secondRecovery, []);
   assert.equal((await turn.readMutations())[0]?.status, "reconciled");
+});
+
+test("restart repairs missing mutation reconciliation evidence from a durable record", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const target = path.join(root, "note.md");
+  await writeFile(target, "old\n", "utf8");
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 10 });
+  const prepared = await workspace.preparePatch(`*** Begin Patch
+*** Update File: note.md
+@@
+-old
++new
+*** End Patch
+`);
+  const session = await openSession(stateDir);
+  const turn = await session.admitTurn("repair mutation evidence", "deterministic", "deterministic/echo");
+  await turn.updateState("streaming");
+  await turn.appendEvent("TurnStarted");
+  await turn.appendEvent("WorkspaceMutationProposed", { mutationId: "mutation_event_recovery", path: prepared.path, operation: prepared.operation });
+  await turn.appendEvent("WorkspaceMutationApprovalDecided", { mutationId: "mutation_event_recovery", decision: "allow-once" });
+  await turn.appendEvent("WorkspaceMutationApplying", { mutationId: "mutation_event_recovery", decision: "allow-once" });
+  await turn.writeMutation({
+    schemaVersion: 1,
+    mutationId: "mutation_event_recovery",
+    operation: prepared.operation,
+    path: prepared.path,
+    beforeHash: prepared.beforeHash,
+    afterHash: prepared.afterHash,
+    addedLines: prepared.addedLines,
+    removedLines: prepared.removedLines,
+    diff: prepared.diff,
+    status: "applying",
+    decision: "allow-once",
+    recordedAt: new Date(1).toISOString(),
+  });
+
+  await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record));
+  const events = await turn.readEvents();
+  assert.deepEqual(events.map((event) => event.type), [
+    "TurnStarted",
+    "WorkspaceMutationProposed",
+    "WorkspaceMutationApprovalDecided",
+    "WorkspaceMutationApplying",
+    "WorkspaceMutationReconciled",
+    "TurnInterrupted",
+  ]);
+  assert.equal(events[4]?.payload.mutationId, "mutation_event_recovery");
+  assert.equal(events[4]?.payload.status, "reconciled");
+  assert.deepEqual(await (await SessionStore.open(stateDir, session.metadata.sessionId)).recoverInterruptedTurns((record) => workspace.reconcileMutation(record)), []);
+  assert.equal((await turn.readEvents()).filter((event) => event.type === "WorkspaceMutationReconciled").length, 1);
 });
 
 test("restart recovery closes an undecided approval without replaying the mutation", async () => {

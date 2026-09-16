@@ -88,6 +88,7 @@ const WORKSPACE_MUTATION_LIFECYCLE_EVENTS: ReadonlySet<LifecycleEventType> = new
   "WorkspaceMutationProgress",
   "WorkspaceMutationCommitted",
   "WorkspaceMutationFailed",
+  "WorkspaceMutationReconciled",
 ]);
 
 function isWorkspaceMutationLifecycleEvent(type: LifecycleEventType): boolean {
@@ -113,7 +114,7 @@ function assertWorkspaceMutationLifecycleEventOrder(
   if (previous === undefined) {
     throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot record '${type}' before its proposal.`);
   }
-  if (previous === "WorkspaceMutationCommitted" || previous === "WorkspaceMutationFailed") {
+  if (previous === "WorkspaceMutationCommitted" || previous === "WorkspaceMutationFailed" || previous === "WorkspaceMutationReconciled") {
     throw new ComputerNativeError("persistence", `Workspace mutation '${mutationId}' cannot record '${type}' after its terminal lifecycle event.`);
   }
   if (type === "WorkspaceMutationApprovalDecided") {
@@ -322,54 +323,67 @@ export class SessionStore {
       }
       const turn = new TurnStore(this, directory, record);
       for (const execution of await turn.readProcesses()) {
+        let reconciledExecution = execution;
         if (execution.status === "prepared") {
-          await turn.writeProcess({ ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The process approval ended when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() });
+          reconciledExecution = { ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The process approval ended when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() };
+          await turn.writeProcess(reconciledExecution);
         } else if (execution.status === "approved") {
-          await turn.writeProcess({ ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The approved process had not reached a launch record when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() });
+          reconciledExecution = { ...execution, status: "failed", errorCode: "process-approval-unavailable", errorMessage: "The approved process had not reached a launch record when the parent process stopped; the command was not replayed.", finishedAt: now(), recordedAt: now() };
+          await turn.writeProcess(reconciledExecution);
         } else if (execution.status === "running") {
-          await turn.writeProcess({ ...execution, status: "ambiguous", errorCode: "process-ambiguous", errorMessage: "The process was running when the parent process stopped; its outcome is unknown and the command was not replayed.", finishedAt: now(), recordedAt: now() });
+          reconciledExecution = { ...execution, status: "ambiguous", errorCode: "process-ambiguous", errorMessage: "The process was running when the parent process stopped; its outcome is unknown and the command was not replayed.", finishedAt: now(), recordedAt: now() };
+          await turn.writeProcess(reconciledExecution);
         }
+        await turn.ensureProcessTerminalEvent(reconciledExecution);
       }
       for (const action of await turn.readBrowserActions()) {
+        let reconciledAction = action;
         if (action.status === "prepared") {
-          await turn.writeBrowserAction({
+          reconciledAction = {
             ...action,
             status: "failed",
             errorCode: "browser-approval-unavailable",
             errorMessage: "The browser approval ended when the parent process stopped; the action was not replayed.",
             finishedAt: now(),
             recordedAt: now(),
-          });
+          };
+          await turn.writeBrowserAction(reconciledAction);
         } else if (action.status === "approved") {
-          await turn.writeBrowserAction({
+          reconciledAction = {
             ...action,
             status: "failed",
             errorCode: "browser-approval-unavailable",
             errorMessage: "The approved browser action had not started when the parent process stopped; the action was not replayed.",
             finishedAt: now(),
             recordedAt: now(),
-          });
+          };
+          await turn.writeBrowserAction(reconciledAction);
         } else if (action.status === "running") {
-          await turn.writeBrowserAction({
+          reconciledAction = {
             ...action,
             status: "ambiguous",
             errorCode: "browser-ambiguous",
             errorMessage: "The browser action was running when the parent process stopped; its outcome is unknown and the action was not replayed.",
             finishedAt: now(),
             recordedAt: now(),
-          });
+          };
+          await turn.writeBrowserAction(reconciledAction);
         }
+        await turn.ensureBrowserTerminalEvent(reconciledAction);
       }
       for (const action of await turn.readMemoryActions()) {
+        let reconciledAction = action;
         if (action.status === "proposed" || action.status === "approved") {
-          await turn.writeMemoryAction({
+          reconciledAction = {
             ...action,
             status: "denied",
             decision: "unavailable",
             reason: "The process stopped before the memory operation committed; it was not replayed.",
             recordedAt: now(),
-          });
+          };
+          await turn.writeMemoryAction(reconciledAction);
         }
+        await turn.ensureMemoryTerminalEvent(reconciledAction);
       }
       if (result) {
         if (!isTerminalStatus(record.state)) await turn.updateState(terminalStateFromResult(result));
@@ -380,17 +394,21 @@ export class SessionStore {
         throw new ComputerNativeError("persistence", `Turn '${record.turnId}' is terminal but has no result record.`);
       }
       for (const mutation of await turn.readMutations()) {
+        let reconciledMutation = mutation;
         if (mutation.status === "proposed") {
-          await turn.writeMutation({
+          reconciledMutation = {
             ...mutation,
             status: "denied",
             decision: "unavailable",
             errorCode: "approval-unavailable",
             reason: "The process stopped before approval was decided; the mutation was not applied.",
-          });
+          };
+          await turn.writeMutation(reconciledMutation);
         } else if (reconcileMutation && (mutation.status === "approved" || mutation.status === "applying")) {
-          await turn.writeMutation(await reconcileMutation(mutation));
+          reconciledMutation = await reconcileMutation(mutation);
+          await turn.writeMutation(reconciledMutation);
         }
+        await turn.ensureMutationTerminalEvent(reconciledMutation);
       }
       const hasUserMessage = transcript.some((message) => message.turnId === record.turnId && message.role === "user");
       if (!record.userMessagePersisted && !hasUserMessage) {
@@ -683,6 +701,79 @@ export class TurnStore {
     const expected = terminalEventType(result.status);
     if (events.some((event) => event.type === expected)) return;
     await this.appendEvent(expected, { status: result.status, recovered: true });
+  }
+
+  async ensureProcessTerminalEvent(record: ProcessExecutionRecord): Promise<void> {
+    if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
+    const events = await this.readEvents();
+    if (events.some((event) => event.type === "ProcessCompleted" && event.payload.executionId === record.executionId)) return;
+    await this.appendEvent("ProcessCompleted", {
+      executionId: record.executionId,
+      callId: record.callId,
+      status: record.status,
+      errorCode: record.errorCode ?? null,
+      stdoutBytes: record.stdoutBytes ?? 0,
+      stderrBytes: record.stderrBytes ?? 0,
+      recovered: true,
+    });
+  }
+
+  async ensureBrowserTerminalEvent(record: BrowserActionRecord): Promise<void> {
+    if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
+    const events = await this.readEvents();
+    if (events.some((event) => event.type === "BrowserCompleted" && event.payload.actionId === record.actionId)) return;
+    await this.appendEvent("BrowserCompleted", {
+      actionId: record.actionId,
+      callId: record.callId,
+      status: record.status,
+      errorCode: record.errorCode ?? null,
+      underlyingErrorCode: record.underlyingErrorCode ?? null,
+      recovered: true,
+    });
+  }
+
+  async ensureMemoryTerminalEvent(record: MemoryActionRecord): Promise<void> {
+    if (record.status !== "committed" && record.status !== "denied" && record.status !== "failed") return;
+    const events = await this.readEvents();
+    const terminalTypes: readonly LifecycleEventType[] = ["MemoryCommitted", "MemoryForgotten", "MemoryFailed"];
+    if (events.some((event) => terminalTypes.includes(event.type) && event.payload.operationId === record.operationId)) return;
+    const type: LifecycleEventType = record.status === "committed"
+      ? record.operation === "remove" ? "MemoryForgotten" : "MemoryCommitted"
+      : "MemoryFailed";
+    await this.appendEvent(type, {
+      operationId: record.operationId,
+      callId: record.callId,
+      operation: record.operation,
+      recordId: record.recordId ?? null,
+      scope: record.scope,
+      sourcePath: record.sourcePath,
+      status: record.status,
+      ...(record.reason ? { reason: record.reason } : {}),
+      recovered: true,
+    });
+  }
+
+  async ensureMutationTerminalEvent(record: WorkspaceMutationRecord): Promise<void> {
+    if (record.status !== "committed" && record.status !== "failed" && record.status !== "reconciled" && record.status !== "reconciliation_required") return;
+    const events = await this.readEvents();
+    const terminalTypes: readonly LifecycleEventType[] = ["WorkspaceMutationCommitted", "WorkspaceMutationFailed", "WorkspaceMutationReconciled"];
+    if (events.some((event) => terminalTypes.includes(event.type) && event.payload.mutationId === record.mutationId)) return;
+    if (!events.some((event) => isWorkspaceMutationLifecycleEvent(event.type) && event.payload.mutationId === record.mutationId)) return;
+    const type: LifecycleEventType = record.status === "committed"
+      ? "WorkspaceMutationCommitted"
+      : record.status === "reconciled"
+        ? "WorkspaceMutationReconciled"
+        : "WorkspaceMutationFailed";
+    await this.appendEvent(type, {
+      mutationId: record.mutationId,
+      operation: record.operation,
+      path: record.path,
+      status: record.status,
+      ...(record.errorCode ? { errorCode: record.errorCode } : {}),
+      ...(record.reason ? { reason: record.reason } : {}),
+      ...(record.afterHash ? { afterHash: record.afterHash } : {}),
+      recovered: true,
+    });
   }
 
   async commitTerminal(

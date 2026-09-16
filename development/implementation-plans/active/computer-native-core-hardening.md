@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T13:31:00+02:00
+**Last updated:** 2026-09-16T13:42:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -112,11 +112,15 @@ tests, but it must never replace a configured real provider silently.
   process records, workspace mutation records, browser action records, and memory
   action history. Reopening and running recovery twice repairs or preserves the
   evidence without replaying the turn or duplicating terminal evidence.
-- The current validation is 222 passing tests across the package, 87.89% line coverage,
-  74.89% branch coverage, and 82.51% function coverage. The suite includes direct
-  journal recovery, cancellation boundaries, tool-loop durable evidence, lifecycle
-  ordering, and acknowledgement-failure recovery for every current persisted action
-  family.
+- The suite includes direct journal recovery, cancellation boundaries, tool-loop durable
+  evidence, lifecycle ordering, and acknowledgement-failure recovery for every current
+  persisted action family.
+- Restart recovery now reconstructs a missing terminal lifecycle event from a durable
+  process, browser, memory, or workspace action record. Workspace reconciliation has a
+  distinct `WorkspaceMutationReconciled` event, so “not applied and not replayed” is not
+  reported as either a commit or a generic failure.
+- The current validation is 226 passing tests across the package, 87.76% line coverage,
+  74.86% branch coverage, and 82.67% function coverage.
 
 ### Current slice boundary: persistence acknowledgement recovery
 
@@ -128,6 +132,8 @@ Delivered in this slice:
   equivalent process, workspace mutation, browser action, and memory action records.
 - Repeatable restart checks proving terminal evidence remains singular and no model,
   tool, filesystem, process, browser, or memory action is replayed.
+- Recovery reconstruction tests proving missing terminal lifecycle events are restored
+  once from persisted action records.
 
 Still not delivered by this slice:
 
@@ -362,6 +368,8 @@ claim in this plan.
 - [ ] Record recovery classification and operation-specific reconciliation data.
 - [x] Add repeatable recovery for durable terminal result/event acknowledgement failures;
       recovery does not auto-replay the turn or duplicate terminal evidence.
+- [x] Reconstruct one missing terminal lifecycle event for each current persisted action
+      family, including a distinct workspace reconciliation outcome.
 - [ ] Extend crash recovery and duplicate/out-of-order handling across every persistence
       and side-effect boundary; the current completed scope is acknowledgement loss after
       durable records for all current action families.
@@ -478,6 +486,9 @@ claim in this plan.
 - [x] Inject durable acknowledgement failures for terminal evidence, process, workspace,
       browser, and memory records; recover twice and confirm no duplicate terminal
       evidence or side effect.
+- [x] Remove a terminal process, browser, memory, or workspace lifecycle event while
+      retaining its durable record; recover twice and confirm the event is reconstructed
+      once from the record.
 - [ ] Extend the recover-twice assertion to every supported side-effect record and the
       process-level crash harness.
 - [ ] Inject duplicate, missing, and out-of-order events.

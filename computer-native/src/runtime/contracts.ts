@@ -164,6 +164,7 @@ export type LifecycleEventType =
   | "WorkspaceMutationProgress"
   | "WorkspaceMutationCommitted"
   | "WorkspaceMutationFailed"
+  | "WorkspaceMutationReconciled"
   | "TurnCompleted"
   | "TurnFailed"
   | "TurnCancelled"

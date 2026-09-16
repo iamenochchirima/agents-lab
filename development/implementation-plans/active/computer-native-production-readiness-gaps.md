@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T13:31:00+02:00
+**Last updated:** 2026-09-16T13:42:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 222 tests passed.
-- `pnpm run coverage`: 222 tests passed, with 87.89% line coverage, 74.89% branch
-  coverage, and 82.51% function coverage.
+- `pnpm test`: 226 tests passed.
+- `pnpm run coverage`: 226 tests passed, with 87.76% line coverage, 74.86% branch
+  coverage, and 82.67% function coverage.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
 - `git diff --check`: passed for the validated changes.
@@ -61,6 +61,9 @@ readiness:
   terminal-event writes plus process, workspace mutation, browser action, and memory
   action records. Reopening and recovering twice produces no duplicate terminal
   evidence and never replays the operation.
+- Recovery reconstructs missing terminal lifecycle events from durable process, browser,
+  memory, and workspace records; workspace “not applied” outcomes use a distinct
+  reconciliation event.
 - A real OpenRouter smoke test produced a model response through the Computer Native
   runner. The deterministic provider remains useful for repeatable tests.
 
@@ -72,7 +75,7 @@ provider, browser-profile, and operational acceptance evidence.
 
 | Area | Current level | What still blocks production readiness |
 | --- | --- | --- |
-| Runtime and turns | Bounded local foundation with normalized lifecycle evidence and repeatable durable-record acknowledgement recovery across current action families | Full per-boundary crash matrix, durable lifecycle unification, concurrency, and replay semantics |
+| Runtime and turns | Bounded local foundation with normalized lifecycle evidence, durable-record acknowledgement recovery, and terminal-event reconstruction across current action families | Full per-boundary crash matrix, durable lifecycle unification, concurrency, and replay semantics |
 | TUI and approvals | Useful standalone interface | Full-screen workflow, richer navigation, reviewable approvals, accessibility, and recovery UX |
 | Models and providers | Real OpenRouter path plus deterministic tests | Provider registry, resilient transport, fallback policy, usage/cost evidence, and credential operations |
 | Workspace and filesystem | Broad local capability with journaled multi-file patch recovery | Transaction guarantees beyond `apply_patch_set`, races, large inputs, and isolation decision |
@@ -134,6 +137,9 @@ Exit evidence:
   event, process, workspace-mutation, browser-action, and memory-action writes. This is
   narrower than the required full persistence/side-effect boundary matrix because it
   does not yet stop before writes or at the underlying side-effect boundaries.
+- Current evidence also covers reconstruction of one missing terminal lifecycle event per
+  action family. It does not yet prove reconstruction after a process-level crash at
+  every write boundary or across all future action types.
 - The runner reports at-most-once or at-least-once behaviour precisely. It does not claim
   exactly-once execution without proof.
 
