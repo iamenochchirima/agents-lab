@@ -179,6 +179,11 @@ tests, but it must never replace a configured real provider silently.
 - A runnable provider-acceptance playground documents the normal `pnpm run chat` flow,
   `/models`, `/status`, safe real-model prompts, evidence inspection, and restart-based
   credential rotation without storing a secret in the repository.
+- The documented acceptance flow was run with the locally configured
+  `openrouter/cohere/north-mini-code:free` model: `/models`, an exact-response prompt,
+  a read-only workspace listing, and `/status` all behaved as expected. One pre-output
+  provider retry was visible and recovered through the same real model path; session
+  evidence contained usage/limits and no API key.
 - The latest validation is 266 passing tests across the package, with 88.86% line
   coverage, 76.92% branch coverage, and 83.87% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
@@ -294,8 +299,9 @@ Broader gates still open after the current increments:
 - Fallback policy, cost accounting, or the full provider resilience work listed in the
   model/provider section. Provider capability metadata and reported token usage are now
   delivered, but they are not a pricing or provider-acceptance guarantee.
-- The remaining full runtime crash matrix, structured approval/TUI gates, and real-
-  provider/manual acceptance gates.
+- The remaining full runtime crash matrix and structured approval/TUI gates. The
+  provider acceptance gate is complete for the documented local profile, but it does
+  not certify other providers, models, credentials, or deployment profiles.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
@@ -318,9 +324,9 @@ Delivered in this increment:
   as typed provider outcomes without a transport retry.
 - Provider usage is surfaced in `TurnMetrics` when reported, while absent usage and
   unconfigured cost remain explicit rather than estimated.
-- A manual acceptance procedure is documented in the provider-acceptance playground;
-  its real-provider result is intentionally still an unchecked acceptance gate until it
-  is run against the locally configured provider.
+- The manual acceptance procedure is documented in the provider-acceptance playground
+  and has one successful local real-provider run recorded above. This does not certify
+  other providers, models, credentials, or deployment profiles.
 
 Still open after this increment:
 
@@ -609,7 +615,7 @@ claim in this plan.
       usage, retry reason, and final disposition without secrets.
 - [x] Make deterministic providers explicitly selected. No silent deterministic fallback
       is allowed in a real-provider run.
-- [ ] Add provider contract fixtures and complete one documented real-provider acceptance
+- [x] Add provider contract fixtures and complete one documented real-provider acceptance
       run using the local development environment.
 
 ### 5. Filesystem completion

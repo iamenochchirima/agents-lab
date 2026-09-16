@@ -255,8 +255,9 @@ Remaining work:
   bounded evidence when supplied; missing usage is not estimated.
 - Add cost accounting once the provider contract and pricing source are explicit. Cost
   remains `null` until that source and its versioning/retention rules are defined.
-- Add provider contract tests with deterministic local fixtures and a small real-provider
-  acceptance profile. Real-provider tests must never depend on a committed key.
+- [x] Add provider contract tests with deterministic local fixtures and complete a small
+  real-provider acceptance profile. The acceptance uses a local key and never depends on
+  a committed credential.
 
 Delivered in the current foundation increment, but not yet sufficient for production:
 
@@ -270,6 +271,9 @@ Delivered in the current foundation increment, but not yet sufficient for produc
 - Observed request/output bytes, effective configured limits, provider latency, and
   provider-reported token usage are retained in bounded attempt/round/turn evidence;
   provider cost is deliberately not claimed.
+- A documented acceptance run succeeded through the TUI with the configured OpenRouter
+  model, including `/models`, an exact-response prompt, a read-only workspace listing,
+  `/status`, one visible pre-output retry, and evidence inspection without a key.
 
 Exit evidence:
 
