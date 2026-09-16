@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T19:40:00+02:00
+**Last updated:** 2026-09-16T19:42:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 300 tests passed after the browser element-reference increment.
-- `pnpm run coverage`: 300 tests passed, with 88.88% line coverage, 77.74% branch
-  coverage, and 84.68% function coverage in the latest run. Node's experimental
+- `pnpm test`: 302 tests passed after the workspace bounded-input increments.
+- `pnpm run coverage`: 302 tests passed, with 88.87% line coverage, 77.73% branch
+  coverage, and 84.71% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
