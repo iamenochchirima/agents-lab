@@ -2,7 +2,8 @@ import type { ModelAdapter, ModelCallResult, ModelRequest } from "../contracts.j
 
 /**
  * Deterministic fixtures for automated tests and local failure exercises.
- * Production runs select the OpenRouter adapter and never enter this class.
+ * The product UI exposes OpenRouter only; this adapter is selected only by an
+ * explicit fixture request and is never a fallback for a provider failure.
  */
 export class FakeRestateModel implements ModelAdapter {
   async complete(input: ModelRequest, signal: AbortSignal): Promise<ModelCallResult> {
