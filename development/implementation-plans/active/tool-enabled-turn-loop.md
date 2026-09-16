@@ -417,26 +417,28 @@ is archived.
 
 Before moving this plan to `completed/`:
 
-- [ ] Every applicable checkbox is complete or has a written reason for deferral.
+- [x] Every applicable checkbox is complete or has a written reason for deferral. The only remaining unchecked implementation check is the Docker-only `alwaysReplay` assertion; the native worker-restart and post-restart projection checks passed, and the exact Docker prerequisite is recorded below.
 - [x] The browser flow is real and inspectable, not simulated.
 - [x] Model/tool protocol pairing, validation, policy, limits, redaction, cancellation, retry, restart, and ambiguous-outcome semantics are implemented and tested.
 - [x] Normalized evidence and native Restate evidence agree after polling and restart. A fresh `RunService`/`RunEvidenceStore` projection of `restate-worker-restart-1789577191093` after the persistent native node restart returned the completed result and the ordered 13-event tool-loop sequence.
 - [x] The context meter remains correct across model/tool rounds. For this Restate slice it uses provider-reported request usage; canonical session compaction is a later adapter boundary.
 - [x] Documentation, playground instructions, and examples match the code.
 - [x] Exact validation results, manual checks, and known limitations are recorded below.
-- [ ] No unrelated dirty work was staged or changed.
+- [x] No unrelated dirty work was staged or changed. The focused commits below staged only files owned by this plan; the remaining dirty worktree belongs to other active platform, context, Studio, and UI work.
 
 ## Commit discipline and handoff
 
 Use separate reviewable commits. Do not wait until the end for one large commit:
 
-- [ ] Commit the shared tool contract, registry, calculator, unit tests, and capability documentation.
-- [ ] Commit the Restate model protocol and durable tool-loop implementation with Restate tests.
-- [ ] Commit Lab evidence/API projection and server integration tests.
-- [ ] Commit browser tool activity/context presentation and browser-facing tests.
-- [ ] Commit playground and platform documentation updates, or include them in the section they explain.
-- [ ] Before each commit, inspect `git status`, stage only files owned by the section, run the narrow validation, and record the result.
-- [ ] Record commit hashes in the completion record. Preserve existing user and other-agent changes in the dirty worktree.
+- [x] Commit the shared tool contract, registry, calculator, unit tests, and capability documentation in `cb6c430` (`feat(tools): add bounded calculator capability`).
+- [x] Commit the Restate model protocol and durable tool-loop implementation with Restate tests in `8c78c73` (`feat(restate): add durable tool-enabled model loop`).
+- [ ] Commit Lab evidence/API projection and server integration tests. The Restate runner and native integration portion is in `9b41bb5`; common `RunService`/`RunEvidenceStore` changes remain in the existing shared worktree and must be separated from other agents' changes before committing.
+- [ ] Commit browser tool activity/context presentation and browser-facing tests. These files still overlap with the active model-picker, chat, and Studio work and remain intentionally unstaged.
+- [x] Commit playground and platform documentation updates in `2a7194c` (`docs(restate): record tool loop operations and recovery`).
+- [x] Before each completed commit, inspect `git status`, stage only files owned by the section, run the narrow validation, and record the result in the validation checkpoint above.
+- [ ] Record the final contiguous commit set in the completion record when the remaining shared/server and browser sections are committed and the plan is archived. Preserve existing user and other-agent changes in the dirty worktree.
+
+Focused commits already landed: `cb6c430`, `8c78c73`, `9b41bb5`, and `2a7194c`.
 
 ## Completion record
 
