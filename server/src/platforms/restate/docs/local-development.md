@@ -6,8 +6,8 @@
 - Dependencies installed in this platform package:
 
 ```bash
-npm --prefix server/src/platforms/restate install
-npm --prefix server run build
+pnpm install
+pnpm --filter @agent-harness-lab/lab-server run build
 ```
 
 The platform package pins `@restatedev/restate-sdk` and
@@ -20,11 +20,12 @@ Restate is distributed as a self-contained server binary. The default local path
 uses that binary, so it does not require Docker, PostgreSQL, or a Restate account:
 
 ```bash
-npm --prefix server/src/platforms/restate run dev:server
+pnpm --filter @agent-harness-lab/restate-platform run dev:server
 ```
 
-The command stores local Restate state in `lab/restate-native-data/`. That directory is
-runtime state and must not be committed. The server exposes ingress on
+The command stores local Restate state in `lab/restate-native-data/` by default. Set
+`AGENTLAB_RESTATE_DATA_DIR` to use another persistent local directory. Runtime state
+must not be committed. The server exposes ingress on
 `127.0.0.1:8080` and the Admin API/UI on `127.0.0.1:9070`.
 
 Check readiness:
@@ -55,8 +56,8 @@ must not be committed.
 In a second terminal:
 
 ```bash
-npm --prefix server install
-npm --prefix server run build
+pnpm install
+pnpm --filter @agent-harness-lab/lab-server run build
 node --enable-source-maps server/dist/src/platforms/restate/service-entry.js
 ```
 
@@ -79,8 +80,8 @@ service separately.
 Offline unit checks:
 
 ```bash
-npm --prefix server run typecheck
-npm --prefix server run build
+pnpm --filter @agent-harness-lab/lab-server run typecheck
+pnpm --filter @agent-harness-lab/lab-server run build
 cd server
 node --import tsx --test tests/platforms/restate/*.test.ts
 ```

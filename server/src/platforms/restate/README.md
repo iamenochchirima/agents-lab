@@ -7,6 +7,10 @@ the durable model step and returns normalized event intents, trajectory, metrics
 the terminal result. The runner adapter owns submission, inspection, cancellation,
 and safe mapping of Restate-native identity and status into the Lab runner contract.
 
+The Platform UI selects an OpenRouter model from the shared server catalog. The
+model call remains inside the durable workflow step; fake models are retained
+only for deterministic tests and failure experiments.
+
 The common server remains the owner of Lab evidence files. This platform never writes
 `lab/runs/` directly and never places provider credentials in workflow input or native
 references.

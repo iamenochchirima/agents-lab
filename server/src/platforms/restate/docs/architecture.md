@@ -7,7 +7,8 @@ Lab request
   -> RestateBaselineRunner
   -> Restate ingress: workflowSubmit(input, key = agentlab:<runId>)
   -> AgentLabRestateBaseline.run
-  -> durable ctx.run("model.request")
+  -> durable ctx.run("model.request.<round>")
+  -> durable ctx.run("tool.execute.<round>.<call>.<stable-id>")
   -> workflow result and workflow state
   -> runner inspection
   -> common Lab evidence projection
@@ -32,11 +33,20 @@ until a later variant needs them.
 
 ## Durable boundary
 
-The provider request is inside `ctx.run`. Timestamps are obtained from the Restate
-context, and the model adapter receives the attempt-completion signal so a cancelled
-attempt does not keep an external request running unnecessarily. The adapter returns
-safe model output, usage, provider request ID, or a classified failure. Raw provider
-responses and authorization headers never become workflow output.
+The provider request is inside a named `ctx.run` action. The calculator is inside a
+separate named `ctx.run` action. Timestamps are obtained from the Restate context,
+and both adapters receive the attempt-completion signal so a cancelled attempt does
+not keep work running unnecessarily. The workflow passes only serializable model
+messages and tool definitions into those actions, validates and authorizes calls
+before execution, and appends a matching tool-role result before the next model
+round. Raw provider responses, tool arguments beyond safe metadata, and
+authorization headers never become normalized workflow output.
+
+Tool definitions are shared because schema validation, call identity, risk vocabulary,
+and result limits have the same meaning across platforms. Durable execution remains
+under this directory because Restate's journal, action names, retry policy, and
+cancellation signal are platform-specific. A future platform adapter can reuse the
+shared contract without importing this workflow.
 
 The workflow key is the idempotency identity. The runner retries an ambiguous
 submission with that same key and treats `PreviouslyAccepted` as the existing
@@ -60,3 +70,4 @@ remains responsible for recorded sequence numbers.
 - [TypeScript testing](https://docs.restate.dev/develop/ts/testing)
 - [TypeScript SDK clients](https://docs.restate.dev/services/invocation/clients/typescript-sdk)
 - [Invocation introspection](https://docs.restate.dev/services/introspection)
+- [Managing invocations and cancellation](https://docs.restate.dev/services/invocation/managing-invocations)
