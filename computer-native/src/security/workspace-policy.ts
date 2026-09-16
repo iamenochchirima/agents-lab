@@ -8,6 +8,8 @@ export interface WorkspaceLimits {
   readonly maxTreeEntries?: number;
   readonly maxTreeBytes?: number;
   readonly maxTreeDepth?: number;
+  /** Aggregate resulting UTF-8 bytes allowed for one multi-file patch set. */
+  readonly maxPatchSetBytes?: number;
 }
 
 export const WORKSPACE_QUARANTINE_DIRECTORY = ".computer-native-trash";

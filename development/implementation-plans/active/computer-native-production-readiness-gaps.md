@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T19:42:00+02:00
+**Last updated:** 2026-09-16T20:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 302 tests passed after the workspace bounded-input increments.
-- `pnpm run coverage`: 302 tests passed, with 88.87% line coverage, 77.73% branch
-  coverage, and 84.71% function coverage in the latest run. Node's experimental
+- `pnpm test`: 303 tests passed after the workspace bounded-input increments.
+- `pnpm run coverage`: 303 tests passed, with 88.74% line coverage, 77.58% branch
+  coverage, and 84.74% function coverage in the latest run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -361,10 +361,12 @@ Remaining work:
   not claim rollback or cross-file atomicity.
 - Decide and document symlink, hard-link, device-file, socket, special-file, and mount
   behaviour. Fail closed for unsupported types.
-- Add aggregate mutation limits. Copy preparation and directory-manifest generation now
-  hash through bounded descriptors; text reads and patch preparation still materialize
-  bounded content where their contracts require it. No OS-level immutable snapshot is
-  claimed.
+- The first aggregate mutation limits are now implemented: directory-tree operations use
+  entry/byte/depth bounds and multi-file patch sets enforce and record the configured
+  `COMPUTER_NATIVE_MAX_PATCH_SET_BYTES` resulting-content cap before approval and commit.
+  Remaining work is limited to any newly introduced multi-file operation, plus an
+  OS-level immutable snapshot/file-handle contract; text reads and patch preparation
+  still materialize bounded content where their contracts require it.
 - Add race handling for changed files, concurrent writers, locks, and stale approvals.
 - Add dry-run, diff/preview, restore, and reconciliation commands that remain useful
   after a crash.

@@ -75,9 +75,11 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   const configured = loadConfig({ stateDir: tempDirectory() }, {
     COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES: "1234",
     COMPUTER_NATIVE_MAX_MODEL_OUTPUT_BYTES: "5678",
+    COMPUTER_NATIVE_MAX_PATCH_SET_BYTES: "777",
   });
   assert.equal(configured.maxModelRequestBytes, 1234);
   assert.equal(configured.maxModelOutputBytes, 5678);
+  assert.equal(configured.maxPatchSetBytes, 777);
   assert.equal(deterministic.processMode, "approval");
   assert.equal(deterministic.processDurationMs, 60_000);
   assert.equal(deterministic.processCallsPerTurn, 4);
@@ -93,6 +95,7 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.browserScreenshotMaxHeight, 1_080);
   assert.equal(deterministic.memoryEvidenceRetentionDays, 30);
   assert.equal(deterministic.memoryEvidenceMaxEntries, 10_000);
+  assert.equal(deterministic.maxPatchSetBytes, 256 * 1024);
   const configuredMemoryEvidence = loadConfig({ stateDir: tempDirectory() }, {
     COMPUTER_NATIVE_MEMORY_EVIDENCE_RETENTION_DAYS: "14",
     COMPUTER_NATIVE_MEMORY_EVIDENCE_MAX_ENTRIES: "250",
@@ -128,6 +131,10 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.throws(
     () => config(tempDirectory(), { maxModelOutputBytes: 0 }),
     /max model output bytes must be a positive integer/u,
+  );
+  assert.throws(
+    () => config(tempDirectory(), { maxPatchSetBytes: 0 }),
+    /max patch-set bytes must be a positive integer/u,
   );
   assert.throws(
     () => config(tempDirectory(), { memoryEvidenceRetentionDays: 0 }),
@@ -2897,6 +2904,7 @@ test("workspace prepares a complete multi-file patch set and rechecks every memb
 
   assert.equal(prepared.operation, "patch-set");
   assert.deepEqual(prepared.paths, ["one.txt", "two.txt"]);
+  assert.equal(prepared.totalBytes, Buffer.byteLength("one new\n") + Buffer.byteLength("two new\n"));
   assert.equal(prepared.journal.state, "prepared");
   assert.deepEqual(prepared.journal.members.map((member) => ({ path: member.path, state: member.state })), [
     { path: "one.txt", state: "pending" },
@@ -2981,6 +2989,30 @@ test("workspace prepares a complete multi-file patch set and rechecks every memb
 *** End Patch
 `,
   ], "mutation_patch_set_duplicate"), /duplicate target paths/);
+});
+
+test("workspace rejects a multi-file patch set above its aggregate resulting-byte limit", async () => {
+  const root = path.join(tempDirectory(), "workspace-patch-budget");
+  await mkdir(root, { recursive: true });
+  await writeFile(path.join(root, "one.txt"), "old\n", "utf8");
+  await writeFile(path.join(root, "two.txt"), "old\n", "utf8");
+  const workspace = await Workspace.open(root, {
+    maxFileBytes: 100,
+    maxDirectoryEntries: 20,
+    maxPatchSetBytes: Buffer.byteLength("new one\n"),
+  });
+  const end = "*** End " + "Patch";
+  const patches = [
+    ["*** Begin Patch", "*** Update File: one.txt", "@@", "-old", "+new one", end].join("\n"),
+    ["*** Begin Patch", "*** Update File: two.txt", "@@", "-old", "+new two", end].join("\n"),
+  ];
+  await assert.rejects(
+    () => workspace.preparePatchSet(patches, "mutation_patch_set_budget"),
+    /above the 8-byte aggregate limit/u,
+  );
+  assert.equal(await readFile(path.join(root, "one.txt"), "utf8"), "old\n");
+  assert.equal(await readFile(path.join(root, "two.txt"), "utf8"), "old\n");
+  await assert.rejects(() => lstat(path.join(root, ".computer-native-transactions")), { code: "ENOENT" });
 });
 
 test("multi-file patch interruption records partial progress and requires reconciliation", async () => {
@@ -3828,6 +3860,7 @@ test("apply_patch_set is approval-gated with complete path and journal context",
       assert.equal(request.risk, "multi-file-patch");
       assert.equal(request.members?.length, 2);
       assert.equal(request.journal?.state, "prepared");
+      assert.equal(request.totalBytes, Buffer.byteLength("one new\n") + Buffer.byteLength("two new\n"));
       return { decision: "allow-once" };
     },
     onMutation: (event) => { events.push(event.type); },
@@ -3922,7 +3955,7 @@ test("model apply_patch_set flow persists the member journal and bounded path se
         finalResponse: "The approved patch set was applied.",
       },
     }),
-    config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 4_000 }),
+    config: config(stateDir, { workspaceRoot: root, maxToolOutputBytes: 4_000, maxPatchSetBytes: 64 }),
     userPrompt: "Update both notes.",
     approveMutation: async () => ({ decision: "allow-once" }),
   });
@@ -3937,6 +3970,8 @@ test("model apply_patch_set flow persists the member journal and bounded path se
     risk: string;
     status: string;
     paths: string[];
+    totalBytes: number;
+    maxBytes: number;
     members: Array<{ path: string }>;
     journal: { state: string; transactionPath: string; members: Array<{ path: string; state: string; temporaryPath?: string }> };
   };
@@ -3944,6 +3979,8 @@ test("model apply_patch_set flow persists the member journal and bounded path se
   assert.equal(mutation.risk, "multi-file-patch");
   assert.equal(mutation.status, "committed");
   assert.deepEqual(mutation.paths, ["one.txt", "two.txt"]);
+  assert.equal(mutation.totalBytes, Buffer.byteLength("one new\n") + Buffer.byteLength("two new\n"));
+  assert.equal(mutation.maxBytes, 64);
   assert.deepEqual(mutation.members.map((member) => member.path), ["one.txt", "two.txt"]);
   assert.equal(mutation.journal.state, "committed");
   assert.equal(mutation.journal.transactionPath, `.computer-native-transactions/${mutation.mutationId}`);
@@ -5800,7 +5837,7 @@ test("interactive TUI shows the complete path set for an approved patch set", { 
       _signal: AbortSignal | undefined,
       _onText?: (text: string) => void,
       _onEvent?: (event: TurnEvent) => void,
-      approveMutation?: (request: { readonly mutationId: string; readonly operation: "patch-set"; readonly risk: "multi-file-patch"; readonly paths: readonly string[]; readonly path: string; readonly addedLines: number; readonly removedLines: number; readonly diff: string }) => Promise<{ readonly decision: "allow-once" | "deny" | "unavailable"; readonly reason?: string }>,
+      approveMutation?: (request: { readonly mutationId: string; readonly operation: "patch-set"; readonly risk: "multi-file-patch"; readonly paths: readonly string[]; readonly path: string; readonly totalBytes: number; readonly maxBytes: number; readonly addedLines: number; readonly removedLines: number; readonly diff: string }) => Promise<{ readonly decision: "allow-once" | "deny" | "unavailable"; readonly reason?: string }>,
     ) => {
       const decision = await approveMutation?.({
         mutationId: "mutation_batch_ui",
@@ -5808,6 +5845,8 @@ test("interactive TUI shows the complete path set for an approved patch set", { 
         risk: "multi-file-patch",
         paths: ["one.txt", "two.txt"],
         path: "one.txt",
+        totalBytes: 8,
+        maxBytes: 16,
         addedLines: 2,
         removedLines: 2,
         diff: "Apply patch set: 2 files\n- one.txt\n- two.txt\n",
@@ -5840,6 +5879,8 @@ test("interactive TUI shows the complete path set for an approved patch set", { 
   assert.match(rendered, /one\.txt/);
   assert.match(rendered, /two\.txt/);
   assert.match(rendered, /2 files/);
+  assert.match(rendered, /8 bytes/);
+  assert.match(rendered, /16 bytes maximum/);
 });
 
 test("interactive TUI cancels an approval question when the active turn is interrupted", { timeout: 2_000 }, async () => {

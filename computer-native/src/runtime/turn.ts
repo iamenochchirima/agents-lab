@@ -39,7 +39,7 @@ export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryDailyMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxPatchSetBytes" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
   readonly memory?: MemoryStore;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
@@ -345,6 +345,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       maxTreeEntries: options.config.maxTreeEntries,
       maxTreeBytes: options.config.maxTreeBytes,
       maxTreeDepth: options.config.maxTreeDepth,
+      maxPatchSetBytes: options.config.maxPatchSetBytes,
     });
     const processPolicy = options.config.processMode === "approval"
       ? new ProcessSecurityPolicy({
@@ -405,6 +406,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       ...(request.manifestHash ? { manifestHash: request.manifestHash } : {}),
       ...(request.entryCount !== undefined ? { entryCount: request.entryCount } : {}),
       ...(request.totalBytes !== undefined ? { totalBytes: request.totalBytes } : {}),
+      ...(request.maxBytes !== undefined ? { maxBytes: request.maxBytes } : {}),
       ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
       addedLines: request.addedLines,
       removedLines: request.removedLines,
@@ -461,6 +463,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       ...(request.manifestHash ? { manifestHash: request.manifestHash } : {}),
       ...(request.entryCount !== undefined ? { entryCount: request.entryCount } : {}),
       ...(request.totalBytes !== undefined ? { totalBytes: request.totalBytes } : {}),
+      ...(request.maxBytes !== undefined ? { maxBytes: request.maxBytes } : {}),
       ...(request.maxDepth !== undefined ? { maxDepth: request.maxDepth } : {}),
       ...(event.type === "approval_decided" ? {
         decision: event.decision.decision,

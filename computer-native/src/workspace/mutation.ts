@@ -74,6 +74,8 @@ export interface MutationApprovalRequest {
   readonly manifestHash?: string;
   readonly entryCount?: number;
   readonly totalBytes?: number;
+  /** Effective aggregate byte limit for the operation, when one applies. */
+  readonly maxBytes?: number;
   readonly maxDepth?: number;
   readonly addedLines: number;
   readonly removedLines: number;
@@ -119,6 +121,7 @@ export interface WorkspaceMutationRecord {
   readonly manifestHash?: string;
   readonly entryCount?: number;
   readonly totalBytes?: number;
+  readonly maxBytes?: number;
   readonly maxDepth?: number;
   readonly addedLines: number;
   readonly removedLines: number;
@@ -183,6 +186,7 @@ export function assertMutationTransition(previous: WorkspaceMutationRecord, next
     !sameOptional(previous.manifestHash, next.manifestHash) ? "manifestHash" : undefined,
     previous.entryCount !== next.entryCount ? "entryCount" : undefined,
     previous.totalBytes !== next.totalBytes ? "totalBytes" : undefined,
+    previous.maxBytes !== next.maxBytes ? "maxBytes" : undefined,
     previous.maxDepth !== next.maxDepth ? "maxDepth" : undefined,
     previous.addedLines !== next.addedLines ? "addedLines" : undefined,
     previous.removedLines !== next.removedLines ? "removedLines" : undefined,

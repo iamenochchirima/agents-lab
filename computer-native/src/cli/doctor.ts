@@ -30,6 +30,7 @@ async function probeProvider(config: AppConfig): Promise<DoctorResult> {
     maxTreeEntries: config.maxTreeEntries,
     maxTreeBytes: config.maxTreeBytes,
     maxTreeDepth: config.maxTreeDepth,
+    maxPatchSetBytes: config.maxPatchSetBytes,
   });
   const request: ModelRequest = {
     sessionId: asSessionId("session_doctor"),
@@ -84,6 +85,7 @@ export async function runDoctor(config: AppConfig, output: Writable): Promise<bo
   output.write(`provider: ${config.provider}\n`);
   output.write(`model: ${config.model}\n`);
   output.write(`workspace: ${config.workspaceRoot}\n`);
+  output.write(`workspace limits: ${config.maxFileBytes} bytes/file, ${config.maxPatchSetBytes} bytes/patch set, ${config.maxTreeBytes} bytes/tree\n`);
   output.write(`browser: ${config.browserEnabled ? "enabled" : "disabled"}\n`);
   output.write(`model/tool rounds: ${config.maxModelToolRounds}\n`);
   output.write(`browser action timeout: ${config.browserActionTimeoutMs}ms\n`);

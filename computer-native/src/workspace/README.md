@@ -26,8 +26,10 @@ file, flushes it, and atomically renames it into place. A patch is never silentl
 rebased over a changed file. Explicit run outputs belong to the artifacts module, even
 when a tool produced them inside the workspace.
 
-`preparePatchSet` validates every member before commit, presents one bounded aggregate
-preview, and `commitPatchSet` records member order, before/after hashes, staged temporary
+`preparePatchSet` validates every member before commit, enforces the configured aggregate
+resulting-byte limit (`COMPUTER_NATIVE_MAX_PATCH_SET_BYTES`), presents one bounded
+aggregate preview, and `commitPatchSet` records the resulting byte total alongside member
+order, before/after hashes, staged temporary
 paths, and recovery state. The transaction directory is workspace-local, mode-restricted,
 hidden from normal tools, and never exposed as a user path. A member can commit before a
 later member fails; that partial state is journaled and reconciled from hashes. The set
@@ -88,9 +90,10 @@ same-directory temporary inode while hashing and enforcing the approved source s
 File-transfer preparation and directory-manifest generation also hash through bounded
 descriptor reads instead of retaining file contents. Text reads and patch preparation
 still materialize bounded content where their contracts require it. These operations do
-not provide an OS-level immutable snapshot or claim cross-file atomicity. Aggregate
-mutation budgets and platform-specific immutable file-handle support remain separate
-hardening work.
+not provide an OS-level immutable snapshot or claim cross-file atomicity. Directory
+transfers use the tree entry/byte/depth limits; multi-file patches use their separate
+aggregate resulting-byte limit. Platform-specific immutable file-handle support remains
+separate hardening work.
 
 The process slice reuses this module's security policy only to authorize and describe a
 workspace-relative process cwd. It does not turn the workspace into a host sandbox and

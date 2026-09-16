@@ -1196,7 +1196,7 @@ export class ToolRegistry {
       risk: mutationRisk(prepared),
       approvalTimeoutMs,
       ...(prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { kind: prepared.kind } : {}),
-      ...(prepared.operation === "patch-set" ? { paths: prepared.paths, members: prepared.members, journal: prepared.journal } : {}),
+      ...(prepared.operation === "patch-set" ? { paths: prepared.paths, members: prepared.members, journal: prepared.journal, totalBytes: prepared.totalBytes, maxBytes: this.workspace.policy.limits.maxPatchSetBytes ?? MAX_MUTATION_SET_REQUEST_BYTES } : {}),
       path: prepared.path,
       ...(prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" || prepared.operation === "patch-set" ? {} : { beforeHash: prepared.beforeHash }),
       ...(prepared.operation === "add" || prepared.operation === "update" || prepared.operation === "write" || prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { afterHash: prepared.afterHash } : {}),

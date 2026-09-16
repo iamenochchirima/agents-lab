@@ -50,6 +50,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       maxTreeEntries: config.maxTreeEntries,
       maxTreeBytes: config.maxTreeBytes,
       maxTreeDepth: config.maxTreeDepth,
+      maxPatchSetBytes: config.maxPatchSetBytes,
     });
     memory = config.memoryEnabled
       ? await MemoryStore.open({

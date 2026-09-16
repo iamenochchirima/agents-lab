@@ -203,6 +203,8 @@ export interface PreparedPatchSet {
   readonly preview: string;
   readonly addedLines: number;
   readonly removedLines: number;
+  /** Sum of the resulting UTF-8 member contents, bounded before approval. */
+  readonly totalBytes: number;
   readonly patches: readonly PreparedPatch[];
   readonly members: readonly MutationMember[];
   readonly journal: MutationJournal;
@@ -513,6 +515,14 @@ export class Workspace {
     if (name === "maxTreeEntries") return DEFAULT_MAX_TREE_ENTRIES;
     if (name === "maxTreeBytes") return DEFAULT_MAX_TREE_BYTES;
     return DEFAULT_MAX_TREE_DEPTH;
+  }
+
+  private patchSetLimit(): number {
+    return this.policy.limits.maxPatchSetBytes ?? MAX_MUTATION_SET_REQUEST_BYTES;
+  }
+
+  private patchSetBytes(patches: readonly PreparedPatch[]): number {
+    return patches.reduce((total, patch) => total + Buffer.byteLength(patch.afterContent, "utf8"), 0);
   }
 
   private async assertDirectoryCreationBounds(relativePath: string, absolutePath: string): Promise<void> {
@@ -1273,7 +1283,16 @@ export class Workspace {
     if (requestBytes > MAX_MUTATION_SET_REQUEST_BYTES) {
       throw new WorkspaceAccessError(`The patch set request is larger than the ${MAX_MUTATION_SET_REQUEST_BYTES}-byte limit.`);
     }
-    const preparedPatches = await Promise.all(patchTexts.map((patchText) => this.preparePatch(patchText)));
+    const preparedPatches: PreparedPatch[] = [];
+    let totalBytes = 0;
+    for (const patchText of patchTexts) {
+      const prepared = await this.preparePatch(patchText);
+      totalBytes += Buffer.byteLength(prepared.afterContent, "utf8");
+      if (totalBytes > this.patchSetLimit()) {
+        throw new WorkspaceAccessError(`The patch set would write ${totalBytes} bytes, above the ${this.patchSetLimit()}-byte aggregate limit.`);
+      }
+      preparedPatches.push(prepared);
+    }
     const sortedPatches = [...preparedPatches].sort((left, right) => left.path.localeCompare(right.path));
     const paths = sortedPatches.map((prepared) => prepared.path);
     if (new Set(paths).size !== paths.length) throw new WorkspaceAccessError("A patch set cannot contain duplicate target paths.");
@@ -1315,6 +1334,7 @@ export class Workspace {
       preview,
       addedLines: sortedPatches.reduce((total, prepared) => total + prepared.addedLines, 0),
       removedLines: sortedPatches.reduce((total, prepared) => total + prepared.removedLines, 0),
+      totalBytes,
       patches: sortedPatches,
       members,
       journal,
@@ -1322,6 +1342,10 @@ export class Workspace {
   }
 
   async commitPatchSet(prepared: PreparedPatchSet, onJournal?: (journal: MutationJournal) => Promise<void> | void, signal?: AbortSignal): Promise<PatchSetCommit> {
+    const totalBytes = this.patchSetBytes(prepared.patches);
+    if (totalBytes !== prepared.totalBytes || totalBytes > this.patchSetLimit()) {
+      throw new MutationError("mutation-stale", `The patch set aggregate byte accounting no longer matches the approved ${this.patchSetLimit()}-byte limit; refusing to commit it.`);
+    }
     // A complete stale preflight happens before the transaction directory is created,
     // so a rejected proposal does not leave recovery state behind.
     for (const patch of prepared.patches) await this.assertPatchCurrent(patch);

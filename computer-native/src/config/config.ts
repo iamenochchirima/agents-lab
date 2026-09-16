@@ -14,6 +14,7 @@ export const DEFAULT_MAX_DIRECTORY_ENTRIES = 200;
 export const DEFAULT_MAX_TREE_ENTRIES = 2_000;
 export const DEFAULT_MAX_TREE_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_TREE_DEPTH = 32;
+export const DEFAULT_MAX_PATCH_SET_BYTES = 256 * 1024;
 export const DEFAULT_MAX_TOOL_OUTPUT_BYTES = 32 * 1024;
 export const DEFAULT_MAX_TOOL_DURATION_MS = 10_000;
 // Keep model payloads bounded independently from tool output. The request bound
@@ -98,6 +99,7 @@ export interface ConfigOverrides {
   readonly maxTreeEntries?: number;
   readonly maxTreeBytes?: number;
   readonly maxTreeDepth?: number;
+  readonly maxPatchSetBytes?: number;
   readonly maxToolOutputBytes?: number;
   readonly maxToolDurationMs?: number;
   readonly maxModelRequestBytes?: number;
@@ -157,6 +159,7 @@ export interface AppConfig {
   readonly maxTreeEntries: number;
   readonly maxTreeBytes: number;
   readonly maxTreeDepth: number;
+  readonly maxPatchSetBytes: number;
   readonly maxToolOutputBytes: number;
   readonly maxToolDurationMs: number;
   readonly maxModelRequestBytes: number;
@@ -271,6 +274,7 @@ function validateNumericConfig(config: AppConfig): void {
     ["max tree entries", config.maxTreeEntries],
     ["max tree bytes", config.maxTreeBytes],
     ["max tree depth", config.maxTreeDepth],
+    ["max patch-set bytes", config.maxPatchSetBytes],
     ["max tool output bytes", config.maxToolOutputBytes],
     ["max tool duration", config.maxToolDurationMs],
     ["max model request bytes", config.maxModelRequestBytes],
@@ -368,6 +372,7 @@ export function loadConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessE
     maxTreeEntries: overrides.maxTreeEntries ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TREE_ENTRIES, DEFAULT_MAX_TREE_ENTRIES, "max tree entries"),
     maxTreeBytes: overrides.maxTreeBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TREE_BYTES, DEFAULT_MAX_TREE_BYTES, "max tree bytes"),
     maxTreeDepth: overrides.maxTreeDepth ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TREE_DEPTH, DEFAULT_MAX_TREE_DEPTH, "max tree depth"),
+    maxPatchSetBytes: overrides.maxPatchSetBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_PATCH_SET_BYTES, DEFAULT_MAX_PATCH_SET_BYTES, "max patch-set bytes"),
     maxToolOutputBytes: overrides.maxToolOutputBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TOOL_OUTPUT_BYTES, DEFAULT_MAX_TOOL_OUTPUT_BYTES, "max tool output bytes"),
     maxToolDurationMs: overrides.maxToolDurationMs ?? positiveInteger(env.COMPUTER_NATIVE_MAX_TOOL_DURATION_MS, DEFAULT_MAX_TOOL_DURATION_MS, "max tool duration"),
     maxModelRequestBytes: overrides.maxModelRequestBytes ?? positiveInteger(env.COMPUTER_NATIVE_MAX_MODEL_REQUEST_BYTES, DEFAULT_MAX_MODEL_REQUEST_BYTES, "max model request bytes"),
@@ -430,6 +435,7 @@ export function safeConfigSummary(config: AppConfig): Readonly<Record<string, un
     maxTreeEntries: config.maxTreeEntries,
     maxTreeBytes: config.maxTreeBytes,
     maxTreeDepth: config.maxTreeDepth,
+    maxPatchSetBytes: config.maxPatchSetBytes,
     maxToolOutputBytes: config.maxToolOutputBytes,
     maxToolDurationMs: config.maxToolDurationMs,
     maxModelRequestBytes: config.maxModelRequestBytes,

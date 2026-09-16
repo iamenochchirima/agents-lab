@@ -61,8 +61,9 @@ move, Enter to select, and Escape to cancel. The default selection is deny. Non-
 interactive commands have no approval channel and fail closed without writing.
 `copy` and `move` likewise require approval, operate on regular files, reject an existing
 destination, and recheck the source hash before the operation. `apply_patch_set` reviews
-2–16 file patches together and journals each member with a workspace-local temporary path;
-it does not claim all-or-nothing filesystem atomicity.
+2–16 file patches together, caps the aggregate resulting content at
+`COMPUTER_NATIVE_MAX_PATCH_SET_BYTES` (256 KiB by default), and journals each member with
+a workspace-local temporary path; it does not claim all-or-nothing filesystem atomicity.
 
 Durable memory is stored under the configured state directory, never implicitly in the
 workspace:

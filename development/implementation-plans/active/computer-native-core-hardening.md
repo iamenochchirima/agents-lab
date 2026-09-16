@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T19:42:00+02:00
+**Last updated:** 2026-09-16T20:05:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -115,6 +115,11 @@ tests, but it must never replace a configured real provider silently.
   reads and patch preparation remain content-producing operations by contract.
 - Recovery manifests now use an operation-specific 8 MiB cap, a no-follow descriptor, and
   a post-read size check before JSON parsing; oversized or changing metadata fails closed.
+- Multi-file patch preparation now uses an explicit aggregate resulting-content budget,
+  reports the prepared byte total and effective limit in approval/evidence records, and
+  recalculates both before commit. The default is 256 KiB through
+  `COMPUTER_NATIVE_MAX_PATCH_SET_BYTES`; directory-tree operations retain their separate
+  entry/byte/depth budget.
 - The normalized lifecycle stream now validates process, browser, and memory action
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
@@ -231,8 +236,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 302 passing tests across the package, with 88.87% line
-  coverage, 77.73% branch coverage, and 84.71% function coverage. Coverage is from
+- The latest validation is 303 passing tests across the package, with 88.74% line
+  coverage, 77.58% branch coverage, and 84.74% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -973,10 +978,12 @@ claim in this plan.
       reconciliation records for the supported multi-file `apply_patch_set` boundary.
 - [x] Report partial completion and recovery instructions when an `apply_patch_set`
       transaction cannot roll back fully.
-- [ ] Add aggregate mutation limits for large inputs; bounded streaming now covers
-      regular-file copy commits, file-transfer preparation, and directory-manifest hashes,
-      but text reads, patch preparation, and the broader filesystem contract remain
-      content- or evidence-bound.
+- [x] Add operation-specific aggregate mutation limits for large inputs: directory-tree
+      operations use the configured entry/byte/depth bounds, and multi-file patch sets
+      now enforce `COMPUTER_NATIVE_MAX_PATCH_SET_BYTES` over resulting member content
+      before approval and again before commit. Each patch-set request records its byte
+      total for approval and evidence; text reads and individual file writes remain
+      bounded by their own content limits.
 
 ### 6. Security, limits, and telemetry
 
