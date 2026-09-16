@@ -465,8 +465,8 @@ Practice check against the local Hermes and OpenClaw references:
 Still open after this slice:
 
 - Text reads and patch preparation still materialize bounded content where their contracts
-  require it. Aggregate mutation budgets and an OS-level immutable snapshot/file-handle
-  contract remain open.
+  require it. The current operation-specific aggregate budgets are delivered; an OS-level
+  immutable snapshot/file-handle contract remains open.
 - The remaining filesystem race, crash, cross-platform, and platform-isolation matrix is
   broader than this read-time limit check.
 
@@ -495,7 +495,41 @@ Practice check against the local Hermes and OpenClaw references:
 Still open after this slice:
 
 - Text reads and patch preparation still materialize bounded content where their contracts
-  require it. Aggregate mutation budgets and an OS-level immutable snapshot remain open.
+  require it. The current operation-specific aggregate budgets are delivered; an OS-level
+  immutable snapshot remains open.
+
+### Current slice boundary: aggregate patch-set accounting
+
+Delivered in this slice:
+
+- Multi-file patch preparation now computes the sum of resulting UTF-8 member bytes while
+  preparing members sequentially and rejects the set before approval when it exceeds
+  `maxPatchSetBytes` (256 KiB by default, configurable through
+  `COMPUTER_NATIVE_MAX_PATCH_SET_BYTES`).
+- The prepared byte total and effective limit travel with the approval request, TUI review,
+  normalized lifecycle payload, and durable mutation record. Commit recalculates the total
+  and refuses mismatched or over-budget prepared data before creating the transaction
+  directory.
+- The limit is intentionally separate from directory-tree `maxTreeBytes`: the former
+  bounds the resulting contents of one patch set, while the latter bounds one traversed
+  tree. No shared transaction manager or rollback guarantee was added.
+- Tests cover configuration/env wiring, exact byte accounting, over-budget rejection with
+  no filesystem change, approval/evidence propagation, and TUI display of the total and
+  limit.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This follows their operation-specific policy and bounded-input pattern. It does not
+  copy their broader turn orchestration, tool policy, or runtime product surfaces into
+  the workspace module.
+
+Still open after this slice:
+
+- Text-producing reads and patch preparation still materialize bounded content by
+  contract; this slice bounds the aggregate patch-set result but does not claim an OS-level
+  immutable snapshot or cross-file atomicity.
+- Any future multi-file operation must define its own aggregate accounting and recovery
+  evidence before it is exposed.
 
 ### Current slice boundary: memory evidence maintenance
 
