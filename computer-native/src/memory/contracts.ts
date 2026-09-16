@@ -159,3 +159,62 @@ export interface MemoryActionRecord {
   readonly reason?: string;
   readonly recordedAt: string;
 }
+
+const MEMORY_ACTION_TRANSITIONS: Readonly<Record<MemoryActionStatus, readonly MemoryActionStatus[]>> = {
+  proposed: ["approved", "denied", "failed"],
+  approved: ["denied", "committed", "failed"],
+  denied: [],
+  committed: [],
+  failed: [],
+};
+
+function sameBatchIdentity(left: readonly MemoryBatchActionItem[] | undefined, right: readonly MemoryBatchActionItem[] | undefined): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const other = right[index];
+    return other !== undefined
+      && item.operation === other.operation
+      && item.scope === other.scope
+      && item.recordId === other.recordId
+      && item.sourcePath === other.sourcePath
+      && item.beforeContentHash === other.beforeContentHash
+      && item.afterContentHash === other.afterContentHash;
+  });
+}
+
+/**
+ * Keep append-only memory evidence tied to one prepared operation. Recovery may
+ * classify an approved operation as denied or failed, but it must never skip the
+ * approval boundary or rewrite the operation identity.
+ */
+export function assertMemoryActionTransition(previous: MemoryActionRecord, next: MemoryActionRecord): void {
+  const changedFields = [
+    previous.operationId !== next.operationId ? "operationId" : undefined,
+    previous.sessionId !== next.sessionId ? "sessionId" : undefined,
+    previous.turnId !== next.turnId ? "turnId" : undefined,
+    previous.correlationId !== undefined && previous.correlationId !== next.correlationId ? "correlationId" : undefined,
+    previous.callId !== next.callId ? "callId" : undefined,
+    previous.operation !== next.operation ? "operation" : undefined,
+    previous.operation !== "add" && previous.recordId !== next.recordId ? "recordId" : undefined,
+    previous.scope !== next.scope ? "scope" : undefined,
+    previous.sourcePath !== next.sourcePath ? "sourcePath" : undefined,
+    previous.beforeContentHash !== next.beforeContentHash ? "beforeContentHash" : undefined,
+    previous.afterContentHash !== next.afterContentHash ? "afterContentHash" : undefined,
+    previous.inputHash !== next.inputHash ? "inputHash" : undefined,
+    !sameBatchIdentity(previous.batch, next.batch) ? "batch" : undefined,
+    previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
+  ].filter((field): field is string => field !== undefined);
+  if (changedFields.length > 0) {
+    throw new Error(`Memory action identity cannot change after it is recorded (${changedFields.join(", ")}).`);
+  }
+  if (previous.status === next.status) {
+    if (previous.decision !== next.decision || previous.reason !== next.reason) {
+      throw new Error("Memory action has conflicting duplicate outcome evidence.");
+    }
+    return;
+  }
+  if (!MEMORY_ACTION_TRANSITIONS[previous.status].includes(next.status)) {
+    throw new Error(`Memory action cannot transition from ${previous.status} to ${next.status}.`);
+  }
+}

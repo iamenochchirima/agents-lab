@@ -36,7 +36,7 @@ import { SessionLock } from "./lock.js";
 import { assertMutationTransition, type WorkspaceMutationRecord } from "../workspace/mutation.js";
 import { assertProcessTransition, type ProcessExecutionRecord } from "../process/process.js";
 import { assertBrowserActionTransition, type BrowserActionRecord } from "../browser/records.js";
-import type { MemoryActionRecord, MemorySearchEvidence } from "../memory/contracts.js";
+import { assertMemoryActionTransition, type MemoryActionRecord, type MemorySearchEvidence } from "../memory/contracts.js";
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
@@ -501,6 +501,29 @@ function assertTurnBoundRecord(
     throw new ComputerNativeError("persistence", `${kind} '${identity}' has an invalid correlation.`);
   }
   assertRecordCorrelation(expectedCorrelationId, candidate.correlationId as CorrelationId | undefined, kind);
+}
+
+function assertMemoryActionHistory(
+  history: readonly MemoryActionRecord[],
+  expectedSessionId: SessionMetadata["sessionId"],
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): void {
+  let previous: MemoryActionRecord | undefined;
+  for (const record of history) {
+    assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Memory action", "operationId");
+    if (record.sessionId !== expectedSessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
+      throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${expectedTurnId}'.`);
+    }
+    if (previous) {
+      try {
+        assertMemoryActionTransition(previous, record);
+      } catch (error) {
+        throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+      }
+    }
+    previous = record;
+  }
 }
 
 export class SessionStore {
@@ -1022,9 +1045,12 @@ export class TurnStore {
     }
     const directory = path.join(this.directory, "memory-actions");
     await ensureDirectory(directory);
+    const recordPath = path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`);
+    const history = await readJsonLines<MemoryActionRecord>(recordPath);
+    assertMemoryActionHistory([...history, record], this.sessionId, this.turnId, this.correlationId);
     // Lifecycle updates are append-only. Recovery reads the latest state, while
     // the JSONL history preserves the earlier proposal/approval outcome.
-    await this.session.appendJsonLine(path.join(directory, `${safePathSegment(record.operationId, "Memory operation ID")}.jsonl`), record);
+    await this.session.appendJsonLine(recordPath, record);
   }
 
   async readMemoryActions(): Promise<MemoryActionRecord[]> {
@@ -1036,12 +1062,7 @@ export class TurnStore {
     const records: MemoryActionRecord[] = [];
     for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".jsonl")).sort((left, right) => left.name.localeCompare(right.name))) {
       const history = await readJsonLines<MemoryActionRecord>(path.join(directory, entry.name));
-      for (const record of history) {
-        assertTurnBoundRecord(record, this.turnId, this.correlationId, "Memory action", "operationId");
-        if (record.sessionId !== this.sessionId || typeof record.callId !== "string" || record.callId.trim().length === 0) {
-          throw new ComputerNativeError("persistence", `Memory action '${record.operationId}' does not belong to turn '${this.turnId}'.`);
-        }
-      }
+      assertMemoryActionHistory(history, this.sessionId, this.turnId, this.correlationId);
       const latest = history.at(-1);
       if (latest) records.push(latest);
     }

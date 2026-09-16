@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-16T20:05:00+02:00
+**Last updated:** 2026-09-16T20:39:53+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 303 tests passed after the workspace bounded-input increments.
-- `pnpm run coverage`: 303 tests passed, with 88.74% line coverage, 77.68% branch
-  coverage, and 84.66% function coverage in the latest successful run. Node's experimental
+- `pnpm test`: 304 tests passed after the memory action lifecycle increment.
+- `pnpm run coverage`: 304 tests passed, with 88.82% line coverage, 77.48% branch
+  coverage, and 84.73% function coverage in the latest successful run. Node's experimental
   coverage runner can vary slightly between runs.
 - `pnpm run typecheck`: passed.
 - `pnpm run build`: passed.
@@ -102,6 +102,11 @@ readiness:
   injection now covers canonical and deletion-evidence writes. Cross-file daily batches
   persist before/after canonical-file hashes and recover all-before, all-after, and mixed
   publication states without replay; they do not claim rollback or cross-file atomicity.
+- Memory action histories now validate operation-local state transitions and immutable
+  identity before append and during recovery. They reject skipped approval boundaries,
+  identity drift, and conflicting duplicate outcomes; reconciliation may attach the newly
+  found record ID only for an approved `add` action. This is an evidence-integrity guard,
+  not a generic transaction or exactly-once execution layer.
 - Browser screenshot and download targets now hold lock-backed ownership leases while
   adapter writes are in flight. Bounded cleanup retains live in-flight artifacts and
   only reclaims old incomplete artifacts after stale-owner checks; finalization and
@@ -463,7 +468,8 @@ Exit evidence:
 Current state: bounded Markdown stores, a rebuildable local lexical index, explicit
 approval-gated add/replace/remove operations, provenance, retention checks, operation-
 specific recovery at canonical and deletion-evidence write boundaries, bounded deletion
-and batch-evidence maintenance, and a shared approval/cancellation path.
+and batch-evidence maintenance, operation-local action-history transition validation, and
+a shared approval/cancellation path.
 
 Remaining work:
 

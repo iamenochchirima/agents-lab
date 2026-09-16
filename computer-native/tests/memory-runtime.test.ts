@@ -89,6 +89,48 @@ test("runtime dispatches a real memory tool call through approval and persists i
   }
 });
 
+test("memory action evidence rejects skipped transitions and identity drift", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-action-transition-"));
+  try {
+    const session = await SessionStore.open(path.join(root, "state"));
+    const turn = await session.admitTurn("validate memory action evidence", "deterministic", "deterministic/echo");
+    const base: MemoryActionRecord = {
+      schemaVersion: 1,
+      operationId: "memory_transition_test",
+      sessionId: session.metadata.sessionId,
+      turnId: turn.turnId,
+      correlationId: turn.correlationId,
+      callId: "memory_transition_call",
+      operation: "add",
+      scope: "workspace",
+      sourcePath: "MEMORY.md",
+      afterContentHash: "after-hash",
+      inputHash: "after-hash",
+      status: "proposed",
+      recordedAt: new Date().toISOString(),
+    };
+
+    await turn.writeMemoryAction(base);
+    await assert.rejects(
+      () => turn.writeMemoryAction({ ...base, status: "committed" }),
+      /invalid state transition/u,
+    );
+    await assert.rejects(
+      () => turn.writeMemoryAction({ ...base, status: "approved", decision: "allow-once", sourcePath: "USER.md" }),
+      /identity cannot change/u,
+    );
+    await turn.writeMemoryAction({ ...base, status: "approved", decision: "allow-once" });
+    await assert.rejects(
+      () => turn.writeMemoryAction({ ...base, status: "approved", decision: "deny" }),
+      /conflicting duplicate outcome/u,
+    );
+    await turn.writeMemoryAction({ ...base, status: "committed", decision: "allow-once" });
+    assert.equal((await turn.readMemoryActions())[0]?.status, "committed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("denied memory approval records a terminal lifecycle outcome without writing memory", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "computer-native-memory-denial-"));
   try {

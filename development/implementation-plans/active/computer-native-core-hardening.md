@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-16T20:21:48+02:00
+**Last updated:** 2026-09-16T20:39:53+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -125,6 +125,11 @@ tests, but it must never replace a configured real provider silently.
   ordering by stable identity. Normal events cannot skip preparation or approval or
   extend a terminal action; recovery may insert a direct terminal observation only when
   it carries `recovered: true`.
+- Memory action JSONL history now applies the same operation-local transition discipline
+  at the persistence boundary: `proposed` must reach approval before `committed`, terminal
+  outcomes cannot be rewritten, and identity fields cannot drift. The only mutable result
+  is the newly assigned record ID for an approved `add`, which recovery needs to attach to
+  the durable record it found.
 - Denied or unavailable process, workspace, and memory approvals now emit their terminal
   lifecycle outcome during the normal turn, not only during restart recovery.
 - Runtime diagnostics now expose explicit checkpoints before model transport, after a
@@ -237,8 +242,8 @@ tests, but it must never replace a configured real provider silently.
 - Cancellation requested before model dispatch now records only the durable turn start and
   cancellation outcome; it does not invoke the provider or claim that a model request was
   attempted. Cancellation during retry backoff is also tested to prevent a later attempt.
-- The latest validation is 303 passing tests across the package, with 88.74% line
-  coverage, 77.68% branch coverage, and 84.66% function coverage. Coverage is from
+- The latest validation is 304 passing tests across the package, with 88.82% line
+  coverage, 77.48% branch coverage, and 84.73% function coverage. Coverage is from
   Node's experimental test-coverage runner and can vary slightly between runs; the full suite and
   coverage run both pass. The browser fixture navigation timeout is 1 second so it
   remains stable under coverage instrumentation.
@@ -654,6 +659,35 @@ Delivered in this slice:
 - An end-to-end denied process turn test proving the normal approval decision writes a
   terminal process outcome, leaves no `ProcessStarted` event, and does not launch the
   command.
+
+### Current slice boundary: memory action record transitions
+
+Delivered in this slice:
+
+- `TurnStore.writeMemoryAction` validates the existing operation history before appending
+  a new record, and `readMemoryActions` validates it again during inspection and recovery.
+- The memory action state path is explicit: `proposed` may become `approved`, `denied`, or
+  `failed`; an approved action may become `committed`, `denied`, or `failed`; terminal
+  outcomes cannot receive another transition.
+- Operation identity is held constant across the history, including session, turn,
+  correlation, call, scope, source, content hashes, timeout, and batch member manifest.
+  An approved `add` may receive its durable record ID during reconciliation; replace/remove
+  targets may not change identity.
+- Conflicting duplicate outcome evidence is rejected. A focused persistence test covers
+  skipped transitions and identity drift, while the full package suite covers normal,
+  denied, interrupted, acknowledgement-loss, and batch recovery paths.
+
+Practice check against the local Hermes and OpenClaw references:
+
+- This is a narrow enforcement of the memory action contract already used by runtime and
+  recovery. It follows the references' explicit operation state and fail-closed recovery
+  patterns without creating a generic workflow engine, event-sourcing layer, transaction
+  manager, rollback service, or exactly-once claim.
+
+Still open after this slice:
+
+- The broader per-write and host-side crash matrix, schema migration/repair tooling,
+  backup/restore, and the remaining memory retrieval/privacy/compaction work remain open.
 
 ### Current slice boundary: runtime interruption checkpoints
 
