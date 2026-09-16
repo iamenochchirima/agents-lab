@@ -1,6 +1,6 @@
 # Active implementation plans
 
-**Last updated:** 2026-09-16T09:18:07+02:00
+**Last updated:** 2026-09-16T11:00:00+02:00
 
 These plans govern implementation that is not yet complete. Every checkbox must remain
 honest: it represents work that has been verified, not merely code that was started.
@@ -10,11 +10,16 @@ When a plan reaches its completion gate, add its completion record and move it t
 
 ## Current Computer Native slice
 
-The browser-interaction slice is complete and archived in
-[`../completed/computer-native-browser-interaction.md`](../completed/computer-native-browser-interaction.md).
-The next Computer Native module is Memory, governed by
-[`computer-native-memory.md`](computer-native-memory.md). It must be completed before
-the queue advances to Skills.
+The browser-interaction and memory slices are complete and archived in
+[`../completed/computer-native-browser-interaction.md`](../completed/computer-native-browser-interaction.md)
+and [`../completed/computer-native-memory.md`](../completed/computer-native-memory.md).
+The queue can now advance to the next Computer Native module.
+
+## Current additive UI slice
+
+The Component Lab is an additive workspace and is governed by
+[`component-lab-ui.md`](component-lab-ui.md). This slice establishes the area catalog
+and Context Management configuration preview without changing Platform Lab execution.
 
 ## Current platform batch
 

@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-16T09:18:07+02:00
+**Last updated:** 2026-09-16T11:00:00+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -51,14 +51,18 @@ batch are archived below.
 The current shared model slice is tracked in the
 [OpenRouter model selection plan](active/openrouter-model-selection.md).
 
-The current Computer Native memory slice is tracked in
-[the active memory plan](active/computer-native-memory.md). It follows the completed
-browser interaction slice and uses local Hermes and OpenClaw code as design references.
+The Computer Native memory slice is complete in
+[the completed memory plan](completed/computer-native-memory.md). It followed the
+browser interaction slice and used local Hermes and OpenClaw code as design references.
 
 The next context slice is tracked in the
 [session context and compaction plan](active/context-management.md). It covers the
 shared context semantics and first Temporal integration; long-term memory remains a
 separate follow-on capability.
+
+The additive Component Lab UI slice is tracked in the
+[Component Lab UI plan](active/component-lab-ui.md). It establishes the visual area
+catalog and Context Management preview without changing Platform Lab execution.
 
 ## Completed plans
 
@@ -87,6 +91,10 @@ separate follow-on capability.
   completed 2026-09-16T08:34:37+02:00; delivered an approval-gated managed Chromium
   capability with bounded snapshots, artifacts, dialog handling, cancellation, durable
   evidence, TUI activity, security policy, and real-model local-fixture acceptance.
+- [Computer Native memory](completed/computer-native-memory.md) — completed
+  2026-09-16T11:10:00+02:00; delivered bounded durable Markdown memory, a rebuildable
+  local index, approval-gated lifecycle tools, append-only evidence, and shared approval
+  and cancellation UX.
 - [Restate baseline](completed/restate-baseline.md) — completed
   2026-09-15T17:40:00+02:00; delivered the local durable workflow baseline, generic
   runner integration, native evidence, and shared UI execution path.

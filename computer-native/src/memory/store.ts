@@ -669,7 +669,7 @@ function validateContent(content: string, maxChars: number): void {
   if (/(?:ignore|disregard|forget)\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|reveal\s+(?:the\s+)?(?:api\s*key|secret)|system\s+message|developer\s+message/i.test(content)) {
     throw new MemoryPolicyError("Memory content looks like an instruction-injection attempt.");
   }
-  if (/bearer\s+[A-Za-z0-9._~+/=-]+|-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----|(?:api[_ -]?key|secret)\s*[:=]\s*\S+/i.test(content)) {
+  if (/bearer\s+[A-Za-z0-9._~+/=-]+|-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----|(?:api[_ -]?key|secret|password|passwd|cookie|access[_ -]?token|refresh[_ -]?token)\s*[:=]\s*\S+/i.test(content)) {
     throw new MemoryPolicyError("Memory content looks like a credential or secret.");
   }
 }

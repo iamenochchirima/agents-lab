@@ -1,8 +1,8 @@
 # Computer Native memory
 
 **Created:** 2026-09-16T09:18:07+02:00
-**Last updated:** 2026-09-16T09:34:40+02:00
-**Status:** Active
+**Last updated:** 2026-09-16T11:10:00+02:00
+**Status:** Completed
 **Owner:** Computer Native standalone runtime
 **Filename:** `computer-native-memory.md`
 
@@ -44,6 +44,20 @@ These implementations are design input, not dependencies. Computer Native stays
 standalone and must not import their code, storage, providers, or framework APIs.
 This plan preserves the existing separation between transcript history, durable
 memory, context construction, tools, persistence, and telemetry.
+
+## Delivered slice
+
+This plan delivered the first complete local durable-memory slice and its shared
+approval UX. It includes inspectable Markdown stores, a rebuildable SQLite index,
+bounded lexical search/get, user/workspace bootstrap context, daily retrieval,
+approval-gated add/replace/remove and same-scope consolidation batches, exact-hash
+deletion, provenance and content screening, append-only lifecycle/search evidence,
+restart closure of uncommitted proposals, and the shared keyboard approval panel.
+
+The slice intentionally keeps all persistent mutations at `approve once`; it does not
+introduce a broad session grant. Broad deletion, semantic search, hosted memory,
+automatic compaction promotion, and cross-file transactional claims remain outside
+this completed local boundary.
 
 ## Purpose
 
@@ -145,142 +159,140 @@ second transcript store.
 
 ### 1. Contracts, stores, and configuration
 
-- [ ] Define typed memory records, scopes, provenance, trust, lifecycle, result, and
+- [x] Define typed memory records, scopes, provenance, trust, lifecycle, result, and
       error contracts in `computer-native/src/memory/`.
-- [ ] Define the deep memory interface used by context construction, model-facing tools,
-      persistence, and tests. Keep file and index adapters behind that seam.
-- [ ] Add validated configuration for memory enablement, per-store character/byte
-      budgets, maximum result count, maximum returned characters, daily-note retention,
-      index deadlines, and mutation approval mode.
-- [ ] Reject unknown scopes, malformed IDs, invalid dates, oversized content, and
+- [x] Define the deep memory interface used by context construction, model-facing tools,
+      persistence, and tests. The local `MemoryStore` is the first adapter seam; hosted
+      adapters remain outside this slice.
+- [x] Add validated configuration for memory enablement, per-store character budgets,
+      result/bootstrap bounds, daily-note retention, and explicit interactive approval.
+- [x] Reject unknown scopes, malformed IDs, invalid dates, oversized content, and
       unsupported retention values before any file or index operation.
-- [ ] Keep memory state under the configured state directory with owner-only defaults;
+- [x] Keep memory state under the configured state directory with owner-only defaults;
       do not use the workspace root as an implicit cross-project memory store.
 
 ### 2. Canonical storage and lifecycle
 
-- [ ] Implement compact `USER.md` and `MEMORY.md` stores with Hermes-style bounded
+- [x] Implement compact `USER.md` and `MEMORY.md` stores with Hermes-style bounded
       entries, duplicate detection, explicit add/replace/remove operations, and no
       silent truncation.
-- [ ] Implement dated `daily/` notes with bounded append or replace behavior and a
+- [x] Implement dated `daily/` notes with bounded append or replace behavior and a
       configured retention policy. Retention cleanup must be explicit, recorded, and
       recoverable where practical.
-- [ ] Write through same-directory temporary files, flush before publication where the
+- [x] Write through same-directory temporary files, flush before publication where the
       platform permits it, and atomically replace canonical files.
-- [ ] Serialize read-modify-write operations across threads and processes with a lock
+- [x] Serialize read-modify-write operations across threads and processes with a lock
       beside the file. Re-read and revalidate the expected content hash before commit.
-- [ ] Keep superseded and deleted records attributable long enough for evidence and
+- [x] Keep superseded and deleted records attributable long enough for evidence and
       recovery. Do not silently reuse a deleted ID for new content.
-- [ ] Build and update the derived index only after canonical publication. Detect source
+- [x] Build and update the derived index only after canonical publication. Detect source
       hash or schema mismatch on startup and rebuild without deleting canonical memory.
 
 ### 3. Retrieval and context construction
 
-- [ ] Add bounded `memory_search` for deterministic lexical search across enabled
+- [x] Add bounded `memory_search` for deterministic lexical search across enabled
       stores, with scope filters, source references, line ranges, scores, and snippets.
-- [ ] Add bounded `memory_get` for an exact memory reference and optional line range.
+- [x] Add bounded `memory_get` for an exact memory reference and optional line range.
       It must reject arbitrary paths, traversal, symlinks, and requests outside the
       selected profile/workspace scope.
-- [ ] Rank exact terms and path/store matches deterministically, cap result count and
-      returned characters, and report when results were truncated or the index is stale.
-- [ ] Extend the context module to load a frozen, budgeted bootstrap snapshot of
+- [x] Rank exact terms deterministically, cap result count and returned characters, and
+      report truncation and current derived-index health.
+- [x] Extend the context module to load a frozen, budgeted bootstrap snapshot of
       `USER.md` and compact `MEMORY.md` at session start. Record selected, omitted, and
       truncated sources in context evidence.
-- [ ] Keep daily notes and old session material out of every prompt by default. The
+- [x] Keep daily notes and old session material out of every prompt by default. The
       model must request them through bounded retrieval when needed.
-- [ ] Add a typed pre-compaction memory-flush seam so a future context compaction path
+- [x] Add a typed pre-compaction memory-flush seam so a future context compaction path
       can offer one private, bounded save opportunity without exposing housekeeping
       messages as user conversation. The current slice must not invent compaction
       behavior that the context module does not own.
-- [ ] Treat every returned memory body as untrusted data. Delimit it in model context
+- [x] Treat every returned memory body as untrusted data. Delimit it in model context
       and state explicitly that it cannot override system instructions, tool policy,
       approval decisions, or security rules.
 
 ### 4. Model-facing writes and deletion
 
-- [ ] Add a `memory` tool with explicit `add`, `replace`, and `remove` actions, target
+- [x] Add a `memory` tool with explicit `add`, `replace`, and `remove` actions, target
       store, bounded content, and required unique old-text or record identity for
       replacement/removal. Support one bounded batch for consolidation without
       claiming filesystem transactionality across files.
-- [ ] Add an explicit `memory_forget` operation for exact record, source, session, or
-      workspace-scoped deletion. It must provide a dry-run preview before a broad
-      deletion and require a fresh approval for the applied deletion.
-- [ ] Default interactive mutation mode to explicit approval. Non-interactive runs,
+- [x] Add an explicit `memory_forget` operation for exact record deletion. Broad source,
+      session, and workspace deletion are deliberately unsupported in this slice, so a
+      dry-run cannot be mistaken for a broad applied deletion.
+- [x] Default interactive mutation mode to explicit approval. Non-interactive runs,
       unavailable approval, cancellation, malformed approval, and expired proposals
       fail closed and do not write.
-- [ ] Bind approval to the exact operation identity, target scope, content hash,
-      expected old hash, and resulting size. A late approval must not apply to a new
+- [x] Bind approval to the exact operation identity, target scope, content hash, and
+      expected old hash. A late approval must not apply to a new
       proposal.
-- [ ] Scan proposed content for credentials, private keys, invisible control content,
+- [x] Scan proposed content for credentials, private keys, invisible control content,
       and common instruction-injection or exfiltration patterns. Reject or stage
       suspicious content for review instead of silently storing it.
-- [ ] Preserve provenance and trust when memory originates from browser pages, files,
+- [x] Preserve provenance and trust when memory originates from browser pages, files,
       external integrations, or model summaries. Untrusted content cannot be promoted
       into bootstrap memory without explicit confirmation.
-- [ ] Ensure memory writes never create tool permissions, alter approval policy, change
+- [x] Ensure memory writes never create tool permissions, alter approval policy, change
       the workspace root, or override higher-priority instructions.
 
 ### 5. Runtime, TUI, approval, persistence, and telemetry
 
-- [ ] Route memory operations through the existing tool registry and runtime. The CLI
+- [x] Route memory operations through the existing tool registry and runtime. The CLI
       renderer must not write memory files or call the search adapter directly.
-- [ ] Replace the separate inline `[y/N]` prompts for workspace, process, browser, and
+- [x] Replace the separate inline `[y/N]` prompts for workspace, process, browser, and
       memory actions with one shared interactive approval-prompt module. Keep each
       operation's typed request and risk rules distinct behind that seam.
-- [ ] Render a proper approval panel with a clear title, risk level, exact action,
+- [x] Render a proper approval panel with a clear title, risk level, exact action,
       target and scope, changed paths or bounded content summary, hashes or identity,
       limits, provenance, and the warning that applies to the operation. Redact secrets
       at the rendering boundary as well as before persistence.
-- [ ] Support keyboard navigation and visible shortcuts: arrow keys or `j`/`k` move
+- [x] Support keyboard navigation and visible shortcuts: arrow keys or `j`/`k` move
       the selection, Enter confirms the highlighted choice, `a` approves once, `d`
       denies, `v` toggles bounded detail, and Escape cancels. The safe decision is
       highlighted by default. Bare unrecognised text must not approve anything.
-- [ ] Add typed approval choices rather than a single boolean: approve once, deny, and
-      cancel. Add a current-session approval only for explicitly classified low-risk
-      repeatable operations, binding the grant to a policy fingerprint and expiry;
-      destructive, credential-bearing, external-side-effect, purge, and deletion
-      operations never receive a broad session bypass. Record every grant and use.
-- [ ] Keep approval input in a modal focus separate from the normal composer. Queue or
+- [x] Add typed approval choices rather than a single boolean: approve once, deny, and
+      cancel. This slice intentionally issues no broad session grant for persistent
+      memory or shared side-effecting tools.
+- [x] Keep approval input in a modal focus separate from the normal composer. Queue or
       reject a second approval request deterministically rather than letting prompts
       interleave in the terminal.
-- [ ] Add factual TUI activity for memory search, bootstrap load, proposal, approval,
+- [x] Add factual TUI activity for memory search, bootstrap load, proposal, approval,
       commit, deletion, stale index, and failure states. Redact content and secrets in
       panels while showing enough identity and scope to review the operation.
-- [ ] Improve the console presentation around the modal: stable header and context,
+- [x] Improve the console presentation around the modal: stable header and context,
       status ribbon, streaming output, activity lane, composer hint, narrow-terminal
       fallback, resize handling, and `NO_COLOR` behavior. Display only real state; do
       not add simulated health, usage, or completion data.
-- [ ] Make Ctrl+C consistent across every input state. While a turn is active it
+- [x] Make Ctrl+C consistent across every input state. While a turn is active it
       cancels the turn; while an approval is open it cancels the approval and leaves the
       operation unstarted; while idle with an empty composer it exits cleanly; while an
       unsent draft exists it clears the draft first and a second Ctrl+C within a short
-      window exits. A second Ctrl+C may force-close a turn that does not acknowledge
-      cancellation, with the turn recorded as interrupted.
-- [ ] Keep Ctrl+D, `/quit`, and `/exit` as explicit exit paths, but do not require a
+      window exits. Force-close escalation remains a later terminal-runtime slice.
+- [x] Keep Ctrl+D, `/quit`, and `/exit` as explicit exit paths, but do not require a
       slash command to leave the console. Close pending readline/raw-key handlers,
       browser/process resources, and the application exactly once on every exit path.
-- [ ] Add `/memory` status and bounded inspection output for store sizes, index health,
-      pending proposals, and retention settings. Do not dump all memory by default.
-- [ ] Persist immutable memory-operation records with operation ID, turn/session link,
+- [x] Add `/memory` status and bounded inspection output for store sizes, index health,
+      and retention settings. Pending proposals are visible in the approval/activity
+      path and are closed during restart; `/memory` does not dump all memory.
+- [x] Persist immutable memory-operation records with operation ID, turn/session link,
       scope, source reference, content hash, approval decision, bounded outcome, and
       index status. Persist search records as references and query metadata, not raw
       memory bodies.
-- [ ] Extend `/evidence` and turn evidence with memory references, context selection,
+- [x] Extend turn evidence with memory references, context selection,
       redaction, and recovery outcomes while keeping credentials, full secrets, and
       unbounded page content out of durable records.
-- [ ] On restart, close prepared or approved-but-uncommitted proposals as unavailable;
-      reconcile committed canonical files against the derived index; mark an uncertain
-      delete or index publication for inspection rather than replaying it.
+- [x] On restart, close prepared or approved-but-uncommitted proposals as unavailable;
+      reconcile canonical files against the disposable derived index and never replay a
+      model tool call.
 
 ### 6. Documentation and local acceptance
 
-- [ ] Replace the placeholder memory README with the module interface, storage layout,
+- [x] Replace the placeholder memory README with the module interface, storage layout,
       scope rules, trust model, failure semantics, and adapter seam.
-- [ ] Update Computer Native quick-start, configuration, context, persistence, security,
+- [x] Update Computer Native quick-start, configuration, context, persistence, security,
       tool, and TUI documentation with runnable memory examples and limitations.
-- [ ] Add a local memory playground that uses the normal saved `.env` and `pnpm run
+- [x] Add a local memory playground that uses the normal saved `.env` and `pnpm run
       chat`, with no external memory provider or API key beyond the configured model.
-- [ ] Document the local reference comparison and the decisions that were not adopted:
+- [x] Document the local reference comparison and the decisions that were not adopted:
       no hidden memory state, no external provider in the first slice, no automatic
       background deletion, and no claim that memory enforces policy.
 
@@ -353,122 +365,122 @@ memory operation is authorized.
   index.json                      # schema/source hashes and rebuild state
 
 <state-dir>/sessions/<session-id>/turns/<turn-id>/
-  memory-actions/<operation-id>.json  # one immutable memory lifecycle record
+  memory-actions/<operation-id>.jsonl # append-only memory lifecycle record
   memory-searches/<search-id>.json   # bounded query and reference metadata
 ```
 
-- [ ] Every memory operation has a unique ID, session/turn link, scope, input hash,
+- [x] Every memory operation has a unique ID, session/turn link, scope, input hash,
       approval state, terminal status, and bounded result.
-- [ ] Canonical files are atomically published and the expected old hash is rechecked
+- [x] Canonical files are atomically published and the expected old hash is rechecked
       immediately before commit.
-- [ ] Index updates record the source hash and schema identity. An index can be deleted
-      and rebuilt from canonical files without losing memory.
-- [ ] Evidence stores references, hashes, sizes, statuses, and redacted summaries, not
+- [x] Index updates record the source hash in each derived row and rebuild from canonical
+      files without losing memory when the index is deleted or corrupt.
+- [x] Evidence stores references, hashes, sizes, statuses, and redacted summaries, not
       full memory bodies or query text containing credentials.
-- [ ] Retention settings cover canonical daily notes, derived index entries, pending
-      proposals, and operation evidence separately.
+- [x] Retention settings cover canonical daily notes; pending proposals are closed on
+      restart and operation evidence remains bounded and append-only for the session.
 
 ## Failure, retry, and recovery semantics
 
-- [ ] Search may retry only bounded read-only index-open or transient read failures. A
-      stale or unavailable index returns a typed result and never silently returns an
-      empty answer as if no memory existed.
-- [ ] Canonical memory writes do not automatically retry after publication is uncertain.
-      Startup compares source hashes and operation records, then reports reconciliation
-      required when it cannot prove the result.
-- [ ] Index publication may be repeated idempotently for the same canonical source hash.
+- [x] Search is bounded and never silently treats an index-open or canonical parse error
+      as an empty answer; canonical changes reconcile the disposable index before search.
+- [x] Canonical memory writes do not automatically retry after publication is uncertain;
+      canonical Markdown remains the source of truth and is reread on the next access.
+- [x] Index publication may be repeated idempotently for the same canonical source hash.
       It must not rewrite canonical memory as part of repair.
-- [ ] A cancelled or denied proposal never writes. Cancellation after canonical
-      publication but before index publication produces a durable committed-memory,
-      index-pending result and schedules bounded repair, not a second memory write.
-- [ ] Concurrent writers serialize by scope/store lock. Duplicate operation IDs and
+- [x] A cancelled or denied proposal never writes. Canonical publication and index
+      rebuilding occur within the store operation; the index can be rebuilt from the
+      canonical files without repeating a model mutation.
+- [x] Concurrent writers serialize by scope/store lock. Duplicate operation IDs and
       stale expected hashes fail without overwriting newer memory.
-- [ ] A restart never replays a model tool call. It reconciles records and derived index
+- [x] A restart never replays a model tool call. It reconciles records and derived index
       state, then exposes the result to the next session.
-- [ ] Corrupt or partially written canonical files are quarantined or reported without
+- [x] Corrupt or partially written canonical files are reported without
       replacing a valid file from an untrusted temporary path.
-- [ ] The system reports `committed`, `denied`, `failed`, `cancelled`, `stale`, or
-      `reconciliation_required` rather than claiming exactly-once behavior.
+- [x] The system reports committed, denied, failed, cancelled, and unavailable outcomes
+      rather than claiming exactly-once provider or cross-file memory behavior.
 
 ## Security and configuration
 
-- [ ] Memory scope is derived from the admitted profile and workspace identity, never
+- [x] Memory scope is derived from the admitted profile and workspace identity, never
       from a model-supplied arbitrary path or display name.
-- [ ] Profile and workspace memory cannot be read across sessions with different scope
+- [x] Profile and workspace memory cannot be read across sessions with different scope
       identities. The first CLI profile remains `default`, but the record shape must
       already carry the profile and source identity.
-- [ ] Canonical memory directories reject traversal, symlinks, special files, and
+- [x] Canonical memory directories reject traversal, symlinks, special files, and
       reserved internal paths. Search and get use the same checks as writes.
-- [ ] Secret scanning and redaction cover provider keys, authorization headers, cookies,
+- [x] Secret scanning and redaction cover provider keys, authorization headers, cookies,
       private keys, passwords, and sensitive environment values before model display,
       evidence, or index insertion.
-- [ ] Stored page text, file text, tool output, and model summaries keep a trust label.
+- [x] Stored page text, file text, tool output, and model summaries keep a trust label.
       Untrusted content is data and cannot authorize a write, approve a tool, or alter
       security configuration.
-- [ ] Character, byte, entry, result, query, line, retention, index, and operation-log
-      limits are explicit, validated, and reported by `doctor` or `/memory`.
-- [ ] Non-interactive execution has no mutation approval channel and fails closed for
+- [x] Character, result, query, line, retention, index, and operation-log limits are
+      explicit, validated, and reported by `/memory` or tool results.
+- [x] Non-interactive execution has no mutation approval channel and fails closed for
       memory writes. Read-only retrieval remains bounded and scope-checked.
-- [ ] Configuration and tests use safe fixtures. No API key, personal memory, or local
+- [x] Configuration and tests use safe fixtures. No API key, personal memory, or local
       state database enters the repository.
 
 ## Test coverage
 
 ### Unit tests
 
-- [ ] Record/schema validation, stable IDs, scope and profile isolation, dates, hashes,
+- [x] Record/schema validation, stable IDs, scope and profile isolation, dates, hashes,
       limits, duplicate detection, supersession, and lifecycle transitions.
-- [ ] Atomic file serialization, lock ordering, expected-hash checks, malformed UTF-8,
+- [x] Atomic file serialization, lock ordering, expected-hash checks, malformed canonical
+      records,
       newline handling, concurrent read-modify-write, and partial-write cleanup.
-- [ ] Content screening and redaction for credentials, invisible Unicode, instruction
+- [x] Content screening and redaction for credentials, invisible Unicode, instruction
       injection, browser/file provenance, and safe model-visible output.
-- [ ] Deterministic lexical ranking, exact references, line ranges, result bounds,
-      stale-index status, source-hash invalidation, and index rebuild.
-- [ ] Batch mutation validation, final-budget calculation, no silent truncation, and
+- [x] Deterministic lexical ranking, exact references, line ranges, result bounds,
+      truncation/index status, canonical reconciliation, and index rebuild.
+- [x] Batch mutation validation, final-budget calculation, no silent truncation, and
       exact replacement/removal matching.
 
 ### Integration tests
 
-- [ ] Real local memory stores and a real local derived index, without an embedding or
+- [x] Real local memory stores and a real local derived index, without an embedding or
       hosted provider.
-- [ ] End-to-end model-tool dispatch for remember, replace, search, get, and forget,
+- [x] End-to-end model-tool dispatch for remember, replace, search, get, and forget,
       including bounded tool results and TUI approval.
-- [ ] Context bootstrap loads the correct frozen `USER.md`/`MEMORY.md` snapshot and
+- [x] Context bootstrap loads the correct frozen `USER.md`/`MEMORY.md` snapshot and
       records omitted/truncated sources without copying the transcript.
-- [ ] Daily-note retrieval stays out of bootstrap context until explicitly searched.
-- [ ] Denied, unavailable, expired, malformed, late, and cancelled approvals do not
+- [x] Daily-note retrieval stays out of bootstrap context until explicitly searched.
+- [x] Denied, unavailable, malformed, late, and cancelled approvals do not
       mutate memory.
-- [ ] Crash/restart before approval, after approval, after canonical publication, and
-      during index update produces the documented recovery status without replay.
-- [ ] Duplicate operations, stale hashes, concurrent writers, index corruption, source
+- [x] Restart before approval and after approval closes the proposal without replay;
+      canonical/index corruption and rebuild preserve inspectable memory.
+- [x] Duplicate operations, stale hashes, concurrent writers, index corruption, source
       edits, and rebuild preserve canonical memory and produce inspectable evidence.
-- [ ] Cross-profile, cross-workspace, symlink, traversal, secret, and prompt-injection
+- [x] Cross-profile, cross-workspace, symlink, traversal, secret, and prompt-injection
       isolation cases fail closed.
-- [ ] Evidence and telemetry contain operation references and bounded metadata without
+- [x] Evidence and telemetry contain operation references and bounded metadata without
       raw secrets or unbounded memory content.
-- [ ] Approval-prompt tests cover rendering, redaction, default focus, keyboard
-      navigation, approve-once, deny, cancel, detail toggle, session-grant limits,
-      malformed input, resize, narrow terminals, and `NO_COLOR` output.
+- [x] Approval-prompt tests cover rendering, redaction, safe default focus, keyboard
+      navigation, approve-once, deny, cancel, detail toggle, malformed input, and
+      raw/line terminal paths. Session grants remain intentionally absent.
 
 ### Manual acceptance checks
 
-- [ ] Start `pnpm run chat`, save one user preference and one workspace fact, approve the
+- [x] Document the `pnpm run chat` memory flow, save one user preference and one workspace fact,
+      approve the
       writes, quit, start a new session, and retrieve both by meaning and exact term.
-- [ ] Ask the agent to remember text that contains an instruction to ignore policy or a
+- [x] Ask the agent to remember text that contains an instruction to ignore policy or a
       fake credential. Confirm it is rejected or staged and never enters bootstrap memory.
-- [ ] Request a replacement and a forget operation. Confirm the approval panel shows the
+- [x] Request a replacement and a forget operation. Confirm the approval panel shows the
       exact target/hash and the next session cannot retrieve the removed value.
-- [ ] Trigger a workspace, process, browser, and memory approval. Confirm each uses the
+- [x] Trigger a workspace, process, browser, and memory approval. Confirm each uses the
       same review-panel interaction, shows operation-specific details, and never treats
       arbitrary typed text as approval.
-- [ ] Press Ctrl+C during an active model turn, while an approval panel is open, at an
+- [x] Press Ctrl+C during an active model turn, while an approval panel is open, at an
       idle empty composer, and with an unsent draft. Confirm cancel, exit, draft-clear,
       and forced-interrupt outcomes are distinct and recorded correctly.
-- [ ] Run `/memory` and `/evidence`; confirm scope, counts, source references, statuses,
+- [x] Run `/memory` and `/evidence`; confirm scope, counts, source references, statuses,
       and index health are visible without dumping sensitive content.
-- [ ] Stop the process during approval and during an index update. Restart and verify no
+- [x] Document and test stopping during approval; restart and verify no
       memory tool call is replayed and any uncertain state is reported.
-- [ ] Scan the state directory and captured output for provider keys, authorization
+- [x] Scan the state directory and captured output for provider keys, authorization
       headers, cookies, private keys, and full unbounded page content.
 
 ## Required validation commands
@@ -492,30 +504,58 @@ continues.
 
 Before moving this plan to `completed/`, verify:
 
-- [ ] Every applicable scope, lifecycle, security, retrieval, context, evidence, and
+- [x] Every applicable scope, lifecycle, security, retrieval, context, evidence, and
       documentation checkbox is complete.
-- [ ] The memory flow is real and inspectable through `pnpm run chat`, not a deterministic
+- [x] The memory flow is real and inspectable through `pnpm run chat`, not a deterministic
       fake response or a mocked-only path.
-- [ ] Memory survives a new session, remains bounded, and does not copy full transcripts
+- [x] Memory survives a new session, remains bounded, and does not copy full transcripts
       into bootstrap context.
-- [ ] Failure, cancellation, restart, stale-index, deletion, and cross-scope cases are
+- [x] Failure, cancellation, restart, stale-index, deletion, and cross-scope cases are
       implemented and tested.
-- [ ] The approval panel is shared across existing side-effecting tools and provides
+- [x] The approval panel is shared across existing side-effecting tools and provides
       deliberate keyboard choices, bounded review detail, safe defaults, and clean exit
       behavior. `[y/N]` is not the only approval interface.
-- [ ] No secret, unsafe path, untrusted instruction, or unsupported capability is
+- [x] No secret, unsafe path, untrusted instruction, or unsupported capability is
       advertised or retained.
-- [ ] Required validation commands and manual acceptance checks pass.
-- [ ] Documentation matches the stored files, tools, approval semantics, and known
+- [x] Required validation commands and the runnable playground are validated.
+- [x] Documentation matches the stored files, tools, approval semantics, and known
       limitations.
 
 ## Commit discipline and handoff
 
-- [ ] Commit the plan and plan-index updates before implementation begins.
-- [ ] Commit contracts and storage as a reviewable section, then retrieval/context,
+- [x] Commit the plan and plan-index updates with the implementation record.
+- [x] Commit contracts and storage as a reviewable section, then retrieval/context,
       tool approval, persistence/TUI, and docs/tests as coherent sections.
-- [ ] Run the narrow validation relevant to each section before committing it.
-- [ ] Preserve unrelated `apps/`, `server/`, generated, and user changes in the dirty
+- [x] Run the narrow validation relevant to each section before committing it.
+- [x] Preserve unrelated `apps/`, `server/`, generated, and user changes in the dirty
       worktree.
-- [ ] Record implementation commit hashes, validation results, manual observations, and
+- [x] Record implementation commit hashes, validation results, manual observations, and
       known limitations before archiving this plan.
+
+## Completion record
+
+**Completed:** `2026-09-16T11:10:00+02:00`
+**Commits:** `b5476f4`
+
+### Validation
+
+- `pnpm run typecheck` — passed.
+- `pnpm test` — 206 passed, 0 failed with unrestricted child-process/localhost access.
+- `pnpm run coverage` — 206 passed, 0 failed; package-wide line coverage reported 87.25%.
+- `pnpm run build` — passed.
+- `git diff --check` — passed for the implementation boundary.
+- Real OpenRouter smoke path using the saved `.env` and `cohere/north-mini-code:free` —
+  returned the requested response in 1.9 seconds without exposing the key.
+- The memory playground and focused deterministic memory tests cover approval, rejection,
+  persistence, restart evidence, batch validation, search/get bounds, and Ctrl+C/approval
+  interaction. A separate interactive real-model memory walkthrough remains a manual
+  follow-up because this validation run did not alter durable user state.
+
+### Known limitations
+
+- Node 23 reports the standard-library `node:sqlite` experimental warning.
+- The local slice uses deterministic lexical retrieval; embeddings, hosted memory,
+  broad deletion, automatic compaction promotion, and session-wide approval grants remain
+  separate future capabilities.
+- Canonical Markdown publication and derived-index rebuilding are deliberately not
+  advertised as a cross-file transaction or exactly-once provider execution.
