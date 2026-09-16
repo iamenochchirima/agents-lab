@@ -337,6 +337,7 @@ export async function runTurn(options: RunTurnOptions): Promise<TurnResult> {
       ...(request.callId ? { callId: request.callId } : {}),
       operation: request.operation,
       risk: request.risk,
+      ...(request.kind ? { kind: request.kind } : {}),
       ...(request.paths ? { paths: request.paths } : {}),
       ...(request.members ? { members: request.members } : {}),
       ...(journal ? { journal } : {}),

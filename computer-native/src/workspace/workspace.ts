@@ -153,6 +153,7 @@ export interface PreparedFileRestore {
 
 export interface PreparedFileCopy {
   readonly operation: "copy";
+  readonly kind: "file" | "directory";
   readonly path: string;
   readonly sourcePath: string;
   readonly preview: string;
@@ -160,10 +161,14 @@ export interface PreparedFileCopy {
   readonly afterHash: string;
   readonly bytes: number;
   readonly mode: number;
+  readonly manifestHash?: string;
+  readonly entryCount?: number;
+  readonly maxDepth?: number;
 }
 
 export interface PreparedFileMove {
   readonly operation: "move";
+  readonly kind: "file" | "directory";
   readonly path: string;
   readonly sourcePath: string;
   readonly preview: string;
@@ -171,6 +176,24 @@ export interface PreparedFileMove {
   readonly afterHash: string;
   readonly bytes: number;
   readonly mode: number;
+  readonly manifestHash?: string;
+  readonly entryCount?: number;
+  readonly maxDepth?: number;
+}
+
+export interface PreparedRename {
+  readonly operation: "rename";
+  readonly kind: "file" | "directory";
+  readonly path: string;
+  readonly sourcePath: string;
+  readonly preview: string;
+  readonly beforeHash: string;
+  readonly afterHash: string;
+  readonly bytes: number;
+  readonly mode: number;
+  readonly manifestHash?: string;
+  readonly entryCount?: number;
+  readonly maxDepth?: number;
 }
 
 export interface PreparedPatchSet {
@@ -185,7 +208,7 @@ export interface PreparedPatchSet {
   readonly journal: MutationJournal;
 }
 
-export type PreparedWorkspaceMutation = PreparedPatch | PreparedPatchSet | PreparedDirectoryCreation | PreparedDirectoryDeletion | PreparedDirectoryTreeDeletion | PreparedDirectoryRestore | PreparedQuarantinePurge | PreparedFileDeletion | PreparedFileRestore | PreparedFileCopy | PreparedFileMove;
+export type PreparedWorkspaceMutation = PreparedPatch | PreparedPatchSet | PreparedDirectoryCreation | PreparedDirectoryDeletion | PreparedDirectoryTreeDeletion | PreparedDirectoryRestore | PreparedQuarantinePurge | PreparedFileDeletion | PreparedFileRestore | PreparedFileCopy | PreparedFileMove | PreparedRename;
 
 export interface DirectoryCommit {
   readonly path: string;
@@ -232,6 +255,7 @@ export interface FileRestoreCommit {
 export interface FileTransferCommit {
   readonly path: string;
   readonly sourcePath: string;
+  readonly kind: "file" | "directory";
   readonly bytes: number;
 }
 
@@ -386,6 +410,18 @@ export class Workspace {
     if (name === "maxTreeEntries") return DEFAULT_MAX_TREE_ENTRIES;
     if (name === "maxTreeBytes") return DEFAULT_MAX_TREE_BYTES;
     return DEFAULT_MAX_TREE_DEPTH;
+  }
+
+  private async assertDirectoryCreationBounds(relativePath: string, absolutePath: string): Promise<void> {
+    const depth = relativePath === "." ? 0 : relativePath.split(path.sep).filter((part) => part.length > 0 && part !== ".").length;
+    const maxDepth = this.treeLimit("maxTreeDepth");
+    if (depth > maxDepth) throw new WorkspaceAccessError(`Workspace directory '${relativePath}' exceeds the ${maxDepth}-level depth limit.`);
+    const parentEntries = await readdir(path.dirname(absolutePath)).catch((error) => {
+      throw new WorkspaceAccessError(`Workspace parent for '${relativePath}' cannot be inspected for directory-entry limits.`, { cause: error });
+    });
+    if (parentEntries.length >= this.policy.limits.maxDirectoryEntries) {
+      throw new WorkspaceAccessError(`Workspace parent for '${relativePath}' already has the ${this.policy.limits.maxDirectoryEntries}-entry limit.`);
+    }
   }
 
   private async scanDirectoryTree(absolutePath: string, displayPath: string): Promise<{
@@ -703,6 +739,7 @@ export class Workspace {
     if (target.exists && target.kind !== "directory") {
       throw new WorkspaceAccessError(`Workspace path '${relativePath}' already exists and is not a directory.`);
     }
+    if (!target.exists) await this.assertDirectoryCreationBounds(target.relativePath, target.absolutePath);
     return {
       operation: "mkdir",
       path: target.relativePath,
@@ -718,6 +755,12 @@ export class Workspace {
     if (target.exists) {
       if (target.kind === "directory") return { path: prepared.path, created: false };
       throw new MutationError("mutation-stale", `Workspace path '${prepared.path}' appeared and is not a directory.`);
+    }
+    try {
+      await this.assertDirectoryCreationBounds(prepared.path, target.absolutePath);
+    } catch (error) {
+      if (error instanceof WorkspaceAccessError) throw new MutationError("mutation-stale", error.message, { cause: error });
+      throw error;
     }
     try {
       await mkdir(target.absolutePath);
@@ -1021,25 +1064,49 @@ export class Workspace {
     return this.prepareFileTransfer("move", sourcePath, destinationPath);
   }
 
+  async prepareRename(sourcePath: string, destinationPath: string): Promise<PreparedRename> {
+    return this.prepareFileTransfer("rename", sourcePath, destinationPath);
+  }
+
   async commitCopy(prepared: PreparedFileCopy): Promise<FileTransferCommit> {
     const source = await this.policy.resolveMutationTarget(prepared.sourcePath);
     const destination = await this.policy.resolveMutationTarget(prepared.path);
-    if (!source.exists || source.kind !== "file") throw new MutationError("mutation-stale", `Workspace copy source '${prepared.sourcePath}' changed before copy.`);
+    if (!source.exists || source.kind !== prepared.kind) throw new MutationError("mutation-stale", `Workspace copy source '${prepared.sourcePath}' changed before copy.`);
     if (destination.exists) throw new MutationError("mutation-stale", `Workspace copy destination '${prepared.path}' appeared before copy.`);
+    if (prepared.kind === "directory") {
+      const scanned = await this.scanDirectoryTree(source.absolutePath, source.relativePath);
+      if (scanned.manifestHash !== prepared.beforeHash) {
+        throw new MutationError("mutation-stale", `Workspace directory '${prepared.sourcePath}' changed after the copy proposal was prepared; refusing to copy it.`);
+      }
+      await this.copyDirectoryTree(source.absolutePath, destination.absolutePath, scanned);
+      return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: scanned.totalBytes };
+    }
     const bytes = await this.readMutationBytes(source.absolutePath, prepared.sourcePath);
     if (contentHashBytes(bytes) !== prepared.beforeHash) {
       throw new MutationError("mutation-stale", `Workspace file '${prepared.sourcePath}' changed after the copy proposal was prepared; refusing to copy it.`);
     }
     await atomicCreateFile(destination.absolutePath, bytes, prepared.mode);
-    return { path: prepared.path, sourcePath: prepared.sourcePath, bytes: bytes.byteLength };
+    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: bytes.byteLength };
   }
 
   async commitMove(prepared: PreparedFileMove): Promise<FileTransferCommit> {
     const source = await this.policy.resolveMutationTarget(prepared.sourcePath);
     const destination = await this.policy.resolveMutationTarget(prepared.path);
-    if (!source.exists || source.kind !== "file") throw new MutationError("mutation-stale", `Workspace move source '${prepared.sourcePath}' changed before move.`);
+    if (!source.exists || source.kind !== prepared.kind) throw new MutationError("mutation-stale", `Workspace move source '${prepared.sourcePath}' changed before move.`);
     if (destination.exists) throw new MutationError("mutation-stale", `Workspace move destination '${prepared.path}' appeared before move.`);
     if (source.device !== destination.device) throw new MutationError("mutation-stale", `Workspace move source '${prepared.sourcePath}' and destination '${prepared.path}' changed to different filesystems before move.`);
+    if (prepared.kind === "directory") {
+      const scanned = await this.scanDirectoryTree(source.absolutePath, source.relativePath);
+      if (scanned.manifestHash !== prepared.beforeHash) {
+        throw new MutationError("mutation-stale", `Workspace directory '${prepared.sourcePath}' changed after the move proposal was prepared; refusing to move it.`);
+      }
+      try {
+        await rename(source.absolutePath, destination.absolutePath);
+      } catch (error) {
+        throw new MutationError("mutation-failed", `Workspace directory '${prepared.sourcePath}' could not be moved atomically.`, { cause: error });
+      }
+      return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: scanned.totalBytes };
+    }
     const bytes = await this.readMutationBytes(source.absolutePath, prepared.sourcePath);
     if (contentHashBytes(bytes) !== prepared.beforeHash) {
       throw new MutationError("mutation-stale", `Workspace file '${prepared.sourcePath}' changed after the move proposal was prepared; refusing to move it.`);
@@ -1053,7 +1120,38 @@ export class Workspace {
     } catch (error) {
       throw new MutationError("mutation-failed", `Workspace file '${prepared.sourcePath}' could not be moved atomically.`, { cause: error });
     }
-    return { path: prepared.path, sourcePath: prepared.sourcePath, bytes: bytes.byteLength };
+    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: bytes.byteLength };
+  }
+
+  async commitRename(prepared: PreparedRename): Promise<FileTransferCommit> {
+    const source = await this.policy.resolveMutationTarget(prepared.sourcePath);
+    const destination = await this.policy.resolveMutationTarget(prepared.path);
+    if (!source.exists || source.kind !== prepared.kind) throw new MutationError("mutation-stale", `Workspace rename source '${prepared.sourcePath}' changed before rename.`);
+    if (destination.exists) throw new MutationError("mutation-stale", `Workspace rename destination '${prepared.path}' appeared before rename.`);
+    if (source.device !== destination.device) throw new MutationError("mutation-stale", `Workspace rename source '${prepared.sourcePath}' and destination '${prepared.path}' changed to different filesystems before rename.`);
+    if (prepared.kind === "directory") {
+      const scanned = await this.scanDirectoryTree(source.absolutePath, source.relativePath);
+      if (scanned.manifestHash !== prepared.beforeHash) {
+        throw new MutationError("mutation-stale", `Workspace directory '${prepared.sourcePath}' changed after the rename proposal was prepared; refusing to rename it.`);
+      }
+      try {
+        await rename(source.absolutePath, destination.absolutePath);
+      } catch (error) {
+        throw new MutationError("mutation-failed", `Workspace directory '${prepared.sourcePath}' could not be renamed atomically.`, { cause: error });
+      }
+      return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: scanned.totalBytes };
+    }
+    const bytes = await this.readMutationBytes(source.absolutePath, prepared.sourcePath);
+    if (contentHashBytes(bytes) !== prepared.beforeHash) {
+      throw new MutationError("mutation-stale", `Workspace file '${prepared.sourcePath}' changed after the rename proposal was prepared; refusing to rename it.`);
+    }
+    try {
+      await link(source.absolutePath, destination.absolutePath);
+      await unlink(source.absolutePath);
+    } catch (error) {
+      throw new MutationError("mutation-failed", `Workspace file '${prepared.sourcePath}' could not be renamed atomically.`, { cause: error });
+    }
+    return { path: prepared.path, sourcePath: prepared.sourcePath, kind: prepared.kind, bytes: bytes.byteLength };
   }
 
   async preparePatchSet(patchTexts: readonly string[], mutationId: string): Promise<PreparedPatchSet> {
@@ -1260,7 +1358,7 @@ export class Workspace {
       if (record.operation === "delete-directory-tree") return this.reconcileDirectoryTreeDeletion(record, target);
       if (record.operation === "restore") return this.reconcileRestore(record, target);
       if (record.operation === "restore-directory") return this.reconcileDirectoryRestore(record, target);
-      if (record.operation === "copy" || record.operation === "move") return this.reconcileTransfer(record, target);
+      if (record.operation === "copy" || record.operation === "move" || record.operation === "rename") return this.reconcileTransfer(record, target);
       if (record.operation === "patch-set") return this.reconcilePatchSet(record);
       if (record.operation === "mkdir") {
         if (!target.exists) {
@@ -1411,19 +1509,23 @@ export class Workspace {
       return reconciliationRequired(record, "The transfer record does not contain a safe source path and hash.");
     }
     const source = await this.policy.resolveMutationTarget(record.sourcePath);
-    const destinationMatches = target.exists && target.kind === "file"
-      && contentHashBytes(await this.readMutationBytes(target.absolutePath, record.path)) === record.afterHash;
+    const destinationMatches = target.exists && target.kind === "directory" && record.manifestHash
+      ? (await this.scanDirectoryTree(target.absolutePath, record.path)).manifestHash === record.manifestHash
+      : target.exists && target.kind === "file"
+        && contentHashBytes(await this.readMutationBytes(target.absolutePath, record.path)) === record.afterHash;
     if (record.operation === "copy" && destinationMatches) {
       return { ...record, status: "committed", reason: "The copied destination matched its recorded hash during restart reconciliation." };
     }
-    if (record.operation === "move" && destinationMatches && !source.exists) {
-      return { ...record, status: "committed", reason: "The moved destination matched its recorded hash and the source was absent during restart reconciliation." };
+    if ((record.operation === "move" || record.operation === "rename") && destinationMatches && !source.exists) {
+      return { ...record, status: "committed", reason: `The ${record.operation}d destination matched its recorded hash and the source was absent during restart reconciliation.` };
     }
-    if (!target.exists && source.exists && source.kind === "file") {
-      const sourceHash = contentHashBytes(await this.readMutationBytes(source.absolutePath, record.sourcePath));
-      if (sourceHash === record.sourceHash) {
-        return { ...record, status: "reconciled", reason: "The source was present and the destination was absent during restart reconciliation; the transfer was not replayed." };
-      }
+    if (!target.exists && source.exists) {
+      const sourceHash = source.kind === "directory" && record.manifestHash
+        ? (await this.scanDirectoryTree(source.absolutePath, record.sourcePath)).manifestHash
+        : source.kind === "file"
+          ? contentHashBytes(await this.readMutationBytes(source.absolutePath, record.sourcePath))
+          : undefined;
+      if (sourceHash === record.sourceHash) return { ...record, status: "reconciled", reason: "The source was present and the destination was absent during restart reconciliation; the transfer was not replayed." };
     }
     return reconciliationRequired(record, "The transfer record does not prove whether the source or destination is authoritative.");
   }
@@ -1493,40 +1595,92 @@ export class Workspace {
 
   private prepareFileTransfer(operation: "copy", sourcePath: string, destinationPath: string): Promise<PreparedFileCopy>;
   private prepareFileTransfer(operation: "move", sourcePath: string, destinationPath: string): Promise<PreparedFileMove>;
-  private async prepareFileTransfer(operation: "copy" | "move", sourcePath: string, destinationPath: string): Promise<PreparedFileCopy | PreparedFileMove> {
+  private prepareFileTransfer(operation: "rename", sourcePath: string, destinationPath: string): Promise<PreparedRename>;
+  private async prepareFileTransfer(operation: "copy" | "move" | "rename", sourcePath: string, destinationPath: string): Promise<PreparedFileCopy | PreparedFileMove | PreparedRename> {
     const source = await this.policy.resolveMutationTarget(sourcePath);
-    if (!source.exists || source.kind !== "file") throw new WorkspaceAccessError(`Workspace ${operation} source '${sourcePath}' must be an existing regular file.`);
+    if (!source.exists || (source.kind !== "file" && source.kind !== "directory")) {
+      throw new WorkspaceAccessError(`Workspace ${operation} source '${sourcePath}' must be an existing regular file or directory.`);
+    }
+    if (source.relativePath === ".") throw new WorkspaceAccessError(`Workspace ${operation} cannot use the workspace root as its source.`);
     const destination = await this.policy.resolveMutationTarget(destinationPath);
     if (destination.exists) throw new WorkspaceAccessError(`Workspace ${operation} destination '${destinationPath}' already exists.`);
     if (source.relativePath === destination.relativePath) throw new WorkspaceAccessError(`Workspace ${operation} source and destination must be different paths.`);
-    if (operation === "move" && source.device !== destination.device) {
-      throw new WorkspaceAccessError(`Workspace move source '${source.relativePath}' and destination '${destination.relativePath}' are on different filesystems; cross-device moves are not supported.`);
+    if (source.kind === "directory" && destination.absolutePath.startsWith(`${source.absolutePath}${path.sep}`)) {
+      throw new WorkspaceAccessError(`Workspace ${operation} destination '${destination.relativePath}' cannot be inside source directory '${source.relativePath}'.`);
+    }
+    if (operation === "rename" && path.dirname(source.absolutePath) !== path.dirname(destination.absolutePath)) {
+      throw new WorkspaceAccessError(`Workspace rename source '${source.relativePath}' and destination '${destination.relativePath}' must share a parent directory.`);
+    }
+    if (operation !== "copy" && source.device !== destination.device) {
+      throw new WorkspaceAccessError(`Workspace ${operation} source '${source.relativePath}' and destination '${destination.relativePath}' are on different filesystems; cross-device operations are not supported.`);
+    }
+    if (source.kind === "directory") {
+      const scanned = await this.scanDirectoryTree(source.absolutePath, source.relativePath);
+      const action = operation === "copy" ? "Copy" : operation === "move" ? "Move" : "Rename";
+      const prepared = {
+        operation,
+        kind: source.kind,
+        path: destination.relativePath,
+        sourcePath: source.relativePath,
+        preview: `${action} directory tree: ${source.relativePath} → ${destination.relativePath}\nEntries: ${scanned.entryCount} · bytes: ${scanned.totalBytes} · depth: ${scanned.maxDepth}\nManifest hash: ${scanned.manifestHash}\nThe destination must remain absent until approval.`,
+        beforeHash: scanned.manifestHash,
+        afterHash: scanned.manifestHash,
+        bytes: scanned.totalBytes,
+        mode: source.mode ?? 0o700,
+        manifestHash: scanned.manifestHash,
+        entryCount: scanned.entryCount,
+        maxDepth: scanned.maxDepth,
+      } as const;
+      return prepared;
     }
     const bytes = await this.readMutationBytes(source.absolutePath, source.relativePath);
     const sourceHash = contentHashBytes(bytes);
-    const preview = `${operation === "copy" ? "Copy" : "Move"} file: ${source.relativePath} → ${destination.relativePath}\nSource hash: ${sourceHash}\nThe destination must remain absent until approval.`;
-    if (operation === "copy") {
-      return {
-        operation,
-        path: destination.relativePath,
-        sourcePath: source.relativePath,
-        preview,
-        beforeHash: sourceHash,
-        afterHash: sourceHash,
-        bytes: bytes.byteLength,
-        mode: source.mode ?? 0o600,
-      };
-    }
+    const action = operation === "copy" ? "Copy" : operation === "move" ? "Move" : "Rename";
     return {
       operation,
+      kind: source.kind,
       path: destination.relativePath,
       sourcePath: source.relativePath,
-      preview,
+      preview: `${action} file: ${source.relativePath} → ${destination.relativePath}\nSource hash: ${sourceHash}\nThe destination must remain absent until approval.`,
       beforeHash: sourceHash,
       afterHash: sourceHash,
       bytes: bytes.byteLength,
       mode: source.mode ?? 0o600,
     };
+  }
+
+  private async copyDirectoryTree(sourceAbsolutePath: string, destinationAbsolutePath: string, scanned: {
+    readonly entries: readonly TreeManifestEntry[];
+    readonly totalBytes: number;
+    readonly mode: number;
+    readonly manifestHash: string;
+  }): Promise<void> {
+    await mkdir(destinationAbsolutePath, { mode: scanned.mode });
+    try {
+      for (const entry of scanned.entries) {
+        if (entry.path === ".") continue;
+        const sourcePath = path.join(sourceAbsolutePath, entry.path);
+        const destinationPath = path.join(destinationAbsolutePath, entry.path);
+        if (entry.kind === "directory") {
+          await mkdir(destinationPath, { mode: entry.mode });
+          continue;
+        }
+        const sourceMetadata = await lstat(sourcePath).catch((error) => {
+          throw new MutationError("mutation-stale", `Workspace tree entry '${entry.path}' changed while it was being copied.`, { cause: error });
+        });
+        if (!sourceMetadata.isFile()) throw new MutationError("mutation-stale", `Workspace tree entry '${entry.path}' changed while it was being copied.`);
+        const bytes = await this.readMutationBytes(sourcePath, entry.path);
+        if (contentHashBytes(bytes) !== entry.hash) throw new MutationError("mutation-stale", `Workspace tree entry '${entry.path}' changed while it was being copied.`);
+        await atomicCreateFile(destinationPath, bytes, entry.mode);
+      }
+      const after = await this.scanDirectoryTree(sourceAbsolutePath, ".");
+      if (after.manifestHash !== scanned.manifestHash) {
+        throw new MutationError("mutation-stale", "The source directory changed during the copy; the destination was not retained.");
+      }
+    } catch (error) {
+      await this.removeTreeNoFollow(destinationAbsolutePath).catch(() => undefined);
+      throw error;
+    }
   }
 
   private async createQuarantineEntry(mutationId: string): Promise<{ readonly directoryPath: string; readonly payloadPath: string; readonly manifestPath: string }> {

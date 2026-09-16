@@ -19,7 +19,11 @@ export type MutationRisk =
   | "restore-directory"
   | "purge-quarantine"
   | "copy-file"
+  | "copy-directory"
   | "move-file"
+  | "move-directory"
+  | "rename-file"
+  | "rename-directory"
   | "multi-file-patch";
 
 export interface MutationMember {
@@ -55,6 +59,7 @@ export interface MutationApprovalRequest {
   readonly mutationId: string;
   readonly operation: WorkspaceMutationOperation;
   readonly risk: MutationRisk;
+  readonly kind?: "file" | "directory";
   readonly paths?: readonly string[];
   readonly members?: readonly MutationMember[];
   readonly journal?: MutationJournal;
@@ -97,6 +102,7 @@ export interface WorkspaceMutationRecord {
   readonly callId?: string;
   readonly operation: WorkspaceMutationOperation;
   readonly risk?: MutationRisk;
+  readonly kind?: "file" | "directory";
   readonly paths?: readonly string[];
   readonly members?: readonly MutationMember[];
   readonly journal?: MutationJournal;
@@ -159,6 +165,7 @@ export function assertMutationTransition(previous: WorkspaceMutationRecord, next
     previous.mutationId !== next.mutationId ? "mutationId" : undefined,
     previous.operation !== next.operation ? "operation" : undefined,
     previous.risk !== next.risk ? "risk" : undefined,
+    previous.kind !== next.kind ? "kind" : undefined,
     JSON.stringify(previous.paths) !== JSON.stringify(next.paths) ? "paths" : undefined,
     !sameMembers(previous.members, next.members) ? "members" : undefined,
     previous.path !== next.path ? "path" : undefined,

@@ -16,7 +16,7 @@ import { SessionStore } from "../src/persistence/session-store.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 import { prepareFileWrite, preparePatch } from "../src/workspace/patch.js";
-import { MAX_PATCH_REQUEST_BYTES, type MutationEvent } from "../src/workspace/mutation.js";
+import { MAX_PATCH_REQUEST_BYTES, type MutationEvent, type WorkspaceMutationRecord } from "../src/workspace/mutation.js";
 import { ComputerNativeError, ModelProviderError } from "../src/runtime/errors.js";
 import { asSessionId, asTurnId, type ModelRequest, type TurnEvent, type TurnRecord } from "../src/runtime/contracts.js";
 import { allowedTransitions, assertTransition } from "../src/runtime/state.js";
@@ -855,6 +855,13 @@ test("workspace prepares one-level directory creation and treats an existing dir
   await assert.rejects(() => workspace.prepareDirectory("missing/new-dir"), /parent.*does not exist/);
   await symlink(outside, path.join(root, "linked-parent"));
   await assert.rejects(() => workspace.prepareDirectory("linked-parent/new-dir"), /outside the workspace root/);
+
+  const boundedRoot = path.join(tempDirectory(), "bounded-workspace");
+  await mkdir(path.join(boundedRoot, "level-one", "level-two"), { recursive: true });
+  await writeFile(path.join(boundedRoot, "existing.txt"), "existing\n", "utf8");
+  const boundedWorkspace = await Workspace.open(boundedRoot, { maxFileBytes: 100, maxDirectoryEntries: 1, maxTreeDepth: 2 });
+  await assert.rejects(() => boundedWorkspace.prepareDirectory("level-one/level-two/new-dir"), /depth limit/);
+  await assert.rejects(() => boundedWorkspace.prepareDirectory("another-dir"), /entry limit/);
 });
 
 test("workspace deletes only empty directories and never performs recursive removal", async () => {
@@ -1069,6 +1076,54 @@ test("workspace prepares bounded file copies and same-filesystem moves with sour
   await writeFile(path.join(root, "moved.txt"), "user edit\n", "utf8");
   await assert.rejects(() => workspace.commitMove(staleMove), /changed after the move proposal/);
   await assert.rejects(() => readFile(path.join(root, "final.txt")));
+});
+
+test("workspace copies, moves, and renames bounded directory trees without following links", async () => {
+  const base = tempDirectory();
+  const root = path.join(base, "workspace");
+  await mkdir(path.join(root, "project", "src"), { recursive: true });
+  await writeFile(path.join(root, "project", "README.md"), "read me\n", "utf8");
+  await writeFile(path.join(root, "project", "src", "main.ts"), "export const answer = 42;\n", "utf8");
+  const workspace = await Workspace.open(root, {
+    maxFileBytes: 100,
+    maxDirectoryEntries: 20,
+    maxTreeEntries: 20,
+    maxTreeBytes: 1_000,
+    maxTreeDepth: 4,
+  });
+
+  const copy = await workspace.prepareCopy("project", "project-copy");
+  assert.equal(copy.operation, "copy");
+  assert.equal(copy.kind, "directory");
+  assert.equal(copy.sourcePath, "project");
+  assert.equal(copy.path, "project-copy");
+  assert.match(copy.preview, /Copy directory tree/);
+  const copied = await workspace.commitCopy(copy);
+  assert.equal(copied.path, "project-copy");
+  assert.equal(await readFile(path.join(root, "project-copy", "src", "main.ts"), "utf8"), "export const answer = 42;\n");
+  assert.equal(await readFile(path.join(root, "project", "README.md"), "utf8"), "read me\n");
+
+  await mkdir(path.join(root, "archive"), { recursive: true });
+  const move = await workspace.prepareMove("project-copy", "archive/project");
+  assert.equal(move.kind, "directory");
+  assert.match(move.preview, /Move directory tree/);
+  await workspace.commitMove(move);
+  await assert.rejects(() => lstat(path.join(root, "project-copy")));
+  assert.equal(await readFile(path.join(root, "archive", "project", "src", "main.ts"), "utf8"), "export const answer = 42;\n");
+
+  const rename = await workspace.prepareRename("archive/project", "archive/renamed-project");
+  assert.equal(rename.operation, "rename");
+  assert.equal(rename.kind, "directory");
+  assert.match(rename.preview, /Rename directory/);
+  await workspace.commitRename(rename);
+  await assert.rejects(() => lstat(path.join(root, "archive", "project")));
+  assert.equal(await readFile(path.join(root, "archive", "renamed-project", "README.md"), "utf8"), "read me\n");
+
+  const outside = path.join(base, "outside.txt");
+  await writeFile(outside, "must not be followed\n", "utf8");
+  await mkdir(path.join(root, "unsafe"), { recursive: true });
+  await symlink(outside, path.join(root, "unsafe", "outside-link"));
+  await assert.rejects(() => workspace.prepareCopy("unsafe", "copy-with-link"), /symbolic link/);
 });
 
 test("workspace rejects a cross-device move before approval", async () => {
@@ -2070,6 +2125,54 @@ test("copy and move are approval-gated and preserve destination collision safety
   }, { approveMutation: async () => ({ decision: "allow-once" }) });
   assert.equal(collision.ok, false);
   assert.match(collision.content, /destination.*already exists/);
+});
+
+test("directory copy, move, and rename tools expose bounded approval evidence", async () => {
+  const root = path.join(tempDirectory(), "workspace");
+  await mkdir(path.join(root, "project", "src"), { recursive: true });
+  await mkdir(path.join(root, "archive"), { recursive: true });
+  await writeFile(path.join(root, "project", "src", "main.ts"), "export const answer = 42;\n", "utf8");
+  const registry = new ToolRegistry(await Workspace.open(root, {
+    maxFileBytes: 100,
+    maxDirectoryEntries: 20,
+    maxTreeEntries: 20,
+    maxTreeBytes: 1_000,
+    maxTreeDepth: 4,
+  }), 2_000);
+  const requests: Array<{ operation: string; risk: string; manifestHash?: string; entryCount?: number }> = [];
+  const approve = async (request: { operation: string; risk: string; manifestHash?: string; entryCount?: number }) => {
+    requests.push(request);
+    return { decision: "allow-once" as const };
+  };
+
+  const copied = await registry.execute({
+    callId: "copy_directory_call",
+    name: "copy",
+    argumentsJson: JSON.stringify({ source: "project", destination: "project-copy" }),
+  }, { approveMutation: approve });
+  assert.equal(copied.ok, true);
+  assert.match(copied.summary, /Copied directory/);
+  assert.equal(requests[0]?.risk, "copy-directory");
+  assert.equal(requests[0]?.entryCount, 3);
+  assert.equal(typeof requests[0]?.manifestHash, "string");
+
+  const moved = await registry.execute({
+    callId: "move_directory_call",
+    name: "move",
+    argumentsJson: JSON.stringify({ source: "project-copy", destination: "archive/project" }),
+  }, { approveMutation: approve });
+  assert.equal(moved.ok, true);
+  assert.match(moved.summary, /Moved directory/);
+
+  const renamed = await registry.execute({
+    callId: "rename_directory_call",
+    name: "rename",
+    argumentsJson: JSON.stringify({ source: "archive/project", destination: "archive/renamed-project" }),
+  }, { approveMutation: approve });
+  assert.equal(renamed.ok, true);
+  assert.match(renamed.summary, /Renamed directory/);
+  assert.equal(requests[2]?.risk, "rename-directory");
+  assert.equal(await readFile(path.join(root, "archive", "renamed-project", "src", "main.ts"), "utf8"), "export const answer = 42;\n");
 });
 
 test("apply_patch is approval-gated and emits proposal and commit evidence", async () => {
@@ -3313,6 +3416,84 @@ test("restart reconciliation distinguishes uncommitted and committed copy/move o
   assert.equal(committedMove.status, "committed");
   assert.match(committedMove.reason, /moved destination/);
   assert.equal(await readFile(path.join(root, "moved.txt"), "utf8"), "transfer recovery\n");
+});
+
+test("restart reconciliation handles directory copy, move, and rename manifests", async () => {
+  const root = path.join(tempDirectory(), "workspace");
+  await mkdir(path.join(root, "project", "src"), { recursive: true });
+  await mkdir(path.join(root, "archive"), { recursive: true });
+  await writeFile(path.join(root, "project", "src", "main.ts"), "directory recovery\n", "utf8");
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 20, maxTreeEntries: 20, maxTreeBytes: 1_000, maxTreeDepth: 4 });
+
+  const copy = await workspace.prepareCopy("project", "project-copy");
+  const copyRecord: WorkspaceMutationRecord = {
+    schemaVersion: 1,
+    mutationId: "mutation_directory_copy_reconcile",
+    operation: "copy",
+    risk: "copy-directory",
+    path: copy.path,
+    sourcePath: copy.sourcePath,
+    sourceHash: copy.beforeHash,
+    beforeHash: copy.beforeHash,
+    afterHash: copy.afterHash,
+    manifestHash: copy.manifestHash,
+    entryCount: copy.entryCount,
+    totalBytes: copy.bytes,
+    maxDepth: copy.maxDepth,
+    addedLines: 0,
+    removedLines: 0,
+    diff: copy.preview,
+    status: "applying",
+    decision: "allow-once",
+    recordedAt: new Date().toISOString(),
+  };
+  const uncommittedCopy = await workspace.reconcileMutation(copyRecord);
+  assert.equal(uncommittedCopy.status, "reconciled");
+  await workspace.commitCopy(copy);
+  const committedCopy = await workspace.reconcileMutation(copyRecord);
+  assert.equal(committedCopy.status, "committed");
+
+  const move = await workspace.prepareMove("project-copy", "archive/project");
+  const moveRecord: WorkspaceMutationRecord = {
+    ...copyRecord,
+    mutationId: "mutation_directory_move_reconcile",
+    operation: "move",
+    risk: "move-directory",
+    path: move.path,
+    sourcePath: move.sourcePath,
+    sourceHash: move.beforeHash,
+    beforeHash: move.beforeHash,
+    afterHash: move.afterHash,
+    manifestHash: move.manifestHash,
+    entryCount: move.entryCount,
+    totalBytes: move.bytes,
+    maxDepth: move.maxDepth,
+    diff: move.preview,
+  };
+  assert.equal((await workspace.reconcileMutation(moveRecord)).status, "reconciled");
+  await workspace.commitMove(move);
+  assert.equal((await workspace.reconcileMutation(moveRecord)).status, "committed");
+
+  const rename = await workspace.prepareRename("archive/project", "archive/renamed-project");
+  const renameRecord: WorkspaceMutationRecord = {
+    ...moveRecord,
+    mutationId: "mutation_directory_rename_reconcile",
+    operation: "rename",
+    risk: "rename-directory",
+    path: rename.path,
+    sourcePath: rename.sourcePath,
+    sourceHash: rename.beforeHash,
+    beforeHash: rename.beforeHash,
+    afterHash: rename.afterHash,
+    manifestHash: rename.manifestHash,
+    entryCount: rename.entryCount,
+    totalBytes: rename.bytes,
+    maxDepth: rename.maxDepth,
+    diff: rename.preview,
+  };
+  assert.equal((await workspace.reconcileMutation(renameRecord)).status, "reconciled");
+  await workspace.commitRename(rename);
+  assert.equal((await workspace.reconcileMutation(renameRecord)).status, "committed");
 });
 
 test("model/tool round limits fail without committing a final assistant message", async () => {

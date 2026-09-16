@@ -60,14 +60,20 @@ accepts only an exact token and `commitQuarantinePurge` removes the payload with
 following links; if cleanup becomes partial or ambiguous it reports
 `reconciliation-required` and does not retry automatically.
 
-`prepareCopy` and `prepareMove` currently operate on regular files only. Both require an
-existing parent and an absent destination, capture the source byte hash, and recheck it
-before commit. Copy stages bytes and links the staged inode into place without replacing
-a destination, including when the destination is on another filesystem. Move preflights
-the source and destination devices before approval and rejects cross-device transfers;
-the commit repeats that check before creating a no-overwrite destination link and
-unlinking the source. If execution stops between those filesystem operations, recovery
-distinguishes the source-only, destination-only, and ambiguous both-present states.
+`prepareCopy` and `prepareMove` support regular files and bounded directory trees. Both
+require an existing parent and an absent destination, capture a source byte hash or tree
+manifest, and recheck it before commit. File copy stages bytes and links the staged inode
+into place without replacing a destination, including when the destination is on another
+filesystem. Directory copy rejects symbolic links and special files, applies the shared
+entry, byte, and depth limits, copies regular files without following links, and removes
+its newly created destination if the source changes during the copy. Move preflights the
+source and destination devices before approval and rejects cross-device transfers; file
+move uses a no-replace destination link, while directory move uses same-filesystem
+rename after manifest revalidation. `prepareRename` is the explicit same-parent form for
+both files and directories. All three operations require approval through the tool
+registry and carry source identity, kind, manifest, and byte evidence into the mutation
+record. Restart reconciliation distinguishes source-only, destination-only, and
+ambiguous states for both file hashes and directory manifests.
 
 The process slice reuses this module's security policy only to authorize and describe a
 workspace-relative process cwd. It does not turn the workspace into a host sandbox and

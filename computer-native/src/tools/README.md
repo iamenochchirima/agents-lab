@@ -13,7 +13,7 @@ The tool registry owns the model-facing definitions, argument validation, dispat
 model-visible results for Computer Native tools. Tool implementations do not resolve
 paths directly: filesystem access goes through the workspace and security modules.
 
-The current slice exposes five read-only tools and twelve approval-gated mutation tools:
+The current slice exposes five read-only tools and thirteen approval-gated mutation tools:
 
 - `list_directory`
 - `read_file`
@@ -41,10 +41,13 @@ The current slice exposes five read-only tools and twelve approval-gated mutatio
   still matches and the original path is absent
 - `purge_quarantine` — permanently removes one exact file or directory quarantine token;
   it is irreversible, approval-gated, and never accepts a path or wildcard
-- `copy` — previews a regular-file copy to an absent destination and rechecks the source
-  hash before creating it
-- `move` — previews a regular-file move/rename to an absent destination and rechecks the
-  source hash without replacing a destination
+- `copy` — previews a regular-file or bounded directory-tree copy to an absent
+  destination, rejects links and special files in trees, and rechecks the source hash or
+  manifest before creating it
+- `move` — previews a same-filesystem regular-file or directory-tree move to an absent
+  destination and rechecks the source hash or manifest without replacing a destination
+- `rename` — previews a same-parent regular-file or directory rename to an absent
+  destination and rechecks the source hash or manifest before committing it
 - `apply_patch` — prepares one bounded add/update patch, shows the exact diff to the
   approval channel, and writes only after `allow-once`.
 - `apply_patch_set` — prepares 2–16 bounded single-file patches, shows the affected paths
@@ -64,4 +67,6 @@ typed failure categories where applicable: `mutation-invalid`, `approval-denied`
 `approval-unavailable`, `mutation-stale`, and `mutation-failed`. Restart conflicts are
 recorded as `reconciliation-required`. Approval requests also carry an operation-specific
 risk classification such as `patch-file`, `quarantine-file`, `delete-directory`,
-`delete-directory-tree`, `restore-directory`, `purge-quarantine`, or `move-file`.
+`delete-directory-tree`, `restore-directory`, `purge-quarantine`, `copy-file`,
+`copy-directory`, `move-file`, `move-directory`, `rename-file`, or
+`rename-directory`.

@@ -202,8 +202,6 @@ directory handling, policy checks, restart reconciliation, and evidence.
 
 Remaining work:
 
-- Add the remaining required operations: directory copy, directory move, rename, and
-  directory creation with the same approval and evidence rules as existing mutations.
 - Define transaction semantics for multi-file changes. Either provide a real rollback
   guarantee within the supported boundary or report partial completion and a recovery
   plan. Do not call a journal “atomic” unless the side effects prove it.

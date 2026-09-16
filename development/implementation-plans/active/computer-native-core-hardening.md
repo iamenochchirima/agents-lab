@@ -75,6 +75,14 @@ tests, but it must never replace a configured real provider silently.
   provider output non-retryable.
 - The retry policy is configurable through `COMPUTER_NATIVE_MODEL_RETRY_ATTEMPTS` and
   `COMPUTER_NATIVE_MODEL_RETRY_BACKOFF_MS`.
+- The workspace now supports approval-gated regular-file and bounded directory-tree copy,
+  same-filesystem move, and explicit same-parent rename. Directory creation also checks
+  configured depth and parent-entry limits at preparation and commit.
+- Filesystem transfer identity is persisted as a byte hash or tree manifest, restart
+  reconciliation distinguishes source-only and destination-complete states, and TUI
+  approval context identifies file versus directory transfers.
+- The current validation is 211 passing tests across the package, including directory
+  security, tool approval, and restart-reconciliation cases.
 
 The plan remains active. These are verified vertical slices, not completion of the
 remaining runtime, approval, filesystem, or security work below.
@@ -93,7 +101,7 @@ remaining runtime, approval, filesystem, or security work below.
       that shows the exact prepared operation and fails closed on unsupported input.
 - [ ] Improve the existing TUI around lifecycle state, approval focus, cancellation,
       errors, and long output. Keep the renderer separate from the runtime.
-- [ ] Complete required local filesystem operations: directory creation, regular-file
+- [x] Complete required local filesystem operations: directory creation, regular-file
       and directory rename, regular-file and directory move, and regular-file and
       directory copy where policy allows.
 - [ ] Define multi-file mutation semantics and implement reconciliation for partial
@@ -335,10 +343,10 @@ claim in this plan.
 
 ### 5. Filesystem completion
 
-- [ ] Add directory creation with root, parent, depth, entry, and approval checks.
-- [ ] Add regular-file and directory rename with same-filesystem preconditions.
-- [ ] Add regular-file and directory move with destination and overwrite policy.
-- [ ] Add regular-file and directory copy with bounded recursive traversal and explicit
+- [x] Add directory creation with root, parent, depth, entry, and approval checks.
+- [x] Add regular-file and directory rename with same-filesystem preconditions.
+- [x] Add regular-file and directory move with destination and overwrite policy.
+- [x] Add regular-file and directory copy with bounded recursive traversal and explicit
       symlink/special-file behaviour.
 - [ ] Reuse existing quarantine and recovery rules for destructive replacement or
       deletion paths.

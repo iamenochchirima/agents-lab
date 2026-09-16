@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { MutationError } from "../runtime/errors.js";
 
 export type PatchOperation = "add" | "update";
-export type WorkspaceMutationOperation = PatchOperation | "write" | "patch-set" | "mkdir" | "delete" | "delete-directory" | "delete-directory-tree" | "restore" | "restore-directory" | "purge-quarantine" | "copy" | "move";
+export type WorkspaceMutationOperation = PatchOperation | "write" | "patch-set" | "mkdir" | "delete" | "delete-directory" | "delete-directory-tree" | "restore" | "restore-directory" | "purge-quarantine" | "copy" | "move" | "rename";
 
 export interface PreparedPatch {
   readonly operation: PatchOperation | "write";

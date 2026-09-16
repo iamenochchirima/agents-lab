@@ -211,12 +211,12 @@ const PURGE_QUARANTINE: ModelToolDefinition = {
 
 const COPY_FILE: ModelToolDefinition = {
   name: "copy",
-  description: "Prepare a bounded copy of one regular file to a new workspace-relative destination. The source hash is checked again at commit, the destination must remain absent, and explicit approval is required.",
+  description: "Prepare a bounded copy of one regular file or directory tree to a new workspace-relative destination. Directory copies reject symbolic links and special files, enforce tree limits, recheck the source manifest, never overwrite an existing destination, and require explicit approval.",
   inputSchema: {
     type: "object",
     properties: {
-      source: { type: "string", description: "Workspace-relative regular file to copy." },
-      destination: { type: "string", description: "Workspace-relative destination file; it must not already exist." },
+      source: { type: "string", description: "Workspace-relative regular file or directory tree to copy." },
+      destination: { type: "string", description: "Workspace-relative destination path; it must not already exist." },
     },
     required: ["source", "destination"],
     additionalProperties: false,
@@ -225,12 +225,26 @@ const COPY_FILE: ModelToolDefinition = {
 
 const MOVE_FILE: ModelToolDefinition = {
   name: "move",
-  description: "Prepare a same-filesystem move/rename of one regular file to a new workspace-relative destination. The source hash is checked again at commit, the destination must remain absent, and explicit approval is required.",
+  description: "Prepare a same-filesystem move of one regular file or directory tree to a new workspace-relative destination. The source identity is checked again at commit, the destination must remain absent, and explicit approval is required.",
   inputSchema: {
     type: "object",
     properties: {
-      source: { type: "string", description: "Workspace-relative regular file to move." },
-      destination: { type: "string", description: "Workspace-relative destination file; it must not already exist." },
+      source: { type: "string", description: "Workspace-relative regular file or directory tree to move." },
+      destination: { type: "string", description: "Workspace-relative destination path; it must not already exist." },
+    },
+    required: ["source", "destination"],
+    additionalProperties: false,
+  },
+};
+
+const RENAME: ModelToolDefinition = {
+  name: "rename",
+  description: "Prepare a same-parent rename of one regular file or directory. The source identity is checked again at commit, the destination must remain absent, and explicit approval is required.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      source: { type: "string", description: "Workspace-relative regular file or directory to rename." },
+      destination: { type: "string", description: "Workspace-relative destination in the same parent directory; it must not already exist." },
     },
     required: ["source", "destination"],
     additionalProperties: false,
@@ -504,14 +518,15 @@ function mutationRisk(prepared: PreparedWorkspaceMutation): MutationRisk {
     case "restore": return "restore-file";
     case "restore-directory": return "restore-directory";
     case "purge-quarantine": return "purge-quarantine";
-    case "copy": return "copy-file";
-    case "move": return "move-file";
+    case "copy": return prepared.kind === "directory" ? "copy-directory" : "copy-file";
+    case "move": return prepared.kind === "directory" ? "move-directory" : "move-file";
+    case "rename": return prepared.kind === "directory" ? "rename-directory" : "rename-file";
     case "patch-set": return "multi-file-patch";
   }
 }
 
 export class ToolRegistry {
-  private readonly baseDefinitions: readonly ModelToolDefinition[] = [LIST_DIRECTORY, READ_FILE, STAT, SEARCH_FILES, LIST_QUARANTINE, WRITE_FILE, MKDIR, DELETE_DIRECTORY, DELETE_DIRECTORY_TREE, DELETE_FILE, RESTORE_FILE, RESTORE_DIRECTORY, PURGE_QUARANTINE, COPY_FILE, MOVE_FILE, APPLY_PATCH, APPLY_PATCH_SET];
+  private readonly baseDefinitions: readonly ModelToolDefinition[] = [LIST_DIRECTORY, READ_FILE, STAT, SEARCH_FILES, LIST_QUARANTINE, WRITE_FILE, MKDIR, DELETE_DIRECTORY, DELETE_DIRECTORY_TREE, DELETE_FILE, RESTORE_FILE, RESTORE_DIRECTORY, PURGE_QUARANTINE, COPY_FILE, MOVE_FILE, RENAME, APPLY_PATCH, APPLY_PATCH_SET];
   readonly definitions: readonly ModelToolDefinition[];
   private readonly browserTools?: BrowserTools;
 
@@ -563,6 +578,8 @@ export class ToolRegistry {
                       ? await this.copyFile(call, args, context)
                         : call.name === MOVE_FILE.name
                           ? await this.moveFile(call, args, context)
+                        : call.name === RENAME.name
+                          ? await this.rename(call, args, context)
                         : call.name === APPLY_PATCH_SET.name
                             ? await this.applyPatchSet(call, args, context)
                           : call.name === RUN_COMMAND.name
@@ -1145,8 +1162,15 @@ export class ToolRegistry {
     return this.executePreparedMutation(call, prepared, context);
   }
 
+  private async rename(call: ModelToolCall, args: ToolArguments, context: ToolExecutionContext): Promise<ToolExecutionResult> {
+    const sourcePath = stringArgument(args, "source", true) ?? "";
+    const destinationPath = stringArgument(args, "destination", true) ?? "";
+    const prepared = await this.workspace.prepareRename(sourcePath, destinationPath);
+    return this.executePreparedMutation(call, prepared, context);
+  }
+
   private async executePreparedMutation(call: ModelToolCall, prepared: PreparedWorkspaceMutation, context: ToolExecutionContext, mutationId = `mutation_${randomUUID().replaceAll("-", "")}`): Promise<ToolExecutionResult> {
-    const preview = prepared.operation === "patch-set" || prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "delete" || prepared.operation === "restore" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" || prepared.operation === "copy" || prepared.operation === "move" ? prepared.preview : prepared.diff;
+    const preview = prepared.operation === "patch-set" || prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "delete" || prepared.operation === "restore" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" || prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? prepared.preview : prepared.diff;
     if (Buffer.byteLength(preview, "utf8") > this.maxOutputBytes) {
       throw new ToolExecutionError(`The proposed diff is larger than the ${this.maxOutputBytes}-byte review limit; split the change into smaller patches.`);
     }
@@ -1155,14 +1179,15 @@ export class ToolRegistry {
       mutationId,
       operation: prepared.operation,
       risk: mutationRisk(prepared),
+      ...(prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { kind: prepared.kind } : {}),
       ...(prepared.operation === "patch-set" ? { paths: prepared.paths, members: prepared.members, journal: prepared.journal } : {}),
       path: prepared.path,
       ...(prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" || prepared.operation === "patch-set" ? {} : { beforeHash: prepared.beforeHash }),
-      ...(prepared.operation === "add" || prepared.operation === "update" || prepared.operation === "write" || prepared.operation === "copy" || prepared.operation === "move" ? { afterHash: prepared.afterHash } : {}),
+      ...(prepared.operation === "add" || prepared.operation === "update" || prepared.operation === "write" || prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { afterHash: prepared.afterHash } : {}),
       ...(prepared.operation === "delete" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" ? { quarantinePath: prepared.quarantinePath } : {}),
       ...(prepared.operation === "restore" || prepared.operation === "restore-directory" || prepared.operation === "purge-quarantine" ? { sourceMutationId: prepared.sourceMutationId } : {}),
-      ...(prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" ? { manifestHash: prepared.manifestHash, entryCount: prepared.entryCount, totalBytes: prepared.totalBytes, maxDepth: prepared.maxDepth } : {}),
-      ...(prepared.operation === "copy" || prepared.operation === "move" ? { sourcePath: prepared.sourcePath, sourceHash: prepared.beforeHash } : {}),
+      ...(prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" ? { manifestHash: prepared.manifestHash, entryCount: prepared.entryCount, totalBytes: prepared.totalBytes, maxDepth: prepared.maxDepth } : prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? prepared.kind === "directory" ? { manifestHash: prepared.manifestHash, entryCount: prepared.entryCount, totalBytes: prepared.bytes, maxDepth: prepared.maxDepth } : {} : {}),
+      ...(prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { sourcePath: prepared.sourcePath, sourceHash: prepared.beforeHash } : {}),
       addedLines: prepared.operation === "add" || prepared.operation === "update" || prepared.operation === "write" || prepared.operation === "patch-set" ? prepared.addedLines : 0,
       removedLines: prepared.operation === "add" || prepared.operation === "update" || prepared.operation === "write" || prepared.operation === "patch-set" ? prepared.removedLines : 0,
       diff: preview,
@@ -1188,7 +1213,7 @@ export class ToolRegistry {
         name: call.name,
         ok: false,
         mutationId: request.mutationId,
-        content: `Mutation not applied.${reason} The ${prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" ? "directory" : prepared.operation === "purge-quarantine" ? "quarantine entry" : "file"} was left unchanged.`,
+        content: `Mutation not applied.${reason} The ${prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" || ((prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename") && prepared.kind === "directory") ? "directory" : prepared.operation === "purge-quarantine" ? "quarantine entry" : "file"} was left unchanged.`,
         summary,
         errorCode: decision.decision === "deny" ? "approval-denied" : "approval-unavailable",
       };
@@ -1199,7 +1224,7 @@ export class ToolRegistry {
         name: call.name,
         ok: false,
         mutationId: request.mutationId,
-        content: `Mutation not applied. The active turn ended before the approved change could be committed; the ${prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" ? "directory" : prepared.operation === "purge-quarantine" ? "quarantine entry" : "file"} was left unchanged.`,
+        content: `Mutation not applied. The active turn ended before the approved change could be committed; the ${prepared.operation === "mkdir" || prepared.operation === "delete-directory" || prepared.operation === "delete-directory-tree" || prepared.operation === "restore-directory" || ((prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename") && prepared.kind === "directory") ? "directory" : prepared.operation === "purge-quarantine" ? "quarantine entry" : "file"} was left unchanged.`,
         summary: "Mutation cancelled before commit.",
       };
     }
@@ -1264,6 +1289,11 @@ export class ToolRegistry {
         committedPath = committed.path;
         transferredBytes = committed.bytes;
         afterHash = prepared.afterHash;
+      } else if (prepared.operation === "rename") {
+        const committed = await this.workspace.commitRename(prepared);
+        committedPath = committed.path;
+        transferredBytes = committed.bytes;
+        afterHash = prepared.afterHash;
       } else {
         const committed = await this.workspace.commitPatch(prepared);
         committedPath = committed.path;
@@ -1282,7 +1312,7 @@ export class ToolRegistry {
       request,
       ...(afterHash ? { afterHash } : {}),
       ...(latestJournal ? { journal: latestJournal } : {}),
-      ...(prepared.operation === "copy" ? { bytesWritten: transferredBytes } : {}),
+      ...(prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename" ? { bytesWritten: transferredBytes } : {}),
       ...(prepared.operation === "add" || prepared.operation === "update" || prepared.operation === "write" ? { bytesWritten } : {}),
     });
     if (prepared.operation === "patch-set") {
@@ -1367,14 +1397,14 @@ export class ToolRegistry {
         summary: `Restored ${committedPath}.`,
       };
     }
-    if (prepared.operation === "copy" || prepared.operation === "move") {
+    if (prepared.operation === "copy" || prepared.operation === "move" || prepared.operation === "rename") {
       return {
         callId: call.callId,
         name: call.name,
         ok: true,
         mutationId: request.mutationId,
-        content: stableStringify({ status: prepared.operation === "copy" ? "copied" : "moved", source: prepared.sourcePath, path: committedPath, bytes: transferredBytes }),
-        summary: `${prepared.operation === "copy" ? "Copied" : "Moved"} ${prepared.sourcePath} to ${committedPath}.`,
+        content: stableStringify({ status: prepared.operation === "copy" ? "copied" : prepared.operation === "move" ? "moved" : "renamed", source: prepared.sourcePath, path: committedPath, kind: prepared.kind, bytes: transferredBytes }),
+        summary: `${prepared.operation === "copy" ? "Copied" : prepared.operation === "move" ? "Moved" : "Renamed"} ${prepared.kind} ${prepared.sourcePath} to ${committedPath}.`,
       };
     }
     return {
