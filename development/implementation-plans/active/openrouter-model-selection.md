@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T21:35:23+02:00`
+**Last updated:** `2026-09-16T21:38:28+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -272,8 +272,10 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - [x] Start the server and web app with the ignored local key configuration.
 - [x] Open each currently reachable platform runner, search for a model, select it,
       submit a prompt, and inspect the returned model ID and real response.
-- [ ] Re-run the same runner acceptance check for Inngest, Trigger.dev, DBOS, and Hatchet
-      after their local dependencies and credentials are available.
+- [x] Re-run the same runner acceptance check for Inngest after its local function service
+      and Dev Server became available.
+- [ ] Run the same acceptance check for Trigger.dev, DBOS, and Hatchet after their local
+      dependencies and credentials are available.
 - [x] Open Compare, select two reachable platforms, choose one model once, run, and inspect
       both run records.
 - [x] Disconnect or unset the key and verify the UI shows an actionable error without a
@@ -314,6 +316,7 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `node --test apps/web/tests/browser/model-picker.browser.test.mjs` — 1 passed against the running Vite app in Chromium; the real picker rendered catalog loading, selected by keyboard, rendered empty/error states, and kept the newer result when an older search request was aborted.
 - `AGENTLAB_RUN_LIVE_PLATFORM_UI=1 node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs` — 1 passed; real Chromium runner acceptance completed Temporal (`b8680ef4-54ff-48df-8bb8-c61fc812d738`), Restate (`1e23992d-d41a-4ea7-88ef-b580d4bf36a7`), LangGraph (`0a114e87-161e-4208-b34e-d941141bcb63`), Mastra (`27c4aec3-4cad-4d26-ba3d-22f6cf09ccf8`), and Vercel Workflows (`d7e237c5-5e98-4d03-8a88-dd0bcef8254e`) with the selected OpenRouter model. Inngest, Trigger.dev, DBOS, and Hatchet were reported unavailable by their individual health checks.
 - `OPENROUTER_API_KEY='' AGENTLAB_ALLOWED_MODEL_PROVIDERS=openrouter AGENTLAB_API_ORIGIN=http://127.0.0.1:5174 AGENTLAB_API_PORT=4320` with an isolated Vite app on `5174` — passed; the browser rendered `OPENROUTER_NOT_CONFIGURED`, showed no model options, and did not expose or substitute a fake model.
+- `AGENTLAB_RUN_LIVE_PLATFORM_UI=1 AGENTLAB_LIVE_PLATFORM_IDS=inngest node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs` — 1 passed; Inngest completed a real UI run (`6dd9f146-d5d3-4f56-b991-f0494d423322`) with `provider: openrouter`, `cohere/north-mini-code:free`, terminal result, usage, native evidence, and no secret-like fields.
 - `pnpm --filter @agent-harness-lab/web run build` — passed after comparison lifecycle guards and responsive modal changes; Vite emitted only the existing large-chunk warning.
 - `git diff --check` — passed after clarifying the Run API and platform provider-boundary documentation.
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Mastra, LangGraph, DBOS, and Vercel native-boundary coverage.
@@ -392,6 +395,7 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit the native Temporal OpenRouter workflow coverage in `22d66eb` (`test(temporal): cover native OpenRouter workflow`).
 - [x] Commit the Chromium model-picker browser coverage in `88afa51` (`test(web): cover model picker in Chromium`).
 - [x] Commit the opt-in live platform runner acceptance test in `bd122cc` (`test(web): add live platform runner acceptance`).
+- [x] Commit the live acceptance platform filter in `fd813b6` (`test(web): filter live platform acceptance`).
 - [x] Commit comparison polling guards and responsive/focusable modal controls in `829e322` (`fix(web): guard comparison lifecycle updates`).
 - [x] Commit the Run API and platform provider-boundary documentation in `ccff5f4` (`docs(server): clarify real and fixture model providers`).
 - [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
