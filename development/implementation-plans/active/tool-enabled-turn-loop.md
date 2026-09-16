@@ -1,7 +1,7 @@
 # Tool-enabled turn loop
 
 **Created:** `2026-09-16T13:37:32+02:00`
-**Last updated:** `2026-09-16T19:21:01+02:00`
+**Last updated:** `2026-09-16T19:36:00+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -447,14 +447,14 @@ Use separate reviewable commits. Do not wait until the end for one large commit:
 
 - [x] Commit the shared tool contract, registry, calculator, unit tests, and capability documentation in `cb6c430` (`feat(tools): add bounded calculator capability`).
 - [x] Commit the Restate model protocol and durable tool-loop implementation with Restate tests in `8c78c73` (`feat(restate): add durable tool-enabled model loop`).
-- [ ] Commit Lab evidence/API projection and server integration tests. The Restate runner and native integration portion is in `9b41bb5`; common `RunService`/`RunEvidenceStore` changes remain in the existing shared worktree and must be separated from other agents' changes before committing.
+- [x] Commit Lab evidence/API projection and server integration tests in `e9edb4f` (`feat(server): integrate context and model projections`). The Restate runner and native integration portion remains in `9b41bb5`; the common `RunService`/`RunEvidenceStore` projection and its server tests are now committed separately from the remaining browser, Studio, and platform work.
 - [ ] Commit browser tool activity/context presentation and browser-facing tests. These files still overlap with the active model-picker, chat, and Studio work and remain intentionally unstaged.
 - [x] Commit playground and platform documentation updates in `2a7194c` (`docs(restate): record tool loop operations and recovery`).
 - [x] Before each completed commit, inspect `git status`, stage only files owned by the section, run the narrow validation, and record the result in the validation checkpoint above.
 - [ ] Record the final contiguous commit set in the completion record when the remaining shared/server and browser sections are committed and the plan is archived. Preserve existing user and other-agent changes in the dirty worktree.
 
 Focused commits already landed: `cb6c430`, `8c78c73`, `9b41bb5`, `2a7194c`,
-`0788d37`, `43607f2`, and `f3a6d59`.
+`0788d37`, `43607f2`, `f3a6d59`, and `e9edb4f`.
 
 ## Completion record
 
