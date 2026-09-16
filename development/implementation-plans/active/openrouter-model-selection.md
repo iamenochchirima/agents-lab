@@ -1,7 +1,7 @@
 # Real OpenRouter model connection and shared model selection
 
 **Created:** `2026-09-15T18:23:15+02:00`
-**Last updated:** `2026-09-16T20:07:00+02:00`
+**Last updated:** `2026-09-16T20:17:11+02:00`
 **Status:** Active
 **Owner:** Agent Harness Lab
 
@@ -294,6 +294,9 @@ lab/runs/<run-id>/result.json: output, status, safe error, usage; no request hea
 - `pnpm --dir apps/web exec tsx --test tests/chatState.test.ts` — 8 passed, including stale-run, duplicate-message, and model-selection stability checks.
 - `pnpm --dir apps/web run typecheck` and `pnpm --dir apps/web run build` — passed after the shared picker request-lifecycle fix; Vite emitted only the existing large-chunk warning.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/trigger-dev/openrouter.test.ts` — 5 passed, including bounded provider-response and assistant-output rejection.
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/temporal/fake-model.test.ts tests/platforms/restate/models.test.ts tests/platforms/inngest/models.test.ts tests/platforms/dbos/models.test.ts tests/platforms/hatchet/models.test.ts tests/platforms/vercel-workflows/models.test.ts` — 31 passed; each OpenRouter boundary now asserts that the selected model ID is sent and the secret is absent from the request body.
+- `server/src/platforms/langgraph/.local311/bin/pytest -q server/src/platforms/langgraph/service/tests/test_graph.py` — 4 passed; the Python boundary asserts the selected model ID in the outbound request.
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/hatchet/task.test.ts` — 3 passed; a mocked OpenRouter response traversed the Hatchet task and produced normalized result, usage, trajectory, and events for the selected model.
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed after the Trigger.dev response-boundary change.
 - A fresh server on `127.0.0.1:4319` completed a real LangGraph run with `cohere/north-mini-code:free`; run ID `d97ef0f8-e4f6-405d-b0ca-46e75c51ca28`. The original run `4dd500b8-8e46-44bd-a20c-8298bde9c971` was correctly recorded as failed with `DISPATCH_FAILED` when the strict protocol rejected the extra field.
 - Live OpenRouter smoke runs with `cohere/north-mini-code:free` completed on Temporal (`c54e4a8d-58c3-469e-9fe5-630d2a41f5ca`), Restate (`f7119cc2-f277-41dd-874b-618917f1db9a`), Mastra (`dacf5f45-e867-493d-9fcb-790a1ae7a007`), and Vercel Workflows (`537fc9db-a48f-4c8b-aa23-a62b180595d9`) at `2026-09-16T19:51:00+02:00`; only safe status/model fields were inspected.
@@ -346,6 +349,8 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit the shared model picker, runner/Compare wiring, browser chat, context meter, and web regression state tests in `d0c47ce` (`feat(web): connect platform chat and model controls`).
 - [x] Commit Trigger.dev response bounds and provider-boundary tests in `0b03650` (`fix(trigger): bound OpenRouter responses`).
 - [x] Clarify Restate's deterministic fake fixture boundary in `4987a42` (`docs(restate): clarify fake model fixture boundary`).
+- [x] Commit selected-model assertions across provider boundaries in `042a7b7` (`test(platforms): assert selected model at provider boundaries`).
+- [x] Commit a mocked OpenRouter execution through the Hatchet task in `d551ef2` (`test(hatchet): cover selected OpenRouter task execution`).
 - [x] Commit the remaining platform execution changes in coherent platform groups, with their tests and
       docs; do not create one giant provider migration commit.
 - [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
