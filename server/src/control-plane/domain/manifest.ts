@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ModelProvider, RunManifest, RunRequest } from "./types.js";
 
 const MAX_PROMPT_LENGTH = 20_000;
-const DEFAULT_SYSTEM_INSTRUCTION =
+export const DEFAULT_SYSTEM_INSTRUCTION =
   "You are the Agent Harness Lab baseline agent. Answer the user's prompt directly and concisely.";
 
 export class InvalidRunRequestError extends Error {
@@ -18,6 +18,11 @@ export interface ManifestOptions {
   readonly runId?: string;
   readonly serverVersion?: string;
   readonly platformConfig?: Readonly<Record<string, unknown>>;
+  readonly context?: {
+    readonly sessionId?: string;
+    readonly turnId?: string;
+    readonly snapshotId?: string;
+  };
 }
 
 export function buildRunManifest(request: RunRequest, options: ManifestOptions = {}): Readonly<RunManifest> {
@@ -31,12 +36,13 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     platform: request.platform.trim(),
     variant: request.variant.trim(),
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
-    context: { systemInstruction: DEFAULT_SYSTEM_INSTRUCTION },
+    context: { systemInstruction: DEFAULT_SYSTEM_INSTRUCTION, ...options.context },
     platformConfig: options.platformConfig ?? {},
     selection: request.selection ?? {},
     model: {
       provider: request.model.provider as ModelProvider,
       model: request.model.model.trim(),
+      ...(request.model.contextWindowTokens === undefined ? {} : { contextWindowTokens: request.model.contextWindowTokens }),
     },
   };
 
@@ -69,6 +75,10 @@ export function validateRunRequest(request: RunRequest): void {
     throw new InvalidRunRequestError("Only prompt tasks are supported.");
   }
 
+  if (request.sessionId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(request.sessionId)) {
+    throw new InvalidRunRequestError("sessionId must use letters, numbers, hyphens, or underscores.");
+  }
+
   const prompt = request.task.prompt.trim();
   if (prompt.length === 0 || prompt.length > MAX_PROMPT_LENGTH) {
     throw new InvalidRunRequestError(`Prompt must contain between 1 and ${MAX_PROMPT_LENGTH} characters.`);
@@ -80,6 +90,9 @@ export function validateRunRequest(request: RunRequest): void {
 
   if (request.model.model.trim().length === 0 || request.model.model.trim().length > 200) {
     throw new InvalidRunRequestError("Model name must contain between 1 and 200 characters.");
+  }
+  if (request.model.contextWindowTokens !== undefined && (!Number.isInteger(request.model.contextWindowTokens) || request.model.contextWindowTokens <= 0)) {
+    throw new InvalidRunRequestError("Model context window must be a positive integer when provided.");
   }
 
   if (request.selection !== undefined) {

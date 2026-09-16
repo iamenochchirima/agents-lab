@@ -9,6 +9,7 @@ import type { PlatformExecutionReference, RunEventIntent, RunMetrics, RunResult,
 import {
   CorruptEvidenceError,
   EvidenceConflictError,
+  EvidenceLimitError,
   EventOrderingError,
   InvalidRunIdError,
   RunEvidenceStore,
@@ -128,6 +129,71 @@ test("writes terminal evidence idempotently and preserves unknown measurements a
 
     assert.deepEqual((await store.readSnapshot(manifest.runId)).result, result);
     assert.equal((await store.readSnapshot(manifest.runId)).metrics?.costUsd, null);
+  });
+});
+
+test("allows a provisional reconciliation result to be replaced by confirmed terminal evidence", async () => {
+  await withStore(async (store) => {
+    const provisional: RunResult = {
+      schemaVersion: 1,
+      runId: manifest.runId,
+      status: "reconciliation_required",
+      startedAt: null,
+      finishedAt: "2026-09-15T08:00:05.000Z",
+      output: null,
+      error: { code: "SUBMISSION_UNKNOWN", message: "The submission outcome is not confirmed.", failureKind: "outcome_unknown", retryable: true },
+      attemptCount: 0,
+      usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+    };
+    const confirmed: RunResult = {
+      ...provisional,
+      status: "completed",
+      startedAt: "2026-09-15T08:00:01.000Z",
+      finishedAt: "2026-09-15T08:00:06.000Z",
+      output: "confirmed",
+      error: null,
+      attemptCount: 1,
+    };
+
+    await store.writeResult(provisional);
+    await store.writeResult(provisional);
+    await store.writeResult(confirmed);
+    assert.equal((await store.readSnapshot(manifest.runId)).result?.output, "confirmed");
+    await assert.rejects(
+      store.writeResult({ ...confirmed, output: "different" }),
+      (error: unknown) => error instanceof EvidenceConflictError,
+    );
+  });
+});
+
+test("redacts credential-shaped native fields and rejects oversized evidence", async () => {
+  await withStore(async (store, root) => {
+    await store.writeExecutionReference(manifest.runId, {
+      platform: manifest.platform,
+      variant: manifest.variant,
+      executionId: "temporal-native-test",
+      native: { authorization: "Bearer secret", apiKey: "another-secret", safeValue: "kept" },
+    });
+    const native = JSON.parse(await readFile(join(root, manifest.runId, "native/temporal.json"), "utf8")) as { native: Record<string, unknown> };
+    assert.equal(native.native.authorization, "[REDACTED]");
+    assert.equal(native.native.apiKey, "[REDACTED]");
+    assert.equal(native.native.safeValue, "kept");
+    assert.equal(JSON.stringify(native).includes("secret"), false);
+
+    await assert.rejects(
+      store.writeResult({
+        schemaVersion: 1,
+        runId: manifest.runId,
+        status: "completed",
+        startedAt: manifest.createdAt,
+        finishedAt: "2026-09-15T08:00:05.000Z",
+        output: "x".repeat(512 * 1024 + 1),
+        error: null,
+        attemptCount: 1,
+        usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+      }),
+      (error: unknown) => error instanceof EvidenceLimitError,
+    );
   });
 });
 

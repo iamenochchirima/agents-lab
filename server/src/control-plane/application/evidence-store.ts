@@ -11,8 +11,16 @@ import type {
   RunResult,
   RunTrajectory,
 } from "../domain/types.js";
+import type { ContextSnapshot } from "../../capabilities/context/contracts.js";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const MAX_MANIFEST_BYTES = 256 * 1024;
+const MAX_EVENT_BYTES = 256 * 1024;
+const MAX_EXECUTION_REFERENCE_BYTES = 128 * 1024;
+const MAX_RESULT_BYTES = 512 * 1024;
+const MAX_TRAJECTORY_BYTES = 512 * 1024;
+const MAX_METRICS_BYTES = 128 * 1024;
+const MAX_CONTEXT_BYTES = 512 * 1024;
 
 export class InvalidRunIdError extends Error {
   constructor(readonly runId: string) {
@@ -49,6 +57,19 @@ export class CorruptEvidenceError extends Error {
   }
 }
 
+export class EvidenceLimitError extends Error {
+  constructor(readonly path: string, readonly maxBytes: number) {
+    super(`Evidence exceeds the ${maxBytes}-byte safety limit: ${path}`);
+    this.name = "EvidenceLimitError";
+  }
+}
+
+/** Returns true for local I/O failures where the platform result may still be authoritative. */
+export function isEvidenceProjectionUnavailable(error: unknown): boolean {
+  if (!isNodeError(error)) return false;
+  return ["EACCES", "EBUSY", "EIO", "EMFILE", "ENFILE", "ENOSPC", "EROFS", "ETIMEDOUT"].includes(error.code ?? "");
+}
+
 export interface RunEvidenceSnapshot {
   readonly manifest: RunManifest;
   readonly events: readonly RunEvent[];
@@ -56,6 +77,7 @@ export interface RunEvidenceSnapshot {
   readonly trajectory: RunTrajectory | null;
   readonly metrics: RunMetrics | null;
   readonly result: RunResult | null;
+  readonly context: ContextSnapshot | null;
 }
 
 /**
@@ -74,6 +96,7 @@ export class RunEvidenceStore {
   }
 
   async createRun(manifest: RunManifest): Promise<void> {
+    const safeManifest = sanitizeEvidenceValue(manifest) as RunManifest;
     const runDirectory = this.runDirectory(manifest.runId);
     await mkdir(join(runDirectory, "logs"), { recursive: true });
     await mkdir(join(runDirectory, "artifacts"), { recursive: true });
@@ -82,7 +105,7 @@ export class RunEvidenceStore {
     const configPath = join(runDirectory, "config.json");
     try {
       const existing = await readJson<RunManifest>(configPath);
-      if (!deepEqual(existing, manifest)) {
+      if (!deepEqual(existing, safeManifest)) {
         throw new EvidenceConflictError(`Run manifest already exists with different content: ${manifest.runId}`);
       }
     } catch (error) {
@@ -90,7 +113,8 @@ export class RunEvidenceStore {
         throw error;
       }
 
-      await atomicWriteJson(configPath, manifest);
+      assertEvidenceSize(safeManifest, configPath, MAX_MANIFEST_BYTES);
+      await atomicWriteJson(configPath, safeManifest);
     }
 
     const eventsPath = join(runDirectory, "events.jsonl");
@@ -108,15 +132,16 @@ export class RunEvidenceStore {
   async appendEvent<TPayload extends Record<string, unknown>>(
     intent: RunEventIntent<TPayload>,
   ): Promise<RunEvent<TPayload>> {
-    const previous = this.eventQueues.get(intent.runId) ?? Promise.resolve();
-    const operation = previous.catch(() => undefined).then(() => this.appendEventNow(intent));
-    this.eventQueues.set(intent.runId, operation);
+    const safeIntent = sanitizeEvidenceValue(intent) as RunEventIntent<TPayload>;
+    const previous = this.eventQueues.get(safeIntent.runId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(() => this.appendEventNow(safeIntent));
+    this.eventQueues.set(safeIntent.runId, operation);
 
     try {
       return await operation;
     } finally {
-      if (this.eventQueues.get(intent.runId) === operation) {
-        this.eventQueues.delete(intent.runId);
+      if (this.eventQueues.get(safeIntent.runId) === operation) {
+        this.eventQueues.delete(safeIntent.runId);
       }
     }
   }
@@ -164,9 +189,11 @@ export class RunEvidenceStore {
   }
 
   async writeExecutionReference(runId: string, reference: PlatformExecutionReference): Promise<void> {
+    const safeReference = sanitizeEvidenceValue(reference) as PlatformExecutionReference;
     const manifest = await this.readManifest(runId);
-    const path = join(this.runDirectory(runId), nativeReferenceFile(reference.platform));
-    validateExecutionReference(reference, manifest, `native/${manifest.platform}.json`);
+    const path = join(this.runDirectory(runId), nativeReferenceFile(safeReference.platform));
+    validateExecutionReference(safeReference, manifest, `native/${manifest.platform}.json`);
+    assertEvidenceSize(safeReference, path, MAX_EXECUTION_REFERENCE_BYTES);
 
     // The execution identity is immutable, but inspection may enrich the native
     // payload with an invocation ID, retry count, or terminal status. Replace the
@@ -174,26 +201,64 @@ export class RunEvidenceStore {
     // known native identity without allowing a different execution to overwrite it.
     try {
       const existing = await readJson<PlatformExecutionReference>(path);
-      if (existing.executionId !== reference.executionId) {
+      if (existing.executionId !== safeReference.executionId) {
         throw new EvidenceConflictError(`Execution identity changed for native evidence: ${path}`);
       }
     } catch (error) {
       if (!(error instanceof EvidenceNotFoundError)) throw error;
     }
 
-    await atomicWriteJson(path, reference);
+    await atomicWriteJson(path, safeReference);
   }
 
   async writeResult(result: RunResult): Promise<void> {
-    await this.writeIdempotent(join(this.runDirectory(result.runId), "result.json"), result);
+    const safeResult = sanitizeEvidenceValue(result) as RunResult;
+    const path = join(this.runDirectory(safeResult.runId), "result.json");
+    assertEvidenceSize(safeResult, path, MAX_RESULT_BYTES);
+    const existing = await this.readOptionalJson<RunResult>(path);
+    if (!existing || deepEqual(existing, safeResult)) {
+      if (!existing) await atomicWriteJson(path, safeResult);
+      return;
+    }
+    // A reconciliation-required result is a provisional observation made
+    // after an ambiguous submission. Once the retained platform execution is
+    // found, replace that observation with the durable terminal result. Every
+    // other terminal result remains immutable.
+    if (existing.status === "reconciliation_required" && safeResult.status !== "reconciliation_required") {
+      await atomicWriteJson(path, safeResult);
+      return;
+    }
+    throw new EvidenceConflictError(`Evidence already exists with different content: ${path}`);
   }
 
   async writeTrajectory(trajectory: RunTrajectory): Promise<void> {
-    await this.writeIdempotent(join(this.runDirectory(trajectory.runId), "trajectory.json"), trajectory);
+    const safeTrajectory = sanitizeEvidenceValue(trajectory) as RunTrajectory;
+    const path = join(this.runDirectory(safeTrajectory.runId), "trajectory.json");
+    assertEvidenceSize(safeTrajectory, path, MAX_TRAJECTORY_BYTES);
+    await this.writeIdempotent(path, safeTrajectory);
   }
 
   async writeMetrics(metrics: RunMetrics): Promise<void> {
-    await this.writeIdempotent(join(this.runDirectory(metrics.runId), "metrics.json"), metrics);
+    const safeMetrics = sanitizeEvidenceValue(metrics) as RunMetrics;
+    const path = join(this.runDirectory(safeMetrics.runId), "metrics.json");
+    assertEvidenceSize(safeMetrics, path, MAX_METRICS_BYTES);
+    await this.writeIdempotent(path, safeMetrics);
+  }
+
+  async writeContextSnapshot(runId: string, snapshot: ContextSnapshot): Promise<void> {
+    const safeSnapshot = sanitizeEvidenceValue(snapshot) as ContextSnapshot;
+    const manifest = await this.readManifest(runId);
+    if (manifest.context.sessionId !== safeSnapshot.sessionId) {
+      throw new EvidenceConflictError(`Context snapshot belongs to a different session: ${runId}`);
+    }
+    const path = join(this.runDirectory(runId), "context.json");
+    const existing = await this.readOptionalJson<ContextSnapshot>(path);
+    assertEvidenceSize(safeSnapshot, path, MAX_CONTEXT_BYTES);
+    if (existing && existing.sessionRevision > safeSnapshot.sessionRevision) {
+      throw new EvidenceConflictError(`Context evidence moved backwards in session revision: ${runId}`);
+    }
+    if (existing && existing.snapshotId === safeSnapshot.snapshotId) return;
+    await atomicWriteJson(path, safeSnapshot);
   }
 
   async readSnapshot(runId: string): Promise<RunEvidenceSnapshot> {
@@ -207,6 +272,7 @@ export class RunEvidenceStore {
       trajectory: await this.readOptionalJson<RunTrajectory>(join(runDirectory, "trajectory.json")),
       metrics: await this.readOptionalJson<RunMetrics>(join(runDirectory, "metrics.json")),
       result: await this.readOptionalJson<RunResult>(join(runDirectory, "result.json")),
+      context: await this.readOptionalJson<ContextSnapshot>(join(runDirectory, "context.json")),
     };
   }
 
@@ -262,6 +328,7 @@ export class RunEvidenceStore {
       occurredAt: intent.occurredAt,
       payload: intent.payload,
     };
+    assertEvidenceSize(event, path, MAX_EVENT_BYTES);
     await appendFile(path, `${stableJson(event)}\n`, "utf8");
     return event;
   }
@@ -299,6 +366,7 @@ export type EvidenceFileName =
   | "events.jsonl"
   | "trajectory.json"
   | "metrics.json"
+  | "context.json"
   | "result.json"
   | `native/${string}.json`;
 
@@ -307,6 +375,7 @@ export function isAllowlistedEvidenceFile(fileName: string, platform: string): f
     fileName === "events.jsonl" ||
     fileName === "trajectory.json" ||
     fileName === "metrics.json" ||
+    fileName === "context.json" ||
     fileName === "result.json" ||
     fileName === nativeReferenceFile(platform);
 }
@@ -402,6 +471,32 @@ function stableJson(value: unknown): string {
   return JSON.stringify(sortJsonValue(value));
 }
 
+function assertEvidenceSize(value: unknown, path: string, maxBytes: number): void {
+  let serialized: string;
+  try {
+    serialized = stableJson(value);
+  } catch {
+    throw new EvidenceLimitError(path, maxBytes);
+  }
+  if (Buffer.byteLength(serialized, "utf8") > maxBytes) {
+    throw new EvidenceLimitError(path, maxBytes);
+  }
+}
+
+const SENSITIVE_EVIDENCE_KEY = /^(?:api[-_]?key|authorization|cookie|password|secret|credential|access[-_]?token|refresh[-_]?token|private[-_]?key)$/i;
+
+/** Redacts credential-shaped object fields before any retained evidence write. */
+function sanitizeEvidenceValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeEvidenceValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nestedValue]) => [
+      key,
+      SENSITIVE_EVIDENCE_KEY.test(key) ? "[REDACTED]" : sanitizeEvidenceValue(nestedValue),
+    ]),
+  );
+}
+
 function sortJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortJsonValue);
@@ -468,6 +563,6 @@ function validateEventCollection(events: readonly RunEvent[], path: string): voi
   }
 }
 
-function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === code;
+function isNodeError(error: unknown, code?: string): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && (code === undefined || (error as NodeJS.ErrnoException).code === code);
 }

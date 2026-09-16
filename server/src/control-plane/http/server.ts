@@ -7,14 +7,17 @@ import type { ServerConfig } from "../bootstrap/config.js";
 import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
+import { ContextSessionBusyError, ContextSessionConflictError } from "../../capabilities/context/session-store.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunRequest, RunSelection } from "../domain/types.js";
+import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
   readonly service: RunService;
   readonly evidence: RunEvidenceStore;
   readonly registry: PlatformRegistry;
+  readonly modelCatalog?: OpenRouterCatalogClient;
 }
 
 export class InvalidApiRequestError extends Error {
@@ -56,6 +59,42 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
 
   app.get("/ready", async (_request, reply) => {
     return reply.send({ status: "ready", controlPlane: { ready: true } });
+  });
+
+  app.get<{ Params: { platformId: string }; Querystring: { variant?: string } }>("/api/platforms/:platformId/health", async (request, reply) => {
+    const variant = request.query.variant?.trim() || "baseline";
+    const platform = await dependencies.registry.checkConnection(request.params.platformId, variant);
+    if (!platform) {
+      return reply.code(404).send({ error: { code: "PLATFORM_NOT_FOUND", message: "Platform or variant is not registered." } });
+    }
+    return reply.send({
+      platform: platform.platform,
+      variant: platform.variant,
+      reachable: platform.connectivity.reachable,
+      message: platform.connectivity.message,
+    });
+  });
+
+  const modelCatalog = dependencies.modelCatalog ?? new OpenRouterModelCatalog({
+    apiKey: dependencies.config.openRouter.apiKey,
+    baseUrl: dependencies.config.openRouter.baseUrl,
+    timeoutMs: dependencies.config.openRouter.catalogTimeoutMs,
+    cacheTtlMs: dependencies.config.openRouter.catalogCacheTtlMs,
+    resultLimit: dependencies.config.openRouter.catalogLimit,
+    defaultModel: dependencies.config.openRouter.defaultModel,
+  });
+
+  app.get<{ Querystring: { provider?: string; q?: string; limit?: string } }>("/api/models", async (request, reply) => {
+    try {
+      const query = parseModelCatalogQuery(request.query);
+      if (query.provider !== "openrouter") {
+        throw new InvalidApiRequestError("Only the openrouter model provider is available.");
+      }
+      const catalog = await modelCatalog.list(query.q);
+      return reply.send({ ...catalog, models: catalog.models.slice(0, query.limit) });
+    } catch (error) {
+      return sendError(reply, error);
+    }
   });
 
   app.post("/api/runs", async (request, reply) => {
@@ -132,11 +171,17 @@ function parseRunRequest(body: unknown): RunRequest {
   if (typeof body.platform !== "string" || typeof body.variant !== "string") {
     throw new InvalidApiRequestError("platform and variant are required strings.");
   }
+  if (body.sessionId !== undefined && typeof body.sessionId !== "string") {
+    throw new InvalidApiRequestError("sessionId must be a string when provided.");
+  }
   if (!isRecord(body.task) || body.task.kind !== "prompt" || typeof body.task.prompt !== "string") {
     throw new InvalidApiRequestError("task must contain kind=prompt and a string prompt.");
   }
   if (!isRecord(body.model) || typeof body.model.provider !== "string" || typeof body.model.model !== "string") {
     throw new InvalidApiRequestError("model must contain provider and model strings.");
+  }
+  if (body.model.contextWindowTokens !== undefined && typeof body.model.contextWindowTokens !== "number") {
+    throw new InvalidApiRequestError("model.contextWindowTokens must be a number when provided.");
   }
   if ("experiment" in body && body.experiment !== undefined) {
     throw new InvalidApiRequestError("experiments are not supported by this run path yet.");
@@ -145,8 +190,13 @@ function parseRunRequest(body: unknown): RunRequest {
   return {
     platform: body.platform,
     variant: body.variant,
+    sessionId: body.sessionId,
     task: { kind: "prompt", prompt: body.task.prompt },
-    model: { provider: body.model.provider, model: body.model.model },
+    model: {
+      provider: body.model.provider,
+      model: body.model.model,
+      ...(body.model.contextWindowTokens === undefined ? {} : { contextWindowTokens: body.model.contextWindowTokens }),
+    },
     selection,
   };
 }
@@ -187,6 +237,23 @@ function parseCancelBody(body: unknown): string {
   return reason;
 }
 
+function parseModelCatalogQuery(query: { provider?: string; q?: string; limit?: string }): { provider: string; q: string; limit: number } {
+  const provider = query.provider?.trim() || "openrouter";
+  const q = query.q?.trim() || "";
+  if (q.length > 120) throw new InvalidApiRequestError("q must be 120 characters or fewer.");
+  const limit = query.limit === undefined ? 40 : parseBoundedQueryInteger(query.limit, "limit", 1, 100);
+  return { provider, q, limit };
+}
+
+function parseBoundedQueryInteger(value: string, name: string, minimum: number, maximum: number): number {
+  if (!/^\d+$/.test(value)) throw new InvalidApiRequestError(`${name} must be an integer.`);
+  const parsed = Number(value);
+  if (parsed < minimum || parsed > maximum) {
+    throw new InvalidApiRequestError(`${name} must be between ${minimum} and ${maximum}.`);
+  }
+  return parsed;
+}
+
 function parseAfter(value: string | undefined): number {
   if (value === undefined) return 0;
   if (!/^\d+$/.test(value)) {
@@ -212,6 +279,12 @@ function sendError(reply: FastifyReply, error: unknown) {
   }
   if (error instanceof RunnerUnavailableError) {
     return reply.code(503).send({ error: { code: "RUNNER_UNAVAILABLE", message: error.message } });
+  }
+  if (error instanceof ContextSessionBusyError || error instanceof ContextSessionConflictError) {
+    return reply.code(409).send({ error: { code: "CONTEXT_CONFLICT", message: error.message } });
+  }
+  if (error instanceof OpenRouterCatalogError) {
+    return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } });
   }
   return reply.code(500).send({ error: { code: "INTERNAL_ERROR", message: "The server encountered an unexpected error." } });
 }

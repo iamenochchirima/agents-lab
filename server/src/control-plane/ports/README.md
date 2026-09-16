@@ -8,6 +8,10 @@ configuration and implements validation, availability, start, inspection, and
 cancellation. The common server treats the returned execution reference as opaque
 apart from its platform, variant, and stable execution identity.
 
+`model-metadata.ts` is the separate model-selection seam. The server may resolve
+provider metadata, such as a context-window limit, before creating a manifest. That
+value is frozen for the run; the browser's copy of the catalog is never authoritative.
+
 An execution reference may contain a platform-native evidence object. That object is
 for persistence and inspection. It is not a second common lifecycle model, and common
 code must not branch on fields such as workflow IDs, graph checkpoints, or service

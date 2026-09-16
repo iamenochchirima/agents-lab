@@ -1,4 +1,12 @@
 import { isAbsolute, resolve } from "node:path";
+import { URL } from "node:url";
+
+import {
+  OPENROUTER_DEFAULT_BASE_URL,
+  OPENROUTER_DEFAULT_CATALOG_CACHE_TTL_MS,
+  OPENROUTER_DEFAULT_CATALOG_LIMIT,
+  OPENROUTER_DEFAULT_CATALOG_TIMEOUT_MS,
+} from "../../models/openrouter/catalog.js";
 
 export const DEFAULTS = {
   apiHost: "127.0.0.1",
@@ -12,6 +20,12 @@ export const DEFAULTS = {
   preDispatchRetryLimit: 2,
   preDispatchRetryBackoffMs: 100,
   allowedModelProviders: ["fake"] as const,
+  openRouter: {
+    baseUrl: OPENROUTER_DEFAULT_BASE_URL,
+    catalogTimeoutMs: OPENROUTER_DEFAULT_CATALOG_TIMEOUT_MS,
+    catalogCacheTtlMs: OPENROUTER_DEFAULT_CATALOG_CACHE_TTL_MS,
+    catalogLimit: OPENROUTER_DEFAULT_CATALOG_LIMIT,
+  },
 } as const;
 
 export interface ServerConfig {
@@ -22,6 +36,8 @@ export interface ServerConfig {
     readonly origin: string;
   };
   readonly runsRoot: string;
+  readonly contextRoot: string;
+  readonly studioRunsRoot: string;
   readonly temporal: {
     readonly endpoint: string;
     readonly namespace: string;
@@ -32,6 +48,14 @@ export interface ServerConfig {
     readonly preDispatchRetryBackoffMs: number;
   };
   readonly allowedModelProviders: readonly ("fake" | "openrouter")[];
+  readonly openRouter: {
+    readonly apiKey: string | null;
+    readonly baseUrl: string;
+    readonly catalogTimeoutMs: number;
+    readonly catalogCacheTtlMs: number;
+    readonly catalogLimit: number;
+    readonly defaultModel: string | null;
+  };
 }
 
 export class InvalidServerConfigError extends Error {
@@ -67,6 +91,16 @@ export function loadServerConfig(
     resolve(workingDirectory, "lab/runs"),
     "AGENTLAB_RUN_ROOT",
   );
+  const contextRoot = requiredString(
+    environment.AGENTLAB_CONTEXT_ROOT,
+    resolve(workingDirectory, "lab/sessions"),
+    "AGENTLAB_CONTEXT_ROOT",
+  );
+  const studioRunsRoot = requiredString(
+    environment.AGENTLAB_STUDIO_RUN_ROOT,
+    resolve(workingDirectory, "lab/studio-runs"),
+    "AGENTLAB_STUDIO_RUN_ROOT",
+  );
 
   const config: ServerConfig = {
     serverVersion: requiredString(environment.AGENTLAB_SERVER_VERSION, "0.0.0-dev", "AGENTLAB_SERVER_VERSION"),
@@ -76,6 +110,8 @@ export function loadServerConfig(
       origin: apiOrigin,
     },
     runsRoot: isAbsolute(runRoot) ? runRoot : resolve(workingDirectory, runRoot),
+    contextRoot: isAbsolute(contextRoot) ? contextRoot : resolve(workingDirectory, contextRoot),
+    studioRunsRoot: isAbsolute(studioRunsRoot) ? studioRunsRoot : resolve(workingDirectory, studioRunsRoot),
     temporal: {
       endpoint: temporalEndpoint,
       namespace: temporalNamespace,
@@ -102,6 +138,32 @@ export function loadServerConfig(
       ),
     },
     allowedModelProviders: parseModelProviders(environment.AGENTLAB_ALLOWED_MODEL_PROVIDERS),
+    openRouter: {
+      apiKey: environment.OPENROUTER_API_KEY?.trim() || null,
+      baseUrl: parseHttpUrl(environment.AGENTLAB_OPENROUTER_BASE_URL, DEFAULTS.openRouter.baseUrl, "AGENTLAB_OPENROUTER_BASE_URL"),
+      catalogTimeoutMs: parseBoundedInteger(
+        "AGENTLAB_OPENROUTER_CATALOG_TIMEOUT_MS",
+        environment.AGENTLAB_OPENROUTER_CATALOG_TIMEOUT_MS,
+        DEFAULTS.openRouter.catalogTimeoutMs,
+        100,
+        30_000,
+      ),
+      catalogCacheTtlMs: parseBoundedInteger(
+        "AGENTLAB_OPENROUTER_CATALOG_TTL_MS",
+        environment.AGENTLAB_OPENROUTER_CATALOG_TTL_MS,
+        DEFAULTS.openRouter.catalogCacheTtlMs,
+        1_000,
+        86_400_000,
+      ),
+      catalogLimit: parseBoundedInteger(
+        "AGENTLAB_OPENROUTER_CATALOG_LIMIT",
+        environment.AGENTLAB_OPENROUTER_CATALOG_LIMIT,
+        DEFAULTS.openRouter.catalogLimit,
+        1,
+        100,
+      ),
+      defaultModel: nonEmptyOrNull(environment.AGENTLAB_OPENROUTER_DEFAULT_MODEL) ?? nonEmptyOrNull(environment.OPENROUTER_MODEL),
+    },
   };
 
   return Object.freeze(config);
@@ -131,6 +193,14 @@ function parsePositiveInteger(name: string, value: string | undefined, fallback:
   return parsed;
 }
 
+function parseBoundedInteger(name: string, value: string | undefined, fallback: number, minimum: number, maximum: number): number {
+  const parsed = parseInteger(name, value, fallback);
+  if (parsed < minimum || parsed > maximum) {
+    throw new InvalidServerConfigError(`${name} must be between ${minimum} and ${maximum}.`);
+  }
+  return parsed;
+}
+
 function parseNonNegativeInteger(name: string, value: string | undefined, fallback: number): number {
   const parsed = parseInteger(name, value, fallback);
   if (parsed < 0) {
@@ -145,6 +215,22 @@ function parseInteger(name: string, value: string | undefined, fallback: number)
     throw new InvalidServerConfigError(`${name} must be an integer.`);
   }
   return Number(resolved);
+}
+
+function parseHttpUrl(value: string | undefined, fallback: string, name: string): string {
+  const resolved = (value ?? fallback).trim();
+  try {
+    const parsed = new URL(resolved);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("unsupported protocol");
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    throw new InvalidServerConfigError(`${name} must be an absolute HTTP or HTTPS URL.`);
+  }
+}
+
+function nonEmptyOrNull(value: string | undefined): string | null {
+  const resolved = value?.trim();
+  return resolved ? resolved : null;
 }
 
 function parseModelProviders(value: string | undefined): readonly ("fake" | "openrouter")[] {

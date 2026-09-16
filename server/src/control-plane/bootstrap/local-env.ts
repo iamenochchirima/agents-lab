@@ -2,10 +2,20 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const LOCAL_SERVER_ENV_KEYS = ["AGENTLAB_ALLOWED_MODEL_PROVIDERS", "OPENROUTER_API_KEY"] as const;
+const LOCAL_SERVER_ENV_KEYS = [
+  "AGENTLAB_ALLOWED_MODEL_PROVIDERS",
+  "AGENTLAB_STUDIO_RUN_ROOT",
+  "AGENTLAB_OPENROUTER_BASE_URL",
+  "AGENTLAB_OPENROUTER_CATALOG_TIMEOUT_MS",
+  "AGENTLAB_OPENROUTER_CATALOG_TTL_MS",
+  "AGENTLAB_OPENROUTER_CATALOG_LIMIT",
+  "AGENTLAB_OPENROUTER_DEFAULT_MODEL",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_MODEL",
+] as const;
 
 /**
- * Load the small set of local-only provider settings used by the server.
+ * Load the small set of local-only server settings used by the server.
  *
  * This intentionally is not a general environment loader. Production and
  * deployed processes should receive secrets from their runtime environment;

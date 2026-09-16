@@ -9,6 +9,7 @@ import { RunEvidenceStore } from "../../src/control-plane/application/evidence-s
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
 import { buildControlPlaneServer } from "../../src/control-plane/http/server.js";
+import type { OpenRouterCatalogClient } from "../../src/models/openrouter/catalog.js";
 import type { PlatformExecutionReference, RunManifest, RunResult } from "../../src/control-plane/domain/types.js";
 import type { PlatformRunner, RunnerInspection } from "../../src/control-plane/ports/runner.js";
 
@@ -59,14 +60,17 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
   };
 }
 
-async function withApp(run: (app: ReturnType<typeof buildControlPlaneServer>, runner: HttpRunner) => Promise<void>): Promise<void> {
+async function withApp(
+  run: (app: ReturnType<typeof buildControlPlaneServer>, runner: HttpRunner) => Promise<void>,
+  modelCatalog?: OpenRouterCatalogClient,
+): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "agentlab-http-"));
   try {
     const runner = new HttpRunner();
     const evidence = new RunEvidenceStore(root);
     const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
     const service = new RunService({ config, evidence, registry: new PlatformRegistry([runner]) });
-    const app = buildControlPlaneServer({ config, service, evidence, registry: new PlatformRegistry([runner]) });
+    const app = buildControlPlaneServer({ config, service, evidence, registry: new PlatformRegistry([runner]), modelCatalog });
     await app.ready();
     try {
       await run(app, runner);
@@ -76,6 +80,57 @@ async function withApp(run: (app: ReturnType<typeof buildControlPlaneServer>, ru
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+}
+
+test("HTTP API exposes only safe, searchable OpenRouter model metadata", async () => {
+  const modelCatalog: OpenRouterCatalogClient = {
+    async list(query = "") {
+      return {
+        provider: "openrouter",
+        defaultModel: "openai/gpt-4o-mini",
+        models: [{
+          id: query ? "openai/gpt-4o-mini" : "openai/gpt-4o-mini",
+          name: "GPT-4o mini",
+          description: null,
+          contextLength: 128000,
+          inputModalities: ["text"],
+          outputModalities: ["text"],
+          promptPriceUsdPerMillion: 0.15,
+          completionPriceUsdPerMillion: 0.6,
+          isFree: false,
+          supportsTools: true,
+        }],
+      };
+    },
+  };
+
+  await withApp(async (app) => {
+    const response = await app.inject({ method: "GET", url: "/api/models?q=gpt%204o&limit=1" });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      provider: "openrouter",
+      defaultModel: "openai/gpt-4o-mini",
+      models: [modelCatalogResult()],
+    });
+
+    const invalidProvider = await app.inject({ method: "GET", url: "/api/models?provider=fake" });
+    assert.equal(invalidProvider.statusCode, 400);
+  }, modelCatalog);
+});
+
+function modelCatalogResult() {
+  return {
+    id: "openai/gpt-4o-mini",
+    name: "GPT-4o mini",
+    description: null,
+    contextLength: 128000,
+    inputModalities: ["text"],
+    outputModalities: ["text"],
+    promptPriceUsdPerMillion: 0.15,
+    completionPriceUsdPerMillion: 0.6,
+    isFree: false,
+    supportsTools: true,
+  };
 }
 
 test("HTTP API accepts a run, exposes events, and reads only safe evidence", async () => {
@@ -96,6 +151,11 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
     assert.equal(created.headers["x-request-id"], "request-test-1");
     const run = created.json();
     assert.equal(run.status, "completed");
+    assert.deepEqual(run.projection, {
+      state: "current",
+      observedAt: run.projection.observedAt,
+      reason: null,
+    });
     assert.deepEqual(run.manifest.selection, { scenarioId: "research", backendProfileId: "local-temporal-stack" });
 
     const events = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/events?after=2&limit=2` });
@@ -162,6 +222,38 @@ test("HTTP API returns structured validation and health responses", async () => 
     const degraded = await app.inject({ method: "GET", url: "/health" });
     assert.equal(degraded.statusCode, 503);
     assert.equal(degraded.json().platforms[0].reachable, false);
+  });
+});
+
+test("HTTP API exposes selected platform connectivity without aggregate health failure", async () => {
+  await withApp(async (app, runner) => {
+    const reachable = await app.inject({ method: "GET", url: "/api/platforms/temporal/health" });
+    assert.equal(reachable.statusCode, 200);
+    assert.deepEqual(reachable.json(), {
+      platform: "temporal",
+      variant: "baseline",
+      reachable: true,
+      message: "ok",
+    });
+
+    runner.reachable = false;
+    const unavailable = await app.inject({ method: "GET", url: "/api/platforms/temporal/health" });
+    assert.equal(unavailable.statusCode, 200);
+    assert.deepEqual(unavailable.json(), {
+      platform: "temporal",
+      variant: "baseline",
+      reachable: false,
+      message: "offline",
+    });
+
+    const planned = await app.inject({ method: "GET", url: "/api/platforms/restate/health" });
+    assert.equal(planned.statusCode, 200);
+    assert.deepEqual(planned.json(), {
+      platform: "restate",
+      variant: "baseline",
+      reachable: false,
+      message: "Platform runner is not registered.",
+    });
   });
 });
 

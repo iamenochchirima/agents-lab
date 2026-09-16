@@ -38,6 +38,7 @@ export interface RunSelection {
 export interface RunRequest {
   readonly platform: string;
   readonly variant: string;
+  readonly sessionId?: string;
   readonly task: {
     readonly kind: "prompt";
     readonly prompt: string;
@@ -45,6 +46,7 @@ export interface RunRequest {
   readonly model: {
     readonly provider: string;
     readonly model: string;
+    readonly contextWindowTokens?: number;
   };
   readonly selection?: RunSelection;
   readonly experiment?: undefined;
@@ -63,12 +65,16 @@ export interface RunManifest {
   };
   readonly context: {
     readonly systemInstruction: string;
+    readonly sessionId?: string;
+    readonly turnId?: string;
+    readonly snapshotId?: string;
   };
   readonly platformConfig: Readonly<Record<string, unknown>>;
   readonly selection?: RunSelection;
   readonly model: {
     readonly provider: ModelProvider;
     readonly model: string;
+    readonly contextWindowTokens?: number;
   };
 }
 
@@ -130,6 +136,15 @@ export interface RunResult {
   readonly usage: RunUsage;
 }
 
+export interface RunProjection {
+  /** Whether the response reflects the latest platform inspection. */
+  readonly state: "current" | "stale";
+  /** The latest observation retained by the Lab evidence projection. */
+  readonly observedAt: string;
+  /** A safe operator-facing explanation when the projection is stale. */
+  readonly reason: string | null;
+}
+
 export interface RunTrajectory {
   readonly schemaVersion: 1;
   readonly runId: string;
@@ -151,4 +166,6 @@ export interface RunMetrics {
   readonly outputTokens: number | null;
   readonly totalTokens: number | null;
   readonly costUsd: number | null;
+  readonly toolCallCount?: number;
+  readonly toolAttemptCount?: number;
 }

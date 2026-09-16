@@ -10,6 +10,10 @@ export interface PlatformRegistration {
   readonly runner: PlatformRunner | null;
 }
 
+export type PlatformConnection = PlatformRegistration & {
+  readonly connectivity: RunnerConnectivity;
+};
+
 const PLANNED_PLATFORM_VARIANTS = [
   ["temporal", "baseline"],
   ["restate", "baseline"],
@@ -78,6 +82,26 @@ export class PlatformRegistry {
           connectivity: await registration.runner.checkConnection(),
         })),
     );
+  }
+
+  /**
+   * Checks one selected platform without requiring every optional platform
+   * service to be healthy. The browser uses this seam for platform-local
+   * readiness; aggregate `/health` remains useful for whole-lab diagnostics.
+   */
+  async checkConnection(platform: string, variant: string): Promise<PlatformConnection | null> {
+    const registration = this.find(platform, variant);
+    if (!registration) return null;
+    if (!registration.runner) {
+      return {
+        ...registration,
+        connectivity: { reachable: false, message: "Platform runner is not registered." },
+      };
+    }
+    return {
+      ...registration,
+      connectivity: await registration.runner.checkConnection(),
+    };
   }
 }
 

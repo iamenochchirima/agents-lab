@@ -19,6 +19,8 @@ import { InngestBaselineRunner } from "../../platforms/inngest/runner-adapter/in
 import { TriggerDevBaselineRunner } from "../../platforms/trigger-dev/runner-adapter/trigger-dev-runner.js";
 import { HatchetBaselineRunner } from "../../platforms/hatchet/runner-adapter/hatchet-runner.js";
 import { VercelWorkflowsBaselineRunner } from "../../platforms/vercel-workflows/runner-adapter/vercel-workflows-runner.js";
+import { ContextService, ContextSessionStore, CharacterTokenEstimator } from "../../capabilities/context/index.js";
+import { OpenRouterModelCatalog } from "../../models/openrouter/catalog.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
@@ -62,9 +64,18 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     vercelWorkflowsRunner,
   ] as const;
   const evidence = new RunEvidenceStore(config.runsRoot);
+  const context = new ContextService(new ContextSessionStore(config.contextRoot), new CharacterTokenEstimator());
   const registry = new PlatformRegistry(runners);
-  const service = new RunService({ config, evidence, registry });
-  const app = buildControlPlaneServer({ config, service, evidence, registry });
+  const modelCatalog = new OpenRouterModelCatalog({
+    apiKey: config.openRouter.apiKey,
+    baseUrl: config.openRouter.baseUrl,
+    timeoutMs: config.openRouter.catalogTimeoutMs,
+    cacheTtlMs: config.openRouter.catalogCacheTtlMs,
+    resultLimit: config.openRouter.catalogLimit,
+    defaultModel: config.openRouter.defaultModel,
+  });
+  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry });
+  const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry });
 
   return {
     app,

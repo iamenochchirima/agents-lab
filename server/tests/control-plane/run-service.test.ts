@@ -15,6 +15,7 @@ import type {
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
+import type { ModelMetadataResolver } from "../../src/control-plane/ports/model-metadata.js";
 import type {
   PlatformRunner,
   RunnerCancellationResult,
@@ -28,6 +29,8 @@ class FakeRunner implements PlatformRunner {
   readonly variant = "baseline" as const;
   state: "running" | "completed" | "cancelled" = "completed";
   unavailable = false;
+  unavailableOnFirstInspection = false;
+  missingExecution = false;
 
   manifestConfiguration(): Readonly<Record<string, unknown>> {
     return { profile: "test" };
@@ -51,7 +54,10 @@ class FakeRunner implements PlatformRunner {
   }
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
-    if (this.unavailable) {
+    if (this.missingExecution) {
+      throw new Error("Temporal execution was not found.");
+    }
+    if (this.unavailable || this.unavailableOnFirstInspection) {
       throw new Error("Temporal unavailable");
     }
 
@@ -69,13 +75,113 @@ class FakeRunner implements PlatformRunner {
   }
 }
 
-async function withService(run: (service: RunService, store: RunEvidenceStore, runner: FakeRunner, root: string) => Promise<void>): Promise<void> {
+class EvidenceOutageStore extends RunEvidenceStore {
+  failResultWrites = false;
+
+  override async writeResult(result: RunResult): Promise<void> {
+    if (this.failResultWrites) {
+      throw Object.assign(new Error("evidence disk is unavailable"), { code: "EIO" });
+    }
+    return super.writeResult(result);
+  }
+}
+
+class ReferenceOutageStore extends RunEvidenceStore {
+  failReferenceWrites = false;
+
+  override async writeExecutionReference(runId: string, reference: PlatformExecutionReference): Promise<void> {
+    if (this.failReferenceWrites) {
+      throw Object.assign(new Error("native evidence disk is unavailable"), { code: "EIO" });
+    }
+    return super.writeExecutionReference(runId, reference);
+  }
+}
+
+class RecoveringRestateRunner implements PlatformRunner {
+  readonly platform = "restate" as const;
+  readonly variant = "baseline" as const;
+  visible = false;
+
+  manifestConfiguration(): Readonly<Record<string, unknown>> {
+    return { serviceName: "AgentLabRestateBaseline", workflowHandler: "run" };
+  }
+
+  validate(_manifest: RunManifest): RunnerValidationResult {
+    return { valid: true, reason: null };
+  }
+
+  async checkConnection(): Promise<RunnerConnectivity> {
+    return { reachable: true, message: "reachable" };
+  }
+
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
+    return {
+      platform: manifest.platform,
+      variant: manifest.variant,
+      executionId: `agentlab:${manifest.runId}`,
+      native: { submissionOutcome: "unknown", workflowKey: `agentlab:${manifest.runId}` },
+    };
+  }
+
+  async cancel(_reference: PlatformExecutionReference, _reason: string): Promise<RunnerCancellationResult> {
+    return { accepted: false, alreadyTerminal: false, message: "not used" };
+  }
+
+  async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
+    const runId = reference.executionId.replace("agentlab:", "");
+    if (!this.visible) {
+      return {
+        status: "failed",
+        reference,
+        eventIntents: [{
+          source: "restate-runner",
+          sourceSequence: 1,
+          kind: "RunSubmissionOutcomeUnknown",
+          runId,
+          occurredAt: "2026-09-16T10:00:00.000Z",
+          payload: { code: "RESTATE_INGRESS_UNKNOWN" },
+        }],
+        result: {
+          schemaVersion: 1,
+          runId,
+          status: "reconciliation_required",
+          startedAt: null,
+          finishedAt: "2026-09-16T10:00:00.000Z",
+          output: null,
+          error: { code: "RESTATE_SUBMISSION_OUTCOME_UNKNOWN", message: "unknown", failureKind: "outcome_unknown", retryable: true },
+          attemptCount: 0,
+          usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+        },
+        trajectory: { schemaVersion: 1, runId, phases: [] },
+        metrics: { schemaVersion: 1, runId, status: "reconciliation_required", durationMs: null, modelCallCount: 0, modelAttemptCount: 0, inputTokens: null, outputTokens: null, totalTokens: null, costUsd: null },
+      };
+    }
+
+    const completed = resultFor(runId, "completed");
+    return {
+      status: "completed",
+      reference: { ...reference, native: { ...reference.native, submissionOutcome: "accepted" } },
+      eventIntents: [event(runId, 1, "RunCompleted", "restate-workflow")],
+      result: completed,
+      trajectory: { schemaVersion: 1, runId, phases: [{ name: "model_request", startedAt: completed.startedAt!, finishedAt: completed.finishedAt }] },
+      metrics: { ...calculateTestMetrics(completed), modelCallCount: 1, modelAttemptCount: 1 },
+    };
+  }
+}
+
+async function withService(
+  run: (service: RunService, store: RunEvidenceStore, runner: FakeRunner, root: string) => Promise<void>,
+  options: { readonly allowOpenRouter?: boolean; readonly modelMetadata?: ModelMetadataResolver } = {},
+): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "agentlab-run-service-"));
   try {
     const runner = new FakeRunner();
     const store = new RunEvidenceStore(root);
-    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
-    const service = new RunService({ config, evidence: store, registry: new PlatformRegistry([runner]) });
+    const config = loadServerConfig({
+      AGENTLAB_RUN_ROOT: root,
+      ...(options.allowOpenRouter ? { AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake,openrouter" } : {}),
+    }, "/repo");
+    const service = new RunService({ config, evidence: store, modelMetadata: options.modelMetadata, registry: new PlatformRegistry([runner]) });
     await run(service, store, runner, root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -97,6 +203,26 @@ test("creates a run before dispatch and projects a completed runner result", asy
     assert.ok(view.executionReference);
     assert.ok(view.metrics);
     assert.equal((await store.readSnapshot(view.runId)).trajectory?.runId, view.runId);
+  });
+});
+
+test("freezes server-resolved model context metadata in the run manifest", async () => {
+  await withService(async (service) => {
+    const view = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Use the resolved model metadata." },
+      model: { provider: "openrouter", model: "openai/example", contextWindowTokens: 1 },
+    });
+
+    assert.equal(view.manifest.model.contextWindowTokens, 128_000);
+  }, {
+    allowOpenRouter: true,
+    modelMetadata: {
+      async resolve() {
+        return { contextWindowTokens: 128_000 };
+      },
+    },
   });
 });
 
@@ -129,6 +255,130 @@ test("reconciliation projects workflow intents once after a server restart", asy
     assert.equal(events.filter((event) => event.source === "temporal-workflow").length, 5);
     assert.equal(events.length, 7);
   });
+});
+
+test("reconciliation replaces a provisional Restate outcome when the workflow becomes visible", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-restate-recovery-"));
+  try {
+    const runner = new RecoveringRestateRunner();
+    const store = new RunEvidenceStore(root);
+    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
+    const service = new RunService({ config, evidence: store, registry: new PlatformRegistry([runner]) });
+
+    const provisional = await service.createRun({
+      platform: "restate",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Recover this submission." },
+      model: { provider: "fake", model: "fake-success" },
+    });
+    assert.equal(provisional.status, "reconciliation_required");
+    assert.equal(provisional.result?.error?.failureKind, "outcome_unknown");
+    assert.equal(provisional.metrics, null);
+
+    runner.visible = true;
+    const recovered = await service.getRun(provisional.runId);
+    assert.equal(recovered.status, "completed");
+    assert.equal(recovered.result?.output, "fake output");
+    assert.equal(recovered.trajectory?.phases.length, 1);
+    assert.equal(recovered.metrics?.modelCallCount, 1);
+    assert.deepEqual((await store.readEvents(provisional.runId)).map((item) => item.kind), [
+      "RunCreated",
+      "RunDispatched",
+      "RunSubmissionOutcomeUnknown",
+      "RunCompleted",
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an immediate post-dispatch outage returns the durable queued projection", async () => {
+  await withService(async (service, store, runner) => {
+    runner.unavailableOnFirstInspection = true;
+    const view = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Keep the accepted run visible." },
+      model: { provider: "fake", model: "fake-success" },
+    });
+
+    assert.equal(view.status, "queued");
+    assert.equal(view.result, null);
+    assert.equal(view.executionReference?.executionId, `agentlab:${view.runId}`);
+    assert.deepEqual((await store.readEvents(view.runId)).map((item) => item.kind), ["RunCreated", "RunDispatched"]);
+    assert.equal(view.projection.state, "stale");
+  });
+});
+
+test("an accepted dispatch with an unretained reference is not reported as dispatch failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-reference-outage-"));
+  try {
+    const runner = new FakeRunner();
+    runner.state = "running";
+    const store = new ReferenceOutageStore(root);
+    store.failReferenceWrites = true;
+    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
+    const service = new RunService({ config, evidence: store, registry: new PlatformRegistry([runner]) });
+
+    const accepted = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Keep the accepted execution honest." },
+      model: { provider: "fake", model: "fake-success" },
+    });
+
+    assert.equal(accepted.status, "queued");
+    assert.equal(accepted.result, null);
+    assert.equal(accepted.executionReference, null);
+    assert.equal(accepted.projection.state, "stale");
+    assert.match(accepted.projection.reason ?? "", /execution reference could not be retained/);
+    assert.equal(accepted.events.some((event) => event.kind === "RunFailed"), false);
+
+    store.failReferenceWrites = false;
+    const reconciled = await service.getRun(accepted.runId);
+    assert.equal(reconciled.status, "reconciliation_required");
+    assert.equal(reconciled.result?.error?.failureKind, "reconciliation");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an evidence projection outage preserves the last known view and reconciles later", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-evidence-outage-"));
+  try {
+    const runner = new FakeRunner();
+    runner.state = "running";
+    runner.unavailableOnFirstInspection = true;
+    const store = new EvidenceOutageStore(root);
+    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
+    const service = new RunService({ config, evidence: store, registry: new PlatformRegistry([runner]) });
+
+    const created = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Preserve the projection." },
+      model: { provider: "fake", model: "fake-success" },
+    });
+    assert.equal(created.status, "queued");
+    assert.equal(created.projection.state, "stale");
+
+    runner.unavailableOnFirstInspection = false;
+    runner.state = "completed";
+    store.failResultWrites = true;
+    const stale = await service.getRun(created.runId);
+    assert.equal(stale.status, "queued");
+    assert.equal(stale.result, null);
+    assert.equal(stale.projection.state, "stale");
+    assert.match(stale.projection.reason ?? "", /evidence is temporarily unavailable/);
+
+    store.failResultWrites = false;
+    const recovered = await service.getRun(created.runId);
+    assert.equal(recovered.status, "completed");
+    assert.equal(recovered.projection.state, "current");
+    assert.equal(recovered.result?.output, "fake output");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("cancellation is routed to the runner and becomes a terminal result", async () => {
@@ -185,6 +435,25 @@ test("missing execution references are explicit and Temporal outages do not fabr
   });
 });
 
+test("a retained execution that disappears becomes reconciliation-required", async () => {
+  await withService(async (service, _store, runner) => {
+    runner.missingExecution = true;
+    const run = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "The retained execution disappeared." },
+      model: { provider: "fake", model: "fake-success" },
+    });
+
+    assert.equal(run.status, "reconciliation_required");
+    assert.equal(run.result?.error?.failureKind, "reconciliation");
+    assert.equal(run.events.some((event) => event.kind === "RunReconciliationRequired"), true);
+    const repeated = await service.getRun(run.runId);
+    assert.deepEqual(repeated.result, run.result);
+    assert.equal(repeated.status, "reconciliation_required");
+  });
+});
+
 function referenceFor(manifest: RunManifest): PlatformExecutionReference {
   return {
     platform: manifest.platform,
@@ -208,9 +477,9 @@ function eventsFor(runId: string, state: FakeRunner["state"]): readonly RunEvent
   return [...base, event(runId, 3, "ModelCompleted"), event(runId, 4, "AgentCompleted"), event(runId, 5, "RunCompleted")];
 }
 
-function event(runId: string, sourceSequence: number, kind: string): RunEventIntent {
+function event(runId: string, sourceSequence: number, kind: string, source = "temporal-workflow"): RunEventIntent {
   return {
-    source: "temporal-workflow",
+    source,
     sourceSequence,
     kind,
     runId,
@@ -231,5 +500,20 @@ function resultFor(runId: string, state: Exclude<FakeRunner["state"], "running">
     error: status === "cancelled" ? { code: "RUN_CANCELLED", message: "cancelled", failureKind: "cancelled", retryable: false } : null,
     attemptCount: 1,
     usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+  };
+}
+
+function calculateTestMetrics(result: RunResult) {
+  return {
+    schemaVersion: 1 as const,
+    runId: result.runId,
+    status: result.status,
+    durationMs: 1,
+    modelCallCount: 0,
+    modelAttemptCount: result.attemptCount,
+    inputTokens: result.usage.inputTokens,
+    outputTokens: result.usage.outputTokens,
+    totalTokens: result.usage.totalTokens,
+    costUsd: null,
   };
 }
