@@ -3627,7 +3627,7 @@ test("directory-tree deletion, restore, and exact-token purge are approval-gated
   const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 10, maxTreeEntries: 20, maxTreeBytes: 1_000, maxTreeDepth: 5 });
   const registry = new ToolRegistry(workspace, 2_000);
   const call = { callId: "delete_tree_call", name: "delete_directory_tree", argumentsJson: JSON.stringify({ path: "project" }) };
-  let proposal: { operation?: string; risk?: string; manifestHash?: string; entryCount?: number } | undefined;
+  let proposal: { operation?: string; risk?: string; manifestHash?: string; entryCount?: number; totalBytes?: number; maxBytes?: number } | undefined;
   const denied = await registry.execute(call, {
     onMutation: async (event) => { if (event.type === "proposed") proposal = event.request; },
     approveMutation: async () => ({ decision: "deny", reason: "review later" }),
@@ -3637,6 +3637,8 @@ test("directory-tree deletion, restore, and exact-token purge are approval-gated
   assert.equal(proposal?.risk, "delete-directory-tree");
   assert.equal(typeof proposal?.manifestHash, "string");
   assert.equal(proposal?.entryCount, 3);
+  assert.equal(proposal?.totalBytes, Buffer.byteLength("export const ready = true;\n"));
+  assert.equal(proposal?.maxBytes, 1_000);
   assert.equal((await workspace.stat("project")).kind, "directory");
 
   const deleted = await registry.execute(call, { approveMutation: async () => ({ decision: "allow-once" }) });
@@ -3646,8 +3648,17 @@ test("directory-tree deletion, restore, and exact-token purge are approval-gated
   assert.equal(deletion.entryCount, 3);
   await assert.rejects(() => workspace.stat("project"));
 
-  const restored = await registry.execute({ callId: "restore_tree_call", name: "restore_directory", argumentsJson: JSON.stringify({ mutationId: deletion.restoreToken }) }, { approveMutation: async () => ({ decision: "allow-once" }) });
+  let restoreProposal: { operation?: string; manifestHash?: string; entryCount?: number; totalBytes?: number; maxBytes?: number } | undefined;
+  const restored = await registry.execute({ callId: "restore_tree_call", name: "restore_directory", argumentsJson: JSON.stringify({ mutationId: deletion.restoreToken }) }, {
+    onMutation: async (event) => { if (event.type === "proposed") restoreProposal = event.request; },
+    approveMutation: async () => ({ decision: "allow-once" }),
+  });
   assert.equal(restored.ok, true);
+  assert.equal(restoreProposal?.operation, "restore-directory");
+  assert.equal(typeof restoreProposal?.manifestHash, "string");
+  assert.equal(restoreProposal?.entryCount, 3);
+  assert.equal(restoreProposal?.totalBytes, Buffer.byteLength("export const ready = true;\n"));
+  assert.equal(restoreProposal?.maxBytes, 1_000);
   assert.equal((await workspace.stat("project")).kind, "directory");
 
   const second = await registry.execute(call, { approveMutation: async () => ({ decision: "allow-once" }) });
