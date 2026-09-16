@@ -58,6 +58,58 @@ test("Mastra runs a real Agent.generate call and duplicate start is idempotent",
   assert.equal(inspection.eventIntents.filter((event) => event.kind === "ModelRequested").length, 1);
 });
 
+test("Mastra Agent.generate sends the selected OpenRouter model and preserves normalized evidence", async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+  const selectedModel = "openai/gpt-4o-mini";
+
+  process.env.OPENROUTER_API_KEY = "test-openrouter-secret";
+  globalThis.fetch = (async (input, init) => {
+    const request = new Request(input, init);
+    const body = JSON.parse(await request.text()) as Record<string, unknown>;
+    requests.push({ url: request.url, headers: request.headers, body });
+    return new Response(JSON.stringify({
+      id: "chatcmpl-mastra-test",
+      model: selectedModel,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "OpenRouter response through Mastra." },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const runner = new MastraBaselineRunner({
+      environment: { OPENROUTER_API_KEY: "test-openrouter-secret" },
+    });
+    const manifest = manifestFor(runner, selectedModel, "openrouter", "mastra-openrouter-native");
+    const reference = await runner.start(manifest);
+    const inspection = await waitForTerminal(runner, reference);
+
+    assert.equal(inspection.status, "completed");
+    assert.equal(inspection.result?.output, "OpenRouter response through Mastra.");
+    assert.deepEqual(inspection.result?.usage, { inputTokens: 7, outputTokens: 5, totalTokens: 12 });
+    assert.equal(inspection.metrics?.modelCallCount, 1);
+    assert.equal(reference.native.model, selectedModel);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.url.endsWith("/chat/completions"), true);
+    assert.equal(requests[0]?.body.model, selectedModel);
+    assert.equal(requests[0]?.headers.get("authorization"), "Bearer test-openrouter-secret");
+    assert.equal(JSON.stringify(inspection).includes("test-openrouter-secret"), false);
+    assert.equal(JSON.stringify(reference).includes("test-openrouter-secret"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+  }
+});
+
 test("Mastra maps provider failure and ambiguous provider outcomes safely", async () => {
   const failedRunner = new MastraBaselineRunner();
   const failed = await waitForTerminal(failedRunner, await failedRunner.start(manifestFor(failedRunner, "fake-provider-failure")));
