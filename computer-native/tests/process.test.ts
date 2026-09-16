@@ -172,6 +172,49 @@ test("a launch-record acknowledgement failure terminates the spawned child", asy
   }
 });
 
+test("an asynchronous output acknowledgement failure is surfaced and terminates the child", async () => {
+  const harness = await createHarness();
+  try {
+    const prepared = await harness.policy.prepare({
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('output'); setTimeout(() => require('node:fs').writeFileSync('output-ack-failure-marker.txt', 'ran'), 300)"],
+    }, "execution_output_ack_failure");
+    const runner = new LocalProcessRunner((value) => harness.policy.verify(value));
+    await assert.rejects(
+      () => runner.run(prepared, undefined, async (event) => {
+        if (event.type === "output") throw new Error("simulated output acknowledgement failure");
+      }),
+      /simulated output acknowledgement failure/u,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await assert.rejects(() => readFile(path.join(harness.root, "output-ack-failure-marker.txt"), "utf8"), { code: "ENOENT" });
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("a termination acknowledgement failure is surfaced after the child is stopped", async () => {
+  const harness = await createHarness();
+  try {
+    const prepared = await harness.policy.prepare({
+      command: process.execPath,
+      args: ["-e", "setTimeout(() => require('node:fs').writeFileSync('termination-ack-failure-marker.txt', 'ran'), 300)"],
+      timeoutMs: 25,
+    }, "execution_termination_ack_failure");
+    const runner = new LocalProcessRunner((value) => harness.policy.verify(value));
+    await assert.rejects(
+      () => runner.run(prepared, undefined, async (event) => {
+        if (event.type === "terminating") throw new Error("simulated termination acknowledgement failure");
+      }),
+      /simulated termination acknowledgement failure/u,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await assert.rejects(() => readFile(path.join(harness.root, "termination-ack-failure-marker.txt"), "utf8"), { code: "ENOENT" });
+  } finally {
+    await harness.cleanup();
+  }
+});
+
 test("process policy rejects outside and symlink working directories", async () => {
   const harness = await createHarness();
   const outside = await mkdtemp(path.join(os.tmpdir(), "computer-native-process-outside-"));

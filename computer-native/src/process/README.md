@@ -18,8 +18,10 @@ only because its filesystem timestamp did not change at the available precision.
 `shell: false`, ignores stdin, captures bounded stdout/stderr, and terminates the
 process group on timeout, cancellation, or output overflow where the platform permits
 it. If the durable `started` acknowledgement fails after spawn, it also terminates the
-child before returning that failure. A termination that cannot be confirmed is reported
-as `ambiguous`; it is never silently treated as success.
+child before returning that failure. Asynchronous lifecycle callbacks are delivered in
+order and are awaited; an output or termination acknowledgement failure stops the child
+and is surfaced instead of becoming an unhandled rejection. A termination that cannot
+be confirmed is reported as `ambiguous`; it is never silently treated as success.
 
 `ToolRegistry` exposes this through `run_command`. The runtime supplies an approval
 callback and persists the process events under the turn's `executions/` directory.

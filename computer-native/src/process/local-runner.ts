@@ -31,14 +31,39 @@ export class LocalProcessRunner implements ProcessRunner {
     let abortListener: (() => void) | undefined;
     let resolveClose: ((value: { readonly code: number | null; readonly signal: NodeJS.Signals | null; readonly error?: Error }) => void) | undefined;
     let child: ReturnType<typeof spawn>;
+    let eventChain = Promise.resolve();
+    let eventFailed = false;
+    let eventFailure: unknown;
+    let requestTermination: (reason: "timeout" | "output-limit" | "cancelled", emitEvent?: boolean) => void;
     const closePromise = new Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null; readonly error?: Error }>((resolve) => {
       resolveClose = resolve;
     });
 
-    const requestTermination = (reason: "timeout" | "output-limit" | "cancelled", emitEvent = true): void => {
+    const dispatchEvent = (event: ProcessEvent): Promise<void> => {
+      const previous = eventChain;
+      const next = previous.then(async () => {
+        if (eventFailed) return;
+        try {
+          await onEvent?.(event);
+        } catch (error) {
+          eventFailed = true;
+          eventFailure = error;
+          // Output and termination events are emitted after the child has
+          // started. Their acknowledgement is part of the observation
+          // boundary: stop the child and surface the failure instead of
+          // leaving an unhandled rejection or an untracked host process.
+          if (event.type !== "started" && event.type !== "completed") requestTermination("cancelled", false);
+          throw error;
+        }
+      });
+      eventChain = next.catch(() => undefined);
+      return next;
+    };
+
+    requestTermination = (reason: "timeout" | "output-limit" | "cancelled", emitEvent = true): void => {
       if (terminationRequested || childExited) return;
       terminationRequested = true;
-      if (emitEvent) onEvent?.({ type: "terminating", executionId: prepared.executionId, reason });
+      if (emitEvent) void dispatchEvent({ type: "terminating", executionId: prepared.executionId, reason }).catch(() => undefined);
       try {
         if (childPid !== undefined && process.platform !== "win32") process.kill(-childPid, "SIGTERM");
         else child.kill("SIGTERM");
@@ -103,7 +128,7 @@ export class LocalProcessRunner implements ProcessRunner {
         if (stream === "stdout") stdout.push(value);
         else stderr.push(value);
         capturedBytes += accepted;
-        onEvent?.({ type: "output", executionId: prepared.executionId, stream, bytes: accepted });
+        void dispatchEvent({ type: "output", executionId: prepared.executionId, stream, bytes: accepted }).catch(() => undefined);
       }
       if (accepted < chunk.byteLength) {
         outputLimited = true;
@@ -120,7 +145,7 @@ export class LocalProcessRunner implements ProcessRunner {
     });
 
     try {
-      await onEvent?.({ type: "started", executionId: prepared.executionId, pid: childPid, ...(processIdentity ? { processIdentity } : {}) });
+      await dispatchEvent({ type: "started", executionId: prepared.executionId, pid: childPid, ...(processIdentity ? { processIdentity } : {}) });
     } catch (error) {
       if (isRuntimeInterruptionError(error) && error.preserveSideEffect) throw error;
       // The started event is the acknowledgement boundary for durable launch
@@ -153,6 +178,8 @@ export class LocalProcessRunner implements ProcessRunner {
     if (terminationTimer) clearTimeout(terminationTimer);
     if (forcedTerminationTimer) clearTimeout(forcedTerminationTimer);
     if (abortListener) signal?.removeEventListener("abort", abortListener);
+    await eventChain;
+    if (eventFailed) throw eventFailure;
     const result: ProcessResult = {
       executionId: prepared.executionId,
       state: cancelled ? "cancelled" : "failed",
@@ -183,7 +210,7 @@ export class LocalProcessRunner implements ProcessRunner {
       : !timeout && !outputLimited && !cancelled && !closed.error && !closed.signal
         ? { ...result, state: "completed", ...(closed.code !== 0 ? { errorCode: "process-exit" as const, errorMessage: "The process exited with code " + (closed.code ?? "unknown") + "." } : {}) }
         : result;
-    await onEvent?.({ type: "completed", executionId: prepared.executionId, result: finalResult });
+    await dispatchEvent({ type: "completed", executionId: prepared.executionId, result: finalResult });
     return finalResult;
   }
 }
