@@ -13,16 +13,23 @@ interface OpenRouterToolCallDelta {
   readonly function?: { readonly name?: unknown; readonly arguments?: unknown };
 }
 
-function numberOrUndefined(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+function usageTokenCount(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new ModelProviderError(`OpenRouter returned an invalid ${field} usage count.`, { code: "provider-incomplete", retryable: false });
+  }
+  return value;
 }
 
 function usageFrom(value: OpenRouterChunk["usage"]): ModelUsage | undefined {
   if (!value) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new ModelProviderError("OpenRouter returned invalid usage metadata.", { code: "provider-incomplete", retryable: false });
+  }
   return {
-    inputTokens: numberOrUndefined(value.prompt_tokens),
-    outputTokens: numberOrUndefined(value.completion_tokens),
-    totalTokens: numberOrUndefined(value.total_tokens),
+    inputTokens: usageTokenCount(value.prompt_tokens, "prompt_tokens"),
+    outputTokens: usageTokenCount(value.completion_tokens, "completion_tokens"),
+    totalTokens: usageTokenCount(value.total_tokens, "total_tokens"),
   };
 }
 

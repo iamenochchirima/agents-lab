@@ -2556,6 +2556,35 @@ test("OpenRouter adapter rejects malformed stream shapes as non-retryable provid
   );
 });
 
+test("OpenRouter adapter rejects malformed usage metadata as non-retryable provider errors", async () => {
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "hello" }],
+  };
+  const malformedUsageChunks = [
+    '{"choices":[],"usage":{"prompt_tokens":-1}}',
+    '{"choices":[],"usage":{"completion_tokens":1.5}}',
+    '{"choices":[],"usage":{"total_tokens":"3"}}',
+    '{"choices":[],"usage":[]}',
+  ];
+  for (const chunk of malformedUsageChunks) {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`data: ${chunk}\n\ndata: [DONE]\n\n`));
+        controller.close();
+      },
+    });
+    const provider = new OpenRouterModelProvider("openai/example", "secret", async () => new Response(stream, { status: 200 }));
+    await assert.rejects(
+      async () => { for await (const _event of provider.stream(request, new AbortController().signal)) void _event; },
+      (error: unknown) => error instanceof ModelProviderError && error.code === "provider-incomplete" && error.retryable === false,
+    );
+  }
+});
+
 test("OpenRouter adapter classifies a streamed refusal without retrying it", async () => {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
