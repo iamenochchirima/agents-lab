@@ -48,6 +48,10 @@ The active platform work is coordinated by
 and AWS Step Functions remain active; the other local platform baselines from this
 batch are archived below.
 
+The one-command local comparison stack is documented in the
+[completed launcher plan](completed/local-stack-launcher.md). It starts the priority
+local platform services before the shared Lab server and web app.
+
 The current shared model slice is tracked in the
 [OpenRouter model selection plan](active/openrouter-model-selection.md).
 

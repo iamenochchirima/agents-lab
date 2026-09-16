@@ -6,18 +6,25 @@ Scripts should state their inputs, side effects, required tools, and safe cleanu
 
 ## Local stack
 
-Run the local UI, Lab server, and Temporal worker from the repository root. Start
-Temporal separately first:
+Run the local comparison stack from the repository root:
 
 ```bash
-temporal server start-dev
 ./scripts/run_local_stack.sh
 ```
 
-The launcher checks Temporal, starts each Lab process with separate temporary logs,
-waits for the server, web app, and worker readiness checks, and stops only the processes
-it started when interrupted. Temporal remains separately managed. Services can also be
-selected explicitly:
+The default command starts or reuses local Temporal, then starts native Restate and
+registers its service, the LangGraph Python service, Vercel Workflows, the Lab server,
+the Temporal worker, and the web app. It waits for every required local service before
+printing the ready message. Each process has a separate temporary log file. Running the
+launcher again stops an existing Agent Harness Lab stack on its configured ports before
+starting a fresh one, including stale Temporal workers that do not own a port; an
+already-running Temporal server is left alone.
+
+The default stack covers the runnable local comparison profiles. Inngest, DBOS, and
+Trigger.dev remain explicit commands because they require their own dev server,
+PostgreSQL, or credentials respectively. The server's aggregate `/health` endpoint can
+therefore report `degraded` while `/ready` and the priority platform health endpoints
+are ready. Services can also be selected explicitly:
 
 ```bash
 ./scripts/run_local_stack.sh frontend
@@ -25,6 +32,10 @@ selected explicitly:
 # `api` remains a compatibility alias:
 ./scripts/run_local_stack.sh api
 ./scripts/run_local_stack.sh worker
+./scripts/run_local_stack.sh restate-server
+./scripts/run_local_stack.sh restate
+./scripts/run_local_stack.sh langgraph
+./scripts/run_local_stack.sh vercel-workflows
 ./scripts/run_local_stack.sh check-temporal
 ./scripts/run_local_stack.sh --help
 ```
@@ -40,8 +51,22 @@ The full Hatchet Compose profile is only needed when studying a separately
 deployed Hatchet server; see the platform's [local-development guide](../server/src/platforms/hatchet/docs/local-development.md).
 
 The launcher checks for installed frontend/server dependencies and prints the temporary
-log directory when the stack stops. If Temporal is unavailable, it exits with the exact
-local start command instead of starting a non-functional worker.
+log directory when the stack stops. If the local LangGraph environment is missing, it
+creates the ignored `server/src/platforms/langgraph/.venv` and installs the locked
+requirements automatically. Set `AGENTLAB_LANGGRAPH_PYTHON` to use an already prepared
+environment instead.
+
+If a required local service fails to become ready, the launcher stops the processes it
+started and points to the relevant log files instead of claiming that the stack works.
+
+Port replacement is limited to processes whose command belongs to this repository. If
+an unrelated application owns a configured port, the launcher leaves it untouched and
+reports the conflict.
+
+The launcher fails before starting if the requested web or server port is already in
+use. This prevents Vite from silently moving to another port while the launcher still
+reports the configured URL, which can otherwise produce stale HMR and duplicate-stack
+errors in the browser.
 
 The server and Temporal worker load `server/.env` when it exists. That file is ignored by
 Git; use `server/.env.example` as the safe configuration reference. Explicit environment
