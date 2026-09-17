@@ -21,6 +21,7 @@ import { HatchetBaselineRunner } from "../../platforms/hatchet/runner-adapter/ha
 import { VercelWorkflowsBaselineRunner } from "../../platforms/vercel-workflows/runner-adapter/vercel-workflows-runner.js";
 import { ContextService, ContextSessionStore, CharacterTokenEstimator } from "../../capabilities/context/index.js";
 import { OpenRouterModelCatalog } from "../../models/openrouter/catalog.js";
+import { createStudioModule } from "../../studio/index.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
@@ -76,6 +77,8 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   });
   const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry });
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry });
+  const studio = createStudioModule(config.studioRunsRoot);
+  studio.register(app);
 
   return {
     app,
