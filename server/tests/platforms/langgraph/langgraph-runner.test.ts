@@ -36,9 +36,13 @@ function response(body: unknown, init: ResponseInit = {}): Response {
 test("LangGraph runner maps start, inspect, and cancel without leaking native types", async () => {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
+  const requestBodies: Record<string, unknown>[] = [];
   globalThis.fetch = (async (input, init) => {
     const url = String(input);
     requests.push(`${init?.method ?? "GET"} ${url}`);
+    if (url.endsWith("/v1/runs") && init?.method === "POST" && typeof init.body === "string") {
+      requestBodies.push(JSON.parse(init.body) as Record<string, unknown>);
+    }
     if (url.endsWith("/health")) {
       return response({
         protocolVersion: 1,
@@ -114,13 +118,19 @@ test("LangGraph runner maps start, inspect, and cancel without leaking native ty
 
   try {
     const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: "http://127.0.0.1:2024" });
-    const runManifest = manifest(runner);
+    const runManifest: RunManifest = {
+      ...manifest(runner),
+      context: { systemInstruction: "Respond directly.", sessionId: "session-langgraph-test", turnId: "turn-1" },
+      capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
+    };
     assert.deepEqual(await runner.checkConnection(), { reachable: true, message: "ready" });
     assert.deepEqual(runner.validate(runManifest), { valid: true, reason: null });
 
     const reference = await runner.start(runManifest);
     assert.equal(reference.executionId, "langgraph:run-langgraph-test");
     assert.equal(reference.native["threadId"], "run-langgraph-test");
+    assert.deepEqual(requestBodies[0]?.context, { sessionId: "session-langgraph-test", turnId: "turn-1" });
+    assert.deepEqual(requestBodies[0]?.tools, { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 });
 
     const inspection = await runner.inspect(reference);
     assert.equal(inspection.status, "completed");
@@ -241,9 +251,11 @@ test("LangGraph StateGraph sends the selected OpenRouter model and preserves che
     const modelRequest = nativeInspection.events.find((event) => event.kind === "ModelRequested");
     assert.deepEqual(modelRequest?.payload, {
       node: "model",
+      round: 1,
       attempt: 1,
       provider: "openrouter",
       model: selectedModel,
+      toolCount: 1,
       requestSent: true,
     });
     assert.equal(provider.requests.length, 1);

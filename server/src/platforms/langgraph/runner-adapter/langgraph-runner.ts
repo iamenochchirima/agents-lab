@@ -69,6 +69,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       durability: "sqlite-sync",
       maxAttempts: this.options.maxAttempts,
       timeoutMs: this.options.timeoutMs,
+      tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 },
     };
   }
 
@@ -111,8 +112,6 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       runId: manifest.runId,
       prompt: manifest.task.prompt,
       systemInstruction: manifest.context.systemInstruction,
-      // The common manifest carries UI-only context metadata. LangGraph's
-      // strict wire model intentionally accepts only provider and model here.
       model: {
         provider: manifest.model.provider,
         model: manifest.model.model,
@@ -122,6 +121,13 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       durability: "sqlite-sync",
       maxAttempts: configuration.maxAttempts,
       timeoutMs: configuration.timeoutMs,
+      ...(manifest.context.sessionId && manifest.context.turnId ? {
+        context: {
+          sessionId: manifest.context.sessionId,
+          turnId: manifest.context.turnId,
+        },
+      } : {}),
+      tools: manifest.capabilities?.tools ?? configuration.tools,
     });
     try {
       const response = parseStartResponse(await this.request("/v1/runs", {
@@ -198,6 +204,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       protocolVersion: readPositiveInteger(configuration, "protocolVersion"),
       maxAttempts: readPositiveInteger(configuration, "maxAttempts"),
       timeoutMs: readPositiveInteger(configuration, "timeoutMs"),
+      tools: readToolConfiguration(configuration),
     };
   }
 }
@@ -207,6 +214,23 @@ interface LangGraphConfiguration {
   readonly protocolVersion: number;
   readonly maxAttempts: number;
   readonly timeoutMs: number;
+  readonly tools: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
+}
+
+function readToolConfiguration(value: Readonly<Record<string, unknown>>): LangGraphConfiguration["tools"] {
+  const candidate = value.tools;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 };
+  }
+  const tools = candidate as Record<string, unknown>;
+  const enabledNames = tools.enabledNames;
+  return {
+    enabledNames: Array.isArray(enabledNames)
+      ? enabledNames.filter((name): name is string => typeof name === "string")
+      : ["calculator"],
+    maxRounds: readPositiveInteger(tools, "maxRounds"),
+    maxCalls: readPositiveInteger(tools, "maxCalls"),
+  };
 }
 
 interface LangGraphExecutionReference {

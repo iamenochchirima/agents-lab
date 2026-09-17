@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -61,6 +62,63 @@ def test_service_runs_fake_graph_and_exposes_checkpoint_evidence(tmp_path: Path)
     with sqlite3.connect(tmp_path / "langgraph.sqlite") as connection:
         checkpoint_count = connection.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0]
     assert checkpoint_count >= 2
+
+
+def test_service_runs_a_calculator_tool_turn_through_the_graph(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        started = client.post(
+            "/v1/runs",
+            json={
+                **start_payload("run-service-tool", "fake-tool-call"),
+                "tools": {"enabledNames": ["calculator"], "maxRounds": 3, "maxCalls": 2},
+            },
+        )
+        assert started.status_code == 202
+        inspection = wait_for_terminal(client, "langgraph:run-service-tool")
+
+        assert inspection["status"] == "completed"
+        assert inspection["result"]["output"] == 'The calculator returned {"value":42}.'
+        assert inspection["metrics"]["modelCallCount"] == 2
+        kinds = [event["kind"] for event in inspection["events"]]
+        assert "ToolCallRequested" in kinds
+        assert "ToolCallValidated" in kinds
+        assert "ToolExecutionStarted" in kinds
+        assert "ToolExecutionCompleted" in kinds
+
+
+def test_service_reads_context_from_the_configured_canonical_transcript(tmp_path: Path) -> None:
+    context_root = tmp_path / "sessions"
+    session_root = context_root / "session-context"
+    session_root.mkdir(parents=True)
+    (session_root / "transcript.jsonl").write_text(
+        json.dumps({"role": "user", "content": "Remember conformance-4318."})
+        + "\n"
+        + json.dumps({"role": "assistant", "content": "Stored the test value."})
+        + "\n",
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            ServiceConfig(
+                state_dir=tmp_path / "state",
+                context_root=context_root,
+                default_timeout_ms=500,
+            )
+        )
+    )
+    with client:
+        request = start_payload("run-service-context", "fake-context")
+        request["prompt"] = "What value did you remember?"
+        request["context"] = {"sessionId": "session-context", "turnId": "turn-2"}
+        started = client.post("/v1/runs", json=request)
+        assert started.status_code == 202
+        inspection = wait_for_terminal(client, "langgraph:run-service-context")
+
+        assert inspection["status"] == "completed"
+        assert inspection["result"]["output"] == "conformance-4318"
+        prepared = next(event for event in inspection["events"] if event["kind"] == "ContextPrepared")
+        assert prepared["payload"]["contextSource"] == "canonical-transcript"
+        assert prepared["payload"]["quality"] == "estimated"
 
 
 def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) -> None:

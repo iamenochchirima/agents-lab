@@ -17,6 +17,7 @@ class ServiceConfig:
     host: str = "127.0.0.1"
     port: int = 2024
     state_dir: Path = DEFAULT_STATE_DIR
+    context_root: Path = PLATFORM_ROOT.parents[4] / "lab" / "sessions"
     service_version: str = "0.1.0"
     protocol_version: int = 1
     default_max_attempts: int = 2
@@ -30,10 +31,12 @@ class ServiceConfig:
     def from_environment(cls, environment: dict[str, str] | None = None) -> "ServiceConfig":
         values = os.environ if environment is None else environment
         state_dir = Path(values.get("AGENTLAB_LANGGRAPH_STATE_DIR", str(DEFAULT_STATE_DIR))).expanduser()
+        context_root = Path(values.get("AGENTLAB_CONTEXT_ROOT", str(PLATFORM_ROOT.parents[4] / "lab" / "sessions"))).expanduser()
         return cls(
             host=values.get("AGENTLAB_LANGGRAPH_HOST", "127.0.0.1"),
             port=_positive_int(values.get("AGENTLAB_LANGGRAPH_PORT"), 2024, "AGENTLAB_LANGGRAPH_PORT"),
             state_dir=state_dir,
+            context_root=context_root,
             default_max_attempts=_bounded_int(
                 values.get("AGENTLAB_LANGGRAPH_MAX_ATTEMPTS"), 2, 1, 5, "AGENTLAB_LANGGRAPH_MAX_ATTEMPTS"
             ),

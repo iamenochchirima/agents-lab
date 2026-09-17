@@ -20,6 +20,21 @@
       "type": "object", "additionalProperties": false, "required": ["provider", "model"],
       "properties": { "provider": { "$ref": "#/$defs/provider" }, "model": { "type": "string", "minLength": 1, "maxLength": 200 } }
     },
+    "context": {
+      "type": "object", "additionalProperties": false, "required": ["sessionId", "turnId"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+        "turnId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" }
+      }
+    },
+    "tools": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "enabledNames": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-z0-9_-]*$" } },
+        "maxRounds": { "type": "integer", "minimum": 1, "maximum": 32, "default": 6 },
+        "maxCalls": { "type": "integer", "minimum": 1, "maximum": 64, "default": 8 }
+      }
+    },
     "usage": {
       "type": "object", "additionalProperties": false, "required": ["inputTokens", "outputTokens", "totalTokens"],
       "properties": {
@@ -83,7 +98,8 @@
         "protocolVersion": { "$ref": "#/$defs/protocol" }, "runId": { "$ref": "#/$defs/identity" },
         "prompt": { "type": "string", "minLength": 1, "maxLength": 20000 }, "systemInstruction": { "type": "string", "minLength": 1, "maxLength": 20000 },
         "model": { "$ref": "#/$defs/model" }, "graph": { "const": "baseline" }, "threadId": { "$ref": "#/$defs/identity" },
-        "durability": { "const": "sqlite-sync" }, "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5 }, "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 300000 }
+        "durability": { "const": "sqlite-sync" }, "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5 }, "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 300000 },
+        "context": { "$ref": "#/$defs/context" }, "tools": { "$ref": "#/$defs/tools" }
       }
     },
     "healthResponse": {

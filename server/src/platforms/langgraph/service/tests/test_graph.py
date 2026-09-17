@@ -7,7 +7,15 @@ import pytest
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from variants.baseline import graph as graph_module
-from variants.baseline.graph import ModelConfig, ProviderError, build_baseline_graph, complete_openrouter
+from variants.baseline.graph import (
+    ModelConfig,
+    ProviderError,
+    ToolCall,
+    build_baseline_graph,
+    complete_openrouter,
+    complete_openrouter_response,
+    parse_openrouter_response,
+)
 
 
 def test_baseline_graph_uses_real_langgraph_and_persists_checkpoint(tmp_path: Path) -> None:
@@ -68,6 +76,60 @@ def test_pre_dispatch_retry_is_bounded_and_observable() -> None:
     assert [payload["attempt"] for payload in requests] == [1, 2]
 
 
+def test_tool_turn_uses_a_real_tool_node_and_returns_the_tool_result() -> None:
+    events: list[tuple[str, dict]] = []
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-tool-call", api_key=None, timeout_ms=5_000),
+            lambda kind, payload: events.append((kind, payload)),
+            lambda: False,
+            "run-tool-test",
+            2,
+            checkpointer,
+            tool_names=["calculator"],
+            max_rounds=3,
+            max_calls=2,
+        )
+        parts = list(
+            graph.stream(
+                {"prompt": "Calculate 17 plus 25.", "system_instruction": "Use tools when needed.", "output": "", "attempt_count": 0},
+                {"configurable": {"thread_id": "thread-tool-test"}, "run_id": "run-tool-test"},
+                stream_mode=["updates", "checkpoints", "tasks"],
+                version="v2",
+            )
+        )
+        snapshot = graph.get_state({"configurable": {"thread_id": "thread-tool-test"}})
+
+    assert any(part["type"] == "checkpoints" for part in parts)
+    assert snapshot.values["output"] == 'The calculator returned {"value":42}.'
+    assert [kind for kind, _ in events if kind == "ModelRequested"] == ["ModelRequested", "ModelRequested"]
+    assert [kind for kind, _ in events if kind == "ToolCallRequested"] == ["ToolCallRequested"]
+    assert any(kind == "ToolCallValidated" for kind, _ in events)
+    completed = next(payload for kind, payload in events if kind == "ToolExecutionCompleted")
+    assert completed["resultBytes"] == len('{"value":42}'.encode("utf-8"))
+
+
+def test_tool_call_is_rejected_when_the_tool_is_not_enabled() -> None:
+    with pytest.raises(ProviderError, match="not enabled"):
+        parse_openrouter_response(
+            {
+                "choices": [{
+                    "message": {
+                        "content": None,
+                        "tool_calls": [{
+                            "id": "call-1",
+                            "function": {
+                                "name": "calculator",
+                                "arguments": '{"operation":"add","left":17,"right":25}',
+                            },
+                        }],
+                    },
+                }],
+            },
+            [],
+        )
+
+
 class _FakeProviderResponse:
     def __init__(self, body: bytes) -> None:
         self.body = body
@@ -116,3 +178,52 @@ def test_openrouter_response_is_rejected_before_unbounded_state_growth() -> None
             complete_openrouter(_openrouter_model(), _openrouter_state(), lambda: False)
 
     assert error.value.code == "LANGGRAPH_RESPONSE_TOO_LARGE"
+
+
+def test_openrouter_tool_call_mapping_is_bounded_and_does_not_include_the_secret() -> None:
+    response_body = b'{"id":"provider-tool-1","choices":[{"message":{"content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"calculator","arguments":"{\\"operation\\":\\"add\\",\\"left\\":17,\\"right\\":25}"}}]}}],"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}'
+    with patch.object(graph_module.urllib_request, "urlopen", return_value=_FakeProviderResponse(response_body)) as urlopen:
+        response = complete_openrouter_response(_openrouter_model(), _openrouter_state(), lambda: False, ["calculator"])
+
+    assert response.output is None
+    assert response.tool_calls == [ToolCall("call-1", "calculator", {"operation": "add", "left": 17, "right": 25})]
+    request = urlopen.call_args.args[0]
+    request_body = json.loads(request.data)
+    assert request_body["tools"][0]["function"]["name"] == "calculator"
+    assert request_body["tool_choice"] == "auto"
+    assert b"test-openrouter-secret" not in request.data
+
+
+def test_openrouter_maps_internal_tool_messages_to_chat_completion_messages() -> None:
+    response_body = b'{"choices":[{"message":{"content":"The result is 42."}}]}'
+    state = {
+        "messages": [
+            {"role": "system", "content": "Answer directly."},
+            {"role": "user", "content": "Calculate 17 plus 25."},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": "call-1", "name": "calculator", "arguments": {"operation": "add", "left": 17, "right": 25}}],
+            },
+            {"role": "tool", "tool_call_id": "call-1", "name": "calculator", "content": '{"value":42}'},
+        ],
+    }
+    with patch.object(graph_module.urllib_request, "urlopen", return_value=_FakeProviderResponse(response_body)) as urlopen:
+        complete_openrouter_response(_openrouter_model(), state, lambda: False, ["calculator"])
+
+    request_body = json.loads(urlopen.call_args.args[0].data)
+    assert request_body["messages"][2] == {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "call-1",
+            "type": "function",
+            "function": {"name": "calculator", "arguments": '{"operation":"add","left":17,"right":25}'},
+        }],
+    }
+    assert request_body["messages"][3] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "name": "calculator",
+        "content": '{"value":42}',
+    }

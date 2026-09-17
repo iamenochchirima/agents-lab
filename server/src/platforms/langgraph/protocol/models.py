@@ -45,6 +45,26 @@ class ModelSelection(ProtocolModel):
     model: str = Field(min_length=1, max_length=200)
 
 
+class ContextSelection(ProtocolModel):
+    session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    turn_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+
+
+class ToolConfiguration(ProtocolModel):
+    enabled_names: list[str] = Field(default_factory=list, max_length=32)
+    max_rounds: int = Field(default=6, ge=1, le=32)
+    max_calls: int = Field(default=8, ge=1, le=64)
+
+    @model_validator(mode="after")
+    def validate_names(self) -> "ToolConfiguration":
+        if len(set(self.enabled_names)) != len(self.enabled_names):
+            raise ValueError("enabledNames must not contain duplicate tool names.")
+        for name in self.enabled_names:
+            if not name or not name.isascii() or not name[0].islower() or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for character in name):
+                raise ValueError("Tool names must use lowercase letters, numbers, hyphens, or underscores.")
+        return self
+
+
 class StartRunRequest(ProtocolModel):
     protocol_version: Literal[PROTOCOL_VERSION] = Field(default=PROTOCOL_VERSION)
     run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -56,6 +76,8 @@ class StartRunRequest(ProtocolModel):
     durability: Literal["sqlite-sync"] = "sqlite-sync"
     max_attempts: int = Field(default=2, ge=1, le=5)
     timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
+    context: ContextSelection | None = None
+    tools: ToolConfiguration | None = None
 
     @model_validator(mode="after")
     def thread_matches_run(self) -> "StartRunRequest":

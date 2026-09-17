@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { once } from "node:events";
 import { join } from "node:path";
@@ -35,6 +35,35 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
     const completed = await terminalResult(runner, await runner.start(manifest(runner, "fake-success", "integration-success")));
     assert.equal(completed.status, "completed");
     assert.match(completed.output ?? "", /^Fake response:/);
+
+    const toolInspection = await terminalInspection(runner, await runner.start({
+      ...manifest(runner, "fake-tool-call", "integration-tool"),
+      task: { kind: "prompt", prompt: "Calculate 17 plus 25." },
+      capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
+    }));
+    assert.equal(toolInspection.result?.status, "completed");
+    assert.equal(toolInspection.result?.output, 'The calculator returned {"value":42}.');
+    assert.equal(toolInspection.metrics?.modelCallCount, 2);
+    assert.ok(toolInspection.eventIntents.some((event) => event.kind === "ToolCallRequested"));
+    assert.ok(toolInspection.eventIntents.some((event) => event.kind === "ToolExecutionCompleted"));
+
+    const contextRoot = join(stateDirectory, "sessions");
+    await mkdir(join(contextRoot, "session-integration-context"), { recursive: true });
+    await writeFile(
+      join(contextRoot, "session-integration-context", "transcript.jsonl"),
+      `${JSON.stringify({ role: "user", content: "Remember conformance-4318." })}\n${JSON.stringify({ role: "assistant", content: "Stored the test value." })}\n`,
+      "utf8",
+    );
+    const contextInspection = await terminalInspection(runner, await runner.start({
+      ...manifest(runner, "fake-context", "integration-context"),
+      task: { kind: "prompt", prompt: "What value did you remember?" },
+      context: { systemInstruction: "Answer directly.", sessionId: "session-integration-context", turnId: "turn-2" },
+    }));
+    assert.equal(contextInspection.result?.status, "completed");
+    assert.equal(contextInspection.result?.output, "conformance-4318");
+    const prepared = contextInspection.eventIntents.find((event) => event.kind === "ContextPrepared");
+    assert.equal(prepared?.payload.contextSource, "canonical-transcript");
+    assert.equal(prepared?.payload.quality, "estimated");
 
     const retried = await terminalResult(runner, await runner.start(manifest(runner, "fake-pre-dispatch-retry", "integration-retry")));
     assert.equal(retried.status, "completed");
@@ -140,6 +169,18 @@ async function terminalResult(
   assert.fail(`LangGraph execution did not reach a terminal result: ${reference.executionId}`);
 }
 
+async function terminalInspection(
+  runner: LangGraphBaselineRunner,
+  reference: Awaited<ReturnType<LangGraphBaselineRunner["start"]>>,
+) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const inspection = await runner.inspect(reference);
+    if (inspection.result) return inspection;
+    await delay(25);
+  }
+  assert.fail(`LangGraph execution did not reach a terminal result: ${reference.executionId}`);
+}
+
 async function waitForStatus(
   runner: LangGraphBaselineRunner,
   reference: Awaited<ReturnType<LangGraphBaselineRunner["start"]>>,
@@ -169,6 +210,7 @@ async function startService(stateDirectory: string): Promise<ManagedService> {
       PYTHONPATH: platformRoot,
       AGENTLAB_LANGGRAPH_STATE_DIR: stateDirectory,
       AGENTLAB_LANGGRAPH_PORT: String(port),
+      AGENTLAB_CONTEXT_ROOT: join(stateDirectory, "sessions"),
     },
     stdio: "pipe",
   });

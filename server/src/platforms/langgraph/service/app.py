@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib.metadata
+import json
 import os
 import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException, Request
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -33,6 +35,7 @@ from service.config import ServiceConfig, python_version
 from service.store import RunConflictError, RunNotFoundError, SQLiteRunStore, canonical_json, now_iso
 from variants.baseline.graph import (
     CancellationError,
+    ConfigurationError,
     LangGraphModelError,
     ModelConfig,
     OutcomeUnknownError,
@@ -126,6 +129,8 @@ class LangGraphService:
         error: dict[str, Any] | None = None
         usage = {"inputTokens": None, "outputTokens": None, "totalTokens": None}
         try:
+            initial_messages = load_context_messages(self.config.context_root, request, emit)
+            tool_configuration = request.tools
             with SqliteSaver.from_conn_string(str(self.config.database_path)) as checkpointer:
                 graph = build_baseline_graph(
                     model=model,
@@ -134,6 +139,9 @@ class LangGraphService:
                     run_id=request.run_id,
                     max_attempts=request.max_attempts,
                     checkpointer=checkpointer,
+                    tool_names=list(tool_configuration.enabled_names) if tool_configuration else None,
+                    max_rounds=tool_configuration.max_rounds if tool_configuration else 6,
+                    max_calls=tool_configuration.max_calls if tool_configuration else 8,
                 )
                 graph_config = {
                     "configurable": {"thread_id": request.thread_id},
@@ -143,6 +151,7 @@ class LangGraphService:
                     {
                         "prompt": request.prompt,
                         "system_instruction": request.system_instruction,
+                        "messages": initial_messages,
                         "output": "",
                         "model_provider": request.model.provider,
                         "model_name": request.model.model,
@@ -407,3 +416,67 @@ def _output_characters(value: Any) -> int:
         return 0
     output = value.get("output")
     return len(output) if isinstance(output, str) else 0
+
+
+def load_context_messages(
+    context_root: Path,
+    request: StartRunRequest,
+    emit: Callable[[str, dict[str, Any]], None],
+) -> list[dict[str, Any]]:
+    """Read the canonical server transcript for this turn.
+
+    LangGraph receives the session identity, not a copied transcript. The
+    service reads the server-owned append-only transcript and keeps the native
+    graph checkpoint as its own execution state. Context compaction remains the
+    shared TypeScript capability's responsibility and is handled in a later
+    LangGraph handoff once the cross-process snapshot seam is added.
+    """
+    messages: list[dict[str, Any]] = [{"role": "system", "content": request.system_instruction}]
+    if request.context is None:
+        return messages + [{"role": "user", "content": request.prompt}]
+
+    emit("ContextPreparationStarted", {"sessionId": request.context.session_id, "turnId": request.context.turn_id})
+    session_id = request.context.session_id
+    transcript_path = (context_root / session_id / "transcript.jsonl").resolve()
+    expected_root = context_root.resolve()
+    if expected_root not in transcript_path.parents:
+        raise ConfigurationError("The LangGraph context path escaped the configured context root.")
+    try:
+        transcript = transcript_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigurationError("The LangGraph context transcript could not be read.") from exc
+    if len(transcript.encode("utf-8")) > 10 * 1024 * 1024:
+        raise ConfigurationError("The LangGraph context transcript exceeds the configured safety limit.")
+    for line_number, line in enumerate(transcript.splitlines(), start=1):
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ConfigurationError(f"The LangGraph context transcript is invalid at line {line_number}.") from exc
+        if not isinstance(message, dict) or not isinstance(message.get("role"), str) or not isinstance(message.get("content"), str):
+            raise ConfigurationError(f"The LangGraph context transcript has an invalid message at line {line_number}.")
+        role = message["role"]
+        if role == "developer":
+            role = "system"
+        if role not in {"system", "user", "assistant", "tool"}:
+            raise ConfigurationError(f"The LangGraph context transcript has an unsupported role at line {line_number}.")
+        if len(message["content"]) > 100_000:
+            raise ConfigurationError(f"The LangGraph context message is too large at line {line_number}.")
+        native_message: dict[str, Any] = {"role": role, "content": message["content"]}
+        metadata = message.get("metadata")
+        if role == "tool" and isinstance(metadata, dict):
+            if isinstance(metadata.get("toolCallId"), str):
+                native_message["tool_call_id"] = metadata["toolCallId"]
+            if isinstance(metadata.get("toolName"), str):
+                native_message["name"] = metadata["toolName"]
+        messages.append(native_message)
+    if not any(message.get("role") == "user" and message.get("content") == request.prompt for message in messages):
+        messages.append({"role": "user", "content": request.prompt})
+    emit("ContextPrepared", {
+        "sessionId": session_id,
+        "turnId": request.context.turn_id,
+        "contextSource": "canonical-transcript",
+        "messageCount": len(messages),
+        "snapshotId": None,
+        "quality": "estimated",
+    })
+    return messages

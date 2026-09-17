@@ -445,6 +445,7 @@ run_langgraph() {
   echo "Starting LangGraph Python service."
   cd "$platform_directory"
   PYTHONPATH="$platform_directory" \
+    AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
     "$python_command" -m uvicorn service.app:app \
       --host "$LANGGRAPH_HOST" \
       --port "$LANGGRAPH_PORT"
@@ -639,6 +640,7 @@ start_all() {
   start_background "langgraph" env \
     AGENTLAB_LANGGRAPH_HOST="$LANGGRAPH_HOST" \
     AGENTLAB_LANGGRAPH_PORT="$LANGGRAPH_PORT" \
+    AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
     PYTHONPATH="$SERVER_DIR/src/platforms/langgraph" \
     "$langgraph_python" -m uvicorn service.app:app --host "$LANGGRAPH_HOST" --port "$LANGGRAPH_PORT"
   start_background "vercel-workflows" env \
