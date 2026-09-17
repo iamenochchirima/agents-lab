@@ -6,8 +6,7 @@ The baseline keeps a platform-local manifest for isolated study, while the compo
 server installs the same pinned dependency at the server boundary:
 
 ```bash
-npm install --prefix server/src/platforms/mastra
-npm install --prefix server
+pnpm install
 ```
 
 The package pin is `@mastra/core@1.66.0`. Mastra currently declares Node.js

@@ -6,7 +6,7 @@ The AWS SDK is owned by this platform and is not added to the shared server
 manifest. From the repository root, install it with:
 
 ```sh
-npm install --prefix server/src/platforms/aws-step-functions
+pnpm install
 ```
 
 The platform-owned resolver supports both TypeScript source execution and the
@@ -41,7 +41,7 @@ HTTP boundary. In a second terminal:
 
 ```sh
 cd server
-npx tsx src/platforms/aws-step-functions/service-entry.ts
+pnpm exec tsx src/platforms/aws-step-functions/service-entry.ts
 ```
 
 Its default HTTP endpoint is `http://127.0.0.1:9093`. The generic Lab runner
@@ -53,14 +53,14 @@ configured local endpoint.
 Offline platform checks, including the AWS SDK resolution boundary, run with:
 
 ```sh
-npm --prefix server test
+pnpm --filter @agent-harness-lab/lab-server test
 ```
 
 To run only this platform's compiled tests:
 
 ```sh
 cd server
-npm run build
+pnpm run build
 node --test dist/tests/platforms/aws-step-functions/*.test.js
 ```
 
@@ -68,7 +68,7 @@ The emulator integration test is opt-in:
 
 ```sh
 cd server
-npm run build
+pnpm run build
 AGENTLAB_RUN_AWS_STEP_FUNCTIONS_INTEGRATION=1 \
   AGENTLAB_AWS_STEP_FUNCTIONS_ENDPOINT_URL=http://127.0.0.1:18083 \
   node --test dist/integration-tests/aws-step-functions-baseline.test.js

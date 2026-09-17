@@ -31,7 +31,7 @@ function requirePlatformDependency<T>(specifier: string): T {
     }
   }
   throw new Error(
-    `Unable to resolve ${specifier} for the AWS Step Functions platform. Install it with npm --prefix server/src/platforms/aws-step-functions install.`,
+    `Unable to resolve ${specifier} for the AWS Step Functions platform. Install workspace dependencies with pnpm install from the repository root.`,
   );
 }
 
