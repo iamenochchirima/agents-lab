@@ -20,6 +20,23 @@ run evidence.
    and `result.json`. Compare the normalized event order with the Restate Admin
    invocation and workflow journal.
 
+## Context continuation
+
+Use the browser Chat flow or the generic `/api/runs` endpoint with one stable
+`sessionId` and distinct `clientTurnId` values:
+
+1. Send `Remember conformance-4318.` with the deterministic `fake-context` model.
+2. Wait for the first run to complete.
+3. Send `What value did you remember?` with the same session and a new turn ID.
+4. Inspect the second run for `ContextPreparationStarted`, `ContextPrepared`, and
+   `context.json`. The context projection should expose a known window and a
+   remaining percentage when the model window is configured.
+
+The native acceptance test covers this sequence through the generic server API.
+Restate performs context preparation in a named durable action and records the
+snapshot ID, budget, and compaction fields. This is context continuity, not
+long-term memory.
+
 ## Failure exercises
 
 The deterministic model fixtures make the boundary observable without a provider

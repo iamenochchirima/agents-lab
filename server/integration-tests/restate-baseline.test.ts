@@ -12,6 +12,7 @@ import { PlatformRegistry } from "../src/control-plane/application/platform-regi
 import { RunService } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
+import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../src/capabilities/context/index.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
 import {
   RestateBaselineRunner,
@@ -244,19 +245,26 @@ test(
         : "Set AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 with the native Restate server and service running.",
   },
   async () => {
-    const runner = await RestateBaselineRunner.connect(loadRestateConfig(process.env));
+    const restateConfig = loadRestateConfig(process.env);
+    const runner = await RestateBaselineRunner.connect(restateConfig);
     const connectivity = await runner.checkConnection();
     assert.equal(connectivity.reachable, true, connectivity.message);
 
     const runRoot = await mkdtemp(join(tmpdir(), "agentlab-restate-api-"));
     const config = loadServerConfig(
-      { AGENTLAB_RUN_ROOT: runRoot, AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake" },
+      {
+        AGENTLAB_RUN_ROOT: runRoot,
+        AGENTLAB_CONTEXT_ROOT: restateConfig.contextRoot,
+        AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+      },
       process.cwd(),
     );
     const evidence = new RunEvidenceStore(runRoot);
     const registry = new PlatformRegistry([runner]);
-    const service = new RunService({ config, evidence, registry });
+    const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+    const service = new RunService({ config, context, evidence, registry });
     const app = buildControlPlaneServer({ config, service, evidence, registry });
+    const contextSessionId = `restate-native-context-${Date.now()}`;
 
     try {
       await app.ready();
@@ -267,18 +275,20 @@ test(
           platform: "restate",
           variant: "baseline",
           task: { kind: "prompt", prompt: "Calculate twenty plus twenty-two." },
-          model: { provider: "fake", model: "fake-tool-call" },
+          model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: 128_000 },
         },
       });
       assert.equal(createdResponse.statusCode, 202, createdResponse.body);
 
-      let run = createdResponse.json() as {
+      type ApiRun = {
         runId: string;
         status: string;
         events: readonly { kind: string }[];
         result: { output: string } | null;
         executionReference: { executionId: string } | null;
+        context?: { budget: { remainingPercent: number | null } } | null;
       };
+      let run = createdResponse.json() as ApiRun;
       for (let attempt = 0; attempt < 100 && !run.result; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
         const inspectionResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}` });
@@ -303,10 +313,54 @@ test(
       const storedManifest = configResponse.json() as { platformConfig?: { tools?: { enabledNames?: readonly string[] } } };
       assert.deepEqual(storedManifest.platformConfig?.tools?.enabledNames, ["calculator"]);
       assert.equal(configResponse.body.includes("OPENROUTER_API_KEY"), false);
-      const contextResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/context.json` });
-      assert.equal(contextResponse.statusCode, 404, contextResponse.body);
+
+      const contextRun = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: {
+          platform: "restate",
+          variant: "baseline",
+          sessionId: contextSessionId,
+          clientTurnId: "turn-one",
+          task: { kind: "prompt", prompt: "Remember conformance-4318." },
+          model: { provider: "fake", model: "fake-context", contextWindowTokens: 128_000 },
+        },
+      });
+      assert.equal(contextRun.statusCode, 202, contextRun.body);
+      let firstContextRun = contextRun.json() as typeof run;
+      for (let attempt = 0; attempt < 100 && !firstContextRun.result; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        firstContextRun = (await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(firstContextRun.runId)}` })).json() as typeof run;
+      }
+      assert.equal(firstContextRun.status, "completed");
+
+      const continuationRun = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: {
+          platform: "restate",
+          variant: "baseline",
+          sessionId: contextSessionId,
+          clientTurnId: "turn-two",
+          task: { kind: "prompt", prompt: "What value did you remember?" },
+          model: { provider: "fake", model: "fake-context", contextWindowTokens: 128_000 },
+        },
+      });
+      assert.equal(continuationRun.statusCode, 202, continuationRun.body);
+      let secondContextRun = continuationRun.json() as typeof run;
+      for (let attempt = 0; attempt < 100 && !secondContextRun.result; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        secondContextRun = (await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(secondContextRun.runId)}` })).json() as typeof run;
+      }
+      assert.equal(secondContextRun.status, "completed");
+      assert.equal(secondContextRun.result?.output, "conformance-4318");
+      assert.ok(secondContextRun.events.some((event) => event.kind === "ContextPrepared"));
+      assert.ok(secondContextRun.context?.budget.remainingPercent !== null);
+      const contextResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(secondContextRun.runId)}/evidence/context.json` });
+      assert.equal(contextResponse.statusCode, 200, contextResponse.body);
     } finally {
       await app.close();
+      await rm(join(restateConfig.contextRoot, contextSessionId), { recursive: true, force: true });
       await rm(runRoot, { recursive: true, force: true });
     }
   },
