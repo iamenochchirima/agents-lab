@@ -13,7 +13,7 @@ The tool registry owns the model-facing definitions, argument validation, dispat
 model-visible results for Computer Native tools. Tool implementations do not resolve
 paths directly: filesystem access goes through the workspace and security modules.
 
-The current slice exposes five read-only tools and thirteen approval-gated mutation tools:
+The current slice exposes seven read-only tools and thirteen approval-gated mutation tools:
 
 - `list_directory`
 - `read_file`
@@ -60,6 +60,10 @@ The current slice exposes five read-only tools and thirteen approval-gated mutat
   foreground process. It requires approval, starts with a sanitized environment and
   workspace-relative cwd, uses `shell: false`, ignores stdin, and bounds timeout,
   output, and argument sizes. It is omitted entirely when process mode is `deny`.
+- `list_skills` — rescans and lists bounded summaries of valid workspace-local
+  `SKILL.md` packages.
+- `read_skill` — reads one exact skill ID returned by `list_skills`; it is bounded,
+  read-only, and never executes the skill or treats it as an authorization source.
 
 Tool calls are not authorization. The workspace security policy decides whether the
 requested path is allowed, and the runtime approval callback decides whether the

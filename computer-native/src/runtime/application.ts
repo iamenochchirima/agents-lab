@@ -19,6 +19,7 @@ import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
 import type { MemoryApproval, MemoryEvent, MemorySearchEvidence, MemoryStatus } from "../memory/contracts.js";
 import { MemoryStore, type MemoryEvidenceMaintenanceResult } from "../memory/store.js";
+import { SkillRegistry, type SkillCatalog } from "../skills/index.js";
 import { runTurn } from "./turn.js";
 
 export interface ChatApplication {
@@ -33,6 +34,7 @@ export interface ChatApplication {
   readonly toolNames: readonly string[];
   readonly readMemoryStatus?: () => Promise<MemoryStatus>;
   readonly maintainMemoryEvidence?: () => Promise<MemoryEvidenceMaintenanceResult>;
+  readonly readSkills?: () => Promise<SkillCatalog>;
   recoverInterruptedTurns(): Promise<readonly TurnResult[]>;
   readTranscript(): Promise<readonly TranscriptMessage[]>;
   runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void): Promise<TurnResult>;
@@ -54,6 +56,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       maxTreeDepth: config.maxTreeDepth,
       maxPatchSetBytes: config.maxPatchSetBytes,
     });
+    const skills = new SkillRegistry(workspace, config.maxToolOutputBytes);
     memory = config.memoryEnabled
       ? await MemoryStore.open({
           stateDir: config.stateDir,
@@ -136,6 +139,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       processPolicy ? { policy: processPolicy, runner: new LocalProcessRunner((prepared) => processPolicy.verify(prepared)), redactionSecrets: config.openRouterApiKey ? [config.openRouterApiKey] : [] } : undefined,
       browserToolOptions,
       memory ? { store: memory, maxResults: config.memoryMaxResults, maxBootstrapChars: config.memoryBootstrapMaxChars } : undefined,
+      { registry: skills },
     );
     const activeMemory = memory;
     return {
@@ -150,6 +154,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       toolNames: tools.definitions.map((definition) => definition.name),
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
       maintainMemoryEvidence: activeMemory ? () => activeMemory.maintainEvidence() : undefined,
+      readSkills: () => skills.list(),
       recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess, activeMemory ? (record) => activeMemory.reconcileAction(record) : undefined),
       readTranscript: () => session.readTranscript(),
       runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch }),

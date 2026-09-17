@@ -7,12 +7,13 @@ import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
+import type { SkillCatalog } from "../skills/index.js";
 import { redactSecrets, safeErrorMessage } from "../runtime/errors.js";
 import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 import type { ModelProviderSummary } from "../models/registry.js";
 import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
 
-const COMMANDS = ["/help", "/status", "/models", "/history", "/memory", "/evidence", "/clear", "/quit"] as const;
+const COMMANDS = ["/help", "/status", "/models", "/history", "/skills", "/memory", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
 const MIN_PANEL_WIDTH = 24;
 const MAX_PANEL_WIDTH = 100;
@@ -25,6 +26,7 @@ export type TuiCommand =
   | { readonly kind: "status" }
   | { readonly kind: "models" }
   | { readonly kind: "history" }
+  | { readonly kind: "skills" }
   | { readonly kind: "memory" }
   | { readonly kind: "evidence" }
   | { readonly kind: "clear" }
@@ -44,6 +46,8 @@ export function parseTuiCommand(input: string): TuiCommand | undefined {
       return { kind: "models" };
     case "/history":
       return { kind: "history" };
+    case "/skills":
+      return { kind: "skills" };
     case "/memory":
       return { kind: "memory" };
     case "/evidence":
@@ -222,6 +226,7 @@ export class TerminalUi {
     this.write(`  ${this.style("33", "/status")}     Show session, model, tools, and turn state\n`);
     this.write(`  ${this.style("33", "/models")}     Show provider choices and model capabilities\n`);
     this.write(`  ${this.style("33", "/history")}    Show recent transcript messages\n`);
+    this.write(`  ${this.style("33", "/skills")}     Show workspace skill packages\n`);
     this.write(`  ${this.style("33", "/memory")}     Show bounded durable-memory status\n`);
     this.write(`  ${this.style("33", "/evidence")}   Show the durable evidence directory\n`);
     this.write(`  ${this.style("33", "/clear")}      Redraw the console\n`);
@@ -281,6 +286,27 @@ export class TerminalUi {
     this.write("\n");
   }
 
+  private async printSkills(): Promise<void> {
+    if (!this.application.readSkills) {
+      this.write(`\n${this.style("2", "Workspace skills are not available for this session.")}\n\n`);
+      return;
+    }
+    const catalog: SkillCatalog = await this.application.readSkills();
+    this.write("\n");
+    this.printPanel("Workspace skills", [
+      ["available", `${catalog.skills.length}`],
+      ["location", "skills/"],
+      ["loading", "read-only · exact id required"],
+    ]);
+    for (const skill of catalog.skills) {
+      const version = skill.version ? ` · v${skill.version}` : "";
+      this.write(`  ${this.style("33", skill.id)} ${this.style("2", shorten(`${skill.name}${version} · ${skill.description}`, 210))}\n`);
+    }
+    if (catalog.skills.length === 0) this.write(`  ${this.style("2", "No valid workspace skills found.")}\n`);
+    if (catalog.skipped > 0) this.write(`  ${this.style("2", `${catalog.skipped} invalid or bounded-out package${catalog.skipped === 1 ? "" : "s"} skipped.`)}\n`);
+    this.write("\n");
+  }
+
   async runCommand(command: TuiCommand): Promise<boolean> {
     switch (command.kind) {
       case "help":
@@ -294,6 +320,9 @@ export class TerminalUi {
         return true;
       case "history":
         await this.printHistory();
+        return true;
+      case "skills":
+        await this.printSkills();
         return true;
       case "memory":
         if (this.application.readMemoryStatus) {

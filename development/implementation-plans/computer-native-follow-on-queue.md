@@ -11,55 +11,60 @@ The full production-readiness definition is in
 
 ### Core hardening and production foundation
 
-Status: **Active. Not implemented end to end.**
+Status: **Active. First-iteration core path is working; production reinforcement remains.**
 
 Plan: [computer-native-core-hardening.md](active/computer-native-core-hardening.md)
 
-The following work is still required in this slice:
+The first iteration now has real, connected paths for:
 
-- [ ] Shared runtime state transitions for turns, attempts, approvals, tools, and final
-      outcomes.
-- [ ] Restart recovery, duplicate-event handling, cancellation, retry limits, and
-      outcome-unknown states.
-- [ ] Structured approval review instead of a bare `y`/`yes` prompt, including exact
-      action identity, scope, limits, expiry, and stale-approval rejection.
-- [ ] TUI lifecycle states for waiting, retrying, cancelling, interrupted, partial,
-      ambiguous, failed, and completed work.
-- [ ] Provider retry, disconnect, malformed-response, usage, and no-silent-fallback
-      behaviour.
-- [ ] Directory creation, directory copy, directory move, and directory rename.
-- [ ] Honest multi-file transaction and partial-recovery semantics.
-- [ ] Shared resource limits, redaction, identity rechecks, and failure-injection tests.
+- shared runtime lifecycle evidence, bounded model retries, cancellation, and
+  representative restart reconciliation;
+- structured approval panels with exact action identity, scope, limits, expiry, and
+  stale-operation checks;
+- the standalone TUI, real-provider path, workspace file and directory management,
+  approved local process execution, managed browser interaction, and durable memory;
+- bounded resource policies, secret redaction, operation evidence, and honest partial or
+  outcome-unknown results.
 
-Until these are complete and validated, Computer Native remains in a development/preview
-state even though several bounded capabilities already work.
+The remaining exhaustive crash, race, security, load, compatibility, and operations
+checks are deliberately deferred. They are listed in the [production-readiness gap
+register](active/computer-native-production-readiness-gaps.md) and must be completed
+before a named deployment profile is called production-ready. They do not block the
+next first-iteration Computer Native component when its core path and focused tests are
+complete.
+
+Computer Native remains in development/preview while the production-readiness backlog is
+open, even though the first-iteration paths above are usable and validated.
 
 ## Completed slices and exact remaining gaps
 
 | Area | Implemented in the completed slice | Still not done |
 | --- | --- | --- |
-| Workspace and filesystem | Read, write, patch, regular-file copy/move, delete, restore, bounded directory handling, quarantine, approval, and recovery evidence. | Directory copy/move, rename, directory creation, proven multi-file rollback semantics, race handling, large-input streaming, cross-platform guarantees, and OS-level isolation. |
+| Workspace and filesystem | Read, write, patch, regular-file and directory copy/move/rename, directory creation, delete/restore, quarantine, approval, bounded limits, and recovery evidence. | Proven cross-file rollback, broader race and special-file policy, cross-platform guarantees, and OS-level isolation. |
 | Shell and process execution | Approved local foreground argv execution, cwd policy, environment redaction, timeout, output limit, cancellation, and process evidence. | Interactive stdin/PTY, background jobs, durable job recovery, shell grammar, process-tree enforcement, remote/container execution, OS/network isolation, and stronger privilege controls. |
 | Browser interaction | Managed local Chromium/Playwright sessions, bounded snapshots, navigation/actions, approval, dialogs, artifacts, cancellation, and local-fixture recovery. | Personal Chrome/CDP, remote browser providers, extensions, arbitrary JavaScript, cookie/storage access, auth/OAuth/CAPTCHA flows, request interception, durable browser profiles, and stronger isolation. |
 | Memory foundation | Markdown user/durable stores, dated notes, bounded lexical retrieval, approval-gated mutation, provenance, retention, deletion, restart handling, and evidence. | Supported production persistence, session search, hybrid/semantic retrieval, compaction flush, consolidation/promotion, conflict handling, broad deletion, import/export, privacy controls, migration, index reconciliation, and real-model acceptance. |
-| Initial TUI and approvals | Standalone terminal chat, real model output, activity messages, basic approval handling, slash commands, and Ctrl+C cancellation foundation. | Full structured approval review, richer lifecycle states, better scrolling/history/composer behaviour, resize/accessibility handling, and mature full-screen interaction. |
-| Model connection | Real OpenRouter path, stored development configuration, deterministic test provider, and basic model selection. | Provider registry, capability validation, bounded retries/backoff, fallback policy, partial-stream handling, usage/cost evidence, credential rotation, and broader provider acceptance. |
+| Initial TUI and approvals | Standalone terminal chat, real model output, structured approval panels, activity messages, slash commands, Ctrl+C cancellation, responsive panels, and concise process output. | Full-screen interaction, richer scrolling/history/composer behaviour, resize redraw, accessibility, and recovery-focused UX. |
+| Model connection | Real OpenRouter path, stored development configuration, deterministic test provider, explicit model selection, capability metadata, bounded retries, partial-stream handling, usage evidence, and no silent fallback. | Broader malformed responses, fallback policy, cost evidence, credential rotation, and wider provider acceptance. |
 
 The "still not done" column is the authoritative gap list for these completed slices. It
 must not be removed merely because a first implementation exists.
 
-## Not started after core hardening
+## Future implementation areas after the current foundation
 
-These are separate future implementation areas. They are not partially available just
-because their directories or README files exist.
+These are separate future implementation areas. The completed Skills foundation below
+does not make the broader areas partially available.
 
 ### Skills
 
-Status: **Not started.**
+Status: **Completed first foundation slice.**
 
-Still required: discovery, manifests, versioning, instruction loading, trust policy,
-capability grants, isolation, dependencies, resource limits, lifecycle, rollback, and
-skill-use evidence.
+Plan: [computer-native-skills-foundation.md](completed/computer-native-skills-foundation.md)
+
+Delivered scope: discover trusted workspace `SKILL.md` packages, list them, and load one
+by exact identity through bounded read-only model tools. Skill prose cannot grant
+permissions or execute code. The broader marketplace, authoring, usage, lifecycle,
+isolation, and external-source work remains future work.
 
 ### Plugins
 
@@ -105,7 +110,7 @@ This must consume the standalone runtime. It must not create a second agent loop
 ## Implementation order
 
 1. Complete [core hardening and production foundation](active/computer-native-core-hardening.md).
-2. Implement Skills only after the core plan passes its completion gate.
+2. Extend the completed Skills foundation only through a new scoped active plan.
 3. Implement Plugins with the same trust and permission model.
 4. Implement External Integrations with idempotency and recovery contracts.
 5. Implement durable jobs, scheduling, and delegated work.
