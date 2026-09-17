@@ -9,8 +9,8 @@ without making the UI the source of truth.
 Do not edit the generated TypeScript file by hand. From `apps/web`, run:
 
 ```bash
-npm run generate:docs
+pnpm run generate:docs
 ```
 
-The generated files are ignored by Git and are recreated by `npm run dev` and
-`npm run build`.
+The generated files are ignored by Git and are recreated by `pnpm run dev` and
+`pnpm run build`.
