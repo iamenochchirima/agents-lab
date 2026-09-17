@@ -70,9 +70,11 @@ export class TemporalBaselineRunner implements PlatformRunner {
       endpoint: temporal.endpoint,
       namespace: temporal.namespace,
       taskQueue: temporal.taskQueue,
+      contextRoot: this.options.config.contextRoot,
       activityTimeoutMs: temporal.activityTimeoutMs,
       preDispatchRetryLimit: temporal.preDispatchRetryLimit,
       preDispatchRetryBackoffMs: temporal.preDispatchRetryBackoffMs,
+      tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 },
     };
   }
 
@@ -211,6 +213,14 @@ function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
     activityTimeoutMs: configuration.activityTimeoutMs,
     preDispatchRetryLimit: configuration.preDispatchRetryLimit,
     preDispatchRetryBackoffMs: configuration.preDispatchRetryBackoffMs,
+    tools: manifest.capabilities?.tools ?? configuration.tools,
+    ...(manifest.context.sessionId && manifest.context.turnId ? {
+      context: {
+        rootDirectory: configuration.contextRoot,
+        sessionId: manifest.context.sessionId,
+        turnId: manifest.context.turnId,
+      },
+    } : {}),
   };
 }
 
@@ -218,9 +228,15 @@ interface TemporalManifestConfiguration {
   readonly endpoint: string;
   readonly namespace: string;
   readonly taskQueue: string;
+  readonly contextRoot: string;
   readonly activityTimeoutMs: number;
   readonly preDispatchRetryLimit: number;
   readonly preDispatchRetryBackoffMs: number;
+  readonly tools: {
+    readonly enabledNames: readonly string[];
+    readonly maxRounds: number;
+    readonly maxCalls: number;
+  };
 }
 
 interface TemporalExecutionReference {
@@ -255,7 +271,11 @@ function referenceFromExecution(
     workflowId,
     workflowRunId,
     workflowType,
-    activityTypes: ["requestModel"],
+    activityTypes: [
+      ...(manifest.context.sessionId && manifest.context.turnId ? ["prepareContext"] : []),
+      "requestModel",
+      ...(manifest.capabilities?.tools.enabledNames.length ? ["executeTool"] : []),
+    ],
   };
   return {
     platform: manifest.platform,
@@ -322,10 +342,31 @@ function temporalConfigurationFromManifest(manifest: RunManifest): TemporalManif
     endpoint: readString(configuration, "endpoint"),
     namespace: readString(configuration, "namespace"),
     taskQueue: readString(configuration, "taskQueue"),
+    contextRoot: readString(configuration, "contextRoot"),
     activityTimeoutMs: readPositiveInteger(configuration, "activityTimeoutMs"),
     preDispatchRetryLimit: readNonNegativeInteger(configuration, "preDispatchRetryLimit"),
     preDispatchRetryBackoffMs: readPositiveInteger(configuration, "preDispatchRetryBackoffMs"),
+    tools: readToolConfiguration(configuration),
   };
+}
+
+function readToolConfiguration(value: Readonly<Record<string, unknown>>): TemporalWorkflowInput["tools"] & object {
+  const candidate = value.tools;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 };
+  }
+  const record = candidate as Record<string, unknown>;
+  return {
+    enabledNames: Array.isArray(record.enabledNames)
+      ? record.enabledNames.filter((name): name is string => typeof name === "string")
+      : ["calculator"],
+    maxRounds: readPositiveIntegerValue(record.maxRounds, 6),
+    maxCalls: readPositiveIntegerValue(record.maxCalls, 8),
+  };
+}
+
+function readPositiveIntegerValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
 function temporalExecutionFromReference(reference: PlatformExecutionReference): TemporalExecutionReference {

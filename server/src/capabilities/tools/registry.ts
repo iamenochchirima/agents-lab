@@ -142,7 +142,7 @@ export class ToolRegistry {
       // forge an accepted value by constructing the union themselves.
       const normalizedArguments = implementation.validateArguments(validated.call.arguments);
       const content = await implementation.execute(normalizedArguments, { ...context, signal });
-      const resultBytes = Buffer.byteLength(content, "utf8");
+      const resultBytes = utf8ByteLength(content);
       if (resultBytes > implementation.definition.limits.maxResultBytes) {
         return failure(
           "TOOL_RESULT_TOO_LARGE",
@@ -195,7 +195,8 @@ function validateLimits(limits: ToolImplementation["definition"]["limits"], name
 
 function byteLength(value: unknown): number | null {
   try {
-    return Buffer.byteLength(JSON.stringify(value), "utf8");
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? null : utf8ByteLength(serialized);
   } catch {
     return null;
   }
@@ -225,7 +226,7 @@ function failure(
 function boundedErrorContent(code: string, message: string, maxBytes: number): string {
   let safeMessage = message;
   let content = JSON.stringify({ error: safeMessage, code });
-  while (Buffer.byteLength(content, "utf8") > maxBytes && safeMessage.length > 0) {
+  while (utf8ByteLength(content) > maxBytes && safeMessage.length > 0) {
     safeMessage = safeMessage.slice(0, -1);
     content = JSON.stringify({ error: safeMessage, code });
   }
@@ -242,10 +243,14 @@ function safeErrorMessage(error: unknown, fallback: string): string {
 }
 
 function boundedText(value: string, maxBytes: number): string {
-  if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
+  if (utf8ByteLength(value) <= maxBytes) return value;
   let result = value.slice(0, maxBytes);
-  while (Buffer.byteLength(result, "utf8") > maxBytes) result = result.slice(0, -1);
+  while (utf8ByteLength(result) > maxBytes) result = result.slice(0, -1);
   return result;
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

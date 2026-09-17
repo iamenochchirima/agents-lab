@@ -1,3 +1,5 @@
+import type { ToolCall, ToolDefinition, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
+
 export const BASELINE_WORKFLOW_TYPE = "temporalBaselineWorkflow";
 export const BASELINE_QUERY_NAME = "baselineSnapshot";
 export const BASELINE_CANCEL_SIGNAL = "baselineCancel";
@@ -23,6 +25,46 @@ export interface TemporalWorkflowInput {
   readonly activityTimeoutMs: number;
   readonly preDispatchRetryLimit: number;
   readonly preDispatchRetryBackoffMs: number;
+  readonly tools?: {
+    readonly enabledNames: readonly string[];
+    readonly maxRounds: number;
+    readonly maxCalls: number;
+  };
+  readonly context?: {
+    readonly rootDirectory: string;
+    readonly sessionId: string;
+    readonly turnId: string;
+  };
+}
+
+export interface TemporalContextPreparationInput {
+  readonly rootDirectory: string;
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly provider: TemporalModelProvider;
+  readonly model: string;
+  readonly forceCompaction?: boolean;
+  readonly trigger?: "preflight" | "provider_overflow";
+}
+
+export interface TemporalContextPreparationResult {
+  readonly snapshotId: string;
+  readonly sessionRevision: number;
+  readonly compactionRevision: number;
+  readonly inputTokens: number | null;
+  readonly remainingTokens: number | null;
+  readonly remainingPercent: number | null;
+  readonly pressure: string;
+  readonly quality: string;
+  readonly compacted: boolean;
+  readonly compaction: {
+    readonly compactionId: string;
+    readonly trigger: "preflight" | "provider_overflow" | "manual";
+    readonly sourceMessageCount: number;
+    readonly retainedMessageCount: number;
+    readonly beforeInputTokens: number | null;
+    readonly afterInputTokens: number | null;
+  } | null;
 }
 
 export interface TemporalEventIntent {
@@ -78,11 +120,53 @@ export interface ModelRequestInput {
   readonly model: string;
   readonly attemptId: string;
   readonly attemptNumber: number;
+  readonly messages?: readonly TemporalModelMessage[];
+  readonly continuationMessages?: readonly TemporalModelMessage[];
+  readonly tools?: readonly ToolDefinition[];
+  readonly context?: {
+    readonly rootDirectory: string;
+    readonly sessionId: string;
+    readonly snapshotId: string;
+  };
 }
+
+export interface TemporalAssistantMessage {
+  readonly role: "assistant";
+  readonly content: string | null;
+  readonly toolCalls?: readonly TemporalModelToolCall[];
+}
+
+export interface TemporalToolMessage {
+  readonly role: "tool";
+  readonly toolCallId: string;
+  readonly name: string;
+  readonly content: string;
+}
+
+export type TemporalModelMessage =
+  | { readonly role: "system" | "user"; readonly content: string }
+  | TemporalAssistantMessage
+  | TemporalToolMessage;
+
+export interface TemporalModelToolCall {
+  readonly toolCallId: string;
+  readonly name: string;
+  readonly arguments: unknown;
+}
+
+export interface TemporalToolExecutionInput {
+  readonly runId: string;
+  readonly turnId: string;
+  readonly enabledNames: readonly string[];
+  readonly call: ToolCall;
+}
+
+export type TemporalToolExecutionResult = ToolExecutionResult;
 
 export interface ModelSuccess {
   readonly kind: "success";
-  readonly output: string;
+  readonly output: string | null;
+  readonly toolCalls?: readonly TemporalModelToolCall[];
   readonly providerRequestId: string | null;
   readonly usage: TemporalUsage;
 }

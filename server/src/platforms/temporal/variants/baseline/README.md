@@ -5,22 +5,27 @@ Status: first local baseline is runnable and covered by unit and local integrati
 The baseline is the first narrow, comparable agent workload built on Temporal.
 It is not intended to represent the complete professional agent planned for the
 Lab. Its purpose is to make the server/worker/workflow boundary concrete
-before tools, skills, integrations, or multi-agent behaviour are introduced.
+before skills, integrations, or multi-agent behaviour are introduced.
 
 ## Baseline scope
 
-The first run is a single-turn prompt completion:
+The first run is a prompt completion with a server-owned multi-turn context session:
 
 1. The server validates a Temporal/baseline request and writes its
    immutable manifest.
 2. A Temporal workflow admits the run and records its durable execution phase.
-3. The workflow requests one model response through an activity.
-4. The workflow returns a terminal summary.
-5. The server reconciles the workflow's ordered event intents and writes
+3. A context Activity loads the canonical transcript, measures the selected model
+   window, and compacts older history before it becomes unsafe when necessary.
+4. The workflow requests one model response through an Activity using the immutable
+   context snapshot.
+5. The workflow returns a terminal summary and can perform one changed-input context
+   recovery after a provider-reported overflow.
+6. The server reconciles the workflow's ordered event intents and writes
    the normalized Lab evidence.
 
-The initial context is limited to the declared initial instruction and the user
-prompt. This variant does not yet include tool calls, skills, MCP, OAuth,
+The session context currently contains the declared instruction and text transcript.
+This slice exposes only the shared pure `calculator` tool. It does not include
+skills, MCP, OAuth,
 plugins, subagents, long-term memory, or external business side effects.
 
 ## Ownership
@@ -28,6 +33,7 @@ plugins, subagents, long-term memory, or external business side effects.
 | Concern | Baseline owner |
 | --- | --- |
 | Workflow state and recovery | Temporal workflow history |
+| Canonical transcript and context snapshots | Common context session store |
 | Model/network I/O | Model activity, never workflow code |
 | Model adapter selection | Baseline model boundary |
 | Normalized Lab evidence | Fastify server's evidence store |
@@ -56,19 +62,20 @@ implementation arrives:
 
 ```text
 config/       effective baseline configuration
-context/      initial instruction and prompt construction
+context/      Temporal context Activity and snapshot boundary
 durability/   Temporal-specific recovery decisions
 execution/    workflow and activity entry points
 models/       deterministic and opt-in provider adapters
 runtime/      one-turn lifecycle state
-sessions/     run/session-facing records when needed
+sessions/     run/session-facing records and turn identity notes
 state/        baseline state projections
 telemetry/    native and normalized mapping
 tests/        baseline-specific tests
 ```
 
-Empty directory READMEs are structure notes, not evidence that the corresponding
-runtime capability exists.
+The common context implementation lives in `server/src/capabilities/context/`; these
+variant directories document only the Temporal boundary. Empty directory READMEs are
+structure notes, not evidence that every future capability exists.
 
 ## Validation status
 

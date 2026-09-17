@@ -46,6 +46,11 @@ Keep workflow determinism, activity boundaries, retry policy, cancellation,
 signals, timers, and worker lifecycle decisions local to this directory. Do not
 leak Temporal SDK types into the generic run domain or the browser.
 
+The Platform UI selects an OpenRouter model from the shared server catalog. The
+model call remains inside the Temporal activity, and the bounded calculator
+tool executes in a separate Activity. Fake models are retained only for
+deterministic tests and failure experiments.
+
 ## Local dependency
 
 The first implementation requires a locally reachable Temporal development

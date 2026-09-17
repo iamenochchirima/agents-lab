@@ -33,6 +33,42 @@ export class FakeModelAdapter implements ModelAdapter {
           message: "The deterministic adapter simulates a provider-declared failure.",
           requestSent: true,
         };
+      case "fake-context-overflow":
+        // Context preparation uses the same adapter. Keep its summary call
+        // deterministic while making the first actual model request report a
+        // provider-style overflow so the workflow recovery path is testable.
+        if (input.runId.includes(":context:")) return success(input, "Earlier context summary.");
+        if (input.prompt === "seed context") return success(input, "Seed context response.");
+        return input.attemptNumber === 1
+          ? {
+              kind: "failure",
+              failureKind: "provider",
+              code: "FAKE_CONTEXT_OVERFLOW",
+              message: "The deterministic adapter simulates a context overflow.",
+              requestSent: true,
+            }
+          : success(input, `Fake response after context recovery: ${input.prompt}`);
+      case "fake-context": {
+        const remembered = input.messages?.some((message) => typeof message.content === "string" && message.content.includes("conformance-4318")) ?? false;
+        return success(input, input.prompt.startsWith("Remember")
+          ? "Stored the test value."
+          : remembered
+            ? "conformance-4318"
+            : "The test value was not present in the context.");
+      }
+      case "fake-tool-call": {
+        const toolResult = input.messages?.find((message) => message.role === "tool");
+        if (!toolResult || toolResult.role !== "tool") {
+          return {
+            kind: "success",
+            output: null,
+            toolCalls: [{ toolCallId: "call-calculator-1", name: "calculator", arguments: { operation: "add", left: 17, right: 25 } }],
+            providerRequestId: `fake-${input.attemptId}`,
+            usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+          };
+        }
+        return success(input, `The calculator returned ${toolResult.content}.`);
+      }
       case "fake-timeout":
       case "fake-cancel":
         await cancellableDelay(FIXTURE_DELAY_MS, signal);

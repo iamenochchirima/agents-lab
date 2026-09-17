@@ -7,6 +7,9 @@ export function createModelAdapter(provider: TemporalModelProvider, environment:
     case "fake":
       return new FakeModelAdapter();
     case "openrouter":
-      return new OpenRouterModelAdapter({ apiKey: environment.OPENROUTER_API_KEY });
+      return new OpenRouterModelAdapter({
+        apiKey: environment.OPENROUTER_API_KEY,
+        baseUrl: environment.AGENTLAB_OPENROUTER_BASE_URL,
+      });
   }
 }

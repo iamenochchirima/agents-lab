@@ -25,11 +25,13 @@ writes those files directly.
 
 ## Current implementation
 
-The runnable path is a single-turn prompt completion using either:
+The runnable path is a prompt completion with a server-owned multi-turn context session
+using either:
 
 - `fake`, which is deterministic and supports controlled failure fixtures; or
 - `openrouter`, which is disabled unless explicitly enabled in server configuration.
 
-The baseline has no tools, skills, memory, integrations, side effects, or
-multi-agent execution. Those capabilities belong to later variants and must not
-be inferred from this slice.
+Context is currently text transcript plus the declared system instruction. The baseline
+has no tool execution, skills, long-term memory, integrations, side effects, or
+multi-agent execution. Those capabilities belong to later variants and must not be
+inferred from this slice.

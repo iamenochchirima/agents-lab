@@ -10,17 +10,18 @@ import { PlatformRegistry } from "../src/control-plane/application/platform-regi
 import { RunService, type RunView } from "../src/control-plane/application/run-service.js";
 import type { PlatformExecutionReference } from "../src/control-plane/domain/types.js";
 import { TemporalBaselineRunner } from "../src/platforms/temporal/runner-adapter/temporal-runner.js";
+import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../src/capabilities/context/index.js";
 
 const BASE_REQUEST = {
   platform: "temporal" as const,
   variant: "baseline" as const,
   task: { kind: "prompt" as const, prompt: "integration test prompt" },
-  model: { provider: "fake" as const, model: "fake-success" },
+  model: { provider: "fake" as const, model: "fake-success", contextWindowTokens: 128_000 },
 };
 
 /**
  * This suite intentionally requires a running local Temporal server and worker.
- * It is separate from `npm test` so unit tests stay offline, while the explicit
+ * It is separate from `pnpm test` so unit tests stay offline, while the explicit
  * command fails with a useful timeout when the durable-execution profile is not
  * running instead of silently skipping the coverage.
  */
@@ -51,21 +52,43 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
       "events.jsonl",
       "trajectory.json",
       "metrics.json",
+      "context.json",
       "result.json",
       "native/temporal.json",
     ]);
     assert.deepEqual(
       completed.events.map((event) => event.kind),
-      ["RunCreated", "RunDispatched", "AgentStarted", "ModelRequested", "ModelCompleted", "AgentCompleted", "RunCompleted"],
+      ["RunCreated", "RunDispatched", "AgentStarted", "ContextPreparationStarted", "ContextPrepared", "ModelRequested", "ModelCompleted", "AgentCompleted", "RunCompleted"],
     );
+    assert.ok(completed.context);
+    assert.equal(completed.context?.budget.contextWindowTokens, 128_000);
+    assert.equal(completed.context?.budget.quality, "estimated");
+    assert.ok((completed.context?.budget.remainingPercent ?? 0) < 100);
     assert.ok(typeof completed.executionReference?.native.workflowId === "string");
     assert.ok(String(completed.executionReference?.native.workflowId).endsWith(completed.runId));
     assert.equal(completed.metrics?.modelCallCount, 1);
 
+    const calculator = await service.createRun({
+      ...BASE_REQUEST,
+      task: { kind: "prompt", prompt: "Use the calculator tool to add 17 and 25, then state the result." },
+      model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: 128_000 },
+      capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 } },
+    });
+    const calculatorResult = await waitForTerminal(service, calculator.runId);
+    assert.equal(calculatorResult.status, "completed");
+    assert.equal(calculatorResult.result?.output, 'The calculator returned {"value":42}.');
+    assert.deepEqual(calculatorResult.events.filter((event) => event.kind.startsWith("Tool")).map((event) => event.kind), [
+      "ToolCallRequested",
+      "ToolCallValidated",
+      "ToolExecutionStarted",
+      "ToolExecutionCompleted",
+    ]);
+    assert.equal(calculatorResult.metrics?.modelCallCount, 2);
+
     const retry = await service.createRun({
       ...BASE_REQUEST,
       task: { kind: "prompt", prompt: "retry integration test" },
-      model: { provider: "fake", model: "fake-pre-dispatch-retry" },
+      model: { provider: "fake", model: "fake-pre-dispatch-retry", contextWindowTokens: 128_000 },
     });
     const retried = await waitForTerminal(service, retry.runId);
     assert.equal(retried.status, "completed");
@@ -73,10 +96,40 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
     assert.equal(retried.events.filter((event) => event.kind === "ModelRequested").length, 2);
     assert.equal(retried.events.filter((event) => event.kind === "ModelRetryScheduled").length, 1);
 
+    const secondTurn = await service.createRun({
+      ...BASE_REQUEST,
+      sessionId: completed.context?.sessionId,
+      task: { kind: "prompt", prompt: "Continue the same context" },
+    });
+    const continued = await waitForTerminal(service, secondTurn.runId);
+    assert.equal(continued.status, "completed");
+    assert.equal(continued.manifest.context.sessionId, completed.manifest.context.sessionId);
+    assert.ok((continued.context?.budget.inputTokens ?? 0) > (completed.context?.budget.inputTokens ?? 0));
+
+    const overflowSeed = await service.createRun({
+      ...BASE_REQUEST,
+      task: { kind: "prompt", prompt: "seed context" },
+      model: { provider: "fake", model: "fake-context-overflow", contextWindowTokens: 128_000 },
+    });
+    const seeded = await waitForTerminal(service, overflowSeed.runId);
+    assert.equal(seeded.status, "completed");
+    const overflow = await service.createRun({
+      ...BASE_REQUEST,
+      sessionId: seeded.context?.sessionId,
+      task: { kind: "prompt", prompt: "recover context" },
+      model: { provider: "fake", model: "fake-context-overflow", contextWindowTokens: 128_000 },
+    });
+    const recovered = await waitForTerminal(service, overflow.runId);
+    assert.equal(recovered.status, "completed");
+    assert.equal(recovered.result?.output, "Fake response after context recovery: recover context");
+    assert.equal(recovered.events.some((event) => event.kind === "ContextOverflowDetected"), true);
+    assert.equal(recovered.events.some((event) => event.kind === "ContextRecoveryPrepared"), true);
+    assert.ok((recovered.context?.compactionRevision ?? 0) > 0);
+
     const ambiguous = await service.createRun({
       ...BASE_REQUEST,
       task: { kind: "prompt", prompt: "ambiguous integration test" },
-      model: { provider: "fake", model: "fake-ambiguous" },
+      model: { provider: "fake", model: "fake-ambiguous", contextWindowTokens: 128_000 },
     });
     const ambiguousResult = await waitForTerminal(service, ambiguous.runId);
     assert.equal(ambiguousResult.status, "failed");
@@ -87,7 +140,7 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
     const timedOut = await service.createRun({
       ...BASE_REQUEST,
       task: { kind: "prompt", prompt: "timeout integration test" },
-      model: { provider: "fake", model: "fake-timeout" },
+      model: { provider: "fake", model: "fake-timeout", contextWindowTokens: 128_000 },
     });
     const timedOutResult = await waitForTerminal(service, timedOut.runId);
     assert.equal(timedOutResult.status, "failed");
@@ -97,7 +150,7 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
     const cancelled = await service.createRun({
       ...BASE_REQUEST,
       task: { kind: "prompt", prompt: "cancellation integration test" },
-      model: { provider: "fake", model: "fake-cancel" },
+      model: { provider: "fake", model: "fake-cancel", contextWindowTokens: 128_000 },
     });
     await waitForEvent(service, cancelled.runId, "ModelRequested");
     const cancellationRequest = await service.cancelRun(cancelled.runId, "integration cancellation");
@@ -113,7 +166,7 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
     const outageRun = await service.createRun({
       ...BASE_REQUEST,
       task: { kind: "prompt", prompt: "reconciliation integration test" },
-      model: { provider: "fake", model: "fake-timeout" },
+      model: { provider: "fake", model: "fake-timeout", contextWindowTokens: 128_000 },
     });
     await waitForTemporalTerminal(runner, outageRun.executionReference);
     const restartedRunner = await connectRunner(config);
@@ -134,7 +187,7 @@ async function connectRunner(config: ReturnType<typeof loadServerConfig>): Promi
     return await TemporalBaselineRunner.connect(config);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Local Temporal is not available at ${config.temporal.endpoint}. Start Temporal and the Lab worker before running npm run test:temporal. ${message}`);
+    throw new Error(`Local Temporal is not available at ${config.temporal.endpoint}. Start Temporal and the Lab worker before running pnpm run test:temporal. ${message}`);
   }
 }
 
@@ -143,7 +196,12 @@ function createService(
   store: RunEvidenceStore,
   runner: TemporalBaselineRunner,
 ): RunService {
-  return new RunService({ config, evidence: store, registry: new PlatformRegistry([runner]) });
+  return new RunService({
+    config,
+    context: new ContextService(new ContextSessionStore(config.contextRoot), new CharacterTokenEstimator()),
+    evidence: store,
+    registry: new PlatformRegistry([runner]),
+  });
 }
 
 async function waitForTerminal(service: RunService, runId: string): Promise<RunView> {

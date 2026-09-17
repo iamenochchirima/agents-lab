@@ -1,4 +1,5 @@
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
+import type { ToolDefinition } from "../../../../../capabilities/tools/contracts.js";
 
 const OPENROUTER_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const MAX_RESPONSE_BYTES = 1_048_576;
@@ -43,10 +44,14 @@ export class OpenRouterModelAdapter implements ModelAdapter {
         },
         body: JSON.stringify({
           model: input.model,
-          messages: input.messages ?? [
+          messages: (input.messages ?? [
             { role: "system", content: input.systemInstruction },
             { role: "user", content: input.prompt },
-          ],
+          ]).map(toOpenRouterMessage),
+          ...(input.tools && input.tools.length > 0 ? {
+            tools: input.tools.map(toOpenRouterTool),
+            tool_choice: "auto",
+          } : {}),
         }),
         signal,
       });
@@ -116,8 +121,8 @@ export class OpenRouterModelAdapter implements ModelAdapter {
       };
     }
 
-    const output = extractOutput(body);
-    if (output === null) {
+    const message = extractMessage(body);
+    if (!message || (message.output === null && message.toolCalls.length === 0)) {
       return {
         kind: "failure",
         failureKind: "provider",
@@ -126,7 +131,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
         requestSent: true,
       };
     }
-    if (output.length > MAX_OUTPUT_CHARS) {
+    if (message.output !== null && message.output.length > MAX_OUTPUT_CHARS) {
       return {
         kind: "failure",
         failureKind: "provider",
@@ -138,7 +143,8 @@ export class OpenRouterModelAdapter implements ModelAdapter {
 
     return {
       kind: "success",
-      output,
+      output: message.output,
+      ...(message.toolCalls.length > 0 ? { toolCalls: message.toolCalls } : {}),
       providerRequestId: readString(body, "id"),
       usage: readUsage(body),
     };
@@ -182,15 +188,64 @@ function isContextOverflowResponse(body: string): boolean {
   return /context|token limit|maximum tokens|too many tokens|prompt is too long/i.test(body);
 }
 
-function extractOutput(body: unknown): string | null {
+function extractMessage(body: unknown): { readonly output: string | null; readonly toolCalls: readonly import("../contracts.js").TemporalModelToolCall[] } | null {
   if (!isRecord(body) || !Array.isArray(body.choices) || !isRecord(body.choices[0])) {
     return null;
   }
   const message = body.choices[0].message;
-  if (!isRecord(message) || typeof message.content !== "string") {
-    return null;
+  if (!isRecord(message)) return null;
+  const output = typeof message.content === "string" && message.content.length > 0 ? message.content : null;
+  const toolCalls: import("../contracts.js").TemporalModelToolCall[] = [];
+  if (Array.isArray(message.tool_calls)) {
+    for (const rawCall of message.tool_calls) {
+      if (!isRecord(rawCall) || !isRecord(rawCall.function)) continue;
+      const name = typeof rawCall.function.name === "string" ? rawCall.function.name : "";
+      if (!name) continue;
+      const toolCallId = typeof rawCall.id === "string" ? rawCall.id : "";
+      toolCalls.push({
+        toolCallId,
+        name,
+        arguments: parseArguments(rawCall.function.arguments),
+      });
+    }
   }
-  return message.content;
+  return { output, toolCalls };
+}
+
+function toOpenRouterTool(tool: ToolDefinition): Record<string, unknown> {
+  return {
+    type: "function",
+    function: { name: tool.name, description: tool.description, parameters: tool.inputSchema },
+  };
+}
+
+function toOpenRouterMessage(message: import("../contracts.js").TemporalModelMessage): Record<string, unknown> {
+  if (message.role === "assistant") {
+    return {
+      role: "assistant",
+      content: message.content,
+      ...(message.toolCalls && message.toolCalls.length > 0 ? {
+        tool_calls: message.toolCalls.map((call) => ({
+          id: call.toolCallId,
+          type: "function",
+          function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+        })),
+      } : {}),
+    };
+  }
+  if (message.role === "tool") {
+    return { role: "tool", tool_call_id: message.toolCallId, name: message.name, content: message.content };
+  }
+  return { role: message.role, content: message.content };
+}
+
+function parseArguments(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
 }
 
 function readString(body: unknown, key: string): string | null {
