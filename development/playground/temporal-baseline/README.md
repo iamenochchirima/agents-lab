@@ -66,7 +66,7 @@ The exact API shape is documented in
 2. Start a `fake-pre-dispatch-retry` run and wait until `ModelRetryScheduled` appears in the UI or `events.jsonl`.
 3. Stop only the Temporal worker process. Leave Temporal and the API running.
 4. Confirm that the run does not create a second workflow ID while the worker is down.
-5. Start the worker again with `npm --prefix server run dev:worker`.
+5. Start the worker again with `pnpm --filter @agent-harness-lab/lab-server run dev:worker`.
 6. Wait for the retry timer to fire and the run to complete.
 7. Inspect the final `events.jsonl` and `native/temporal.json`.
 
@@ -97,7 +97,7 @@ second status read must not duplicate events or change an existing result.
 Run the local integration suite when Temporal and the worker are available:
 
 ```bash
-npm --prefix server run test:temporal
+pnpm --filter @agent-harness-lab/lab-server run test:temporal
 ```
 
 It covers success, retry classification, ambiguous outcomes, timeout,

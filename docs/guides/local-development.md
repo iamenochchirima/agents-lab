@@ -6,29 +6,29 @@ The repository uses one pnpm workspace. Install dependencies from the repository
 pnpm install
 ```
 
-The workspace includes the Computer Native harness, Lab server, web app, and the
+The workspace includes the Anesu harness, Lab server, web app, and the
 platform packages under `server/src/platforms/`. They share `pnpm-lock.yaml`; do not
 create package-local lockfiles.
 
-## Computer Native
+## Anesu
 
 For the daily standalone agent path:
 
 ```bash
-cd computer-native
+cd anesu
 pnpm run chat
 ```
 
-Copy `computer-native/.env.example` to `computer-native/.env` once if you want to keep a
+Copy `anesu/.env.example` to `anesu/.env` once if you want to keep a
 real provider, model, and API key between runs. That file is ignored by git. The same
 command also works from the repository root as `pnpm run chat`.
 
 Run its checks from the root with filters:
 
 ```bash
-pnpm --filter @agent-harness-lab/computer-native run typecheck
-pnpm --filter @agent-harness-lab/computer-native test
-pnpm --filter @agent-harness-lab/computer-native coverage
+pnpm --filter @agent-harness-lab/anesu run typecheck
+pnpm --filter @agent-harness-lab/anesu test
+pnpm --filter @agent-harness-lab/anesu coverage
 ```
 
 ## Lab server and web app

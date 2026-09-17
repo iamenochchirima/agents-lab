@@ -34,7 +34,7 @@ partially functional.
 - [Parallel platform implementation coordination](platform-parallel-implementation.md)
   — completed 2026-09-17T00:18:18+02:00; closed the current platform batch and recorded
   the accepted local wave plus Trigger.dev's deferred external acceptance.
-- [Computer Native Skills foundation](computer-native-skills-foundation.md) — completed
+- [Anesu Skills foundation](anesu-skills-foundation.md) — completed
   2026-09-17T02:41:22+02:00; added bounded workspace skill discovery, exact read-only
   model tools, shared turn-loop integration, and `/skills` TUI visibility.
 

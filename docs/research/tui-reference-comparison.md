@@ -3,7 +3,7 @@
 Reviewed: 2026-09-15
 
 This note compares the user-facing terminal interfaces of Hermes and OpenClaw with
-Computer Native's current `readline` loop. The comparison is design input only. It does
+Anesu's current `readline` loop. The comparison is design input only. It does
 not recommend importing either project's UI or runtime.
 
 ## Sources
@@ -17,13 +17,13 @@ not recommend importing either project's UI or runtime.
 
 ## Comparison
 
-| Surface | Computer Native now | Hermes | OpenClaw |
+| Surface | Anesu now | Hermes | OpenClaw |
 | --- | --- | --- | --- |
-| Startup | A few plain lines with session/model | Banner, runtime details, tools/skills panels, first frame before full load | Connection/session startup state and model/session context |
-| Conversation | `readline` input and direct output | Scrollable transcript with distinct user/assistant rows and live streaming row | Scrollable chat log with user, assistant, system, and tool entries |
+| Startup | Branded bordered context panel with session/model/workspace/evidence and actual tools | Banner, runtime details, tools/skills panels, first frame before full load | Connection/session startup state and model/session context |
+| Conversation | Styled `readline` composer, distinct user/assistant labels, direct output, and live activity lines | Scrollable transcript with distinct user/assistant rows and live streaming row | Scrollable chat log with user, assistant, system, and tool entries |
 | Input | Single line, terminal-default editing | Multiline composer, history, completion, editor handoff, queueing | Custom editor, history, slash completion, session and model controls |
-| Busy state | No durable UI state; text is printed while waiting | Live spinner/status indicator, elapsed time, reasoning/tool activity | Connected/idle/busy status, streaming updates, tool cards, reconnect notices |
-| Commands | `exit` and `quit` only | Categorized slash commands, command completion, overlays and pickers | Slash commands, session/model/agent pickers, settings and overlays |
+| Busy state | Factual status ribbon plus waiting/tool activity lines; still scrollback-oriented | Live spinner/status indicator, elapsed time, reasoning/tool activity | Connected/idle/busy status, streaming updates, tool cards, reconnect notices |
+| Commands | Grouped `/help`, `/status`, `/history`, `/evidence`, `/clear`, `/quit`, plus readline completion | Categorized slash commands, command completion, overlays and pickers | Slash commands, session/model/agent pickers, settings and overlays |
 | Tool visibility | Not implemented | Separate activity lane with tool progress and prompt flows | Tool execution cards and event-driven activity display |
 | Interruptions | Ctrl-C can cancel a turn | Interrupt, redirect, queued input, modal prompt cancellation | Explicit abort/reset/reconnect behavior and status notices |
 | Persistence view | Session ID is printed | History/session switching and transcript inspection | History loading, session picker, reconnect and event-gap handling |
@@ -55,11 +55,11 @@ The useful shared pattern is a stateful presentation layer around a structured r
   integrations, approvals, and provider dashboards.
 - Hermes's large slash-command catalogue or OpenClaw's Gateway/session model.
 - Fake tool cards, fake token/cost data, or a status indicator that claims capabilities
-  the Computer Native runtime does not yet provide.
+  the Anesu runtime does not yet provide.
 
-## Computer Native recommendation
+## Anesu recommendation
 
-The next UI implementation should create a small terminal application module with this
+The current UI pass now establishes the first small terminal application surface with this
 layout:
 
 ```text
@@ -81,6 +81,8 @@ slash-command completion for the commands that actually exist, and cancellation.
 runtime should emit typed turn/activity events; the TUI should render them and own no
 model, tool, security, or persistence logic.
 
-This is a larger interface for the existing standalone agent, not a separate product
-layer. It should be tested through a pseudo-terminal for rendering and interaction, with
-the deterministic provider used for repeatable turn behavior.
+The current pass uses the existing `readline` renderer and is intentionally smaller than
+Hermes or OpenClaw: it does not yet provide alternate-screen redraw, mouse interaction,
+overlays, or a scrollable viewport. Those remain future UI slices. It should be tested
+through a pseudo-terminal for rendering and interaction, with the deterministic provider
+used for repeatable turn behavior.

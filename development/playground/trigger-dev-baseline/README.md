@@ -11,7 +11,7 @@ start the official worker:
 
 ```bash
 cd server/src/platforms/trigger-dev
-npx trigger.dev@4.5.14 dev start --skip-update-check --env-file ../../../../.env
+pnpm dlx trigger.dev@4.5.14 dev start --skip-update-check --env-file ../../../../.env
 ```
 
 Trigger Cloud is the no-Docker option. Self-hosting the Trigger server requires the
@@ -21,7 +21,7 @@ In a second terminal, run the explicit integration check:
 
 ```bash
 AGENTLAB_RUN_TRIGGER_DEV_INTEGRATION=1 \
-  npm --prefix server run build && \
+  pnpm --filter @agent-harness-lab/lab-server run build && \
   AGENTLAB_RUN_TRIGGER_DEV_INTEGRATION=1 node \
     server/dist/integration-tests/trigger-dev-baseline.test.js
 ```

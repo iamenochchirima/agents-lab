@@ -164,7 +164,7 @@ test("Platform Chat opens for every registered platform", async () => {
 
   try {
     const platforms = [
-      ["computer-native", "Computer Native"],
+      ["anesu", "Anesu"],
       ["temporal", "Temporal"],
       ["restate", "Restate"],
       ["langgraph", "LangGraph"],

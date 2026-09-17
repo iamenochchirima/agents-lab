@@ -13,8 +13,8 @@ _Avoid_: using "platform" when the subject is the complete runnable agent.
 
 **External integration**:
 A Lab-side boundary for starting and observing an independently owned runnable system.
-Computer Native is the initial integration. Its temporary top-level project owns the
-runtime; the Lab records evidence through `server/src/integrations/computer-native/`.
+Anesu is the initial integration. Its temporary top-level project owns the
+runtime; the Lab records evidence through `server/src/integrations/anesu/`.
 
 **Reusable capability**:
 A portable definition used by more than one platform variant, such as a skill, MCP or
@@ -22,7 +22,7 @@ OAuth connection, plugin manifest, tool schema, policy, or artifact type. Capabi
 do not own an agent loop or a platform's durability model.
 
 **Environment**:
-For Computer Native, the computer in which the harness operates: local workspace
+For Anesu, the computer in which the harness operates: local workspace
 process, sandboxed container, or VM/remote computer.
 _Avoid_: using "environment" for backend deployment architecture or browser tooling.
 
@@ -39,6 +39,21 @@ _Avoid_: using "framework" as the name of the thing being compared.
 **Harness configuration**:
 A concrete assembly of a harness variant, agent definition, environment variant, infrastructure requirements, model configuration, and selected context, memory, tool, and observability strategies. A run pairs this configuration with a scenario and an experiment.
 _Avoid_: treating a platform name as enough information to identify the runnable harness.
+
+**Studio**:
+A single laboratory workspace for composing a complete neutral agent harness,
+exposing its harness components for focused experiments, and inspecting the runs
+that result. Studio is not a platform and is distinct from the existing Platform
+Lab.
+
+**Harness component**:
+A replaceable responsibility within a harness, such as context management, memory,
+planning, or tool use, that can be the subject of an experiment. A harness component
+is not a platform and is not merely a user-interface element.
+
+**Component experiment**:
+An experiment that varies one harness component or strategy while holding the
+scenario and surrounding harness configuration fixed.
 
 **Agent definition**:
 A named, platform-specific construction of one agent system, including its identity, instructions, roles, topology, and platform-owned orchestration choices.

@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-16T12:00:00+02:00
+**Last updated:** 2026-09-17T00:35:55+02:00
 
 This directory contains the execution contracts for substantial implementation slices.
 They are deliberately more specific than a roadmap: each plan defines scope, ownership,
@@ -31,23 +31,25 @@ Start a new plan from [the template](TEMPLATE.md). It is intentionally concise e
 for a UI slice, while making failure, recovery, ownership, and evidence questions
 mandatory whenever the work has state or external effects.
 
-The Computer Native follow-on order is recorded in the [follow-on queue](computer-native-follow-on-queue.md).
+The Anesu follow-on order is recorded in the [follow-on queue](anesu-follow-on-queue.md).
 
-The completed Computer Native implementation plan is
-[process execution](completed/computer-native-process-execution.md); the workspace and
+The completed Anesu implementation plan is
+[process execution](completed/anesu-process-execution.md); the workspace and
 filesystem capability remains archived below.
 
 ## Active plans
 
-The next Computer Native component is selected from the
-[follow-on queue](computer-native-follow-on-queue.md); the workspace and filesystem
+The next Anesu component is selected from the
+[follow-on queue](anesu-follow-on-queue.md); the workspace and filesystem
 category is complete and archived below.
 
 The first platform implementation batch is coordinated by the archived
 [platform batch plan](completed/platform-parallel-implementation.md). Its accepted
 local baselines are complete; Trigger.dev is implementation-ready with external
-server/worker and manual UI acceptance deferred. AWS Step Functions remains outside
-that batch and is governed by its separate active plan.
+server/worker and manual UI acceptance deferred. The next platform step is the active
+[cross-platform agent conformance plan](active/platform-agent-conformance.md), which
+extends Temporal, Restate, LangGraph, and Mastra through one comparable agent workload.
+AWS Step Functions remains outside that implementation wave.
 
 The first Platform Lab completion wave is archived in the
 [Platform completion wave](completed/platform-completion-wave.md). It closed the
@@ -61,14 +63,14 @@ local platform services before the shared Lab server and web app.
 The completed shared model slice is recorded in the
 [OpenRouter model selection plan](completed/openrouter-model-selection.md).
 
-The Computer Native memory slice is complete in
-[the completed memory plan](completed/computer-native-memory.md). It followed the
+The Anesu memory slice is complete in
+[the completed memory plan](completed/anesu-memory.md). It followed the
 browser interaction slice and used local Hermes and OpenClaw code as design references.
 
-Those completed Computer Native plans describe bounded implementation slices, not a
+Those completed Anesu plans describe bounded implementation slices, not a
 production-ready product. The current maturity gate and remaining work are recorded in
-[Computer Native production-readiness gaps](active/computer-native-production-readiness-gaps.md).
-The next active Computer Native slice is [core hardening and production foundation](active/computer-native-core-hardening.md).
+[Anesu production-readiness gaps](active/anesu-production-readiness-gaps.md).
+The next active Anesu slice is [core hardening and production foundation](active/anesu-core-hardening.md).
 
 The first context slice is archived in the
 [session context and compaction plan](completed/context-management.md). It covers the
@@ -79,34 +81,40 @@ The additive Component Lab UI slice is tracked in the
 [Component Lab UI plan](active/component-lab-ui.md). It establishes the visual area
 catalog and Context Management preview without changing Platform Lab execution.
 
+The first backend slice for the standalone Studio interface is tracked in the
+[Studio backend runtime foundation](active/studio-backend.md). It uses the existing
+Lab server process with separately owned Studio modules and starts with a deterministic
+two-strategy Context comparison, with a third relevance-ranked baseline available in
+the same seam.
+
 ## Completed plans
 
 - [Platform UI](completed/platform-ui.md) — completed 2026-09-14T17:24:17+02:00;
   established the first clean Platform workspace and configuration surface before runner
   execution existed.
-- [Computer Native terminal agent](completed/computer-native-tui.md) — completed
+- [Anesu terminal agent](completed/anesu-tui.md) — completed
   2026-09-15T00:54:57+02:00; delivered the first streamed, evidence-producing local
   terminal turn.
-- [Computer Native reliable terminal and workspace inspection](completed/computer-native-reliable-terminal-and-workspace-inspection.md) — completed
+- [Anesu reliable terminal and workspace inspection](completed/anesu-reliable-terminal-and-workspace-inspection.md) — completed
   2026-09-15T10:21:25+02:00; delivered bounded real-provider turns, the standalone
   terminal interface, and read-only workspace inspection with durable round evidence.
-- [Computer Native workspace actions](completed/computer-native-workspace-actions.md) —
+- [Anesu workspace actions](completed/anesu-workspace-actions.md) —
   completed 2026-09-15T16:32:00+02:00; delivered approval-gated file and directory
   actions, quarantine-backed deletion and restore, multi-file patch journaling, and
   restart reconciliation.
-- [Computer Native workspace and filesystem capability](completed/computer-native-workspace-filesystem.md) —
+- [Anesu workspace and filesystem capability](completed/anesu-workspace-filesystem.md) —
   completed 2026-09-15T16:34:52+02:00; completed the local workspace category with
   bounded directory-tree quarantine, restoration, exact-token purge, recovery, TUI,
   security, and end-to-end tests.
-- [Computer Native process execution](completed/computer-native-process-execution.md) —
+- [Anesu process execution](completed/anesu-process-execution.md) —
   completed 2026-09-15T17:48:00+02:00; delivered approval-gated, bounded local
   foreground command execution with sanitized environment, lifecycle evidence,
   cancellation, recovery, TUI activity, and real-provider acceptance.
-- [Computer Native browser interaction](completed/computer-native-browser-interaction.md) —
+- [Anesu browser interaction](completed/anesu-browser-interaction.md) —
   completed 2026-09-16T08:34:37+02:00; delivered an approval-gated managed Chromium
   capability with bounded snapshots, artifacts, dialog handling, cancellation, durable
   evidence, TUI activity, security policy, and real-model local-fixture acceptance.
-- [Computer Native memory](completed/computer-native-memory.md) — completed
+- [Anesu memory](completed/anesu-memory.md) — completed
   2026-09-16T11:10:00+02:00; delivered bounded durable Markdown memory, a rebuildable
   local index, approval-gated lifecycle tools, append-only evidence, and shared approval
   and cancellation UX.

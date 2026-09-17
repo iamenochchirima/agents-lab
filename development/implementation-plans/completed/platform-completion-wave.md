@@ -56,7 +56,7 @@ browser chat → Platform server → selected native platform
 
 ## Ownership and coordination
 
-This is Platform Lab work only. It does not include Computer Native, Studio, Component
+This is Platform Lab work only. It does not include Anesu, Studio, Component
 Lab, Trigger.dev infrastructure work, AWS Step Functions validation, or a new platform
 adapter.
 
@@ -98,7 +98,7 @@ must be sequential.
 - Native multi-turn context/session adapters for every platform. Temporal is the current
   session adapter; Restate's next session adapter gets a separate follow-on plan.
 - Replacing framework-native execution with a common fake runtime.
-- Computer Native, Studio, Component Lab, Trigger.dev local infrastructure, or AWS
+- Anesu, Studio, Component Lab, Trigger.dev local infrastructure, or AWS
   Step Functions emulator/hosted validation.
 
 ## Phase gates

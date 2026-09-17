@@ -1,6 +1,6 @@
 # Environments and infrastructure
 
-Computer Native environments define the computer in which that external harness may
+Anesu environments define the computer in which that external harness may
 act: a local workspace process, sandboxed container, or VM/remote computer. Browser
 automation is a tool capability within one of those environments.
 

@@ -67,8 +67,9 @@ development/playground/<platform>-baseline/
 docs or README files inside server/src/platforms/<platform>/
 ```
 
-If a platform needs its own runtime process, its package manifest and lockfile live
-inside that platform directory. The platform service must expose a narrow local HTTP
+If a platform needs its own runtime process, its package manifest lives inside that
+platform directory, while dependency resolution is recorded in the root
+`pnpm-lock.yaml`. The platform service must expose a narrow local HTTP
 or process boundary so the root `server/package.json` does not become a dependency
 merge point.
 
@@ -78,7 +79,7 @@ Platform agents must not edit these shared files:
 server/src/control-plane/**
 server/src/control-plane/bootstrap/server.ts
 server/package.json
-server/package-lock.json
+pnpm-lock.yaml
 scripts/run_local_stack.sh
 apps/web/src/features/platforms/**
 docs/navigation.json

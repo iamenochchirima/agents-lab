@@ -152,7 +152,7 @@ The agent may primarily operate through:
 * files as communication
 * dynamically loaded skills
 
-This is inspired by modern computer-native/coding-agent harnesses such as Hermes-style systems.
+This is inspired by modern compute-native and coding-agent harnesses such as Hermes-style systems.
 
 One major research question is:
 

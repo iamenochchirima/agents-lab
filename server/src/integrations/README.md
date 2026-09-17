@@ -7,6 +7,6 @@ The Lab owns the experiment request, normalized evidence boundary, and compariso
 workflow. The integrated system owns its runtime, lifecycle, internal architecture,
 and native telemetry. Do not copy an external system's runtime into this directory.
 
-Computer Native is temporarily developed as the extraction-ready top-level
-`computer-native/` project. Its Lab-side client and protocol mapping stay in
-`server/src/integrations/computer-native/`; no runtime code belongs here.
+Anesu is temporarily developed as the extraction-ready top-level
+`anesu/` project. Its Lab-side client and protocol mapping stay in
+`server/src/integrations/anesu/`; no runtime code belongs here.

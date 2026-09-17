@@ -25,7 +25,7 @@ First-party OpenRouter references used for this slice:
 
 The plan preserves the existing boundary: the Lab server admits and projects runs,
 while each platform owns the model request inside its own execution boundary. The
-browser never receives or sends the OpenRouter key. Computer Native is excluded because
+browser never receives or sends the OpenRouter key. Anesu is excluded because
 it is a separate implementation owned by another agent; AWS Step Functions remains
 outside the active platform wave.
 
@@ -68,7 +68,7 @@ fallback for a missing or failed OpenRouter request.
 
 ## Explicitly out of scope
 
-- Computer Native model behaviour or its separate environment/configuration; another
+- Anesu model behaviour or its separate environment/configuration; another
   agent owns that repository area.
 - AWS Step Functions; its plan remains active but outside this platform wave.
 - Tool calling, skills, connections, memory, context management, or model streaming.
@@ -424,7 +424,7 @@ do not mark it runnable or fabricate an external result.
 - [x] Commit the shared web picker and runner/Compare integration separately in `d0c47ce`.
 - [x] Commit documentation and plan completion records separately when practical.
 - [x] Before each commit, inspect status and the exact staged diff; preserve unrelated
-      Computer Native and generated `server/lab/` changes.
+      Anesu and generated `server/lab/` changes.
 - [x] Record all implementation commit hashes in the completion record.
 
 ## Release impact record
@@ -482,4 +482,4 @@ Complete this section only when archiving the plan.
 ### Historical-scope note
 
 No later architecture change is recorded for this completed slice. The separate
-Computer Native implementation remains intentionally outside its scope.
+Anesu implementation remains intentionally outside its scope.

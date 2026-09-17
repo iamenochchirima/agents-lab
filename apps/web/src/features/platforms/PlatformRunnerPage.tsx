@@ -244,7 +244,7 @@ export function PlatformRunnerPage() {
             <small className={isRunnable ? "runner-connected" : undefined}>{runAvailabilityStatus({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity })}</small>
           </div>
           <div className="runner-control-grid">
-            {platform.kind === "computer-native" ? (
+            {platform.kind === "compute-native" ? (
               <CompactSelect label="Computer environment" value={environmentId} onChange={setEnvironmentId}>
                 {environments.map((environment) => <option key={environment.id} value={environment.id}>{environment.name}</option>)}
               </CompactSelect>

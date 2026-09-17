@@ -49,8 +49,8 @@ development/playground/<slice-name>/
   notes.md        # Maintainer observations, questions, and content ideas
 ```
 
-The first slices are `computer-native-terminal-turn`, `computer-native-browser-turn`,
-and `temporal-baseline`. The Computer Native slices make text-only and browser turns
+The first slices are `anesu-terminal-turn`, `anesu-browser-turn`,
+and `temporal-baseline`. The Anesu slices make text-only and browser turns
 observable from input through persisted session evidence. The latter makes one durable
 Temporal run observable across the API, worker, workflow, model activity, and Lab
 evidence projection.

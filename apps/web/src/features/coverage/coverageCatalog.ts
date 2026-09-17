@@ -152,7 +152,7 @@ const platforms: readonly PlatformCoverage[] = platformCatalog.map((descriptor) 
     platformId: descriptor.id,
     platformName: descriptor.name,
     environmentIds: descriptor.computerEnvironmentIds,
-    variantDocumentId: descriptor.kind === "computer-native" ? descriptor.implementationDocumentId : undefined,
+    variantDocumentId: descriptor.kind === "compute-native" ? descriptor.implementationDocumentId : undefined,
   })],
 }));
 

@@ -98,7 +98,7 @@ must answer these questions for every applicable stage:
 
 The platform page will not claim that its internal call graph matches this exact
 diagram. It will map each responsibility to that platform's real design. A
-Temporal variant may make durability central. Computer Native owns its own execution
+Temporal variant may make durability central. Anesu owns its own execution
 and recovery choices outside this repository. Its computer environment may affect
 context and tool execution without being the execution loop itself.
 
@@ -110,7 +110,7 @@ context and tool execution without being the execution loop itself.
 | Scenario contract and graders | Agent graph, SDK agent, direct loop, workflow activity |
 | Experiment and failure specification | Platform-specific fault hook or infrastructure fault |
 | Normalized telemetry adapter | Platform-native observability integration |
-| Computer Native environment contract | Local workspace process, container sandbox, VM / remote computer |
+| Anesu environment contract | Local workspace process, container sandbox, VM / remote computer |
 | Backend deployment profile | Service/worker topology, persistence, networking, secrets, and observability |
 
 This is the boundary we should protect as implementation begins. Shared Lab code

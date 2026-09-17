@@ -13,9 +13,9 @@ export interface EnvironmentDescriptor {
   workspace: string;
 }
 
-const computerNative = ["computer-native"] as const;
+const anesuPlatformIds = ["anesu"] as const;
 
-/** Computer environments belong to the external Computer Native harness only. */
+/** Computer environments belong to the external Anesu harness only. */
 export const environmentCatalog: readonly EnvironmentDescriptor[] = [
   {
     id: "local-workspace",
@@ -27,7 +27,7 @@ export const environmentCatalog: readonly EnvironmentDescriptor[] = [
     resourceControls: "Process and command timeouts",
     lifecycle: "Prepare → attach → run → inspect → reset on request",
     status: "planned",
-    compatiblePlatformIds: computerNative,
+    compatiblePlatformIds: anesuPlatformIds,
   },
   {
     id: "sandboxed-container",
@@ -39,19 +39,19 @@ export const environmentCatalog: readonly EnvironmentDescriptor[] = [
     resourceControls: "CPU, memory, disk, process, and execution-time limits",
     lifecycle: "Provision → health check → attach → collect artifacts → cleanup",
     status: "planned",
-    compatiblePlatformIds: computerNative,
+    compatiblePlatformIds: anesuPlatformIds,
   },
   {
     id: "remote-vm",
     name: "VM / remote computer",
-    description: "A remotely provisioned computer for long-lived computer-native agent work.",
+    description: "A remotely provisioned computer for long-lived compute-native agent work.",
     isolation: "VM or dedicated remote host boundary",
     workspace: "Persistent remote disk",
     network: "Provider and environment policy",
     resourceControls: "Provider instance limits and session timeouts",
     lifecycle: "Provision → connect → run → collect → suspend or destroy",
     status: "planned",
-    compatiblePlatformIds: computerNative,
+    compatiblePlatformIds: anesuPlatformIds,
   },
 ];
 

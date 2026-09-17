@@ -14,7 +14,7 @@ test("local server environment loads supported values and preserves explicit val
     [
       "AGENTLAB_ALLOWED_MODEL_PROVIDERS=fake,openrouter",
       "OPENROUTER_API_KEY='local-secret'",
-      "COMPUTER_NATIVE_PROVIDER=ignored",
+      "ANESU_PROVIDER=ignored",
     ].join("\n"),
   );
 
@@ -27,7 +27,7 @@ test("local server environment loads supported values and preserves explicit val
   assert.deepEqual(loaded, ["AGENTLAB_ALLOWED_MODEL_PROVIDERS"]);
   assert.equal(environment.AGENTLAB_ALLOWED_MODEL_PROVIDERS, "fake,openrouter");
   assert.equal(environment.OPENROUTER_API_KEY, "explicit-secret");
-  assert.equal(environment.COMPUTER_NATIVE_PROVIDER, undefined);
+  assert.equal(environment.ANESU_PROVIDER, undefined);
 });
 
 test("missing local server environment is a no-op", () => {

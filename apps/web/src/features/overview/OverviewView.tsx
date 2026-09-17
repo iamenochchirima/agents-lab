@@ -64,7 +64,7 @@ export function OverviewView({ documents }: OverviewViewProps) {
             <div className="status-card-heading"><span className="status-icon status-icon-ready"><CircleCheck aria-hidden="true" size={15} /></span><span>Platform workspace</span></div>
             <strong>Configuration ready</strong>
             <p>Inspect each platform, choose an environment, and prepare a comparison.</p>
-            <Link className="inline-link" to={appPaths.platform("computer-native")}>Open platforms <ArrowRight aria-hidden="true" size={15} /></Link>
+            <Link className="inline-link" to={appPaths.platform("anesu")}>Open platforms <ArrowRight aria-hidden="true" size={15} /></Link>
           </article>
         </div>
       </section>

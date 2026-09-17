@@ -94,9 +94,9 @@ OAuth connections, MCP definitions, plugin manifests, policies, or artifact defi
 into every platform. The selected platform owns execution, state, durability, and its
 native telemetry behaviour.
 
-Computer Native is intentionally absent from this table. It is an extraction-ready
-standalone project under [`computer-native/`](../computer-native/README.md), connected
-to the Lab through [`integrations/computer-native/`](../integrations/computer-native/README.md).
+Anesu is intentionally absent from this table. It is an extraction-ready
+standalone project under [`anesu/`](../anesu/README.md), connected
+to the Lab through [`integrations/anesu/`](../integrations/anesu/README.md).
 
 When implementation starts, a harness variant may add an `agents/` directory for its
 platform-specific agent definitions. Create it only when the first concrete agent

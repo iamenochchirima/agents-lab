@@ -1,0 +1,25 @@
+{
+  "name": "@agent-harness-lab/anesu",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Extraction-ready compute-native agent harness.",
+  "type": "module",
+  "bin": {
+    "anesu": "./dist/src/cli/main.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "pnpm run build && node --test --test-concurrency=1 dist/tests/*.test.js",
+    "coverage": "pnpm run build && node --test --test-concurrency=1 --experimental-test-coverage dist/tests/*.test.js",
+    "chat": "pnpm run build && node dist/src/cli/main.js chat",
+    "start": "node dist/src/cli/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "playwright": "1.55.0"
+  }
+}

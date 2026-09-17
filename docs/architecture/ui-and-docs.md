@@ -24,7 +24,7 @@ application destinations:
 - **Runs:** the future home for concrete executions and their evidence.
 - **Experiments:** the future home for hypotheses, variables, controls, and failure conditions.
 - **Platforms:** the main operational workspace. Platform tabs select the runtime;
-  Computer Native exposes a computer-environment choice, while server platforms expose
+  Anesu exposes a computer-environment choice, while server platforms expose
   a server alongside their infrastructure, variant, model, and
   experiment controls.
 - **Compare:** opens from a platform task surface. It configures one shared scenario,

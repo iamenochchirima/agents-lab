@@ -14,7 +14,7 @@ implemented.
 ## Scope
 
 - [x] Replace the generic Platforms placeholder with a platform workspace.
-- [x] Add platform tabs for Computer Native, Temporal, Restate, LangGraph, OpenAI Agents
+- [x] Add platform tabs for Anesu, Temporal, Restate, LangGraph, OpenAI Agents
   SDK, Mastra, and Vercel AI SDK.
 - [x] Give every platform a stable route: `/platforms/:platformId`.
 - [x] Make each platform route a focused task-and-run surface rather than an
@@ -35,7 +35,7 @@ implemented.
 ## Environments and infrastructure
 
 - [x] Add environment catalogue and environment-detail routes.
-- [x] Model Computer Native's initial profiles: local workspace process, sandboxed
+- [x] Model Anesu's initial profiles: local workspace process, sandboxed
   container, and VM / remote computer.
 - [x] Show each profile's isolation, workspace, network, resource, lifecycle, and
   compatibility facts concisely.

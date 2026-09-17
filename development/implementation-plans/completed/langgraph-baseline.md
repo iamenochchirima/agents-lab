@@ -128,7 +128,7 @@ The verified baseline must be able to:
 - langgraph dev as the Lab runtime. It is a reference for the official local workflow, not this service boundary.
 - Postgres checkpointers, multi-process workers, autoscaling, authentication, or remote deployment.
 - Human approval, interrupt resume UX, subgraphs, supervisor graphs, parallel tool branches, long-term stores, or time travel UI.
-- MCP, OAuth, plugins, social connections, computer-native tools, browser automation, or a general tool registry.
+- MCP, OAuth, plugins, social connections, compute-native tools, browser automation, or a general tool registry.
 - A second LangGraph language variant. Python is the native baseline.
 - Changes to Temporal behaviour or the common runner contract.
 - A new platform-specific UI. The existing generic Platform UI may be made honest by the primary integration agent, but this plan does not redesign it.
@@ -201,7 +201,7 @@ The protocol must define JSON-safe representations for:
 
 | Workstream | Agent-owned files/directories | Must not change | Handoff must include |
 | --- | --- | --- | --- |
-| Protocol checkpoint and final integration | server/src/platforms/langgraph/protocol/, shared bootstrap/config/registry and root launcher only when required | Other platform directories and Computer Native | Frozen wire schema, registration diff, exact validation, conflicts resolved |
+| Protocol checkpoint and final integration | server/src/platforms/langgraph/protocol/, shared bootstrap/config/registry and root launcher only when required | Other platform directories and Anesu | Frozen wire schema, registration diff, exact validation, conflicts resolved |
 | Python LangGraph service | server/src/platforms/langgraph/service/, variants/baseline/, Python metadata | TypeScript control-plane files, Temporal, shared launcher, normalized Lab evidence | Endpoints, graph semantics, state rules, Python tests, versions, limits |
 | TypeScript runner adapter | server/src/platforms/langgraph/runner-adapter/ and local protocol client files | Common runner types, bootstrap, registry, other platforms | Runner operations, mappings, adapter tests, registration hook |
 | Local infrastructure | server/deployments/platforms/langgraph/ and a new LangGraph-specific scripts helper if needed | scripts/run_local_stack.sh, server config, other profiles | Start/readiness/reset commands, ports, state path, unavailable behaviour |

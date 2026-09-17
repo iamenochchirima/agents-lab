@@ -48,11 +48,16 @@ The Temporal runner calls the Fastify API through `VITE_AGENTLAB_API_URL`. It
 defaults to `http://127.0.0.1:4318` for local development. The browser never
 receives a provider credential.
 
+Platform runner and Compare pages use the shared `features/models/ModelPicker`.
+It searches the server's OpenRouter catalog through `GET /api/models`; the selected
+model ID is sent with a run, while the OpenRouter key remains in the server and
+platform process environments.
+
 The web application remains a consumer of laboratory data and documentation. It does
 not execute harness logic or become a second metrics implementation. When deployed
 behind a static web server, the server must serve `index.html` for these application
 paths so the browser router can resolve them.
 
-Run `npm install` and then `npm run dev` from this directory. The development command
+Run `pnpm install` from the repository root and then `pnpm run dev` from this directory. The development command
 generates a temporary document catalog before starting Vite. The generated catalog is
 ignored because the Markdown files remain the source of truth.

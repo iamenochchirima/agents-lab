@@ -84,7 +84,7 @@ the UI needs them.
 - Skills, MCP, OAuth/direct integrations, plugins, tool authorization, and side effects.
   The context contract will leave room for tool and skill sources, but the first real
   session only uses identity instructions and transcript turns.
-- Computer Native. It is a separate harness and is owned by another implementation
+- Anesu. It is a separate harness and is owned by another implementation
   stream; its context/session design must not be coupled to this platform-side slice.
 - Implementing every platform at once. After the shared contract and Temporal adapter
   are proven, each platform gets its own follow-on plan for its native state/replay

@@ -446,7 +446,7 @@ tests, and documentation into one commit.
 
 Before each commit:
 
-- [x] Review git status and preserve unrelated Computer Native and platform work.
+- [x] Review git status and preserve unrelated Anesu and platform work.
 - [x] Review the exact staged diff and confirm no secret, generated state, or unrelated file is included.
 - [x] Run the narrow validation for each focused commit.
 - [x] Record the commit hashes in the handoff.

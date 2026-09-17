@@ -10,7 +10,7 @@ import "../platforms/platforms.css";
 export function EnvironmentsPage() {
   return (
     <div className="page-content environment-page">
-      <header className="page-heading"><div><span className="eyebrow">Computer Native</span><h1>Computer environments</h1><p>These profiles describe the computer, limits, and lifecycle around a Computer Native run.</p></div></header>
+      <header className="page-heading"><div><span className="eyebrow">Anesu</span><h1>Computer environments</h1><p>These profiles describe the computer, limits, and lifecycle around an Anesu run.</p></div></header>
       <div className="environment-card-grid">
         {environmentCatalog.map((environment) => (
           <article className="panel environment-card" key={environment.id}>

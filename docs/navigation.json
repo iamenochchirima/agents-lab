@@ -17,6 +17,24 @@
       ]
     },
     {
+      "title": "Research",
+      "documents": [
+        "docs/research/context-engineering-2026.md",
+        "docs/research/context-engineering-ecosystem-2026.md",
+        "docs/research/context-memory-reading-list.md",
+        "docs/research/context-management-reference.md",
+        "docs/research/harness-code-maps/README.md",
+        "docs/research/harness-code-maps/hermes.md",
+        "docs/research/harness-code-maps/openclaw.md",
+        "docs/research/harness-code-maps/waku.md",
+        "docs/research/language-selection.md",
+        "docs/research/platform-plan-source-audit.md",
+        "docs/research/tool-execution-reference.md",
+        "docs/research/tui-reference-comparison.md",
+        "docs/research/write-tool-approval-comparison.md"
+      ]
+    },
+    {
       "title": "Platforms",
       "documents": [
         "docs/platforms.md"
@@ -26,11 +44,11 @@
       "title": "External integrations",
       "documents": [
         "server/src/integrations/README.md",
-        "server/src/integrations/computer-native/README.md",
-        "computer-native/README.md",
-        "computer-native/docs/README.md",
-        "computer-native/docs/quick-start.md",
-        "computer-native/docs/turn-lifecycle.md"
+        "server/src/integrations/anesu/README.md",
+        "anesu/README.md",
+        "anesu/docs/README.md",
+        "anesu/docs/quick-start.md",
+        "anesu/docs/turn-lifecycle.md"
       ]
     },
     {
@@ -78,23 +96,28 @@
       "title": "Initial development",
       "documents": [
         "docs/architecture/agent-harness-lab.md",
-        "docs/research/harness-code-maps/README.md",
-        "docs/research/harness-code-maps/hermes.md",
-        "docs/research/harness-code-maps/openclaw.md",
-        "docs/research/harness-code-maps/waku.md",
-        "docs/research/language-selection.md",
-        "docs/research/tui-reference-comparison.md",
+        "docs/planning/component-lab.md",
         "development/implementation-plans/README.md",
         "development/implementation-plans/TEMPLATE.md",
+        "development/implementation-plans/completed/openrouter-model-selection.md",
+        "development/implementation-plans/completed/context-management.md",
+        "development/implementation-plans/anesu-follow-on-queue.md",
+        "development/implementation-plans/completed/anesu-browser-interaction.md",
+        "development/implementation-plans/completed/anesu-process-execution.md",
         "development/implementation-plans/completed/platform-parallel-implementation.md",
+        "development/implementation-plans/completed/anesu-workspace-actions.md",
+        "development/implementation-plans/completed/anesu-workspace-filesystem.md",
+        "development/implementation-plans/completed/restate-baseline.md",
+        "development/implementation-plans/completed/langgraph-baseline.md",
+        "development/implementation-plans/completed/mastra-baseline.md",
         "development/implementation-plans/completed/inngest-baseline.md",
         "development/implementation-plans/completed/trigger-dev-baseline.md",
         "development/implementation-plans/completed/dbos-baseline.md",
         "development/implementation-plans/completed/hatchet-baseline.md",
         "development/implementation-plans/completed/vercel-workflows-baseline.md",
         "development/implementation-plans/active/aws-step-functions-baseline.md",
-        "development/implementation-plans/completed/computer-native-reliable-terminal-and-workspace-inspection.md",
-        "development/implementation-plans/completed/computer-native-tui.md",
+        "development/implementation-plans/completed/anesu-reliable-terminal-and-workspace-inspection.md",
+        "development/implementation-plans/completed/anesu-tui.md",
         "development/implementation-plans/completed/lab-server-temporal-baseline.md",
         "development/implementation-plans/completed/platform-ui.md"
       ]

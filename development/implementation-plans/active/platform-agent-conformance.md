@@ -1,7 +1,7 @@
 # Cross-platform agent conformance — implementation plan
 
 **Created:** `2026-09-17T00:35:55+02:00`
-**Last updated:** `2026-09-17T02:03:17+02:00`
+**Last updated:** `2026-09-17T02:09:06+02:00`
 **Status:** Active
 **Owner:** Primary platform integration owner with one owner per platform
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -143,6 +143,9 @@ fixtures and must be named as such in tests and documentation.
       `0ddf84a` (`feat(temporal): add conformance context and tool loop`). The local
       Temporal acceptance test passed, including context preparation, calculator tool
       execution, retry, cancellation, timeout, overflow recovery, and reconciliation.
+- [x] Restate native server/service and generic HTTP acceptance, including the
+      calculator and two-turn context flow, passed in `13bd6ea` (`test(restate): verify
+      native context continuation`). Docker remains an optional replay profile.
 - [x] LangGraph implementation, tests, protocol schema, launcher wiring, and platform
       documentation were committed in `83ef8c1` (`feat(langgraph): add conformance
       context and tool graph`). The native service passed prompt, calculator,
@@ -189,7 +192,7 @@ fixtures and must be named as such in tests and documentation.
   The existing shared context implementation is consumed and tested here; deeper memory
   remains a separate capability.
 - Skills, plugins, MCP, OAuth, social connections, gateways, cron, daemon supervision,
-  computer-native tools, browser automation, sandboxes, or VM execution.
+  compute-native tools, browser automation, sandboxes, or VM execution.
 - Subagents, parallel agent orchestration, human approval, streaming token UX, and
   side-effecting tools.
 - A shared cross-platform agent loop that hides durable execution differences.
@@ -415,7 +418,7 @@ Platform-specific decisions that must not be flattened:
       and unknown submission outcomes.
 - [x] Restate configuration and local startup pass the shared context root to the
       submission and service processes without adding a Docker prerequisite.
-- [ ] Run the native Restate server/service acceptance matrix and add the successful
+- [x] Run the native Restate server/service acceptance matrix and add the successful
       tool-turn and two-turn evidence examples to the local playground.
 
 ### 3. Shared server and browser surface
@@ -613,7 +616,7 @@ Before moving this plan to `completed/`, verify:
 - [ ] Commit shared server/UI integration only after the common contract and platform
       handoffs are reviewed.
 - [ ] Run the narrow validation relevant to each section before committing it.
-- [ ] Review `git status` and exact diffs; preserve unrelated Computer Native, Studio,
+- [ ] Review `git status` and exact diffs; preserve unrelated Anesu, Studio,
       Component Lab, AWS, and dependency-migration changes.
 - [ ] Record changed files, test commands/results, manual observations, versions, and
       known limitations in every handoff.

@@ -60,7 +60,7 @@ development/playground/aws-step-functions-baseline/**
 ```
 
 The common control plane, root/server manifests, startup scripts, UI/catalog,
-documentation navigation, and Computer Native files are deliberately outside
+documentation navigation, and Anesu files are deliberately outside
 this change. The platform-owned `package.json` and lockfile are the dependency
 boundary; no shared package file is changed.
 
@@ -174,7 +174,7 @@ permission, and emulator limitation instructions live in:
 - [x] Service resource setup, duplicate input conflict, native identity, cancellation,
       and reconciliation-required results.
 - [x] Runner HTTP mapping, stable common/native identities, and lost dispatch acknowledgement.
-- [x] `npm --prefix server test` discovers the platform tests without SDK resolution failure.
+- [x] `pnpm --filter @agent-harness-lab/lab-server test` discovers the platform tests without SDK resolution failure.
 
 ### Emulator/hosted checks
 
@@ -187,10 +187,10 @@ permission, and emulator limitation instructions live in:
 
 Executed on 2026-09-15:
 
-- `npm --prefix server run build` — passed.
-- `npm --prefix server test` — passed: 131 passed, 0 skipped, 0 failed; the
+- `pnpm --filter @agent-harness-lab/lab-server run build` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server test` — passed: 131 passed, 0 skipped, 0 failed; the
   AWS platform tests were included in discovery.
-- `npm --prefix server run build && node --test server/dist/integration-tests/aws-step-functions-baseline.test.js`
+- `pnpm --filter @agent-harness-lab/lab-server run build && node --test server/dist/integration-tests/aws-step-functions-baseline.test.js`
   — passed with 2 expected skips because the opt-in flag was not set.
 - `git diff --check` for the owned AWS/platform plan paths — passed.
 

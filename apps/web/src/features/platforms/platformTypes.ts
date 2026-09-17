@@ -1,5 +1,5 @@
 export type Availability = "planned" | "in-progress" | "ready";
-export type PlatformKind = "backend" | "computer-native";
+export type PlatformKind = "backend" | "compute-native";
 
 export interface BackendProfileDescriptor {
   description: string;

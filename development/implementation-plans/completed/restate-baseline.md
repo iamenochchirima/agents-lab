@@ -127,7 +127,7 @@ The completed implementation must:
 
 ## Explicitly out of scope
 
-- Computer Native, its TUI, workspace, tools, or environment implementation.
+- Anesu, its TUI, workspace, tools, or environment implementation.
 - Changes to the generic runner contract, common manifest, common evidence schema, or Temporal semantics unless a concrete Restate incompatibility is demonstrated and approved by the primary agent.
 - Shared bootstrap, shared server configuration, `server/package.json`, package locks, local-stack scripts, or UI changes by delegated platform agents.
 - Restate Cloud, multi-node Restate, Kubernetes, production deployment, authentication, or remote ingress.

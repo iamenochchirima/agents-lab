@@ -168,7 +168,7 @@ Waku makes a strong case for a small composition root, a visible loop, and a tra
 format that a person can read without a backend. Its deliberate limits are equally
 useful: process-local state and tool-error-as-text are understandable, but they do
 not establish durable recovery or idempotent side effects. Those are experiments for
-our future Computer Native harness, not properties to assume.
+our future Anesu harness, not properties to assume.
 
 ## Read next in Waku's documentation
 

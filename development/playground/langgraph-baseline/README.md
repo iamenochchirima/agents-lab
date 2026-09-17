@@ -72,7 +72,7 @@ Run the automated service-process version of this observation with:
 ```bash
 AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 \
 AGENTLAB_LANGGRAPH_PYTHON="$PWD/server/src/platforms/langgraph/.venv/bin/python" \
-npm --prefix server run build && \
+pnpm --filter @agent-harness-lab/lab-server run build && \
 AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 \
 AGENTLAB_LANGGRAPH_PYTHON="$PWD/server/src/platforms/langgraph/.venv/bin/python" \
 node --test server/dist/integration-tests/langgraph-baseline.test.js

@@ -110,7 +110,7 @@ This slice does not:
 - implement Restate, LangGraph, Mastra, Vercel, Inngest, Trigger.dev, DBOS, Hatchet,
   or AWS Step Functions;
 - add new model providers, tools, skills, memory, plugins, OAuth, MCP, gateways,
-  social connections, or Computer Native integration;
+  social connections, or Anesu integration;
 - redesign the Platform UI beyond contract compatibility or necessary labels;
 - create a generic agent-loop abstraction;
 - move Temporal workflow logic into the common server layer;
@@ -325,7 +325,7 @@ implementations get separate plans and separate commits after this seam is stabl
 - [x] Update the Temporal architecture and local-development guides.
 - [x] Update Platform UI documentation if native reference fields or health responses change.
 - [x] Add a short comparison table showing common run records versus native platform records.
-- [x] Keep this plan focused on the server platform layer, not Computer Native.
+- [x] Keep this plan focused on the server platform layer, not Anesu.
 
 ## Test coverage
 

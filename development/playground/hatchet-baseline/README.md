@@ -10,7 +10,7 @@ test, scenario, benchmark, or production entry point.
 
    ```sh
    cd server
-   AGENTLAB_RUN_HATCHET_INTEGRATION=1 npx tsx --test integration-tests/hatchet-baseline.test.ts
+   AGENTLAB_RUN_HATCHET_INTEGRATION=1 pnpm exec tsx --test integration-tests/hatchet-baseline.test.ts
    ```
 
 5. Inspect the generated `lab/runs/<run-id>/` directory. Compare:

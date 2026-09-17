@@ -16,6 +16,6 @@ Before adding code:
 9. Add documentation and a reproducible example.
 
 Keep backend platform integrations, harness variants, and platform-specific agent
-definitions inside `server/src/platforms/`. An independently owned harness such as Computer Native
+definitions inside `server/src/platforms/`. An independently owned harness such as Anesu
 belongs in its own extraction-ready top-level project and integrates through
 `server/src/integrations/`. Do not make scenarios depend on internal types.
