@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T01:53:11+02:00
+**Last updated:** 2026-09-17T02:08:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -51,9 +51,9 @@ been solved.
 The following evidence establishes the current local foundation, not production
 readiness:
 
-- `pnpm test`: 347 tests passed with host-sensitive fixtures explicitly serialized.
-- `pnpm run coverage`: 347 tests passed with 89.89% line coverage, 79.81% branch
-  coverage, and 85.62% function coverage. The package commands serialize
+- `pnpm test`: 348 tests passed with host-sensitive fixtures explicitly serialized.
+- `pnpm run coverage`: 348 tests passed with 89.89% line coverage, 79.76% branch
+  coverage, and 85.63% function coverage. The package commands serialize
   browser/profile, process, and admission fixtures for reproducibility; Node's coverage
   runner remains experimental and can vary slightly between runs.
 - `pnpm run typecheck`: passed.
@@ -81,7 +81,7 @@ readiness:
   complete process crash matrix and cross-platform process-group proof remain open.
 - Unexpected runtime/persistence errors are now visible as bounded failed-turn activity,
   and the interactive composer remains usable for a later prompt. This does not replace
-  the remaining full TUI viewport, scrollback, resize, and accessibility work.
+  the remaining full TUI viewport, scrollback repaint, and accessibility work.
 - A diagnostic interruption before the durable running process record also terminates
   the spawned child; a process is left for restart reconciliation only after its running
   record is durable.
@@ -111,7 +111,9 @@ readiness:
   not committed. The complete crash/side-effect matrix remains open.
 - Streamed model output is sanitized before it reaches the terminal, including control
   sequences split across provider chunks, and response lines are separated from activity
-  output. Full viewport/scrollback, resize redraw, and accessibility work remain open.
+  output. Panel widths now follow the reported terminal width with bounded fallback, and
+  approval panels use the same width. Full viewport/scrollback repaint and accessibility
+  work remain open.
 - The same terminal-safety boundary now covers lifecycle summaries, session/history/
   evidence values, approval review values, and live model/activity output. Streamed
   redaction retains possible configured-secret prefixes across chunks. Full

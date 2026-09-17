@@ -20,6 +20,11 @@ panel with named approve, deny, inspect, and cancel choices. Unsupported input f
 Non-interactive runs have no approval channel
 and therefore do not perform workspace mutations.
 
+Structured TUI panels use the output stream's reported terminal width when it is available,
+clamped to a readable range; approval panels use the same width as the surrounding session
+panels. Existing scrollback is not repainted on resize, and the interface remains a
+readline-style renderer rather than an alternate-screen viewport.
+
 Every approval panel exposes the stable prepared-operation identity and effective approval
 lifetime. Workspace mutations use their mutation ID, local processes show the execution ID
 and argv hash, browser actions show the action ID and action hash, and memory operations

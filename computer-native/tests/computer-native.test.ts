@@ -6379,6 +6379,30 @@ test("TUI header presents a structured, factual agent-console surface", () => {
   assert.match(rendered, /\/help/);
 });
 
+test("TUI panels fit the current terminal width", () => {
+  const chunks: string[] = [];
+  const output = Object.assign(new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  }), { columns: 44 });
+  const application = {
+    sessionId: "session_narrow_terminal",
+    modelLabel: "deterministic/echo",
+    providerLabel: "deterministic/deterministic/echo",
+    workspaceRoot: "/tmp/workspace-with-a-long-name",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["list_directory", "read_file", "run_command"],
+  } as unknown as ChatApplication;
+
+  new TerminalUi(application, output, false).printHeader();
+
+  const panelLines = chunks.join("").split("\n").filter((line) => line.startsWith("╭") || line.startsWith("╰") || /^│.*│$/u.test(line));
+  assert.ok(panelLines.length > 0);
+  assert.ok(panelLines.every((line) => line.length === 44));
+});
+
 test("TUI help is grouped around the actual terminal interaction", async () => {
   const chunks: string[] = [];
   const output = new Writable({
@@ -6547,12 +6571,12 @@ test("TUI sanitizes streamed output and separates it from activity", async () =>
 test("interactive TUI reviews and renders a local process execution", { timeout: 2_000 }, async () => {
   const chunks: string[] = [];
   const input = new PassThrough();
-  const output = new Writable({
+  const output = Object.assign(new Writable({
     write(chunk, _encoding, callback) {
       chunks.push(String(chunk));
       callback();
     },
-  });
+  }), { columns: 44 });
   const request: ProcessApprovalRequest = {
     callId: "process_ui_call",
     executionId: "execution_ui",
@@ -6643,6 +6667,9 @@ test("interactive TUI reviews and renders a local process execution", { timeout:
   assert.match(rendered, /command · approved/);
   assert.match(rendered, /command · running · pid 123/);
   assert.match(rendered, /command · completed/);
+  const panelLines = rendered.split("\n").filter((line) => line.startsWith("╭") || line.startsWith("╰") || /^│.*│$/u.test(line));
+  assert.ok(panelLines.length > 0);
+  assert.ok(panelLines.every((line) => line.length === 44));
 });
 
 test("interactive TUI cancels local process approval before launch", { timeout: 2_000 }, async () => {

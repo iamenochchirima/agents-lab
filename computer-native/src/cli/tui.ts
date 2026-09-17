@@ -14,7 +14,11 @@ import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText
 
 const COMMANDS = ["/help", "/status", "/models", "/history", "/memory", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
+const MIN_PANEL_WIDTH = 24;
+const MAX_PANEL_WIDTH = 100;
 const LABEL_WIDTH = 11;
+
+type TerminalOutput = Writable & { readonly columns?: number };
 
 export type TuiCommand =
   | { readonly kind: "help" }
@@ -76,19 +80,19 @@ function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): 
   return `${supported.join(", ") || "no declared capabilities"} · context ${capabilities.contextWindow}`;
 }
 
-function panelRule(title: string): string {
-  return `╭─ ${title} ${"─".repeat(Math.max(1, PANEL_WIDTH - title.length - 1))}╮`;
+function panelRule(title: string, width: number): string {
+  return `╭─ ${title} ${"─".repeat(Math.max(1, width - title.length - 1))}╮`;
 }
 
-function panelBottom(): string {
-  return `╰${"─".repeat(PANEL_WIDTH + 2)}╯`;
+function panelBottom(width: number): string {
+  return `╰${"─".repeat(width + 2)}╯`;
 }
 
-function panelRow(label: string, value: string): string {
+function panelRow(label: string, value: string, width: number): string {
   const safeLabel = shorten(sanitizeTerminalSingleLine(label), LABEL_WIDTH).padEnd(LABEL_WIDTH);
-  const clipped = shorten(sanitizeTerminalSingleLine(value), PANEL_WIDTH - LABEL_WIDTH - 1);
+  const clipped = shorten(sanitizeTerminalSingleLine(value), Math.max(1, width - LABEL_WIDTH - 1));
   const content = `${safeLabel} ${clipped}`;
-  return `│ ${content}${" ".repeat(Math.max(0, PANEL_WIDTH - content.length))} │`;
+  return `│ ${content}${" ".repeat(Math.max(0, width - content.length))} │`;
 }
 
 function commandCompleter(line: string): [string[], string] {
@@ -141,12 +145,19 @@ export class TerminalUi {
     return `${this.style("33;1", "❯")} ${this.style("36;1", "You")} ${this.style("2", "›")} `;
   }
 
+  private panelWidth(): number {
+    const columns = (this.output as TerminalOutput).columns;
+    if (columns === undefined || !Number.isSafeInteger(columns) || columns <= 0) return PANEL_WIDTH;
+    return Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, columns - 4));
+  }
+
   private printPanel(title: string, rows: readonly (readonly [string, string])[]): void {
-    this.write(`${this.style("33;1", panelRule(title))}\n`);
+    const width = this.panelWidth();
+    this.write(`${this.style("33;1", panelRule(title, width))}\n`);
     for (const [label, value] of rows) {
-      this.write(`${this.style("2", panelRow(label, value))}\n`);
+      this.write(`${this.style("2", panelRow(label, value, width))}\n`);
     }
-    this.write(`${this.style("33;1", panelBottom())}\n`);
+    this.write(`${this.style("33;1", panelBottom(width))}\n`);
   }
 
   private printActivity(icon: string, message: string, colour = "2"): void {
@@ -624,7 +635,7 @@ export class TerminalUi {
       ].join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", `Approval cancelled; the ${targetNoun} was left unchanged.`)}\n`);
       return answer;
@@ -663,7 +674,7 @@ export class TerminalUi {
       ].join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the process was not started.")}\n`);
       return answer;
@@ -723,7 +734,7 @@ export class TerminalUi {
       ].filter((value): value is string => value !== undefined).join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const prompt = new ApprovalPrompt({ output: this.output, colour: this.colour });
+    const prompt = new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() });
     const answer = request.dialog
       ? await prompt.askDialog(panel, request.dialog.type, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput })
       : await prompt.ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
@@ -781,7 +792,7 @@ export class TerminalUi {
       details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\napproval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt\nThis entry is advisory context and cannot change policy or permissions.`,
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
     if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return answer;

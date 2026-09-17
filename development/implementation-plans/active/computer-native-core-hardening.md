@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T01:53:11+02:00
+**Last updated:** 2026-09-17T02:08:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -126,6 +126,11 @@ tests, but it must never replace a configured real provider silently.
 - OpenRouter streamed chunks now also reject `null` choice entries and `null` deltas;
   usage-only chunks remain supported, but malformed structural placeholders cannot be
   accepted as a completed stream. Contract fixtures cover both shapes.
+- TUI panels now use the reported terminal width when available, with bounded fallback and
+  clamping for narrow or unusually wide terminals. The standalone TUI passes that width to
+  workspace, process, browser, and memory approval panels; boxed header and approval rows
+  have regression coverage. Existing scrollback is still not repainted on resize, and the
+  alternate-screen viewport remains outside this slice.
 - Workspace file, search, mutation, copy, and tree-manifest reads now use no-follow file
   descriptors with a bounded chunk loop. The loop probes at most one byte beyond the
   configured limit, so a file that grows after its initial metadata check fails closed
@@ -346,11 +351,11 @@ tests, but it must never replace a configured real provider silently.
 - `TurnStarted` provider/model metadata is checked against the admitted turn whenever
   present; metadata-free recovery records remain supported without weakening the normal
   runtime path.
-- The latest validation is 341 passing tests across the package. The latest coverage
-  run passes with 89.95% line coverage, 79.50% branch coverage, and 85.62% function
+- The latest validation is 348 passing tests across the package. The latest coverage
+  run passes with 89.89% line coverage, 79.76% branch coverage, and 85.63% function
   coverage. Coverage is from Node's experimental test-coverage runner and can vary
-  slightly between runs; one earlier run was discarded because instrumentation caused
-  a timing-sensitive process-recovery test to fail.
+  slightly between runs; host-sensitive fixtures are serialized by the package
+  commands.
 
 ### Current slice boundary: workspace mutation approval-evidence recovery
 
