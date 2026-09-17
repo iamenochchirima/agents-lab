@@ -15,8 +15,17 @@ import type {
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
 import {
+  CharacterTokenEstimator,
+  ContextService,
+  ContextSessionStore,
+  type ContextMessage,
+  type ContextSummaryGenerator,
+} from "../../../capabilities/context/index.js";
+import {
   configurationFromManifest,
   DEFAULT_EXECUTION_TIMEOUT_MS,
+  DEFAULT_MAX_TOOL_CALLS,
+  DEFAULT_MAX_TOOL_ROUNDS,
   MASTRA_AGENT_ID,
   MASTRA_CORE_VERSION,
   MASTRA_OPERATION,
@@ -36,6 +45,12 @@ export interface MastraBaselineRunnerOptions {
   readonly executionTimeoutMs?: number;
   readonly modelFactory?: MastraModelFactory;
   readonly now?: () => Date;
+  readonly contextRoot?: string;
+}
+
+interface PreparedMastraContext {
+  readonly currentMessageId: string;
+  readonly messages: readonly ContextMessage[];
 }
 
 /**
@@ -54,12 +69,14 @@ export class MastraBaselineRunner implements PlatformRunner {
   private readonly executionTimeoutMs: number;
   private readonly modelFactory?: MastraModelFactory;
   private readonly now: () => Date;
+  private readonly contextRoot: string;
 
   constructor(options: MastraBaselineRunnerOptions = {}) {
     this.environment = options.environment ?? safeEnvironment();
     this.executionTimeoutMs = options.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
     this.modelFactory = options.modelFactory;
     this.now = options.now ?? (() => new Date());
+    this.contextRoot = options.contextRoot ?? process.env.AGENTLAB_CONTEXT_ROOT ?? "lab/sessions";
     if (!Number.isInteger(this.executionTimeoutMs) || this.executionTimeoutMs < 1) {
       throw new Error("Mastra executionTimeoutMs must be a positive integer.");
     }
@@ -70,6 +87,9 @@ export class MastraBaselineRunner implements PlatformRunner {
       agentId: MASTRA_AGENT_ID,
       executionTimeoutMs: this.executionTimeoutMs,
       maxRetries: 0,
+      maxToolRounds: DEFAULT_MAX_TOOL_ROUNDS,
+      maxToolCalls: DEFAULT_MAX_TOOL_CALLS,
+      contextRoot: this.contextRoot,
       mastraVersion: MASTRA_CORE_VERSION,
       operation: MASTRA_OPERATION,
       storage: MASTRA_STORAGE_MODE,
@@ -166,11 +186,23 @@ export class MastraBaselineRunner implements PlatformRunner {
     }, configuration.executionTimeoutMs);
 
     try {
-      const agent = createBaselineAgent(record.manifest, this.modelFactory);
+      const context = await this.prepareContext(record, configuration.contextRoot);
+      const agent = createBaselineAgent(record.manifest, this.modelFactory, {
+        runId: record.manifest.runId,
+        turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
+        signal: record.controller.signal,
+        maxToolCalls: configuration.maxToolCalls,
+        onToolEvent: (kind, payload) => this.addEvent(record, kind, payload),
+      });
       const output = await agent.generate(record.manifest.task.prompt, {
         runId: record.manifest.runId,
         abortSignal: record.controller.signal,
-        maxSteps: 1,
+        ...(context ? {
+          context: context.messages
+            .filter((message) => message.role !== "system" && message.messageId !== context.currentMessageId)
+            .map(toMastraMessage),
+        } : {}),
+        maxSteps: configuration.maxToolRounds,
         onStepFinish: (step) => {
           this.addEvent(record, "AgentStepCompleted", {
             finishReason: safeValue(step, "finishReason"),
@@ -211,6 +243,38 @@ export class MastraBaselineRunner implements PlatformRunner {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async prepareContext(record: MastraExecutionRecord, contextRoot: string): Promise<PreparedMastraContext | null> {
+    const { sessionId, turnId } = record.manifest.context;
+    if (!sessionId || !turnId) return null;
+
+    this.addEvent(record, "ContextPreparationStarted", { sessionId, turnId, trigger: "preflight" });
+    const context = new ContextService(
+      new ContextSessionStore(contextRoot),
+      new CharacterTokenEstimator(),
+    );
+    const summarizer: ContextSummaryGenerator = {
+      summarize: async () => {
+        throw new Error("Mastra context compaction is not enabled in the direct baseline.");
+      },
+    };
+    const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
+    this.addEvent(record, "ContextPrepared", {
+      sessionId,
+      turnId,
+      snapshotId: prepared.snapshot.snapshotId,
+      inputTokens: prepared.snapshot.budget.inputTokens,
+      remainingTokens: prepared.snapshot.budget.remainingTokens,
+      remainingPercent: prepared.snapshot.budget.remainingPercent,
+      pressure: prepared.snapshot.budget.pressure,
+      quality: prepared.snapshot.budget.quality,
+      compacted: prepared.snapshot.compaction !== null,
+    });
+    return {
+      currentMessageId: prepared.turn.userMessageId,
+      messages: prepared.snapshot.messages,
+    };
   }
 
   private addEvent(record: MastraExecutionRecord, kind: string, payload: Record<string, unknown>): void {

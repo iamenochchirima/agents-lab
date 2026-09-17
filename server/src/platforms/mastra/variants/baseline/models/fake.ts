@@ -5,6 +5,7 @@ export interface DeterministicFakeModelOptions {
   readonly responseText?: string;
   readonly delayMs?: number;
   readonly failure?: "provider" | "ambiguous";
+  readonly toolCall?: boolean;
 }
 
 /**
@@ -19,7 +20,7 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
     provider: "agentlab.fake",
     modelId: options.modelId,
     supportedUrls: {},
-    doGenerate: async ({ abortSignal }: FakeGenerateOptions) => {
+    doGenerate: async ({ abortSignal, prompt }: FakeGenerateOptions) => {
       if (options.delayMs && options.delayMs > 0) {
         await waitForModel(options.delayMs, abortSignal);
       }
@@ -32,6 +33,29 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
         );
         error.name = options.failure === "ambiguous" ? "AmbiguousProviderError" : "ProviderError";
         throw error;
+      }
+
+      if (options.toolCall) {
+        if (!containsToolResult(prompt)) {
+          return {
+            content: [{
+              type: "tool-call",
+              toolCallId: "mastra-calculator-1",
+              toolName: "calculator",
+              input: JSON.stringify({ operation: "add", left: 17, right: 25 }),
+            }],
+            finishReason: "tool-calls",
+            usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+            warnings: [],
+          };
+        }
+
+        return {
+          content: [{ type: "text", text: "The calculator returned {\"value\":42}." }],
+          finishReason: "stop",
+          usage: { inputTokens: 18, outputTokens: 9, totalTokens: 27 },
+          warnings: [],
+        };
       }
 
       return {
@@ -49,6 +73,12 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
 
 interface FakeGenerateOptions {
   readonly abortSignal?: AbortSignal;
+  readonly prompt?: unknown;
+}
+
+function containsToolResult(prompt: unknown): boolean {
+  if (!Array.isArray(prompt)) return false;
+  return JSON.stringify(prompt).includes('"tool-result"');
 }
 
 function waitForModel(delayMs: number, abortSignal?: AbortSignal): Promise<void> {

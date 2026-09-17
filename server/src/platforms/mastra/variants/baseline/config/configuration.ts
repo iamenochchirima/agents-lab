@@ -5,11 +5,14 @@ export const MASTRA_AGENT_ID = "mastra-baseline-agent" as const;
 export const MASTRA_OPERATION = "agent.generate" as const;
 export const MASTRA_STORAGE_MODE = "none" as const;
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
+export const DEFAULT_MAX_TOOL_ROUNDS = 6;
+export const DEFAULT_MAX_TOOL_CALLS = 8;
 export const DETERMINISTIC_FAKE_MODELS = [
   "fake-success",
   "fake-slow",
   "fake-provider-failure",
   "fake-ambiguous",
+  "fake-tool-call",
 ] as const;
 
 export type MastraProvider = "fake" | "openrouter";
@@ -17,6 +20,9 @@ export type MastraProvider = "fake" | "openrouter";
 export interface MastraBaselineConfiguration {
   readonly agentId: string;
   readonly executionTimeoutMs: number;
+  readonly maxToolRounds: number;
+  readonly maxToolCalls: number;
+  readonly contextRoot: string;
   readonly provider: MastraProvider;
   readonly model: string;
 }
@@ -32,6 +38,9 @@ export function configurationFromManifest(manifest: RunManifest): MastraBaseline
   return {
     agentId: readString(configuration, "agentId", MASTRA_AGENT_ID),
     executionTimeoutMs,
+    maxToolRounds: readBoundedInteger(configuration, "maxToolRounds", DEFAULT_MAX_TOOL_ROUNDS, 1, 32),
+    maxToolCalls: readBoundedInteger(configuration, "maxToolCalls", DEFAULT_MAX_TOOL_CALLS, 1, 64),
+    contextRoot: readString(configuration, "contextRoot"),
     provider: manifest.model.provider,
     model: manifest.model.model,
   };
@@ -91,6 +100,20 @@ function readString(
 function readPositiveInteger(configuration: Readonly<Record<string, unknown>>, key: string): number {
   const value = configuration[key];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`Mastra platform configuration has an invalid ${key}.`);
+  }
+  return value;
+}
+
+function readBoundedInteger(
+  configuration: Readonly<Record<string, unknown>>,
+  key: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const value = configuration[key] ?? fallback;
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
     throw new Error(`Mastra platform configuration has an invalid ${key}.`);
   }
   return value;

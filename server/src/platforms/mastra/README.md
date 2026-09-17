@@ -9,6 +9,9 @@ The baseline intentionally has no Mastra memory, storage, tools, workflows, snap
 or external side effects. Its Lab evidence is durable after projection, but an
 in-flight generation is process-local and cannot be adopted after a server restart.
 
+The Platform UI selects an OpenRouter model from the shared server catalog. Mastra
+uses that selection through its model router; fake models remain test fixtures.
+
 ## Layout
 
 - `runner-adapter/mastra-runner.ts` — runner boundary and in-memory execution registry.
