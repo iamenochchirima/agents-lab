@@ -1,7 +1,7 @@
 # Cross-platform agent conformance — implementation plan
 
 **Created:** `2026-09-17T00:35:55+02:00`
-**Last updated:** `2026-09-17T01:18:41+02:00`
+**Last updated:** `2026-09-17T02:03:17+02:00`
 **Status:** Active
 **Owner:** Primary platform integration owner with one owner per platform
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -124,7 +124,7 @@ fixtures and must be named as such in tests and documentation.
 
 ### Priority platform implementations
 
-- [ ] Extend the Temporal baseline locally to consume the conformance context snapshot,
+- [x] Extend the Temporal baseline locally to consume the conformance context snapshot,
       expose the calculator tool, and retain its workflow/activity/retry semantics.
 - [x] Extend the Restate baseline locally to consume the conformance context snapshot,
       expose the calculator tool, and retain durable-step/journal replay semantics.
@@ -136,6 +136,20 @@ fixtures and must be named as such in tests and documentation.
       retries inside each platform directory.
 - [ ] Reuse the existing shared context and tool definitions; do not create a second
       calculator, second context store, or platform-specific copy of the common registry.
+
+#### Verified platform handoffs
+
+- [x] Temporal implementation, tests, and platform documentation were committed in
+      `0ddf84a` (`feat(temporal): add conformance context and tool loop`). The local
+      Temporal acceptance test passed, including context preparation, calculator tool
+      execution, retry, cancellation, timeout, overflow recovery, and reconciliation.
+- [x] LangGraph implementation, tests, protocol schema, launcher wiring, and platform
+      documentation were committed in `83ef8c1` (`feat(langgraph): add conformance
+      context and tool graph`). The native service passed prompt, calculator,
+      transcript-continuation, cancellation, restart, and unavailable-service checks.
+- [ ] LangGraph still needs the shared `ContextSnapshot` handoff. Its current native
+      bridge reads the canonical transcript and reports `quality: estimated`; it does
+      not claim shared snapshot IDs or Python-side compaction.
 
 ### Server and browser integration
 
