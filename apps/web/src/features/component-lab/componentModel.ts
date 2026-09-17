@@ -28,7 +28,7 @@ export function validateComponentCatalog(
 ): readonly string[] {
   const errors: string[] = [];
 
-  if (areas.length !== 11) errors.push(`Expected 11 component areas, found ${areas.length}.`);
+  if (areas.length !== 12) errors.push(`Expected 12 component areas, found ${areas.length}.`);
   checkUniqueIds("component area", areas, errors);
   checkUniqueIds("context strategy", strategies, errors);
   checkUniqueIds("context case", cases, errors);

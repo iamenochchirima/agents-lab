@@ -53,6 +53,14 @@ export const componentAreas: readonly ComponentAreaDescriptor[] = [
     document: proposalDocument,
   },
   {
+    id: "computer-use",
+    name: "Computer use",
+    summary: "Observe and act on interactive interfaces, then verify and recover from the resulting state.",
+    status: "planned",
+    nextAction: "Define a deterministic browser fixture and compare observation, action, and verification strategies.",
+    document: proposalDocument,
+  },
+  {
     id: "control-orchestration",
     name: "Control and orchestration",
     summary: "Compare loops, graphs, state machines, delegation, and termination rules.",

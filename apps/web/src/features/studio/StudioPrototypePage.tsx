@@ -53,12 +53,13 @@ const componentAreas = [
   { id: "planning", number: "03", name: "Planning / reasoning", status: "Planned", note: "Compare ways to form a plan." },
   { id: "memory", number: "04", name: "Memory", status: "Planned", note: "Control what is remembered." },
   { id: "tools", number: "05", name: "Tool use", status: "Planned", note: "Select, validate, and execute tools." },
-  { id: "control", number: "06", name: "Control / orchestration", status: "Planned", note: "Coordinate the agent loop." },
-  { id: "execution", number: "07", name: "Execution environment", status: "Planned", note: "Constrain the world it can touch." },
-  { id: "output", number: "08", name: "Output / actions", status: "Planned", note: "Verify and render the result." },
-  { id: "safety", number: "09", name: "Safety / guardrails", status: "Planned", note: "Detect risk and runaway behaviour." },
-  { id: "model", number: "10", name: "Model interface", status: "Planned", note: "Route and instrument model calls." },
-  { id: "observability", number: "11", name: "Observability", status: "Planned", note: "Leave behind inspectable evidence." },
+  { id: "computer-use", number: "06", name: "Computer use", status: "Planned", note: "Observe, act, verify, and recover in interfaces." },
+  { id: "control", number: "07", name: "Control / orchestration", status: "Planned", note: "Coordinate the agent loop." },
+  { id: "execution", number: "08", name: "Execution environment", status: "Planned", note: "Constrain the world it can touch." },
+  { id: "output", number: "09", name: "Output / actions", status: "Planned", note: "Verify and render the result." },
+  { id: "safety", number: "10", name: "Safety / guardrails", status: "Planned", note: "Detect risk and runaway behaviour." },
+  { id: "model", number: "11", name: "Model interface", status: "Planned", note: "Route and instrument model calls." },
+  { id: "observability", number: "12", name: "Observability", status: "Planned", note: "Leave behind inspectable evidence." },
 ] as const;
 
 const contextStrategies = [
@@ -107,7 +108,7 @@ function StudioNavigation({ active = "overview", onNavigate }: { active?: string
           >
             <Icon aria-hidden="true" size={16} />
             <span>{item.label}</span>
-            {item.id === "components" && <span className="studio-nav-count">11</span>}
+            {item.id === "components" && <span className="studio-nav-count">12</span>}
           </button>
         );
       })}
@@ -224,7 +225,7 @@ function ContextFocus({ onBack }: { onBack: () => void }) {
   return (
     <div className="studio-focus-layout">
       <aside className="studio-focus-sidebar">
-        <div className="studio-component-nav-heading"><span className="studio-eyebrow">11 areas</span><strong>Component Lab</strong></div>
+        <div className="studio-component-nav-heading"><span className="studio-eyebrow">12 areas</span><strong>Component Lab</strong></div>
         <ComponentsNavigation activeId="context" />
         <div className="studio-component-sidebar-note"><LockKeyhole aria-hidden="true" size={15} /><div><strong>Preview state</strong><p>Selections live in browser memory and are never sent to the server.</p></div></div>
       </aside>
@@ -271,7 +272,7 @@ function SystemMap({ onOpenComponents }: { onOpenComponents: () => void }) {
     <StudioFrame navigation="agents" onNavigate={(id) => id === "components" && onOpenComponents()}>
       <div className="studio-map-heading"><div><span className="studio-eyebrow">Agent system / neutral runtime</span><h1>Compose the whole harness</h1><p>See the execution path at a glance, then open any area when you want to vary its implementation.</p></div><div className="studio-map-actions"><StatusLabel tone="accent">Draft system</StatusLabel><button className="studio-primary-button" disabled type="button"><Play size={14} /> Run agent</button></div></div>
       <section className="studio-card studio-map-card"><div className="studio-map-card-heading"><div><span className="studio-eyebrow">Execution path</span><h2>One system, many seams</h2></div><span className="studio-map-caption"><LockKeyhole size={14} /> Baseline conditions fixed</span></div><div className="studio-execution-path">{path.map((item, index) => { const Icon = item.icon; return <div className="studio-path-step-group" key={item.name}><div className={`studio-path-node studio-path-node-${item.tone}`}><Icon size={20} /><span>{item.name}</span><small>{item.name === "Context" ? "1 strategy selected" : "Baseline"}</small></div>{index < path.length - 1 && <div className="studio-path-connector"><ArrowRight size={16} /></div>}</div>; })}</div><div className="studio-map-note"><Network size={16} /><span>The system is composed as one runtime. A component experiment changes one node while the surrounding path stays fixed.</span><button className="studio-text-button" onClick={onOpenComponents} type="button">Inspect components <ArrowRight size={14} /></button></div></section>
-      <div className="studio-map-lower-grid"><section className="studio-card studio-inventory-card"><SectionHeading eyebrow="System inventory" title="Harness areas" action={<span className="studio-muted-count">1 designing / 10 planned</span>} /><div className="studio-inventory-list">{componentAreas.map((area) => <button className={`studio-inventory-row ${area.id === "context" ? "is-active" : ""}`} key={area.id} onClick={area.id === "context" ? onOpenComponents : undefined} type="button"><span className="studio-component-number">{area.number}</span><span><strong>{area.name}</strong><small>{area.note}</small></span><StatusLabel tone={area.id === "context" ? "accent" : "neutral"}>{area.status}</StatusLabel></button>)}</div></section><section className="studio-card studio-definition-card"><SectionHeading eyebrow="Configuration" title="Agent definition" action={<Code2 size={16} />} /><pre>{`agent: untitled\nenvironment: neutral-runtime\nmodel: replay-adapter\ncomponents:\n  context: full-history\n  memory: baseline\n  tools: baseline\n  control: baseline`}</pre><button className="studio-secondary-button" disabled type="button">Edit definition <ArrowRight size={14} /></button></section></div>
+      <div className="studio-map-lower-grid"><section className="studio-card studio-inventory-card"><SectionHeading eyebrow="System inventory" title="Harness areas" action={<span className="studio-muted-count">1 designing / 11 planned</span>} /><div className="studio-inventory-list">{componentAreas.map((area) => <button className={`studio-inventory-row ${area.id === "context" ? "is-active" : ""}`} key={area.id} onClick={area.id === "context" ? onOpenComponents : undefined} type="button"><span className="studio-component-number">{area.number}</span><span><strong>{area.name}</strong><small>{area.note}</small></span><StatusLabel tone={area.id === "context" ? "accent" : "neutral"}>{area.status}</StatusLabel></button>)}</div></section><section className="studio-card studio-definition-card"><SectionHeading eyebrow="Configuration" title="Agent definition" action={<Code2 size={16} />} /><pre>{`agent: untitled\nenvironment: neutral-runtime\nmodel: replay-adapter\ncomponents:\n  context: full-history\n  memory: baseline\n  tools: baseline\n  control: baseline`}</pre><button className="studio-secondary-button" disabled type="button">Edit definition <ArrowRight size={14} /></button></section></div>
     </StudioFrame>
   );
 }

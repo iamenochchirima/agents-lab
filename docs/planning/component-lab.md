@@ -48,12 +48,13 @@ workspace for each harness area:
 3. Planning and reasoning
 4. Memory
 5. Tool use
-6. Control and orchestration
-7. Execution environment
-8. Output and actions
-9. Safety and guardrails
-10. Model interface
-11. Observability
+6. Computer use
+7. Control and orchestration
+8. Execution environment
+9. Output and actions
+10. Safety and guardrails
+11. Model interface
+12. Observability
 
 Each workspace should make the same basic actions available:
 
@@ -126,6 +127,33 @@ normalization, retries, timeout handling, and error recovery.
 Tool cases should distinguish read-only tools from side-effecting tools and record
 which tool was selected, why it was selected, what arguments were sent, and what
 result or failure came back.
+
+### Computer use
+
+Computer use is a distinct interaction loop for operating an interactive computer
+interface. It depends on an execution environment, but the experiment varies how the
+agent observes, grounds, acts, verifies, and recovers rather than how the machine is
+provisioned.
+
+Possible strategies include:
+
+- screenshot, DOM, accessibility-tree, or hybrid observation;
+- coordinate-based, semantic, or keyboard-driven actions;
+- visual, structural, or assertion-based target grounding;
+- single-action versus batched interaction;
+- screenshot-diff, DOM, accessibility, or task-level state verification; and
+- re-observation, alternate-action, retry, and recovery policies.
+
+Computer-use cases should use deterministic browser or desktop fixtures where
+possible. Evidence should retain the observation and action sequence, selected target
+or locator, resulting state, retries, failures, timing, and any side-effect outcome.
+Screenshots and interface snapshots must be redacted or synthetic when they could
+contain sensitive data.
+
+Tool use remains responsible for abstract API calls. Execution environment remains
+responsible for the machine, isolation, permissions, and resource limits. Safety and
+guardrails remain responsible for risk checks and confirmation around computer
+actions.
 
 ### Control and orchestration
 

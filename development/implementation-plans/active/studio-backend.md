@@ -27,7 +27,7 @@ The plan preserves these existing decisions:
   evidence namespace.
 - Harnesses, scenarios, experiments, runs, and telemetry remain distinct records.
 - The first Studio implementation is a real Context Management comparison, not a
-  simulated benchmark and not an implementation of all eleven component areas.
+  simulated benchmark and not an implementation of all twelve component areas.
 
 ## Purpose
 
@@ -74,7 +74,7 @@ measurements that the adapter did not observe.
 - [x] Implement a Studio-owned evidence store with immutable configuration,
       ordered events, trial context evidence, trajectory, metrics, and result files.
 - [x] Add `/api/studio/` endpoints for creating, reading, and inspecting a comparison.
-- [x] Add a read-only `/api/studio/catalog` projection that advertises all eleven
+- [x] Add a read-only `/api/studio/catalog` projection that advertises all twelve
       areas while exposing executable strategies only for Context Management.
 - [x] Define idempotency, cancellation, invalid-input, crash-detection, and
       recovery-required behaviour for the first local execution profile.
@@ -96,7 +96,7 @@ measurements that the adapter did not observe.
 - Parallel trial execution. Trials run sequentially until isolation and resource
   accounting justify a parallel strategy.
 - A general plugin SDK, dynamic code loading, user-authored executable strategies,
-  or a framework-neutral abstraction for all eleven areas before a second concrete
+  or a framework-neutral abstraction for all twelve areas before a second concrete
   strategy seam requires it.
 - Benchmark interpretation, leaderboard ranking, or aggregate quality claims.
 - Redesigning the current Studio prototype UI. A later slice may connect the UI to
@@ -330,7 +330,7 @@ contract before it can be described as resumable.
 - [x] Implement `GET /api/studio/comparisons/:comparisonId/evidence/*` or an equivalent
       bounded evidence endpoint.
 - [x] Implement cancellation and recovery-required projections.
-- [x] Implement a read-only catalog projection for the eleven Studio component areas.
+- [x] Implement a read-only catalog projection for the twelve Studio component areas.
 - [x] Verify current `/api/runs`, `/api/platforms`, and platform health routes still
       resolve through their existing handlers.
 

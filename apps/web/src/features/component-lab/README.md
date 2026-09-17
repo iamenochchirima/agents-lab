@@ -16,6 +16,6 @@ making the component catalog depend on a platform implementation.
 
 Public routes:
 
-- `/components` shows the eleven-area catalog.
+- `/components` shows the twelve-area catalog, including the planned Computer Use area.
 - `/components/:areaId` shows the selected area. `context-management` is the first
   detailed workspace; other areas show an honest planned state.

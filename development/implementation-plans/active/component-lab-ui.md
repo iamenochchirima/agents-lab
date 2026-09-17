@@ -25,7 +25,7 @@ execution contracts depend on Component Lab.
 
 ## Purpose
 
-Give contributors a concrete UI in which to browse the eleven harness areas, inspect
+Give contributors a concrete UI in which to browse the twelve harness areas, inspect
 the strategies and cases that will eventually be executable, and agree on the first
 focused experiment shape before adding a component runner or persistence.
 
@@ -38,7 +38,7 @@ run results, metrics, infrastructure health, or completed implementations.
 From the browser, a contributor can:
 
 1. Open a new top-level `Component Lab` navigation item at `/components`.
-2. See all eleven harness areas with a short responsibility statement, current status,
+2. See all twelve harness areas with a short responsibility statement, current status,
    and next useful action.
 3. Open the Context Management workspace at
    `/components/context-management` and see the first strategy catalog, including full
@@ -67,7 +67,7 @@ Component Lab → area catalog → Context Management
 ## Scope
 
 - [x] Add a stable `/components` route and a `Component Lab` item to the main sidebar.
-- [x] Add a feature-local catalog for all eleven component areas, with stable IDs,
+- [x] Add a feature-local catalog for all twelve component areas, with stable IDs,
       concise descriptions, status, ownership note, and a link to the relevant plan
       or design document when one exists.
 - [x] Add a Component Lab entrance workspace that makes the difference between a
@@ -107,7 +107,7 @@ Component Lab → area catalog → Context Management
 ### User-visible behaviour
 
 The `/components` page has a clear page heading, a short explanation of the lab's
-purpose, and an eleven-item area catalog. Each area shows:
+purpose, and a twelve-item area catalog. Each area shows:
 
 - name and one-sentence responsibility;
 - status such as `Planned`, `Designing`, or `UI preview`;
@@ -154,6 +154,7 @@ The first catalog records these areas using stable IDs:
 | `planning-reasoning` | Planning and reasoning | Planned | Compare interleaved, plan-first, and graph-oriented planning |
 | `memory` | Memory | Planned | Study working, episodic, semantic, and procedural memory separately |
 | `tool-use` | Tool use | Planned | Select, validate, dispatch, normalize, and recover from tool calls |
+| `computer-use` | Computer use | Planned | Compare observation, grounding, actions, verification, and recovery in interactive interfaces |
 | `control-orchestration` | Control and orchestration | Planned | Compare loops, state machines, graphs, and delegation |
 | `execution-environment` | Execution environment | Planned | Inspect isolation, permissions, and resource limits |
 | `output-actions` | Output and actions | Planned | Separate proposed actions, verification, commit, and rendering |
@@ -261,7 +262,7 @@ Only the context strategy and its explicit parameters vary between comparison sl
 
 - [x] Add feature-local types for areas, statuses, strategies, cases, and preview
       configuration.
-- [x] Add the eleven-area catalog and validate unique IDs and document references.
+- [x] Add the twelve-area catalog and validate unique IDs and document references.
 - [x] Add the initial Context strategy and case catalogs from the Component Lab proposal.
 
 ### 2. Core UI
@@ -294,7 +295,7 @@ Only the context strategy and its explicit parameters vary between comparison sl
 
 ### Unit or model checks
 
-- [ ] Validate that all eleven area IDs are unique and every required label/status is
+- [ ] Validate that all twelve area IDs are unique and every required label/status is
       present.
 - [ ] Validate that Context strategies and cases have unique IDs and non-empty
       descriptions, controls, and limitation text.
@@ -313,7 +314,7 @@ Only the context strategy and its explicit parameters vary between comparison sl
 
 ### Manual acceptance
 
-- [ ] Open Component Lab from the sidebar and identify all eleven areas without
+- [ ] Open Component Lab from the sidebar and identify all twelve areas without
       confusing it with Platform coverage.
 - [ ] Open Context Management, choose a strategy and case, and see the fixed-versus-
       changed explanation update without any network request.
@@ -348,7 +349,7 @@ validation, record the exact failure and keep it separate from Component Lab cha
 ## Completion gate
 
 - [ ] The Component Lab is reachable from the main navigation at `/components`.
-- [ ] All eleven areas are visible with truthful status and ownership language.
+- [ ] All twelve areas are visible with truthful status and ownership language.
 - [ ] Context Management has a usable strategy/case/comparison preview.
 - [ ] Execution remains clearly unavailable and no fabricated evidence is shown.
 - [ ] Existing Platform routes and implementation plans remain behaviourally unchanged.

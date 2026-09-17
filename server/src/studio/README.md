@@ -35,7 +35,7 @@ The latter two accept bounded string parameters: `recentMessages` and
 `maxMessages`, respectively.
 
 `GET /api/studio/catalog` returns the versioned, safe catalog for the Studio UI. It
-lists all eleven harness areas, marks Context Management as currently available, and
+lists all twelve harness areas, marks Context Management as currently available, and
 marks the other areas as planned. Planned entries are discoverable but expose no fake
 strategies or executable run path.
 

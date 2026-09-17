@@ -31,6 +31,7 @@ export const studioSystem: StudioSystemDefinition = {
     "planning-reasoning": "baseline",
     memory: "baseline",
     "tool-use": "baseline",
+    "computer-use": "baseline",
     "control-orchestration": "baseline",
     "execution-environment": "contained-local",
     "output-actions": "baseline",
@@ -140,12 +141,13 @@ const componentDescriptors: readonly StudioComponentDescriptor[] = [
   plannedComponent("planning-reasoning", 3, "Planning / reasoning", "Compare ways to decompose and review work before acting."),
   plannedComponent("memory", 4, "Memory", "Control what is retained, retrieved, consolidated, or forgotten."),
   plannedComponent("tool-use", 5, "Tool use", "Select, validate, execute, and recover from tool calls."),
-  plannedComponent("control-orchestration", 6, "Control / orchestration", "Coordinate loops, graphs, delegation, termination, and interruption."),
-  plannedComponent("execution-environment", 7, "Execution environment", "Constrain filesystem, network, process, and resource access."),
-  plannedComponent("output-actions", 8, "Output / actions", "Verify, commit, and render agent actions and responses."),
-  plannedComponent("safety-guardrails", 9, "Safety / guardrails", "Inspect input, output, tool results, risk, and runaway behavior."),
-  plannedComponent("model-interface", 10, "Model interface", "Route, format, retry, and instrument model calls."),
-  plannedComponent("observability", 11, "Observability", "Persist trajectories, events, metrics, and diagnostic artifacts."),
+  plannedComponent("computer-use", 6, "Computer use", "Observe and act on interactive interfaces, then verify and recover."),
+  plannedComponent("control-orchestration", 7, "Control / orchestration", "Coordinate loops, graphs, delegation, termination, and interruption."),
+  plannedComponent("execution-environment", 8, "Execution environment", "Constrain filesystem, network, process, and resource access."),
+  plannedComponent("output-actions", 9, "Output / actions", "Verify, commit, and render agent actions and responses."),
+  plannedComponent("safety-guardrails", 10, "Safety / guardrails", "Inspect input, output, tool results, risk, and runaway behavior."),
+  plannedComponent("model-interface", 11, "Model interface", "Route, format, retry, and instrument model calls."),
+  plannedComponent("observability", 12, "Observability", "Persist trajectories, events, metrics, and diagnostic artifacts."),
 ];
 
 export const studioCatalog: StudioCatalogProjection = {

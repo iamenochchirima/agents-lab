@@ -12,6 +12,7 @@ export type StudioComponentId =
   | "planning-reasoning"
   | "memory"
   | "tool-use"
+  | "computer-use"
   | "control-orchestration"
   | "execution-environment"
   | "output-actions"

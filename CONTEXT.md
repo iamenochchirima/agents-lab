@@ -51,6 +51,15 @@ A replaceable responsibility within a harness, such as context management, memor
 planning, or tool use, that can be the subject of an experiment. A harness component
 is not a platform and is not merely a user-interface element.
 
+**Computer use**:
+A harness component that observes and acts on an interactive computer interface,
+such as a browser or desktop, then verifies the resulting state. It includes the
+observation source, target grounding, action representation, state verification, and
+interaction recovery policy.
+_Avoid_: treating computer use as generic API tool calling or as the computer
+environment itself. The environment owns the machine and its capabilities; computer
+use owns the observe-and-act interaction policy.
+
 **Component experiment**:
 An experiment that varies one harness component or strategy while holding the
 scenario and surrounding harness configuration fixed.
