@@ -1,7 +1,7 @@
 # Computer Native production-readiness gaps
 
 **Created:** 2026-09-16T12:00:00+02:00
-**Last updated:** 2026-09-17T02:08:00+02:00
+**Last updated:** 2026-09-17T02:15:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -275,6 +275,43 @@ readiness:
   start record, and after browser completion evidence. These tests prove no filesystem or
   browser side effect is replayed and that recovery-only lifecycle evidence is singular.
   They do not constitute complete coverage of every durable write or host-side boundary.
+
+## Deferred reinforcement backlog
+
+This is the explicit parking lot for the exhaustive work needed for a mature production
+profile. It is not the acceptance checklist for every first-iteration feature. A new
+slice should ship when its core path works through the shared contracts, its important
+failure behaviour is covered, and its documentation is honest. These items become the
+focus after more Computer Native components are integrated:
+
+- Runtime and recovery. Inject interruption before and after every durable write and
+  host side effect; repeat recovery; exercise duplicate and out-of-order events; verify
+  ambiguous outcomes, retries, timeouts, cancellation, concurrent turns, session locks,
+  and provider/browser/process crashes.
+- Filesystem and process boundaries. Test TOCTOU races, symlink/hard-link and special
+  file policy, partial multi-file changes, large trees and outputs, interrupted journals,
+  orphaned process trees, cross-platform process identity, resource limits, and network
+  policy. Add PTY, shell, and background-job coverage only when those capabilities enter
+  the product contract.
+- Browser and memory. Test profile isolation, authentication and credential
+  boundaries, browser crashes, artifact cleanup, hostile page content, retrieval quality,
+  promotion/compaction, privacy scopes, deletion, migration, backup, and restore.
+- TUI and provider UX. Test full-screen redraw, resize, narrow terminals, scrollback,
+  search, multiline paste, keyboard focus, accessibility, long sessions, malformed
+  provider responses, rate limits, credential rotation, fallback decisions, and cost
+  evidence.
+- Security and privacy. Test prompt injection across files, web, memory, skills,
+  plugins, and integrations; traversal and private-network access; malicious downloads;
+  hostile output; secret leakage; oversized input; resource exhaustion; stale approvals;
+  cross-scope access; privilege escalation; and audit-record tampering.
+- Compatibility and operations. Test supported Node/OS/locale combinations, clean
+  environments, long-running and concurrent sessions, dependency and license review,
+  upgrades, migrations, downgrade/rollback, backup/restore drills, observability,
+  release provenance, and operator runbooks.
+
+The detailed production gate below remains the definition of mature readiness. This
+backlog records when that gate will be reinforced; it does not pretend those guarantees
+already exist in the first implementation iteration.
 
 The missing evidence is more important than the line-coverage number. We still need
 failure-injection, long-running, concurrency, security, cross-platform, upgrade,

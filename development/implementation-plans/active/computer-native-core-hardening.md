@@ -1,7 +1,7 @@
 # Computer Native core hardening and production foundation
 
 **Created:** 2026-09-16T12:15:00+02:00
-**Last updated:** 2026-09-17T02:08:00+02:00
+**Last updated:** 2026-09-17T02:15:00+02:00
 **Status:** Active
 **Owner:** Computer Native standalone product
 
@@ -65,6 +65,17 @@ user input
 The implementation is complete only when the same behaviour is covered by automated
 tests and by a short manual TUI acceptance flow. A deterministic provider may control
 tests, but it must never replace a configured real provider silently.
+
+## First-iteration execution rule
+
+Implement this plan in small vertical slices. Each slice must make its core path work
+through the shared runtime and public TUI/tool boundary, include focused normal and
+important-error tests, and document any deliberately deferred edge cases. The broader
+failure, security, load, compatibility, and operational matrix is recorded in the
+production-readiness gap register for reinforcement after more Computer Native
+components are integrated. That backlog remains part of the eventual production gate,
+but it does not block every initial feature slice when the core behaviour is working and
+the relevant focused tests pass.
 
 ## Progress so far
 
@@ -131,6 +142,9 @@ tests, but it must never replace a configured real provider silently.
   workspace, process, browser, and memory approval panels; boxed header and approval rows
   have regression coverage. Existing scrollback is still not repainted on resize, and the
   alternate-screen viewport remains outside this slice.
+- Completed local process activity now includes a concise sanitized stdout/stderr summary
+  when output exists, so a basic approved command is observable from the standalone TUI;
+  raw streaming panes and full scrollback remain outside this first iteration.
 - Workspace file, search, mutation, copy, and tree-manifest reads now use no-follow file
   descriptors with a bounded chunk loop. The loop probes at most one byte beyond the
   configured limit, so a file that grows after its initial metadata check fails closed

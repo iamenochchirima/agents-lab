@@ -62,7 +62,8 @@ When process mode is `approval`, `run_command` uses a separate review panel that
 the exact executable, JSON-quoted argument vector, cwd, sanitized environment profile,
 limits, and the warning that the workspace is not an OS sandbox. The panel must be
 approved once per command; process activity then reports approval, pid, termination,
-and the bounded terminal outcome. `--process-mode deny` or
+the bounded terminal outcome, and a concise sanitized stdout/stderr summary when output
+exists. `--process-mode deny` or
 `COMPUTER_NATIVE_PROCESS_MODE=deny` removes the process tool from the model tool list.
 
 The renderer must not invent tool activity, usage, health, or capability state. When a

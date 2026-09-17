@@ -6667,6 +6667,7 @@ test("interactive TUI reviews and renders a local process execution", { timeout:
   assert.match(rendered, /command · approved/);
   assert.match(rendered, /command · running · pid 123/);
   assert.match(rendered, /command · completed/);
+  assert.match(rendered, /command output · ok/u);
   const panelLines = rendered.split("\n").filter((line) => line.startsWith("╭") || line.startsWith("╰") || /^│.*│$/u.test(line));
   assert.ok(panelLines.length > 0);
   assert.ok(panelLines.every((line) => line.length === 44));

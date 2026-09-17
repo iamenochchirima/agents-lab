@@ -437,6 +437,11 @@ export class TerminalUi {
         }
         this.status = `command ${event.result.state}: ${event.request.command}`;
         this.printActivity(event.result.state === "completed" && event.result.errorCode === undefined ? "✓" : "×", `command · ${event.result.state} · ${event.request.command}`, event.result.state === "completed" && event.result.errorCode === undefined ? "32;1" : "31;1");
+        const output = [
+          event.result.stdout.length > 0 ? event.result.stdout : undefined,
+          event.result.stderr.length > 0 ? `stderr: ${event.result.stderr}` : undefined,
+        ].filter((value): value is string => value !== undefined).join(" · ");
+        if (output.length > 0) this.printActivity("│", `command output · ${shorten(sanitizeTerminalSingleLine(output), 512)}`);
         break;
     }
   }
