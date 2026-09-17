@@ -109,6 +109,13 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
     /browser enabled must be true or false/u,
   );
   assert.equal(deterministic.openRouterApiKey, undefined);
+  const renamedLocalProvider = loadConfig({ stateDir: tempDirectory() }, {
+    COMPUTER_NATIVE_PROVIDER: "openrouter",
+    OPENROUTER_MODEL: "openrouter/free",
+    OPENROUTER_API_KEY: "test-key",
+  });
+  assert.equal(renamedLocalProvider.provider, "openrouter");
+  assert.equal(renamedLocalProvider.model, "openrouter/free");
   assert.throws(
     () => config(tempDirectory(), { provider: "openrouter", model: "openai/example" }),
     (error: unknown) => error instanceof AnesuError && error.code === "configuration",
@@ -674,8 +681,8 @@ test("successful turn persists ordered transcript, events, and result", async ()
   const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
   const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
     .trim().split("\n").map((line) => JSON.parse(line) as { sequence: number; sessionId: string; turnId: string; type: string });
-  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequested", "ModelAttemptCompleted", "ModelCompleted", "TurnCompleted"]);
-  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5]);
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ContextPrepared", "ModelRequested", "ModelAttemptCompleted", "ModelCompleted", "TurnCompleted"]);
+  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5, 6]);
   assert.ok(events.every((event) => event.sessionId === result.sessionId && event.turnId === result.turnId));
 });
 
@@ -933,7 +940,7 @@ test("restart recovery repairs terminal evidence after a durable write acknowled
   const eventSession = await SessionStore.open(eventStateDir, undefined, {
     writeHooks: {
       afterWrite: (operation, filePath) => {
-        if (operation === "append-json-line" && filePath.endsWith("/events.jsonl") && eventAcknowledgements++ === 4) {
+        if (operation === "append-json-line" && filePath.endsWith("/events.jsonl") && eventAcknowledgements++ === 5) {
           throw new Error("simulated terminal event acknowledgement failure");
         }
       },
@@ -1158,8 +1165,10 @@ test("resuming a session sends bounded transcript history to the next model requ
   };
   await runTurn({ session, provider, config: config(stateDir), userPrompt: "first" });
   await runTurn({ session, provider, config: config(stateDir), userPrompt: "second" });
+  const workspaceRules = await readFile(path.join(process.cwd(), "AGENTS.md"), "utf8");
   assert.deepEqual(requests[1]?.messages.map((message) => message.content), [
     config(stateDir).initialInstruction,
+    `<workspace-resource path="AGENTS.md" trust="workspace" instructions="untrusted-data">\n${workspaceRules}\n</workspace-resource>`,
     "first",
     "answer",
     "second",
@@ -1202,7 +1211,7 @@ test("model request size is rejected before the provider is invoked", async () =
   const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
   const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
     .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
-  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequestRejected", "TurnFailed"]);
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ContextPrepared", "ContextPressure", "ModelRequestRejected", "TurnFailed"]);
   const rejection = events.find((event) => event.type === "ModelRequestRejected");
   assert.equal(rejection?.payload.reason, "request-size");
   assert.equal(typeof rejection?.payload.requestBytes, "number");
@@ -1330,6 +1339,7 @@ test("cancellation during model retry backoff does not dispatch another attempt"
     .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
   assert.deepEqual(events.map((event) => event.type), [
     "TurnStarted",
+    "ContextPrepared",
     "ModelRequested",
     "ModelAttemptCompleted",
     "ModelRetryScheduled",
@@ -1422,7 +1432,7 @@ test("pre-cancelled turns do not dispatch a model request", async () => {
   const turnDirectory = path.join(stateDir, "sessions", result.sessionId, "turns", result.turnId);
   const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
     .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
-  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "TurnCancelled"]);
+  assert.deepEqual(events.map((event) => event.type), ["TurnCancelled"]);
   const turnRecord = JSON.parse(await readFile(path.join(turnDirectory, "turn.json"), "utf8")) as { state: string };
   assert.equal(turnRecord.state, "cancelled");
 });
@@ -1530,7 +1540,7 @@ test("diagnostic interruption before model send recovers without invoking the pr
   const turnDirectory = path.join(stateDir, "sessions", session.metadata.sessionId, "turns", (await session.readTranscript())[0]!.turnId);
   const events = (await readFile(path.join(turnDirectory, "events.jsonl"), "utf8"))
     .trim().split("\n").map((line) => JSON.parse(line) as { type: string });
-  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ModelRequested", "TurnInterrupted"]);
+  assert.deepEqual(events.map((event) => event.type), ["TurnStarted", "ContextPrepared", "ModelRequested", "TurnInterrupted"]);
 });
 
 test("pre-write interruption before the terminal event repairs the completed result", async () => {
@@ -1539,7 +1549,7 @@ test("pre-write interruption before the terminal event repairs the completed res
   const session = await SessionStore.open(stateDir, undefined, {
     writeHooks: {
       beforeWrite: (operation, filePath) => {
-        if (operation === "append-json-line" && filePath.endsWith("/events.jsonl") && eventWrites++ === 4) {
+        if (operation === "append-json-line" && filePath.endsWith("/events.jsonl") && eventWrites++ === 5) {
           throw new RuntimeInterruptionError("stopped before terminal event durability");
         }
       },
@@ -1964,6 +1974,7 @@ test("restart repairs a missing first workspace mutation lifecycle event", async
     .trim().split("\n").map((line) => JSON.parse(line) as { type: string; payload: Record<string, unknown> });
   assert.deepEqual(events.map((event) => event.type), [
     "TurnStarted",
+    "ContextPrepared",
     "ModelRequested",
     "ModelAttemptCompleted",
     "WorkspaceMutationProposed",
@@ -6317,6 +6328,7 @@ test("TUI commands are explicit and unknown commands do not become model prompts
   assert.deepEqual(parseTuiCommand("/help"), { kind: "help" });
   assert.deepEqual(parseTuiCommand("/exit"), { kind: "quit" });
   assert.deepEqual(parseTuiCommand("/status extra"), { kind: "status" });
+  assert.deepEqual(parseTuiCommand("/context"), { kind: "context" });
   assert.deepEqual(parseTuiCommand("/models"), { kind: "models" });
   assert.deepEqual(parseTuiCommand("/not-real"), { kind: "unknown", name: "/not-real" });
   assert.equal(parseTuiCommand("tell me about the workspace"), undefined);
@@ -6349,6 +6361,115 @@ test("TUI model view shows explicit provider choices and the active selection", 
   assert.match(rendered, /Deterministic local provider/u);
   assert.match(rendered, /OpenRouter hosted provider/u);
   assert.match(rendered, /--provider.*--model/u);
+});
+
+test("TUI context view renders the durable snapshot without raw source content", async () => {
+  const chunks: string[] = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  });
+  const application = {
+    sessionId: "session_context_view",
+    modelLabel: "deterministic/echo",
+    providerLabel: "deterministic/deterministic/echo",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["read_file"],
+    readContextSnapshot: async () => ({
+      schemaVersion: 1 as const,
+      snapshotId: "context_snapshot_view",
+      revision: 1,
+      previousSnapshotId: null,
+      sessionId: asSessionId("session_context_view"),
+      turnId: asTurnId("turn_context_view"),
+      provider: "deterministic" as const,
+      model: "deterministic/echo",
+      requestHash: "a".repeat(64),
+      messages: [],
+      sources: [
+        { id: "system", kind: "system" as const, trust: "system" as const, status: "selected" as const, bytes: 20, selectedBytes: 20 },
+        { id: "workspace:SOUL.md", kind: "workspace-resource" as const, trust: "workspace" as const, status: "truncated" as const, bytes: 500, selectedBytes: 100, reason: "resource-byte-limit" },
+        { id: "memory", kind: "memory" as const, trust: "user" as const, status: "omitted" as const, bytes: 0, selectedBytes: 0, reason: "empty" },
+      ],
+      budget: { maxRequestBytes: 2_000, requestBytes: 1_100, inputBytes: 900, estimatedInputTokens: 225, tokenEstimateBasis: "utf8-bytes-divided-by-four" as const, pressure: "normal" as const },
+      compaction: {
+        strategy: "deterministic-transcript-summary",
+        removedMessageIds: ["message:old"],
+        retainedMessageIds: ["message:recent"],
+        removedGroupIds: ["turn:old"],
+        retainedGroupIds: ["turn:recent"],
+        beforeRequestBytes: 2_000,
+        afterRequestBytes: 1_100,
+        reason: "request-budget" as const,
+      },
+      createdAt: new Date(0).toISOString(),
+    }),
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runCommand({ kind: "context" });
+
+  const rendered = chunks.join("");
+  assert.match(rendered, /Prepared context/u);
+  assert.match(rendered, /context_snapshot_view/u);
+  assert.match(rendered, /workspace:SOUL\.md.*truncated/u);
+  assert.match(rendered, /memory.*omitted.*empty/u);
+  assert.match(rendered, /budget.*2000.*1100 bytes/u);
+  assert.doesNotMatch(rendered, /raw source content/u);
+});
+
+test("TUI status includes the latest context pressure and request budget", async () => {
+  const chunks: string[] = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  });
+  const application = {
+    sessionId: "session_status_context",
+    modelLabel: "deterministic/echo",
+    providerLabel: "deterministic/deterministic/echo",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["read_file"],
+    readTranscript: async () => [],
+    readContextSnapshot: async () => ({
+      schemaVersion: 1 as const,
+      snapshotId: "context_status_view",
+      revision: 2,
+      previousSnapshotId: "context_previous",
+      sessionId: asSessionId("session_status_context"),
+      turnId: asTurnId("turn_status_context"),
+      provider: "deterministic" as const,
+      model: "deterministic/echo",
+      requestHash: "a".repeat(64),
+      sourceRevision: "b".repeat(64),
+      compactionRevision: null,
+      messages: [],
+      sources: [],
+      budget: {
+        maxRequestBytes: 2_000,
+        reservedOutputBytes: 500,
+        requestBytes: 1_100,
+        inputBytes: 900,
+        estimatedInputTokens: 225,
+        tokenEstimateBasis: "utf8-bytes-divided-by-four",
+        tokenEstimateQuality: "estimated" as const,
+        contextWindowTokens: null,
+        pressure: "compaction_due" as const,
+      },
+      compaction: null,
+      createdAt: new Date(0).toISOString(),
+    }),
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runCommand({ kind: "status" });
+
+  const rendered = chunks.join("");
+  assert.match(rendered, /context.*r2.*compaction_due.*1100\/2000 bytes/u);
 });
 
 test("TUI header presents a structured, factual agent-console surface", () => {
@@ -6454,6 +6575,9 @@ test("TUI renders the public turn lifecycle as styled activity", async () => {
       _approveMutation?: unknown,
       onMutation?: (event: MutationEvent) => void,
     ) => {
+      onEvent?.({ type: "context_prepared", snapshotId: "context_test", revision: 1, sourceCount: 3, omittedSourceCount: 0, requestBytes: 500, maxRequestBytes: 2_000 });
+      onEvent?.({ type: "context_compacted", snapshotId: "context_test", revision: 1, strategy: "deterministic-transcript-summary", removedMessageCount: 2, reason: "request-budget" });
+      onEvent?.({ type: "context_pressure", snapshotId: "context_test", revision: 1, pressure: "compaction_due", reason: "request-budget" });
       onEvent?.({ type: "waiting", round: 1 });
       onEvent?.({ type: "retry", round: 1, attempt: 1, delayMs: 0, reason: "temporary provider failure" });
       onEvent?.({
@@ -6497,6 +6621,9 @@ test("TUI renders the public turn lifecycle as styled activity", async () => {
   await new TerminalUi(application, output, false).runSingle("inspect the note");
 
   const rendered = chunks.join("");
+  assert.match(rendered, /context · prepared · revision 1/);
+  assert.match(rendered, /context · compacted · 2 messages · request-budget/);
+  assert.match(rendered, /context · pressure compaction_due · request-budget/);
   assert.match(rendered, /waiting for model/);
   assert.match(rendered, /model retry · attempt 1 · temporary provider failure/);
   assert.match(rendered, /read_file · started/);

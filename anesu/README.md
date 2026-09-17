@@ -91,7 +91,9 @@ workspace is the current directory; set `--workspace <path>` or
 
 For repeated local development, copy `.env.example` to `.env`, set the provider, model,
 and key, then run the normal command. The `.env` file is ignored by git and loaded
-automatically:
+automatically. `ANESU_PROVIDER` takes precedence; the older
+`COMPUTER_NATIVE_PROVIDER` name is still accepted as a local development compatibility
+alias so a rename cannot silently select the deterministic provider:
 
 ```bash
 cp .env.example .env

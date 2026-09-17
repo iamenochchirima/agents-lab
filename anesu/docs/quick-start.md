@@ -32,8 +32,10 @@ Type a normal prompt such as:
 Say hello in one sentence, then tell me which model is serving this turn.
 ```
 
-Type `/help` to see commands. Use `/status`, `/history`, `/memory`, and `/evidence` to
-inspect the session. A line ending in `\\` continues into a multiline prompt. Type
+Type `/help` to see commands. Use `/status`, `/context`, `/history`, `/memory`, and
+`/evidence` to inspect the session. `/context` shows the latest bounded model-input
+snapshot, source decisions, byte accounting, token-estimate quality, and compaction
+without dumping raw source content. A line ending in `\\` continues into a multiline prompt. Type
 `/quit` to leave normally. Press Ctrl-C during a model request or approval to cancel it;
 when the composer is idle, the first Ctrl-C clears a draft and the next exits. Ctrl-D
 also exits. Resume the session with:
@@ -220,7 +222,9 @@ Failure turns retain the user message and do not append an assistant message.
 
 OpenRouter is the first real provider adapter. It is opt-in so a test or local learning
 run never spends money or sends a prompt without an explicit choice. For repeated local
-development, store the choice in the ignored `anesu/.env` file:
+development, store the choice in the ignored `anesu/.env` file. `ANESU_PROVIDER` takes
+precedence; `COMPUTER_NATIVE_PROVIDER` remains accepted as a compatibility alias for
+older local development files:
 
 ```bash
 cp .env.example .env

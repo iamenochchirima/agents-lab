@@ -51,10 +51,12 @@ export interface ApprovalQuestionOptions {
   readonly question: (prompt: string, callback: (answer: string) => void) => void;
   readonly signal?: AbortSignal;
   readonly cancelQuestion?: () => void;
-  readonly pauseInput?: () => void;
-  readonly resumeInput?: () => void;
   /** Raw terminal input is used only when the caller explicitly supplies a TTY. */
   readonly rawInput?: NodeJS.ReadableStream;
+  /** Temporarily transfers raw TTY ownership away from the line editor. */
+  readonly pauseRawInput?: () => void;
+  /** Restores line-editor ownership after a raw approval decision. */
+  readonly resumeRawInput?: () => void;
 }
 
 export interface ApprovalPromptOptions {
@@ -163,17 +165,17 @@ export class ApprovalPrompt {
 
   async ask(panel: ApprovalPanel, options: ApprovalQuestionOptions): Promise<ApprovalResult> {
     this.writePanel(panel);
-    if (isRawTerminal(options.rawInput)) {
-      options.pauseInput?.();
-      let choice: Awaited<ReturnType<ApprovalPrompt["askKeyboard"]>>;
+    const rawTerminal = isRawTerminal(options.rawInput);
+    if (rawTerminal) {
+      options.pauseRawInput?.();
       try {
-        choice = await this.askKeyboard(options.rawInput, options.signal, "approve once", "deny", () => this.writeDetails(panel));
+        const choice = await this.askKeyboard(options.rawInput, options.signal, "approve once", "deny", () => this.writeDetails(panel));
+        if (choice === "approve") return { decision: "allow-once" };
+        if (choice === "cancel") return { decision: "unavailable", reason: "The approval prompt was cancelled before the operation started." };
+        return { decision: "deny", reason: "The user did not approve the proposed operation." };
       } finally {
-        options.resumeInput?.();
+        options.resumeRawInput?.();
       }
-      if (choice === "approve") return { decision: "allow-once" };
-      if (choice === "cancel") return { decision: "unavailable", reason: "The approval prompt was cancelled before the operation started." };
-      return { decision: "deny", reason: "The user did not approve the proposed operation." };
     }
     let detailsShown = false;
     for (;;) {
@@ -196,16 +198,15 @@ export class ApprovalPrompt {
   async askDialog(panel: ApprovalPanel, dialog: BrowserDialogKind, options: ApprovalQuestionOptions): Promise<DialogApprovalResult> {
     this.writePanel(panel);
     if (dialog !== "prompt" && isRawTerminal(options.rawInput)) {
-      options.pauseInput?.();
-      let choice: Awaited<ReturnType<ApprovalPrompt["askKeyboard"]>>;
+      options.pauseRawInput?.();
       try {
-        choice = await this.askKeyboard(options.rawInput, options.signal, "accept", "dismiss", () => this.writeDetails(panel));
+        const choice = await this.askKeyboard(options.rawInput, options.signal, "accept", "dismiss", () => this.writeDetails(panel));
+        if (choice === "approve") return { decision: "allow-once", dialogDecision: "accept" };
+        if (choice === "cancel") return { decision: "unavailable", reason: "The approval prompt was cancelled before the dialog was resolved." };
+        return { decision: "allow-once", dialogDecision: "dismiss" };
       } finally {
-        options.resumeInput?.();
+        options.resumeRawInput?.();
       }
-      if (choice === "approve") return { decision: "allow-once", dialogDecision: "accept" };
-      if (choice === "cancel") return { decision: "unavailable", reason: "The approval prompt was cancelled before the dialog was resolved." };
-      return { decision: "allow-once", dialogDecision: "dismiss" };
     }
     let detailsShown = false;
     const instruction = dialog === "prompt"

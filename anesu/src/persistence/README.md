@@ -12,6 +12,9 @@ sessions/<session-id>/
   transcript.jsonl
   turns/<turn-id>/
     turn.json
+    context.json
+    context-revisions/<snapshot-id>.json # prior context revisions, when recovered
+    compaction.json              # only when context was compacted
     events.jsonl
     executions/<execution-id>.json
     browser-actions/<action-id>.json
@@ -27,6 +30,30 @@ replacement is represented by an empty file. A
 turn record is created before its user message is appended, so a restart can
 distinguish an admitted incomplete turn from a corrupt record. A turn with no result is
 marked `interrupted` on load and is not sent to the model again.
+
+Context evidence is published under the turn before the first provider request. The
+active snapshot is immutable by identity and contains source and compaction revisions,
+hashes, source decisions, ordering, and bounded byte estimates rather than raw workspace
+or memory bodies. Compaction evidence also records the serialized request bytes observed
+before and after the adaptation; those values are observations and do not imply that a
+summary always reduces bytes. A provider overflow may publish one successor snapshot; it must link
+to the immediately preceding snapshot, which is archived under `context-revisions/`.
+Repeating the same publication is safe, while a skipped, conflicting, or broken revision
+chain fails closed. A compacted turn also gets the current bounded `compaction.json`
+record. If acknowledgement is lost after the predecessor archive or active snapshot is
+written, the same publication can be retried: the archive is verified idempotently and
+missing companion compaction evidence is completed. The runtime emits ordered `ContextPrepared`,
+`ContextRoundCompacted`, and `ContextPressure` lifecycle events using the relevant
+snapshot identity and bounded metadata. A round-compaction event describes only the
+request-local projection; it does not delete canonical transcript or tool evidence.
+
+Context evidence follows the owning session and turn evidence lifetime. The first slice
+retains `context.json`, `compaction.json`, and `context-revisions/` with their turn; it
+does not run a separate context purge or silently delete a revision that may be needed
+for `/context`, restart recovery, or audit. Session-level evidence deletion is not yet a
+public operation. Any future retention or deletion implementation must be owned here,
+operate on a complete session-evidence boundary, preserve or explicitly retire revision
+links, and record a bounded deletion result before removing data.
 
 Turn state changes are written before the live `TurnStore` updates its in-memory record.
 If an acknowledgement is lost after the file replacement, the durable state is ahead of

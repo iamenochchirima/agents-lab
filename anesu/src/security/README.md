@@ -29,3 +29,9 @@ Evidence redaction is applied at the persistence boundary as well as in the TUI.
 provider-key shapes such as `sk-...` and bearer credentials are removed from bounded
 model-round payloads and workspace mutation previews before they are written. The
 workspace file itself is not rewritten: redaction protects evidence, not user data.
+
+Context Management applies the same boundary to model input: workspace resources,
+skills, memory, transcript content, and tool results are untrusted model data, while
+system policy and runtime-owned tool definitions remain authoritative. Context snapshots
+store hashes, bounds, and selection decisions rather than raw source bodies, and the
+context assembler reads workspace resources only through the workspace policy.

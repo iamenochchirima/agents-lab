@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AppConfig } from "../config/config.js";
-import { buildInitialContext } from "../context/context.js";
+import { ContextManager, type ContextCompactor, type PreparedContext } from "../context/context.js";
 import { isRetryableModelFailure, type ModelProvider } from "../models/provider.js";
 import { ToolRegistry, type ToolExecutionContext, type ToolExecutionResult } from "../tools/registry.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionRecord } from "../process/process.js";
@@ -41,6 +41,8 @@ export interface RunTurnOptions {
   readonly tools?: ToolRegistry;
   readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxPatchSetBytes" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
   readonly memory?: MemoryStore;
+  /** Diagnostic/test adapter for exercising context preparation failure semantics. */
+  readonly contextCompactor?: ContextCompactor;
   readonly userPrompt: string;
   readonly signal?: AbortSignal;
   readonly diagnostics?: RuntimeDiagnostics;
@@ -613,14 +615,6 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
                 ? { executionId: request.executionId, callId: request.callId, status: event.result.state, errorCode: event.result.errorCode ?? null, stdoutBytes: event.result.stdoutBytes, stderrBytes: event.result.stderrBytes }
                 : { executionId: request.executionId, callId: request.callId, cwd: request.cwd, command: request.command };
         await turn.appendEvent(lifecycleType, payload);
-        if (event.type === "approval_decided" && event.decision.decision !== "allow-once") {
-          await turn.appendEvent("ProcessCompleted", {
-            executionId: request.executionId,
-            callId: request.callId,
-            status: record.status,
-            errorCode: record.errorCode ?? null,
-          });
-        }
       }
       if (event.type === "started") {
         try {
@@ -904,8 +898,21 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       maxChars: options.config.memoryBootstrapMaxChars,
     });
   }
-  const request = {
-    ...buildInitialContext({
+  const emit = (event: TurnEvent): void => options.onEvent?.({ ...event, correlationId: turn.correlationId });
+  const abort = combinedSignal(options.signal, options.config.timeoutMs, options.config.firstEventTimeoutMs);
+  let contextManager: ContextManager;
+  let preparedContext: PreparedContext;
+  try {
+    contextManager = new ContextManager({
+      maxRequestBytes: options.config.maxModelRequestBytes,
+      reservedOutputBytes: options.config.maxModelOutputBytes,
+      redactionSecrets: [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""],
+      maxResourceBytes: Math.min(options.config.maxFileBytes, 32 * 1024),
+      maxSkillCatalogBytes: Math.min(options.config.maxToolOutputBytes, 16 * 1024),
+      maxMemoryChars: options.config.memoryBootstrapMaxChars,
+      ...(options.contextCompactor ? { compactor: options.contextCompactor } : {}),
+    });
+    preparedContext = await contextManager.prepare({
       sessionId: turn.sessionId,
       turnId: turn.turnId,
       provider: options.provider.provider,
@@ -915,16 +922,118 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       history,
       tools: tools.definitions,
       memory,
-      memoryMaxChars: options.config.memoryBootstrapMaxChars,
-    }),
-    correlationId: turn.correlationId,
-  };
-  const emit = (event: TurnEvent): void => options.onEvent?.({ ...event, correlationId: turn.correlationId });
+      workspace: tools.workspace,
+      skills: tools.skillRegistry,
+      signal: abort.signal,
+    });
+    await turn.writeContextSnapshot(preparedContext.snapshot);
+  } catch (error) {
+    if (isRuntimeInterruptionError(error)) {
+      abort.dispose();
+      throw error;
+    }
+    const failure = failureStatus(error, abort);
+    const result: TurnResult = {
+      schemaVersion: 1,
+      sessionId: turn.sessionId,
+      turnId: turn.turnId,
+      correlationId: turn.correlationId,
+      status: failure.status,
+      provider: options.provider.provider,
+      model: options.provider.model,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      metrics: metrics(startedAt, 0, 0, 0),
+      error: { code: failure.code, message: failure.message },
+    };
+    try {
+      await turn.commitTerminal(result, statusEvent(failure.status), { error: result.error });
+      emit({ type: "status", status: failure.status, round: 0 });
+      return result;
+    } finally {
+      abort.dispose();
+    }
+  }
+  const request = { ...preparedContext.request, correlationId: turn.correlationId };
   await turn.appendEvent("TurnStarted", { provider: request.provider, model: request.model });
+  const appendContextEvidence = async (contextSnapshot: PreparedContext["snapshot"]): Promise<void> => {
+    const selectedSourceCount = contextSnapshot.sources.filter((source) => source.status === "selected").length;
+    const truncatedSourceCount = contextSnapshot.sources.filter((source) => source.status === "truncated").length;
+    const omittedSourceCount = contextSnapshot.sources.filter((source) => source.status === "omitted").length;
+    await turn.appendEvent("ContextPrepared", {
+      snapshotId: contextSnapshot.snapshotId,
+      requestHash: contextSnapshot.requestHash,
+      sourceRevision: contextSnapshot.sourceRevision,
+      compactionRevision: contextSnapshot.compactionRevision,
+      revision: contextSnapshot.revision,
+      previousSnapshotId: contextSnapshot.previousSnapshotId,
+      sourceCount: contextSnapshot.sources.length,
+      selectedSourceCount,
+      truncatedSourceCount,
+      omittedSourceCount,
+      requestBytes: contextSnapshot.budget.requestBytes,
+      maxRequestBytes: contextSnapshot.budget.maxRequestBytes,
+      inputBytes: contextSnapshot.budget.inputBytes,
+      estimatedInputTokens: contextSnapshot.budget.estimatedInputTokens,
+      tokenEstimateBasis: contextSnapshot.budget.tokenEstimateBasis,
+      tokenEstimateQuality: contextSnapshot.budget.tokenEstimateQuality,
+      contextWindowTokens: contextSnapshot.budget.contextWindowTokens,
+      pressure: contextSnapshot.budget.pressure,
+    });
+    emit({
+      type: "context_prepared",
+      snapshotId: contextSnapshot.snapshotId,
+      revision: contextSnapshot.revision,
+      sourceCount: contextSnapshot.sources.length,
+      omittedSourceCount,
+      requestBytes: contextSnapshot.budget.requestBytes,
+      maxRequestBytes: contextSnapshot.budget.maxRequestBytes,
+    });
+    if (contextSnapshot.compaction) {
+      await turn.appendEvent("ContextCompacted", {
+        snapshotId: contextSnapshot.snapshotId,
+        compactionRevision: contextSnapshot.compactionRevision,
+        strategy: contextSnapshot.compaction.strategy,
+        removedMessageIds: contextSnapshot.compaction.removedMessageIds,
+        retainedMessageIds: contextSnapshot.compaction.retainedMessageIds,
+        removedGroupIds: contextSnapshot.compaction.removedGroupIds,
+        retainedGroupIds: contextSnapshot.compaction.retainedGroupIds,
+        ...(contextSnapshot.compaction.beforeRequestBytes === undefined ? {} : { beforeRequestBytes: contextSnapshot.compaction.beforeRequestBytes }),
+        ...(contextSnapshot.compaction.afterRequestBytes === undefined ? {} : { afterRequestBytes: contextSnapshot.compaction.afterRequestBytes }),
+        reason: contextSnapshot.compaction.reason,
+      });
+      emit({
+        type: "context_compacted",
+        snapshotId: contextSnapshot.snapshotId,
+        revision: contextSnapshot.revision,
+        strategy: contextSnapshot.compaction.strategy,
+        removedMessageCount: contextSnapshot.compaction.removedMessageIds.length,
+        reason: contextSnapshot.compaction.reason,
+        ...(contextSnapshot.compaction.beforeRequestBytes === undefined ? {} : { beforeRequestBytes: contextSnapshot.compaction.beforeRequestBytes }),
+        ...(contextSnapshot.compaction.afterRequestBytes === undefined ? {} : { afterRequestBytes: contextSnapshot.compaction.afterRequestBytes }),
+      });
+    }
+    if (contextSnapshot.budget.pressure !== "normal") {
+      await turn.appendEvent("ContextPressure", {
+        snapshotId: contextSnapshot.snapshotId,
+        pressure: contextSnapshot.budget.pressure,
+        requestBytes: contextSnapshot.budget.requestBytes,
+        maxRequestBytes: contextSnapshot.budget.maxRequestBytes,
+      });
+      emit({
+        type: "context_pressure",
+        snapshotId: contextSnapshot.snapshotId,
+        revision: contextSnapshot.revision,
+        pressure: contextSnapshot.budget.pressure,
+        ...(contextSnapshot.compaction ? { reason: contextSnapshot.compaction.reason } : {}),
+      });
+    }
+  };
+  let contextSnapshot = preparedContext.snapshot;
+  await appendContextEvidence(contextSnapshot);
   await turn.updateState("streaming");
   emit({ type: "status", status: "streaming", round: 0 });
 
-  const abort = combinedSignal(options.signal, options.config.timeoutMs, options.config.firstEventTimeoutMs);
   const messages: ModelMessage[] = [...request.messages];
   let processCalls = 0;
   let response = "";
@@ -935,6 +1044,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
   let modelOutputBytes = 0;
   let providerRequestId: string | undefined;
   let providerLatencyMs: number | undefined;
+  let contextRecoveryUsed = false;
   try {
     // Admission and the initial lifecycle event are durable before this check,
     // but an already-cancelled turn must not create model-attempt evidence or
@@ -957,8 +1067,30 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       const toolCalls: ModelToolCall[] = [];
       const callIds = new Set<string>();
       let roundOutputBytes = 0;
-      const roundRequest = { ...request, messages, tools: tools.definitions };
-      const requestBytes = Buffer.byteLength(JSON.stringify(roundRequest), "utf8");
+      let roundProjection = contextManager.prepareRound(preparedContext, messages);
+      let roundRequest = { ...roundProjection.request, correlationId: turn.correlationId, tools: tools.definitions };
+      let requestBytes = Buffer.byteLength(JSON.stringify(roundRequest), "utf8");
+      if (roundProjection.compaction) {
+        await turn.appendEvent("ContextRoundCompacted", {
+          snapshotId: contextSnapshot.snapshotId,
+          round,
+          strategy: roundProjection.compaction.strategy,
+          removedGroupIds: roundProjection.compaction.removedGroupIds,
+          retainedGroupIds: roundProjection.compaction.retainedGroupIds,
+          removedMessageCount: roundProjection.compaction.removedMessageCount,
+          requestBytes,
+          maxRequestBytes: options.config.maxModelRequestBytes,
+        });
+        emit({
+          type: "context_round_compacted",
+          snapshotId: contextSnapshot.snapshotId,
+          round,
+          removedMessageCount: roundProjection.compaction.removedMessageCount,
+          removedGroupCount: roundProjection.compaction.removedGroupIds.length,
+          requestBytes,
+          maxRequestBytes: options.config.maxModelRequestBytes,
+        });
+      }
       if (requestBytes > options.config.maxModelRequestBytes) {
         await turn.appendEvent("ModelRequestRejected", {
           round,
@@ -1054,6 +1186,35 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
             responseBytes: roundOutputBytes,
             maxOutputBytes: options.config.maxModelOutputBytes,
           });
+          if (!emittedEvent && !contextRecoveryUsed && error instanceof ModelProviderError && error.code === "provider-context") {
+            contextRecoveryUsed = true;
+            await turn.appendEvent("ContextPressure", {
+              snapshotId: contextSnapshot.snapshotId,
+              pressure: "unknown",
+              requestBytes,
+              maxRequestBytes: options.config.maxModelRequestBytes,
+              reason: "provider-overflow",
+            });
+            emit({
+              type: "context_pressure",
+              snapshotId: contextSnapshot.snapshotId,
+              revision: contextSnapshot.revision,
+              pressure: "unknown",
+              reason: "provider-overflow",
+            });
+            const previousPrefixLength = preparedContext.request.messages.length;
+            const runtimeMessages = messages.slice(previousPrefixLength);
+            preparedContext = contextManager.prepareProviderOverflowRecovery(preparedContext, abort.signal);
+            await turn.writeContextSnapshot(preparedContext.snapshot);
+            messages.splice(0, messages.length, ...preparedContext.request.messages, ...runtimeMessages);
+            contextSnapshot = preparedContext.snapshot;
+            await appendContextEvidence(contextSnapshot);
+            roundProjection = contextManager.prepareRound(preparedContext, messages);
+            roundRequest = { ...roundProjection.request, correlationId: turn.correlationId, tools: tools.definitions };
+            requestBytes = Buffer.byteLength(JSON.stringify(roundRequest), "utf8");
+            abort.clearFirstEventTimer();
+            continue;
+          }
           if (!canRetry) throw error;
           const delayMs = Math.min(options.config.modelRetryBackoffMs * (2 ** (attempt - 1)), 30_000);
           abort.clearFirstEventTimer();

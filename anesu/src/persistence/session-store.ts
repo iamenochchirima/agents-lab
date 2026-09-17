@@ -38,6 +38,7 @@ import { assertProcessTransition, type ProcessExecutionRecord } from "../process
 import { assertBrowserActionTransition, type BrowserActionRecord } from "../browser/records.js";
 import type { BrowserArtifactInfo } from "../browser/artifacts.js";
 import { assertMemoryActionTransition, type MemoryActionRecord, type MemorySearchEvidence } from "../memory/contracts.js";
+import { contextCompactionRevision, contextSourceRevision, type ContextSnapshot } from "../context/context.js";
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
@@ -130,6 +131,161 @@ function validateTurnRecord(record: unknown, sessionId: SessionId, directoryName
   }
 }
 
+function assertContextSnapshot(
+  value: unknown,
+  sessionId: SessionId,
+  turnId: TurnRecord["turnId"],
+  expectedProvider?: TurnRecord["provider"],
+  expectedModel?: string,
+): asserts value is ContextSnapshot {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AnesuError("persistence", `Turn '${turnId}' has an invalid context snapshot.`);
+  const candidate = value as Record<string, unknown>;
+  const budget = candidate.budget;
+  if (candidate.schemaVersion !== 1
+    || candidate.sessionId !== sessionId
+    || candidate.turnId !== turnId
+    || typeof candidate.snapshotId !== "string"
+    || !Number.isSafeInteger(candidate.revision)
+    || (candidate.revision as number) < 1
+    || (candidate.previousSnapshotId !== null && typeof candidate.previousSnapshotId !== "string")
+    || typeof candidate.provider !== "string"
+    || (candidate.provider !== "deterministic" && candidate.provider !== "openrouter")
+    || typeof candidate.model !== "string"
+    || typeof candidate.requestHash !== "string"
+    || !/^[a-f0-9]{64}$/u.test(candidate.requestHash)
+    || typeof candidate.sourceRevision !== "string"
+    || !/^[a-f0-9]{64}$/u.test(candidate.sourceRevision)
+    || (candidate.compactionRevision !== null && (typeof candidate.compactionRevision !== "string" || !/^[a-f0-9]{64}$/u.test(candidate.compactionRevision)))
+    || !Array.isArray(candidate.messages)
+    || !Array.isArray(candidate.sources)
+    || !budget
+    || typeof budget !== "object"
+    || Array.isArray(budget)
+    || typeof (budget as Record<string, unknown>).maxRequestBytes !== "number"
+    || typeof (budget as Record<string, unknown>).reservedOutputBytes !== "number"
+    || typeof (budget as Record<string, unknown>).requestBytes !== "number"
+    || typeof (budget as Record<string, unknown>).inputBytes !== "number"
+    || typeof (budget as Record<string, unknown>).estimatedInputTokens !== "number"
+    || typeof (budget as Record<string, unknown>).tokenEstimateBasis !== "string"
+    || ((budget as Record<string, unknown>).tokenEstimateQuality !== "estimated" && (budget as Record<string, unknown>).tokenEstimateQuality !== "unknown")
+    || (budget as Record<string, unknown>).contextWindowTokens !== null
+    || typeof candidate.createdAt !== "string") {
+    throw new AnesuError("persistence", `Turn '${turnId}' has an invalid context snapshot.`);
+  }
+  if (expectedProvider !== undefined && candidate.provider !== expectedProvider) {
+    throw new AnesuError("persistence", `Context snapshot provider does not match the admitted provider '${expectedProvider}'.`);
+  }
+  if (expectedModel !== undefined && candidate.model !== expectedModel) {
+    throw new AnesuError("persistence", `Context snapshot model does not match the admitted model '${expectedModel}'.`);
+  }
+  safePathSegment(candidate.snapshotId, "Context snapshot ID");
+  if ((candidate.revision as number) === 1 && candidate.previousSnapshotId !== null) {
+    throw new AnesuError("persistence", `Turn '${turnId}' has a first context revision with a predecessor.`);
+  }
+  if ((candidate.revision as number) > 1 && (candidate.previousSnapshotId === null || (candidate.previousSnapshotId as string).trim().length === 0)) {
+    throw new AnesuError("persistence", `Turn '${turnId}' has a context revision without a predecessor.`);
+  }
+  if (candidate.previousSnapshotId !== null) safePathSegment(candidate.previousSnapshotId as string, "Previous context snapshot ID");
+  const budgetRecord = budget as Record<string, unknown>;
+  const maxRequestBytes = budgetRecord.maxRequestBytes as number;
+  const reservedOutputBytes = budgetRecord.reservedOutputBytes as number;
+  const requestBytes = budgetRecord.requestBytes as number;
+  const inputBytes = budgetRecord.inputBytes as number;
+  const estimatedInputTokens = budgetRecord.estimatedInputTokens as number;
+  if (!Number.isInteger(maxRequestBytes) || maxRequestBytes <= 0
+    || !Number.isInteger(reservedOutputBytes) || reservedOutputBytes < 0
+    || !Number.isInteger(requestBytes) || requestBytes < 0
+    || !Number.isInteger(inputBytes) || inputBytes < 0
+    || !Number.isInteger(estimatedInputTokens) || estimatedInputTokens < 0) {
+    throw new AnesuError("persistence", `Turn '${turnId}' has invalid context budget evidence.`);
+  }
+  const sourceIds = new Set<string>();
+  const validSourceKinds = new Set(["system", "workspace-resource", "skills", "memory", "transcript", "prompt", "tools", "compaction"]);
+  const validTrust = new Set(["system", "workspace", "user", "model-output"]);
+  const validSourceStatuses = new Set(["selected", "truncated", "omitted"]);
+  for (const [index, source] of (candidate.sources as unknown[]).entries()) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context source evidence at index ${index}.`);
+    }
+    const sourceRecord = source as Record<string, unknown>;
+    const bytes = sourceRecord.bytes;
+    const selectedBytes = sourceRecord.selectedBytes;
+    if (typeof sourceRecord.id !== "string" || sourceRecord.id.trim().length === 0
+      || sourceIds.has(sourceRecord.id)
+      || typeof sourceRecord.kind !== "string" || !validSourceKinds.has(sourceRecord.kind)
+      || typeof sourceRecord.trust !== "string" || !validTrust.has(sourceRecord.trust)
+      || typeof sourceRecord.status !== "string" || !validSourceStatuses.has(sourceRecord.status)
+      || !Number.isSafeInteger(bytes) || (bytes as number) < 0
+      || !Number.isSafeInteger(selectedBytes) || (selectedBytes as number) < 0
+      || (sourceRecord.status !== "omitted" && (typeof sourceRecord.contentHash !== "string" || !/^[a-f0-9]{64}$/u.test(sourceRecord.contentHash)))) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context source evidence at index ${index}.`);
+    }
+    if (sourceRecord.status === "omitted" && selectedBytes !== 0) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has selected bytes for an omitted context source.`);
+    }
+    sourceIds.add(sourceRecord.id);
+  }
+  const messageIds = new Set<string>();
+  for (const [index, message] of (candidate.messages as unknown[]).entries()) {
+    if (!message || typeof message !== "object" || Array.isArray(message)) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context message evidence at index ${index}.`);
+    }
+    const messageRecord = message as Record<string, unknown>;
+    if (messageRecord.messageId !== `message:${index}`
+      || messageIds.has(String(messageRecord.messageId))
+      || (messageRecord.role !== "system" && messageRecord.role !== "user" && messageRecord.role !== "assistant" && messageRecord.role !== "tool")
+      || typeof messageRecord.sourceId !== "string" || !sourceIds.has(messageRecord.sourceId)
+      || !Number.isSafeInteger(messageRecord.bytes) || (messageRecord.bytes as number) < 0
+      || typeof messageRecord.contentHash !== "string" || !/^[a-f0-9]{64}$/u.test(messageRecord.contentHash)) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context message evidence at index ${index}.`);
+    }
+    messageIds.add(String(messageRecord.messageId));
+  }
+  if (candidate.sourceRevision !== contextSourceRevision(candidate.sources as ContextSnapshot["sources"])) {
+    throw new AnesuError("persistence", `Turn '${turnId}' has a context source revision that does not match its source evidence.`);
+  }
+  const compaction = candidate.compaction;
+  if (compaction !== null) {
+    if (!compaction || typeof compaction !== "object" || Array.isArray(compaction)) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context compaction evidence.`);
+    }
+    const compactionRecord = compaction as Record<string, unknown>;
+    const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
+    if (typeof compactionRecord.strategy !== "string"
+      || !isStringArray(compactionRecord.removedMessageIds)
+      || !isStringArray(compactionRecord.retainedMessageIds)
+      || !isStringArray(compactionRecord.removedGroupIds)
+      || !isStringArray(compactionRecord.retainedGroupIds)
+      || (compactionRecord.reason !== "request-budget" && compactionRecord.reason !== "provider-overflow" && compactionRecord.reason !== "manual")) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context compaction evidence.`);
+    }
+    const beforeRequestBytes = compactionRecord.beforeRequestBytes;
+    const afterRequestBytes = compactionRecord.afterRequestBytes;
+    const validBudgetBytes = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+    const validBudgetEvidence = beforeRequestBytes === undefined && afterRequestBytes === undefined
+      || validBudgetBytes(beforeRequestBytes) && validBudgetBytes(afterRequestBytes);
+    if (!validBudgetEvidence) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has invalid context compaction budget evidence.`);
+    }
+    const removedMessages = new Set(compactionRecord.removedMessageIds as string[]);
+    const retainedMessages = new Set(compactionRecord.retainedMessageIds as string[]);
+    const removedGroups = new Set(compactionRecord.removedGroupIds as string[]);
+    const retainedGroups = new Set(compactionRecord.retainedGroupIds as string[]);
+    if (removedMessages.size !== (compactionRecord.removedMessageIds as string[]).length
+      || retainedMessages.size !== (compactionRecord.retainedMessageIds as string[]).length
+      || removedGroups.size !== (compactionRecord.removedGroupIds as string[]).length
+      || retainedGroups.size !== (compactionRecord.retainedGroupIds as string[]).length
+      || [...removedMessages].some((id) => retainedMessages.has(id))
+      || [...removedGroups].some((id) => retainedGroups.has(id))) {
+      throw new AnesuError("persistence", `Turn '${turnId}' has overlapping context compaction evidence.`);
+    }
+  }
+  const normalizedCompaction = compaction as ContextSnapshot["compaction"];
+  if (candidate.compactionRevision !== contextCompactionRevision(normalizedCompaction)) {
+    throw new AnesuError("persistence", `Turn '${turnId}' has a context compaction revision that does not match its compaction evidence.`);
+  }
+}
+
 function validateTurnResult(result: unknown, record: TurnRecord): asserts result is TurnResult {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
     throw new AnesuError("persistence", `Turn '${record.turnId}' contains an invalid terminal result.`);
@@ -198,6 +354,10 @@ function isTerminalLifecycleEvent(type: LifecycleEventType): boolean {
 
 const LIFECYCLE_EVENT_TYPES: ReadonlySet<LifecycleEventType> = new Set([
   "TurnStarted",
+  "ContextPrepared",
+  "ContextCompacted",
+  "ContextRoundCompacted",
+  "ContextPressure",
   "ModelRequested",
   "ModelRequestRejected",
   "ModelAttemptCompleted",
@@ -231,6 +391,13 @@ const LIFECYCLE_EVENT_TYPES: ReadonlySet<LifecycleEventType> = new Set([
   "TurnFailed",
   "TurnCancelled",
   "TurnInterrupted",
+]);
+
+const CONTEXT_LIFECYCLE_EVENTS: ReadonlySet<LifecycleEventType> = new Set([
+  "ContextPrepared",
+  "ContextCompacted",
+  "ContextRoundCompacted",
+  "ContextPressure",
 ]);
 
 const WORKSPACE_MUTATION_LIFECYCLE_EVENTS: ReadonlySet<LifecycleEventType> = new Set([
@@ -420,7 +587,41 @@ function assertModelLifecycleEventOrder(
   }
 }
 
+function assertContextLifecycleEventOrder(
+  existing: readonly LifecycleEvent[],
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): void {
+  if (!CONTEXT_LIFECYCLE_EVENTS.has(type)) return;
+  const snapshotId = payload.snapshotId;
+  if (typeof snapshotId !== "string" || snapshotId.trim().length === 0) {
+    throw new AnesuError("persistence", `${type} requires a non-empty snapshotId.`);
+  }
+  if (!existing.some((event) => event.type === "TurnStarted")) {
+    throw new AnesuError("persistence", `${type} cannot be recorded before TurnStarted.`);
+  }
+  if (type !== "ContextPrepared" && !existing.some((event) => event.type === "ContextPrepared" && event.payload.snapshotId === snapshotId)) {
+    throw new AnesuError("persistence", `${type} for '${snapshotId}' cannot be recorded before ContextPrepared.`);
+  }
+  if (type === "ContextRoundCompacted") {
+    const isStringArray = (value: unknown): value is readonly string[] => Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "string" && item.trim().length > 0);
+    if (!Number.isSafeInteger(payload.round) || (payload.round as number) < 1
+      || payload.strategy !== "deterministic-runtime-round-truncation"
+      || !isStringArray(payload.removedGroupIds)
+      || !isStringArray(payload.retainedGroupIds)
+      || !Number.isSafeInteger(payload.removedMessageCount) || (payload.removedMessageCount as number) < 1
+      || !Number.isSafeInteger(payload.requestBytes) || (payload.requestBytes as number) < 0
+      || !Number.isSafeInteger(payload.maxRequestBytes) || (payload.maxRequestBytes as number) <= 0) {
+      throw new AnesuError("persistence", "ContextRoundCompacted has invalid bounded projection evidence.");
+    }
+  }
+  if (type === "ContextPressure" && (payload.pressure !== "compaction_due" && payload.pressure !== "exhausted" && payload.pressure !== "unknown")) {
+    throw new AnesuError("persistence", "ContextPressure requires a non-normal pressure state.");
+  }
+}
+
 function assertLifecycleEventOrder(existing: readonly LifecycleEvent[], type: LifecycleEventType, payload: Readonly<Record<string, unknown>>): void {
+  assertContextLifecycleEventOrder(existing, type, payload);
   assertModelLifecycleEventOrder(existing, type, payload);
   assertActionLifecycleEventOrder(existing, type, payload);
   assertWorkspaceMutationLifecycleEventOrder(existing, type, payload);
@@ -484,6 +685,25 @@ function findIdempotentModelEvent(
   const normalizedPayload = redactRecord(payload);
   if (stableStringify(candidate.payload) !== stableStringify(normalizedPayload)) {
     throw new AnesuError("persistence", `${type} evidence was repeated with a different payload for the same identity.`);
+  }
+  return candidate;
+}
+
+function findIdempotentContextEvent(
+  existing: readonly LifecycleEvent[],
+  type: LifecycleEventType,
+  payload: Readonly<Record<string, unknown>>,
+): LifecycleEvent | undefined {
+  if (!CONTEXT_LIFECYCLE_EVENTS.has(type)) return undefined;
+  const snapshotId = payload.snapshotId;
+  if (typeof snapshotId !== "string" || snapshotId.length === 0) return undefined;
+  const candidate = existing.find((event) => event.type === type
+    && event.payload.snapshotId === snapshotId
+    && (type !== "ContextRoundCompacted" || event.payload.round === payload.round));
+  if (!candidate) return undefined;
+  const normalizedPayload = redactRecord(payload);
+  if (stableStringify(candidate.payload) !== stableStringify(normalizedPayload)) {
+    throw new AnesuError("persistence", `${type} evidence was repeated with a different payload for the same snapshot identity.`);
   }
   return candidate;
 }
@@ -1144,6 +1364,27 @@ export class SessionStore {
     return transcript;
   }
 
+  async readLatestContextSnapshot(): Promise<ContextSnapshot | undefined> {
+    const turnsDirectory = path.join(this.sessionDirectory, "turns");
+    const entries = await readdir(turnsDirectory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Session '${this.metadata.sessionId}' context records cannot be listed.`, { cause: error });
+    });
+    const snapshots: ContextSnapshot[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isDirectory()).sort((left, right) => left.name.localeCompare(right.name))) {
+      const directory = path.join(turnsDirectory, entry.name);
+      const contextPath = path.join(directory, "context.json");
+      if (!(await fileExists(contextPath))) continue;
+      const turnRecord = await readJson<TurnRecord>(path.join(directory, "turn.json"));
+      validateTurnRecord(turnRecord, this.metadata.sessionId, entry.name);
+      const turn = new TurnStore(this, directory, turnRecord);
+      const snapshot = await turn.readContextSnapshot();
+      if (!snapshot) continue;
+      snapshots.push(snapshot);
+    }
+    return snapshots.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.turnId.localeCompare(right.turnId)).at(-1);
+  }
+
   async admitTurn(userPrompt: string, provider: TurnRecord["provider"], model: string): Promise<TurnStore> {
     const content = userPrompt.trim();
     if (content.length === 0) throw new AnesuError("invalid-input", "A message is required.");
@@ -1235,6 +1476,7 @@ export class SessionStore {
       const resultPath = path.join(directory, "result.json");
       const result = await fileExists(resultPath) ? await readJson<TurnResult>(resultPath) : undefined;
       const turn = new TurnStore(this, directory, record);
+      if (await fileExists(path.join(directory, "context.json"))) await turn.readContextSnapshot();
       if (result) {
         validateTurnResult(result, record);
         assertTerminalResultState(record.state, result);
@@ -1446,6 +1688,8 @@ export class TurnStore {
     }
     const existingModelEvent = findIdempotentModelEvent(existing, type, normalizedPayload);
     if (existingModelEvent) return existingModelEvent;
+    const existingContextEvent = findIdempotentContextEvent(existing, type, normalizedPayload);
+    if (existingContextEvent) return existingContextEvent;
     const existingActionEvent = findIdempotentActionEvent(existing, type, normalizedPayload);
     if (existingActionEvent) return existingActionEvent;
     assertLifecycleEventOrder(existing, type, normalizedPayload);
@@ -1560,6 +1804,112 @@ export class TurnStore {
     validateRoundOrder(rounds, this.sessionId, this.turnId);
     for (const round of rounds) assertRecordCorrelation(this.correlationId, round.correlationId, "Round");
     return rounds;
+  }
+
+  /**
+   * Publish the bounded context evidence before the first provider request. The
+   * request body is intentionally not persisted here; hashes and byte counts are
+   * enough to inspect the decision without copying workspace secrets into logs.
+   */
+  async writeContextSnapshot(snapshot: ContextSnapshot): Promise<void> {
+    const normalized = this.session.redactEvidence(snapshot);
+    assertContextSnapshot(normalized, this.sessionId, this.turnId, this.record.provider, this.record.model);
+    const contextPath = path.join(this.directory, "context.json");
+    let replacing = false;
+    if (await fileExists(contextPath)) {
+      const existing = await readJson<ContextSnapshot>(contextPath);
+      assertContextSnapshot(existing, this.sessionId, this.turnId, this.record.provider, this.record.model);
+      if (stableStringify(existing) !== stableStringify(normalized)) {
+        if (normalized.revision !== existing.revision + 1 || normalized.previousSnapshotId !== existing.snapshotId) {
+          throw new AnesuError("persistence", `Turn '${this.turnId}' already has a different context snapshot revision.`);
+        }
+        replacing = true;
+        const revisionsDirectory = path.join(this.directory, "context-revisions");
+        await ensureDirectory(revisionsDirectory);
+        const archivePath = path.join(revisionsDirectory, `${safePathSegment(existing.snapshotId, "Context snapshot ID")}.json`);
+        if (await fileExists(archivePath)) {
+          const archived = await readJson<ContextSnapshot>(archivePath);
+          assertContextSnapshot(archived, this.sessionId, this.turnId, this.record.provider, this.record.model);
+          if (stableStringify(archived) !== stableStringify(existing)) {
+            throw new AnesuError("persistence", `Turn '${this.turnId}' has conflicting archived context revision '${existing.snapshotId}'.`);
+          }
+        } else {
+          await this.session.replaceJson(archivePath, existing);
+        }
+        await this.session.replaceJson(contextPath, normalized);
+      }
+    } else {
+      if (normalized.revision !== 1 || normalized.previousSnapshotId !== null) {
+        throw new AnesuError("persistence", `Turn '${this.turnId}' cannot publish a context revision without its first revision.`);
+      }
+      await this.session.replaceJson(contextPath, normalized);
+    }
+    if (normalized.compaction) {
+      const compactionPath = path.join(this.directory, "compaction.json");
+      if (await fileExists(compactionPath)) {
+        const existing = await readJson<ContextSnapshot["compaction"]>(compactionPath);
+        if (stableStringify(existing) !== stableStringify(normalized.compaction)) {
+          if (!replacing) {
+            throw new AnesuError("persistence", `Turn '${this.turnId}' already has different compaction evidence.`);
+          }
+          await this.session.replaceJson(compactionPath, normalized.compaction);
+        }
+      } else {
+        await this.session.replaceJson(compactionPath, normalized.compaction);
+      }
+    }
+  }
+
+  private async assertContextRevisionChain(latest: ContextSnapshot): Promise<void> {
+    const revisionsDirectory = path.join(this.directory, "context-revisions");
+    const entries = await readdir(revisionsDirectory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Turn '${this.turnId}' context revisions cannot be listed.`, { cause: error });
+    });
+    const archived = new Map<number, ContextSnapshot>();
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        throw new AnesuError("persistence", `Turn '${this.turnId}' has an invalid context revision entry.`);
+      }
+      const revisionPath = path.join(revisionsDirectory, entry.name);
+      const snapshot = await readJson<ContextSnapshot>(revisionPath);
+      assertContextSnapshot(snapshot, this.sessionId, this.turnId, this.record.provider, this.record.model);
+      // The archive is published before context.json is replaced. If the
+      // acknowledgement is lost at that boundary, revision one can briefly
+      // appear both as the active snapshot and as its own staged archive. It
+      // is safe to ignore that exact duplicate; any other extra revision is
+      // treated as corruption.
+      if (snapshot.revision === latest.revision
+        && latest.revision === 1
+        && snapshot.snapshotId === latest.snapshotId
+        && stableStringify(snapshot) === stableStringify(latest)) continue;
+      if (entry.name !== `${safePathSegment(snapshot.snapshotId, "Context snapshot ID")}.json`
+        || snapshot.revision >= latest.revision
+        || archived.has(snapshot.revision)) {
+        throw new AnesuError("persistence", `Turn '${this.turnId}' has an invalid archived context revision chain.`);
+      }
+      archived.set(snapshot.revision, snapshot);
+    }
+    let previousSnapshotId: string | null = null;
+    for (let revision = 1; revision <= latest.revision; revision += 1) {
+      const snapshot = revision === latest.revision ? latest : archived.get(revision);
+      if (!snapshot || snapshot.revision !== revision || snapshot.previousSnapshotId !== previousSnapshotId) {
+        throw new AnesuError("persistence", `Turn '${this.turnId}' has a broken context revision chain at revision ${revision}.`);
+      }
+      previousSnapshotId = snapshot.snapshotId;
+    }
+    if (archived.size !== latest.revision - 1) {
+      throw new AnesuError("persistence", `Turn '${this.turnId}' has extra context revisions outside the active chain.`);
+    }
+  }
+
+  async readContextSnapshot(): Promise<ContextSnapshot | undefined> {
+    const contextPath = path.join(this.directory, "context.json");
+    if (!(await fileExists(contextPath))) return undefined;
+    const snapshot = await readJson<ContextSnapshot>(contextPath);
+    assertContextSnapshot(snapshot, this.sessionId, this.turnId, this.record.provider, this.record.model);
+    await this.assertContextRevisionChain(snapshot);
+    return snapshot;
   }
 
   async writeMutation(record: WorkspaceMutationRecord): Promise<void> {

@@ -11,7 +11,10 @@ panel, provider/model/session/workspace/evidence context, the actual registered 
 a ready or active status ribbon, streaming output, a separate tool activity lane, grouped
 help, and a visually distinct composer prompt. Slash commands are `/help`, `/status`,
 `/models`, `/history`, `/skills`, `/evidence`, `/clear`, and `/quit`; `/models` is a read-only view
-of the configured provider choices and capabilities. `/skills` shows the current bounded,
+of the configured provider choices and capabilities. `/status` includes the latest context
+revision, pressure, and request budget. `/context` shows the last prepared
+context snapshot, source decisions, byte accounting, estimated tokens, pressure, and
+compaction without printing raw source bodies. `/skills` shows the current bounded,
 workspace-local skill catalog; the model can load a listed skill by exact ID through
 `read_skill`. Multiline continuation uses a trailing `\\`, input history is provided by
 `readline`, and Ctrl-C cancels an active turn. The CLI
@@ -21,6 +24,11 @@ persistence. In an interactive TTY, proposed `apply_patch`, `apply_patch_set`, `
 panel with named approve, deny, inspect, and cancel choices. Unsupported input fails closed.
 Non-interactive runs have no approval channel
 and therefore do not perform workspace mutations.
+
+Raw-key approval panels temporarily transfer TTY input ownership away from readline and
+restore it after the decision. This keeps `a`, `d`, navigation, and Escape from being
+inserted into the next composer prompt; a denied process is recorded once as a terminal
+non-started outcome.
 
 Structured TUI panels use the output stream's reported terminal width when it is available,
 clamped to a readable range; approval panels use the same width as the surrounding session

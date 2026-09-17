@@ -1,5 +1,5 @@
 import path from "node:path";
-import { WorkspaceAccessError } from "../runtime/errors.js";
+import { isAbortError, WorkspaceAccessError } from "../runtime/errors.js";
 import type { Workspace } from "../workspace/workspace.js";
 
 const SKILLS_DIRECTORY = "skills";
@@ -49,6 +49,10 @@ function isMissing(error: unknown): boolean {
     current = current instanceof Error ? current.cause : undefined;
   }
   return false;
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new DOMException("Skill discovery was cancelled.", "AbortError");
 }
 
 function normalizedPath(value: string): string {
@@ -108,29 +112,31 @@ export class SkillRegistry {
     if (!Number.isInteger(maxSkills) || maxSkills < 1) throw new WorkspaceAccessError("Skill catalog limit must be a positive integer.");
   }
 
-  async list(): Promise<SkillCatalog> {
-    const candidates = await this.scan();
+  async list(signal?: AbortSignal): Promise<SkillCatalog> {
+    const candidates = await this.scan(signal);
     return {
       skills: candidates.map((candidate) => candidate.summary),
       skipped: candidates.skipped,
     };
   }
 
-  async read(id: string): Promise<LoadedSkill> {
+  async read(id: string, signal?: AbortSignal): Promise<LoadedSkill> {
     if (typeof id !== "string" || id.trim().length === 0 || id.includes("\\") || path.isAbsolute(id) || id.split("/").some((part) => part === "" || part === "." || part === "..")) {
       throw new WorkspaceAccessError("Skill id must be an exact relative id returned by list_skills.");
     }
-    const candidates = await this.scan();
+    const candidates = await this.scan(signal);
     const candidate = candidates.find((entry) => entry.summary.id === id);
     if (!candidate) throw new WorkspaceAccessError(`Skill '${id}' was not found in the current workspace catalog.`);
     return candidate;
   }
 
-  private async scan(): Promise<(SkillCandidate[] & { readonly skipped: number })> {
+  private async scan(signal?: AbortSignal): Promise<(SkillCandidate[] & { readonly skipped: number })> {
+    throwIfCancelled(signal);
     const root = await this.workspace.stat(SKILLS_DIRECTORY).catch((error: unknown) => {
       if (isMissing(error)) return undefined;
       throw error;
     });
+    throwIfCancelled(signal);
     if (!root) return Object.assign([], { skipped: 0 }) as SkillCandidate[] & { readonly skipped: number };
     if (root.kind !== "directory") throw new WorkspaceAccessError("Workspace skills path must be a regular directory.");
 
@@ -138,6 +144,7 @@ export class SkillRegistry {
     let skipped = 0;
     const seen = new Set<string>();
     const visit = async (relativeDirectory: string, depth: number): Promise<void> => {
+      throwIfCancelled(signal);
       if (found.length >= this.maxSkills) return;
       if (depth > this.maxDepth) {
         skipped += 1;
@@ -150,7 +157,9 @@ export class SkillRegistry {
         if (isMissing(error)) return;
         throw error;
       }
+      throwIfCancelled(signal);
       for (const entry of listing.entries) {
+        throwIfCancelled(signal);
         if (found.length >= this.maxSkills) {
           skipped += 1;
           break;
@@ -171,10 +180,11 @@ export class SkillRegistry {
             continue;
           }
           try {
-            const candidate = await this.loadCandidate(id, entryPath);
+            const candidate = await this.loadCandidate(id, entryPath, signal);
             seen.add(id);
             found.push(candidate);
-          } catch {
+          } catch (error) {
+            if (isAbortError(error)) throw error;
             skipped += 1;
           }
           continue;
@@ -187,11 +197,13 @@ export class SkillRegistry {
     return Object.assign(found, { skipped }) as SkillCandidate[] & { readonly skipped: number };
   }
 
-  private async loadCandidate(id: string, skillPath: string): Promise<SkillCandidate> {
+  private async loadCandidate(id: string, skillPath: string, signal?: AbortSignal): Promise<SkillCandidate> {
+    throwIfCancelled(signal);
     const metadata = await this.workspace.stat(skillPath);
     if (metadata.kind !== "file") throw new WorkspaceAccessError(`Skill '${id}' is not a regular file.`);
     if (metadata.sizeBytes > this.maxBytes) throw new WorkspaceAccessError(`Skill '${id}' exceeds the ${this.maxBytes}-byte size limit.`);
-    const file = await this.workspace.readFile(skillPath);
+    const file = await this.workspace.readFile(skillPath, signal);
+    throwIfCancelled(signal);
     if (file.sizeBytes > this.maxBytes) throw new WorkspaceAccessError(`Skill '${id}' grew beyond the ${this.maxBytes}-byte size limit.`);
     const frontMatter = parseFrontMatter(file.content);
     return {

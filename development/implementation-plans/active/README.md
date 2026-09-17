@@ -1,6 +1,6 @@
 # Active implementation plans
 
-**Last updated:** 2026-09-17T00:35:55+02:00
+**Last updated:** 2026-09-17T21:51:42+02:00
 
 These plans govern implementation that is not yet complete. Every checkbox must remain
 honest: it represents work that has been verified, not merely code that was started.
@@ -8,7 +8,7 @@ honest: it represents work that has been verified, not merely code that was star
 When a plan reaches its completion gate, add its completion record and move it to
 [`../completed/`](../completed/README.md).
 
-## Current Anesu slice
+## Current Anesu slices
 
 The current Anesu foundation slice is
 [core hardening and production foundation](anesu-core-hardening.md). Its
@@ -18,6 +18,11 @@ in the gap register. The browser-interaction and memory slices are complete and 
 and [`../completed/anesu-memory.md`](../completed/anesu-memory.md).
 The first Skills foundation slice is complete and archived in
 [`../completed/anesu-skills-foundation.md`](../completed/anesu-skills-foundation.md).
+The first standalone Context Management slice is complete and archived in
+[`../completed/anesu-context-management.md`](../completed/anesu-context-management.md).
+It delivered resource precedence, bounded context assembly, snapshots, compaction,
+recovery, retention semantics, and inspection. Its later maturity gaps remain in the
+production-readiness register.
 Overall maturity is not complete. The authoritative remaining work is in
 [Anesu production-readiness gaps](anesu-production-readiness-gaps.md).
 The queue's status table separately lists what each completed slice still does not cover.

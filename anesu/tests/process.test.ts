@@ -498,6 +498,7 @@ test("model run persists a terminal process outcome when approval is denied", as
     assert.match(events, /ProcessCompleted/u);
     assert.match(events, /"errorCode":"process-approval-denied"/u);
     assert.doesNotMatch(events, /ProcessStarted/u);
+    assert.equal(events.trim().split("\n").map((line) => JSON.parse(line) as { type: string }).filter((event) => event.type === "ProcessCompleted").length, 1);
 
     const executionDirectory = path.join(turnDirectory, "executions");
     const executionEntry = (await readdir(executionDirectory))[0];

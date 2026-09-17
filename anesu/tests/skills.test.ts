@@ -66,6 +66,39 @@ test("skill registry discovers valid packages and skips malformed or oversized e
   assert.equal(catalog.skipped, 4);
 });
 
+test("skill discovery cancellation propagates while reading a skill document", { timeout: 2_000 }, async () => {
+  const { root, workspace } = await createWorkspace();
+  await mkdir(path.join(root, "skills", "testing"), { recursive: true });
+  await writeFile(path.join(root, "skills", "testing", "SKILL.md"), skillDocument("Testing", "Run bounded checks."));
+  const originalReadFile = workspace.readFile.bind(workspace);
+  let readStartedResolve: (() => void) | undefined;
+  const readStarted = new Promise<void>((resolve) => { readStartedResolve = resolve; });
+  workspace.readFile = async (relativePath: string, signal?: AbortSignal) => {
+    if (relativePath === "skills/testing/SKILL.md") {
+      readStartedResolve?.();
+      await new Promise<never>((_resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("test skill read timed out")), 1_000);
+        const onAbort = (): void => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+          reject(new DOMException("Skill discovery was cancelled.", "AbortError"));
+        };
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    }
+    return originalReadFile(relativePath, signal);
+  };
+  const controller = new AbortController();
+  const discovery = new SkillRegistry(workspace).list(controller.signal);
+  await readStarted;
+  controller.abort("cancel skill discovery");
+  await assert.rejects(
+    discovery,
+    (error: unknown) => error instanceof DOMException && error.name === "AbortError" && /Skill discovery was cancelled/u.test(error.message),
+  );
+});
+
 test("skill reads require an exact current id and return the complete document", async () => {
   const { root, workspace } = await createWorkspace();
   await mkdir(path.join(root, "skills", "research"), { recursive: true });

@@ -304,7 +304,9 @@ function validateNumericConfig(config: AppConfig): void {
 }
 
 export function loadConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const selectedProvider = provider(overrides.provider ?? env.ANESU_PROVIDER);
+  // Keep the pre-Anesu local development variable readable so a rename does not
+  // silently switch an existing developer session back to the deterministic provider.
+  const selectedProvider = provider(overrides.provider ?? env.ANESU_PROVIDER ?? env.COMPUTER_NATIVE_PROVIDER);
   const selectedModel = overrides.model ?? env.ANESU_MODEL ??
     (selectedProvider === "deterministic" ? "deterministic/echo" : env.OPENROUTER_MODEL ?? "");
   if (selectedModel.trim().length === 0) {

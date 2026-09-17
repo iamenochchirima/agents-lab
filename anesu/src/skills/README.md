@@ -6,10 +6,12 @@ for `name`, `description`, and optional `version`.
 
 The first slice is intentionally read-only and on demand:
 
-- `SkillRegistry.list()` rescans `skills/**/SKILL.md`, validates metadata, skips
-  malformed or oversized packages, and returns bounded summaries with exact IDs.
-- `SkillRegistry.read(id)` accepts only an exact ID from the current catalog, rechecks
-  the file through the workspace policy, and returns the complete bounded document.
+- `SkillRegistry.list(signal?)` rescans `skills/**/SKILL.md`, validates metadata, skips
+  malformed or oversized packages, and returns bounded summaries with exact IDs. When
+  supplied, the signal is checked during traversal and passed to bounded file reads.
+- `SkillRegistry.read(id, signal?)` accepts only an exact ID from the current catalog,
+  rechecks the file through the workspace policy, and returns the complete bounded
+  document. Cancellation is propagated instead of being counted as a skipped skill.
 - The model-facing `list_skills` and `read_skill` tools expose the same contract.
 
 Skill prose is workspace-provided procedure, not policy. It cannot grant permissions,

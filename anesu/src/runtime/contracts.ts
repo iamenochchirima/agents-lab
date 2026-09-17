@@ -170,6 +170,10 @@ export interface TurnResult {
 
 export type LifecycleEventType =
   | "TurnStarted"
+  | "ContextPrepared"
+  | "ContextCompacted"
+  | "ContextRoundCompacted"
+  | "ContextPressure"
   | "ModelRequested"
   | "ModelRequestRejected"
   | "ModelAttemptCompleted"
@@ -239,6 +243,10 @@ export interface TurnRecord {
 }
 
 export type TurnEvent = (
+  | { readonly type: "context_prepared"; readonly snapshotId: string; readonly revision: number; readonly sourceCount: number; readonly omittedSourceCount: number; readonly requestBytes: number; readonly maxRequestBytes: number }
+  | { readonly type: "context_compacted"; readonly snapshotId: string; readonly revision: number; readonly strategy: string; readonly removedMessageCount: number; readonly reason: string; readonly beforeRequestBytes?: number; readonly afterRequestBytes?: number }
+  | { readonly type: "context_round_compacted"; readonly snapshotId: string; readonly round: number; readonly removedMessageCount: number; readonly removedGroupCount: number; readonly requestBytes: number; readonly maxRequestBytes: number }
+  | { readonly type: "context_pressure"; readonly snapshotId: string; readonly revision: number; readonly pressure: "compaction_due" | "exhausted" | "unknown"; readonly reason?: string }
   | { readonly type: "waiting"; readonly round: number }
   | { readonly type: "retry"; readonly round: number; readonly attempt: number; readonly delayMs: number; readonly reason: string }
   | { readonly type: "text"; readonly text: string; readonly round: number }

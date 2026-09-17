@@ -5,6 +5,23 @@ It asks the context module for a bounded request, invokes the model module, and 
 approved actions through tools. It must not construct prompt context, implement provider
 transport, or know which Lab scenario or experiment requested a run.
 
+Before the first provider attempt, the runtime asks `ContextManager` to prepare the
+turn, publishes its bounded `context.json` evidence, and emits `ContextPrepared` plus
+any `ContextCompacted` or `ContextPressure` events. Provider retries reuse that prepared
+context; runtime tool rounds append only their own messages and never reread workspace
+resources or memory. If a later round grows beyond the request bound, complete older
+runtime tool exchanges may be omitted from that request and `ContextRoundCompacted`
+records the bounded decision. `ContextCompacted` also carries the observed request
+bytes before and after preflight or provider-overflow adaptation. Context preparation
+failure or cancellation is terminalized before provider transport. A provider
+context-window rejection before
+output triggers at most one bounded request-local recovery revision; a second rejection
+is terminal and the original request is never retried unchanged.
+
+`RunTurnOptions.contextCompactor` is an optional diagnostic/test adapter for exercising
+compaction failure and cancellation deterministically. Normal CLI runs leave it unset;
+it does not add a provider dependency or change the production compaction policy.
+
 The current terminal slice implements a bounded model/tool turn. Its persisted turn
 states are `submitting`, `streaming`, `completed`, `failed`, `cancelled`, and
 `interrupted`. Model and tool rounds are recorded before and after tool execution.
@@ -75,9 +92,11 @@ Successful model attempt and `ModelCompleted` evidence may also include a provid
 identifier and adapter latency when the selected adapter supplies them. The identifier is
 bounded and redacted before persistence. Usage remains normalized in the existing model
 usage shape, while provider-native diagnostics stay in the adapter error/evidence path.
-Provider context-limit, refusal, and authentication outcomes are terminal provider
-classifications, not transient retries; pre-output transport failure is the only
-disconnect case eligible for the existing bounded retry policy.
+Provider refusal and authentication outcomes are terminal provider classifications. A
+pre-output provider context-limit outcome gets the one explicit context recovery above;
+if recovery is unavailable or also rejected, the turn ends with `provider-context`.
+Pre-output transport failure is the only disconnect case eligible for the existing
+bounded retry policy.
 
 When a provider reports token usage, the terminal result repeats its input, output, and
 total token counts in `TurnMetrics`, and the model attempt/round evidence retains the

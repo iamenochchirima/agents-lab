@@ -1,6 +1,6 @@
 # Completed implementation plans
 
-**Last updated:** 2026-09-17T00:18:18+02:00
+**Last updated:** 2026-09-17T21:51:42+02:00
 
 Completed plans are an archive of delivered implementation slices. Each archived plan
 must retain its original scope and checklists, plus:
@@ -37,6 +37,10 @@ partially functional.
 - [Anesu Skills foundation](anesu-skills-foundation.md) — completed
   2026-09-17T02:41:22+02:00; added bounded workspace skill discovery, exact read-only
   model tools, shared turn-loop integration, and `/skills` TUI visibility.
+- [Anesu Context Management](anesu-context-management.md) — completed
+  2026-09-17T21:51:42+02:00; added bounded source-aware context assembly, complete-turn
+  history selection, compaction, durable snapshots, recovery, retention semantics,
+  provider-overflow handling, `/context` inspection, and focused acceptance coverage.
 
 Archived validation records keep the exact command names used when they were run. The
 repository now uses the root pnpm workspace, so use the current package scripts and

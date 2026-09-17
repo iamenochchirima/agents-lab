@@ -14,6 +14,7 @@ import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process
 import { Workspace } from "../workspace/workspace.js";
 import type { SessionLock } from "../persistence/lock.js";
 import type { ProviderName, TranscriptMessage, TurnEvent, TurnResult } from "./contracts.js";
+import type { ContextSnapshot } from "../context/context.js";
 import type { MutationApproval, MutationEvent } from "../workspace/mutation.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
@@ -33,6 +34,7 @@ export interface ChatApplication {
   readonly evidenceDirectory: string;
   readonly toolNames: readonly string[];
   readonly readMemoryStatus?: () => Promise<MemoryStatus>;
+  readonly readContextSnapshot: () => Promise<ContextSnapshot | undefined>;
   readonly maintainMemoryEvidence?: () => Promise<MemoryEvidenceMaintenanceResult>;
   readonly readSkills?: () => Promise<SkillCatalog>;
   recoverInterruptedTurns(): Promise<readonly TurnResult[]>;
@@ -153,6 +155,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
+      readContextSnapshot: () => session.readLatestContextSnapshot(),
       maintainMemoryEvidence: activeMemory ? () => activeMemory.maintainEvidence() : undefined,
       readSkills: () => skills.list(),
       recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess, activeMemory ? (record) => activeMemory.reconcileAction(record) : undefined),

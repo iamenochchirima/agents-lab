@@ -557,7 +557,7 @@ export class ToolRegistry {
   private readonly browserTools?: BrowserTools;
 
   constructor(
-    private readonly workspace: Workspace,
+    readonly workspace: Workspace,
     private readonly maxOutputBytes: number,
     private readonly process?: ProcessToolOptions,
     browser?: BrowserToolOptions,
@@ -571,6 +571,10 @@ export class ToolRegistry {
       ...(memory ? [MEMORY_SEARCH, MEMORY_GET, MEMORY, MEMORY_FORGET] : []),
       ...(skills ? [LIST_SKILLS, READ_SKILL] : []),
     ];
+  }
+
+  get skillRegistry(): SkillRegistry | undefined {
+    return this.skills?.registry;
   }
 
   async execute(call: ModelToolCall, context: ToolExecutionContext = {}): Promise<ToolExecutionResult> {
@@ -617,7 +621,7 @@ export class ToolRegistry {
                           : this.memory && (call.name === MEMORY_SEARCH.name || call.name === MEMORY_GET.name || call.name === MEMORY.name || call.name === MEMORY_FORGET.name)
                             ? await this.executeMemory(call, args, context)
                           : this.skills && (call.name === LIST_SKILLS.name || call.name === READ_SKILL.name)
-                            ? await this.executeSkill(call, args)
+                            ? await this.executeSkill(call, args, context.signal)
                           : this.browserTools && this.browserTools.definitions.some((definition) => definition.name === call.name)
                             ? await this.executeBrowser(call, args, context)
                             : this.unknown(call);
@@ -638,10 +642,10 @@ export class ToolRegistry {
     }
   }
 
-  private async executeSkill(call: ModelToolCall, args: ToolArguments): Promise<ToolExecutionResult> {
+  private async executeSkill(call: ModelToolCall, args: ToolArguments, signal?: AbortSignal): Promise<ToolExecutionResult> {
     if (!this.skills) throw new ToolExecutionError("Skill tools are disabled.");
     if (call.name === LIST_SKILLS.name) {
-      const catalog = await this.skills.registry.list();
+      const catalog = await this.skills.registry.list(signal);
       return {
         callId: call.callId,
         name: call.name,
@@ -651,7 +655,7 @@ export class ToolRegistry {
       };
     }
     const id = stringArgument(args, "id", true) ?? "";
-    const loaded = await this.skills.registry.read(id);
+    const loaded = await this.skills.registry.read(id, signal);
     const content = [
       `Skill: ${loaded.summary.id}`,
       `Name: ${loaded.summary.name}`,

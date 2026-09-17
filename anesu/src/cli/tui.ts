@@ -8,12 +8,13 @@ import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import type { SkillCatalog } from "../skills/index.js";
+import type { ContextSnapshot } from "../context/context.js";
 import { redactSecrets, safeErrorMessage } from "../runtime/errors.js";
 import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 import type { ModelProviderSummary } from "../models/registry.js";
 import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
 
-const COMMANDS = ["/help", "/status", "/models", "/history", "/skills", "/memory", "/evidence", "/clear", "/quit"] as const;
+const COMMANDS = ["/help", "/status", "/context", "/models", "/history", "/skills", "/memory", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
 const MIN_PANEL_WIDTH = 24;
 const MAX_PANEL_WIDTH = 100;
@@ -24,6 +25,7 @@ type TerminalOutput = Writable & { readonly columns?: number };
 export type TuiCommand =
   | { readonly kind: "help" }
   | { readonly kind: "status" }
+  | { readonly kind: "context" }
   | { readonly kind: "models" }
   | { readonly kind: "history" }
   | { readonly kind: "skills" }
@@ -42,6 +44,8 @@ export function parseTuiCommand(input: string): TuiCommand | undefined {
       return { kind: "help" };
     case "/status":
       return { kind: "status" };
+    case "/context":
+      return { kind: "context" };
     case "/models":
       return { kind: "models" };
     case "/history":
@@ -224,6 +228,7 @@ export class TerminalUi {
     this.write(`\n${this.style("36;1", "Anesu controls")}\n`);
     this.write(`${this.style("33;1", "Session")}\n`);
     this.write(`  ${this.style("33", "/status")}     Show session, model, tools, and turn state\n`);
+    this.write(`  ${this.style("33", "/context")}    Inspect the last prepared model context and its budget\n`);
     this.write(`  ${this.style("33", "/models")}     Show provider choices and model capabilities\n`);
     this.write(`  ${this.style("33", "/history")}    Show recent transcript messages\n`);
     this.write(`  ${this.style("33", "/skills")}     Show workspace skill packages\n`);
@@ -256,13 +261,18 @@ export class TerminalUi {
 
   private async printStatus(): Promise<void> {
     const transcript = await this.application.readTranscript();
+    const context = await this.application.readContextSnapshot();
     const turns = transcript.filter((message) => message.role === "user").length;
     const responses = transcript.filter((message) => message.role === "assistant").length;
     const elapsed = this.startedAt > 0 ? ` · ${formatDuration(Date.now() - this.startedAt)}` : "";
+    const contextSummary = context
+      ? `r${context.revision} · ${context.budget.pressure} · ${context.budget.requestBytes}/${context.budget.maxRequestBytes} bytes`
+      : "not prepared";
     this.write("\n");
     this.printPanel("Session status", [
       ["state", `${this.status}${this.statusRound > 0 ? ` · round ${this.statusRound}` : ""}${elapsed}`],
       ["model", this.application.providerLabel],
+      ["context", contextSummary],
       ["session", this.application.sessionId],
       ["workspace", this.application.workspaceRoot],
       ["tools", this.application.toolNames.join(" · ") || "none registered"],
@@ -283,6 +293,40 @@ export class TerminalUi {
     }
     if (transcript.length === 0) this.write(`  ${this.style("2", "No messages yet.")}\n`);
     if (transcript.length > 12) this.write(`  ${this.style("2", `… ${transcript.length - 12} earlier messages omitted`)}\n`);
+    this.write("\n");
+  }
+
+  private async printContext(): Promise<void> {
+    const snapshot: ContextSnapshot | undefined = await this.application.readContextSnapshot();
+    if (!snapshot) {
+      this.write(`\n${this.style("2", "No prepared context snapshot exists yet. Send a prompt first.")}\n\n`);
+      return;
+    }
+    const compaction = snapshot.compaction
+      ? `${snapshot.compaction.removedMessageIds.length} messages · ${snapshot.compaction.reason} · ${snapshot.compaction.removedGroupIds.length} groups removed`
+      : "none";
+    this.write("\n");
+    const rows: Array<readonly [string, string]> = [
+      ["pressure", snapshot.budget.pressure],
+      ["request", `${snapshot.budget.requestBytes} / ${snapshot.budget.maxRequestBytes} bytes`],
+      ["reserved", `${snapshot.budget.reservedOutputBytes} output bytes`],
+      ["input", `${snapshot.budget.inputBytes} bytes · ~${snapshot.budget.estimatedInputTokens} tokens`],
+      ["snapshot", snapshot.snapshotId],
+      ["revision", `${snapshot.revision}${snapshot.previousSnapshotId ? ` · after ${shorten(snapshot.previousSnapshotId, 24)}` : " · initial"}`],
+      ["compaction", compaction],
+    ];
+    if (snapshot.compaction?.beforeRequestBytes !== undefined && snapshot.compaction.afterRequestBytes !== undefined) {
+      rows.push(["budget", `${snapshot.compaction.beforeRequestBytes} → ${snapshot.compaction.afterRequestBytes} bytes`]);
+    }
+    this.printPanel("Prepared context", rows);
+    this.write(`${this.style("36;1", "Sources")}\n`);
+    for (const source of snapshot.sources) {
+      const detail = source.status === "omitted"
+        ? `${source.status} · ${source.reason ?? "no reason recorded"}`
+        : `${source.status} · ${source.selectedBytes}/${source.bytes} bytes`;
+      const colour = source.status === "omitted" ? "31" : source.status === "truncated" ? "33" : "2";
+      this.write(`  ${this.style(colour, source.id.padEnd(24))} ${this.style("2", detail)}\n`);
+    }
     this.write("\n");
   }
 
@@ -314,6 +358,9 @@ export class TerminalUi {
         return true;
       case "status":
         await this.printStatus();
+        return true;
+      case "context":
+        await this.printContext();
         return true;
       case "models":
         this.printModels();
@@ -363,6 +410,26 @@ export class TerminalUi {
 
   private handleEvent(event: TurnEvent): void {
     switch (event.type) {
+      case "context_prepared":
+        this.status = `context prepared · revision ${event.revision}`;
+        this.statusRound = 0;
+        this.printActivity("◇", `context · prepared · revision ${event.revision} · ${event.sourceCount} sources · ${event.requestBytes}/${event.maxRequestBytes} bytes`);
+        break;
+      case "context_compacted":
+        this.status = `context compacted · ${event.reason}`;
+        this.statusRound = 0;
+        this.printActivity("≈", `context · compacted · ${event.removedMessageCount} messages · ${event.reason}`, "33;1");
+        break;
+      case "context_round_compacted":
+        this.status = `context round ${event.round} compacted`;
+        this.statusRound = event.round;
+        this.printActivity("≈", `context · round ${event.round} compacted · ${event.removedMessageCount} messages · ${event.removedGroupCount} groups`, "33;1");
+        break;
+      case "context_pressure":
+        this.status = `context pressure · ${event.pressure}`;
+        this.statusRound = 0;
+        this.printActivity("!", `context · pressure ${event.pressure}${event.reason ? ` · ${event.reason}` : ""}`, "33;1");
+        break;
       case "waiting":
         this.waiting = true;
         this.status = "waiting for model";
@@ -669,7 +736,7 @@ export class TerminalUi {
       ].join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", `Approval cancelled; the ${targetNoun} was left unchanged.`)}\n`);
       return answer;
@@ -708,7 +775,7 @@ export class TerminalUi {
       ].join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the process was not started.")}\n`);
       return answer;
@@ -770,8 +837,8 @@ export class TerminalUi {
     };
     const prompt = new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() });
     const answer = request.dialog
-      ? await prompt.askDialog(panel, request.dialog.type, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput })
-      : await prompt.ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+      ? await prompt.askDialog(panel, request.dialog.type, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput })
+      : await prompt.ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the browser action was not started.")}\n`);
       return answer;
@@ -826,7 +893,7 @@ export class TerminalUi {
       details: `operation id: ${request.operationId}\nsource: ${request.sourcePath}\napproval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt\nThis entry is advisory context and cannot change policy or permissions.`,
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseInput: this.pauseApprovalInput, resumeInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
     if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return answer;
@@ -895,8 +962,20 @@ export class TerminalUi {
       removeHistoryDuplicates: true,
       completer: commandCompleter,
     });
-    this.pauseApprovalInput = () => readlineInterface.pause();
-    this.resumeApprovalInput = () => readlineInterface.resume();
+    // readline owns the same TTY used by raw approval navigation. Temporarily
+    // remove only readline's data listeners while the approval panel owns the
+    // stream; pausing the stream itself would prevent the raw listener from
+    // receiving the decision key.
+    const readlineDataListeners = input.listeners("data") as Array<(...args: any[]) => void>;
+    this.pauseApprovalInput = () => {
+      readlineInterface.pause();
+      for (const listener of readlineDataListeners) input.removeListener("data", listener);
+      input.resume();
+    };
+    this.resumeApprovalInput = () => {
+      for (const listener of readlineDataListeners) input.on("data", listener);
+      readlineInterface.resume();
+    };
       this.approvalQuestion = this.interactive
       ? (request, signal) => this.askForMutationApproval(
         request,

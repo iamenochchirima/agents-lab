@@ -55,6 +55,17 @@ must not be removed merely because a first implementation exists.
 These are separate future implementation areas. The completed Skills foundation below
 does not make the broader areas partially available.
 
+### Context management
+
+Status: **Completed first operational slice. Later maturity work remains.**
+
+Plan: [anesu-context-management.md](completed/anesu-context-management.md)
+
+This slice owns the exact bounded model context for standalone Anesu. It covers source
+precedence, workspace resources, skill and memory selection, budgets, snapshots,
+compaction, recovery, evidence, and `/context` inspection. It does not create plugins,
+download resources, or replace security and approval policy.
+
 ### Skills
 
 Status: **Completed first foundation slice.**
@@ -110,12 +121,14 @@ This must consume the standalone runtime. It must not create a second agent loop
 ## Implementation order
 
 1. Complete [core hardening and production foundation](active/anesu-core-hardening.md).
-2. Extend the completed Skills foundation only through a new scoped active plan.
-3. Implement Plugins with the same trust and permission model.
-4. Implement External Integrations with idempotency and recovery contracts.
-5. Implement durable jobs, scheduling, and delegated work.
-6. Complete production security and operations for the named deployment profile.
-7. Integrate the main Agent Harness Lab UI.
+2. The first [Context Management](completed/anesu-context-management.md) slice is
+   complete; its later maturity gaps remain in the production-readiness register.
+3. Extend the completed Skills foundation only through a new scoped active plan.
+4. Implement Plugins with the same trust and permission model.
+5. Implement External Integrations with idempotency and recovery contracts.
+6. Implement durable jobs, scheduling, and delegated work.
+7. Complete production security and operations for the named deployment profile.
+8. Integrate the main Agent Harness Lab UI.
 
 Each future area needs its own active plan before implementation starts. That plan must
 state exactly what it implements, what it does not implement, its security and approval

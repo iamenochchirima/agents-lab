@@ -50,8 +50,8 @@ development/playground/<slice-name>/
 ```
 
 The first slices are `anesu-terminal-turn`, `anesu-browser-turn`,
-and `temporal-baseline`. The Anesu slices make text-only and browser turns
-observable from input through persisted session evidence. The latter makes one durable
+`anesu-context-management`, and `temporal-baseline`. The Anesu slices make text-only,
+context, and browser turns observable from input through persisted session evidence. The latter makes one durable
 Temporal run observable across the API, worker, workflow, model activity, and Lab
 evidence projection.
 

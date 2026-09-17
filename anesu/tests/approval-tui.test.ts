@@ -127,6 +127,24 @@ test("approval prompt supports raw-terminal navigation with a safe deny default"
   assert.match(rendered, /The exact patch changes one line/u);
 });
 
+test("raw-terminal approval keeps the TTY readable when readline pause hooks are supplied", async () => {
+  const { output } = captureOutput();
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
+  input.isTTY = true;
+  input.setRawMode = () => undefined;
+  const prompt = new ApprovalPrompt({ output, colour: false });
+  const ownership: string[] = [];
+  const pending = prompt.ask(panel, {
+    question: () => undefined,
+    rawInput: input,
+    pauseRawInput: () => ownership.push("raw-start"),
+    resumeRawInput: () => ownership.push("raw-end"),
+  });
+  input.write("d");
+  assert.deepEqual(await pending, { decision: "deny", reason: "The user did not approve the proposed operation." });
+  assert.deepEqual(ownership, ["raw-start", "raw-end"]);
+});
+
 test("idle Ctrl+C closes the interactive TUI", { timeout: 2_000 }, async () => {
   const input = new PassThrough();
   const { output, chunks } = captureOutput();

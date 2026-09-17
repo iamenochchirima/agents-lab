@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, link, mkdir, open, readdir, rename, rmdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
-import { isRuntimeInterruptionError, MutationError, WorkspaceAccessError } from "../runtime/errors.js";
+import { isAbortError, isRuntimeInterruptionError, MutationError, WorkspaceAccessError } from "../runtime/errors.js";
 import { WORKSPACE_QUARANTINE_DIRECTORY, WORKSPACE_TRANSACTION_DIRECTORY, WorkspaceSecurityPolicy, type WorkspaceLimits } from "../security/workspace-policy.js";
 import { contentHash, describePatch, prepareFileWrite, preparePatch as preparePurePatch, type PreparedPatch } from "./patch.js";
 import { MAX_MUTATION_SET_FILES, MAX_MUTATION_SET_REQUEST_BYTES, type MutationJournal, type MutationJournalMember, type MutationJournalState, type MutationMember, type WorkspaceMutationRecord } from "./mutation.js";
@@ -401,13 +401,15 @@ async function atomicCreateFile(absolutePath: string, content: Uint8Array, mode:
  * bypass the caller's byte limit. One extra byte is probed so callers can
  * distinguish an exact-bound read from an over-limit read.
  */
-async function readHandleAtMost(handle: Awaited<ReturnType<typeof open>>, maxBytes: number): Promise<Buffer | undefined> {
+async function readHandleAtMost(handle: Awaited<ReturnType<typeof open>>, maxBytes: number, signal?: AbortSignal): Promise<Buffer | undefined> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
   while (true) {
+    if (signal?.aborted) throw new DOMException("Workspace file read was cancelled.", "AbortError");
     const readSize = Math.min(BOUNDED_READ_CHUNK_BYTES, Math.max(1, maxBytes - totalBytes + 1));
     const chunk = Buffer.alloc(readSize);
     const { bytesRead } = await handle.read(chunk, 0, chunk.byteLength, null);
+    if (signal?.aborted) throw new DOMException("Workspace file read was cancelled.", "AbortError");
     if (bytesRead === 0) return Buffer.concat(chunks, totalBytes);
     totalBytes += bytesRead;
     if (totalBytes > maxBytes) return undefined;
@@ -656,9 +658,11 @@ export class Workspace {
     };
   }
 
-  async readFile(relativePath: string): Promise<WorkspaceFile> {
+  async readFile(relativePath: string, signal?: AbortSignal): Promise<WorkspaceFile> {
+    if (signal?.aborted) throw new DOMException("Workspace file read was cancelled.", "AbortError");
     const resolved = await this.policy.resolve(relativePath);
-    const bytes = await this.readMutationBytes(resolved.absolutePath, relativePath);
+    const bytes = await this.readMutationBytes(resolved.absolutePath, relativePath, signal);
+    if (signal?.aborted) throw new DOMException("Workspace file read was cancelled.", "AbortError");
     let content: string;
     try {
       content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -1959,7 +1963,8 @@ export class Workspace {
     }
   }
 
-  private async readMutationBytes(absolutePath: string, relativePath: string): Promise<Buffer> {
+  private async readMutationBytes(absolutePath: string, relativePath: string, signal?: AbortSignal): Promise<Buffer> {
+    if (signal?.aborted) throw new DOMException("Workspace file read was cancelled.", "AbortError");
     let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
       handle = await open(absolutePath, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -1972,7 +1977,7 @@ export class Workspace {
       if (fileStats.size > this.policy.limits.maxFileBytes) {
         throw new WorkspaceAccessError(`Workspace file '${relativePath}' is ${fileStats.size} bytes; the limit is ${this.policy.limits.maxFileBytes} bytes.`);
       }
-      const bytes = await readHandleAtMost(handle, this.policy.limits.maxFileBytes);
+      const bytes = await readHandleAtMost(handle, this.policy.limits.maxFileBytes, signal);
       if (!bytes) {
         throw new WorkspaceAccessError(`Workspace file '${relativePath}' grew beyond the ${this.policy.limits.maxFileBytes}-byte limit while it was being read.`);
       }
@@ -1982,6 +1987,7 @@ export class Workspace {
       }
       return bytes;
     } catch (error) {
+      if (isAbortError(error)) throw error;
       if (error instanceof WorkspaceAccessError) throw error;
       throw new WorkspaceAccessError(`Workspace file '${relativePath}' cannot be read safely.`, { cause: error });
     } finally {

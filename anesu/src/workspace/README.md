@@ -85,7 +85,8 @@ registry and carry source identity, kind, manifest, and byte evidence into the m
 record. Restart reconciliation distinguishes source-only, destination-only, and
 ambiguous states for both file hashes and directory manifests.
 
-Reads are bounded in the descriptor loop, and regular-file copy commits stream into a
+Reads are bounded in the descriptor loop, accept cooperative cancellation between
+chunks, and regular-file copy commits stream into a
 same-directory temporary inode while hashing and enforcing the approved source size.
 File-transfer preparation and directory-manifest generation also hash through bounded
 descriptor reads instead of retaining file contents. Text reads and patch preparation
