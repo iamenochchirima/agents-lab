@@ -29,3 +29,11 @@ apps/web/src/generated/document-catalog.ts
 # Local platform runtime state
 lab/restate-data/
 lab/restate-native-data/
+lab/runs/*
+!lab/runs/README.md
+lab/sessions/*
+!lab/sessions/README.md
+server/lab/runs/*
+!server/lab/runs/README.md
+server/lab/sessions/*
+!server/lab/sessions/README.md

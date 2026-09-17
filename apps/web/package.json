@@ -8,10 +8,10 @@
   },
   "scripts": {
     "generate:docs": "node scripts/generate-doc-catalog.mjs",
-    "dev": "npm run generate:docs && vite",
-    "build": "npm run typecheck && vite build",
+    "dev": "pnpm run generate:docs && vite",
+    "build": "pnpm run typecheck && vite build",
     "preview": "vite preview",
-    "typecheck": "npm run generate:docs && tsc --noEmit --pretty false && tsc --project tsconfig.node.json --noEmit --pretty false"
+    "typecheck": "pnpm run generate:docs && tsc --noEmit --pretty false && tsc --project tsconfig.node.json --noEmit --pretty false"
   },
   "dependencies": {
     "@fontsource-variable/ibm-plex-sans": "5.3.0",

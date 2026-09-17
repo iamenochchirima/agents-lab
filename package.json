@@ -1,0 +1,17 @@
+{
+  "name": "@agent-harness-lab/workspace",
+  "private": true,
+  "packageManager": "pnpm@10.30.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "chat": "pnpm --filter @agent-harness-lab/anesu run build && cd anesu && node dist/src/cli/main.js chat",
+    "typecheck": "pnpm --recursive --if-present typecheck",
+    "build": "pnpm --recursive --if-present build",
+    "test": "pnpm --recursive --if-present test",
+    "coverage": "pnpm --filter @agent-harness-lab/anesu coverage",
+    "dev": "pnpm --filter @agent-harness-lab/web dev",
+    "stack": "./scripts/run_local_stack.sh"
+  }
+}
