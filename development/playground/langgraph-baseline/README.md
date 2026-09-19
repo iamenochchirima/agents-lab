@@ -47,7 +47,24 @@ Look at these fields in the inspection response:
 
 The model output is deterministic and does not require an API key.
 
-## 4. Observe persistence
+## 4. Observe the shared context snapshot and calculator tool
+
+The Lab server prepares a request-local context snapshot before it calls the Python
+service. The TypeScript adapter sends the session ID, turn ID, and snapshot ID; the
+service reads that exact immutable file rather than reconstructing the transcript.
+The snapshot lives under the configured context root:
+
+```text
+<context-root>/<session-id>/snapshots/<snapshot-id>.json
+```
+
+For a tool turn, enable only the bounded calculator capability in the request. The
+service emits `ToolCallRequested`, `ToolCallValidated`, `ToolExecutionStarted`, and
+`ToolExecutionCompleted` when the model actually requests and the graph executes it.
+The tool is deliberately pure; this playground does not exercise filesystem, network,
+browser, or side-effecting tools.
+
+## 5. Observe persistence
 
 The SQLite file is:
 
@@ -59,7 +76,7 @@ The `checkpoints` and `writes` tables belong to LangGraph's SQLite checkpointer.
 The `service_runs` and `service_events` tables belong to the Lab's platform
 service. Neither table is the normalized `lab/runs/` evidence store.
 
-## 5. Observe restart semantics
+## 6. Observe restart semantics
 
 Start a run with `fake-cancel`, stop the service while it is waiting, and start
 the service again with the same state directory. The previous record is exposed
@@ -87,4 +104,5 @@ result. It does not start the shared TypeScript Lab server because registration
 is a primary-integration handoff outside this platform-owned scope.
 
 The playground does not claim hosted LangGraph deployment, Postgres durability,
-automatic recovery, tools, or exactly-once model execution.
+automatic recovery, or exactly-once model execution. The calculator path is a bounded
+conformance fixture, not a general LangGraph tool system.

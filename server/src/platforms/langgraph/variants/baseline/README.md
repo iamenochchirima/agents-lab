@@ -37,7 +37,8 @@ in a request body or returned in an event. Fake model names are reserved for tes
 ## What this does not establish
 
 This graph does not establish durable scheduling, automatic in-flight process recovery,
-exactly-once model or tool calls, long-term memory, context compaction in the Python
-service, or hosted LangGraph/LangSmith deployment semantics. SQLite checkpoint state,
-the process-local run registry, and the canonical transcript bridge have separate
-failure and recovery boundaries that require their own evidence.
+exactly-once model or tool calls, long-term memory, or hosted LangGraph/LangSmith
+deployment semantics. Context compaction belongs to the shared TypeScript context
+service before dispatch; the Python service consumes the resulting snapshot. SQLite
+checkpoint state, the process-local run registry, and the compatibility transcript
+bridge have separate failure and recovery boundaries that require their own evidence.

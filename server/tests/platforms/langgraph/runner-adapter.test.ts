@@ -53,6 +53,7 @@ function manifest(serviceUrl: string): RunManifest {
       durability: "sqlite-sync",
       maxAttempts: 2,
       timeoutMs: 30_000,
+      contextRoot: "lab/sessions",
     },
     model: { provider: "fake", model: "fake-success", contextWindowTokens: 256_000 },
   };

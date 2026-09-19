@@ -26,11 +26,12 @@ def test_protocol_accepts_the_frozen_baseline_request() -> None:
 
 def test_protocol_accepts_context_identity_and_bounded_tool_policy() -> None:
     request = valid_request()
-    request["context"] = {"sessionId": "session-conformance", "turnId": "turn-1"}
+    request["context"] = {"sessionId": "session-conformance", "turnId": "turn-1", "snapshotId": "snapshot-1"}
     request["tools"] = {"enabledNames": ["calculator"], "maxRounds": 6, "maxCalls": 8}
     parsed = StartRunRequest.model_validate(request)
     assert parsed.context is not None
     assert parsed.context.session_id == "session-conformance"
+    assert parsed.context.snapshot_id == "snapshot-1"
     assert parsed.tools is not None
     assert parsed.tools.enabled_names == ["calculator"]
 

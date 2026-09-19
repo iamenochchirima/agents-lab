@@ -48,6 +48,9 @@ class ModelSelection(ProtocolModel):
 class ContextSelection(ProtocolModel):
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
     turn_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    # Optional for direct service callers that still exercise the legacy
+    # transcript bridge. Lab server requests always provide the shared snapshot.
+    snapshot_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
 
 class ToolConfiguration(ProtocolModel):
@@ -150,6 +153,8 @@ class WireMetrics(ProtocolModel):
     input_tokens: int | None
     output_tokens: int | None
     total_tokens: int | None
+    tool_call_count: int = Field(default=0, ge=0)
+    tool_attempt_count: int = Field(default=0, ge=0)
 
 
 class RunInspection(ProtocolModel):

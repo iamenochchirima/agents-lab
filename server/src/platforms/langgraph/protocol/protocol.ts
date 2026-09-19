@@ -22,7 +22,7 @@ export interface LangGraphStartRequest {
   readonly durability: "sqlite-sync";
   readonly maxAttempts: number;
   readonly timeoutMs: number;
-  readonly context?: { readonly sessionId: string; readonly turnId: string };
+  readonly context?: { readonly sessionId: string; readonly turnId: string; readonly snapshotId: string };
   readonly tools?: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
 }
 
@@ -105,6 +105,8 @@ export interface LangGraphInspection {
     readonly inputTokens: number | null;
     readonly outputTokens: number | null;
     readonly totalTokens: number | null;
+    readonly toolCallCount?: number;
+    readonly toolAttemptCount?: number;
   };
 }
 
@@ -168,6 +170,9 @@ export function parseInspection(value: unknown): LangGraphInspection {
   if (!Array.isArray(trajectory.phases)) throw new Error("LangGraph trajectory phases must be an array.");
   const metrics = requireObject(object.metrics, "LangGraph metrics");
   for (const key of ["modelCallCount", "modelAttemptCount", "checkpointCount"] as const) requireNonNegativeInteger(metrics, key);
+  for (const key of ["toolCallCount", "toolAttemptCount"] as const) {
+    if (metrics[key] !== undefined) requireNonNegativeInteger(metrics, key);
+  }
   if (metrics.durationMs !== null && !isInteger(metrics.durationMs)) throw new Error("Invalid LangGraph duration.");
   for (const key of ["inputTokens", "outputTokens", "totalTokens"] as const) {
     if (metrics[key] !== null && !isInteger(metrics[key])) throw new Error(`Invalid LangGraph ${key}.`);

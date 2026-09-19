@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { once } from "node:events";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import { RunService } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import type { RunManifest } from "../src/control-plane/domain/types.js";
+import { ContextSessionStore } from "../src/capabilities/context/session-store.js";
 import { LangGraphBaselineRunner } from "../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
 
 const shouldRun = process.env.AGENTLAB_RUN_LANGGRAPH_INTEGRATION === "1";
@@ -24,10 +25,11 @@ const platformRoot = existsSync(join(process.cwd(), "src", "platforms", "langgra
 
 test("real LangGraph service completes, cancels, restarts, and reconciles a baseline run", { skip: !shouldRun }, async () => {
   const stateDirectory = await mkdtemp(join(tmpdir(), "agentlab-langgraph-"));
+  const contextRoot = join(stateDirectory, "sessions");
   let service: ManagedService | null = null;
   try {
     service = await startService(stateDirectory);
-    const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, timeoutMs: 5_000 });
+    const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, contextRoot, timeoutMs: 5_000 });
     assert.equal((await runner.checkConnection()).reachable, true);
 
     await assertGenericApiRun(runner);
@@ -47,22 +49,48 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
     assert.ok(toolInspection.eventIntents.some((event) => event.kind === "ToolCallRequested"));
     assert.ok(toolInspection.eventIntents.some((event) => event.kind === "ToolExecutionCompleted"));
 
-    const contextRoot = join(stateDirectory, "sessions");
-    await mkdir(join(contextRoot, "session-integration-context"), { recursive: true });
-    await writeFile(
-      join(contextRoot, "session-integration-context", "transcript.jsonl"),
-      `${JSON.stringify({ role: "user", content: "Remember conformance-4318." })}\n${JSON.stringify({ role: "assistant", content: "Stored the test value." })}\n`,
-      "utf8",
+    const contextStore = new ContextSessionStore(contextRoot);
+    await contextStore.create({
+      sessionId: "session-integration-context",
+      platform: "langgraph",
+      variant: "baseline",
+      model: "fake/fake-context",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 16_384,
+      reservedOutputTokens: 4_096,
+      safetyMarginTokens: 1_024,
+      compactionThresholdPercent: 20,
+      recentMessageGroups: 2,
+    });
+    const firstTurn = await contextStore.admitTurn(
+      "session-integration-context",
+      "integration-context-first",
+      "Remember conformance-4318.",
+    );
+    await contextStore.settleTurn("session-integration-context", firstTurn.turn.turnId, {
+      status: "completed",
+      output: "Stored the test value.",
+      error: null,
+    });
+    const secondTurn = await contextStore.admitTurn(
+      "session-integration-context",
+      "integration-context",
+      "What value did you remember?",
     );
     const contextInspection = await terminalInspection(runner, await runner.start({
       ...manifest(runner, "fake-context", "integration-context"),
       task: { kind: "prompt", prompt: "What value did you remember?" },
-      context: { systemInstruction: "Answer directly.", sessionId: "session-integration-context", turnId: "turn-2" },
+      context: {
+        systemInstruction: "Answer directly.",
+        sessionId: "session-integration-context",
+        turnId: secondTurn.turn.turnId,
+      },
     }));
     assert.equal(contextInspection.result?.status, "completed");
     assert.equal(contextInspection.result?.output, "conformance-4318");
     const prepared = contextInspection.eventIntents.find((event) => event.kind === "ContextPrepared");
-    assert.equal(prepared?.payload.contextSource, "canonical-transcript");
+    assert.equal(prepared?.payload.contextSource, "shared-snapshot");
+    assert.equal(typeof prepared?.payload.snapshotId, "string");
     assert.equal(prepared?.payload.quality, "estimated");
 
     const retried = await terminalResult(runner, await runner.start(manifest(runner, "fake-pre-dispatch-retry", "integration-retry")));
@@ -79,14 +107,14 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
     assert.equal((await LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url }).checkConnection()).reachable, false);
 
     service = await startService(stateDirectory);
-    const restartRunner = LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, timeoutMs: 5_000 });
+    const restartRunner = LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, contextRoot, timeoutMs: 5_000 });
     const delayedReference = await restartRunner.start(manifest(restartRunner, "fake-delay", "integration-restart"));
     await waitForStatus(restartRunner, delayedReference, "running");
     await service.stop("SIGKILL");
     service = await startService(stateDirectory);
 
     const recovered = await terminalResult(
-      LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url }),
+      LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, contextRoot }),
       delayedReference,
     );
     assert.equal(recovered.status, "reconciliation_required");

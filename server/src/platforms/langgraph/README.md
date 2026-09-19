@@ -25,9 +25,12 @@ provider key from its process environment.
 The platform-local protocol is defined in [`protocol/`](protocol/) and is validated independently by Pydantic and TypeScript. It uses `runId` as the stable Lab identity and LangGraph `thread_id` as the checkpoint identity. A checkpoint ID, graph run ID, and node task ID remain separate native details.
 
 The TypeScript server defaults to `http://127.0.0.1:2024`; override it with
-`AGENTLAB_LANGGRAPH_SERVICE_URL` when the Python service runs elsewhere. The service
-reads context transcripts from `AGENTLAB_CONTEXT_ROOT` (the local stack sets this to
-`lab/sessions`). Start the service from the repository root with:
+`AGENTLAB_LANGGRAPH_SERVICE_URL` when the Python service runs elsewhere. Both
+processes must share `AGENTLAB_CONTEXT_ROOT` (the local stack sets this to
+`lab/sessions`). Before dispatch, the TypeScript adapter prepares the Lab-owned
+context snapshot and sends only its session, turn, and snapshot identity through the
+protocol. The Python service loads that immutable snapshot and reports the same budget
+and compaction metadata in its native events.
 
 ```bash
 cd server/src/platforms/langgraph
@@ -59,13 +62,13 @@ The complete resolved environment is in [`requirements.lock`](requirements.lock)
 - The graph has a `model` node and a bounded `tools` node. The only registered tool is
   the pure `calculator`; it has no filesystem, network, subprocess, or external side
   effects. Tool calls are validated again at the execution boundary.
-- The graph accepts a session/turn identity and reads the server-owned canonical
-  `transcript.jsonl` before the model node. This is a native LangGraph context bridge,
-  not a second long-term memory store.
-- Context preparation currently reports `quality: estimated` and does not publish a
-  shared context snapshot or perform compaction in the Python process. The shared
-  TypeScript context service remains the source of compaction semantics; snapshot
-  handoff is a follow-up integration seam.
+- The graph consumes a Lab-prepared context snapshot for normal server runs. The
+  snapshot contains the exact messages, token budget, pressure, and compaction record
+  used for the request; LangGraph does not independently compact or rebuild that
+  context. Direct service callers without a snapshot use an explicitly retained
+  canonical-transcript compatibility path and are reported as `estimated`.
+- The LangGraph checkpoint remains platform-native execution state. It does not replace
+  the Lab context snapshot or become a second long-term memory store.
 - Fake models are deterministic test fixtures. OpenRouter runs use the selected
   catalog model through the Python process environment, and its API key never
   crosses the JSON seam.

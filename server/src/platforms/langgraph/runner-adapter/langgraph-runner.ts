@@ -12,6 +12,12 @@ import type {
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
 import {
+  CharacterTokenEstimator,
+  ContextService,
+  ContextSessionStore,
+  type ContextSummaryGenerator,
+} from "../../../capabilities/context/index.js";
+import {
   LANGGRAPH_PROTOCOL_VERSION,
   parseCancelResponse,
   parseHealthResponse,
@@ -26,6 +32,7 @@ export interface LangGraphRunnerOptions {
   readonly requestTimeoutMs?: number;
   readonly maxAttempts?: number;
   readonly timeoutMs?: number;
+  readonly contextRoot?: string;
 }
 
 export class LangGraphRunnerUnavailableError extends Error {
@@ -58,6 +65,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       requestTimeoutMs: options.requestTimeoutMs ?? 2_000,
       maxAttempts: options.maxAttempts ?? 2,
       timeoutMs: options.timeoutMs ?? 30_000,
+      contextRoot: options.contextRoot ?? process.env.AGENTLAB_CONTEXT_ROOT ?? "lab/sessions",
     });
   }
 
@@ -69,6 +77,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       durability: "sqlite-sync",
       maxAttempts: this.options.maxAttempts,
       timeoutMs: this.options.timeoutMs,
+      contextRoot: this.options.contextRoot,
       tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 },
     };
   }
@@ -107,6 +116,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
     const validation = this.validate(manifest);
     if (!validation.valid) throw new Error(validation.reason ?? "LangGraph manifest validation failed.");
     const configuration = this.configurationFromManifest(manifest);
+    const context = await this.prepareContext(manifest, configuration.contextRoot);
     const requestBody = JSON.stringify({
       protocolVersion: LANGGRAPH_PROTOCOL_VERSION,
       runId: manifest.runId,
@@ -121,12 +131,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       durability: "sqlite-sync",
       maxAttempts: configuration.maxAttempts,
       timeoutMs: configuration.timeoutMs,
-      ...(manifest.context.sessionId && manifest.context.turnId ? {
-        context: {
-          sessionId: manifest.context.sessionId,
-          turnId: manifest.context.turnId,
-        },
-      } : {}),
+      ...(context ? { context } : {}),
       tools: manifest.capabilities?.tools ?? configuration.tools,
     });
     try {
@@ -151,6 +156,27 @@ export class LangGraphBaselineRunner implements PlatformRunner {
         throw error;
       }
     }
+  }
+
+  private async prepareContext(
+    manifest: RunManifest,
+    contextRoot: string,
+  ): Promise<{ readonly sessionId: string; readonly turnId: string; readonly snapshotId: string } | undefined> {
+    const { sessionId, turnId, snapshotId } = manifest.context;
+    if (!sessionId || !turnId) return undefined;
+    if (snapshotId) return { sessionId, turnId, snapshotId };
+
+    const context = new ContextService(
+      new ContextSessionStore(contextRoot),
+      new CharacterTokenEstimator(),
+    );
+    const summarizer: ContextSummaryGenerator = {
+      summarize: async () => {
+        throw new Error("LangGraph context compaction requires an explicit model-backed summary path.");
+      },
+    };
+    const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
+    return { sessionId, turnId, snapshotId: prepared.snapshot.snapshotId };
   }
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
@@ -204,6 +230,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       protocolVersion: readPositiveInteger(configuration, "protocolVersion"),
       maxAttempts: readPositiveInteger(configuration, "maxAttempts"),
       timeoutMs: readPositiveInteger(configuration, "timeoutMs"),
+      contextRoot: readString(configuration, "contextRoot"),
       tools: readToolConfiguration(configuration),
     };
   }
@@ -214,6 +241,7 @@ interface LangGraphConfiguration {
   readonly protocolVersion: number;
   readonly maxAttempts: number;
   readonly timeoutMs: number;
+  readonly contextRoot: string;
   readonly tools: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
 }
 
@@ -327,6 +355,8 @@ function inspectionFromWire(inspection: LangGraphInspection, reference: Platform
       inputTokens: inspection.metrics.inputTokens,
       outputTokens: inspection.metrics.outputTokens,
       totalTokens: inspection.metrics.totalTokens,
+      toolCallCount: inspection.metrics.toolCallCount ?? inspection.events.filter((event) => event.kind === "ToolCallRequested").length,
+      toolAttemptCount: inspection.metrics.toolAttemptCount ?? inspection.events.filter((event) => event.kind === "ToolExecutionStarted").length,
       costUsd: null,
     },
   };

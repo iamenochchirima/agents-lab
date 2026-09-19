@@ -19,9 +19,14 @@ POST /v1/runs
 
 `unknown` means the process stopped or the external model outcome could not be established. It is not a synonym for provider failure. The TypeScript adapter projects this state to the Lab's reconciliation-required terminal evidence.
 
-## Persistence boundary
+## Persistence and tool boundary
 
-LangGraph checkpointers provide thread-scoped short-term state. This baseline does not add a LangGraph Store, Postgres, hosted Agent Server, LangSmith Deployment, tools, subgraphs, human approval, or automatic in-flight resume. SQLite is used because it makes checkpoint creation and restart inspection observable locally; it is not presented as the production persistence profile.
+LangGraph checkpointers provide thread-scoped short-term state. This baseline does not
+add a LangGraph Store, Postgres, hosted Agent Server, LangSmith Deployment, subgraphs,
+human approval, or automatic in-flight resume. It exposes only the Lab's bounded pure
+`calculator` tool when the request enables it; it does not define a second tool catalog.
+SQLite is used because it makes checkpoint creation and restart inspection observable
+locally; it is not presented as the production persistence profile.
 
 ## First-party references
 

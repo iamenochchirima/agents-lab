@@ -402,6 +402,8 @@ def _metrics(record: dict[str, Any], events: list[dict[str, Any]]) -> WireMetric
         input_tokens=record["usage"].get("inputTokens"),
         output_tokens=record["usage"].get("outputTokens"),
         total_tokens=record["usage"].get("totalTokens"),
+        tool_call_count=sum(1 for event in events if event["kind"] == "ToolCallRequested"),
+        tool_attempt_count=sum(1 for event in events if event["kind"] == "ToolExecutionStarted"),
     )
 
 
@@ -423,13 +425,13 @@ def load_context_messages(
     request: StartRunRequest,
     emit: Callable[[str, dict[str, Any]], None],
 ) -> list[dict[str, Any]]:
-    """Read the canonical server transcript for this turn.
+    """Load the Lab-prepared snapshot for this turn.
 
-    LangGraph receives the session identity, not a copied transcript. The
-    service reads the server-owned append-only transcript and keeps the native
-    graph checkpoint as its own execution state. Context compaction remains the
-    shared TypeScript capability's responsibility and is handled in a later
-    LangGraph handoff once the cross-process snapshot seam is added.
+    The TypeScript runner prepares the snapshot before dispatch. LangGraph reads
+    that immutable record and keeps its native graph checkpoint as separate
+    execution state. A missing snapshot ID retains a deliberately explicit
+    transcript fallback for direct platform-service tests and older local
+    callers; the Lab server path never uses that fallback.
     """
     messages: list[dict[str, Any]] = [{"role": "system", "content": request.system_instruction}]
     if request.context is None:
@@ -437,6 +439,8 @@ def load_context_messages(
 
     emit("ContextPreparationStarted", {"sessionId": request.context.session_id, "turnId": request.context.turn_id})
     session_id = request.context.session_id
+    if request.context.snapshot_id:
+        return load_context_snapshot(context_root, request, emit)
     transcript_path = (context_root / session_id / "transcript.jsonl").resolve()
     expected_root = context_root.resolve()
     if expected_root not in transcript_path.parents:
@@ -480,3 +484,76 @@ def load_context_messages(
         "quality": "estimated",
     })
     return messages
+
+
+def load_context_snapshot(
+    context_root: Path,
+    request: StartRunRequest,
+    emit: Callable[[str, dict[str, Any]], None],
+) -> list[dict[str, Any]]:
+    assert request.context is not None and request.context.snapshot_id is not None
+    session_id = request.context.session_id
+    snapshot_id = request.context.snapshot_id
+    snapshot_path = (context_root / session_id / "snapshots" / f"{snapshot_id}.json").resolve()
+    expected_root = context_root.resolve()
+    if expected_root not in snapshot_path.parents:
+        raise ConfigurationError("The LangGraph context snapshot path escaped the configured context root.")
+    try:
+        snapshot_text = snapshot_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigurationError("The shared LangGraph context snapshot could not be read.") from exc
+    if len(snapshot_text.encode("utf-8")) > 10 * 1024 * 1024:
+        raise ConfigurationError("The shared LangGraph context snapshot exceeds the configured safety limit.")
+    try:
+        snapshot = json.loads(snapshot_text)
+    except json.JSONDecodeError as exc:
+        raise ConfigurationError("The shared LangGraph context snapshot is not valid JSON.") from exc
+    if not isinstance(snapshot, dict):
+        raise ConfigurationError("The shared LangGraph context snapshot is not an object.")
+    if snapshot.get("snapshotId") != snapshot_id or snapshot.get("sessionId") != session_id:
+        raise ConfigurationError("The shared LangGraph context snapshot identity does not match the request.")
+    raw_messages = snapshot.get("messages")
+    if not isinstance(raw_messages, list):
+        raise ConfigurationError("The shared LangGraph context snapshot has no message list.")
+    messages = [native_context_message(message, index) for index, message in enumerate(raw_messages, start=1)]
+    if not any(message.get("role") == "user" and message.get("content") == request.prompt for message in messages):
+        raise ConfigurationError("The shared LangGraph context snapshot does not contain the admitted user turn.")
+    budget = snapshot.get("budget") if isinstance(snapshot.get("budget"), dict) else {}
+    compaction = snapshot.get("compaction")
+    emit("ContextPrepared", {
+        "sessionId": session_id,
+        "turnId": request.context.turn_id,
+        "contextSource": "shared-snapshot",
+        "messageCount": len(messages),
+        "snapshotId": snapshot_id,
+        "sessionRevision": snapshot.get("sessionRevision"),
+        "compactionRevision": snapshot.get("compactionRevision"),
+        "inputTokens": budget.get("inputTokens"),
+        "remainingTokens": budget.get("remainingTokens"),
+        "remainingPercent": budget.get("remainingPercent"),
+        "pressure": budget.get("pressure"),
+        "quality": budget.get("quality", "unknown"),
+        "compacted": compaction is not None,
+    })
+    return messages
+
+
+def native_context_message(message: Any, line_number: int) -> dict[str, Any]:
+    if not isinstance(message, dict) or not isinstance(message.get("role"), str) or not isinstance(message.get("content"), str):
+        raise ConfigurationError(f"The shared LangGraph context snapshot has an invalid message at index {line_number}.")
+    role = message["role"]
+    if role == "developer":
+        role = "system"
+    if role not in {"system", "user", "assistant", "tool"}:
+        raise ConfigurationError(f"The shared LangGraph context snapshot has an unsupported role at index {line_number}.")
+    content = message["content"]
+    if len(content) > 100_000:
+        raise ConfigurationError(f"The shared LangGraph context message is too large at index {line_number}.")
+    native_message: dict[str, Any] = {"role": role, "content": content}
+    metadata = message.get("metadata")
+    if role == "tool" and isinstance(metadata, dict):
+        if isinstance(metadata.get("toolCallId"), str):
+            native_message["tool_call_id"] = metadata["toolCallId"]
+        if isinstance(metadata.get("toolName"), str):
+            native_message["name"] = metadata["toolName"]
+    return native_message

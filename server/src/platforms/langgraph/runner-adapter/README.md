@@ -10,6 +10,11 @@ It owns:
 - mapping of native `unknown` outcomes to a `reconciliation_required` Lab result; and
 - conversion of source-sequenced service events into generic event intents.
 
+For a session turn, the adapter prepares the shared Lab context snapshot before the
+HTTP dispatch. It sends only the session ID, turn ID, and immutable snapshot ID across
+the Python boundary. The Python service reads that snapshot from the shared context
+root; it does not rebuild or compact the transcript independently.
+
 The adapter is registered by the common server alongside the other first-wave
 baselines. The registration still does not imply that the Python service is
 reachable: `checkConnection()` reports that dependency state, while the runner

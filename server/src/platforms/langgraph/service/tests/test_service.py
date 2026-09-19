@@ -79,6 +79,8 @@ def test_service_runs_a_calculator_tool_turn_through_the_graph(tmp_path: Path) -
         assert inspection["status"] == "completed"
         assert inspection["result"]["output"] == 'The calculator returned {"value":42}.'
         assert inspection["metrics"]["modelCallCount"] == 2
+        assert inspection["metrics"]["toolCallCount"] == 1
+        assert inspection["metrics"]["toolAttemptCount"] == 1
         kinds = [event["kind"] for event in inspection["events"]]
         assert "ToolCallRequested" in kinds
         assert "ToolCallValidated" in kinds
@@ -119,6 +121,66 @@ def test_service_reads_context_from_the_configured_canonical_transcript(tmp_path
         prepared = next(event for event in inspection["events"] if event["kind"] == "ContextPrepared")
         assert prepared["payload"]["contextSource"] == "canonical-transcript"
         assert prepared["payload"]["quality"] == "estimated"
+
+
+def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None:
+    context_root = tmp_path / "sessions"
+    snapshot_directory = context_root / "session-snapshot" / "snapshots"
+    snapshot_directory.mkdir(parents=True)
+    snapshot_id = "snapshot-shared-1"
+    (snapshot_directory / f"{snapshot_id}.json").write_text(
+        json.dumps({
+            "schemaVersion": 1,
+            "snapshotId": snapshot_id,
+            "sessionId": "session-snapshot",
+            "sessionRevision": 2,
+            "compactionRevision": 0,
+            "model": "fake/fake-context",
+            "messages": [
+                {"role": "system", "content": "Answer directly."},
+                {"role": "user", "content": "Remember conformance-4318."},
+                {"role": "assistant", "content": "Stored the test value."},
+                {"role": "user", "content": "What value did you remember?"},
+            ],
+            "budget": {
+                "inputTokens": 66,
+                "remainingTokens": 13_000,
+                "remainingPercent": 79,
+                "quality": "exact",
+                "pressure": "normal",
+            },
+            "compaction": None,
+        }),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            ServiceConfig(
+                state_dir=tmp_path / "state",
+                context_root=context_root,
+                default_timeout_ms=500,
+            )
+        )
+    )
+    with client:
+        request = start_payload("run-service-snapshot", "fake-context")
+        request["prompt"] = "What value did you remember?"
+        request["context"] = {
+            "sessionId": "session-snapshot",
+            "turnId": "turn-2",
+            "snapshotId": snapshot_id,
+        }
+        started = client.post("/v1/runs", json=request)
+        assert started.status_code == 202
+        inspection = wait_for_terminal(client, "langgraph:run-service-snapshot")
+
+        assert inspection["status"] == "completed"
+        assert inspection["result"]["output"] == "conformance-4318"
+        prepared = next(event for event in inspection["events"] if event["kind"] == "ContextPrepared")
+        assert prepared["payload"]["contextSource"] == "shared-snapshot"
+        assert prepared["payload"]["snapshotId"] == snapshot_id
+        assert prepared["payload"]["quality"] == "exact"
+        assert prepared["payload"]["remainingPercent"] == 79
 
 
 def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) -> None:
