@@ -374,22 +374,41 @@ function nativeReferenceFromExecution(reference: PlatformExecutionReference): Na
   const native = reference.native;
   const outcome = stringValue(native, "submissionOutcome");
   if (native.schemaVersion !== NATIVE_SCHEMA_VERSION || !outcome || !["accepted", "already_accepted", "unknown"].includes(outcome)) throw new Error("The Restate execution reference is invalid.");
+  const workflowKey = optionalSafeString(native, "workflowKey") ?? reference.executionId;
+  if (!isWorkflowKey(workflowKey) || workflowKey !== reference.executionId) throw new Error("The Restate execution reference has an invalid workflow key.");
+  const serviceName = optionalSafeString(native, "serviceName") ?? RESTATE_SERVICE_NAME;
+  const handlerName = optionalSafeString(native, "handlerName") ?? RESTATE_WORKFLOW_HANDLER;
+  if (!isSafeIdentifier(serviceName, 128) || !isSafeIdentifier(handlerName, 128)) throw new Error("The Restate execution reference has an invalid service or handler name.");
+  const invocationId = optionalSafeString(native, "invocationId");
+  if (invocationId !== null && !isSafeIdentifier(invocationId, 256)) throw new Error("The Restate execution reference has an invalid invocation ID.");
+  const ingressUrl = optionalSafeString(native, "ingressUrl") ?? "";
+  const adminUrl = optionalSafeString(native, "adminUrl") ?? "";
+  if ((ingressUrl && !isSafeEndpointUrl(ingressUrl)) || (adminUrl && !isSafeEndpointUrl(adminUrl))) throw new Error("The Restate execution reference has an invalid endpoint URL.");
+  const retentionMs = optionalFiniteInteger(native, "retentionMs") ?? 1;
+  if (retentionMs < 1 || retentionMs > 10 * 365 * 24 * 60 * 60 * 1_000) throw new Error("The Restate execution reference has an invalid retention period.");
+  const retryCount = optionalFiniteInteger(native, "retryCount");
+  if (retryCount !== null && (retryCount < 0 || retryCount > 1_000_000)) throw new Error("The Restate execution reference has an invalid retry count.");
+  const nativeStatus = optionalSafeString(native, "nativeStatus");
+  const lastModifiedAt = optionalSafeString(native, "lastModifiedAt");
+  const terminalObservedAt = optionalSafeString(native, "terminalObservedAt");
+  const unknownSince = optionalSafeString(native, "unknownSince");
+  const errorCode = optionalSafeString(native, "errorCode");
   return {
     schemaVersion: 1,
-    serviceName: stringValue(native, "serviceName") ?? RESTATE_SERVICE_NAME,
-    handlerName: stringValue(native, "handlerName") ?? RESTATE_WORKFLOW_HANDLER,
-    workflowKey: stringValue(native, "workflowKey") ?? reference.executionId,
-    invocationId: stringValue(native, "invocationId"),
+    serviceName,
+    handlerName,
+    workflowKey,
+    invocationId,
     submissionOutcome: outcome as NativeRestateReference["submissionOutcome"],
-    ingressUrl: stringValue(native, "ingressUrl") ?? "",
-    adminUrl: stringValue(native, "adminUrl") ?? "",
-    retentionMs: numberValue(native, "retentionMs") ?? 1,
-    nativeStatus: stringValue(native, "nativeStatus") ?? undefined,
-    retryCount: numberValue(native, "retryCount"),
-    lastModifiedAt: stringValue(native, "lastModifiedAt") ?? undefined,
-    terminalObservedAt: stringValue(native, "terminalObservedAt") ?? undefined,
-    unknownSince: stringValue(native, "unknownSince") ?? undefined,
-    errorCode: stringValue(native, "errorCode") ?? undefined,
+    ingressUrl,
+    adminUrl,
+    retentionMs,
+    nativeStatus: nativeStatus ?? undefined,
+    retryCount,
+    lastModifiedAt: lastModifiedAt ?? undefined,
+    terminalObservedAt: terminalObservedAt ?? undefined,
+    unknownSince: unknownSince ?? undefined,
+    errorCode: errorCode ?? undefined,
   };
 }
 
@@ -516,6 +535,48 @@ function numberValue(value: Record<string, unknown>, key: string): number | null
 
 function dropUndefined(value: Record<string, unknown>): Readonly<Record<string, unknown>> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+}
+
+function optionalSafeString(value: Record<string, unknown>, key: string): string | null {
+  if (!Object.prototype.hasOwnProperty.call(value, key)) return null;
+  const candidate = value[key];
+  if (candidate === null || candidate === undefined) return null;
+  if (typeof candidate !== "string" || candidate.length > 512 || /[\u0000-\u001f\u007f]/.test(candidate)) {
+    throw new Error(`The Restate execution reference has an invalid ${key}.`);
+  }
+  return candidate;
+}
+
+function optionalFiniteInteger(value: Record<string, unknown>, key: string): number | null {
+  if (!Object.prototype.hasOwnProperty.call(value, key)) return null;
+  const candidate = value[key];
+  if (candidate === null || candidate === undefined) return null;
+  if (typeof candidate !== "number" || !Number.isSafeInteger(candidate)) {
+    throw new Error(`The Restate execution reference has an invalid ${key}.`);
+  }
+  return candidate;
+}
+
+function isWorkflowKey(value: string): boolean {
+  return /^agentlab:[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
+}
+
+function isSafeIdentifier(value: string, maximumLength: number): boolean {
+  return value.length > 0 && value.length <= maximumLength && /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(value);
+}
+
+function isSafeEndpointUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:")
+      && url.hostname.length > 0
+      && url.username.length === 0
+      && url.password.length === 0
+      && url.search.length === 0
+      && url.hash.length === 0;
+  } catch {
+    return false;
+  }
 }
 
 function classifySubmissionError(error: unknown): string {

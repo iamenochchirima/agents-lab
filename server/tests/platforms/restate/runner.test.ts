@@ -104,6 +104,30 @@ test("runner submits through the Restate workflow boundary with a stable key", a
   assert.equal(JSON.stringify(reference).includes("OPENROUTER"), false);
 });
 
+test("runner rejects malformed persisted native references before contacting Restate", async () => {
+  const config = loadRestateConfig();
+  const runner = RestateBaselineRunner.fromOptions({
+    config,
+    ingress: new FakeIngress(new FakeWorkflowClient()),
+  });
+  const reference = await runner.start(manifestFor(runner, "restate-reference-validation-test"));
+  const invalidReferences = [
+    { schemaVersion: 2 },
+    { workflowKey: "agentlab:another-run" },
+    { invocationId: "invocation\nwith-control" },
+    { adminUrl: "javascript:alert(1)" },
+    { retryCount: -1 },
+    { nativeStatus: { value: "running" } },
+  ];
+
+  for (const update of invalidReferences) {
+    await assert.rejects(
+      () => runner.inspect({ ...reference, native: { ...reference.native, ...update } }),
+      /invalid/i,
+    );
+  }
+});
+
 test("workflow input carries the shared tool and context contract", () => {
   const previousRoot = process.env.AGENTLAB_CONTEXT_ROOT;
   process.env.AGENTLAB_CONTEXT_ROOT = "/tmp/agentlab-restate-context";

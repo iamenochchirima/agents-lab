@@ -7,6 +7,7 @@
 | Lost submission acknowledgement | Retry/reconcile with the same workflow key; never create a second key. |
 | Definite ingress rejection | Return a dispatch error to the common server. |
 | Unknown submission outcome | Preserve `reconciliation_required` with `outcome_unknown`; do not report success or ordinary failure. |
+| Malformed persisted native reference | Reject it before ingress or Admin access; do not interpolate unvalidated identity, URL, or counter fields into a Restate request. |
 | Pending or ready invocation | Map to `queued`. |
 | Running, suspended, or backing-off invocation | Map to `running`. |
 | Completed workflow output | Project the durable result and event intents. |

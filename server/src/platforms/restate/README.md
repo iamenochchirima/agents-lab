@@ -66,6 +66,12 @@ not contain prompts, tool arguments, authorization headers, provider response bo
 or `OPENROUTER_API_KEY`. See [semantics](./docs/semantics.md) for the failure matrix
 and [architecture](./docs/architecture.md) for ownership and write ordering.
 
+When a persisted native reference is read again, the adapter validates its schema
+version, run-derived workflow key, service and handler names, invocation identity,
+endpoint URLs, counters, and bounded status fields before contacting Restate. A
+malformed reference is a local recovery error; it is never used to construct an
+introspection query or a cancellation request.
+
 Status: baseline implementation and shared server registration complete. Restate is
 advertised as runnable when the Lab server starts, but it reports unavailable until the
 local Restate runtime and registered service are reachable. The default local runtime
