@@ -8,6 +8,8 @@ export interface ChatMessage {
   readonly content: string;
   readonly status: ChatMessageStatus;
   readonly runId?: string;
+  /** Stable key used to retry one admitted session turn without duplicating it. */
+  readonly clientTurnId?: string;
 }
 
 export function createClientTurnId(): string {
@@ -68,6 +70,9 @@ export function upsertRunMessages(current: readonly ChatMessage[], run: RunView,
     content: assistantContent(run),
     status: assistantStatus(run.status),
     runId: run.runId,
+    ...(withUser[existingIndex]?.clientTurnId || run.manifest.context?.clientTurnId
+      ? { clientTurnId: withUser[existingIndex]?.clientTurnId ?? run.manifest.context?.clientTurnId }
+      : {}),
   };
   if (existingIndex >= 0) {
     withUser[existingIndex] = nextMessage;
@@ -117,7 +122,8 @@ function chatMessagesAreEqual(left: ChatMessage, right: ChatMessage): boolean {
     && left.role === right.role
     && left.content === right.content
     && left.status === right.status
-    && left.runId === right.runId;
+    && left.runId === right.runId
+    && left.clientTurnId === right.clientTurnId;
 }
 
 function modelSelectionsAreEqual(left: ModelSelection | null, right: ModelSelection | null): boolean {

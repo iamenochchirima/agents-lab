@@ -111,6 +111,16 @@ test("Platform Chat reports unavailable, API failure, and cancellation states", 
     assert.equal(fixture.state.createRequests, 1);
     assert.equal(fixture.state.runReads, 0, "a rejected create request must not start polling");
 
+    fixture.setMode("api-error-once");
+    await clickButton(browser.cdp, "New chat");
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Retry this request safely.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "The fixture rejected this run.");
+    await clickButton(browser.cdp, "Retry");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+    assert.equal(fixture.state.createRequests, 3);
+    assert.equal(fixture.state.clientTurnIds.at(-1), fixture.state.clientTurnIds.at(-2), "a retry must reuse the same client turn key");
+
     await clickButton(browser.cdp, "New chat");
     fixture.setMode("cancel");
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Cancel this request.");
@@ -120,8 +130,8 @@ test("Platform Chat reports unavailable, API failure, and cancellation states", 
     await waitForText(browser.cdp, "Cancelled");
     assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-message-status-cancelled")?.textContent?.includes("Cancelled")'), true);
     assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-composer textarea")?.hasAttribute("disabled")'), false);
-    assert.equal(fixture.state.createRequests, 2);
-    assert.equal(new Set(fixture.state.clientTurnIds).size, 2, "New chat must produce a fresh turn id when the next message is submitted");
+    assert.equal(fixture.state.createRequests, 4);
+    assert.equal(new Set(fixture.state.clientTurnIds).size, 3, "New chat must produce a fresh turn id when the next message is submitted");
     assert.ok(fixture.state.clientTurnIds.every((id) => /^chat-turn-[A-Za-z0-9-]+$/.test(id)));
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
     assert.equal(browser.dialogs.length, 0, "Chat must not open native browser dialogs");
@@ -130,7 +140,7 @@ test("Platform Chat reports unavailable, API failure, and cancellation states", 
   }
 });
 
-test("non-Temporal Chat discloses single-turn behavior and requires a model", async () => {
+test("Restate Chat continues a session across workflow turns and requires a model", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
   fixture.setRestateAvailable(true);
@@ -139,7 +149,7 @@ test("non-Temporal Chat discloses single-turn behavior and requires a model", as
     await navigate(browser.cdp, "/platforms/restate/chat");
     await waitForText(browser.cdp, "Ready");
     await chooseModel(browser.cdp);
-    assert.match(await browser.cdp.evaluate("document.body.innerText"), /Each message starts a platform run\./);
+    assert.match(await browser.cdp.evaluate("document.body.innerText"), /Messages continue in this session\./);
 
     await browser.cdp.evaluate('document.querySelector("[aria-label=\\"Clear selected model\\"]")?.click()');
     assert.equal(await browser.cdp.evaluate('document.querySelector("button[type=submit]")?.hasAttribute("disabled")'), true);
@@ -149,9 +159,14 @@ test("non-Temporal Chat discloses single-turn behavior and requires a model", as
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Return a short answer.");
     await clickButton(browser.cdp, "Send");
     await waitForText(browser.cdp, "Restate fixture completed.");
-    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-session-note")?.textContent?.trim()'), "Each turn is a separate platform run until this platform has a session adapter.");
-    assert.equal(await browser.cdp.evaluate("document.querySelector('.model-picker-trigger')?.hasAttribute('disabled')"), false);
-    assert.equal(fixture.state.createRequests, 1);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Continue this session.");
+    await clickButton(browser.cdp, "Send");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".chat-message-user").length === 2 && document.querySelectorAll(".chat-message-assistant").length === 2');
+    assert.equal(fixture.state.requests[1]?.sessionId, fixture.state.requests[0]?.sessionId, "Restate follow-up must address the existing session");
+    assert.notEqual(fixture.state.clientTurnIds[0], fixture.state.clientTurnIds[1], "each Restate turn must have a distinct idempotency key");
+    assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1], "each Restate turn must have its own workflow run");
+    assert.equal(await browser.cdp.evaluate("document.querySelector('.model-picker-trigger')?.hasAttribute('disabled')"), true);
+    assert.equal(fixture.state.createRequests, 2);
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -205,6 +220,7 @@ async function installFixture(cdp) {
     clientTurnIds: [],
     runRequests: new Map(),
     mode: "complete",
+    apiErrorOncePending: false,
     cancelled: false,
     restateAvailable: false,
   };
@@ -253,19 +269,20 @@ async function installFixture(cdp) {
       const request = JSON.parse(event.request.postData ?? "{}");
       state.requests.push(request);
       state.clientTurnIds.push(request.clientTurnId);
-      if (state.mode === "api-error") {
+      if (state.mode === "api-error" || state.mode === "api-error-once" && state.apiErrorOncePending) {
+        state.apiErrorOncePending = false;
         await fulfill(cdp, event.requestId, { status: 503, body: { error: { code: "FIXTURE_REJECTED", message: "The fixture rejected this run." } } });
         return;
       }
       state.cancelled = false;
-      const runId = request.platform === "restate" ? "run-restate" : `run-chat-${state.createRequests}`;
+      const runId = `run-${request.platform}-${state.createRequests}`;
       state.runIds.push(runId);
       state.runRequests.set(runId, request);
       await fulfill(cdp, event.requestId, { status: 202, body: makeRun(request, state.mode === "cancel" ? "running" : "queued", runId) });
       return;
     }
 
-    const runMatch = url.pathname.match(/^\/api\/runs\/(run-chat-\d+|run-restate)$/);
+    const runMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate)-\d+)$/);
     if (runMatch && event.request.method === "GET") {
       const runId = runMatch[1];
       const request = state.runRequests.get(runId);
@@ -283,7 +300,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const eventsMatch = url.pathname.match(/^\/api\/runs\/(run-chat-\d+|run-restate)\/events$/);
+    const eventsMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate)-\d+)\/events$/);
     if (eventsMatch && event.request.method === "GET") {
       const runId = eventsMatch[1];
       const request = state.runRequests.get(runId);
@@ -297,7 +314,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const cancelMatch = url.pathname.match(/^\/api\/runs\/(run-chat-\d+)\/cancel$/);
+    const cancelMatch = url.pathname.match(/^\/api\/runs\/(run-(?:temporal|restate)-\d+)\/cancel$/);
     if (cancelMatch && event.request.method === "POST") {
       const runId = cancelMatch[1];
       const request = state.runRequests.get(runId);
@@ -311,14 +328,14 @@ async function installFixture(cdp) {
 
   return {
     state,
-    setMode: (mode) => { state.mode = mode; },
+    setMode: (mode) => { state.mode = mode; state.apiErrorOncePending = mode === "api-error-once"; },
     setRestateAvailable: (available) => { state.restateAvailable = available; },
   };
 }
 
 function makeRun(request, status, runIdOverride) {
   const platform = request.platform ?? "temporal";
-  const runId = runIdOverride ?? (platform === "restate" ? "run-restate" : "run-chat-1");
+  const runId = runIdOverride ?? `run-${platform}-1`;
   const events = platform === "restate"
     ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
     : [
@@ -329,14 +346,14 @@ function makeRun(request, status, runIdOverride) {
         event(runId, 5, "ToolExecutionCompleted", platform, { toolName: "calculator" }),
         event(runId, 6, "AgentCompleted", platform),
       ];
-  const isTemporal = platform === "temporal";
+  const isSessionPlatform = platform === "temporal" || platform === "restate";
   const sessionId = request.sessionId ?? "session-chat";
   const terminal = status === "completed" || status === "cancelled";
   const result = terminal ? {
     runId,
     status,
     finishedAt: "2026-09-16T12:00:00.000Z",
-    output: status === "completed" ? isTemporal ? "The calculator result is 42." : "Restate fixture completed." : null,
+    output: status === "completed" ? platform === "temporal" ? "The calculator result is 42." : "Restate fixture completed." : null,
     error: null,
     attemptCount: 1,
     usage: { inputTokens: 8000, outputTokens: 100, totalTokens: 8100 },
@@ -353,14 +370,14 @@ function makeRun(request, status, runIdOverride) {
         model: request.model?.model ?? "cohere/north-mini-code:free",
         contextWindowTokens: 100_000,
       },
-      ...(isTemporal ? { context: { sessionId, turnId: "turn-chat", snapshotId: "snapshot-chat" } } : {}),
+      ...(isSessionPlatform ? { context: { sessionId, turnId: request.clientTurnId ?? "turn-chat", clientTurnId: request.clientTurnId, snapshotId: `snapshot-${runId}` } } : {}),
     },
     events,
     executionReference: { platform, variant: "baseline", executionId: runId, native: { fixture: true } },
     result,
-    trajectory: terminal && isTemporal ? { schemaVersion: 1, runId, phases: [] } : null,
-    metrics: terminal && isTemporal ? { schemaVersion: 1, runId, durationMs: 0, eventCount: events.length } : null,
-    context: isTemporal ? {
+    trajectory: terminal && platform === "temporal" ? { schemaVersion: 1, runId, phases: [] } : null,
+    metrics: terminal && platform === "temporal" ? { schemaVersion: 1, runId, durationMs: 0, eventCount: events.length } : null,
+    context: isSessionPlatform ? {
       scope: "session",
       sessionId,
       sessionRevision: 1,

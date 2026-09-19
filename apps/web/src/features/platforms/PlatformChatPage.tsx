@@ -20,6 +20,7 @@ import {
   PlatformApiError,
   type ModelSelection,
   type PlatformConnectivity,
+  type PlatformRunRequest,
   type RunEvidenceFile,
   type RunEvent,
   type RunStatus,
@@ -29,6 +30,12 @@ import { ContextBudgetMeter } from "./RunStatusPanel";
 import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
 
 const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled", "reconciliation_required"]);
+
+interface PendingTurn {
+  readonly request: PlatformRunRequest;
+  readonly assistantMessageId: string;
+  readonly conversationVersion: number;
+}
 
 export function PlatformChatPage() {
   const { platform } = useOutletContext<PlatformOutletContext>();
@@ -47,6 +54,7 @@ export function PlatformChatPage() {
   const [latestEvents, setLatestEvents] = useState<RunEvent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [retryTurn, setRetryTurn] = useState<PendingTurn | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectivity, setConnectivity] = useState<PlatformConnectivity | null>(null);
   const [connectivityError, setConnectivityError] = useState<string | null>(null);
@@ -62,7 +70,7 @@ export function PlatformChatPage() {
   const isReady = hasRunnableBaseline && connectivity?.reachable === true;
   const hasActiveRun = activeRunId !== null;
   const modelPickerDisabled = isModelPickerDisabled({ hasActiveRun, preservesSession, sessionId });
-  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun;
+  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null;
 
   useEffect(() => {
     setMessages((current) => {
@@ -83,6 +91,7 @@ export function PlatformChatPage() {
     setLatestRun(null);
     setLatestEvents([]);
     setError(null);
+    setRetryTurn(null);
     setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
     setVariantId(platform.variants[0]?.id ?? "baseline");
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
@@ -211,38 +220,61 @@ export function PlatformChatPage() {
 
     const text = prompt.trim();
     const currentConversationVersion = conversationVersion.current;
-    const clientTurnId = createClientTurnId();
+    const clientTurnId = preservesSession ? createClientTurnId() : undefined;
     const requestSessionId = preservesSession ? sessionId ?? createId("session") : undefined;
     const userMessageId = createId("user");
     const assistantMessageId = createId("assistant");
+    const request: PlatformRunRequest = {
+      platform: platform.id,
+      variant: variantId,
+      task: { kind: "prompt", prompt: text },
+      model: selectedModel,
+      capabilities: DEFAULT_PLATFORM_CAPABILITIES,
+      ...(preservesSession && requestSessionId ? { sessionId: requestSessionId } : {}),
+      ...(clientTurnId ? { clientTurnId } : {}),
+      selection: {
+        scenarioId,
+        ...(backendProfileId ? { backendProfileId } : {}),
+        ...(infrastructureId !== "none" ? { infrastructureId } : {}),
+        ...(experimentId !== "none" ? { experimentId } : {}),
+      },
+    };
+    const pendingTurn: PendingTurn = { request, assistantMessageId, conversationVersion: currentConversationVersion };
     setMessages((current) => [
       ...current,
-      { id: userMessageId, role: "user", content: text, status: "completed" },
-      { id: assistantMessageId, role: "assistant", content: "", status: "pending" },
+      {
+        id: userMessageId,
+        role: "user",
+        content: text,
+        status: "completed",
+        ...(clientTurnId ? { clientTurnId } : {}),
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        status: "pending",
+        ...(clientTurnId ? { clientTurnId } : {}),
+      },
     ]);
     setPrompt("");
+    if (requestSessionId && requestSessionId !== sessionId) setSessionId(requestSessionId);
+    await dispatchTurn(pendingTurn);
+  }
+
+  async function dispatchTurn(pendingTurn: PendingTurn): Promise<void> {
     setIsSubmitting(true);
     setError(null);
     eventCursor.current = 0;
-    if (requestSessionId && requestSessionId !== sessionId) setSessionId(requestSessionId);
+    setMessages((current) => current.map((message) => message.id === pendingTurn.assistantMessageId
+      ? { ...message, content: "", status: "pending", ...(pendingTurn.request.clientTurnId ? { clientTurnId: pendingTurn.request.clientTurnId } : {}) }
+      : message));
 
     try {
-      const run = await createRun({
-        platform: platform.id,
-        variant: variantId,
-        task: { kind: "prompt", prompt: text },
-        model: selectedModel,
-        capabilities: DEFAULT_PLATFORM_CAPABILITIES,
-        ...(preservesSession && requestSessionId ? { sessionId: requestSessionId, clientTurnId } : {}),
-        selection: {
-          scenarioId,
-          ...(backendProfileId ? { backendProfileId } : {}),
-          ...(infrastructureId !== "none" ? { infrastructureId } : {}),
-          ...(experimentId !== "none" ? { experimentId } : {}),
-        },
-      });
-      if (conversationVersion.current !== currentConversationVersion) return;
+      const run = await createRun(pendingTurn.request);
+      if (conversationVersion.current !== pendingTurn.conversationVersion) return;
 
+      setRetryTurn(null);
       setSelectedModel((current) => synchronizeModelSelection(current, run));
       setLatestRun(run);
       setLatestEvents(mergeEvents([], run.events));
@@ -250,20 +282,27 @@ export function PlatformChatPage() {
       setActiveRunId(run.runId);
       ignoredUrlRunId.current = null;
       if (preservesSession) setSessionId(getRunSessionId(run));
-      setMessages((current) => upsertRunMessages(current, run, assistantMessageId));
+      setMessages((current) => upsertRunMessages(current, run, pendingTurn.assistantMessageId));
       const next = new URLSearchParams(searchParams);
       next.set("run", run.runId);
       setSearchParams(next, { replace: true });
     } catch (requestError) {
-      if (conversationVersion.current !== currentConversationVersion) return;
+      if (conversationVersion.current !== pendingTurn.conversationVersion) return;
 
-      setMessages((current) => current.map((message) => message.id === assistantMessageId
-        ? { ...message, content: toUserMessage(requestError), status: "failed" }
-        : message));
-      setError(toUserMessage(requestError));
+      const message = toUserMessage(requestError);
+      setRetryTurn(pendingTurn);
+      setMessages((current) => current.map((candidate) => candidate.id === pendingTurn.assistantMessageId
+        ? { ...candidate, content: message, status: "failed" }
+        : candidate));
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function retryFailedTurn(messageId: string): void {
+    if (!retryTurn || retryTurn.assistantMessageId !== messageId || isSubmitting) return;
+    void dispatchTurn(retryTurn);
   }
 
   async function stopActiveRun() {
@@ -292,6 +331,7 @@ export function PlatformChatPage() {
     setLatestRun(null);
     setLatestEvents([]);
     setError(null);
+    setRetryTurn(null);
     eventCursor.current = 0;
     const next = new URLSearchParams(searchParams);
     next.delete("run");
@@ -322,7 +362,7 @@ export function PlatformChatPage() {
                 <h2>Start a conversation</h2>
                 <p>Ask the selected agent anything.</p>
               </div>
-            ) : visibleMessages.map((message) => <ChatMessageBubble key={message.id} message={message} />)}
+            ) : visibleMessages.map((message) => <ChatMessageBubble key={message.id} message={message} onRetry={retryTurn?.assistantMessageId === message.id ? () => retryFailedTurn(message.id) : undefined} />)}
             <ChatToolActivity events={latestEvents} />
           </div>
 
@@ -395,7 +435,7 @@ export function PlatformChatPage() {
   );
 }
 
-function ChatMessageBubble({ message }: { message: ChatMessage }) {
+function ChatMessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: () => void }) {
   const isAssistant = message.role === "assistant";
   const StatusIcon = message.status === "completed" ? CheckCircle2 : message.status === "failed" ? XCircle : LoaderCircle;
   const statusLabel = chatMessageStatusLabel(message.status);
@@ -404,6 +444,7 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
       <div className="chat-message-label">{isAssistant ? "Agent" : "You"}</div>
       <div className="chat-message-content">
         {message.content ? <p>{message.content}</p> : <span className="chat-message-pending"><StatusIcon aria-hidden="true" className={message.status === "running" || message.status === "pending" ? "is-spinning" : undefined} size={14} /> {statusLabel}</span>}
+        {message.status === "failed" && onRetry && <button className="chat-retry-button" disabled={!onRetry} onClick={onRetry} type="button">Retry</button>}
       </div>
     </article>
   );

@@ -190,6 +190,57 @@ test("the workflow prepares the canonical context snapshot before its model requ
   }
 });
 
+test("the workflow prepares a later Restate turn from the settled session transcript", async () => {
+  const rootDirectory = await mkdtemp(join(tmpdir(), "agentlab-restate-context-continuation-"));
+  const sessionId = "restate-context-continuation";
+  const store = new ContextSessionStore(rootDirectory);
+  try {
+    await store.create({
+      sessionId,
+      platform: "restate",
+      variant: "baseline",
+      model: "fake-context",
+      systemInstruction: "Remember context safely.",
+      contextWindowTokens: 2_048,
+      reservedOutputTokens: 256,
+      safetyMarginTokens: 128,
+      compactionThresholdPercent: 20,
+      now: "2026-09-16T12:00:00.000Z",
+    });
+
+    const first = await store.admitTurn(sessionId, "restate-turn-1", "Remember conformance-4318.", "2026-09-16T12:00:01.000Z", "client-turn-1");
+    const firstResult = await runWorkflow("fake-context", {
+      prompt: "Remember conformance-4318.",
+      runId: "restate-turn-1",
+      tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 },
+      context: { rootDirectory, sessionId, turnId: first.turn.turnId },
+    });
+    assert.equal(firstResult.status, "completed");
+    await store.settleTurn(sessionId, first.turn.turnId, { status: "completed", output: firstResult.output });
+
+    const second = await store.admitTurn(sessionId, "restate-turn-2", "What value did I ask you to remember?", "2026-09-16T12:00:02.000Z", "client-turn-2");
+    const secondResult = await runWorkflow("fake-context", {
+      prompt: "What value did I ask you to remember?",
+      runId: "restate-turn-2",
+      tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 },
+      context: { rootDirectory, sessionId, turnId: second.turn.turnId },
+    });
+
+    assert.equal(secondResult.status, "completed");
+    assert.equal(secondResult.output, "conformance-4318");
+    const snapshot = await store.latestSnapshot(sessionId);
+    assert.deepEqual(snapshot?.messages.map((message) => [message.role, message.content]), [
+      ["system", "Remember context safely."],
+      ["user", "Remember conformance-4318."],
+      ["assistant", "Stored the test value."],
+      ["user", "What value did I ask you to remember?"],
+    ]);
+    assert.equal(secondResult.eventIntents.find((event) => event.kind === "ContextPrepared")?.payload.sessionRevision, 3);
+  } finally {
+    await rm(rootDirectory, { recursive: true, force: true });
+  }
+});
+
 test("the workflow reuses completed named actions during deterministic journal replay", async () => {
   const actionCache = new Map<string, unknown>();
   const firstExecutions: string[] = [];

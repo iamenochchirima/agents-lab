@@ -49,7 +49,7 @@ export interface RunView {
     readonly platform: string;
     readonly variant: string;
     readonly task: { readonly prompt: string };
-    readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly snapshotId?: string };
+    readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly clientTurnId?: string; readonly snapshotId?: string };
     readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
     readonly selection?: RunSelection;
   };
