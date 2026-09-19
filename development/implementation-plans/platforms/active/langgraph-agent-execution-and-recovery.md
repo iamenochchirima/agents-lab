@@ -721,6 +721,13 @@ what was observed, the exact validation command, and what remains.
   typecheck, nine LangGraph TypeScript tests, and `git diff --check`. Provider-overflow
   retry, restart reconciliation, and browser acceptance remain.
 
+- **2026-09-20T00:35:27+02:00 — shared compaction verified at the adapter boundary.**
+  Added a filesystem-backed runner test that fills an admitted session, triggers the
+  shared preflight compaction policy, confirms the snapshot identity crosses the
+  TypeScript/Python request boundary, and checks that the resulting snapshot retains a
+  bounded summary without becoming exhausted. Validation passed: ten focused
+  LangGraph TypeScript tests and `git diff --check`.
+
 ## Commit discipline
 
 Use focused commits. Do not create one large final commit.

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
+import { ContextSessionStore } from "../../../src/capabilities/context/session-store.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { LangGraphBaselineRunner } from "../../../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
 import { langGraphThreadId, parseInspection } from "../../../src/platforms/langgraph/protocol/protocol.js";
@@ -189,6 +193,91 @@ test("LangGraph adapter maps a Lab session to one stable native thread", async (
       assert.equal(reference.native.threadId, langGraphThreadId("session-thread-test"));
     },
   );
+});
+
+test("LangGraph adapter compacts shared context before dispatch when the budget is due", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-langgraph-context-"));
+  try {
+    const store = new ContextSessionStore(root);
+    await store.create({
+      sessionId: "session-context-compaction",
+      platform: "langgraph",
+      variant: "baseline",
+      model: "fake/fake-context",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 1_200,
+      reservedOutputTokens: 100,
+      safetyMarginTokens: 50,
+      compactionThresholdPercent: 50,
+      recentMessageGroups: 0,
+    });
+    const oldTurn = await store.admitTurn(
+      "session-context-compaction",
+      "run-context-old",
+      `Old question ${"x".repeat(600)}`,
+    );
+    await store.settleTurn("session-context-compaction", oldTurn.turn.turnId, {
+      status: "completed",
+      output: `Old answer ${"y".repeat(600)}`,
+      error: null,
+    });
+    const currentTurn = await store.admitTurn(
+      "session-context-compaction",
+      "run-context-current",
+      "Current question.",
+    );
+
+    let snapshotId: string | null = null;
+    await withProtocolServer(
+      ({ method, url, body }) => {
+        if (method === "POST" && url === "/v1/runs") {
+          const request = body as Record<string, any>;
+          snapshotId = request.context?.snapshotId ?? null;
+          assert.equal(request.context?.sessionId, "session-context-compaction");
+          assert.equal(request.threadId, langGraphThreadId("session-context-compaction"));
+          return {
+            status: 202,
+            body: {
+              protocolVersion: 1,
+              executionId: "langgraph:run-context-current",
+              runId: "run-context-current",
+              threadId: langGraphThreadId("session-context-compaction"),
+              graph: "baseline",
+              status: "queued",
+              idempotent: false,
+            },
+          };
+        }
+        return { status: 404, body: { detail: "not found" } };
+      },
+      async (origin) => {
+        const base = manifest(origin);
+        const request = {
+          ...base,
+          runId: "run-context-current",
+          task: { kind: "prompt" as const, prompt: "Current question." },
+          platformConfig: { ...base.platformConfig, contextRoot: root },
+          model: { provider: "fake" as const, model: "fake-context", contextWindowTokens: 1_200 },
+          context: {
+            ...base.context,
+            sessionId: "session-context-compaction",
+            turnId: currentTurn.turn.turnId,
+          },
+        } satisfies RunManifest;
+        await LangGraphBaselineRunner.fromOptions({ serviceUrl: origin, contextRoot: root }).start(request);
+      },
+    );
+
+    assert.equal(typeof snapshotId, "string");
+    assert.ok(snapshotId);
+    const snapshot = await store.readSnapshot("session-context-compaction", snapshotId);
+    assert.equal(snapshot.compaction?.trigger, "preflight");
+    assert.ok((snapshot.compaction?.sourceMessageIds.length ?? 0) > 0);
+    assert.notEqual(snapshot.budget.pressure, "exhausted");
+    assert.ok(snapshot.messages.some((message) => message.source === "compaction-summary"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 function inspectionBody(status: "completed" | "unknown") {
