@@ -29,12 +29,12 @@ The first backend block is implemented and remains intentionally active. It now
 supports deterministic recall and keyed-fact revision comparisons through the existing
 server, isolated working/durable policy stores, bounded records, journal/snapshot
 recovery, decision evidence, canonical Memory events, and cancellation/idempotency
-tests. The focused Studio suite currently covers 47 passing tests; the full server
-suite and web typecheck have also passed during this implementation pass.
+tests. The focused Studio suite currently covers 50 passing tests; the full server
+suite currently reports 310 passing and 2 skipped tests, and the web typecheck has
+also passed during this implementation pass.
 
-The remaining plan work is deliberately visible: multi-turn Memory sequences,
-additional cataloged miss/duplicate/expiry/procedural scenarios, richer metrics,
-path/symlink hardening, and broader failure/cancellation integration coverage. Those
+The remaining plan work is deliberately visible: multi-turn Memory sequences, richer
+metrics, path/symlink hardening, and broader failure/cancellation integration coverage. Those
 are follow-up implementation blocks, not implied capabilities of the current slice.
 
 ## Purpose
