@@ -1,6 +1,6 @@
 # Completed implementation plans
 
-**Last updated:** 2026-09-17T21:51:42+02:00
+**Last updated:** 2026-09-19T18:40:00+02:00
 
 Completed plans are an archive of delivered implementation slices. Each archived plan
 must retain its original scope and checklists, plus:
@@ -41,6 +41,10 @@ partially functional.
   2026-09-17T21:51:42+02:00; added bounded source-aware context assembly, complete-turn
   history selection, compaction, durable snapshots, recovery, retention semantics,
   provider-overflow handling, `/context` inspection, and focused acceptance coverage.
+- [Cross-platform agent conformance](platform-agent-conformance.md) — completed
+  2026-09-19T18:38:00+02:00; completed the shared prompt, calculator-tool, and two-turn
+  context workload across Temporal, Restate, LangGraph, and Mastra with browser, native,
+  deterministic, and real-model acceptance records.
 
 Archived validation records keep the exact command names used when they were run. The
 repository now uses the root pnpm workspace, so use the current package scripts and

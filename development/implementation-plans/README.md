@@ -47,7 +47,7 @@ The first platform implementation batch is coordinated by the archived
 [platform batch plan](completed/platform-parallel-implementation.md). Its accepted
 local baselines are complete; Trigger.dev is implementation-ready with external
 server/worker and manual UI acceptance deferred. The next platform step is the active
-[cross-platform agent conformance plan](active/platform-agent-conformance.md), which
+[cross-platform agent conformance plan](completed/platform-agent-conformance.md), which
 extends Temporal, Restate, LangGraph, and Mastra through one comparable agent workload.
 AWS Step Functions remains outside that implementation wave.
 

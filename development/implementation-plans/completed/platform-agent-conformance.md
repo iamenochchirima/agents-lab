@@ -1,8 +1,8 @@
 # Cross-platform agent conformance — implementation plan
 
 **Created:** `2026-09-17T00:35:55+02:00`
-**Last updated:** `2026-09-17T02:09:06+02:00`
-**Status:** Active
+**Last updated:** `2026-09-19T18:32:20+02:00`
+**Status:** Complete — pending archive move
 **Owner:** Primary platform integration owner with one owner per platform
 **Platforms:** Temporal, Restate, LangGraph, Mastra
 **Priority:** Complete this before adding another platform or a larger agent capability
@@ -19,12 +19,12 @@ Read these before changing code:
 - [shared context capability](../../../server/src/capabilities/context/README.md)
 - [shared tool capability](../../../server/src/capabilities/tools/README.md)
 - [run evidence layout](../../../lab/runs/README.md)
-- [completed platform batch](../completed/platform-parallel-implementation.md)
+- [completed platform batch](./platform-parallel-implementation.md)
 - [first-party platform source audit](../../../docs/research/platform-plan-source-audit.md)
-- [Temporal baseline](../completed/lab-server-temporal-baseline.md)
-- [Restate baseline](../completed/restate-baseline.md)
-- [LangGraph baseline](../completed/langgraph-baseline.md)
-- [Mastra baseline](../completed/mastra-baseline.md)
+- [Temporal baseline](./lab-server-temporal-baseline.md)
+- [Restate baseline](./restate-baseline.md)
+- [LangGraph baseline](./langgraph-baseline.md)
+- [Mastra baseline](./mastra-baseline.md)
 
 The platform baselines are the implementation starting points, not proof that the four
 platforms already provide equivalent agent behaviour. Preserve their existing platform
@@ -128,13 +128,13 @@ fixtures and must be named as such in tests and documentation.
       expose the calculator tool, and retain its workflow/activity/retry semantics.
 - [x] Extend the Restate baseline locally to consume the conformance context snapshot,
       expose the calculator tool, and retain durable-step/journal replay semantics.
-- [ ] Extend the LangGraph baseline locally to consume the conformance context snapshot,
+- [x] Extend the LangGraph baseline locally to consume the conformance context snapshot,
       add the bounded graph/tool path, and retain checkpoint/thread/restart semantics.
-- [ ] Extend the Mastra baseline locally to consume the conformance context snapshot,
+- [x] Extend the Mastra baseline locally to consume the conformance context snapshot,
       add its bounded native tool path, and retain its explicitly process-local limits.
-- [ ] Keep provider adapters, SDK types, native status mapping, and platform-specific
+- [x] Keep provider adapters, SDK types, native status mapping, and platform-specific
       retries inside each platform directory.
-- [ ] Reuse the existing shared context and tool definitions; do not create a second
+- [x] Reuse the existing shared context and tool definitions; do not create a second
       calculator, second context store, or platform-specific copy of the common registry.
 
 #### Verified platform handoffs
@@ -150,37 +150,39 @@ fixtures and must be named as such in tests and documentation.
       documentation were committed in `83ef8c1` (`feat(langgraph): add conformance
       context and tool graph`). The native service passed prompt, calculator,
       transcript-continuation, cancellation, restart, and unavailable-service checks.
-- [ ] LangGraph still needs the shared `ContextSnapshot` handoff. Its current native
-      bridge reads the canonical transcript and reports `quality: estimated`; it does
-      not claim shared snapshot IDs or Python-side compaction.
+- [x] LangGraph now receives the exact server-owned `ContextSnapshot` identity through
+      the TypeScript-to-Python protocol (`sessionId`, `turnId`, and `snapshotId`). The
+      Python service validates the snapshot path, identity, messages, and user turn
+      before building the graph state. Direct legacy service callers may still use the
+      transcript bridge; Lab server requests use the shared snapshot path.
 
 ### Server and browser integration
 
-- [ ] Keep `PlatformRunner` as the only server-to-platform execution seam unless a
+- [x] Keep `PlatformRunner` as the only server-to-platform execution seam unless a
       concrete conformance case proves that an existing field is insufficient.
-- [ ] Make the common server pass the correct context snapshot identity and safe tool
+- [x] Make the common server pass the correct context snapshot identity and safe tool
       configuration to each selected runner without importing SDK-specific types.
-- [ ] Ensure the existing Platform Chat flow works for all four platforms without
+- [x] Ensure the existing Platform Chat flow works for all four platforms without
       Temporal-specific assumptions.
-- [ ] Show context-window tokens, remaining percentage, pressure, and compaction state
+- [x] Show context-window tokens, remaining percentage, pressure, and compaction state
       from the server-owned projection. Show `unknown` when the token basis or model
       window is unknown; never render `0%` as a fallback.
-- [ ] Show tool activity only for tool events that actually occurred.
-- [ ] Preserve the existing Compare surface as an acceptance aid, adding only the
+- [x] Show tool activity only for tool events that actually occurred.
+- [x] Preserve the existing Compare surface as an acceptance aid, adding only the
       fields required to submit the same scenario to multiple selected platforms.
-- [ ] Keep platform-native detail behind expandable run/evidence inspection rather than
+- [x] Keep platform-native detail behind expandable run/evidence inspection rather than
       adding a dense platform dashboard to the main Chat surface.
 
 ### Local operation without Docker
 
-- [ ] Document and test the native local profile for Temporal.
-- [ ] Document and test the native Restate server binary/service profile.
-- [ ] Document and test the LangGraph Python service with an isolated local SQLite
+- [x] Document and test the native local profile for Temporal.
+- [x] Document and test the native Restate server binary/service profile.
+- [x] Document and test the LangGraph Python service with an isolated local SQLite
       state directory.
-- [ ] Run Mastra in the Lab server process as its existing direct-agent baseline.
-- [ ] Make Docker optional for profiles that already have a native local path. Do not
+- [x] Run Mastra in the Lab server process as its existing direct-agent baseline.
+- [x] Make Docker optional for profiles that already have a native local path. Do not
       make Docker a prerequisite for this conformance slice.
-- [ ] Keep unavailable services visibly unavailable; do not replace a missing service
+- [x] Keep unavailable services visibly unavailable; do not replace a missing service
       with an in-memory stand-in in an integration test marked as real.
 
 ## Explicitly out of scope
@@ -276,24 +278,24 @@ lab/runs/<run-id>/
   artifacts/              # empty for this slice unless a declared artifact exists
 ```
 
-- [ ] Define event identity, source sequence, and payload limits for the conformance
+- [x] Define event identity, source sequence, and payload limits for the conformance
       events before adding platform-specific event mapping.
-- [ ] Use common lifecycle kinds consistently where the observation is genuinely shared:
+- [x] Use common lifecycle kinds consistently where the observation is genuinely shared:
       `RunCreated`, `RunDispatched`, `AgentStarted`, `ContextPrepared`,
       `ModelRequested`, `ModelCompleted`, `ToolCallRequested`, `ToolCallValidated`,
       `ToolExecutionStarted`, `ToolExecutionCompleted`, `ToolExecutionFailed`,
       `AgentCompleted`, `AgentFailed`, `AgentCancelled`, and terminal run events.
-- [ ] Preserve native workflow IDs, invocation IDs, graph/thread/checkpoint IDs, or
+- [x] Preserve native workflow IDs, invocation IDs, graph/thread/checkpoint IDs, or
       process-scoped execution references only in safe platform-native records.
-- [ ] Record context snapshot ID, model ID, token-count quality, input/output/total token
+- [x] Record context snapshot ID, model ID, token-count quality, input/output/total token
       values, and compaction metadata when actually known.
-- [ ] Keep canonical transcript/session state separate from request-local snapshots.
+- [x] Keep canonical transcript/session state separate from request-local snapshots.
       A second turn must not overwrite the first turn's context evidence.
-- [ ] Make repeated inspection and event projection idempotent. Conflicting duplicate
+- [x] Make repeated inspection and event projection idempotent. Conflicting duplicate
       events remain evidence errors rather than being silently merged.
-- [ ] Keep raw authorization headers, API keys, cookies, provider request headers, and
+- [x] Keep raw authorization headers, API keys, cookies, provider request headers, and
       unbounded provider/tool payloads out of all retained records.
-- [ ] Verify that `result.json` is written once for a confirmed terminal result, while a
+- [x] Verify that `result.json` is written once for a confirmed terminal result, while a
       provisional reconciliation-required observation can be replaced only by a later
       confirmed platform result under the existing evidence-store rules.
 
@@ -312,52 +314,52 @@ The matrix must record both common observations and platform-specific semantics:
 
 ## Failure, retry, and recovery semantics
 
-- [ ] Define the maximum model/tool rounds and per-call deadlines for the conformance
+- [x] Define the maximum model/tool rounds and per-call deadlines for the conformance
       workload. A platform may implement the limit natively, but the limit must remain
       visible in its configuration and evidence.
-- [ ] Define whether a model call is retried by each platform. Record every attempt;
+- [x] Define whether a model call is retried by each platform. Record every attempt;
       never infer that a workflow retry did not repeat an external model request.
-- [ ] Treat a lost acknowledgement after an OpenRouter request may have been sent as
+- [x] Treat a lost acknowledgement after an OpenRouter request may have been sent as
       `outcome_unknown` or `reconciliation_required`, not as a safe automatic retry.
-- [ ] Permit calculator retries only within the explicit platform policy and record
+- [x] Permit calculator retries only within the explicit platform policy and record
       duplicate attempts; do not generalize its pure-tool safety to future side effects.
-- [ ] Cancellation is cooperative and platform-specific. Record requested, observed,
+- [x] Cancellation is cooperative and platform-specific. Record requested, observed,
       and terminal states separately when the native platform supports that distinction.
-- [ ] A platform outage during inspection returns the last readable projection as stale;
+- [x] A platform outage during inspection returns the last readable projection as stale;
       it does not create a fabricated terminal result.
-- [ ] A process restart must follow the platform's real semantics:
+- [x] A process restart must follow the platform's real semantics:
       Temporal may recover from durable workflow state, Restate may replay journaled
       steps, LangGraph may expose a persisted checkpoint or unknown active work, and
       Mastra must report process-local loss as reconciliation-required.
-- [ ] Define the orphan rule for accepted executions that no longer have an in-memory
+- [x] Define the orphan rule for accepted executions that no longer have an in-memory
       registry entry or whose native service cannot be queried.
-- [ ] Reject or deduplicate duplicate/out-of-order events using stable event identity and
+- [x] Reject or deduplicate duplicate/out-of-order events using stable event identity and
       source sequence; conflicting content is an evidence conflict.
-- [ ] Test a crash before context snapshot publication, after snapshot publication but
+- [x] Test a crash before context snapshot publication, after snapshot publication but
       before model dispatch, after model dispatch, before tool execution, after tool
       execution, and before final result projection where the platform permits it.
-- [ ] Document which outcomes are confirmed, provisional, or unknown. Do not use
+- [x] Document which outcomes are confirmed, provisional, or unknown. Do not use
       “exactly once” for model or external tool execution.
 
 ## Security and configuration
 
-- [ ] Read `OPENROUTER_API_KEY` only from the process environment that owns the model
+- [x] Read `OPENROUTER_API_KEY` only from the process environment that owns the model
       transport. Never include it in a RunRequest, manifest, context snapshot, protocol
       message, native reference, log, or browser response.
-- [ ] Keep automated tests offline and deterministic by injecting platform-local fake
+- [x] Keep automated tests offline and deterministic by injecting platform-local fake
       model fixtures. The fixture must exercise the real platform agent lifecycle and
       tool boundary; it must not bypass the runner with a prebuilt result.
-- [ ] Expose only the existing pure `calculator` tool for this slice. It must remain
+- [x] Expose only the existing pure `calculator` tool for this slice. It must remain
       deny-by-default, schema-validated, bounded, and free of filesystem, network,
       subprocess, or external side effects.
-- [ ] Validate model, platform, variant, context window, prompt size, tool list, timeout,
+- [x] Validate model, platform, variant, context window, prompt size, tool list, timeout,
       and scenario settings before dispatch.
-- [ ] Bind local platform services and administrative endpoints to loopback unless a
+- [x] Bind local platform services and administrative endpoints to loopback unless a
       platform's documented local profile requires another explicit address.
-- [ ] Use isolated temporary state directories in tests. Do not commit SQLite files,
+- [x] Use isolated temporary state directories in tests. Do not commit SQLite files,
       journals, server databases, generated evidence, credentials, or machine-specific
       runtime state.
-- [ ] Report missing dependencies and invalid configuration as actionable errors. A
+- [x] Report missing dependencies and invalid configuration as actionable errors. A
       planned or unavailable platform must not appear to have completed a run.
 
 ## Implementation checklist
@@ -380,19 +382,19 @@ The matrix must record both common observations and platform-specific semantics:
 
 For each of Temporal, Restate, LangGraph, and Mastra:
 
-- [ ] Freeze the platform-owned file list and handoff before parallel work begins.
-- [ ] Map the server-owned context snapshot into the native model request without
+- [x] Freeze the platform-owned file list and handoff before parallel work begins.
+- [x] Map the server-owned context snapshot into the native model request without
       duplicating or mutating canonical session messages.
-- [ ] Pass the calculator definition only when enabled by the workload/configuration.
-- [ ] Implement the native model/tool loop with a bounded round count and explicit
+- [x] Pass the calculator definition only when enabled by the workload/configuration.
+- [x] Implement the native model/tool loop with a bounded round count and explicit
       timeout/cancellation policy.
-- [ ] Return normalized event intents and safe native execution references through the
+- [x] Return normalized event intents and safe native execution references through the
       existing runner adapter.
-- [ ] Record provider usage and tool counts when supplied; use `null` when unknown.
-- [ ] Preserve native retries, replay/checkpoint/journal details, and process-loss rules.
-- [ ] Add unit tests and a platform-local integration test before shared registration is
+- [x] Record provider usage and tool counts when supplied; use `null` when unknown.
+- [x] Preserve native retries, replay/checkpoint/journal details, and process-loss rules.
+- [x] Add unit tests and a platform-local integration test before shared registration is
       changed.
-- [ ] Update the platform README, semantics/local-development docs, and playground
+- [x] Update the platform README, semantics/local-development docs, and playground
       notes with actual commands, versions, limits, and known gaps.
 
 Platform-specific decisions that must not be flattened:
@@ -423,49 +425,49 @@ Platform-specific decisions that must not be flattened:
 
 ### 3. Shared server and browser surface
 
-- [ ] Integrate only the smallest proven contract changes in the common server.
-- [ ] Register each extended baseline only when its platform-local tests pass and its
+- [x] Integrate only the smallest proven contract changes in the common server.
+- [x] Register each extended baseline only when its platform-local tests pass and its
       availability check is honest.
-- [ ] Make Chat submit the selected scenario/prompt, model, context/session, and tool
+- [x] Make Chat submit the selected scenario/prompt, model, context/session, and tool
       configuration through the common API.
-- [ ] Render the context-window projection for every registered platform and keep the
+- [x] Render the context-window projection for every registered platform and keep the
       display stable during polling.
-- [ ] Render unique message keys based on event/message identity, not role plus a reused
+- [x] Render unique message keys based on event/message identity, not role plus a reused
       run ID, to prevent duplicate assistant rows during polling.
-- [ ] Verify Compare submits independent runs with distinct run and turn identities and
+- [x] Verify Compare submits independent runs with distinct run and turn identities and
       does not merge event streams across platforms.
-- [ ] Keep UI copy short and factual; no platform-specific promises that the runtime has
+- [x] Keep UI copy short and factual; no platform-specific promises that the runtime has
       not verified.
 
 ### 4. Local operation and evidence
 
-- [ ] Add or update native no-Docker startup/readiness/reset instructions for the four
+- [x] Add or update native no-Docker startup/readiness/reset instructions for the four
       profiles.
-- [ ] Ensure the local stack can start the required Lab processes without requiring a
+- [x] Ensure the local stack can start the required Lab processes without requiring a
       platform that is not selected for the current test.
-- [ ] Run one prompt-only, one calculator, and one two-turn case per platform locally.
-- [ ] Inspect all normalized files and the relevant `native/<platform>.json` file for each
+- [x] Run one prompt-only, one calculator, and one two-turn case per platform locally.
+- [x] Inspect all normalized files and the relevant `native/<platform>.json` file for each
       run; verify no platform writes the normalized directory directly.
-- [ ] Record the exact runtime/package versions and the local service prerequisites.
-- [ ] Add a development playground walkthrough for one successful tool turn, one context
+- [x] Record the exact runtime/package versions and the local service prerequisites.
+- [x] Add a development playground walkthrough for one successful tool turn, one context
       continuation, one cancellation, and one unavailable-service observation.
 
 ### 5. Documentation and release impact
 
-- [ ] Update the platform architecture/index documentation to describe conformance as an
+- [x] Update the platform architecture/index documentation to describe conformance as an
       acceptance workload, not a claim of equivalent durability.
-- [ ] Update relevant platform READMEs and local-development docs in the same change.
-- [ ] Update `lab/scenarios/` documentation with inputs, fixtures, expected evidence,
+- [x] Update relevant platform READMEs and local-development docs in the same change.
+- [x] Update `lab/scenarios/` documentation with inputs, fixtures, expected evidence,
       controls, and limits on interpretation.
-- [ ] Keep the active-plan index current while work is in progress and record exact
+- [x] Keep the active-plan index current while work is in progress and record exact
       validation results before archiving this plan.
-- [ ] Record release impact explicitly: no database migration, public API version change,
+- [x] Record release impact explicitly: no database migration, public API version change,
       or deployment change is intended; any contract or dependency change must be listed
       with rollout and rollback notes before completion.
-- [ ] Record analytics/telemetry impact: normalized run events and existing usage metrics
+- [x] Record analytics/telemetry impact: normalized run events and existing usage metrics
       are extended for tool/context observations; no new product analytics event is
       required unless the UI adds a new user action.
-- [ ] Record rollback: disable the extended platform variant or unregister it while
+- [x] Record rollback: disable the extended platform variant or unregister it while
       retaining already-written evidence and preserving existing baseline reads.
 
 ## Parallel work and file ownership
@@ -491,72 +493,72 @@ owner. Do not edit a common type in parallel with three other platform implement
 
 ### Unit tests
 
-- [ ] Conformance fixture validation, stable IDs, case selection, and expected observation
+- [x] Conformance fixture validation, stable IDs, case selection, and expected observation
       rules.
-- [ ] Context snapshot identity, two-turn ordering, token-count quality, projection, and
+- [x] Context snapshot identity, two-turn ordering, token-count quality, projection, and
       compaction metadata handling.
-- [ ] Tool allowlisting, calculator schema validation, bounded arguments/results, and
+- [x] Tool allowlisting, calculator schema validation, bounded arguments/results, and
       tool lifecycle event mapping.
-- [ ] Common event identity, source sequencing, duplicate/out-of-order rejection, and
+- [x] Common event identity, source sequencing, duplicate/out-of-order rejection, and
       evidence redaction.
-- [ ] Each platform's model request mapping, tool loop, lifecycle translation, retry
+- [x] Each platform's model request mapping, tool loop, lifecycle translation, retry
       count, cancellation, timeout, and native reference.
-- [ ] Provider failure, empty response, invalid tool call, tool timeout, and context
+- [x] Provider failure, empty response, invalid tool call, tool timeout, and context
       budget failure.
-- [ ] Duplicate client turn submission does not create a second canonical turn or run;
+- [x] Duplicate client turn submission does not create a second canonical turn or run;
       conflicting reuse is rejected.
 
 ### Integration tests
 
-- [ ] Submit the prompt-only case through the generic server API for every platform.
-- [ ] Submit the calculator case through every platform and assert tool events, final
+- [x] Submit the prompt-only case through the generic server API for every platform.
+- [x] Submit the calculator case through every platform and assert tool events, final
       output, metrics, and native evidence.
-- [ ] Submit the two-turn session case through every platform and assert the second
+- [x] Submit the two-turn session case through every platform and assert the second
       context snapshot references the correct session and prior turn.
-- [ ] Verify every completed run contains the full normalized evidence set and a safe
+- [x] Verify every completed run contains the full normalized evidence set and a safe
       platform-native record.
-- [ ] Exercise platform unavailable, malformed protocol/SDK response, timeout, and
+- [x] Exercise platform unavailable, malformed protocol/SDK response, timeout, and
       dispatch/inspection errors without fabricated success.
-- [ ] Exercise cancellation before dispatch, during model work, during tool work where
+- [x] Exercise cancellation before dispatch, during model work, during tool work where
       supported, and after terminal completion.
-- [ ] Exercise duplicate submission, lost start acknowledgement, repeated inspection,
+- [x] Exercise duplicate submission, lost start acknowledgement, repeated inspection,
       duplicate events, and out-of-order events.
-- [ ] Exercise restart at the defined points and assert each platform's documented
+- [x] Exercise restart at the defined points and assert each platform's documented
       recovery or reconciliation-required outcome.
-- [ ] Verify a service replacement or server restart cannot expose another run's context,
+- [x] Verify a service replacement or server restart cannot expose another run's context,
       native identity, tool result, or terminal result.
-- [ ] Keep the real OpenRouter call opt-in and manual; automated coverage uses a local
+- [x] Keep the real OpenRouter call opt-in and manual; automated coverage uses a local
       deterministic provider boundary or platform-injected fixture.
 
 ### Cross-platform acceptance matrix
 
-- [ ] Run all three workload cases with the deterministic fixture on Temporal, Restate,
+- [x] Run all three workload cases with the deterministic fixture on Temporal, Restate,
       LangGraph, and Mastra.
-- [ ] Run at least one prompt-only case with the real configured OpenRouter model on each
+- [x] Run at least one prompt-only case with the real configured OpenRouter model on each
       locally available platform; record model ID, runtime versions, result status, usage,
       and evidence path.
-- [ ] Run the calculator case with the real model where the selected model/provider
+- [x] Run the calculator case with the real model where the selected model/provider
       supports tool calls; if it does not, record the capability limitation rather than
       marking a non-tool response as a successful tool test.
-- [ ] Run the same selected case through Compare and verify distinct run IDs, independent
+- [x] Run the same selected case through Compare and verify distinct run IDs, independent
       status transitions, and separate evidence directories.
-- [ ] Run one unavailable-dependency check and verify the UI/API explains the prerequisite.
+- [x] Run one unavailable-dependency check and verify the UI/API explains the prerequisite.
 
 ### Manual browser checks
 
-- [ ] Open Chat for each priority platform and verify the platform/model labels are
+- [x] Open Chat for each priority platform and verify the platform/model labels are
       correct and no unsupported durability claim is shown.
-- [ ] Send a prompt and observe the actual assistant response, status, and context-window
+- [x] Send a prompt and observe the actual assistant response, status, and context-window
       usage percentage.
-- [ ] Send a calculator request and observe only actual tool activity followed by the
+- [x] Send a calculator request and observe only actual tool activity followed by the
       final response.
-- [ ] Send a follow-up in the same session and verify context usage changes without
+- [x] Send a follow-up in the same session and verify context usage changes without
       duplicating prior assistant messages.
-- [ ] Cancel a slow run and verify the UI settles without blinking, duplicate React keys,
+- [x] Cancel a slow run and verify the UI settles without blinking, duplicate React keys,
       or repeated assistant rows.
-- [ ] Stop a required platform service, refresh, and verify the UI shows unavailable or
+- [x] Stop a required platform service, refresh, and verify the UI shows unavailable or
       stale state instead of a false completed run.
-- [ ] Inspect run evidence links and confirm normalized plus native evidence are present
+- [x] Inspect run evidence links and confirm normalized plus native evidence are present
       and secret-free.
 
 ## Required validation commands
@@ -587,56 +589,84 @@ manual check as deferred and keep the deterministic acceptance results separate.
 
 Before moving this plan to `completed/`, verify:
 
-- [ ] The three conformance cases run through Temporal, Restate, LangGraph, and Mastra
+- [x] The three conformance cases run through Temporal, Restate, LangGraph, and Mastra
       using their native execution paths.
-- [ ] The same common request, context, calculator policy, and evidence assertions are
+- [x] The same common request, context, calculator policy, and evidence assertions are
       used without copying one platform's loop into another.
-- [ ] Real OpenRouter manual acceptance is recorded where credentials and dependencies
+- [x] Real OpenRouter manual acceptance is recorded where credentials and dependencies
       are available; unavailable cases are explicitly documented, not faked.
-- [ ] Context-window projection and session continuation are visible and correct in the
+- [x] Context-window projection and session continuation are visible and correct in the
       browser for all four platforms.
-- [ ] Tool activity, output, metrics, normalized events, and native evidence are
+- [x] Tool activity, output, metrics, normalized events, and native evidence are
       inspectable for successful and failed runs.
-- [ ] Retry, duplicate, cancellation, timeout, restart, stale, orphan, and unknown
+- [x] Retry, duplicate, cancellation, timeout, restart, stale, orphan, and unknown
       outcome semantics are tested and documented for each platform.
-- [ ] Docker is not required for the priority local path.
-- [ ] Existing platform baseline behaviour remains runnable and its prior evidence is
+- [x] Docker is not required for the priority local path.
+- [x] Existing platform baseline behaviour remains runnable and its prior evidence is
       still readable.
-- [ ] Documentation, scenario instructions, playground material, validation results,
+- [x] Documentation, scenario instructions, playground material, validation results,
       release decisions, and known limitations are current.
-- [ ] Each coherent implementation section has a focused commit and the completion
+- [x] Each coherent implementation section has a focused commit and the completion
       record names the relevant commit hashes.
 
 ## Commit discipline and handoff
 
 - [x] Commit the frozen conformance workload and test assertions separately from runtime
       implementations.
-- [ ] Commit each platform's implementation, tests, and platform documentation as a
+- [x] Commit each platform's implementation, tests, and platform documentation as a
       focused section owned by that platform.
-- [ ] Commit shared server/UI integration only after the common contract and platform
+- [x] Commit shared server/UI integration only after the common contract and platform
       handoffs are reviewed.
-- [ ] Run the narrow validation relevant to each section before committing it.
-- [ ] Review `git status` and exact diffs; preserve unrelated Anesu, Studio,
+- [x] Run the narrow validation relevant to each section before committing it.
+- [x] Review `git status` and exact diffs; preserve unrelated Anesu, Studio,
       Component Lab, AWS, and dependency-migration changes.
-- [ ] Record changed files, test commands/results, manual observations, versions, and
+- [x] Record changed files, test commands/results, manual observations, versions, and
       known limitations in every handoff.
-- [ ] Do not combine all four platform implementations into one huge commit.
+- [x] Do not combine all four platform implementations into one huge commit.
 
 ## Completion record
 
-Complete this section only when archiving the plan.
-
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`
-**Commits:** `[commit hashes or contiguous ranges]`
+**Completed:** `2026-09-19T18:38:00+02:00`
+**Commits:** `0ddf84a`, `83ef8c1`, `13bd6ea`, `3dbdc71`, `09c27c2`, `7119ae7`
 
 ### Validation
 
-- `[command]` — `[result]`
-- `[manual browser check]` — `[observed result]`
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server run test` — 263 tests, 261 passed, 2 skipped, 0 failed.
+- `pnpm --filter @agent-harness-lab/lab-server run test:temporal` — 1 passed.
+- `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server run test:restate` — 39 passed, 1 skipped, 0 failed.
+- `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 AGENTLAB_LANGGRAPH_PYTHON=/tmp/agentlab-langgraph-system-venv-20260919/bin/python pnpm --filter @agent-harness-lab/lab-server run test:langgraph` — 11 passed, 1 skipped, 0 failed.
+- `/tmp/agentlab-langgraph-system-venv-20260919/bin/python -m pytest -q service/tests` — 34 passed, 1 warning.
+- `pnpm --filter @agent-harness-lab/lab-server run test:mastra` — 12 passed, 0 skipped, 0 failed.
+- `pnpm --filter @agent-harness-lab/web run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/web run build` — passed; Vite reported only the existing large-chunk warning.
+- `git diff --check` — passed.
+- Deterministic conformance matrix — 12/12 runs completed: prompt, calculator, and two-turn context on Temporal, Restate, LangGraph, and Mastra. Each calculator run recorded `ToolCallRequested` and `ToolExecutionCompleted`; each context continuation returned `conformance-4318` on the second turn.
+- Real OpenRouter prompt acceptance — completed on all four priority platforms with `cohere/north-mini-code:free`; evidence was retained under `lab/runs/` and usage remained provider-reported or `null` where the provider did not return usage.
+- Real Temporal calculator acceptance — completed with result `42` and actual tool lifecycle evidence.
+- Browser Chat acceptance — all four platforms produced assistant output, visible context-window meters, and no console/page errors. The meter showed the selected model window and remaining percentage.
+- Browser Compare acceptance — one task created four independent runs (`160217fe-77bb-4c13-a4c6-2dd4768a5a3e`, `e8e6ac7c-2eda-4f87-8b13-27d3429de346`, `ad069a57-a4a1-458e-bec3-26d3e6a1bf8a`, `f8d5bf01-e70a-47ba-9c51-0d28ec472a72`); all reached completed state with separate evidence directories.
+- Unavailable dependency check — stopping LangGraph made `/api/platforms/langgraph/health` return `reachable:false` and the UI/API did not fabricate a run; the service was then restored.
 
 ### Known limitations
 
-- `[deliberate limitation or deferred external prerequisite]`
+- Mastra baseline execution is process-local. A process replacement cannot recover an
+  in-flight call and is reported as reconciliation-required; this slice does not claim
+  Mastra durable storage or workflow durability.
+- LangGraph uses a native Python service with SQLite checkpoints and requires a Python
+  3.11/3.12 runtime with SQLite enabled. The TypeScript adapter performs the explicit
+  snapshot handoff; the service retains a legacy transcript bridge for direct callers.
+- The shared context capability has compaction policy and evidence, but the LangGraph
+  and Mastra direct baselines intentionally fail closed when compaction requires a
+  model-backed summarizer rather than inventing a summary path in this slice.
+- Real OpenRouter tool selection was observed only where the selected provider/model
+  requested it. Deterministic fixtures remain the authoritative cross-platform tool
+  conformance check; a provider declining a tool call is not treated as platform
+  conformance evidence.
+- The repository's referenced canonical release-process path is not present in this
+  checkout. Release impact was recorded here explicitly: no database migration,
+  deployment migration, or public API version change; rollback is to disable the
+  extended variant or unregister it while retaining existing evidence.
 
 ### Historical-scope note
 

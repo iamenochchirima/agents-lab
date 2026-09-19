@@ -17,7 +17,7 @@ and [Temporal architecture notes](../server/src/platforms/temporal/docs/architec
 
 The current comparable acceptance workload is documented in the
 [Platform Agent Conformance scenario](../lab/scenarios/platform-agent-conformance/README.md)
-and governed by the [active conformance plan](../development/implementation-plans/active/platform-agent-conformance.md).
+and governed by the [completed conformance plan](../development/implementation-plans/completed/platform-agent-conformance.md).
 It covers one prompt, one bounded calculator tool turn, and one two-turn context
 continuation across the Temporal, Restate, LangGraph, and Mastra baselines. The
 workload compares observed lifecycle and evidence; it does not claim equivalent

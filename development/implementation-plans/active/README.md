@@ -1,6 +1,6 @@
 # Active implementation plans
 
-**Last updated:** 2026-09-17T21:51:42+02:00
+**Last updated:** 2026-09-19T18:40:00+02:00
 
 These plans govern implementation that is not yet complete. Every checkbox must remain
 honest: it represents work that has been verified, not merely code that was started.
@@ -27,6 +27,16 @@ Overall maturity is not complete. The authoritative remaining work is in
 [Anesu production-readiness gaps](anesu-production-readiness-gaps.md).
 The queue's status table separately lists what each completed slice still does not cover.
 
+The next standalone Anesu capability planned after the current foundation is the
+[computer-use dual-path slice](anesu-computer-use-dual-paths.md). It will expose a
+traditional screenshot/vision strategy and a TypeSafe/Jev semantic strategy behind one
+shared host executor, approval boundary, and evidence model. It is a plan, not a claim
+that implementation has started or that either path is currently available.
+
+That work starts with the narrower [computer-use proof of concept](anesu-computer-use-poc.md),
+which uses a visible local browser fixture and records the native desktop work it does
+not yet cover.
+
 ## Current additive UI slice
 
 The Component Lab is an additive workspace and is governed by
@@ -45,12 +55,12 @@ control plane or create a second server.
 
 - [Real OpenRouter model connection and shared model selection](../completed/openrouter-model-selection.md)
 - [First-party platform plan source audit](../../../docs/research/platform-plan-source-audit.md)
-- [Cross-platform agent conformance](platform-agent-conformance.md)
 
-The active platform work is now the cross-platform agent conformance slice. It extends
-the accepted Temporal, Restate, LangGraph, and Mastra baselines with one comparable
-prompt, calculator-tool, and two-turn context workload. AWS Step Functions remains
-outside this implementation wave.
+The cross-platform agent conformance slice is complete and archived in
+[`../completed/platform-agent-conformance.md`](../completed/platform-agent-conformance.md).
+It extends the accepted Temporal, Restate, LangGraph, and Mastra baselines with one
+comparable prompt, calculator-tool, and two-turn context workload. AWS Step Functions
+remains outside that implementation wave.
 
 Restate, LangGraph, Mastra, Inngest, DBOS, Hatchet, and Vercel Workflows are
 archived in [completed plans](../completed/README.md). Trigger.dev is also archived
