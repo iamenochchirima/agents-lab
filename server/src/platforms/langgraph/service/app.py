@@ -62,6 +62,9 @@ class LangGraphService:
         request_data["prompt_hash"] = hashlib.sha256(request.prompt.encode()).hexdigest()
         request_data["provider"] = request.model.provider
         request_data["model"] = request.model.model
+        request_data["session_id"] = request.session_id
+        request_data["turn_id"] = request.context.turn_id if request.context else None
+        request_data["client_turn_id"] = request.client_turn_id
         record, created = self.store.create_or_get(request_data)
         if created:
             self.store.append_event(execution_id, "RunCreated", {"graph": request.graph, "threadId": request.thread_id})
@@ -361,8 +364,22 @@ app = create_app()
 
 def fingerprint(request: dict[str, Any]) -> str:
     immutable = {
-        key: request[key]
-        for key in ("run_id", "prompt", "system_instruction", "model", "graph", "thread_id", "durability", "max_attempts", "timeout_ms")
+        key: request.get(key)
+        for key in (
+            "run_id",
+            "session_id",
+            "client_turn_id",
+            "prompt",
+            "system_instruction",
+            "model",
+            "graph",
+            "thread_id",
+            "durability",
+            "max_attempts",
+            "timeout_ms",
+            "context",
+            "tools",
+        )
     }
     return hashlib.sha256(canonical_json(immutable).encode()).hexdigest()
 

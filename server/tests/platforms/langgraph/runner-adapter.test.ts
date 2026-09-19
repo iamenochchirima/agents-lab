@@ -4,7 +4,7 @@ import test from "node:test";
 
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { LangGraphBaselineRunner } from "../../../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
-import { parseInspection } from "../../../src/platforms/langgraph/protocol/protocol.js";
+import { langGraphThreadId, parseInspection } from "../../../src/platforms/langgraph/protocol/protocol.js";
 
 async function withProtocolServer(
   handler: (request: { method: string; url: string; body: unknown }) => { status?: number; body: unknown },
@@ -147,6 +147,47 @@ test("LangGraph adapter reports an unavailable service without fabricating a run
   await assert.rejects(
     () => runner.start(manifest("http://127.0.0.1:1")),
     /fetch failed|LangGraph service|ECONNREFUSED/i,
+  );
+});
+
+test("LangGraph adapter maps a Lab session to one stable native thread", async () => {
+  await withProtocolServer(
+    ({ method, url, body }) => {
+      if (method === "POST" && url === "/v1/runs") {
+        const request = body as Record<string, any>;
+        assert.equal(request.sessionId, "session-thread-test");
+        assert.equal(request.clientTurnId, "turn-1");
+        assert.equal(request.threadId, langGraphThreadId("session-thread-test"));
+        return {
+          status: 202,
+          body: {
+            protocolVersion: 1,
+            executionId: "langgraph:langgraph-test-run",
+            runId: "langgraph-test-run",
+            threadId: langGraphThreadId("session-thread-test"),
+            graph: "baseline",
+            status: "queued",
+            idempotent: false,
+          },
+        };
+      }
+      return { status: 404, body: { detail: "not found" } };
+    },
+    async (origin) => {
+      const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: origin });
+      const request = {
+        ...manifest(origin),
+        context: {
+          ...manifest(origin).context,
+          sessionId: "session-thread-test",
+          turnId: "turn-1",
+          clientTurnId: "turn-1",
+          snapshotId: "snapshot-1",
+        },
+      } satisfies RunManifest;
+      const reference = await runner.start(request);
+      assert.equal(reference.native.threadId, langGraphThreadId("session-thread-test"));
+    },
   );
 });
 

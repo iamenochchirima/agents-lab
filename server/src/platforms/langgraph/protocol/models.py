@@ -7,6 +7,7 @@ into the common server runner seam.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -53,6 +54,13 @@ class ContextSelection(ProtocolModel):
     snapshot_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
 
+def thread_id_for_session(session_id: str) -> str:
+    """Map a Lab session to a bounded, non-path-like LangGraph thread identity."""
+
+    digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
+    return f"langgraph:baseline:{digest}"
+
+
 class ToolConfiguration(ProtocolModel):
     enabled_names: list[str] = Field(default_factory=list, max_length=32)
     max_rounds: int = Field(default=6, ge=1, le=32)
@@ -71,6 +79,8 @@ class ToolConfiguration(ProtocolModel):
 class StartRunRequest(ProtocolModel):
     protocol_version: Literal[PROTOCOL_VERSION] = Field(default=PROTOCOL_VERSION)
     run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    session_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+    client_turn_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     prompt: str = Field(min_length=1, max_length=20_000)
     system_instruction: str = Field(min_length=1, max_length=20_000)
     model: ModelSelection
@@ -83,9 +93,14 @@ class StartRunRequest(ProtocolModel):
     tools: ToolConfiguration | None = None
 
     @model_validator(mode="after")
-    def thread_matches_run(self) -> "StartRunRequest":
-        if self.thread_id != self.run_id:
-            raise ValueError("threadId must equal runId for the LangGraph baseline.")
+    def thread_matches_identity(self) -> "StartRunRequest":
+        if self.client_turn_id is not None and self.session_id is None:
+            raise ValueError("clientTurnId requires sessionId.")
+        expected_thread_id = thread_id_for_session(self.session_id) if self.session_id else self.run_id
+        if self.thread_id != expected_thread_id:
+            raise ValueError("threadId does not match the LangGraph session identity.")
+        if self.context is not None and self.session_id != self.context.session_id:
+            raise ValueError("context.sessionId must match sessionId.")
         return self
 
 

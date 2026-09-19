@@ -98,6 +98,8 @@
       "required": ["protocolVersion", "runId", "prompt", "systemInstruction", "model", "graph", "threadId", "durability", "maxAttempts", "timeoutMs"],
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocol" }, "runId": { "$ref": "#/$defs/identity" },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
+        "clientTurnId": { "$ref": "#/$defs/identity" },
         "prompt": { "type": "string", "minLength": 1, "maxLength": 20000 }, "systemInstruction": { "type": "string", "minLength": 1, "maxLength": 20000 },
         "model": { "$ref": "#/$defs/model" }, "graph": { "const": "baseline" }, "threadId": { "$ref": "#/$defs/identity" },
         "durability": { "const": "sqlite-sync" }, "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5 }, "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 300000 },

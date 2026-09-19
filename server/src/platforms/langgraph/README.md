@@ -22,7 +22,7 @@ The Platform UI selects an OpenRouter model from the shared server catalog. The
 Python graph service receives only the provider/model selection and reads the
 provider key from its process environment.
 
-The platform-local protocol is defined in [`protocol/`](protocol/) and is validated independently by Pydantic and TypeScript. It uses `runId` as the stable Lab identity and LangGraph `thread_id` as the checkpoint identity. A checkpoint ID, graph run ID, and node task ID remain separate native details.
+The platform-local protocol is defined in [`protocol/`](protocol/) and is validated independently by Pydantic and TypeScript. `runId` remains the stable Lab identity for one turn, while a Lab `sessionId` maps to one bounded hashed LangGraph `thread_id` for the conversation. `clientTurnId` makes one session turn retryable without starting a second graph execution. A checkpoint ID, graph run ID, and node task ID remain separate native details.
 
 The TypeScript server defaults to `http://127.0.0.1:2024`; override it with
 `AGENTLAB_LANGGRAPH_SERVICE_URL` when the Python service runs elsewhere. Both

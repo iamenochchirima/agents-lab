@@ -55,6 +55,9 @@ class SQLiteRunStore:
                 CREATE TABLE IF NOT EXISTS service_runs (
                     execution_id TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL UNIQUE,
+                    session_id TEXT,
+                    turn_id TEXT,
+                    client_turn_id TEXT,
                     thread_id TEXT NOT NULL,
                     request_fingerprint TEXT NOT NULL,
                     graph TEXT NOT NULL,
@@ -91,6 +94,23 @@ class SQLiteRunStore:
                     ON service_events(execution_id, source_sequence);
                 """
             )
+            self._ensure_column("service_runs", "session_id", "TEXT")
+            self._ensure_column("service_runs", "turn_id", "TEXT")
+            self._ensure_column("service_runs", "client_turn_id", "TEXT")
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS service_runs_session_status ON service_runs(session_id, status)"
+            )
+            self._connection.execute(
+                "CREATE INDEX IF NOT EXISTS service_runs_client_turn ON service_runs(session_id, client_turn_id)"
+            )
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        columns = {
+            row["name"]
+            for row in self._connection.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            self._connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def create_or_get(self, request: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         execution_id = request["execution_id"]
@@ -103,6 +123,31 @@ class SQLiteRunStore:
                 if existing["request_fingerprint"] != request["request_fingerprint"]:
                     raise RunConflictError("The run ID was already admitted with different immutable inputs.")
                 return existing, False
+
+            session_id = request.get("session_id")
+            client_turn_id = request.get("client_turn_id")
+            if session_id and client_turn_id:
+                existing_turn = self._connection.execute(
+                    "SELECT * FROM service_runs WHERE session_id = ? AND client_turn_id = ?",
+                    (session_id, client_turn_id),
+                ).fetchone()
+                if existing_turn:
+                    existing = self._row_to_run(existing_turn)
+                    if existing["request_fingerprint"] != request["request_fingerprint"]:
+                        raise RunConflictError("The client turn was already admitted with different immutable inputs.")
+                    return existing, False
+
+            if session_id:
+                active = self._connection.execute(
+                    """
+                    SELECT execution_id FROM service_runs
+                    WHERE session_id = ? AND status IN ('queued', 'running')
+                    LIMIT 1
+                    """,
+                    (session_id,),
+                ).fetchone()
+                if active:
+                    raise RunConflictError("Another LangGraph turn is already active for this session.")
 
             record = {
                 **request,
@@ -125,15 +170,17 @@ class SQLiteRunStore:
                 self._connection.execute(
                     """
                     INSERT INTO service_runs (
-                        execution_id, run_id, thread_id, request_fingerprint, graph,
+                        execution_id, run_id, session_id, turn_id, client_turn_id, thread_id,
+                        request_fingerprint, graph,
                         provider, model, prompt_hash, status, created_at, started_at,
                         finished_at, output, error_json, attempt_count, usage_json,
                         checkpoint_id, checkpoint_step, checkpoint_count, pending_writes,
                         cancel_requested, cancel_reason
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        record["execution_id"], record["run_id"], record["thread_id"],
+                        record["execution_id"], record["run_id"], record.get("session_id"),
+                        record.get("turn_id"), record.get("client_turn_id"), record["thread_id"],
                         record["request_fingerprint"], record["graph"], record["provider"],
                         record["model"], record["prompt_hash"], record["status"],
                         record["created_at"], record["started_at"], record["finished_at"],

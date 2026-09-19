@@ -23,6 +23,7 @@ import {
   parseHealthResponse,
   parseInspection,
   parseStartResponse,
+  langGraphThreadId,
   type LangGraphInspection,
   type LangGraphResult,
 } from "../protocol/protocol.js";
@@ -117,9 +118,12 @@ export class LangGraphBaselineRunner implements PlatformRunner {
     if (!validation.valid) throw new Error(validation.reason ?? "LangGraph manifest validation failed.");
     const configuration = this.configurationFromManifest(manifest);
     const context = await this.prepareContext(manifest, configuration.contextRoot);
+    const threadId = manifest.context.sessionId ? langGraphThreadId(manifest.context.sessionId) : manifest.runId;
     const requestBody = JSON.stringify({
       protocolVersion: LANGGRAPH_PROTOCOL_VERSION,
       runId: manifest.runId,
+      ...(manifest.context.sessionId ? { sessionId: manifest.context.sessionId } : {}),
+      ...(manifest.context.clientTurnId ? { clientTurnId: manifest.context.clientTurnId } : {}),
       prompt: manifest.task.prompt,
       systemInstruction: manifest.context.systemInstruction,
       model: {
@@ -127,7 +131,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
         model: manifest.model.model,
       },
       graph: "baseline",
-      threadId: manifest.runId,
+      threadId,
       durability: "sqlite-sync",
       maxAttempts: configuration.maxAttempts,
       timeoutMs: configuration.timeoutMs,

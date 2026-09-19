@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const LANGGRAPH_PROTOCOL_VERSION = 1 as const;
 
 export type LangGraphPlatformStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "unknown";
@@ -14,6 +16,8 @@ export type LangGraphFailureKind =
 export interface LangGraphStartRequest {
   readonly protocolVersion: typeof LANGGRAPH_PROTOCOL_VERSION;
   readonly runId: string;
+  readonly sessionId?: string;
+  readonly clientTurnId?: string;
   readonly prompt: string;
   readonly systemInstruction: string;
   readonly model: { readonly provider: "fake" | "openrouter"; readonly model: string };
@@ -24,6 +28,11 @@ export interface LangGraphStartRequest {
   readonly timeoutMs: number;
   readonly context?: { readonly sessionId: string; readonly turnId: string; readonly snapshotId: string };
   readonly tools?: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
+}
+
+export function langGraphThreadId(sessionId: string): string {
+  const digest = createHash("sha256").update(sessionId, "utf8").digest("hex").slice(0, 32);
+  return `langgraph:baseline:${digest}`;
 }
 
 export interface LangGraphStartResponse {

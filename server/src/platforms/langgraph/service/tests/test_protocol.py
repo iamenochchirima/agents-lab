@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from protocol.models import StartRunRequest
+from protocol.models import StartRunRequest, thread_id_for_session
 
 
 def valid_request() -> dict:
@@ -27,6 +27,8 @@ def test_protocol_accepts_the_frozen_baseline_request() -> None:
 def test_protocol_accepts_context_identity_and_bounded_tool_policy() -> None:
     request = valid_request()
     request["context"] = {"sessionId": "session-conformance", "turnId": "turn-1", "snapshotId": "snapshot-1"}
+    request["sessionId"] = "session-conformance"
+    request["threadId"] = thread_id_for_session("session-conformance")
     request["tools"] = {"enabledNames": ["calculator"], "maxRounds": 6, "maxCalls": 8}
     parsed = StartRunRequest.model_validate(request)
     assert parsed.context is not None
@@ -34,6 +36,19 @@ def test_protocol_accepts_context_identity_and_bounded_tool_policy() -> None:
     assert parsed.context.snapshot_id == "snapshot-1"
     assert parsed.tools is not None
     assert parsed.tools.enabled_names == ["calculator"]
+
+
+def test_protocol_requires_client_turns_to_use_the_session_thread() -> None:
+    request = valid_request()
+    request["sessionId"] = "session-conformance"
+    request["clientTurnId"] = "turn-1"
+    request["threadId"] = thread_id_for_session("session-conformance")
+    parsed = StartRunRequest.model_validate(request)
+    assert parsed.thread_id == thread_id_for_session("session-conformance")
+
+    request["threadId"] = "run-protocol"
+    with pytest.raises(ValidationError, match="threadId"):
+        StartRunRequest.model_validate(request)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T00:11:06+02:00  
+**Last updated:** 2026-09-20T00:21:06+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -694,6 +694,15 @@ what was observed, the exact validation command, and what remains.
   and generic UI wiring. The next implementation is the missing full session/thread,
   context, recovery, evidence, and browser acceptance contract. No production code was
   changed in this planning step.
+
+- **2026-09-20T00:21:06+02:00 — session/thread admission implemented.** Added a stable
+  SHA-256-derived native thread mapping for Lab sessions, explicit `sessionId` and
+  `clientTurnId` protocol fields, SQLite session/turn columns with migration support,
+  same-session single-flight admission, and fingerprint-aware duplicate turn reuse.
+  Updated the Python protocol, TypeScript adapter, JSON schema, and platform docs.
+  Validation passed: Python protocol/service tests `29 passed`; TypeScript protocol and
+  adapter tests `8 passed`; `git diff --check` passed. Graph continuation, recovery,
+  context, and browser work remain.
 
 ## Commit discipline
 

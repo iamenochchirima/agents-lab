@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from service.app import create_app
 from service.config import ServiceConfig
 from service.store import SQLiteRunStore
+from protocol.models import thread_id_for_session
 
 
 def make_client(tmp_path: Path) -> TestClient:
@@ -112,6 +113,8 @@ def test_service_reads_context_from_the_configured_canonical_transcript(tmp_path
         request = start_payload("run-service-context", "fake-context")
         request["prompt"] = "What value did you remember?"
         request["context"] = {"sessionId": "session-context", "turnId": "turn-2"}
+        request["sessionId"] = "session-context"
+        request["threadId"] = thread_id_for_session("session-context")
         started = client.post("/v1/runs", json=request)
         assert started.status_code == 202
         inspection = wait_for_terminal(client, "langgraph:run-service-context")
@@ -170,6 +173,8 @@ def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None
             "turnId": "turn-2",
             "snapshotId": snapshot_id,
         }
+        request["sessionId"] = "session-snapshot"
+        request["threadId"] = thread_id_for_session("session-snapshot")
         started = client.post("/v1/runs", json=request)
         assert started.status_code == 202
         inspection = wait_for_terminal(client, "langgraph:run-service-snapshot")
@@ -194,6 +199,45 @@ def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) 
         conflict["prompt"] = "A different immutable prompt."
         response = client.post("/v1/runs", json=conflict)
         assert response.status_code == 409
+
+
+def test_service_rejects_a_concurrent_turn_in_the_same_session(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        first = start_payload("run-session-first", "fake-delay")
+        first.update({
+            "sessionId": "session-single-flight",
+            "clientTurnId": "turn-1",
+            "threadId": thread_id_for_session("session-single-flight"),
+            "context": {"sessionId": "session-single-flight", "turnId": "turn-1"},
+        })
+        assert client.post("/v1/runs", json=first).status_code == 202
+
+        second = start_payload("run-session-second", "fake-success")
+        second.update({
+            "sessionId": "session-single-flight",
+            "clientTurnId": "turn-2",
+            "threadId": thread_id_for_session("session-single-flight"),
+            "context": {"sessionId": "session-single-flight", "turnId": "turn-2"},
+        })
+        response = client.post("/v1/runs", json=second)
+        assert response.status_code == 409
+        assert "already active" in response.json()["detail"]
+
+
+def test_service_reuses_a_duplicate_client_turn_by_fingerprint(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        request = start_payload("run-session-idempotent", "fake-delay")
+        request.update({
+            "sessionId": "session-idempotent",
+            "clientTurnId": "turn-1",
+            "threadId": thread_id_for_session("session-idempotent"),
+            "context": {"sessionId": "session-idempotent", "turnId": "turn-1"},
+        })
+        first = client.post("/v1/runs", json=request)
+        second = client.post("/v1/runs", json=request)
+        assert first.status_code == second.status_code == 202
+        assert first.json()["executionId"] == second.json()["executionId"]
+        assert second.json()["idempotent"] is True
 
 
 def test_service_records_deterministic_failure_and_unknown_outcomes(tmp_path: Path) -> None:

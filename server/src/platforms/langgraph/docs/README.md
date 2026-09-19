@@ -10,14 +10,22 @@ The TypeScript side sends and validates JSON only. This is the seam that lets th
 
 ```text
 POST /v1/runs
+  -> session/client-turn admission
   -> queued service record
-  -> running StateGraph
+  -> running StateGraph on a stable thread_id
   -> model node and bounded node attempts
   -> SQLite checkpoint events
   -> completed / failed / cancelled / unknown inspection
 ```
 
 `unknown` means the process stopped or the external model outcome could not be established. It is not a synonym for provider failure. The TypeScript adapter projects this state to the Lab's reconciliation-required terminal evidence.
+
+The Lab keeps one `runId` per admitted turn. When a request has a `sessionId`, the
+adapter derives `thread_id` as `langgraph:baseline:` plus the first 32 hexadecimal
+characters of the SHA-256 session digest. This keeps the native thread stable across
+turns without exposing arbitrary session input as a path-like identifier. The service
+rejects a second active turn in the same session and reuses an admitted turn when its
+`clientTurnId` and immutable request fingerprint match.
 
 ## Persistence and tool boundary
 
