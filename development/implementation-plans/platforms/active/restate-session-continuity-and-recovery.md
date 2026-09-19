@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T22:30:00+02:00
+**Last updated:** 2026-09-19T22:45:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -339,6 +339,23 @@ as a test dependency.
 - The local-development guide now documents the restart exercise, its deterministic
   fixture, temporary-data cleanup, and the boundary between workflow replay and
   external-provider ambiguity.
+
+**2026-09-19T22:45:00+02:00 — live model acceptance and terminal native status corrected**
+
+- The live browser runner smoke completed a real Restate/OpenRouter run with
+  `cohere/north-mini-code:free`; the result was `completed`, usage was recorded as
+  87 input and 79 output tokens, and the context projection reported 97% remaining.
+  The run evidence contained `config.json`, `context.json`, `events.jsonl`,
+  `trajectory.json`, `metrics.json`, `result.json`, and `native/restate.json`; a
+  secret-shaped scan found no provider key or authorization value.
+- That live run exposed a stale native reference: the Lab result was terminal while
+  the persisted Restate reference still said `running`. The runner now refreshes the
+  native invocation status from the Admin API whenever a terminal workflow output is
+  available, while preserving the terminal result if Admin introspection is briefly
+  unavailable. A focused unit test covers the completed-status projection.
+- Validation passed after the correction: the Restate suite reported `45 passed, 1
+  skipped` (the optional Docker profile), and the targeted live browser runner reported
+  `1 passed` for Restate.
 
 ## Scope
 
@@ -801,11 +818,11 @@ reported as passed.
 - [ ] Start and register the TypeScript Restate service on an isolated port.
 - [x] Complete one deterministic model/tool run and inspect Restate-native status.
 - [x] Complete two turns in one shared Lab session with separate Restate workflow keys.
-- [ ] Stop and replace the service during an unfinished durable step; verify replay and
+- [x] Stop and replace the service during an unfinished durable step; verify replay and
       final evidence.
-- [ ] Stop and replace the Lab server while the native workflow remains active; verify
+- [x] Stop and replace the Lab server while the native workflow remains active; verify
       the new server finds the retained execution reference.
-- [ ] Stop and replace Restate using the same persistent data directory; verify the
+- [x] Stop and replace Restate using the same persistent data directory; verify the
       workflow is retained or the result is honestly classified as unavailable.
 - [ ] Exercise the ambiguous submission path and verify no second workflow key is
       created.
@@ -814,7 +831,8 @@ reported as passed.
       unknown/recovery result and attempt telemetry.
 - [ ] Run one live OpenRouter multi-turn acceptance when `OPENROUTER_API_KEY` is
       available. Record the model ID, response status, usage, and evidence paths, but
-      never record the key.
+      never record the key. The current live check proves one real model turn; the
+      multi-turn browser acceptance remains open.
 
 ### Browser acceptance checks
 

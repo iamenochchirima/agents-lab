@@ -147,6 +147,9 @@ test("runner maps a durable workflow result into the common inspection seam", as
   const runner = RestateBaselineRunner.fromOptions({
     config,
     ingress: new FakeIngress(new FakeWorkflowClient({ invocationId: "inv-2", status: "Accepted", attachable: true }, { ready: true, result: resultFor(runId) })),
+    fetchImplementation: async (url) => String(url).endsWith("/query")
+      ? response({ rows: [{ id: "inv-2", status: "completed", completion_result: "success", retry_count: 1, modified_at: "2026-09-16T12:05:00.000Z" }] })
+      : response({}, 200),
   });
   const inspection = await runner.inspect(await runner.start(manifestFor(runner, runId)));
 
@@ -154,6 +157,9 @@ test("runner maps a durable workflow result into the common inspection seam", as
   assert.equal(inspection.result?.output, "done");
   assert.equal(inspection.metrics?.modelCallCount, 1);
   assert.equal(inspection.eventIntents[0]?.kind, "RunCompleted");
+  assert.equal(inspection.reference.native.nativeStatus, "completed");
+  assert.equal(inspection.reference.native.retryCount, 1);
+  assert.equal(inspection.reference.native.terminalObservedAt, "2026-09-16T12:05:00.000Z");
 });
 
 test("runner projects native cancellation when Restate stops before workflow output", async () => {

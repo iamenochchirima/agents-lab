@@ -203,7 +203,12 @@ export class RestateBaselineRunner implements PlatformRunner {
     let terminalOutputError: unknown = null;
     try {
       const output = await this.workflowClient(native.workflowKey).workflowOutput();
-      if (output.ready && output.result) return inspectionFromResult(reference, output.result);
+      if (output.ready && output.result) {
+        // The workflow output is authoritative, but the native reference also needs
+        // the latest invocation observation for recovery and debugging. Keep a
+        // successful output usable if the separate Admin API is temporarily down.
+        return inspectionFromResult(await this.refreshTerminalReference(reference, native), output.result);
+      }
     } catch (error) {
       // A terminal workflow error is visible through introspection even when
       // the output endpoint rejects. Temporary ingress failures must remain
@@ -273,6 +278,27 @@ export class RestateBaselineRunner implements PlatformRunner {
       retryCount: numberValue(row, "retry_count"),
       modifiedAt: stringValue(row, "modified_at"),
     };
+  }
+
+  private async refreshTerminalReference(
+    reference: PlatformExecutionReference,
+    native: NativeRestateReference,
+  ): Promise<PlatformExecutionReference> {
+    try {
+      const invocation = await this.findInvocation(native);
+      if (!invocation) return reference;
+      return updateReference(reference, {
+        invocationId: invocation.id,
+        nativeStatus: invocation.status,
+        retryCount: invocation.retryCount,
+        lastModifiedAt: invocation.modifiedAt,
+        terminalObservedAt: isNativeTerminal(invocation.status) ? invocation.modifiedAt ?? undefined : undefined,
+      });
+    } catch {
+      // A completed workflow result remains useful when native introspection is
+      // briefly unavailable; retain the last safe native observation instead.
+      return reference;
+    }
   }
 
   private async requestAdmin(path: string, init: RequestInit): Promise<Response> {
