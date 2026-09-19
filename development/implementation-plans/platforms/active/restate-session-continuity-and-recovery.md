@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:00:00+02:00
+**Last updated:** 2026-09-19T23:10:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -368,6 +368,18 @@ as a test dependency.
 - Browser console errors remained empty. The test is explicitly opt-in with
   `AGENTLAB_RUN_LIVE_RESTATE_CHAT_UI=1` and does not run in CI without a deliberate
   local OpenRouter configuration.
+
+**2026-09-19T23:10:00+02:00 — broad regression validation passed**
+
+- The full Lab server suite passed with `265 passed, 2 skipped, 0 failed`. The skips
+  are optional native integrations for other platforms and are unrelated to Restate.
+- The Restate browser fixture suite passed `5/5`; web typecheck and production build
+  passed with only the existing large-chunk warning; and `git diff --check` passed.
+- The Restate-specific native suite remains green at `45 passed, 1 skipped`, and the
+  opt-in live Restate Chat suite remains green at `1 passed` for the two-turn session.
+- The plan remains active. Before archiving, the remaining gates are the browser
+  compaction/recovery acceptance, final documentation/rollback record, and explicit
+  recording of the missing repository release-process document.
 
 ## Scope
 
