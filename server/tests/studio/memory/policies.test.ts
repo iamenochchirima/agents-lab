@@ -153,3 +153,52 @@ test("working memory is bounded to its repository instance", async () => {
   assert.equal((await firstRepository.load()).records.length, 1);
   assert.equal((await new InMemoryStudioMemoryRepository(namespace).load()).records.length, 0);
 });
+
+test("Memory store expires stale facts and records an inspectable decision", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const store = new PolicyMemoryStore(new SemanticFactPolicy(), repository, limits);
+  await store.seed([{
+    recordId: "expiring-language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    expiresAt: "2026-09-20T00:30:00.000Z",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-expiring");
+  const read = await store.read({
+    task: "support language",
+    now: "2026-09-20T01:00:00.000Z",
+    signal: new AbortController().signal,
+  });
+  assert.deepEqual(read.retrievedRecordIds, []);
+  const consolidated = await store.consolidate({
+    now: "2026-09-20T01:00:00.000Z",
+    signal: new AbortController().signal,
+  });
+  assert.deepEqual(consolidated.expiredRecordIds, ["expiring-language"]);
+  assert.equal(consolidated.decisions[0]?.operation, "expire");
+});
+
+test("Memory store turns an unchanged keyed fact into a NOOP", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const store = new PolicyMemoryStore(new SemanticFactPolicy(), repository, limits);
+  await store.seed([{
+    recordId: "language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-language");
+  const result = await store.write({
+    task: "support language",
+    turnId: "turn-unchanged",
+    output: "Preference: support-language = English",
+    now: "2026-09-20T00:01:00.000Z",
+    signal: new AbortController().signal,
+  });
+  assert.equal(result.decisions[0]?.operation, "noop");
+  assert.deepEqual(result.writtenRecordIds, []);
+  assert.equal((await repository.load()).records.length, 1);
+});

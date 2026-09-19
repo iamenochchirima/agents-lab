@@ -79,6 +79,7 @@ export interface StudioMemoryCandidate {
 
 export interface StudioMemoryReadResult {
   readonly stateRevision: number;
+  readonly stateRecovered?: boolean;
   readonly queryTerms: readonly string[];
   readonly candidates: readonly StudioMemoryCandidate[];
   readonly records: readonly StudioMemoryRecord[];
@@ -167,6 +168,7 @@ export interface StudioMemoryStoreAdapter {
 }
 
 export interface StudioMemoryRepository {
+  readonly lastLoadRecovered?: boolean;
   load(): Promise<StudioMemoryState>;
   seed(seeds: readonly StudioMemorySeed[], operationId: string): Promise<StudioMemoryApplyResult>;
   apply(mutations: readonly StudioMemoryMutation[]): Promise<StudioMemoryApplyResult>;

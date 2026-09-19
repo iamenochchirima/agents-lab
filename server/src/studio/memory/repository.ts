@@ -26,6 +26,15 @@ interface StudioMemoryJournalEvent {
   readonly state: StudioMemoryState;
 }
 
+interface StudioMemoryDecisionJournalEvent {
+  readonly schemaVersion: 1;
+  readonly sequence: number;
+  readonly namespace: StudioMemoryNamespace;
+  readonly operationIds: readonly string[];
+  readonly decisions: readonly StudioMemoryDecision[];
+  readonly stateRevision: number;
+}
+
 export interface StudioMemoryRepositoryHooks {
   readonly afterJournalAppend?: () => void | Promise<void>;
   readonly afterSnapshotWrite?: () => void | Promise<void>;
@@ -63,6 +72,8 @@ export class InMemoryStudioMemoryRepository implements StudioMemoryRepository {
   ) {
     this.state = emptyState(namespace);
   }
+
+  readonly lastLoadRecovered = false;
 
   async load(): Promise<StudioMemoryState> {
     return cloneState(this.state);
@@ -104,7 +115,9 @@ export class InMemoryStudioMemoryRepository implements StudioMemoryRepository {
 export class FileStudioMemoryRepository implements StudioMemoryRepository {
   private readonly recordsPath: string;
   private readonly journalPath: string;
+  private readonly decisionsPath: string;
   private queue: Promise<unknown> = Promise.resolve();
+  private recovered = false;
 
   constructor(
     private readonly rootDirectory: string,
@@ -116,6 +129,11 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     assertNamespace(namespace);
     this.recordsPath = join(rootDirectory, "records.json");
     this.journalPath = join(rootDirectory, "events.jsonl");
+    this.decisionsPath = join(rootDirectory, "decisions.jsonl");
+  }
+
+  get lastLoadRecovered(): boolean {
+    return this.recovered;
   }
 
   load(): Promise<StudioMemoryState> {
@@ -141,6 +159,7 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     const snapshot = await readOptionalJson<StudioMemoryState>(this.recordsPath);
     const journal = await readJournal(this.journalPath, this.namespace, this.limits);
     const latest = journal.at(-1)?.state;
+    this.recovered = Boolean(latest && (!snapshot || latest.revision > snapshot.revision));
     if (snapshot && latest && latest.revision >= snapshot.revision) return validateState(latest, this.namespace, this.limits, this.recordsPath);
     if (snapshot) return validateState(snapshot, this.namespace, this.limits, this.recordsPath);
     if (latest) return validateState(latest, this.namespace, this.limits, this.journalPath);
@@ -153,6 +172,9 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
       return { state, decisions: [], appliedOperationIds: [] };
     }
     const journal = await readJournal(this.journalPath, this.namespace, this.limits);
+    const snapshot = await readOptionalJson<StudioMemoryState>(this.recordsPath);
+    const latest = journal.at(-1)?.state;
+    this.recovered = Boolean(latest && (!snapshot || latest.revision > snapshot.revision));
     const appliedOperations = new Map<string, { readonly fingerprint: string; readonly result: StudioMemoryApplyResult }>();
     for (const event of journal) {
       const result: StudioMemoryApplyResult = {
@@ -174,7 +196,7 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     if (existing.some((result) => result !== undefined)) {
       throw new StudioMemoryConflictError("A Memory operation batch mixes previously applied and new operation IDs.");
     }
-    const state = journal.at(-1)?.state ?? await this.loadNow();
+    const state = latest ?? await this.loadNow();
     const result = applyMutations(state, mutations, this.limits, this.now);
     const event: StudioMemoryJournalEvent = {
       schemaVersion: 1,
@@ -192,6 +214,19 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     await mkdir(this.rootDirectory, { recursive: true });
     await appendFile(this.journalPath, serialized, { encoding: "utf8" });
     await this.hooks.afterJournalAppend?.();
+    const decisionSerialized = `${stableJson({
+      schemaVersion: 1,
+      sequence: event.sequence,
+      namespace: this.namespace,
+      operationIds: result.appliedOperationIds,
+      decisions: result.decisions,
+      stateRevision: result.state.revision,
+    } satisfies StudioMemoryDecisionJournalEvent)}\n`;
+    const currentDecisionBytes = Buffer.byteLength((await readOptionalText(this.decisionsPath)) ?? "", "utf8");
+    if (currentDecisionBytes + Buffer.byteLength(decisionSerialized, "utf8") > this.limits.maxJournalBytes) {
+      throw new StudioMemoryRepositoryError("Studio Memory decision journal exceeded its configured limit.");
+    }
+    await appendFile(this.decisionsPath, decisionSerialized, { encoding: "utf8" });
     await atomicWriteJson(this.recordsPath, result.state);
     await this.hooks.afterSnapshotWrite?.();
     return result;
@@ -224,6 +259,9 @@ function applyMutations(
       if (mutation.operation === "add" && candidate.recordId && records.has(candidate.recordId)) {
         throw new StudioMemoryConflictError(`Memory record already exists: ${candidate.recordId}.`);
       }
+      if (mutation.operation === "update" && target && target.state !== "active") {
+        throw new StudioMemoryConflictError(`Only an active Memory record can be updated: ${target.recordId}.`);
+      }
       const next = materializeRecord(input.namespace, candidate, mutation, target, revision + 1, limits);
       if (mutation.operation === "update" && target) {
         records.set(target.recordId, { ...target, state: "superseded", updatedAt: next.updatedAt });
@@ -233,6 +271,9 @@ function applyMutations(
       changed = true;
     } else if (mutation.operation === "delete" || mutation.operation === "expire") {
       if (target) {
+        if (target.state !== "active") {
+          throw new StudioMemoryConflictError(`Only an active Memory record can be retired: ${target.recordId}.`);
+        }
         records.set(target.recordId, {
           ...target,
           state: mutation.operation === "expire" ? "expired" : "discarded",
@@ -359,12 +400,15 @@ function validateState(state: StudioMemoryState, namespace: StudioMemoryNamespac
   if (state.schemaVersion !== 1 || stableJson(state.namespace) !== stableJson(namespace) || !Number.isInteger(state.revision) || state.revision < 0 || state.records.length > limits.maxRecords) {
     throw new StudioMemoryCorruptStateError(path);
   }
-  for (const record of state.records) validateRecord(record, limits, path);
+  for (const record of state.records) {
+    validateRecord(record, limits, path);
+    if (record.revision > state.revision) throw new StudioMemoryCorruptStateError(path);
+  }
   return state;
 }
 
 function validateRecord(record: StudioMemoryRecord, limits: StudioMemoryLimits, path: string): void {
-  if (record.schemaVersion !== 1 || !SAFE_ID.test(record.recordId) || !record.content || Buffer.byteLength(record.content, "utf8") > limits.maxContentBytes || Buffer.byteLength(stableJson(record), "utf8") > limits.maxRecordBytes || !SAFE_KEY.test(record.source) || !Number.isInteger(record.revision) || record.revision < 1) {
+  if (record.schemaVersion !== 1 || !SAFE_ID.test(record.recordId) || !record.content || Buffer.byteLength(record.content, "utf8") > limits.maxContentBytes || Buffer.byteLength(stableJson(record), "utf8") > limits.maxRecordBytes || !SAFE_KEY.test(record.source) || !Number.isInteger(record.revision) || record.revision < 1 || !validTimestamp(record.createdAt) || !validTimestamp(record.updatedAt) || record.expiresAt !== null && !validTimestamp(record.expiresAt)) {
     throw new StudioMemoryCorruptStateError(path);
   }
   if (record.logicalKey !== null && !SAFE_KEY.test(record.logicalKey)) throw new StudioMemoryCorruptStateError(path);
@@ -385,6 +429,10 @@ function assertOperationId(value: string): void {
 
 function assertSafeId(value: string, label: string): void {
   if (!SAFE_ID.test(value)) throw new StudioMemoryRepositoryError(`${label} is invalid.`);
+}
+
+function validTimestamp(value: string): boolean {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {

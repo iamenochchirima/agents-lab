@@ -224,6 +224,7 @@ export interface StudioMemoryEvidence {
   readonly adapterId: string;
   readonly adapterVersion: string;
   readonly seededRecordIds: readonly string[];
+  readonly stateRecovered: boolean;
   readonly stateRevision: number;
   readonly queryTerms: readonly string[];
   readonly candidates: readonly StudioMemoryCandidate[];

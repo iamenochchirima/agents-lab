@@ -37,7 +37,10 @@ export class PolicyMemoryStore implements StudioMemoryStoreAdapter {
     throwIfAborted(input.signal, "Memory retrieval was cancelled.");
     const state = await this.repository.load();
     throwIfAborted(input.signal, "Memory retrieval was cancelled.");
-    return this.policy.retrieve({ state, task: input.task, now: input.now ?? new Date().toISOString(), limits: this.limits });
+    return {
+      ...this.policy.retrieve({ state, task: input.task, now: input.now ?? new Date().toISOString(), limits: this.limits }),
+      stateRecovered: this.repository.lastLoadRecovered ?? false,
+    };
   }
 
   async write(input: {

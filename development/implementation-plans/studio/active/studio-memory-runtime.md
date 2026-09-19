@@ -284,23 +284,23 @@ trial-local and is separate from the summary evidence file.
 
 Rules:
 
-- [ ] The repository creates a trial Memory namespace before the first Memory turn.
-- [ ] Seed records are written before execution and included in the immutable trial
+- [x] The repository creates a trial Memory namespace before the first Memory turn.
+- [x] Seed records are written before execution and included in the immutable trial
       configuration or a separately hashed fixture record.
-- [ ] State writes use a temporary file plus atomic rename and bounded file sizes.
+- [x] State writes use a temporary file plus atomic rename and bounded file sizes.
 - [ ] The journal records operation ID, policy version, namespace, record IDs,
       previous revision, decision, reason, and timestamp.
-- [ ] Replaying the same operation ID produces the same state and does not duplicate
+- [x] Replaying the same operation ID produces the same state and does not duplicate
       a write.
-- [ ] `records.json` is a recoverable projection of the journal, not the only source
+- [x] `records.json` is a recoverable projection of the journal, not the only source
       needed to diagnose a partial operation.
-- [ ] `memory.json` contains a safe summary: retrieved IDs, candidate IDs, scores,
+- [x] `memory.json` contains a safe summary: retrieved IDs, candidate IDs, scores,
       writes, updates, deletes, expiries, consolidation results, and scopes.
-- [ ] Raw record content remains bounded and safe to expose through the existing
+- [x] Raw record content remains bounded and safe to expose through the existing
       allowlisted evidence route.
-- [ ] Corrupt or incomplete Memory state produces an explicit recovery-required
+- [x] Corrupt or incomplete Memory state produces an explicit recovery-required
       outcome; the runtime never silently starts with an empty store.
-- [ ] Trial namespaces are isolated even when comparisons run in the same process.
+- [x] Trial namespaces are isolated even when comparisons run in the same process.
 
 ## Scenario fixtures
 
@@ -326,43 +326,43 @@ Each case must specify:
 
 ## Failure, retry, and recovery semantics
 
-- [ ] Memory retrieval is pure with respect to durable state and is not retried as a
+- [x] Memory retrieval is pure with respect to durable state and is not retried as a
       write operation.
 - [ ] A write has a deterministic operation ID derived from comparison, trial, turn,
       policy, and candidate identity.
-- [ ] A repeated write operation ID is idempotent and returns the original decision.
-- [ ] A crash before persistence leaves no visible new record.
-- [ ] A crash after journal append but before snapshot publication rebuilds the same
+- [x] A repeated write operation ID is idempotent and returns the original decision.
+- [x] A crash before persistence leaves no visible new record.
+- [x] A crash after journal append but before snapshot publication rebuilds the same
       state from the journal on restart.
-- [ ] A crash after state publication but before acknowledgement is reconciled as an
+- [x] A crash after state publication but before acknowledgement is reconciled as an
       already-applied operation, not duplicated.
-- [ ] A corrupt journal, mismatched namespace, or invalid revision stops the trial
+- [x] A corrupt journal, mismatched namespace, or invalid revision stops the trial
       with explicit recovery-required evidence.
 - [ ] Cancellation before retrieval, during persistence, and after persistence is
       represented distinctly; completed writes are not described as rolled back.
 - [ ] Consolidation is bounded, deterministic, and idempotent. It cannot silently
       erase source records without recording the decision and supersession links.
-- [ ] Duplicate and out-of-order Memory events are detected by operation ID and
+- [x] Duplicate and out-of-order Memory events are detected by operation ID and
       sequence/revision checks.
-- [ ] Memory failure does not cause the runtime to fabricate Context or model evidence.
-- [ ] No comparison strategy reads another strategy's state after process restart.
+- [x] Memory failure does not cause the runtime to fabricate Context or model evidence.
+- [x] No comparison strategy reads another strategy's state after process restart.
 
 The implementation must use at-least-once-safe persistence with idempotent operations.
 It must not claim exactly-once Memory writes.
 
 ## Security, limits, and configuration
 
-- [ ] Validate scope, namespace, record IDs, logical keys, revisions, timestamps, and
+- [x] Validate scope, namespace, record IDs, logical keys, revisions, timestamps, and
       operation IDs before persistence.
-- [ ] Enforce maximum record count, record bytes, content bytes, retrieved-record
+- [x] Enforce maximum record count, record bytes, content bytes, retrieved-record
       count, retrieval token contribution, journal bytes, and consolidation work.
 - [ ] Keep Memory content out of logs and errors unless it is already part of the
       explicitly inspectable fixture evidence.
-- [ ] Preserve source and trust metadata when converting records to Context messages.
+- [x] Preserve source and trust metadata when converting records to Context messages.
 - [ ] Reject path traversal and symlink escapes in Memory state paths.
 - [ ] Use the existing server configuration style for Studio root and add only
       Memory-specific bounded defaults.
-- [ ] Do not require credentials, network access, a database, or an external service.
+- [x] Do not require credentials, network access, a database, or an external service.
 - [ ] Report unavailable future providers honestly instead of falling back to an
       empty Memory store.
 
@@ -412,7 +412,7 @@ It must not claim exactly-once Memory writes.
       model-visible message budget.
 - [x] Add Memory-specific grade and metrics aggregation while preserving current
       Context grades and metrics.
-- [ ] Emit canonical Memory events: `MemorySeeded`, `MemoryCandidatesRanked`,
+- [x] Emit canonical Memory events: `MemorySeeded`, `MemoryCandidatesRanked`,
       `MemoryRetrieved`, `MemoryWriteDecided`, `MemoryConsolidated`,
       `MemoryStatePersisted`, and `MemoryStateRecovered`.
 
@@ -425,23 +425,23 @@ It must not claim exactly-once Memory writes.
       rules.
 - [x] Return Memory trial projections with strategy identity, grade, counters, and
       recovery status.
-- [ ] Add catalog and request examples to the Studio backend README.
+- [x] Add catalog and request examples to the Studio backend README.
 
 ### 5. Tests and reproducibility
 
-- [ ] Add unit tests for record validation, scope rules, provenance, revisions, and
+- [x] Add unit tests for record validation, scope rules, provenance, revisions, and
       supersession.
-- [ ] Add unit tests for each baseline policy's retrieval, write, deduplication,
+- [x] Add unit tests for each baseline policy's retrieval, write, deduplication,
       expiry, and consolidation decisions.
-- [ ] Add repository tests for atomic writes, journal replay, duplicate operations,
+- [x] Add repository tests for atomic writes, journal replay, duplicate operations,
       corrupt state, and namespace isolation.
-- [ ] Add runtime tests proving Memory evidence remains separate from Context evidence.
+- [x] Add runtime tests proving Memory evidence remains separate from Context evidence.
 - [ ] Add integration tests for the recall, update, miss, duplicate, expiry, and
       procedural cases.
 - [ ] Add comparison tests proving only Memory policy changes across slots.
-- [ ] Add restart and failure-injection tests before and after journal/snapshot writes.
+- [x] Add restart and failure-injection tests before and after journal/snapshot writes.
 - [ ] Add cancellation and idempotency tests.
-- [ ] Add deterministic replay tests for identical seed, fixture, policy, and turn
+- [x] Add deterministic replay tests for identical seed, fixture, policy, and turn
       sequence.
 - [ ] Add regression tests proving existing Context comparisons and Platform Lab
       endpoints remain unchanged.

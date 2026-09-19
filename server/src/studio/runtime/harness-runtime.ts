@@ -70,6 +70,7 @@ export class StudioHarnessRuntime {
     });
 
     const seededRecordIds = input.scenario.memorySeeds?.map((seed) => seed.recordId) ?? [];
+    const memoryExperiment = input.manifest.experiment.changedComponent === "memory";
     if (seededRecordIds.length > 0) {
       if (!components.memory.seed) throw new StudioHarnessCompositionError("The Memory scenario requires a seed-capable Memory adapter.");
       await components.memory.seed(input.scenario.memorySeeds ?? [], `seed-${input.trialId}`);
@@ -82,12 +83,42 @@ export class StudioHarnessRuntime {
     }
 
     const memoryRead = await components.memory.read({ task: normalized.task, now: this.now(), signal: input.signal });
-    await input.events.emit("MemoryRead", {
-      trialId: input.trialId,
-      adapterId: components.memory.adapterId,
-      adapterVersion: components.memory.adapterVersion,
-      retrievedRecordIds: memoryRead.retrievedRecordIds,
-    });
+    if (memoryExperiment) {
+      await input.events.emit("MemoryCandidatesRanked", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        candidateCount: memoryRead.candidates.length,
+        candidates: memoryRead.candidates.map((candidate) => ({
+          recordId: candidate.record.recordId,
+          score: candidate.score,
+          reason: candidate.reason,
+          selected: candidate.selected,
+        })),
+      });
+      await input.events.emit("MemoryRetrieved", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        retrievedRecordIds: memoryRead.retrievedRecordIds,
+        omittedRecordIds: memoryRead.omittedRecordIds,
+      });
+      if (memoryRead.stateRecovered) {
+        await input.events.emit("MemoryStateRecovered", {
+          trialId: input.trialId,
+          adapterId: components.memory.adapterId,
+          adapterVersion: components.memory.adapterVersion,
+          stateRevision: memoryRead.stateRevision,
+        });
+      }
+    } else {
+      await input.events.emit("MemoryRead", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        retrievedRecordIds: memoryRead.retrievedRecordIds,
+      });
+    }
 
     const memoryMessages = memoryRecordsAsMessages(memoryRead.records, `studio-${input.scenario.id}`, this.now());
     const context = components.context.assemble({
@@ -205,12 +236,30 @@ export class StudioHarnessRuntime {
       now: this.now(),
       signal: input.signal,
     });
-    await input.events.emit("MemoryWritten", {
-      trialId: input.trialId,
-      adapterId: components.memory.adapterId,
-      adapterVersion: components.memory.adapterVersion,
-      writtenRecordIds: memoryWrite.writtenRecordIds,
-    });
+    if (memoryExperiment) {
+      await input.events.emit("MemoryWriteDecided", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        decisions: memoryWrite.decisions.map((decision) => ({
+          operationId: decision.operationId,
+          operation: decision.operation,
+          recordId: decision.recordId,
+          targetRecordId: decision.targetRecordId,
+          logicalKey: decision.logicalKey,
+          scope: decision.scope,
+          reason: decision.reason,
+          stateRevision: decision.stateRevision,
+        })),
+      });
+    } else {
+      await input.events.emit("MemoryWritten", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        writtenRecordIds: memoryWrite.writtenRecordIds,
+      });
+    }
     const memoryConsolidated = await components.memory.consolidate({ now: this.now(), signal: input.signal });
     await input.events.emit("MemoryConsolidated", {
       trialId: input.trialId,
@@ -219,6 +268,15 @@ export class StudioHarnessRuntime {
       expiredRecordIds: memoryConsolidated.expiredRecordIds,
       stateRevision: memoryConsolidated.stateRevision,
     });
+    if (memoryExperiment) {
+      await input.events.emit("MemoryStatePersisted", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        stateRevision: memoryConsolidated.stateRevision,
+        activeRecordIds: memoryConsolidated.activeRecordIds,
+      });
+    }
 
     const grade = gradeContext(input.scenario, context.retainedMessageIds, memoryRead.retrievedRecordIds, output.output);
     await input.events.emit("TrialGraded", { trialId: input.trialId, ...grade });
@@ -241,6 +299,7 @@ export class StudioHarnessRuntime {
         adapterId: components.memory.adapterId,
         adapterVersion: components.memory.adapterVersion,
         seededRecordIds,
+        stateRecovered: memoryRead.stateRecovered ?? false,
         stateRevision: memoryConsolidated.stateRevision,
         queryTerms: memoryRead.queryTerms,
         candidates: memoryRead.candidates,

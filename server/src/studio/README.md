@@ -86,6 +86,7 @@ JSONL event file documented below.
     memory/
       records.json                    # current trial-local Memory state
       events.jsonl                    # Memory operation journal
+      decisions.jsonl                 # bounded write/consolidation decisions
     composition.json
     result.json
 ```

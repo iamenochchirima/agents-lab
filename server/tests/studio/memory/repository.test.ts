@@ -197,6 +197,7 @@ test("file Memory repository recovers a journal append when snapshot publication
 
     const recovered = new FileStudioMemoryRepository(root, namespace);
     const state = await recovered.load();
+    assert.equal(recovered.lastLoadRecovered, true);
     assert.equal(state.revision, 1);
     assert.equal(state.records[0]?.recordId, "fact-language");
     const repeated = await recovered.seed([{
@@ -251,4 +252,53 @@ test("file Memory repository treats a persisted write as applied after acknowled
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Memory repository rejects invalid timestamps and updates to retired records", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  await assert.rejects(
+    () => repository.apply([{
+      operationId: "invalid-timestamp",
+      operation: "add",
+      candidate: {
+        scope: "semantic",
+        content: "English",
+        logicalKey: "support-language",
+        source: "fixture-memory",
+        createdAt: "not-a-timestamp",
+      },
+      reason: "Invalid fixture.",
+    }]),
+    /corrupt|timestamp/i,
+  );
+  await repository.seed([{
+    recordId: "fact-language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-fixture");
+  await repository.apply([{
+    operationId: "expire-language",
+    operation: "expire",
+    targetRecordId: "fact-language",
+    reason: "Retention boundary reached.",
+  }]);
+  await assert.rejects(
+    () => repository.apply([{
+      operationId: "update-expired-language",
+      operation: "update",
+      targetRecordId: "fact-language",
+      candidate: {
+        scope: "semantic",
+        content: "Spanish",
+        logicalKey: "support-language",
+        source: "studio-fact-extraction",
+        createdAt: "2026-09-20T00:01:00.000Z",
+      },
+      reason: "Stale update.",
+    }]),
+    /active.*updated/i,
+  );
 });

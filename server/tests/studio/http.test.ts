@@ -161,8 +161,23 @@ test("Studio runs a Memory comparison with fixed Context and isolated durable po
     assert.equal(comparison.trials[1].context.strategyId, "full-history");
     assert.deepEqual(comparison.trials[0].memory.retrievedRecordIds, []);
     assert.deepEqual(comparison.trials[1].memory.retrievedRecordIds, ["memory-fact-language"]);
+    assert.equal(comparison.trials[0].context.messages.some((message: { messageId: string }) => message.messageId === "memory-memory-fact-language"), false);
+    assert.equal(comparison.trials[1].context.messages.some((message: { messageId: string }) => message.messageId === "memory-memory-fact-language"), true);
     assert.equal(comparison.trials[0].manifest.fixedControlFingerprint, comparison.trials[1].manifest.fixedControlFingerprint);
     assert.equal(comparison.events.filter((event: { kind: string }) => event.kind === "MemorySeeded").length, 2);
+    const semanticEvents = comparison.events
+      .filter((event: { kind: string; payload?: { trialId?: string } }) => event.payload?.trialId === comparison.trials[1].manifest.trialId)
+      .map((event: { kind: string }) => event.kind);
+    assert.deepEqual(semanticEvents.slice(0, 6), [
+      "TrialCreated",
+      "InputNormalized",
+      "MemorySeeded",
+      "MemoryCandidatesRanked",
+      "MemoryRetrieved",
+      "ContextAssembled",
+    ]);
+    assert.equal(semanticEvents.includes("MemoryWriteDecided"), true);
+    assert.equal(semanticEvents.includes("MemoryStatePersisted"), true);
 
     const memoryState = await app.inject({
       method: "GET",
@@ -170,6 +185,13 @@ test("Studio runs a Memory comparison with fixed Context and isolated durable po
     });
     assert.equal(memoryState.statusCode, 200);
     assert.match(memoryState.body, /memory-fact-language/);
+
+    const memoryDecisions = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[1].manifest.trialId}/memory/decisions.jsonl`,
+    });
+    assert.equal(memoryDecisions.statusCode, 200);
+    assert.match(memoryDecisions.body, /seed-/);
   });
 });
 
@@ -201,6 +223,13 @@ test("Studio records a Memory revision when a keyed fact changes", async () => {
     const state = JSON.parse(memoryState.body);
     assert.equal(state.records.find((record: { recordId: string }) => record.recordId === "memory-update-language")?.state, "superseded");
     assert.equal(state.records.find((record: { recordId: string }) => record.recordId === "memory-update-language-r2")?.state, "active");
+
+    const decisions = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[1].manifest.trialId}/memory/decisions.jsonl`,
+    });
+    assert.equal(decisions.statusCode, 200);
+    assert.match(decisions.body, /"operation":"update"/);
   });
 });
 

@@ -347,7 +347,7 @@ function assertSafeId(value: string): void {
 
 function assertSafeRelativePath(value: string): void {
   const segments = value.split("/");
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json)|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/memory\/(records\.json|events\.jsonl))$/.test(value)) {
+  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json)|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/memory\/(records\.json|events\.jsonl|decisions\.jsonl))$/.test(value)) {
     throw new StudioEvidenceNotFoundError(value);
   }
 }
