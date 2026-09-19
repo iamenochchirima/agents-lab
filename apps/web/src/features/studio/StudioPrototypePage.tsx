@@ -2,32 +2,24 @@ import {
   ArrowLeft,
   ArrowRight,
   Bot,
-  Boxes,
   Check,
   ChevronDown,
   Clock3,
   Code2,
   Database,
   FlaskConical,
-  LayoutDashboard,
   LockKeyhole,
   Network,
   Play,
   Plus,
-  Search,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
-  SquareTerminal,
-  Workflow,
   Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 
-import { ThemeToggle } from "../../app/theme/ThemeToggle";
-import { appPaths } from "../../routes/paths";
 import "./studio-prototype.css";
 
 type StudioVariant = "command" | "focus" | "map";
@@ -37,15 +29,6 @@ const variants: readonly { id: StudioVariant; label: string }[] = [
   { id: "focus", label: "Component focus" },
   { id: "map", label: "System map" },
 ];
-
-const studioNavigation = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "agents", label: "Agent systems", icon: Bot },
-  { id: "components", label: "Components", icon: Boxes },
-  { id: "scenarios", label: "Scenarios", icon: Workflow },
-  { id: "runs", label: "Runs", icon: Play },
-  { id: "evidence", label: "Evidence", icon: Search },
-] as const;
 
 const componentAreas = [
   { id: "input", number: "01", name: "Input / perception", status: "Planned", note: "Normalize what enters the agent." },
@@ -72,68 +55,8 @@ function parseVariant(value: string | null): StudioVariant {
   return variants.some((variant) => variant.id === value) ? (value as StudioVariant) : "command";
 }
 
-function StudioTopbar() {
-  return (
-    <header className="studio-topbar">
-      <Link aria-label="Leave Studio" className="studio-back" to={appPaths.overview}>
-        <ArrowLeft aria-hidden="true" size={16} />
-      </Link>
-      <div className="studio-brand">
-        <div className="studio-brand-mark"><Sparkles aria-hidden="true" size={16} /></div>
-        <div>
-          <strong>Studio</strong>
-          <span>agent harness lab</span>
-        </div>
-      </div>
-      <div className="studio-topbar-spacer" />
-      <span className="studio-prototype-pill">Prototype</span>
-      <span className="studio-environment-pill"><span className="studio-live-dot" /> Local environment</span>
-      <ThemeToggle />
-    </header>
-  );
-}
-
-function StudioNavigation({ active = "overview", onNavigate }: { active?: string; onNavigate?: (id: string) => void }) {
-  return (
-    <nav aria-label="Studio navigation" className="studio-navigation">
-      <span className="studio-nav-label">Studio</span>
-      {studioNavigation.map((item) => {
-        const Icon = item.icon;
-        return (
-          <button
-            className={`studio-nav-item ${item.id === active ? "is-active" : ""}`}
-            key={item.id}
-            onClick={() => onNavigate?.(item.id)}
-            type="button"
-          >
-            <Icon aria-hidden="true" size={16} />
-            <span>{item.label}</span>
-            {item.id === "components" && <span className="studio-nav-count">12</span>}
-          </button>
-        );
-      })}
-      <div className="studio-nav-divider" />
-      <span className="studio-nav-label">Reference environment</span>
-      <button className="studio-nav-item studio-nav-muted" type="button"><Database aria-hidden="true" size={16} /><span>Storage</span></button>
-      <button className="studio-nav-item studio-nav-muted" type="button"><ShieldCheck aria-hidden="true" size={16} /><span>Permissions</span></button>
-      <button className="studio-nav-item studio-nav-muted" type="button"><SquareTerminal aria-hidden="true" size={16} /><span>Adapters</span></button>
-    </nav>
-  );
-}
-
-function StudioFrame({ children, navigation = "overview", onNavigate }: { children: ReactNode; navigation?: string; onNavigate?: (id: string) => void }) {
-  return (
-    <div className="studio-frame">
-      <aside className="studio-sidebar">
-        <StudioNavigation active={navigation} onNavigate={onNavigate} />
-        <div className="studio-sidebar-footer">
-          <div className="studio-sidebar-status"><span className="studio-live-dot" /><span>Environment ready for design</span></div>
-          <p>Local state only. No runs or metrics are created by this prototype.</p>
-        </div>
-      </aside>
-      <main className="studio-content">{children}</main>
-    </div>
-  );
+function StudioFrame({ children }: { children: ReactNode }) {
+  return <div className="studio-content">{children}</div>;
 }
 
 function SectionHeading({ eyebrow, title, action }: { eyebrow: string; title: string; action?: ReactNode }) {
@@ -183,7 +106,7 @@ function ComponentSummaryCard({ area, onOpen }: { area: (typeof componentAreas)[
 
 function CommandCenter({ onOpenComponents }: { onOpenComponents: () => void }) {
   return (
-    <StudioFrame onNavigate={(id) => id === "components" && onOpenComponents()}>
+    <StudioFrame>
       <div className="studio-page-intro">
         <div>
           <span className="studio-eyebrow">Agent systems / overview</span>
@@ -269,7 +192,7 @@ function SystemMap({ onOpenComponents }: { onOpenComponents: () => void }) {
   ] as const;
 
   return (
-    <StudioFrame navigation="agents" onNavigate={(id) => id === "components" && onOpenComponents()}>
+    <StudioFrame>
       <div className="studio-map-heading"><div><span className="studio-eyebrow">Agent system / neutral runtime</span><h1>Compose the whole harness</h1><p>See the execution path at a glance, then open any area when you want to vary its implementation.</p></div><div className="studio-map-actions"><StatusLabel tone="accent">Draft system</StatusLabel><button className="studio-primary-button" disabled type="button"><Play size={14} /> Run agent</button></div></div>
       <section className="studio-card studio-map-card"><div className="studio-map-card-heading"><div><span className="studio-eyebrow">Execution path</span><h2>One system, many seams</h2></div><span className="studio-map-caption"><LockKeyhole size={14} /> Baseline conditions fixed</span></div><div className="studio-execution-path">{path.map((item, index) => { const Icon = item.icon; return <div className="studio-path-step-group" key={item.name}><div className={`studio-path-node studio-path-node-${item.tone}`}><Icon size={20} /><span>{item.name}</span><small>{item.name === "Context" ? "1 strategy selected" : "Baseline"}</small></div>{index < path.length - 1 && <div className="studio-path-connector"><ArrowRight size={16} /></div>}</div>; })}</div><div className="studio-map-note"><Network size={16} /><span>The system is composed as one runtime. A component experiment changes one node while the surrounding path stays fixed.</span><button className="studio-text-button" onClick={onOpenComponents} type="button">Inspect components <ArrowRight size={14} /></button></div></section>
       <div className="studio-map-lower-grid"><section className="studio-card studio-inventory-card"><SectionHeading eyebrow="System inventory" title="Harness areas" action={<span className="studio-muted-count">1 designing / 11 planned</span>} /><div className="studio-inventory-list">{componentAreas.map((area) => <button className={`studio-inventory-row ${area.id === "context" ? "is-active" : ""}`} key={area.id} onClick={area.id === "context" ? onOpenComponents : undefined} type="button"><span className="studio-component-number">{area.number}</span><span><strong>{area.name}</strong><small>{area.note}</small></span><StatusLabel tone={area.id === "context" ? "accent" : "neutral"}>{area.status}</StatusLabel></button>)}</div></section><section className="studio-card studio-definition-card"><SectionHeading eyebrow="Configuration" title="Agent definition" action={<Code2 size={16} />} /><pre>{`agent: untitled\nenvironment: neutral-runtime\nmodel: replay-adapter\ncomponents:\n  context: full-history\n  memory: baseline\n  tools: baseline\n  control: baseline`}</pre><button className="studio-secondary-button" disabled type="button">Edit definition <ArrowRight size={14} /></button></section></div>
@@ -292,9 +215,8 @@ export function StudioPrototypePage() {
 
   return (
     <div className="studio-prototype">
-      <StudioTopbar />
       {variant === "command" && <CommandCenter onOpenComponents={() => selectVariant("focus")} />}
-      {variant === "focus" && <StudioFrame navigation="components" onNavigate={(id) => id === "overview" && selectVariant("command")}><ContextFocus onBack={() => selectVariant("command")} /></StudioFrame>}
+      {variant === "focus" && <StudioFrame><ContextFocus onBack={() => selectVariant("command")} /></StudioFrame>}
       {variant === "map" && <SystemMap onOpenComponents={() => selectVariant("focus")} />}
       {variant !== "focus" && <VariantSwitcher active={variant} onChange={selectVariant} />}
     </div>

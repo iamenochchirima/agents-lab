@@ -6,14 +6,6 @@ import { appPaths } from "./paths";
 
 export const router = createBrowserRouter([
   {
-    path: "/studio",
-    lazy: async () => {
-      const { StudioPrototypePage } = await import("../features/studio/StudioPrototypePage");
-      return { Component: StudioPrototypePage };
-    },
-    handle: { label: "Studio" },
-  },
-  {
     path: "/",
     Component: MainLayout,
     HydrateFallback: RouteHydrateFallback,
@@ -26,6 +18,14 @@ export const router = createBrowserRouter([
           return { Component: OverviewPage };
         },
         handle: { label: "Overview" },
+      },
+      {
+        path: "studio",
+        lazy: async () => {
+          const { StudioPrototypePage } = await import("../features/studio/StudioPrototypePage");
+          return { Component: StudioPrototypePage };
+        },
+        handle: { label: "Studio" },
       },
       {
         path: "coverage",
