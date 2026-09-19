@@ -233,6 +233,66 @@ test("Studio records a Memory revision when a keyed fact changes", async () => {
   });
 });
 
+test("Studio runs the Memory miss, duplicate, expiry, and procedural fixtures", async () => {
+  await withStudioApp(async (app) => {
+    const cases = [
+      {
+        idempotencyKey: "memory-miss-comparison-1",
+        experimentId: "compare-memory-misses",
+        scenarioId: "memory-retrieval-miss",
+        strategies: ["no-memory", "semantic-keyed-facts", "episodic-lexical"],
+        grades: ["fail", "fail", "fail"],
+      },
+      {
+        idempotencyKey: "memory-duplicate-comparison-1",
+        experimentId: "compare-memory-deduplication",
+        scenarioId: "memory-duplicate-preference",
+        strategies: ["no-memory", "semantic-keyed-facts"],
+        grades: ["fail", "pass"],
+      },
+      {
+        idempotencyKey: "memory-expiry-comparison-1",
+        experimentId: "compare-memory-expiry",
+        scenarioId: "memory-expired-preference",
+        strategies: ["no-memory", "semantic-keyed-facts"],
+        grades: ["fail", "fail"],
+      },
+      {
+        idempotencyKey: "memory-procedure-comparison-1",
+        experimentId: "compare-memory-procedures",
+        scenarioId: "memory-procedure-reuse",
+        strategies: ["no-memory", "procedural-cache"],
+        grades: ["fail", "pass"],
+      },
+    ] as const;
+
+    for (const memoryCase of cases) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/studio/comparisons",
+        payload: memoryCaseRequest(memoryCase),
+      });
+      assert.equal(response.statusCode, 202, memoryCase.experimentId);
+      const comparison = response.json();
+      assert.equal(comparison.status, "completed", memoryCase.experimentId);
+      assert.deepEqual(comparison.trials.map((trial: { manifest: { strategy: { id: string } } }) => trial.manifest.strategy.id), memoryCase.strategies);
+      assert.deepEqual(comparison.trials.map((trial: { result: { grade: { status: string } } }) => trial.result.grade.status), memoryCase.grades);
+      assert.equal(comparison.trials.every((trial: { context: { strategyId: string } }) => trial.context.strategyId === "full-history"), true);
+      assert.equal(comparison.trials.every((trial: { manifest: { fixedControlFingerprint: string } }) => trial.manifest.fixedControlFingerprint === comparison.trials[0].manifest.fixedControlFingerprint), true);
+
+      if (memoryCase.experimentId === "compare-memory-deduplication") {
+        assert.equal(comparison.trials[1].memory.decisions.some((decision: { operation: string }) => decision.operation === "noop"), true);
+      }
+      if (memoryCase.experimentId === "compare-memory-expiry") {
+        assert.equal(comparison.trials[1].memory.expiredRecordIds.includes("memory-expired-language"), true);
+      }
+      if (memoryCase.experimentId === "compare-memory-procedures") {
+        assert.deepEqual(comparison.trials[1].memory.retrievedRecordIds, ["memory-procedure-invoice"]);
+      }
+    }
+  });
+});
+
 test("Studio catalog exposes all harness areas without claiming planned implementations", async () => {
   await withStudioApp(async (app) => {
     const response = await app.inject({ method: "GET", url: "/api/studio/catalog" });
@@ -246,7 +306,14 @@ test("Studio catalog exposes all harness areas without claiming planned implemen
     assert.equal(catalog.components[3].id, "memory");
     assert.equal(catalog.components[3].status, "available");
     assert.deepEqual(catalog.components[3].strategies.map((strategy: { id: string }) => strategy.id), ["no-memory", "semantic-keyed-facts", "episodic-lexical", "working-memory", "procedural-cache"]);
-    assert.equal(catalog.components[3].experiments[0].id, "compare-memory-retrieval");
+    assert.deepEqual(catalog.components[3].experiments.map((experiment: { id: string }) => experiment.id), [
+      "compare-memory-retrieval",
+      "compare-memory-updates",
+      "compare-memory-misses",
+      "compare-memory-deduplication",
+      "compare-memory-expiry",
+      "compare-memory-procedures",
+    ]);
     assert.equal(JSON.stringify(catalog).includes("expectedAnswer"), false);
     assert.equal(JSON.stringify(catalog).includes("context-fact-language"), false);
   });
@@ -404,6 +471,29 @@ function memoryUpdateRequest(idempotencyKey = "memory-update-comparison-1"): Stu
     seed: "seed-memory-update-1",
     idempotencyKey,
   };
+}
+
+function memoryCaseRequest(memoryCase: {
+  readonly idempotencyKey: string;
+  readonly experimentId: string;
+  readonly scenarioId: string;
+  readonly strategies: readonly string[];
+}): StudioComparisonRequest {
+  return {
+    system: { id: "neutral-agent", version: "1" },
+    environment: { id: "deterministic-replay", version: "1" },
+    experiment: {
+      id: memoryCase.experimentId,
+      version: "1",
+      scenario: { id: memoryCase.scenarioId, version: "1" },
+      subject: {
+        component: "memory",
+        strategies: memoryCase.strategies.map((id) => ({ id, version: "1", parameters: {} })),
+      },
+    },
+    seed: `seed-${memoryCase.idempotencyKey}`,
+    idempotencyKey: memoryCase.idempotencyKey,
+  } as StudioComparisonRequest;
 }
 
 async function readDirectoryOrEmpty(path: string): Promise<readonly string[]> {

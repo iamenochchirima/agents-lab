@@ -11,6 +11,7 @@ import type {
   StudioEnvironmentProfile,
   StudioExperimentDefinition,
   StudioScenarioCase,
+  StudioStrategyDescriptor,
   StudioSystemDefinition,
 } from "./domain/types.js";
 
@@ -160,6 +161,144 @@ export const memoryUpdateExperiment: StudioExperimentDefinition = {
   ],
 };
 
+export const memoryMissScenario: StudioScenarioCase = {
+  id: "memory-retrieval-miss",
+  version: "1",
+  name: "Unrelated Memory is omitted",
+  task: "What language should the support agent use for my account?",
+  requiredMessageId: "memory-miss-no-transcript-source",
+  requiredMemoryRecordId: "memory-missing-language",
+  expectedAnswer: "No matching preference was retrieved.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-unrelated-invoice",
+    scope: "semantic",
+    content: "The account has an invoice dispute awaiting review.",
+    logicalKey: "invoice-status",
+    source: "fixture-memory",
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "retrieval-miss" },
+  }],
+};
+
+export const memoryMissExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-misses",
+  version: "1",
+  name: "Compare Memory retrieval misses",
+  hypothesis: "A scoped Memory policy should omit unrelated records instead of producing a false match.",
+  changedComponent: "memory",
+  scenario: { id: memoryMissScenario.id, version: memoryMissScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+    { id: "episodic-lexical", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryDuplicateScenario: StudioScenarioCase = {
+  id: "memory-duplicate-preference",
+  version: "1",
+  name: "Unchanged preference is deduplicated",
+  task: "Confirm the preferred support language for the account.",
+  requiredMessageId: "memory-duplicate-no-transcript-source",
+  requiredMemoryRecordId: "memory-duplicate-language",
+  expectedAnswer: "Preference: support-language = English",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-duplicate-language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "duplicate-preference" },
+  }],
+};
+
+export const memoryDuplicateExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-deduplication",
+  version: "1",
+  name: "Compare Memory deduplication",
+  hypothesis: "A keyed Memory policy should record an unchanged fact as a NOOP rather than create a second active record.",
+  changedComponent: "memory",
+  scenario: { id: memoryDuplicateScenario.id, version: memoryDuplicateScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryExpiryScenario: StudioScenarioCase = {
+  id: "memory-expired-preference",
+  version: "1",
+  name: "Expired preference is forgotten",
+  task: "What language should the support agent use for my account?",
+  requiredMessageId: "memory-expiry-no-transcript-source",
+  requiredMemoryRecordId: "memory-expired-language",
+  expectedAnswer: "The support language preference has expired.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-expired-language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    expiresAt: "2020-01-01T00:00:00.000Z",
+    createdAt: "2019-12-01T00:00:00.000Z",
+    metadata: { fixture: "expiry" },
+  }],
+};
+
+export const memoryExpiryExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-expiry",
+  version: "1",
+  name: "Compare Memory expiry",
+  hypothesis: "A retention-aware Memory policy should omit and then expire records past their explicit boundary.",
+  changedComponent: "memory",
+  scenario: { id: memoryExpiryScenario.id, version: memoryExpiryScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryProcedureScenario: StudioScenarioCase = {
+  id: "memory-procedure-reuse",
+  version: "1",
+  name: "Matching procedure is reusable",
+  task: "How should the agent resolve an invoice dispute?",
+  requiredMessageId: "memory-procedure-no-transcript-source",
+  requiredMemoryRecordId: "memory-procedure-invoice",
+  expectedAnswer: "Use the invoice-dispute procedure: verify the invoice and request approval.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-procedure-invoice",
+    scope: "procedural",
+    content: "Verify the invoice and request approval.",
+    logicalKey: "invoice-dispute",
+    source: "fixture-memory",
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "procedure-reuse" },
+  }],
+};
+
+export const memoryProcedureExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-procedures",
+  version: "1",
+  name: "Compare procedural Memory reuse",
+  hypothesis: "A procedural Memory policy should retrieve a matching reusable procedure without exposing it to unrelated tasks.",
+  changedComponent: "memory",
+  scenario: { id: memoryProcedureScenario.id, version: memoryProcedureScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "procedural-cache", version: "1", parameters: {} },
+  ],
+};
+
 const contextStrategyDescriptors = [
   {
     id: "full-history",
@@ -255,35 +394,14 @@ const componentDescriptors: readonly StudioComponentDescriptor[] = [
     summary: "Control what is retained, retrieved, consolidated, or forgotten.",
     status: "available",
     strategies: memoryStrategyDescriptors,
-    experiments: [{
-      id: memoryExperiment.id,
-      version: memoryExperiment.version,
-      name: memoryExperiment.name,
-      hypothesis: memoryExperiment.hypothesis,
-      scenario: {
-        id: memoryScenario.id,
-        version: memoryScenario.version,
-        name: memoryScenario.name,
-        task: memoryScenario.task,
-        intendedObservation: "Compare whether a previous preference is retrieved by the selected Memory policy.",
-        controls: ["scenario fixture", "full-history Context", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
-      },
-      strategies: memoryStrategyDescriptors,
-    }, {
-      id: memoryUpdateExperiment.id,
-      version: memoryUpdateExperiment.version,
-      name: memoryUpdateExperiment.name,
-      hypothesis: memoryUpdateExperiment.hypothesis,
-      scenario: {
-        id: memoryUpdateScenario.id,
-        version: memoryUpdateScenario.version,
-        name: memoryUpdateScenario.name,
-        task: memoryUpdateScenario.task,
-        intendedObservation: "Compare whether the new preference supersedes the seeded stale fact.",
-        controls: ["scenario fixture", "full-history Context", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
-      },
-      strategies: memoryUpdateExperiment.strategies.map((strategy) => memoryStrategyDescriptors.find((descriptor) => descriptor.id === strategy.id)!).filter(Boolean),
-    }],
+    experiments: [
+      memoryExperimentDescriptor(memoryExperiment, memoryScenario, "Compare whether a previous preference is retrieved by the selected Memory policy."),
+      memoryExperimentDescriptor(memoryUpdateExperiment, memoryUpdateScenario, "Compare whether the new preference supersedes the seeded stale fact."),
+      memoryExperimentDescriptor(memoryMissExperiment, memoryMissScenario, "Confirm unrelated records are omitted without a false match."),
+      memoryExperimentDescriptor(memoryDuplicateExperiment, memoryDuplicateScenario, "Confirm an unchanged keyed fact produces a NOOP."),
+      memoryExperimentDescriptor(memoryExpiryExperiment, memoryExpiryScenario, "Confirm an expired record is omitted and retired."),
+      memoryExperimentDescriptor(memoryProcedureExperiment, memoryProcedureScenario, "Confirm a matching procedural record is reusable."),
+    ],
   },
   plannedComponent("tool-use", 5, "Tool use", "Select, validate, execute, and recover from tool calls."),
   plannedComponent("computer-use", 6, "Computer use", "Observe and act on interactive interfaces, then verify and recover."),
@@ -345,7 +463,56 @@ export function resolveStudioCatalog(request: {
     }
     return { system: studioSystem, environment: replayEnvironment, experiment: memoryUpdateExperiment, scenario: memoryUpdateScenario } as const;
   }
+  const additionalMemoryExperiments = [
+    [memoryMissExperiment, memoryMissScenario],
+    [memoryDuplicateExperiment, memoryDuplicateScenario],
+    [memoryExpiryExperiment, memoryExpiryScenario],
+    [memoryProcedureExperiment, memoryProcedureScenario],
+  ] as const;
+  for (const [experiment, scenario] of additionalMemoryExperiments) {
+    if (request.experiment.id !== experiment.id || request.experiment.version !== experiment.version) continue;
+    if (request.experiment.scenario.id !== scenario.id || request.experiment.scenario.version !== scenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment, scenario } as const;
+  }
   throw new StudioCatalogError(`Unknown Studio experiment: ${request.experiment.id}@${request.experiment.version}.`);
+}
+
+function memoryExperimentDescriptor(
+  experiment: StudioExperimentDefinition,
+  scenario: StudioScenarioCase,
+  intendedObservation: string,
+): {
+  readonly id: string;
+  readonly version: string;
+  readonly name: string;
+  readonly hypothesis: string;
+  readonly scenario: {
+    readonly id: string;
+    readonly version: string;
+    readonly name: string;
+    readonly task: string;
+    readonly intendedObservation: string;
+    readonly controls: readonly string[];
+  };
+  readonly strategies: readonly StudioStrategyDescriptor[];
+} {
+  return {
+    id: experiment.id,
+    version: experiment.version,
+    name: experiment.name,
+    hypothesis: experiment.hypothesis,
+    scenario: {
+      id: scenario.id,
+      version: scenario.version,
+      name: scenario.name,
+      task: scenario.task,
+      intendedObservation,
+      controls: ["scenario fixture", "full-history Context", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
+    },
+    strategies: experiment.strategies.map((strategy) => memoryStrategyDescriptors.find((descriptor) => descriptor.id === strategy.id)).filter((descriptor) => descriptor !== undefined) as readonly StudioStrategyDescriptor[],
+  };
 }
 
 function messages(entries: readonly [ContextMessage["role"], string, string?][]): readonly ContextMessage[] {

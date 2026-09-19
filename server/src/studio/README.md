@@ -55,6 +55,10 @@ executable experiments:
 - `compare-context-retention@1` — varies Context retention for the old-fact case.
 - `compare-memory-retrieval@1` — varies Memory retrieval for a seeded preference.
 - `compare-memory-updates@1` — checks keyed-fact supersession for a changed preference.
+- `compare-memory-misses@1` — checks that unrelated records are omitted.
+- `compare-memory-deduplication@1` — checks keyed no-op behavior for unchanged facts.
+- `compare-memory-expiry@1` — checks omission and retirement after expiry.
+- `compare-memory-procedures@1` — checks matching procedural reuse.
 
 Memory records use four explicit scopes: working, episodic, semantic, and procedural.
 The local baselines use deterministic lexical matching and keyed revision rules. They

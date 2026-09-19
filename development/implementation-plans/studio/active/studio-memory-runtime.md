@@ -128,7 +128,7 @@ budgeted, and passed to the model.
       behaviour.
 - [x] Run Memory trials through the existing `StudioHarnessRuntime` and preserve the
       twelve-slot composition evidence.
-- [ ] Add fixed Memory scenarios for recall, update/conflict, retrieval miss,
+- [x] Add fixed Memory scenarios for recall, update/conflict, retrieval miss,
       duplicate memory, forgetting/expiry, and procedural reuse.
 - [x] Add Memory-specific grading, metrics, events, evidence files, and safe HTTP
       projections.
@@ -450,14 +450,14 @@ It must not claim exactly-once Memory writes.
 - [x] Add repository tests for atomic writes, journal replay, duplicate operations,
       corrupt state, and namespace isolation.
 - [x] Add runtime tests proving Memory evidence remains separate from Context evidence.
-- [ ] Add integration tests for the recall, update, miss, duplicate, expiry, and
+- [x] Add integration tests for the recall, update, miss, duplicate, expiry, and
       procedural cases.
-- [ ] Add comparison tests proving only Memory policy changes across slots.
+- [x] Add comparison tests proving only Memory policy changes across slots.
 - [x] Add restart and failure-injection tests before and after journal/snapshot writes.
-- [ ] Add cancellation and idempotency tests.
+- [x] Add cancellation and idempotency tests.
 - [x] Add deterministic replay tests for identical seed, fixture, policy, and turn
       sequence.
-- [ ] Add regression tests proving existing Context comparisons and Platform Lab
+- [x] Add regression tests proving existing Context comparisons and Platform Lab
       endpoints remain unchanged.
 
 ### 6. Documentation and inspection procedure
@@ -490,25 +490,25 @@ It must not claim exactly-once Memory writes.
 
 ### Integration tests
 
-- [ ] A Memory recall comparison executes through the existing server and returns
+- [x] A Memory recall comparison executes through the existing server and returns
       complete twelve-slot composition evidence.
-- [ ] An update/conflict comparison retrieves the latest active fact and records the
+- [x] An update/conflict comparison retrieves the latest active fact and records the
       superseded revision.
-- [ ] A retrieval miss does not fabricate a source or answer grade.
-- [ ] Duplicate writes do not create duplicate active records.
-- [ ] Expired records are omitted and the expiry decision is inspectable.
-- [ ] Procedural reuse retrieves only the matching procedure.
-- [ ] Context evidence shows exactly which Memory records reached the model-bound
+- [x] A retrieval miss does not fabricate a source or answer grade.
+- [x] Duplicate writes do not create duplicate active records.
+- [x] Expired records are omitted and the expiry decision is inspectable.
+- [x] Procedural reuse retrieves only the matching procedure.
+- [x] Context evidence shows exactly which Memory records reached the model-bound
       input, while Memory evidence shows candidates that Context omitted.
-- [ ] Restart after a persisted write reconstructs the same Memory state.
-- [ ] Journal replay after a simulated interrupted snapshot is deterministic.
-- [ ] Corrupt state produces recovery-required evidence rather than an empty store.
+- [x] Restart after a persisted write reconstructs the same Memory state.
+- [x] Journal replay after a simulated interrupted snapshot is deterministic.
+- [x] Corrupt state produces recovery-required evidence rather than an empty store.
 - [ ] Failure injection before retrieval, after journal append, after snapshot write,
       and during evidence publication remains recoverable.
-- [ ] Cancellation before and during Memory persistence records the correct outcome.
-- [ ] Repeated idempotency keys return the original comparison without duplicate
+- [x] Cancellation before and during Memory persistence records the correct outcome.
+- [x] Repeated idempotency keys return the original comparison without duplicate
       Memory operations.
-- [ ] Existing Context comparison tests and Platform Lab tests continue to pass.
+- [x] Existing Context comparison tests and Platform Lab tests continue to pass.
 
 ### Manual acceptance checks
 
