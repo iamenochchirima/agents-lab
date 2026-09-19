@@ -58,6 +58,25 @@ test("the Restate fake model distinguishes safe retry from ambiguous outcome", a
   assert.equal(retrySuccess.kind, "success");
 });
 
+test("the Restate fake model exposes a bounded context-overflow recovery fixture", async () => {
+  const model = new FakeRestateModel();
+  const overflow = await model.complete({ ...input, model: "fake-context-overflow" }, new AbortController().signal);
+  const recovered = await model.complete({ ...input, model: "fake-context-overflow", attempt: 2 }, new AbortController().signal);
+  const summary = await model.complete({ ...input, model: "fake-context-overflow", runId: "restate-model-test:context:1" }, new AbortController().signal);
+
+  assert.deepEqual(overflow, {
+    kind: "failure",
+    code: "FAKE_CONTEXT_OVERFLOW",
+    message: "The deterministic adapter simulates a context overflow.",
+    failureKind: "provider",
+    retryable: false,
+    requestSent: true,
+    contextOverflow: true,
+  });
+  assert.equal(recovered.kind, "success");
+  assert.equal(summary.kind, "success");
+});
+
 test("the fake tool fixture requires the tool result before returning final text", async () => {
   const model = new FakeRestateModel();
   const toolInput: ModelRequest = {
@@ -180,6 +199,26 @@ test("OpenRouter adapter preserves safe usage metadata and does not put the key 
     toolCalls: [],
     providerRequestId: "provider-request-1",
     usage: { inputTokens: 4, outputTokens: 6, totalTokens: 10 },
+  });
+});
+
+test("OpenRouter classifies a provider context rejection as safely retryable after compaction", async () => {
+  const model = new OpenRouterRestateModel({
+    apiKey: "test-openrouter-secret",
+    baseUrl: "https://openrouter.ai/api/v1",
+    fetchImpl: async () => new Response(JSON.stringify({ error: { code: "context_length_exceeded", message: "maximum context length exceeded" } }), { status: 400 }),
+  });
+
+  const result = await model.complete({ ...input, provider: "openrouter", model: "openai/test-model" }, new AbortController().signal);
+
+  assert.deepEqual(result, {
+    kind: "failure",
+    code: "OPENROUTER_CONTEXT_OVERFLOW",
+    message: "OpenRouter rejected the request because its context window was exceeded.",
+    failureKind: "provider",
+    retryable: false,
+    requestSent: true,
+    contextOverflow: true,
   });
 });
 

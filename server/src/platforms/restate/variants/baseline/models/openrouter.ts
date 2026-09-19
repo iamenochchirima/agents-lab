@@ -81,6 +81,15 @@ export class OpenRouterRestateModel implements ModelAdapter {
     }
     const body = parsed.value;
     if (!response.ok) {
+      const providerError = readProviderError(body);
+      const providerErrorText = providerError === null ? "" : `${providerError.code ?? ""} ${providerError.message}`;
+      if ((response.status === 400 || response.status === 413) && isContextOverflowResponse(providerErrorText)) {
+        return providerFailure(
+          "OPENROUTER_CONTEXT_OVERFLOW",
+          "OpenRouter rejected the request because its context window was exceeded.",
+          { contextOverflow: true },
+        );
+      }
       const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
       return {
         kind: "failure",
@@ -122,7 +131,7 @@ export class OpenRouterRestateModel implements ModelAdapter {
   }
 }
 
-function providerFailure(code: string, message: string): ModelCallResult {
+function providerFailure(code: string, message: string, options: { readonly contextOverflow?: boolean } = {}): ModelCallResult {
   return {
     kind: "failure",
     code: boundedText(code, MAX_PROVIDER_ERROR_CODE_BYTES),
@@ -130,6 +139,7 @@ function providerFailure(code: string, message: string): ModelCallResult {
     failureKind: "provider",
     retryable: false,
     requestSent: true,
+    ...(options.contextOverflow ? { contextOverflow: true } : {}),
   };
 }
 
@@ -241,6 +251,19 @@ function objectValue(value: unknown, key: string): unknown {
 function stringValue(value: unknown, key: string): string | null {
   const result = objectValue(value, key);
   return typeof result === "string" ? result : null;
+}
+
+function readProviderError(value: unknown): { readonly code: string | null; readonly message: string } | null {
+  const error = objectValue(value, "error");
+  if (!error || typeof error !== "object") return null;
+  const code = objectValue(error, "code");
+  const message = objectValue(error, "message");
+  if (typeof message !== "string") return null;
+  return { code: typeof code === "string" ? code : null, message: boundedText(message, MAX_PROVIDER_ERROR_MESSAGE_BYTES) };
+}
+
+function isContextOverflowResponse(value: string): boolean {
+  return /context[_ -]?length|context window|maximum context|maximum token|too many tokens|prompt.{0,20}(too long|large)|token.{0,20}(limit|exceed)/i.test(value);
 }
 
 function numberValue(value: unknown, key: string): number | null {

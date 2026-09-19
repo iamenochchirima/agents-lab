@@ -82,6 +82,8 @@ export interface ModelFailure {
   readonly failureKind: RunError["failureKind"];
   readonly retryable: boolean;
   readonly requestSent: boolean;
+  /** The provider rejected the request before model generation because the input was too large. */
+  readonly contextOverflow?: boolean;
 }
 
 export type ModelCallResult = ModelSuccess | ModelFailure;

@@ -43,6 +43,48 @@ export class FakeRestateModel implements ModelAdapter {
       };
     }
 
+    if (input.model === "fake-context-overflow") {
+      // Context summarization is a model operation too. Keep it deterministic
+      // while making the first actual request fail with a provider-style,
+      // safely retryable context rejection.
+      if (input.runId.includes(":context:")) {
+        return {
+          kind: "success",
+          output: "Earlier context summary.",
+          toolCalls: [],
+          providerRequestId: null,
+          usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+        };
+      }
+      if (input.prompt === "seed context") {
+        return {
+          kind: "success",
+          output: "Seed context response.",
+          toolCalls: [],
+          providerRequestId: null,
+          usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
+        };
+      }
+      if (input.attempt === 1) {
+        return {
+          kind: "failure",
+          code: "FAKE_CONTEXT_OVERFLOW",
+          message: "The deterministic adapter simulates a context overflow.",
+          failureKind: "provider",
+          retryable: false,
+          requestSent: true,
+          contextOverflow: true,
+        };
+      }
+      return {
+        kind: "success",
+        output: `Fake response after context recovery: ${input.prompt}`,
+        toolCalls: [],
+        providerRequestId: null,
+        usage: { inputTokens: 18, outputTokens: 7, totalTokens: 25 },
+      };
+    }
+
     if (input.model === "fake-pre-dispatch-retry" || (input.model === "fake-pre-dispatch-retry-once" && input.attempt === 1)) {
       return {
         kind: "failure",
@@ -119,7 +161,8 @@ export class FakeRestateModel implements ModelAdapter {
       input.model !== "fake-delay" &&
       input.model !== "fake-tool-call-delay" &&
       input.model !== "fake-pre-dispatch-retry-once" &&
-      input.model !== "fake-context"
+      input.model !== "fake-context" &&
+      input.model !== "fake-context-overflow"
     ) {
       return {
         kind: "failure",

@@ -52,6 +52,7 @@ export const baselineWorkflow = restate.workflow({
       let modelAttemptCount = 0;
       let toolCallCount = 0;
       let toolAttemptCount = 0;
+      let contextRecoveryUsed = false;
       let usage = emptyUsage();
       let usageObserved = false;
       let messages: ModelMessage[] = [
@@ -133,7 +134,9 @@ export const baselineWorkflow = restate.workflow({
             requestSent: false,
           };
           const maxModelAttempts = positiveInteger(input.modelRetryAttempts ?? 0, RESTATE_DEFAULT_RUN_MAX_RETRY_ATTEMPTS);
-          for (let attempt = 1; attempt <= maxModelAttempts; attempt += 1) {
+          let attempt = 0;
+          while (true) {
+            attempt += 1;
             modelAttemptForRound = attempt;
             modelAttemptCount += 1;
             await record("ModelRequested", {
@@ -144,6 +147,76 @@ export const baselineWorkflow = restate.workflow({
               toolCount: toolDefinitions.length,
             });
             modelResult = await requestModel(ctx, input, round, attempt, messages, toolDefinitions);
+
+            if (modelResult.kind === "failure" && isContextOverflow(modelResult) && input.context && !contextRecoveryUsed) {
+              contextRecoveryUsed = true;
+              await record("ContextOverflowDetected", {
+                code: modelResult.code,
+                round,
+                attempt,
+                requestSent: modelResult.requestSent,
+              });
+              const recoveryPhase = {
+                name: `context_recovery_${round}`,
+                startedAt: await ctx.date.toJSON(),
+                finishedAt: null as string | null,
+              };
+              phases.push(recoveryPhase);
+              await record("ContextRecoveryStarted", {
+                sessionId: input.context.sessionId,
+                turnId: input.context.turnId,
+                round,
+              });
+              try {
+                const recovered = await prepareContextSnapshot(ctx, input, {
+                  forceCompaction: true,
+                  trigger: "provider_overflow",
+                });
+                messages = recovered.messages.map(toModelMessage);
+                recoveryPhase.finishedAt = await ctx.date.toJSON();
+                await record("ContextRecoveryPrepared", {
+                  sessionId: input.context.sessionId,
+                  turnId: input.context.turnId,
+                  snapshotId: recovered.snapshotId,
+                  sessionRevision: recovered.sessionRevision,
+                  compactionRevision: recovered.compactionRevision,
+                  inputTokens: recovered.budget.inputTokens,
+                  remainingTokens: recovered.budget.remainingTokens,
+                  remainingPercent: recovered.budget.remainingPercent,
+                  pressure: recovered.budget.pressure,
+                  quality: recovered.budget.quality,
+                  compacted: recovered.compaction !== null,
+                  compaction: recovered.compaction,
+                });
+                await record("ModelRetryScheduled", {
+                  provider: input.model.provider,
+                  model: input.model.model,
+                  attempt,
+                  nextAttempt: attempt + 1,
+                  round,
+                  code: modelResult.code,
+                  reason: "context_overflow",
+                });
+                continue;
+              } catch (error) {
+                recoveryPhase.finishedAt = await ctx.date.toJSON();
+                await record("ContextRecoveryFailed", {
+                  code: "CONTEXT_RECOVERY_FAILED",
+                  message: boundedEventText(error instanceof Error ? error.message : "Context recovery failed.", 512),
+                  round,
+                });
+                modelResult = {
+                  kind: "failure",
+                  code: "CONTEXT_RECOVERY_FAILED",
+                  message: "The context could not be compacted safely after the provider rejected the request.",
+                  failureKind: "internal",
+                  retryable: false,
+                  requestSent: false,
+                };
+                break;
+              }
+            }
+
             if (modelResult.kind !== "failure" || !modelResult.retryable || modelResult.requestSent) break;
             if (attempt < maxModelAttempts) {
               await record("ModelRetryScheduled", {
@@ -154,7 +227,9 @@ export const baselineWorkflow = restate.workflow({
                 round,
                 code: modelResult.code,
               });
+              continue;
             }
+            break;
           }
           await completePhase(modelPhase);
 
@@ -457,10 +532,12 @@ async function requestModel(
 async function prepareContextSnapshot(
   ctx: restate.WorkflowContext,
   input: RestateWorkflowInput,
+  options: { readonly forceCompaction?: boolean; readonly trigger?: "preflight" | "provider_overflow" } = {},
 ): Promise<Awaited<ReturnType<ContextService["prepareTurn"]>>["snapshot"]> {
   if (!input.context) throw new Error("Context preparation requires a context input.");
+  const stepSuffix = options.trigger === "provider_overflow" ? ".provider-overflow" : "";
   return ctx.run(
-    `context.prepare.${stableStepId(input.context.sessionId)}.${stableStepId(input.context.turnId)}`,
+    `context.prepare.${stableStepId(input.context.sessionId)}.${stableStepId(input.context.turnId)}${stepSuffix}`,
     async () => {
       const store = new ContextSessionStore(input.context!.rootDirectory);
       const context = new ContextService(store, new CharacterTokenEstimator());
@@ -485,7 +562,7 @@ async function prepareContextSnapshot(
           return result.output;
         },
       };
-      return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer)).snapshot;
+      return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer, options)).snapshot;
     },
     { maxRetryAttempts: 1 },
   );
@@ -567,6 +644,14 @@ function contextUsagePayload(input: RestateWorkflowInput, usage: RunUsage, round
     quality: budget.quality,
     tokenizerBasis: budget.tokenizerBasis,
   };
+}
+
+function isContextOverflow(result: ModelCallResult): boolean {
+  return result.kind === "failure" && (
+    result.contextOverflow === true ||
+    result.code === "OPENROUTER_CONTEXT_OVERFLOW" ||
+    result.code === "FAKE_CONTEXT_OVERFLOW"
+  );
 }
 
 function stableStepId(value: string): string {

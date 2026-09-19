@@ -190,6 +190,69 @@ test("the workflow prepares the canonical context snapshot before its model requ
   }
 });
 
+test("the workflow performs one bounded compaction retry after a provider context overflow", async () => {
+  const rootDirectory = await mkdtemp(join(tmpdir(), "agentlab-restate-context-recovery-"));
+  const sessionId = "restate-context-recovery";
+  const store = new ContextSessionStore(rootDirectory);
+  try {
+    await store.create({
+      sessionId,
+      platform: "restate",
+      variant: "baseline",
+      model: "fake-context-overflow",
+      systemInstruction: "Preserve the conversation.",
+      contextWindowTokens: 2_048,
+      reservedOutputTokens: 256,
+      safetyMarginTokens: 128,
+      compactionThresholdPercent: 20,
+      recentMessageGroups: 0,
+      now: "2026-09-16T12:00:00.000Z",
+    });
+
+    const seed = await store.admitTurn(sessionId, "restate-overflow-seed", "seed context", "2026-09-16T12:00:01.000Z", "overflow-seed");
+    const seedResult = await runWorkflow("fake-context-overflow", {
+      prompt: "seed context",
+      runId: "restate-overflow-seed",
+      context: { rootDirectory, sessionId, turnId: seed.turn.turnId },
+      tools: { enabledNames: [], maxRounds: 1, maxCalls: 1 },
+    });
+    assert.equal(seedResult.status, "completed");
+    await store.settleTurn(sessionId, seed.turn.turnId, { status: "completed", output: seedResult.output });
+
+    const current = await store.admitTurn(sessionId, "restate-overflow-current", "recover after overflow", "2026-09-16T12:00:02.000Z", "overflow-current");
+    const result = await runWorkflow("fake-context-overflow", {
+      prompt: "recover after overflow",
+      runId: "restate-overflow-current",
+      context: { rootDirectory, sessionId, turnId: current.turn.turnId },
+      tools: { enabledNames: [], maxRounds: 1, maxCalls: 1 },
+    });
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.output, "Fake response after context recovery: recover after overflow");
+    assert.equal(result.metrics.modelCallCount, 1);
+    assert.equal(result.metrics.modelAttemptCount, 2);
+    assert.deepEqual(result.eventIntents.filter((event) => [
+      "ContextOverflowDetected",
+      "ContextRecoveryStarted",
+      "ContextRecoveryPrepared",
+      "ModelRetryScheduled",
+    ].includes(event.kind)).map((event) => event.kind), [
+      "ContextOverflowDetected",
+      "ContextRecoveryStarted",
+      "ContextRecoveryPrepared",
+      "ModelRetryScheduled",
+    ]);
+    assert.equal(result.eventIntents.find((event) => event.kind === "ModelRetryScheduled")?.payload.reason, "context_overflow");
+
+    const snapshot = await store.latestSnapshot(sessionId);
+    assert.equal(snapshot?.compaction?.trigger, "provider_overflow");
+    assert.equal(snapshot?.messages.some((message) => message.source === "compaction-summary"), true);
+    assert.equal((await store.readTurn(sessionId, current.turn.turnId))?.contextSnapshotId, snapshot?.snapshotId);
+  } finally {
+    await rm(rootDirectory, { recursive: true, force: true });
+  }
+});
+
 test("the workflow prepares a later Restate turn from the settled session transcript", async () => {
   const rootDirectory = await mkdtemp(join(tmpdir(), "agentlab-restate-context-continuation-"));
   const sessionId = "restate-context-continuation";
