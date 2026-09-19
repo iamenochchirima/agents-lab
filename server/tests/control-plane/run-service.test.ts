@@ -29,7 +29,7 @@ import type {
 class FakeRunner implements PlatformRunner {
   readonly platform = "temporal" as const;
   readonly variant = "baseline" as const;
-  state: "running" | "completed" | "cancelled" = "completed";
+  state: "running" | "completed" | "failed" | "cancelled" = "completed";
   unavailable = false;
   unavailableOnFirstInspection = false;
   missingExecution = false;
@@ -271,6 +271,37 @@ test("a different client turn cannot overtake an active session turn", async () 
     });
     assert.equal(replay.runId, first.runId);
     assert.equal(runner.startCalls, 1);
+  });
+});
+
+test("a new turn after terminal failure preserves the failed turn", async () => {
+  await withService(async (service, store, runner) => {
+    runner.state = "failed";
+    const first = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-after-failure",
+      clientTurnId: "client-turn-failed",
+      task: { kind: "prompt", prompt: "Fail this turn" },
+      model: { provider: "fake", model: "fake-success" },
+    });
+    assert.equal(first.status, "failed");
+
+    runner.state = "completed";
+    const second = await service.createRun({
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-after-failure",
+      clientTurnId: "client-turn-after-failure",
+      task: { kind: "prompt", prompt: "Start a new turn" },
+      model: { provider: "fake", model: "fake-success" },
+    });
+
+    assert.notEqual(second.runId, first.runId);
+    assert.equal(first.result?.error?.failureKind, "provider");
+    assert.equal(second.status, "completed");
+    assert.equal((await store.readSnapshot(first.runId)).result?.status, "failed");
+    assert.equal((await store.readSnapshot(second.runId)).result?.status, "completed");
   });
 });
 
@@ -592,6 +623,7 @@ function eventsFor(runId: string, state: FakeRunner["state"]): readonly RunEvent
   ];
   if (state === "running") return base;
   if (state === "cancelled") return [...base, event(runId, 3, "AgentCancelled"), event(runId, 4, "RunCancelled")];
+  if (state === "failed") return [...base, event(runId, 3, "ModelFailed"), event(runId, 4, "RunFailed")];
   return [...base, event(runId, 3, "ModelCompleted"), event(runId, 4, "AgentCompleted"), event(runId, 5, "RunCompleted")];
 }
 
@@ -607,7 +639,7 @@ function event(runId: string, sourceSequence: number, kind: string, source = "te
 }
 
 function resultFor(runId: string, state: Exclude<FakeRunner["state"], "running">): RunResult {
-  const status = state === "cancelled" ? "cancelled" : "completed";
+  const status = state === "cancelled" ? "cancelled" : state === "failed" ? "failed" : "completed";
   return {
     schemaVersion: 1,
     runId,
@@ -615,7 +647,11 @@ function resultFor(runId: string, state: Exclude<FakeRunner["state"], "running">
     startedAt: "2026-09-15T08:00:00.000Z",
     finishedAt: "2026-09-15T08:00:01.000Z",
     output: status === "completed" ? "fake output" : null,
-    error: status === "cancelled" ? { code: "RUN_CANCELLED", message: "cancelled", failureKind: "cancelled", retryable: false } : null,
+    error: status === "cancelled"
+      ? { code: "RUN_CANCELLED", message: "cancelled", failureKind: "cancelled", retryable: false }
+      : status === "failed"
+        ? { code: "MODEL_FAILED", message: "model failed", failureKind: "provider", retryable: false }
+        : null,
     attemptCount: 1,
     usage: { inputTokens: null, outputTokens: null, totalTokens: null },
   };
