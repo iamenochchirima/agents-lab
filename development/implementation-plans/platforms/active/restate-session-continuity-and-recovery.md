@@ -311,6 +311,19 @@ as a test dependency.
 - Native validation passed: `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 pnpm
   --filter @agent-harness-lab/lab-server run test:restate` (`44 passed, 1 skipped`).
 
+**2026-09-19T22:26:00+02:00 — browser recovery state made inspectable**
+
+- Restate Chat now opens the run details section automatically for
+  `reconciliation_required` runs and gives the user an explicit `New chat` recovery
+  action instead of presenting the result as an ordinary failed answer.
+- Restate native workflow key, invocation ID, native status, retry count, and last
+  observation are available under a collapsed Native execution section for normal
+  runs and recovery states.
+- Browser acceptance now covers recovery-required rendering, the native details fields,
+  and clearing the unresolved run through the explicit new-chat action.
+- Validation passed: `node --test apps/web/tests/browser/platform-chat.browser.test.mjs`
+  (`5 passed`).
+
 ## Scope
 
 - [ ] Complete the Restate baseline end to end; session continuity is a foundation, not

@@ -177,6 +177,36 @@ test("Restate Chat continues a session across workflow turns and requires a mode
   }
 });
 
+test("Restate Chat exposes recovery-required runs and native execution details", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+  fixture.setMode("recovery");
+
+  try {
+    await navigate(browser.cdp, "/platforms/restate/chat");
+    await waitForText(browser.cdp, "Ready");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Recover this outcome.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Run outcome needs recovery.");
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-run-details small")?.textContent?.trim()'), "reconciliation required");
+
+    await clickSummary(browser.cdp, "Native execution");
+    const nativeDetails = await browser.cdp.evaluate("document.querySelector('.chat-activity[open]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? ''");
+    assert.match(nativeDetails, /agentlab:run-restate-1/);
+    assert.match(nativeDetails, /inv-restate-1/);
+    assert.match(nativeDetails, /completed/);
+
+    await browser.cdp.evaluate('document.querySelector("[role=alert] button")?.click()');
+    await waitForText(browser.cdp, "Start a conversation");
+    assert.equal(await browser.cdp.evaluate("document.querySelector('.chat-run-details') === null"), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Platform Chat opens for every registered platform", async () => {
   const browser = await openBrowser();
   await installFixture(browser.cdp);
@@ -297,7 +327,7 @@ async function installFixture(cdp) {
       state.runReads += 1;
       const runReads = (state.runReadsById.get(runId) ?? 0) + 1;
       state.runReadsById.set(runId, runReads);
-      const status = request.platform === "restate" ? "completed" : state.mode === "cancel"
+      const status = request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel"
         ? (state.cancelled ? "cancelled" : "running")
         : runReads === 1 ? "running" : "completed";
       await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId) });
@@ -313,7 +343,7 @@ async function installFixture(cdp) {
         return;
       }
       const runReads = state.runReadsById.get(runId) ?? 0;
-      const run = makeRun(request, request.platform === "restate" ? "completed" : state.mode === "cancel" && !state.cancelled ? "running" : state.mode === "cancel" ? "cancelled" : runReads > 1 ? "completed" : "running", runId);
+      const run = makeRun(request, request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel" && !state.cancelled ? "running" : state.mode === "cancel" ? "cancelled" : runReads > 1 ? "completed" : "running", runId);
       await fulfill(cdp, event.requestId, { status: 200, body: { runId: run.runId, events: run.events, nextSequence: run.events.at(-1)?.recordedSequence ?? 0, hasMore: false, done: run.result !== null } });
       return;
     }
@@ -341,7 +371,9 @@ function makeRun(request, status, runIdOverride) {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
   const events = platform === "restate"
-    ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
+    ? status === "reconciliation_required"
+      ? [event(runId, 1, "RunSubmissionOutcomeUnknown", platform), event(runId, 2, "RunReconciliationRequired", platform)]
+      : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
     : [
         event(runId, 1, "AgentStarted", platform),
         event(runId, 2, "ModelCallStarted", platform),
@@ -352,13 +384,18 @@ function makeRun(request, status, runIdOverride) {
       ];
   const isSessionPlatform = platform === "temporal" || platform === "restate";
   const sessionId = request.sessionId ?? "session-chat";
-  const terminal = status === "completed" || status === "cancelled";
+  const terminal = status === "completed" || status === "cancelled" || status === "reconciliation_required";
   const result = terminal ? {
     runId,
     status,
     finishedAt: "2026-09-16T12:00:00.000Z",
     output: status === "completed" ? platform === "temporal" ? "The calculator result is 42." : "Restate fixture completed." : null,
-    error: null,
+    error: status === "reconciliation_required" ? {
+      code: "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
+      message: "Restate did not confirm whether the workflow submission was accepted.",
+      failureKind: "outcome_unknown",
+      retryable: true,
+    } : null,
     attemptCount: 1,
     usage: { inputTokens: 8000, outputTokens: 100, totalTokens: 8100 },
   } : null;
@@ -377,7 +414,7 @@ function makeRun(request, status, runIdOverride) {
       ...(isSessionPlatform ? { context: { sessionId, turnId: request.clientTurnId ?? "turn-chat", clientTurnId: request.clientTurnId, snapshotId: `snapshot-${runId}` } } : {}),
     },
     events,
-    executionReference: { platform, variant: "baseline", executionId: runId, native: { fixture: true } },
+    executionReference: { platform, variant: "baseline", executionId: runId, native: platform === "restate" ? { workflowKey: `agentlab:${runId}`, invocationId: "inv-restate-1", nativeStatus: status === "reconciliation_required" ? "completed" : "completed", retryCount: 1, lastModifiedAt: "2026-09-16T12:00:00.000Z" } : { fixture: true } },
     result,
     trajectory: terminal && platform === "temporal" ? { schemaVersion: 1, runId, phases: [] } : null,
     metrics: terminal && platform === "temporal" ? { schemaVersion: 1, runId, durationMs: 0, eventCount: events.length } : null,

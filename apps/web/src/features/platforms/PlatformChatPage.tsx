@@ -463,7 +463,7 @@ export function PlatformChatPage() {
 
           {error && !latestRun && <p className="chat-availability-error" role="status">{error}</p>}
           {latestRun?.context && <ContextBudgetMeter context={latestRun.context} />}
-          {latestRun && <ChatRunDetails error={error} events={latestEvents} run={latestRun} />}
+          {latestRun && <ChatRunDetails error={error} events={latestEvents} onNewChat={newConversation} run={latestRun} />}
         </aside>
       </main>
     </div>
@@ -510,14 +510,22 @@ function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
   return <div aria-live="polite" className={`chat-tool-activity chat-tool-${state}`} role="status"><Wrench aria-hidden="true" size={13} /> {label}</div>;
 }
 
-function ChatRunDetails({ error, events, run }: { error: string | null; events: readonly RunEvent[]; run: RunView }) {
+function ChatRunDetails({ error, events, onNewChat, run }: { error: string | null; events: readonly RunEvent[]; onNewChat: () => void; run: RunView }) {
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
+  const native = run.executionReference?.platform === "restate" ? run.executionReference.native : null;
   return (
-    <details className="chat-run-details" open={run.status === "running" || run.status === "queued"}>
+    <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "reconciliation_required"}>
       <summary><span>Run details</span><small>{run.status.replaceAll("_", " ")}</small></summary>
       <div className="chat-run-details-body">
         {error && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {error}</p>}
+        {run.status === "reconciliation_required" && (
+          <div className="chat-availability-error" role="alert">
+            <CircleAlert aria-hidden="true" size={14} />
+            <span>Run outcome needs recovery. Start a new chat before sending another turn.</span>
+            <button className="chat-retry-button" onClick={onNewChat} type="button">New chat</button>
+          </div>
+        )}
         <dl className="chat-run-meta">
           <div><dt>Run</dt><dd title={run.runId}>{run.runId}</dd></div>
           <div><dt>Platform status</dt><dd>{formatRunStatus(run.status)}</dd></div>
@@ -525,6 +533,7 @@ function ChatRunDetails({ error, events, run }: { error: string | null; events: 
           <div><dt>Events</dt><dd>{events.length}</dd></div>
           <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
         </dl>
+        {native && <NativeRunDetails native={native} />}
         {run.projection.state === "stale" && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {run.projection.reason ?? "The latest platform state is unavailable."}</p>}
         <details className="chat-activity" open={toolEvents.length > 0}>
           <summary><Wrench aria-hidden="true" size={13} /> Tool activity <small>{toolEvents.length}</small></summary>
@@ -539,6 +548,25 @@ function ChatRunDetails({ error, events, run }: { error: string | null; events: 
           <ul>{evidenceFiles.map((fileName) => <li key={fileName}><a href={getRunEvidenceUrl(run.runId, fileName)} rel="noreferrer" target="_blank">{fileName}</a></li>)}</ul>
         </details>
       </div>
+    </details>
+  );
+}
+
+function NativeRunDetails({ native }: { native: Record<string, unknown> }) {
+  const fields = [
+    { label: "Workflow", value: native.workflowKey },
+    { label: "Invocation", value: native.invocationId },
+    { label: "Native status", value: native.nativeStatus },
+    { label: "Retries", value: native.retryCount },
+    { label: "Last observed", value: native.lastModifiedAt },
+  ].flatMap(({ label, value }) => typeof value === "string" || typeof value === "number" ? [[label, value] as const] : []);
+  if (fields.length === 0) return null;
+  return (
+    <details className="chat-activity">
+      <summary><span>Native execution</span><small>Restate</small></summary>
+      <dl className="chat-run-meta">
+        {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd title={String(value)}>{String(value)}</dd></div>)}
+      </dl>
     </details>
   );
 }
