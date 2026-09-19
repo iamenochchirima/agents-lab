@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T00:21:06+02:00
+**Last updated:** 2026-09-20T00:24:58+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -703,6 +703,13 @@ what was observed, the exact validation command, and what remains.
   Validation passed: Python protocol/service tests `29 passed`; TypeScript protocol and
   adapter tests `8 passed`; `git diff --check` passed. Graph continuation, recovery,
   context, and browser work remain.
+
+- **2026-09-20T00:24:58+02:00 — native checkpoint continuation implemented.** A later
+  turn now loads the previous settled LangGraph checkpoint, appends only its new user
+  message, resets per-turn counters, and emits a bounded `CheckpointLoaded` event.
+  Added a service test proving a second `fake-context` turn remembers data from the
+  first turn without using a shared transcript snapshot. The focused Python suite now
+  covers this native continuation path; recovery and context reconciliation remain.
 
 ## Commit discipline
 

@@ -240,6 +240,34 @@ def test_service_reuses_a_duplicate_client_turn_by_fingerprint(tmp_path: Path) -
         assert second.json()["idempotent"] is True
 
 
+def test_service_continues_a_second_turn_from_the_native_checkpoint(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        first = start_payload("run-native-turn-1", "fake-context")
+        first.update({
+            "sessionId": "session-native-continuity",
+            "clientTurnId": "turn-1",
+            "threadId": thread_id_for_session("session-native-continuity"),
+            "prompt": "Remember conformance-4318.",
+        })
+        assert client.post("/v1/runs", json=first).status_code == 202
+        first_inspection = wait_for_terminal(client, "langgraph:run-native-turn-1")
+        assert first_inspection["result"]["output"] == "Stored the test value."
+
+        second = start_payload("run-native-turn-2", "fake-context")
+        second.update({
+            "sessionId": "session-native-continuity",
+            "clientTurnId": "turn-2",
+            "threadId": thread_id_for_session("session-native-continuity"),
+            "prompt": "What value did you remember?",
+        })
+        assert client.post("/v1/runs", json=second).status_code == 202
+        second_inspection = wait_for_terminal(client, "langgraph:run-native-turn-2")
+        assert second_inspection["result"]["output"] == "conformance-4318"
+        loaded = next(event for event in second_inspection["events"] if event["kind"] == "CheckpointLoaded")
+        assert loaded["payload"]["source"] == "langgraph-checkpoint"
+        assert loaded["payload"]["messageCount"] >= 4
+
+
 def test_service_records_deterministic_failure_and_unknown_outcomes(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         pre_dispatch = client.post("/v1/runs", json=start_payload("run-pre-dispatch-failure", "fake-pre-dispatch-failure"))

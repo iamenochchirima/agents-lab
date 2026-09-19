@@ -150,18 +150,10 @@ class LangGraphService:
                     "configurable": {"thread_id": request.thread_id},
                     "run_id": request.run_id,
                 }
+                checkpoint = graph.get_state(graph_config)
+                graph_input = graph_input_for_turn(request, initial_messages, checkpoint, emit)
                 for part in graph.stream(
-                    {
-                        "prompt": request.prompt,
-                        "system_instruction": request.system_instruction,
-                        "messages": initial_messages,
-                        "output": "",
-                        "model_provider": request.model.provider,
-                        "model_name": request.model.model,
-                        "node": "",
-                        "attempt_count": 0,
-                        "usage": usage,
-                    },
+                    graph_input,
                     graph_config,
                     stream_mode=["updates", "checkpoints", "tasks"],
                     version="v2",
@@ -382,6 +374,69 @@ def fingerprint(request: dict[str, Any]) -> str:
         )
     }
     return hashlib.sha256(canonical_json(immutable).encode()).hexdigest()
+
+
+def graph_input_for_turn(
+    request: StartRunRequest,
+    initial_messages: list[dict[str, Any]],
+    checkpoint: Any,
+    emit: Callable[[str, dict[str, Any]], None],
+) -> dict[str, Any]:
+    """Build one turn's graph input from the existing native thread when present.
+
+    LangGraph checkpoint state is the native short-term transcript for this service.
+    A later turn must not replace it with a fresh context snapshot or replay the
+    previous user message. Per-turn counters are reset while the message history is
+    carried forward explicitly so the graph's state contract remains inspectable.
+    """
+
+    values = getattr(checkpoint, "values", None)
+    previous_messages = values.get("messages") if isinstance(values, dict) else None
+    if not isinstance(previous_messages, list) or not values.get("output"):
+        return {
+            "prompt": request.prompt,
+            "system_instruction": request.system_instruction,
+            "messages": initial_messages,
+            "output": "",
+            "model_provider": request.model.provider,
+            "model_name": request.model.model,
+            "node": "",
+            "attempt_count": 0,
+            "round_count": 0,
+            "tool_call_count": 0,
+            "pending_tool_calls": [],
+            "usage": {"inputTokens": None, "outputTokens": None, "totalTokens": None},
+        }
+
+    messages = [message for message in previous_messages if isinstance(message, dict)]
+    if not any(message.get("role") == "user" and message.get("content") == request.prompt for message in messages[-1:]):
+        messages.append({"role": "user", "content": request.prompt})
+    checkpoint_config = getattr(checkpoint, "config", {})
+    configurable = checkpoint_config.get("configurable") if isinstance(checkpoint_config, dict) else {}
+    checkpoint_id = configurable.get("checkpoint_id") if isinstance(configurable, dict) else None
+    emit(
+        "CheckpointLoaded",
+        {
+            "source": "langgraph-checkpoint",
+            "checkpointId": checkpoint_id if isinstance(checkpoint_id, str) else None,
+            "messageCount": len(messages),
+            "previousOutputCharacters": len(str(values.get("output", ""))),
+        },
+    )
+    return {
+        "prompt": request.prompt,
+        "system_instruction": request.system_instruction,
+        "messages": messages,
+        "output": "",
+        "model_provider": request.model.provider,
+        "model_name": request.model.model,
+        "node": "",
+        "attempt_count": 0,
+        "round_count": 0,
+        "tool_call_count": 0,
+        "pending_tool_calls": [],
+        "usage": {"inputTokens": None, "outputTokens": None, "totalTokens": None},
+    }
 
 
 def _wire_result(record: dict[str, Any]) -> WireResult | None:

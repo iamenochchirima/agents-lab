@@ -27,6 +27,12 @@ turns without exposing arbitrary session input as a path-like identifier. The se
 rejects a second active turn in the same session and reuses an admitted turn when its
 `clientTurnId` and immutable request fingerprint match.
 
+After the first settled turn, the next invocation loads the previous checkpoint,
+appends only the new user message, and resets per-turn graph counters. The service
+emits a bounded `CheckpointLoaded` event. The shared Lab context snapshot is still
+prepared and recorded for budgeting; it does not replace the native checkpoint
+transcript for a continuing LangGraph thread.
+
 ## Persistence and tool boundary
 
 LangGraph checkpointers provide thread-scoped short-term state. This baseline does not
