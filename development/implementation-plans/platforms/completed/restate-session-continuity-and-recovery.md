@@ -1,8 +1,8 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:18:11+02:00
-**Status:** Active
+**Last updated:** 2026-09-19T23:20:58+02:00
+**Status:** Complete
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
 **Variant:** `baseline`
@@ -482,31 +482,31 @@ and the final release/completion record and checklist audit.
 
 ## Scope
 
-- [ ] Complete the Restate baseline end to end; session continuity is a foundation, not
+- [x] Complete the Restate baseline end to end; session continuity is a foundation, not
   the stopping point for this plan.
-- [ ] Verify the native no-Docker runtime profile, service registration, readiness,
+- [x] Verify the native no-Docker runtime profile, service registration, readiness,
   isolated persistent data, shutdown, and repeatable local operations.
-- [ ] Complete the real OpenRouter model and deterministic tool execution path with named
+- [x] Complete the real OpenRouter model and deterministic tool execution path with named
   durable steps, bounded retries, cancellation, and provider-outcome classification.
-- [ ] Define and enforce the Restate session/turn identity rules on top of the current
+- [x] Define and enforce the Restate session/turn identity rules on top of the current
   run-oriented runner contract.
-- [ ] Make repeated turns in one `sessionId` use the previous settled transcript and
+- [x] Make repeated turns in one `sessionId` use the previous settled transcript and
   the shared context-compaction policy.
-- [ ] Make the Restate runner recover a retained run after a Lab-server or service
+- [x] Make the Restate runner recover a retained run after a Lab-server or service
   replacement, including unknown submission outcomes.
-- [ ] Make duplicate HTTP requests and duplicate Restate submissions observable and
+- [x] Make duplicate HTTP requests and duplicate Restate submissions observable and
   idempotent at the Lab projection boundary.
-- [ ] Define and test provider-call retry and ambiguous-outcome semantics. Do not claim
+- [x] Define and test provider-call retry and ambiguous-outcome semantics. Do not claim
   exactly-once OpenRouter execution.
-- [ ] Make cancellation, restart, retry, and stale projection states honest in the
+- [x] Make cancellation, restart, retry, and stale projection states honest in the
   server and browser surface.
-- [ ] Show session identity, turn continuity, native Restate status, and context-window
+- [x] Show session identity, turn continuity, native Restate status, and context-window
   usage in the existing Restate Chat page without adding a noisy second dashboard.
-- [ ] Produce complete normalized and Restate-native evidence, including trajectory and
+- [x] Produce complete normalized and Restate-native evidence, including trajectory and
   metrics, with idempotent terminal writes and no secrets.
-- [ ] Add focused unit tests, native Restate integration tests, browser acceptance
+- [x] Add focused unit tests, native Restate integration tests, browser acceptance
   checks, docs, and a runnable recovery walkthrough.
-- [ ] Record validation results, limitations, and focused implementation commits before
+- [x] Record validation results, limitations, and focused implementation commits before
   moving this plan to `platforms/completed/`.
 
 ## Explicitly out of scope
@@ -976,7 +976,9 @@ reported as passed.
       outcome stronger than the native execution supports.
 - [x] Inspect the browser console for duplicate-key warnings, route errors, failed
       health probes, and unhandled polling exceptions.
-- [ ] Check narrow and wide layouts manually.
+- [x] Check narrow and wide layouts manually. Inspected 1280px and 390px Chromium
+      screenshots; the narrow platform tab row scrolls horizontally and the chat
+      controls remain usable.
 
 ## Required validation commands
 
@@ -1055,18 +1057,18 @@ require an external logging service for this plan.
 
 Before moving this plan to `platforms/completed/`, verify:
 
-- [ ] Every applicable implementation and test checkbox is complete.
-- [ ] The browser can execute and continue a real Restate-backed conversation.
-- [ ] The native no-Docker path has passed, or every blocked prerequisite is recorded
+- [x] Every applicable implementation and test checkbox is complete.
+- [x] The browser can execute and continue a real Restate-backed conversation.
+- [x] The native no-Docker path has passed, or every blocked prerequisite is recorded
       with a reproducible command and an explicit limitation.
-- [ ] Session identity, duplicate turns, configuration conflicts, context usage, and
+- [x] Session identity, duplicate turns, configuration conflicts, context usage, and
       compaction are visible and tested.
-- [ ] Restate service, Lab server, and persistent Restate restarts have a tested outcome.
-- [ ] Provider retry and ambiguous-outcome semantics are explicit and no exactly-once
+- [x] Restate service, Lab server, and persistent Restate restarts have a tested outcome.
+- [x] Provider retry and ambiguous-outcome semantics are explicit and no exactly-once
       claim is present.
-- [ ] Evidence contains the expected normalized and native files without secrets.
-- [ ] Documentation and manual walkthroughs match the final implementation.
-- [ ] Validation results and known limitations are recorded in the completion section.
+- [x] Evidence contains the expected normalized and native files without secrets.
+- [x] Documentation and manual walkthroughs match the final implementation.
+- [x] Validation results and known limitations are recorded in the completion section.
 
 ## Commit discipline and handoff
 
@@ -1088,29 +1090,53 @@ Use focused commits instead of one final dump. A reasonable sequence is:
 
 Before each commit:
 
-- [ ] Review `git status` and preserve unrelated Anesu, Studio, lockfile, and playground
+- [x] Review `git status` and preserve unrelated Anesu, Studio, lockfile, and playground
       changes.
-- [ ] Run the narrow checks for the changed section.
-- [ ] Inspect the complete diff and confirm no secrets or generated artifacts are staged.
-- [ ] Keep shared control-plane changes separate from Restate implementation changes.
-- [ ] Record the commit hash in the handoff.
+- [x] Run the narrow checks for the changed section.
+- [x] Inspect the complete diff and confirm no secrets or generated artifacts are staged.
+- [x] Keep shared control-plane changes separate from Restate implementation changes.
+- [x] Record the commit hash in the handoff.
 
 ## Completion record
 
-Complete this section only when archiving the plan.
+Complete this section when archiving the plan.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-19T23:20:58+02:00`
+**Commits:** `3162001..1da65eb` (focused Restate and browser validation commits)
 
 ### Validation
 
-- `[command]` - `[passed/failed and concise result]`
-- `[manual browser check]` - `[what was observed]`
-- `[native restart exercise]` - `[what was observed]`
+- `pnpm --filter @agent-harness-lab/lab-server test` - passed: 273 tests, 271
+  passed, 2 skipped, 0 failed.
+- `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 AGENTLAB_RUN_RESTATE_NATIVE_RESTART_INTEGRATION=1
+  pnpm --filter @agent-harness-lab/lab-server run test:restate` - passed: 48 tests,
+  47 passed, 1 optional Docker-backed test skipped, 0 failed.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` - passed: 11/11,
+  including duplicate-key, recovery, compaction, cancellation, refresh, stale, all
+  platform routes, and responsive viewport checks.
+- `AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI=1 AGENTLAB_LAB_SERVER_PID="$(lsof
+  -tiTCP:4318 -sTCP:LISTEN | head -n1)" node --test
+  apps/web/tests/browser/live-platform-runners.browser.test.mjs` - passed: 1 live
+  server-replacement test, 2 deliberately skipped live-provider tests.
+- `pnpm --filter @agent-harness-lab/web run typecheck` and `pnpm --filter
+  @agent-harness-lab/web run build` - passed; build reported only the existing
+  large-chunk warning.
+- `git diff --check` - passed.
+- Manual Chromium check at 1280px and 390px - stable rendering; narrow platform tabs
+  scroll horizontally and chat controls remain usable.
+- Native restart exercise - the retained workflow completed after service, Lab-server,
+  and persistent Restate replacement using the no-Docker profile.
 
 ### Known limitations
 
-- `[deliberate local-only limitation or follow-up]`
+- Docker-backed profiles remain optional and were not required for this completion.
+- Live OpenRouter checks are opt-in and use a locally supplied key; deterministic
+  fixtures cover restart and ambiguous-provider outcomes. No exactly-once provider
+  execution claim is made.
+- The repository release-process document was absent in this checkout; release and
+  rollback decisions are recorded in this plan and the Restate operational docs.
+- `logs/operations.jsonl` is a bounded per-run evidence stream, not a centralized
+  production log sink.
 
 ### Historical-scope note
 
