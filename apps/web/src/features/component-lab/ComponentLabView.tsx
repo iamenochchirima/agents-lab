@@ -53,18 +53,18 @@ function ComponentLabEntrance({ areas }: { areas: readonly ComponentAreaDescript
       <header className="component-detail-heading component-entrance-heading">
         <div>
           <span className="eyebrow">Focused experiments</span>
-          <h1>Component Lab</h1>
+          <h1>Studio components</h1>
           <p>
             Study one part of an agent harness at a time. Choose an area from the
             workspace to inspect its strategies and future experiment shape.
           </p>
         </div>
-        <Link className="text-button component-doc-link" to={pathForDocument("docs/planning/component-lab.md")}>Component Lab proposal <ArrowRight aria-hidden="true" size={15} /></Link>
+        <Link className="text-button component-doc-link" to={pathForDocument("docs/planning/component-lab.md")}>Studio components proposal <ArrowRight aria-hidden="true" size={15} /></Link>
       </header>
 
       <div className="component-context-layout">
         <aside className="panel component-context-sidebar">
-          <div className="component-sidebar-heading"><span className="panel-label">{areas.length} areas</span><strong>Component Lab</strong></div>
+          <div className="component-sidebar-heading"><span className="panel-label">{areas.length} areas</span><strong>Components</strong></div>
           <AreaNavigation activeAreaId="" />
           <div className="component-sidebar-note"><LockKeyhole aria-hidden="true" size={15} /><div><strong>Preview state</strong><p>Selections live in browser memory and are never sent to the server.</p></div></div>
         </aside>
@@ -324,7 +324,7 @@ function ContextManagementView({ area }: { area: ComponentAreaDescriptor }) {
 
       <div className="component-context-layout">
         <aside className="panel component-context-sidebar">
-          <div className="component-sidebar-heading"><span className="panel-label">Areas</span><strong>Component Lab</strong></div>
+          <div className="component-sidebar-heading"><span className="panel-label">Areas</span><strong>Components</strong></div>
           <AreaNavigation activeAreaId={area.id} />
           <div className="component-sidebar-note"><LockKeyhole aria-hidden="true" size={15} /><div><strong>Preview state</strong><p>Selections live in browser memory and are never sent to the server.</p></div></div>
         </aside>
@@ -376,7 +376,7 @@ function ComponentLabDetail({ area }: { area: ComponentAreaDescriptor }) {
         </div>
       </header>
       <div className="component-context-layout">
-        <aside className="panel component-context-sidebar"><div className="component-sidebar-heading"><span className="panel-label">Areas</span><strong>Component Lab</strong></div><AreaNavigation activeAreaId={area.id} /></aside>
+        <aside className="panel component-context-sidebar"><div className="component-sidebar-heading"><span className="panel-label">Areas</span><strong>Components</strong></div><AreaNavigation activeAreaId={area.id} /></aside>
         <div className="component-context-main"><PlannedAreaView area={area} /></div>
       </div>
     </>
@@ -389,7 +389,7 @@ export function ComponentLabView({ areas, detailMode = false, entranceMode = fal
   const { areaId } = useParams();
   const area = getComponentArea(areaId, areas);
   if (!area) {
-    return <div className="page-content component-lab-page"><section className="panel component-planned-panel"><span className="component-planned-mark" aria-hidden="true"><CircleDashed size={20} /></span><h1>Component area not found</h1><p>The selected area is not in the Component Lab catalog.</p><Link className="button button-secondary-light" to={appPaths.components}>View component areas</Link></section></div>;
+    return <div className="page-content component-lab-page"><section className="panel component-planned-panel"><span className="component-planned-mark" aria-hidden="true"><CircleDashed size={20} /></span><h1>Component area not found</h1><p>The selected area is not in the Studio components catalog.</p><Link className="button button-secondary-light" to={appPaths.components}>View component areas</Link></section></div>;
   }
 
   return <div className="page-content component-lab-page"><ComponentLabDetail area={area} /></div>;

@@ -57,7 +57,7 @@ export const router = createBrowserRouter([
           const { ComponentLabPage } = await import("../features/component-lab/ComponentLabPage");
           return { Component: ComponentLabPage };
         },
-        handle: { label: "Component Lab" },
+        handle: { label: "Studio" },
       },
       {
         path: "components/:areaId",
@@ -65,7 +65,7 @@ export const router = createBrowserRouter([
           const { ComponentLabAreaPage } = await import("../features/component-lab/ComponentLabPage");
           return { Component: ComponentLabAreaPage };
         },
-        handle: { label: "Component Lab" },
+        handle: { label: "Studio" },
       },
       {
         path: "platforms",

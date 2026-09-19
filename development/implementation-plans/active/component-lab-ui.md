@@ -1,4 +1,4 @@
-# Component Lab UI foundation
+# Studio components UI foundation
 
 **Created:** `2026-09-16T11:00:00+02:00`  
 **Last updated:** `2026-09-16T11:52:01+02:00`  
@@ -10,7 +10,7 @@
 Read these before changing code:
 
 - [`repository rules`](../../../AGENTS.md)
-- [`Component Lab proposal`](../../../docs/planning/component-lab.md)
+- [`Studio components proposal`](../../../docs/planning/component-lab.md)
 - [`implementation plan lifecycle`](../README.md)
 - [`Platform UI`](../completed/platform-ui.md)
 - [`session context and compaction`](../completed/context-management.md)
@@ -19,9 +19,9 @@ Read these before changing code:
 - [`web app ownership`](../../../apps/web/src/README.md)
 - [`route ownership`](../../../apps/web/src/routes/README.md)
 
-This plan adds a visual workspace for focused harness-component experiments. It does
-not replace the Platform Lab or make the current platform runner, comparison flow, or
-execution contracts depend on Component Lab.
+This plan adds the Components section inside Studio for focused harness-component
+experiments. It does not replace the Platform Lab or make the current platform runner,
+comparison flow, or execution contracts depend on Studio components.
 
 ## Purpose
 
@@ -37,7 +37,7 @@ run results, metrics, infrastructure health, or completed implementations.
 
 From the browser, a contributor can:
 
-1. Open a new top-level `Component Lab` navigation item at `/components`.
+1. Open Studio and enter its Components section.
 2. See all twelve harness areas with a short responsibility statement, current status,
    and next useful action.
 3. Open the Context Management workspace at
@@ -59,18 +59,18 @@ From the browser, a contributor can:
 The visible flow is:
 
 ```text
-Component Lab → area catalog → Context Management
+Studio → Components → Context Management
               → strategy + case selection → fixed experiment envelope
               → comparison preview → execution unavailable, no fabricated result
 ```
 
 ## Scope
 
-- [x] Add a stable `/components` route and a `Component Lab` item to the main sidebar.
+- [x] Add a stable `/components` compatibility route; Components are entered through Studio.
 - [x] Add a feature-local catalog for all twelve component areas, with stable IDs,
       concise descriptions, status, ownership note, and a link to the relevant plan
       or design document when one exists.
-- [x] Add a Component Lab entrance workspace that makes the difference between a
+- [x] Add a Components entrance workspace that makes the difference between a
       planned, designing, implemented, and verified component visible without implying
       that an area navigation item is an executable implementation.
 - [x] Add an area detail route for the selected component. Unimplemented areas may use
@@ -132,12 +132,12 @@ obvious. A browser refresh may clear selections because this slice has no persis
 
 | Module | Owns | Must not own |
 | --- | --- | --- |
-| `apps/web/src/features/component-lab/` | Component area/strategy/case catalogs, local preview state, and Component Lab views | Server execution, platform registry, or authoritative run evidence |
+| `apps/web/src/features/component-lab/` | Component area/strategy/case catalogs, local preview state, and Studio component views | Server execution, platform registry, or authoritative run evidence |
 | `apps/web/src/routes/` | Stable `/components` and `/components/:areaId` route definitions | Component strategy semantics or platform route behaviour |
-| `apps/web/src/app/navigation/` | The sidebar entry and its active-state link | Component availability or execution status |
+| `apps/web/src/app/navigation/` | Studio's internal Components entry and active-state link | Component availability or execution status |
 | `docs/planning/component-lab.md` | Product vocabulary, intended comparison model, and open questions | Runtime contracts or claims about implementation status |
-| Existing Platform features | Platform runs, chat sessions, model selection, and comparisons | Component Lab state |
-| `server/` and `anesu/` | Existing execution and standalone harness contracts | New UI-only Component Lab state in this slice |
+| Existing Platform features | Platform runs, chat sessions, model selection, and comparisons | Studio component state |
+| `server/` and `anesu/` | Existing execution and standalone harness contracts | New UI-only Studio component state in this slice |
 
 The feature should use a small local interface rather than prematurely generalizing
 the existing coverage catalog. A shared abstraction becomes justified only when the
@@ -263,7 +263,7 @@ Only the context strategy and its explicit parameters vary between comparison sl
 - [x] Add feature-local types for areas, statuses, strategies, cases, and preview
       configuration.
 - [x] Add the twelve-area catalog and validate unique IDs and document references.
-- [x] Add the initial Context strategy and case catalogs from the Component Lab proposal.
+- [x] Add the initial Context strategy and case catalogs from the Studio components proposal.
 
 ### 2. Core UI
 
@@ -275,10 +275,10 @@ Only the context strategy and its explicit parameters vary between comparison sl
 
 ### 3. Integration and user surface
 
-- [x] Add `appPaths.components` and the two Component Lab route definitions.
-- [x] Add the sidebar entry without changing existing item destinations or platform
-      route matching.
-- [x] Link the Component Lab proposal and any available implementation plan from the
+- [x] Add `appPaths.components` and the two compatibility route definitions.
+- [x] Add the Components entry inside Studio without changing existing item
+      destinations or platform route matching.
+- [x] Link the Studio components proposal and any available implementation plan from the
       relevant UI surfaces.
 - [x] Add feature-local README notes for ownership, route names, and the no-execution
       boundary.
@@ -314,7 +314,7 @@ Only the context strategy and its explicit parameters vary between comparison sl
 
 ### Manual acceptance
 
-- [ ] Open Component Lab from the sidebar and identify all twelve areas without
+- [ ] Open Studio, enter Components, and identify all twelve areas without
       confusing it with Platform coverage.
 - [ ] Open Context Management, choose a strategy and case, and see the fixed-versus-
       changed explanation update without any network request.
@@ -348,7 +348,7 @@ validation, record the exact failure and keep it separate from Component Lab cha
 
 ## Completion gate
 
-- [ ] The Component Lab is reachable from the main navigation at `/components`.
+- [ ] Studio exposes the Components section without a duplicate top-level navigation item.
 - [ ] All twelve areas are visible with truthful status and ownership language.
 - [ ] Context Management has a usable strategy/case/comparison preview.
 - [ ] Execution remains clearly unavailable and no fabricated evidence is shown.

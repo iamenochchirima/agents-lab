@@ -5,7 +5,6 @@ import {
   ListChecks,
   ListTodo,
   Play,
-  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -24,7 +23,6 @@ export const mainNavigation: readonly MainNavigationItem[] = [
   { label: "Coverage", icon: ListChecks, to: appPaths.coverage },
   { label: "Runs", icon: Play, to: appPaths.runs },
   { label: "Experiments", icon: FlaskConical, to: appPaths.experiments },
-  { label: "Component Lab", icon: SlidersHorizontal, to: appPaths.components },
   { label: "Platforms", icon: Layers3, to: appPaths.platforms },
   { label: "Scenarios", icon: ListTodo, to: appPaths.scenarios },
 ];

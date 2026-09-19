@@ -1,8 +1,8 @@
-# Component Lab feature
+# Studio components feature
 
-The Component Lab is the UI workspace for studying one agent-harness responsibility
-at a time. It is separate from the Platform Lab, which owns complete platform runs,
-chat sessions, and platform comparisons.
+Studio components is the UI workspace for studying one agent-harness responsibility
+at a time. It belongs inside Studio and remains separate from the Platform Lab, which
+owns complete platform runs, chat sessions, and platform comparisons.
 
 `componentCatalog.ts` owns the static area, strategy, case, envelope, and evidence
 descriptions. `componentModel.ts` validates those records and resolves the selected
@@ -16,6 +16,7 @@ making the component catalog depend on a platform implementation.
 
 Public routes:
 
-- `/components` shows the twelve-area catalog, including the planned Computer Use area.
+- `/components` is the compatibility route for Studio's twelve-area catalog, including
+  the planned Computer Use area.
 - `/components/:areaId` shows the selected area. `context-management` is the first
   detailed workspace; other areas show an honest planned state.

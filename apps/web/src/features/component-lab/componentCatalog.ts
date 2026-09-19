@@ -8,7 +8,7 @@ import type {
 
 const proposalDocument = {
   documentId: "docs/planning/component-lab.md",
-  label: "Component Lab proposal",
+  label: "Studio components proposal",
 } as const;
 
 export const componentAreas: readonly ComponentAreaDescriptor[] = [

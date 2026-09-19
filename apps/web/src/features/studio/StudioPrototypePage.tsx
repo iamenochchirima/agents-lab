@@ -225,7 +225,7 @@ function ContextFocus({ onBack }: { onBack: () => void }) {
   return (
     <div className="studio-focus-layout">
       <aside className="studio-focus-sidebar">
-        <div className="studio-component-nav-heading"><span className="studio-eyebrow">12 areas</span><strong>Component Lab</strong></div>
+        <div className="studio-component-nav-heading"><span className="studio-eyebrow">12 areas</span><strong>Components</strong></div>
         <ComponentsNavigation activeId="context" />
         <div className="studio-component-sidebar-note"><LockKeyhole aria-hidden="true" size={15} /><div><strong>Preview state</strong><p>Selections live in browser memory and are never sent to the server.</p></div></div>
       </aside>

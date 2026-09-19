@@ -1,14 +1,14 @@
-# Component Lab
+# Studio components
 
 **Status:** Draft
 
 ## Purpose
 
-The Component Lab is an additive workspace for studying the individual parts of
-an AI agent harness.
+Studio components is the workspace for studying the individual parts of an AI agent
+harness.
 
 The existing Platform area compares complete platform or harness implementations.
-The Component Lab compares different implementations of one harness responsibility,
+Studio components compares different implementations of one harness responsibility,
 such as context management, memory, planning, or tool calling.
 
 This proposal does not replace or change the current platform implementation plan.
@@ -34,14 +34,14 @@ strategy, a sliding-window strategy, and a relevance-ranked strategy. The task,
 model, source messages, tool results, and token limit should remain the same so the
 comparison measures the context strategy rather than several changes at once.
 
-The Component Lab should support both documented strategies and cases invented by
+Studio components should support both documented strategies and cases invented by
 the project maintainer. A case can be a reusable fixture, a task prompt, a synthetic
 conversation, a memory collection, a tool trace, or a controlled failure sequence.
 
 ## Proposed workspace
 
-The product could expose a top-level **Component Lab** tab. It would contain one
-workspace for each harness area:
+Studio should expose a **Components** section inside its own workspace. It contains
+one workspace for each harness area:
 
 1. Input and perception
 2. Context management
@@ -259,17 +259,17 @@ small local run.
 ## Relationship to the existing Lab
 
 The current Platform Lab remains responsible for complete platform runs. The
-Component Lab would have its own catalog and focused experiment runner, while sharing
+Studio components would have its own catalog and focused experiment runner, while sharing
 existing project capabilities where appropriate:
 
 ```text
 Platform Lab  → complete platform or harness execution
-Component Lab → focused strategy execution
+Studio components → focused strategy execution
 
 Shared       → models, fixtures, scenarios, evidence, metrics, inspection, comparison
 ```
 
-The Component Lab should not force component strategies into the existing platform
+Studio components should not force component strategies into the existing platform
 registry. A platform may host a component strategy, but platform identity and
 component strategy identity remain separate fields in the experiment configuration.
 
