@@ -426,7 +426,7 @@ identified as fake in tests and evidence.
 This plan implements LangGraph's use of the existing shared context system; it does not
 invent a second generic context implementation or add long-term memory.
 
-- [ ] Prepare the shared context snapshot before the graph turn using system instructions,
+- [x] Prepare the shared context snapshot before the graph turn using system instructions,
   transcript, selected tools, and the configured context window.
 - [ ] Pass the snapshot identity, compaction revision, budget, and bounded prepared input
   to the Python service without duplicating the whole context into native metadata.
@@ -437,7 +437,8 @@ invent a second generic context implementation or add long-term memory.
 - [ ] Expose used tokens, context window, percentage left, pressure, compaction count,
   snapshot ID, and estimated-versus-provider-reported usage in the server projection.
 - [ ] Ensure compaction is bounded, idempotent per turn, and cannot loop after a retry or
-  service restart.
+  service restart. The summary request and deterministic fake path are implemented; the
+  provider-overflow retry and restart proof remain.
 - [ ] Record that LangGraph short-term checkpoint state is not long-term memory and do
   not add a Store/vector database in this implementation.
 
@@ -710,6 +711,15 @@ what was observed, the exact validation command, and what remains.
   Added a service test proving a second `fake-context` turn remembers data from the
   first turn without using a shared transcript snapshot. The focused Python suite now
   covers this native continuation path; recovery and context reconciliation remain.
+
+- **2026-09-20T00:31:43+02:00 — LangGraph context summary path implemented.** The
+  TypeScript adapter now uses a bounded deterministic summary for fake profiles and a
+  server-owned OpenRouter summary request for real profiles. Missing credentials,
+  cancellation, oversized responses, invalid responses, empty summaries, and upstream
+  HTTP failures have explicit error codes without copying provider bodies into errors.
+  Added focused summary tests and adapter documentation. Validation passed: server
+  typecheck, nine LangGraph TypeScript tests, and `git diff --check`. Provider-overflow
+  retry, restart reconciliation, and browser acceptance remain.
 
 ## Commit discipline
 

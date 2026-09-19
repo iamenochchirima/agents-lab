@@ -15,8 +15,8 @@ import {
   CharacterTokenEstimator,
   ContextService,
   ContextSessionStore,
-  type ContextSummaryGenerator,
 } from "../../../capabilities/context/index.js";
+import { createLangGraphContextSummaryGenerator } from "./context-summary.js";
 import {
   LANGGRAPH_PROTOCOL_VERSION,
   parseCancelResponse,
@@ -174,11 +174,13 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       new ContextSessionStore(contextRoot),
       new CharacterTokenEstimator(),
     );
-    const summarizer: ContextSummaryGenerator = {
-      summarize: async () => {
-        throw new Error("LangGraph context compaction requires an explicit model-backed summary path.");
-      },
-    };
+    const summarizer = createLangGraphContextSummaryGenerator({
+      provider: manifest.model.provider,
+      model: manifest.model.model,
+      apiKey: process.env.OPENROUTER_API_KEY,
+      baseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL,
+      timeoutMs: this.options.requestTimeoutMs,
+    });
     const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
     return { sessionId, turnId, snapshotId: prepared.snapshot.snapshotId };
   }

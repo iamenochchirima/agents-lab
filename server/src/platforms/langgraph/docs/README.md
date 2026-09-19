@@ -33,6 +33,13 @@ emits a bounded `CheckpointLoaded` event. The shared Lab context snapshot is sti
 prepared and recorded for budgeting; it does not replace the native checkpoint
 transcript for a continuing LangGraph thread.
 
+The TypeScript adapter prepares that shared snapshot before dispatch. When the shared
+budget crosses its compaction threshold, it compacts the older message groups before
+calling the Python service. Fake profiles use a deterministic bounded summary. Real
+OpenRouter profiles use the selected model for the summary through the server-owned
+credential boundary. A summary request is not retried after dispatch because its
+provider outcome may be unknown.
+
 ## Persistence and tool boundary
 
 LangGraph checkpointers provide thread-scoped short-term state. This baseline does not

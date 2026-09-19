@@ -15,6 +15,12 @@ HTTP dispatch. It sends only the session ID, turn ID, and immutable snapshot ID 
 the Python boundary. The Python service reads that snapshot from the shared context
 root; it does not rebuild or compact the transcript independently.
 
+If the shared context budget requires compaction, the adapter uses a bounded summary
+request before dispatch. Fake model profiles use a deterministic extractive summary
+for reproducible tests. OpenRouter profiles call the selected model with the server's
+credential and timeout settings. Summary calls are not retried after dispatch because
+the provider may have accepted the request even when the response was lost.
+
 The adapter is registered by the common server alongside the other first-wave
 baselines. The registration still does not imply that the Python service is
 reachable: `checkConnection()` reports that dependency state, while the runner
