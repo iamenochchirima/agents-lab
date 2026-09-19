@@ -44,6 +44,19 @@ Use any Python 3.11 or 3.12 interpreter with its SQLite module enabled. If the
 interpreter is named differently on the host, substitute that command for
 `python3.11`; the service must not silently fall back to in-memory state.
 
+The real-provider integration is opt-in because it makes two model requests and may
+consume provider quota. With an ignored `server/.env` containing the local
+`OPENROUTER_API_KEY` and optional `OPENROUTER_MODEL`, run:
+
+```bash
+AGENTLAB_RUN_LANGGRAPH_OPENROUTER=1 \
+  pnpm --filter @agent-harness-lab/lab-server exec tsx --test integration-tests/langgraph-baseline.test.ts
+```
+
+The test uses a temporary SQLite database and context directory, sends two turns
+through the same LangGraph thread, and removes the temporary state afterward. It is
+not part of the default test command.
+
 ## Runtime facts
 
 The locked baseline currently uses:

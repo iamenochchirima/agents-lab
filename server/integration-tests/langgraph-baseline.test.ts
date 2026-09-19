@@ -14,12 +14,15 @@ import { RunEvidenceStore } from "../src/control-plane/application/evidence-stor
 import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
 import { RunService, type RunView } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
+import { loadLocalServerEnvironment } from "../src/control-plane/bootstrap/local-env.js";
 import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import type { RunManifest } from "../src/control-plane/domain/types.js";
 import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../src/capabilities/context/index.js";
 import { LangGraphBaselineRunner } from "../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
 
 const shouldRun = process.env.AGENTLAB_RUN_LANGGRAPH_INTEGRATION === "1";
+const shouldRunOpenRouter = process.env.AGENTLAB_RUN_LANGGRAPH_OPENROUTER === "1";
+if (shouldRunOpenRouter) loadLocalServerEnvironment();
 const platformRoot = existsSync(join(process.cwd(), "src", "platforms", "langgraph"))
   ? join(process.cwd(), "src", "platforms", "langgraph")
   : join(process.cwd(), "server", "src", "platforms", "langgraph");
@@ -126,6 +129,64 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
   }
 });
 
+test("opt-in OpenRouter LangGraph session completes two real model turns", { skip: !shouldRunOpenRouter }, async () => {
+  assert.ok(process.env.OPENROUTER_API_KEY, "OPENROUTER_API_KEY is required for the opt-in live test.");
+  const stateDirectory = await mkdtemp(join(tmpdir(), "agentlab-langgraph-openrouter-"));
+  const contextRoot = join(stateDirectory, "sessions");
+  let service: ManagedService | null = null;
+  try {
+    service = await startService(stateDirectory);
+    const model = process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini";
+    const contextWindowTokens = parseContextWindowTokens(process.env.AGENTLAB_LANGGRAPH_OPENROUTER_CONTEXT_WINDOW_TOKENS);
+    const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, contextRoot, timeoutMs: 60_000 });
+    const sessionId = "session-openrouter-live";
+    const systemInstruction = "Answer briefly and do not call tools for this check.";
+    const contextStore = new ContextSessionStore(contextRoot);
+    await contextStore.create({
+      sessionId,
+      platform: "langgraph",
+      variant: "baseline",
+      model: `openrouter/${model}`,
+      systemInstruction,
+      contextWindowTokens,
+      reservedOutputTokens: 2_048,
+      safetyMarginTokens: 512,
+      compactionThresholdPercent: 20,
+      recentMessageGroups: 2,
+    });
+
+    const firstTurn = await contextStore.admitTurn(sessionId, "integration-openrouter-first", "Reply with one short sentence: LangGraph live check complete.");
+    const firstReference = await runner.start({
+      ...manifest(runner, model, "integration-openrouter-first", "openrouter", contextWindowTokens),
+      task: { kind: "prompt", prompt: "Reply with one short sentence: LangGraph live check complete." },
+      context: { systemInstruction, sessionId, turnId: firstTurn.turn.turnId },
+    });
+    const firstInspection = await terminalInspection(runner, firstReference);
+    assert.equal(firstInspection.result?.status, "completed");
+    assert.ok(firstInspection.result?.output?.trim());
+    await contextStore.settleTurn(sessionId, firstTurn.turn.turnId, {
+      status: "completed",
+      output: firstInspection.result?.output ?? null,
+      error: null,
+    });
+
+    const secondTurn = await contextStore.admitTurn(sessionId, "integration-openrouter-second", "Confirm that you can continue this conversation in one short sentence.");
+    const secondReference = await runner.start({
+      ...manifest(runner, model, "integration-openrouter-second", "openrouter", contextWindowTokens),
+      task: { kind: "prompt", prompt: "Confirm that you can continue this conversation in one short sentence." },
+      context: { systemInstruction, sessionId, turnId: secondTurn.turn.turnId },
+    });
+    const secondInspection = await terminalInspection(runner, secondReference);
+    assert.equal(secondInspection.result?.status, "completed");
+    assert.ok(secondInspection.result?.output?.trim());
+    assert.equal(firstReference.native.threadId, secondReference.native.threadId);
+    assert.ok(secondInspection.eventIntents.some((event) => event.kind === "CheckpointLoaded"));
+  } finally {
+    await service?.stop();
+    await rm(stateDirectory, { recursive: true, force: true });
+  }
+});
+
 async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot: string): Promise<void> {
   const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-api-"));
   const config = loadServerConfig(
@@ -220,7 +281,13 @@ function runnerThreadId(sessionId: string): string {
   return `langgraph:baseline:${createHash("sha256").update(sessionId, "utf8").digest("hex").slice(0, 32)}`;
 }
 
-function manifest(runner: LangGraphBaselineRunner, model: string, runId: string): RunManifest {
+function manifest(
+  runner: LangGraphBaselineRunner,
+  model: string,
+  runId: string,
+  provider: RunManifest["model"]["provider"] = "fake",
+  contextWindowTokens?: number,
+): RunManifest {
   return {
     schemaVersion: 1,
     runId,
@@ -231,8 +298,14 @@ function manifest(runner: LangGraphBaselineRunner, model: string, runId: string)
     task: { kind: "prompt", prompt: "Return a short checkpoint explanation." },
     context: { systemInstruction: "Answer directly." },
     platformConfig: runner.manifestConfiguration(),
-    model: { provider: "fake", model },
+    model: { provider, model, ...(contextWindowTokens === undefined ? {} : { contextWindowTokens }) },
   };
+}
+
+function parseContextWindowTokens(value: string | undefined): number {
+  const parsed = value === undefined ? 128_000 : Number(value);
+  assert.ok(Number.isInteger(parsed) && parsed >= 8_192 && parsed <= 10_000_000, "The live LangGraph context window must be an integer from 8192 to 10000000.");
+  return parsed;
 }
 
 async function terminalResult(

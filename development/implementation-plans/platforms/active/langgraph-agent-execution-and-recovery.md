@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:07:53+02:00
+**Last updated:** 2026-09-20T01:13:04+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -145,7 +145,7 @@ The completed implementation must be able to:
 
 - [ ] accept a generic `langgraph/baseline` run with a stable `sessionId` and
   `clientTurnId`;
-- [ ] execute a real LangGraph graph through the Python service, not a fake HTTP
+- [x] execute a real LangGraph graph through the Python service, not a fake HTTP
   response, with both deterministic and OpenRouter model profiles;
 - [ ] continue a second turn from the same LangGraph checkpoint thread while keeping
   separate Lab run and turn identities;
@@ -602,7 +602,7 @@ Tests must exercise real boundaries, not only helper functions.
 - [ ] Replace both processes and verify the documented outcome.
 - [ ] Exercise duplicate admission, concurrent session conflict, cancellation, stale
   projection, timeout-after-dispatch, and context-overflow fixtures.
-- [ ] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
+- [x] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
   record model, usage, status, and evidence paths without recording the key.
 - [ ] Docker-backed profiles, if any remain in the repository, are explicitly skipped
   and reported as optional rather than required.
@@ -793,6 +793,20 @@ what was observed, the exact validation command, and what remains.
   `CheckpointLoaded` event. The opt-in integration test passed again; `git diff --check`
   passed. Duplicate admission, refresh, service unavailability, and process-replacement
   browser tests remain open.
+
+- **2026-09-20T01:13:04+02:00 — live OpenRouter continuation verified.** Added an
+  opt-in real-provider acceptance path that loads the ignored local server environment
+  only when explicitly requested, sends two OpenRouter turns through the real Python
+  LangGraph service, and removes its temporary SQLite/context state afterward. The
+  test passed with two completed model responses, one stable native thread, and a
+  `CheckpointLoaded` event on turn two. The deterministic real-process acceptance also
+  passed again. Validation passed:
+  `AGENTLAB_RUN_LANGGRAPH_OPENROUTER=1 pnpm --filter @agent-harness-lab/lab-server
+  exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`),
+  `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter
+  @agent-harness-lab/lab-server exec tsx --test integration-tests/langgraph-baseline.test.ts`
+  (`1 passed`, `1 skipped`), and `git diff --check`. Live browser execution, process
+  replacement, and the remaining retry/cancellation/unknown-outcome matrix remain open.
 
 ## Commit discipline
 
