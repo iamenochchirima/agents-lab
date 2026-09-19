@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:10:00+02:00
+**Last updated:** 2026-09-19T23:25:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -377,9 +377,17 @@ as a test dependency.
   passed with only the existing large-chunk warning; and `git diff --check` passed.
 - The Restate-specific native suite remains green at `45 passed, 1 skipped`, and the
   opt-in live Restate Chat suite remains green at `1 passed` for the two-turn session.
-- The plan remains active. Before archiving, the remaining gates are the browser
-  compaction/recovery acceptance, final documentation/rollback record, and explicit
+- The plan remains active. Before archiving, the remaining gates are the final
+  documentation/rollback record, remaining recovery-state browser checks, and explicit
   recording of the missing repository release-process document.
+
+**2026-09-19T23:25:00+02:00 — browser context-pressure acceptance added**
+
+- Added a deterministic Restate Chat fixture for a compacted session projection. The
+  browser now verifies `92% used`, `7% left`, `Compaction due`, one compaction revision,
+  and the rendered `Context Compaction Started` / `Context Compacted` timeline entries.
+- The acceptance passed with no browser console errors. This closes the browser
+  context-pressure gate without pretending that a fixture is a live provider overflow.
 
 ## Scope
 
@@ -865,7 +873,7 @@ reported as passed.
 - [x] Send a real OpenRouter prompt and observe the assistant response in the browser.
 - [x] Send a second prompt and verify the conversation continues in the same session.
 - [x] Verify the context card shows a non-fabricated token window and percentage.
-- [ ] Trigger or fixture a compaction case and verify the pressure/compaction state is
+- [x] Trigger or fixture a compaction case and verify the pressure/compaction state is
       visible without the page blinking or duplicating messages.
 - [ ] Refresh during polling and verify the existing run is reused.
 - [ ] Restart the Lab server during a run and verify the browser eventually shows the

@@ -207,6 +207,40 @@ test("Restate Chat exposes recovery-required runs and native execution details",
   }
 });
 
+test("Restate Chat exposes context pressure and compaction evidence", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+  fixture.setMode("compaction");
+
+  try {
+    await navigate(browser.cdp, "/platforms/restate/chat");
+    await waitForText(browser.cdp, "Ready");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Compact this context safely.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Restate fixture compacted.");
+
+    const context = await browser.cdp.evaluate(`document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(context, /92% used/);
+    assert.match(context, /7% left/);
+    assert.match(context, /Compaction due/);
+
+    await clickSummary(browser.cdp, "Details");
+    const contextDetails = await browser.cdp.evaluate(`document.querySelector(".run-context-details[open]")?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(contextDetails, /Compactions1/);
+
+    await clickSummary(browser.cdp, "Run details");
+    await clickSummary(browser.cdp, "Run timeline");
+    const timeline = await browser.cdp.evaluate(`document.querySelector(".chat-activity[open]")?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(timeline, /Context Compaction Started/);
+    assert.match(timeline, /Context Compacted/);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Platform Chat opens for every registered platform", async () => {
   const browser = await openBrowser();
   await installFixture(browser.cdp);
@@ -312,7 +346,7 @@ async function installFixture(cdp) {
       const runId = `run-${request.platform}-${state.createRequests}`;
       state.runIds.push(runId);
       state.runRequests.set(runId, request);
-      await fulfill(cdp, event.requestId, { status: 202, body: makeRun(request, state.mode === "cancel" ? "running" : "queued", runId) });
+      await fulfill(cdp, event.requestId, { status: 202, body: makeRun(request, state.mode === "cancel" ? "running" : "queued", runId, state.mode) });
       return;
     }
 
@@ -330,7 +364,7 @@ async function installFixture(cdp) {
       const status = request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel"
         ? (state.cancelled ? "cancelled" : "running")
         : runReads === 1 ? "running" : "completed";
-      await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId) });
+      await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode) });
       return;
     }
 
@@ -343,7 +377,7 @@ async function installFixture(cdp) {
         return;
       }
       const runReads = state.runReadsById.get(runId) ?? 0;
-      const run = makeRun(request, request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel" && !state.cancelled ? "running" : state.mode === "cancel" ? "cancelled" : runReads > 1 ? "completed" : "running", runId);
+      const run = makeRun(request, request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel" && !state.cancelled ? "running" : state.mode === "cancel" ? "cancelled" : runReads > 1 ? "completed" : "running", runId, state.mode);
       await fulfill(cdp, event.requestId, { status: 200, body: { runId: run.runId, events: run.events, nextSequence: run.events.at(-1)?.recordedSequence ?? 0, hasMore: false, done: run.result !== null } });
       return;
     }
@@ -367,13 +401,16 @@ async function installFixture(cdp) {
   };
 }
 
-function makeRun(request, status, runIdOverride) {
+function makeRun(request, status, runIdOverride, mode = "complete") {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
+  const compaction = platform === "restate" && mode === "compaction";
   const events = platform === "restate"
     ? status === "reconciliation_required"
       ? [event(runId, 1, "RunSubmissionOutcomeUnknown", platform), event(runId, 2, "RunReconciliationRequired", platform)]
-      : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
+      : compaction
+        ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "ContextCompactionStarted", platform), event(runId, 3, "ContextCompacted", platform), event(runId, 4, "AgentCompleted", platform)]
+        : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
     : [
         event(runId, 1, "AgentStarted", platform),
         event(runId, 2, "ModelCallStarted", platform),
@@ -389,7 +426,7 @@ function makeRun(request, status, runIdOverride) {
     runId,
     status,
     finishedAt: "2026-09-16T12:00:00.000Z",
-    output: status === "completed" ? platform === "temporal" ? "The calculator result is 42." : "Restate fixture completed." : null,
+    output: status === "completed" ? platform === "temporal" ? "The calculator result is 42." : compaction ? "Restate fixture compacted." : "Restate fixture completed." : null,
     error: status === "reconciliation_required" ? {
       code: "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
       message: "Restate did not confirm whether the workflow submission was accepted.",
@@ -421,18 +458,18 @@ function makeRun(request, status, runIdOverride) {
     context: isSessionPlatform ? {
       scope: "session",
       sessionId,
-      sessionRevision: 1,
-      compactionRevision: 0,
+      sessionRevision: compaction ? 2 : 1,
+      compactionRevision: compaction ? 1 : 0,
       budget: {
         contextWindowTokens: 100_000,
-        inputTokens: 8_000,
+        inputTokens: compaction ? 92_000 : 8_000,
         reservedOutputTokens: 1_000,
         safetyMarginTokens: 500,
-        remainingTokens: 90_500,
-        remainingPercent: 90.5,
+        remainingTokens: compaction ? 6_500 : 90_500,
+        remainingPercent: compaction ? 6.5 : 90.5,
         quality: "estimated",
         tokenizerBasis: "fixture",
-        pressure: "normal",
+        pressure: compaction ? "compaction_due" : "normal",
       },
       updatedAt: "2026-09-16T12:00:00.000Z",
     } : null,
