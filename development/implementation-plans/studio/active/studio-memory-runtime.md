@@ -23,6 +23,20 @@ deterministic replay, evidence files, and lifecycle handling. This plan replaces
 fixture Memory behaviour with a real local Memory experiment slice while preserving the
 existing Context comparison contract.
 
+## Current implementation checkpoint
+
+The first backend block is implemented and remains intentionally active. It now
+supports deterministic recall and keyed-fact revision comparisons through the existing
+server, isolated working/durable policy stores, bounded records, journal/snapshot
+recovery, decision evidence, canonical Memory events, and cancellation/idempotency
+tests. The focused Studio suite currently covers 47 passing tests; the full server
+suite and web typecheck have also passed during this implementation pass.
+
+The remaining plan work is deliberately visible: multi-turn Memory sequences,
+additional cataloged miss/duplicate/expiry/procedural scenarios, richer metrics,
+path/symlink hardening, and broader failure/cancellation integration coverage. Those
+are follow-up implementation blocks, not implied capabilities of the current slice.
+
 ## Purpose
 
 Implement the first useful Studio Memory subsystem so Memory can be varied as an
@@ -95,28 +109,28 @@ budgeted, and passed to the model.
 
 ## Scope
 
-- [ ] Define a versioned Memory domain model for records, scopes, provenance,
+- [x] Define a versioned Memory domain model for records, scopes, provenance,
       revisions, lifecycle state, retrieval decisions, write decisions, and
       consolidation decisions.
-- [ ] Replace the fixture-only Memory seam with a typed read/write/consolidate seam
+- [x] Replace the fixture-only Memory seam with a typed read/write/consolidate seam
       that can support multiple deterministic policies without becoming a generic
       plugin SDK.
-- [ ] Add the four baseline Memory scopes: working, episodic, semantic, and
+- [x] Add the four baseline Memory scopes: working, episodic, semantic, and
       procedural, with explicit lifetime and ownership rules.
-- [ ] Add deterministic local implementations for no-memory, working-memory,
+- [x] Add deterministic local implementations for no-memory, working-memory,
       episodic retrieval, semantic fact retrieval, and procedural cache retrieval.
-- [ ] Add a durable local Memory repository with atomic writes, bounded records, and
+- [x] Add a durable local Memory repository with atomic writes, bounded records, and
       restart loading under the Studio evidence namespace.
-- [ ] Add deterministic ranking, deduplication, supersession, update, discard, and
+- [x] Add deterministic ranking, deduplication, supersession, update, discard, and
       consolidation behaviour with inspectable decisions.
-- [ ] Extend the Studio experiment catalog and request validation to allow a Memory
+- [x] Extend the Studio experiment catalog and request validation to allow a Memory
       component experiment while preserving the current Context request and response
       behaviour.
-- [ ] Run Memory trials through the existing `StudioHarnessRuntime` and preserve the
+- [x] Run Memory trials through the existing `StudioHarnessRuntime` and preserve the
       twelve-slot composition evidence.
 - [ ] Add fixed Memory scenarios for recall, update/conflict, retrieval miss,
       duplicate memory, forgetting/expiry, and procedural reuse.
-- [ ] Add Memory-specific grading, metrics, events, evidence files, and safe HTTP
+- [x] Add Memory-specific grading, metrics, events, evidence files, and safe HTTP
       projections.
 - [ ] Add deterministic, persistence, restart, cancellation, failure-injection,
       idempotency, and isolation tests.
