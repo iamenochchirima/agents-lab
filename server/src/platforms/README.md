@@ -82,6 +82,15 @@ The UI uses this distinction directly: a platform can be selectable while its ru
 control remains disabled until the server reports that its required dependency is
 reachable.
 
+The first cross-platform acceptance workload is the
+[platform-agent-conformance scenario](../../../lab/scenarios/platform-agent-conformance/README.md).
+It is shared at the request and evidence boundary, while each platform keeps its
+native model/tool loop, state, retry, cancellation, and recovery semantics. The
+priority local profile is Temporal, Restate, LangGraph, and Mastra; Temporal and
+Restate use native local services, LangGraph uses its loopback Python service with
+SQLite checkpoints, and Mastra runs directly in the Lab server process. Docker is
+optional for this profile.
+
 Every baseline variant has the same responsibility layout:
 
 ```text

@@ -158,6 +158,7 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
         variant: "baseline",
         task: { kind: "prompt", prompt: "Hello" },
         model: { provider: "fake", model: "fake-success" },
+        capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 } },
         selection: { scenarioId: "research", backendProfileId: "local-temporal-stack" },
       },
     });
@@ -171,6 +172,7 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
       reason: null,
     });
     assert.deepEqual(run.manifest.selection, { scenarioId: "research", backendProfileId: "local-temporal-stack" });
+    assert.deepEqual(run.manifest.capabilities, { tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 } });
 
     const events = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/events?after=2&limit=2` });
     assert.equal(events.statusCode, 200);

@@ -28,9 +28,9 @@ unavailable.
 `PlatformChatPage.tsx` is the browser-first conversation surface at
 `/platforms/<platform>/chat`. It uses the same run API as the controlled run form,
 keeps messages visible while a turn is polled, and exposes run activity and context
-details through progressive disclosure. Temporal/baseline reuses its server-owned
-session ID across turns and restores the model recorded by the active run. Once that
-session exists, the model picker is fixed for the conversation; use New chat before
-switching models. Other platforms remain honest single-turn surfaces until a
-platform-specific context/session adapter exists; Chat does not concatenate browser
-history into prompts as a substitute for real context handling.
+details through progressive disclosure. The current Temporal, Restate, LangGraph, and
+Mastra baseline adapters reuse the server-owned session ID across turns and restore the
+model recorded by the active run. Once a session exists, the model picker is fixed for
+the conversation; use New chat before switching models. Chat does not concatenate
+browser history into prompts as a substitute for the platform adapter's real context
+handling.

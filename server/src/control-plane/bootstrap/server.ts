@@ -46,8 +46,9 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const restateRunner = await RestateBaselineRunner.connect(loadRestateConfig());
   const langgraphRunner = LangGraphBaselineRunner.fromOptions({
     serviceUrl: process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024",
+    contextRoot: config.contextRoot,
   });
-  const mastraRunner = new MastraBaselineRunner();
+  const mastraRunner = new MastraBaselineRunner({ contextRoot: config.contextRoot });
   const inngestRunner = new InngestBaselineRunner();
   const triggerDevRunner = TriggerDevBaselineRunner.fromEnvironment();
   const dbosRunner = new DbosBaselineRunner();

@@ -4,6 +4,7 @@ import test from "node:test";
 import { validateRunRequest } from "../../src/control-plane/domain/manifest.js";
 import {
   CONFORMANCE_CASES,
+  CONFORMANCE_CONTEXT_WINDOW_TOKENS,
   CONFORMANCE_SCENARIO_ID,
   PRIORITY_PLATFORMS,
   assertConformanceEvents,
@@ -29,7 +30,7 @@ test("conformance requests reuse the generic run shape and stable turn IDs", () 
     variant: "baseline",
     clientTurnId: "calculator-tool-turn-1",
     task: { kind: "prompt", prompt: "Use the calculator tool to add 17 and 25, then state the result." },
-    model: { provider: "fake", model: "fake-tool-call" },
+    model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: CONFORMANCE_CONTEXT_WINDOW_TOKENS },
     capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 } },
     selection: { scenarioId: CONFORMANCE_SCENARIO_ID },
   });

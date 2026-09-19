@@ -7,6 +7,7 @@ import { ModelPicker } from "../models/ModelPicker";
 import { isRunnableBaseline, platformCatalog } from "./platformCatalog";
 import {
   createRun,
+  DEFAULT_PLATFORM_CAPABILITIES,
   getPlatformConnectivity,
   getRun,
   PlatformApiError,
@@ -138,6 +139,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
           variant: variant.id,
           task: { kind: "prompt", prompt: task.trim() },
           model: selectedModel!,
+          capabilities: DEFAULT_PLATFORM_CAPABILITIES,
           selection: {
             ...selection,
             ...(platform.backendProfiles[0] ? { backendProfileId: platform.backendProfiles[0].id } : {}),

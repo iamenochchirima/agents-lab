@@ -4,6 +4,7 @@ import type { RunView } from "../../src/control-plane/application/run-service.js
 import type { RunEvent, RunRequest, RunResult } from "../../src/control-plane/domain/types.js";
 
 export const CONFORMANCE_SCENARIO_ID = "platform-agent-conformance" as const;
+export const CONFORMANCE_CONTEXT_WINDOW_TOKENS = 16_384 as const;
 
 export const PRIORITY_PLATFORMS = ["temporal", "restate", "langgraph", "mastra"] as const;
 export type PriorityPlatform = (typeof PRIORITY_PLATFORMS)[number];
@@ -128,7 +129,7 @@ export function buildConformanceRequest(
     model: {
       provider: options.modelProvider ?? "fake",
       model: options.model ?? workload.model,
-      ...(options.contextWindowTokens === undefined ? {} : { contextWindowTokens: options.contextWindowTokens }),
+      contextWindowTokens: options.contextWindowTokens ?? CONFORMANCE_CONTEXT_WINDOW_TOKENS,
     },
     capabilities: {
       tools: {

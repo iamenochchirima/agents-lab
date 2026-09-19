@@ -12,6 +12,7 @@ import { isRunnableBaseline } from "./platformCatalog";
 import {
   cancelRun,
   createRun,
+  DEFAULT_PLATFORM_CAPABILITIES,
   getPlatformConnectivity,
   getRun,
   getRunEvents,
@@ -56,7 +57,7 @@ export function PlatformChatPage() {
   const ignoredUrlRunId = useRef<string | null>(null);
   searchParamsRef.current = searchParams;
 
-  const preservesSession = platform.id === "temporal" && variantId === "baseline";
+  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id) && variantId === "baseline";
   const hasRunnableBaseline = isRunnableBaseline(platform) && variantId === "baseline";
   const isReady = hasRunnableBaseline && connectivity?.reachable === true;
   const hasActiveRun = activeRunId !== null;
@@ -231,6 +232,7 @@ export function PlatformChatPage() {
         variant: variantId,
         task: { kind: "prompt", prompt: text },
         model: selectedModel,
+        capabilities: DEFAULT_PLATFORM_CAPABILITIES,
         ...(preservesSession && requestSessionId ? { sessionId: requestSessionId, clientTurnId } : {}),
         selection: {
           scenarioId,
@@ -379,8 +381,8 @@ export function PlatformChatPage() {
                 </ChatSelect>
               </div>
             </details>
-            {preservesSession && <p className="chat-session-note">Temporal session active. Use New chat to change model.</p>}
-            {!preservesSession && hasRunnableBaseline && <p className="chat-session-note">Each turn is a separate platform run until this platform has a session adapter.</p>}
+            {preservesSession && <p className="chat-session-note">Session active. Use New chat to change model.</p>}
+            {!preservesSession && hasRunnableBaseline && <p className="chat-session-note">Each turn starts a new platform run.</p>}
             {!isReady && <p className="chat-availability-error">{connectivityError ?? connectivity?.message ?? (!hasRunnableBaseline ? "This platform is not available yet." : "Checking server availability…")}</p>}
           </section>
 
@@ -497,7 +499,7 @@ function chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableBas
   if (!connectivity) return "Checking server…";
   if (!isReady) return connectivity.message;
   if (!selectedModel) return "Select a model.";
-  return preservesSession ? "Messages continue in this Temporal session." : "Each message starts a platform run.";
+  return preservesSession ? "Messages continue in this session." : "Each message starts a platform run.";
 }
 
 function createId(prefix: string): string {

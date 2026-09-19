@@ -78,7 +78,7 @@ export const platformCatalog: readonly PlatformDescriptor[] = [
     variants: [{ id: "baseline", name: "LangGraph baseline", description: "A checkpointed graph service with an explicit model node.", status: "ready" }],
   },
   {
-    ...plannedPlatform("mastra", "Mastra", "Durable agent and workflow execution", "An agent and workflow runtime with state snapshots and durable execution options.", "TypeScript", "Node.js application service", "Agent and workflow primitives", "Workflow snapshots and configured durable execution", "server/src/platforms/mastra/README.md"),
+    ...plannedPlatform("mastra", "Mastra", "Agent and workflow runtime", "An agent and workflow runtime with a direct-agent baseline and separate durability options.", "TypeScript", "Node.js application service", "Agent and workflow primitives", "Variant-defined; the baseline is process-local", "server/src/platforms/mastra/README.md"),
     status: "ready",
     backendProfiles: [{ id: "local-lab-server", name: "Local Lab server", description: "Runs the direct Mastra agent in the Lab server process.", status: "ready" }],
     variants: [{ id: "baseline", name: "Mastra baseline", description: "A direct Mastra agent execution in the Lab server.", status: "ready" }],

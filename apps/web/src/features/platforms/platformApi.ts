@@ -143,11 +143,29 @@ export interface PlatformRunRequest {
   readonly variant: string;
   readonly task: { readonly kind: "prompt"; readonly prompt: string };
   readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
+  readonly capabilities?: PlatformRunCapabilities;
   readonly sessionId?: string;
   /** Stable browser-generated identity for one submitted turn and its retries. */
   readonly clientTurnId?: string;
   readonly selection?: RunSelection;
 }
+
+export interface PlatformRunCapabilities {
+  readonly tools: {
+    readonly enabledNames: readonly string[];
+    readonly maxRounds: number;
+    readonly maxCalls: number;
+  };
+}
+
+/** The only capability exposed by the current browser workload. */
+export const DEFAULT_PLATFORM_CAPABILITIES: PlatformRunCapabilities = Object.freeze({
+  tools: Object.freeze({
+    enabledNames: Object.freeze(["calculator"]),
+    maxRounds: 6,
+    maxCalls: 8,
+  }),
+});
 
 export const RUN_EVIDENCE_FILES = [
   "config.json",

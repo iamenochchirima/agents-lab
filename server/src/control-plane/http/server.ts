@@ -9,7 +9,7 @@ import { RunNotFoundError, RunService, RunnerUnavailableError } from "../applica
 import { InvalidRunRequestError } from "../domain/manifest.js";
 import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError } from "../../capabilities/context/session-store.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
-import type { RunRequest, RunSelection } from "../domain/types.js";
+import type { RunCapabilities, RunRequest, RunSelection } from "../domain/types.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
 
 export interface ControlPlaneServerDependencies {
@@ -190,6 +190,7 @@ function parseRunRequest(body: unknown): RunRequest {
     throw new InvalidApiRequestError("experiments are not supported by this run path yet.");
   }
   const selection = parseRunSelection(body.selection);
+  const capabilities = parseRunCapabilities(body.capabilities);
   return {
     platform: body.platform,
     variant: body.variant,
@@ -201,7 +202,35 @@ function parseRunRequest(body: unknown): RunRequest {
       model: body.model.model,
       ...(body.model.contextWindowTokens === undefined ? {} : { contextWindowTokens: body.model.contextWindowTokens }),
     },
+    ...(capabilities === undefined ? {} : { capabilities }),
     selection,
+  };
+}
+
+function parseRunCapabilities(value: unknown): RunCapabilities | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value) || !isRecord(value.tools)) {
+    throw new InvalidApiRequestError("capabilities.tools must be an object when capabilities is provided.");
+  }
+  const { tools } = value;
+  if (!Array.isArray(tools.enabledNames)) {
+    throw new InvalidApiRequestError("capabilities.tools.enabledNames must be an array.");
+  }
+  const enabledNames = tools.enabledNames.map((name) => {
+    if (typeof name !== "string") {
+      throw new InvalidApiRequestError("capabilities.tools.enabledNames must contain strings.");
+    }
+    return name;
+  });
+  if (!isInteger(tools.maxRounds) || !isInteger(tools.maxCalls)) {
+    throw new InvalidApiRequestError("capabilities.tools.maxRounds and maxCalls must be integers.");
+  }
+  return {
+    tools: {
+      enabledNames,
+      maxRounds: tools.maxRounds,
+      maxCalls: tools.maxCalls,
+    },
   };
 }
 
@@ -228,6 +257,10 @@ function parseRunSelection(value: unknown): RunSelection | undefined {
 
 function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
 }
 
 function parseCancelBody(body: unknown): string {

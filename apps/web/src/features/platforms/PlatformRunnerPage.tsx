@@ -11,7 +11,7 @@ import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
 import { isRunnableBaseline } from "./platformCatalog";
 import { appPaths } from "../../routes/paths";
-import { cancelRun, createRun, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
+import { cancelRun, createRun, DEFAULT_PLATFORM_CAPABILITIES, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
 export function PlatformRunnerPage() {
@@ -37,7 +37,7 @@ export function PlatformRunnerPage() {
   const eventCursor = useRef(0);
   const previousPlatformId = useRef(platform.id);
   const runIdFromUrl = searchParams.get("run");
-  const preservesSession = platform.id === "temporal";
+  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id) && variantId === "baseline";
 
   const environments = useMemo(
     () => environmentCatalog.filter((environment) => platform.computerEnvironmentIds.includes(environment.id)),
@@ -158,6 +158,7 @@ export function PlatformRunnerPage() {
         variant: variantId,
         task: { kind: "prompt", prompt: task.trim() },
         model: selectedModel,
+        capabilities: DEFAULT_PLATFORM_CAPABILITIES,
         ...(preservesSession && sessionId ? { sessionId } : {}),
         selection: {
           scenarioId,
