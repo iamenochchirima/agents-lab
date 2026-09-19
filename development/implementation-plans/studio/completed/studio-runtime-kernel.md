@@ -80,7 +80,7 @@ server/src/studio/adapters/**           # baseline slot and model adapters
 server/src/studio/strategies/**          # existing Context strategies and contracts
 server/tests/studio/**
 server/src/studio/README.md
-development/implementation-plans/studio/active/studio-runtime-kernel.md
+development/implementation-plans/studio/completed/studio-runtime-kernel.md
 ```
 
 The existing Platform Lab control plane, platform modules, Anesu, and the Studio
@@ -295,7 +295,7 @@ kernel's completion gate.
 
 ## Completion record
 
-**Commits:** `e96272e`
+**Commits:** `48b6e90`
 
 ### Validation
 
