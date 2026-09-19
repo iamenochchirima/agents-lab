@@ -5,6 +5,7 @@ import {
   EpisodicLexicalPolicy,
   InMemoryStudioMemoryRepository,
   NoMemoryPolicy,
+  PolicyMemoryStore,
   SemanticFactPolicy,
   type StudioMemoryNamespace,
 } from "../../../src/studio/memory/index.js";
@@ -29,6 +30,27 @@ test("no-memory is a real control and never proposes persistence", async () => {
   const policy = new NoMemoryPolicy();
   assert.deepEqual(policy.retrieve({ state, task: "support language", now: "2026-09-20T00:00:00.000Z", limits }).records, []);
   assert.deepEqual(policy.proposeWrite({ state, task: "support language", turnId: "turn-1", output: "English", now: "2026-09-20T00:00:00.000Z" }), []);
+});
+
+test("no-memory ignores fixture seeding at the store boundary", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const store = new PolicyMemoryStore(new NoMemoryPolicy(), repository, limits);
+  await store.seed([{
+    recordId: "fact-language",
+    scope: "semantic",
+    content: "English is preferred.",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-fixture");
+
+  const result = await store.read({
+    task: "support language",
+    now: "2026-09-20T00:01:00.000Z",
+    signal: new AbortController().signal,
+  });
+  assert.deepEqual(result.retrievedRecordIds, []);
+  assert.deepEqual((await repository.load()).records, []);
 });
 
 test("episodic lexical policy ranks matching active records and omits unrelated records", async () => {

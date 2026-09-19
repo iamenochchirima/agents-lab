@@ -4,7 +4,7 @@ import { StudioComparisonService } from "./application/comparison-service.js";
 import { StudioEvidenceStore } from "./adapters/evidence-store.js";
 import type { StudioModelAdapter } from "./adapters/replay-model.js";
 import { registerStudioRoutes } from "./http/routes.js";
-import { DEFAULT_STUDIO_MEMORY_LIMITS, FileStudioMemoryRepository, PolicyMemoryStore, memoryPolicies } from "./memory/index.js";
+import { DEFAULT_STUDIO_MEMORY_LIMITS, FileStudioMemoryRepository, InMemoryStudioMemoryRepository, PolicyMemoryStore, memoryPolicies } from "./memory/index.js";
 
 export interface StudioModule {
   readonly service: StudioComparisonService;
@@ -36,9 +36,12 @@ export function createStudioModule(runsRoot: string, options: StudioModuleOption
         scenarioId: input.scenario.id,
         sessionId: `studio-${input.scenario.id}`,
       } as const;
+      const repository = policy.scope === "working"
+        ? new InMemoryStudioMemoryRepository(namespace, DEFAULT_STUDIO_MEMORY_LIMITS)
+        : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace);
       return new PolicyMemoryStore(
         policy,
-        new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace),
+        repository,
         DEFAULT_STUDIO_MEMORY_LIMITS,
       );
     }),

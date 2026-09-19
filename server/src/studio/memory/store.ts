@@ -25,6 +25,11 @@ export class PolicyMemoryStore implements StudioMemoryStoreAdapter {
   }
 
   async seed(seeds: readonly StudioMemorySeed[], operationId: string): Promise<void> {
+    // The control condition receives the same fixture setup at the harness
+    // boundary, but it must not persist or expose records as if memory were
+    // enabled. This keeps the control comparable without giving it a hidden
+    // store that later consolidation could observe.
+    if (this.policy.scope === "none") return;
     await this.repository.seed(seeds, operationId);
   }
 

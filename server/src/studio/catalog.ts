@@ -125,6 +125,41 @@ export const memoryExperiment: StudioExperimentDefinition = {
   ],
 };
 
+export const memoryUpdateScenario: StudioScenarioCase = {
+  id: "memory-update-preference",
+  version: "1",
+  name: "Updated preference supersedes stale fact",
+  task: "Record the updated support language preference.",
+  requiredMessageId: "memory-update-no-transcript-source",
+  requiredMemoryRecordId: "memory-update-language",
+  expectedAnswer: "Preference: support-language = Spanish",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-update-language",
+    scope: "semantic",
+    content: "The preferred support language for the account is English.",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    sourceMessageIds: ["memory-update-setup"],
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "preference-update" },
+  }],
+};
+
+export const memoryUpdateExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-updates",
+  version: "1",
+  name: "Compare Memory update policies",
+  hypothesis: "A keyed Memory policy can revise a stale fact without leaving two active values.",
+  changedComponent: "memory",
+  scenario: { id: memoryUpdateScenario.id, version: memoryUpdateScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
 const contextStrategyDescriptors = [
   {
     id: "full-history",
@@ -234,6 +269,20 @@ const componentDescriptors: readonly StudioComponentDescriptor[] = [
         controls: ["scenario fixture", "full-history Context", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
       },
       strategies: memoryStrategyDescriptors,
+    }, {
+      id: memoryUpdateExperiment.id,
+      version: memoryUpdateExperiment.version,
+      name: memoryUpdateExperiment.name,
+      hypothesis: memoryUpdateExperiment.hypothesis,
+      scenario: {
+        id: memoryUpdateScenario.id,
+        version: memoryUpdateScenario.version,
+        name: memoryUpdateScenario.name,
+        task: memoryUpdateScenario.task,
+        intendedObservation: "Compare whether the new preference supersedes the seeded stale fact.",
+        controls: ["scenario fixture", "full-history Context", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
+      },
+      strategies: memoryUpdateExperiment.strategies.map((strategy) => memoryStrategyDescriptors.find((descriptor) => descriptor.id === strategy.id)!).filter(Boolean),
     }],
   },
   plannedComponent("tool-use", 5, "Tool use", "Select, validate, execute, and recover from tool calls."),
@@ -289,6 +338,12 @@ export function resolveStudioCatalog(request: {
       throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
     }
     return { system: studioSystem, environment: replayEnvironment, experiment: memoryExperiment, scenario: memoryScenario } as const;
+  }
+  if (request.experiment.id === memoryUpdateExperiment.id && request.experiment.version === memoryUpdateExperiment.version) {
+    if (request.experiment.scenario.id !== memoryUpdateScenario.id || request.experiment.scenario.version !== memoryUpdateScenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment: memoryUpdateExperiment, scenario: memoryUpdateScenario } as const;
   }
   throw new StudioCatalogError(`Unknown Studio experiment: ${request.experiment.id}@${request.experiment.version}.`);
 }

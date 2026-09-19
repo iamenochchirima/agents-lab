@@ -173,6 +173,37 @@ test("Studio runs a Memory comparison with fixed Context and isolated durable po
   });
 });
 
+test("Studio records a Memory revision when a keyed fact changes", async () => {
+  await withStudioApp(async (app) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: memoryUpdateRequest("memory-update-comparison-1"),
+    });
+
+    assert.equal(response.statusCode, 202);
+    const comparison = response.json();
+    assert.equal(comparison.status, "completed");
+    assert.deepEqual(
+      comparison.trials.map((trial: { result: { grade: { status: string } } }) => trial.result.grade.status),
+      ["fail", "pass"],
+    );
+    assert.deepEqual(comparison.trials[1].memory.updatedRecordIds, ["memory-update-language-r2"]);
+    assert.equal(comparison.trials[1].memory.activeRecordIds.includes("memory-update-language"), false);
+    assert.equal(comparison.trials[1].memory.activeRecordIds.includes("memory-update-language-r2"), true);
+    assert.equal(comparison.trials[1].memory.decisions.some((decision: { operation: string; targetRecordId: string | null }) => decision.operation === "update" && decision.targetRecordId === "memory-update-language"), true);
+
+    const memoryState = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[1].manifest.trialId}/memory/records.json`,
+    });
+    assert.equal(memoryState.statusCode, 200);
+    const state = JSON.parse(memoryState.body);
+    assert.equal(state.records.find((record: { recordId: string }) => record.recordId === "memory-update-language")?.state, "superseded");
+    assert.equal(state.records.find((record: { recordId: string }) => record.recordId === "memory-update-language-r2")?.state, "active");
+  });
+});
+
 test("Studio catalog exposes all harness areas without claiming planned implementations", async () => {
   await withStudioApp(async (app) => {
     const response = await app.inject({ method: "GET", url: "/api/studio/catalog" });
@@ -296,6 +327,27 @@ function memoryRequest(idempotencyKey = "memory-comparison-1"): StudioComparison
       },
     },
     seed: "seed-memory-1",
+    idempotencyKey,
+  };
+}
+
+function memoryUpdateRequest(idempotencyKey = "memory-update-comparison-1"): StudioComparisonRequest {
+  return {
+    system: { id: "neutral-agent", version: "1" },
+    environment: { id: "deterministic-replay", version: "1" },
+    experiment: {
+      id: "compare-memory-updates",
+      version: "1",
+      scenario: { id: "memory-update-preference", version: "1" },
+      subject: {
+        component: "memory",
+        strategies: [
+          { id: "no-memory", version: "1", parameters: {} },
+          { id: "semantic-keyed-facts", version: "1", parameters: {} },
+        ],
+      },
+    },
+    seed: "seed-memory-update-1",
     idempotencyKey,
   };
 }

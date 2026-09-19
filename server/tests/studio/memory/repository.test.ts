@@ -7,6 +7,7 @@ import {
   FileStudioMemoryRepository,
   InMemoryStudioMemoryRepository,
   StudioMemoryCorruptStateError,
+  StudioMemoryConflictError,
   type StudioMemoryNamespace,
   type StudioMemoryMutation,
 } from "../../../src/studio/memory/index.js";
@@ -121,4 +122,33 @@ test("file Memory repository rejects a corrupt journal instead of treating it as
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("Memory repository rejects a different operation that reuses a seeded record ID", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  await repository.seed([{
+    recordId: "fact-language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-fixture");
+
+  await assert.rejects(
+    () => repository.apply([{
+      operationId: "different-seed",
+      operation: "add",
+      candidate: {
+        recordId: "fact-language",
+        scope: "semantic",
+        content: "Spanish",
+        logicalKey: "support-language",
+        source: "fixture-memory",
+        createdAt: "2026-09-20T00:01:00.000Z",
+      },
+      reason: "Conflicting fixture.",
+    }]),
+    StudioMemoryConflictError,
+  );
 });

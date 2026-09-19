@@ -197,6 +197,9 @@ function applyMutations(
     let changed = false;
     if (mutation.operation === "add" || mutation.operation === "update") {
       if (!candidate) throw new StudioMemoryRepositoryError(`Memory ${mutation.operation} requires a candidate.`);
+      if (mutation.operation === "add" && candidate.recordId && records.has(candidate.recordId)) {
+        throw new StudioMemoryConflictError(`Memory record already exists: ${candidate.recordId}.`);
+      }
       const next = materializeRecord(input.namespace, candidate, mutation, target, revision + 1, limits);
       if (mutation.operation === "update" && target) {
         records.set(target.recordId, { ...target, state: "superseded", updatedAt: next.updatedAt });
@@ -293,18 +296,20 @@ async function readJournal(path: string, namespace: StudioMemoryNamespace, limit
   const contents = await readOptionalText(path);
   if (contents === null) return [];
   if (Buffer.byteLength(contents, "utf8") > limits.maxJournalBytes) throw new StudioMemoryCorruptStateError(path);
-  const lines = contents.split("\n").filter((line) => line.length > 0);
-  return lines.map((line) => {
+  const rawLines = contents.split("\n");
+  if (rawLines.at(-1) === "") rawLines.pop();
+  if (rawLines.some((line) => line.trim().length === 0)) throw new StudioMemoryCorruptStateError(path);
+  return rawLines.map((line, index) => {
     let event: StudioMemoryJournalEvent;
     try {
       event = JSON.parse(line) as StudioMemoryJournalEvent;
     } catch {
       throw new StudioMemoryCorruptStateError(path);
     }
-    if (event.schemaVersion !== 1 || !Number.isInteger(event.sequence) || event.sequence < 1 || event.state.namespace.comparisonId !== namespace.comparisonId || event.state.namespace.trialId !== namespace.trialId) {
+    if (event.schemaVersion !== 1 || event.sequence !== index + 1 || event.state.namespace.comparisonId !== namespace.comparisonId || event.state.namespace.trialId !== namespace.trialId) {
       throw new StudioMemoryCorruptStateError(path);
     }
-    return validateJournalEvent(event, path, lines.length, namespace, limits);
+    return validateJournalEvent(event, path, rawLines.length, namespace, limits);
   });
 }
 
