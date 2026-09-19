@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T21:40:44+02:00
+**Last updated:** 2026-09-19T22:14:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -294,6 +294,22 @@ as a test dependency.
   the recovery snapshot contains a compaction summary and that the retry succeeds.
 - Focused validation passed: `pnpm --filter @agent-harness-lab/lab-server run test:restate`
   (41 passed, 3 environment-gated integration tests skipped).
+
+**2026-09-19T22:14:00+02:00 — native reconciliation and failure projection extended**
+
+- The native integration now covers a provider outcome that remains ambiguous after
+  dispatch. Restate returns a terminal workflow result with the original
+  `outcome_unknown` classification, and the workflow does not schedule a retry.
+- The generic HTTP projection is polled again after terminal completion to verify that
+  duplicate inspection does not append duplicate normalized events.
+- A native Lab-server replacement test now runs a delayed, context-capable turn with an
+  explicit model window, closes the first server, and reconciles the retained Restate
+  execution through a new server instance.
+- Context-budget validation failures from a durable context action now retain a bounded
+  `CONTEXT_PREPARATION_FAILED` classification instead of being reported as model retry
+  exhaustion. Provider credentials and raw provider payloads remain excluded.
+- Native validation passed: `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 pnpm
+  --filter @agent-harness-lab/lab-server run test:restate` (`44 passed, 1 skipped`).
 
 ## Scope
 

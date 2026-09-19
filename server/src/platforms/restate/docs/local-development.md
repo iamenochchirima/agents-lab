@@ -95,10 +95,20 @@ AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 node --import tsx --test integration-t
 ```
 
 It submits real workflows through Restate, verifies normalized evidence through the
-generic HTTP contract, and reads a completed workflow again through a replacement
-runner. If Restate is unavailable, the test fails; it does not mark an in-memory
-substitute as passing. The Docker-backed replay test remains opt-in with
-`AGENTLAB_RUN_RESTATE_INTEGRATION=1` and requires Docker.
+generic HTTP contract, checks an ambiguous provider outcome, and replaces the Lab
+HTTP server while a delayed workflow remains active. If Restate is unavailable, the
+test fails; it does not mark an in-memory substitute as passing. The Docker-backed
+replay test remains opt-in with `AGENTLAB_RUN_RESTATE_INTEGRATION=1` and requires
+Docker.
+
+For an isolated restart exercise, use a temporary `AGENTLAB_RESTATE_DATA_DIR` and
+non-default ingress, Admin API, and service ports. Stop the Restate server only after
+the service has stopped accepting new work, then start the same binary with the same
+data directory and register the service again. The Lab must report a retained native
+execution as queued or running while the dependency is unavailable, and must reconcile
+it after the Admin API and service return. A missing native execution is reported as
+`reconciliation_required`; it is not converted into a successful or ordinary model
+failure.
 
 ## Optional OpenRouter path
 

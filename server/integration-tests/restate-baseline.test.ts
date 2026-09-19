@@ -128,6 +128,25 @@ test(
       assert.equal(toolResult.eventIntents.filter((event) => event.kind === "ModelRequested").length, 2);
       assert.equal(toolResult.metrics.toolCallCount, 1);
       assert.equal(toolResult.metrics.toolAttemptCount, 1);
+
+      const unknownRunId = `restate-native-${Date.now()}-unknown`;
+      const unknownManifest = buildRunManifest({
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Do not retry an ambiguous provider outcome." },
+        model: { provider: "fake", model: "fake-unknown" },
+      }, { runId: unknownRunId, platformConfig: runner.manifestConfiguration() });
+      const unknownReference = await runner.start(unknownManifest);
+      let unknownInspection = await runner.inspect(unknownReference);
+      for (let attempt = 0; attempt < 80 && !unknownInspection.result; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        unknownInspection = await runner.inspect(unknownInspection.reference);
+      }
+      assert.equal(unknownInspection.status, "failed");
+      assert.equal(unknownInspection.result?.status, "failed");
+      assert.equal(unknownInspection.result?.error?.code, "FAKE_MODEL_OUTCOME_UNKNOWN");
+      assert.equal(unknownInspection.result?.error?.failureKind, "outcome_unknown");
+      assert.equal(unknownInspection.eventIntents.some((event) => event.kind === "ModelRetryScheduled"), false);
     } finally {
       await environment.stop();
     }
@@ -298,6 +317,11 @@ test(
 
       assert.equal(run.status, "completed");
       assert.equal(run.result?.output, 'The calculator returned {"value":42}.');
+      const eventCountAfterCompletion = run.events.length;
+      const repeatedInspection = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}` });
+      assert.equal(repeatedInspection.statusCode, 200, repeatedInspection.body);
+      const repeatedRun = repeatedInspection.json() as typeof run;
+      assert.equal(repeatedRun.events.length, eventCountAfterCompletion);
       assert.deepEqual(run.events.filter((event) => event.kind.startsWith("Tool")).map((event) => event.kind), [
         "ToolCallRequested",
         "ToolCallValidated",
@@ -361,6 +385,82 @@ test(
     } finally {
       await app.close();
       await rm(join(restateConfig.contextRoot, contextSessionId), { recursive: true, force: true });
+      await rm(runRoot, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "a replacement Lab server reconciles an active native Restate workflow",
+  {
+    skip:
+      process.env.AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION === "1"
+        ? false
+        : "Set AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 with the native Restate server and service running.",
+  },
+  async () => {
+    const runRoot = await mkdtemp(join(tmpdir(), "agentlab-restate-replacement-run-"));
+    const contextRoot = await mkdtemp(join(tmpdir(), "agentlab-restate-replacement-context-"));
+    const runner = await RestateBaselineRunner.connect(loadRestateConfig({
+      ...process.env,
+      AGENTLAB_CONTEXT_ROOT: contextRoot,
+    }));
+    const createApp = () => {
+      const config = loadServerConfig(
+        {
+          AGENTLAB_RUN_ROOT: runRoot,
+          AGENTLAB_CONTEXT_ROOT: contextRoot,
+          AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+        },
+        process.cwd(),
+      );
+      const evidence = new RunEvidenceStore(runRoot);
+      const registry = new PlatformRegistry([runner]);
+      const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+      const service = new RunService({ config, context, evidence, registry });
+      return buildControlPlaneServer({ config, service, evidence, registry });
+    };
+
+    let app = createApp();
+    try {
+      await app.ready();
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: {
+          platform: "restate",
+          variant: "baseline",
+          task: { kind: "prompt", prompt: "Replace the Lab server while this runs." },
+          model: { provider: "fake", model: "fake-delay", contextWindowTokens: 128_000 },
+        },
+      });
+      assert.equal(created.statusCode, 202, created.body);
+      const createdRun = created.json() as { runId: string; status: string };
+      assert.match(createdRun.runId, /^[a-z0-9-]+$/);
+      assert.match(createdRun.status, /^(?:queued|running)$/);
+
+      await app.close();
+      app = createApp();
+      await app.ready();
+
+      let recovered = (await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(createdRun.runId)}` })).json() as {
+        runId: string;
+        status: string;
+        result: { output: string } | null;
+        projection: { state: string };
+      };
+      for (let attempt = 0; attempt < 160 && recovered.result === null; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        recovered = (await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(createdRun.runId)}` })).json() as typeof recovered;
+      }
+
+      assert.equal(recovered.runId, createdRun.runId);
+      assert.equal(recovered.status, "completed", JSON.stringify(recovered));
+      assert.equal(recovered.result?.output, "Fake response: Replace the Lab server while this runs.");
+      assert.equal(recovered.projection.state, "current");
+    } finally {
+      await app.close().catch(() => undefined);
+      await rm(contextRoot, { recursive: true, force: true });
       await rm(runRoot, { recursive: true, force: true });
     }
   },

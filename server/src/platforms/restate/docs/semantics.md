@@ -18,6 +18,7 @@
 | Tool execution timeout/failure | Record one terminal tool execution event, append its bounded error result, and fail the run without continuing the model loop. |
 | Tool round/call limit | Record the limit failure and stop; no unbounded model/tool loop is allowed. |
 | Context preparation with a session turn | Run canonical context preparation in one named `ctx.run` action before the first model request; emit `ContextPreparationStarted` and `ContextPrepared`, then send the snapshot messages to the model adapter. |
+| Context preparation cannot establish a safe budget | Fail the run with `CONTEXT_PREPARATION_FAILED` and retain the bounded validation detail; do not classify the failure as a model retry exhaustion or send a provider request. |
 | Context usage observation | Record the provider-reported input usage and configured model window after each model response; the prepared snapshot remains the canonical session record. |
 | Terminal provider failure | Return a non-retryable model failure when the provider has rejected the request. |
 | Pre-dispatch retryable failure | Record a `ModelRetryScheduled` event and issue the next numbered model action. The retry is safe because the adapter has not sent a provider request. |

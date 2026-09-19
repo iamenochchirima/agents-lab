@@ -10,7 +10,14 @@ import {
 } from "../../config.js";
 import type { RunEventIntent, RunError, RunMetrics, RunTrajectory, RunUsage } from "../../../../control-plane/domain/types.js";
 import { calculateContextBudget } from "../../../../capabilities/context/budget.js";
-import { ContextService, ContextSessionStore, CharacterTokenEstimator, type ContextMessage, type ContextSummaryGenerator } from "../../../../capabilities/context/index.js";
+import {
+  ContextService,
+  ContextSessionStore,
+  CharacterTokenEstimator,
+  ContextCompactionError,
+  type ContextMessage,
+  type ContextSummaryGenerator,
+} from "../../../../capabilities/context/index.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type {
@@ -562,7 +569,21 @@ async function prepareContextSnapshot(
           return result.output;
         },
       };
-      return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer, options)).snapshot;
+      try {
+        return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer, options)).snapshot;
+      } catch (error) {
+        if (error instanceof ContextCompactionError) {
+          throw new restate.TerminalError("Context preparation failed.", {
+            errorCode: 422,
+            metadata: {
+              agentlabCode: "CONTEXT_PREPARATION_FAILED",
+              agentlabFailureKind: "validation",
+              agentlabDetail: boundedEventText(error.message, 256),
+            },
+          });
+        }
+        throw error;
+      }
     },
     { maxRetryAttempts: 1 },
   );
@@ -740,6 +761,18 @@ function classifyWorkflowError(error: unknown): RunError {
     return { code: "RUN_CANCELLED", message: "The Restate workflow was cancelled.", failureKind: "cancelled", retryable: false };
   }
   if (error instanceof restate.TerminalError) {
+    const code = error.metadata?.agentlabCode;
+    if (code) {
+      const failureKind = error.metadata?.agentlabFailureKind;
+      return {
+        code,
+        message: error.metadata?.agentlabDetail
+          ? `Context preparation failed: ${error.metadata.agentlabDetail}`
+          : "Context preparation failed.",
+        failureKind: failureKind === "validation" ? "validation" : "internal",
+        retryable: false,
+      };
+    }
     return {
       code: "MODEL_RETRY_EXHAUSTED",
       message: "The Restate durable model step exhausted its bounded retry policy.",
