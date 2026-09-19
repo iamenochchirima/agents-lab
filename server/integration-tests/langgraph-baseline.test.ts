@@ -125,6 +125,7 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
     assert.equal(recovered.error?.failureKind, "reconciliation");
 
     await assertLabServerReplacement(service.url, contextRoot);
+    await assertBothProcessReplacement();
   } finally {
     await service?.stop();
     await rm(stateDirectory, { recursive: true, force: true });
@@ -319,6 +320,52 @@ async function assertLabServerReplacement(serviceUrl: string, contextRoot: strin
   }
 }
 
+async function assertBothProcessReplacement(): Promise<void> {
+  const stateDirectory = await mkdtemp(join(tmpdir(), "agentlab-langgraph-both-restart-"));
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-both-restart-runs-"));
+  let nativeService: ManagedService | null = null;
+  let app: Awaited<ReturnType<typeof buildIntegrationApp>> | null = null;
+  try {
+    const contextRoot = join(stateDirectory, "sessions");
+    nativeService = await startService(stateDirectory);
+    app = await buildIntegrationApp(runRoot, nativeService.url, contextRoot);
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "This run should become explicitly unknown after both processes stop." },
+        model: { provider: "fake", model: "fake-delay", contextWindowTokens: 16_384 },
+        sessionId: "session-both-process-restart",
+        clientTurnId: "client-both-process-restart",
+      },
+    });
+    assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+    const created = createdResponse.json() as RunView;
+    await waitForNativeStatus(nativeService.url, `langgraph:${created.runId}`, "running");
+
+    await app.close();
+    app = null;
+    await nativeService.stop("SIGKILL");
+    nativeService = await startService(stateDirectory);
+    app = await buildIntegrationApp(runRoot, nativeService.url, contextRoot);
+
+    let recovered = await getRunFromApp(app, created.runId);
+    for (let attempt = 0; attempt < 100 && !recovered.result; attempt += 1) {
+      await delay(25);
+      recovered = await getRunFromApp(app, created.runId);
+    }
+    assert.equal(recovered.status, "reconciliation_required", JSON.stringify(recovered.result));
+    assert.equal(recovered.result?.error?.failureKind, "reconciliation");
+  } finally {
+    await app?.close();
+    await nativeService?.stop();
+    await rm(stateDirectory, { recursive: true, force: true });
+    await rm(runRoot, { recursive: true, force: true });
+  }
+}
+
 async function buildIntegrationApp(runRoot: string, serviceUrl: string, contextRoot: string) {
   const config = loadServerConfig(
     {
@@ -342,6 +389,17 @@ async function getRunFromApp(app: Awaited<ReturnType<typeof buildIntegrationApp>
   const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(runId)}` });
   assert.equal(response.statusCode, 200, response.body);
   return response.json() as RunView;
+}
+
+async function waitForNativeStatus(serviceUrl: string, executionId: string, expected: "running" | "queued"): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await fetch(`${serviceUrl}/v1/runs/${encodeURIComponent(executionId)}`);
+    assert.equal(response.status, 200);
+    const inspection = await response.json() as { status?: string };
+    if (inspection.status === expected) return;
+    await delay(25);
+  }
+  assert.fail(`LangGraph execution did not reach ${expected}: ${executionId}`);
 }
 
 function runnerThreadId(sessionId: string): string {

@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:17:03+02:00
+**Last updated:** 2026-09-20T01:19:15+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -458,7 +458,7 @@ boundary with explicit limitations, not as an in-memory test double.
   never infer provider success merely because a checkpoint exists.
 - [x] Replace the Lab server while the Python service and graph remain active, then
   reconcile the retained execution by stable `runId` and `thread_id`.
-- [ ] If both Lab server and Python service are replaced, recover settled state and
+- [x] If both Lab server and Python service are replaced, recover settled state and
   expose explicit recovery-required/unknown state for an interrupted external call.
 - [ ] On startup, inspect nonterminal service records and mark or resume them according
   to the documented rule; do not silently start a second graph for every stale record.
@@ -596,10 +596,10 @@ Tests must exercise real boundaries, not only helper functions.
 - [x] Run one fake model/tool turn through the generic Fastify API.
 - [x] Run two fake-model turns in one session and inspect one stable LangGraph thread
   with separate Lab run IDs through the generic Fastify API.
-- [ ] Replace the Python service during a delayed turn using the same SQLite database and
+- [x] Replace the Python service during a delayed turn using the same SQLite database and
   verify settled/recovery behaviour.
 - [x] Replace the Lab server during a delayed turn while the Python service remains up.
-- [ ] Replace both processes and verify the documented outcome.
+- [x] Replace both processes and verify the documented outcome.
 - [ ] Exercise duplicate admission, concurrent session conflict, cancellation, stale
   projection, timeout-after-dispatch, and context-overflow fixtures.
 - [x] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
@@ -817,6 +817,17 @@ what was observed, the exact validation command, and what remains.
   suite (`10 passed`), the no-Docker real-process integration (`1 passed`, `1 skipped`),
   and `git diff --check`. Both-process replacement, explicit unknown-outcome fixtures,
   and browser process-replacement coverage remain open.
+
+- **2026-09-20T01:19:15+02:00 — both-process replacement acceptance added.** The
+  no-Docker integration now starts a delayed native run, replaces the Lab server and
+  LangGraph service, reopens the same SQLite state, and verifies that startup marks the
+  interrupted native execution unknown. The rebuilt Lab server projects the retained
+  run as `reconciliation_required` with reconciliation evidence, without starting a
+  second graph. Validation passed:
+  `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server
+  exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`),
+  and `git diff --check`. Browser process replacement and the remaining duplicate,
+  stale, timeout-after-dispatch, and context-overflow fixtures remain open.
 
 ## Commit discipline
 
