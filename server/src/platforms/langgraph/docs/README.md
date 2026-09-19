@@ -70,6 +70,30 @@ returns that persisted unknown record with `idempotent=true`; it does not start 
 second graph execution. A late worker completion cannot overwrite that reconciliation
 record.
 
+## Observed behaviour and Lab guarantees
+
+The following table separates what the local implementation currently observes from
+what the Lab intentionally guarantees at its common runner boundary:
+
+| Area | Observed locally | Lab guarantee |
+| --- | --- | --- |
+| Two turns | The same hashed `thread_id` loads the first settled checkpoint and emits `CheckpointLoaded` for the second turn. | One `sessionId` may own one active turn at a time; each admitted turn keeps its own `runId` and `clientTurnId`. |
+| Model calls | Fake fixtures are deterministic; OpenRouter usage depends on the selected provider and network response. | Pre-dispatch failures may retry within the configured bound; an ambiguous post-dispatch result is never reported as success. |
+| Checkpoints | SQLite checkpoints survive a service restart when they were committed before interruption. | A checkpoint alone does not prove that an interrupted provider call completed. The run becomes `unknown`/`reconciliation_required` when that outcome cannot be established. |
+| Context | The TypeScript context service prepares the budget and compaction snapshot before dispatch. | Context usage is displayed from the shared snapshot; LangGraph checkpoint state is not treated as long-term memory or a second context authority. |
+| Tools | The baseline exposes only the pure calculator with bounded calls and rounds. | Tool arguments, names, results, and call counts are validated at the native boundary; side-effecting tools are out of scope here. |
+| Evidence | Native events retain bounded graph, checkpoint, model, tool, retry, and recovery metadata. | Normalized Lab evidence remains owned by the Lab server and is written idempotently; secrets and arbitrary checkpoint values are excluded. |
+
+The service exposes `GET /health`, `POST /v1/runs`, `GET /v1/runs/{executionId}`, and
+`POST /v1/runs/{executionId}/cancel`. The TypeScript adapter is the supported caller
+for Lab runs; direct service calls are useful for protocol learning and are not a
+replacement for the server's admission, context, and evidence path.
+
+The local SQLite profile is intentionally single-process. WAL and a busy timeout make
+the process boundary observable and reduce accidental lock failures, but they do not
+make SQLite a multi-worker production database. Hosted LangGraph, LangSmith, PostgreSQL,
+and distributed worker deployment require separate platform plans.
+
 ## First-party references
 
 - [Application structure](https://docs.langchain.com/oss/python/langgraph/application-structure)

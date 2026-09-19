@@ -88,9 +88,24 @@ The reset command is intentionally explicit because it destroys native
 checkpoint history. A process restart does not silently delete state. In-flight
 records that have no terminal record become `unknown` and require reconciliation.
 
-## Shared integration handoff
+## Shared Lab path
 
-This scoped profile does not edit `server/src/control-plane/`, the root launcher,
-the server package manifest, the platform registry, or the Platform UI. The
-primary integration agent must register the adapter only after this service is
-reachable and then run the generic server integration path.
+The LangGraph adapter is registered in the Lab server. To run the integrated local
+path from the repository root, use the no-Docker launcher:
+
+```bash
+./scripts/run_local_stack.sh langgraph
+./scripts/run_local_stack.sh server
+./scripts/run_local_stack.sh frontend
+```
+
+The aggregate `./scripts/run_local_stack.sh` command starts the priority services and
+performs the same readiness checks. The service and Lab server must share the context
+root and the configured LangGraph URL; the launcher supplies those values. Open
+`http://127.0.0.1:5173/platforms/langgraph/chat` to exercise the browser path.
+
+The standalone command replaces an existing repository-owned LangGraph listener on its
+configured port. It does not stop an unrelated process. For a controlled replacement
+exercise, use the opt-in browser command in
+[`apps/web/tests/browser/README.md`](../../../../apps/web/tests/browser/README.md),
+and keep the supplied PID limited to the repository-owned service.

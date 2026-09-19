@@ -665,20 +665,20 @@ record the exact prerequisite and keep the plan active.
 
 ## Documentation and release completeness
 
-- [ ] Update `server/src/platforms/langgraph/README.md` with the final session/thread,
+- [x] Update `server/src/platforms/langgraph/README.md` with the final session/thread,
   checkpoint, retry, cancellation, restart, and local-operation contract.
-- [ ] Update `server/src/platforms/langgraph/docs/README.md` with observed versus
+- [x] Update `server/src/platforms/langgraph/docs/README.md` with observed versus
   documented behaviour and the SQLite limitations.
-- [ ] Add or update a focused `development/playground/langgraph-*.md` walkthrough that
+- [x] Add or update a focused `development/playground/langgraph-*.md` walkthrough that
   starts the service, runs two turns, inspects checkpoints/evidence, and performs a
   controlled restart.
-- [ ] Update browser-test documentation with all opt-in live and process-replacement
+- [x] Update browser-test documentation with all opt-in live and process-replacement
   commands.
 - [ ] Update platform navigation and plan index when the plan is archived.
-- [ ] Check for `docs/internal/operations/release-process.md`; if absent, record that
-  fact and explicitly record documentation, logging, metrics, version, migration,
-  rollout, and rollback decisions here.
-- [ ] Analytics: not applicable unless this slice adds product analytics.
+- [x] Check for `docs/internal/operations/release-process.md`; it is absent in this
+  checkout, so documentation, logging, metrics, version, migration, rollout, and
+  rollback decisions are recorded in this plan and the platform notes.
+- [x] Analytics: not applicable; this slice adds no product analytics.
 - [ ] Structured logs: request/run/session/turn identity, status, native status, outcome,
   duration, retry count, and stable error code only; no prompt or credential logging.
 - [ ] Metrics: model calls, tool calls, graph steps, checkpoint count, retries, duration,
@@ -888,6 +888,15 @@ what was observed, the exact validation command, and what remains.
   `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` (`17 passed`).
   Committed as `de293e2` (`test(web): cover LangGraph Chat failure states`). The live
   process-replacement checks and remaining documentation/release gates remain open.
+
+- **2026-09-20T02:01:36+02:00 — local documentation and playground updated.** Expanded
+  the LangGraph semantics notes with observed behaviour versus Lab guarantees, SQLite
+  limits, API ownership, and recovery rules. Updated the deployment profile for the
+  registered shared-server path and replaced the playground with a no-Docker walkthrough
+  covering two-turn identity, evidence, and controlled interruption. Documentation
+  generation passed with 72 curated documents; `git diff --check` passed. The remaining
+  release gates are structured logging/metrics/version evidence, final manual browser
+  inspection, and opt-in destructive process replacement.
 
 ## Commit discipline
 
