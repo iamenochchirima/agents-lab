@@ -1,11 +1,17 @@
-# Restate session continuity and recovery
+# Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T21:19:33+02:00
+**Last updated:** 2026-09-19T21:40:44+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
 **Variant:** `baseline`
+
+This is one major implementation goal, not another short vertical slice. The sections
+below divide the work into reviewable implementation blocks and focused commits, but
+the plan remains active until the complete Restate baseline is runnable, observable,
+recoverable, documented, and accepted through the browser and native integration
+checks. Do not move to another platform because one block is finished.
 
 ## Start here
 
@@ -22,6 +28,7 @@ Read these before changing code:
 - [Browser Chat surface plan](../completed/browser-chat-surface.md)
 - [Cross-platform conformance plan](../completed/platform-agent-conformance.md)
 - [Platform source audit](../../../../docs/research/platform-plan-source-audit.md)
+- [Restate source and repository audit](../../../../docs/research/restate-baseline-source-audit.md)
 
 Official Restate references to re-check before implementation:
 
@@ -61,6 +68,10 @@ inside a durable `ctx.run` step. Restate retries errors by default, cancellation
 observed asynchronously, and the introspection API exposes invocation status, retry
 count, journal records, service deployment state, and persisted service state.
 
+The current repository baseline is pinned around Restate server `1.7.10` and the
+TypeScript SDK `1.17.0`; the implementing agent must verify that pair against the
+current official compatibility guidance before changing either pin.
+
 This plan deliberately does **not** introduce a Restate Virtual Object session model.
 The current Lab runner is run-oriented: `start`, `inspect`, and `cancel` operate on one
 run and one retained execution reference. For this slice:
@@ -80,36 +91,159 @@ separate plan with a separate question about keyed concurrency and workflow inte
 
 ## Purpose
 
-Make the Restate baseline a real multi-turn platform surface that survives service,
-Lab-server, and Restate restarts. A contributor should be able to continue a browser
-conversation, retry a lost HTTP response without creating a duplicate turn, inspect the
-native Restate execution identity, and distinguish a completed result from an outcome
-that is still unknown.
+Finish the Restate baseline as a complete platform implementation in the Lab. A contributor
+should be able to start the native local runtime without Docker, select a real OpenRouter
+model in the browser, run a tool-capable multi-turn conversation, inspect context pressure
+and evidence, cancel work, and recover honestly after duplicate requests, service failure,
+Lab-server replacement, or Restate restart.
 
-The slice answers this question:
+This plan answers the larger platform question:
 
-> Can one Restate-backed Lab conversation preserve ordered context and honest recovery
-> across normal retries and process failure without fabricating a result or silently
-> executing the same turn twice?
+> Can the Lab present a Restate-backed agent as a real, inspectable platform—model and tool
+> execution, context management, durable lifecycle, recovery, evidence, and browser UX—
+> without confusing Restate durability with exactly-once external provider execution?
+
+The existing session-continuity slice is the foundation already in the repository. It is not
+the completion target. The completion target is the full path below:
+
+```text
+native Restate runtime
+  -> registered TypeScript service
+  -> Lab runner and run admission
+  -> durable model/tool turn
+  -> context preparation, compaction, and settlement
+  -> normalized events, trajectory, metrics, result, and native reference
+  -> browser chat, context meter, run details, retry/cancel/recovery states
+```
 
 ## Definition of done
 
-From a clean checkout with the native Restate server available, a contributor can run
-the server, the Restate service, and the web app, open the Restate Chat page, and:
+From a clean checkout with the native Restate server available, a contributor can run the
+server, the Restate service, and the web app using the no-Docker local path, open the Restate
+Chat page, and:
 
-1. Start a new chat with a selected OpenRouter model.
+1. Start a new chat with a selected OpenRouter model and a valid session configuration.
 2. Send a first prompt and see the actual model response, run status, tool events when
-   enabled, and context-window usage.
-3. Send a second prompt in the same chat and see the first turn included in the
-   prepared context.
-4. Refresh or restart the Lab server while the turn is running, then see the existing
-   run reconcile from its retained Restate execution reference.
-5. Restart the Restate service and observe Restate replay the unfinished durable step
-   or expose a bounded, inspectable failure.
-6. Retry the same browser request with the same `clientTurnId` and receive the existing
-   turn instead of creating a second context message or second Lab run.
-7. Start a new chat before changing a session-pinned model configuration.
-8. Inspect the resulting evidence and confirm that provider credentials are absent.
+   enabled, token usage, and cost metadata when the provider returns it.
+3. Send additional prompts in the same chat and see the settled transcript, context
+   window, pressure state, and compaction behaviour evolve.
+4. Execute deterministic tool calls through the same durable lifecycle and inspect the
+   paired tool-call/tool-result events in the browser and evidence.
+5. Exercise retryable failures, cancellation, provider timeout-after-dispatch, and
+   malformed responses without claiming a stronger outcome than the implementation knows.
+6. Refresh or replace the Lab server while a turn is running, then reconcile the existing
+   run from its retained Restate execution reference.
+7. Replace the Restate service and restart the native Restate server with its persistent
+   data directory, then observe replay, completion, or an explicit recovery-required
+   state.
+8. Retry the same browser request with the same `clientTurnId` and receive the existing
+   turn instead of creating a second context message, run, or visible assistant result.
+9. Start a new chat before changing a session-pinned model or execution configuration.
+10. Inspect the resulting evidence and confirm that provider credentials, hidden prompts,
+    and unbounded native payloads are absent.
+
+The plan is complete only when these behaviours are covered by meaningful tests and the
+documentation explains the local commands, platform boundaries, failure semantics, and
+known local-only limitations.
+
+## End-to-end implementation blocks
+
+All blocks are part of this one Restate completion goal. Finish them in order unless a
+dependency makes a small reordering necessary. A block is not complete when its happy path
+works; its exit criteria include failure behaviour, evidence, tests, and documentation
+updates relevant to that block.
+
+### Block A — runtime, contracts, and local operations
+
+- Pin and verify the Node, Restate TypeScript SDK, native Restate server, and service
+  versions as a compatible local profile.
+- Make the no-Docker launcher start and stop the Lab server, worker/service, web app, and
+  native Restate dependency with deterministic ports, temporary data directories, readiness
+  checks, and cleanup. Docker remains optional.
+- Finalize manifest, native-reference, session, turn, and configuration-conflict schemas.
+- Define migration behaviour for existing baseline references and preserve unrelated
+  platform runners.
+- Exit criteria: a clean local startup and shutdown works twice in a row; unavailable
+  Restate produces a useful readiness error; all identity and configuration tests pass.
+
+### Block B — real durable agent execution
+
+- Complete the Restate workflow around the real OpenRouter model path, with fake models only
+  behind explicit deterministic test/failure fixtures.
+- Put model calls, tool calls, and other non-deterministic work behind named durable steps.
+- Preserve model selection, request metadata, tool-call pairing, cancellation signals, and
+  normalized event ordering through replay and repeated inspection.
+- Bound provider retries and classify pre-dispatch failure, response failure, timeout after
+  dispatch, abort, malformed response, and terminal provider errors.
+- Exit criteria: a real browser turn and deterministic tool turn complete through Restate;
+  workflow tests prove replay does not repeat a completed journaled step; provider outcome
+  classifications are visible in evidence.
+
+### Block C — context window, compaction, and multi-turn continuity
+
+- Use the shared ContextService as the only context admission and settlement boundary.
+- Carry the selected model's context-window metadata through preparation, compaction,
+  workflow input, evidence, and the browser context panel.
+- Implement a bounded provider-overflow recovery path: prepare/compact once, retry the
+  model operation only when the outcome is known to be safe, and emit explicit recovery
+  evidence. Never silently retry an ambiguous billable request.
+- Verify transcript ordering, context projection, compaction count, remaining percentage,
+  and unknown token states across normal turns, duplicate admission, replay, and restart.
+- Exit criteria: a deterministic pressure fixture reaches compaction without corrupting the
+  transcript; browser and server tests show the same context state; recovery is bounded.
+
+### Block D — lifecycle, recovery, and idempotency
+
+- Reconcile by retained invocation ID first and workflow key second through the Restate
+  adapter; keep native status and Lab status distinct.
+- Cover accepted, already-accepted, ambiguous submission, backing-off, suspended,
+  completed, cancelled, failed, killed, missing, and unavailable observations.
+- Test process replacement at each important window: before submission acknowledgement,
+  after Restate acceptance, during a durable step, after provider dispatch, before result
+  projection, and after terminal projection.
+- Make duplicate HTTP admission, duplicate Restate submission, duplicate event projection,
+  repeated settlement, and repeated polling safe and inspectable.
+- Exit criteria: service replacement, Lab-server replacement, and Restate restart each have
+  deterministic tests using isolated native data; unresolved provider outcomes become
+  `reconciliation_required` rather than fabricated success.
+
+### Block E — evidence and observability
+
+- Ensure the common server remains the only writer of `lab/runs/`.
+- Produce and validate `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`,
+  `result.json`, `logs/`, and `artifacts/` where applicable, plus a safe Restate-native
+  reference and context record.
+- Record native workflow key, invocation ID, status, retry count, journal/replay facts,
+  request and turn IDs, timings, usage/cost, tool events, compaction, cancellation, and
+  recovery classification without secrets.
+- Make terminal writes idempotent and define the ordering for event, trajectory, metric,
+  result, and context settlement writes. Exercise crash windows around each write.
+- Exit criteria: evidence can explain a normal run and a recovered/unknown run without
+  reading private logs; duplicate projection does not alter the final record.
+
+### Block F — browser product surface
+
+- Finish Restate Chat as the single end-to-end inspection surface: new chat, prompt, model
+  picker, run status, tool events, context meter, compacting state, run details, cancel,
+  retry, and recovery-required actions.
+- Keep platform-specific native details progressively disclosed and keep copy concise.
+- Prevent duplicate messages, duplicate keys, polling loops, blinking controls, stale
+  status overwrites, and route/health errors after terminal completion or refresh.
+- Verify real model execution and all recovery states at desktop, tablet, and narrow widths.
+- Exit criteria: browser acceptance covers normal two-turn use, refresh, duplicate POST,
+  cancellation, context pressure, server replacement, and explicit provider ambiguity.
+
+### Block G — documentation, validation, and handoff
+
+- Update the Restate README, architecture, local-development, and semantics docs together
+  with the implementation; add a concise playground walkthrough only for hands-on learning.
+- Record exact commands, versions, evidence paths, optional prerequisites, observed results,
+  interpretation, and known limitations.
+- Run the full validation matrix and review the complete diff for secrets, generated state,
+  accidental shared-platform changes, and stale plan references.
+- Archive this plan only after every applicable checkbox and completion gate is satisfied.
+- Exit criteria: a fresh contributor can reproduce the native run and recovery exercise;
+  this plan moves to `platforms/completed/`; only then should the next platform plan start.
 
 ```text
 browser chat
@@ -138,8 +272,9 @@ browser chat
 - The native, no-Docker Restate integration passed both the direct runner flow and the
   generic HTTP API flow, including context continuation, evidence projection, duplicate
   workflow submission, and cancellation.
-- This does not complete the plan. Browser-refresh retry persistence, process-restart
-  reconciliation, compaction recovery, provider ambiguity, and documentation remain.
+- This does not complete the plan. Runtime/profile hardening, real durable tool/model
+  coverage, process-restart reconciliation, compaction recovery, provider ambiguity,
+  evidence completeness, browser recovery states, and documentation remain.
 
 The finished implementation is not complete until the flow works with the native local
 Restate server and the real OpenRouter path when `OPENROUTER_API_KEY` is available. A
@@ -147,8 +282,27 @@ deterministic local model fixture may be used for crash and restart tests where 
 provider would make the test non-reproducible, but those tests must identify the fixture
 as a test dependency.
 
+**2026-09-19T21:56:20+02:00 — context-overflow recovery block implemented**
+
+- The Restate OpenRouter adapter now classifies provider-declared context-length failures
+  without retaining the provider error body or credentials.
+- The workflow performs one bounded `provider_overflow` compaction and retries the changed
+  request input. It records `ContextOverflowDetected`, `ContextRecoveryStarted`,
+  `ContextRecoveryPrepared`, `ModelRetryScheduled`, and `ContextRecoveryFailed` where
+  applicable.
+- The deterministic `fake-context-overflow` fixture and Restate workflow tests verify that
+  the recovery snapshot contains a compaction summary and that the retry succeeds.
+- Focused validation passed: `pnpm --filter @agent-harness-lab/lab-server run test:restate`
+  (41 passed, 3 environment-gated integration tests skipped).
+
 ## Scope
 
+- [ ] Complete the Restate baseline end to end; session continuity is a foundation, not
+  the stopping point for this plan.
+- [ ] Verify the native no-Docker runtime profile, service registration, readiness,
+  isolated persistent data, shutdown, and repeatable local operations.
+- [ ] Complete the real OpenRouter model and deterministic tool execution path with named
+  durable steps, bounded retries, cancellation, and provider-outcome classification.
 - [ ] Define and enforce the Restate session/turn identity rules on top of the current
   run-oriented runner contract.
 - [ ] Make repeated turns in one `sessionId` use the previous settled transcript and
@@ -163,6 +317,8 @@ as a test dependency.
   server and browser surface.
 - [ ] Show session identity, turn continuity, native Restate status, and context-window
   usage in the existing Restate Chat page without adding a noisy second dashboard.
+- [ ] Produce complete normalized and Restate-native evidence, including trajectory and
+  metrics, with idempotent terminal writes and no secrets.
 - [ ] Add focused unit tests, native Restate integration tests, browser acceptance
   checks, docs, and a runnable recovery walkthrough.
 - [ ] Record validation results, limitations, and focused implementation commits before
@@ -467,7 +623,7 @@ new turn over it without recording the decision.
       turn and every recovery path.
 - [ ] Bound provider retry attempts and classify `requestSent` accurately for response,
       timeout, abort, HTTP, and malformed-response failures.
-- [ ] Add an explicit context-overflow recovery path using the shared ContextService,
+- [x] Add an explicit context-overflow recovery path using the shared ContextService,
       with one bounded compaction/retry cycle and evidence for the changed snapshot.
 - [ ] Keep fake model behaviour isolated to deterministic tests and failure fixtures.
 - [ ] Preserve tool-call pairing, tool limits, cancellation signals, and tool event

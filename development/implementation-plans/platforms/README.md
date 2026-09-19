@@ -11,9 +11,10 @@ It does not contain Anesu or Studio work. Those have their own plan directories.
 
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
-- [Restate session continuity and recovery](active/restate-session-continuity-and-recovery.md)
-  — current priority slice for multi-turn sessions, restart recovery, and honest
-  provider-outcome handling.
+- [Restate baseline — end-to-end platform completion](active/restate-session-continuity-and-recovery.md)
+  — current priority plan for completing the full native Restate baseline: durable
+  model/tool execution, context and compaction, recovery, evidence, local operations,
+  and browser acceptance. Do not start the next platform until its completion gate is met.
 
 The completed [cross-platform agent conformance plan](completed/platform-agent-conformance.md)
 is the foundation for the current Restate slice. AWS Step Functions remains parked.
