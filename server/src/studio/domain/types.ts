@@ -90,7 +90,7 @@ export interface StudioEnvironmentProfile {
   readonly version: string;
   readonly name: string;
   readonly model: {
-    readonly provider: "replay";
+    readonly provider: "replay" | "openrouter";
     readonly model: string;
   };
   readonly contextWindowTokens: number;
@@ -156,7 +156,7 @@ export interface StudioComparisonManifest {
   readonly fixedEnvelope: {
     readonly scenarioId: string;
     readonly scenarioVersion: string;
-    readonly modelProvider: "replay";
+    readonly modelProvider: "replay" | "openrouter";
     readonly model: string;
     readonly contextWindowTokens: number;
     readonly reservedOutputTokens: number;
@@ -197,7 +197,38 @@ export interface StudioTrialResult {
   readonly startedAt: string;
   readonly finishedAt: string;
   readonly output: string | null;
+  readonly grade: StudioGrade | null;
   readonly error: StudioRunError | null;
+}
+
+export interface StudioGrade {
+  readonly graderId: string;
+  readonly status: "pass" | "fail" | "not-graded";
+  readonly reason: string;
+  readonly requiredSourceId: string | null;
+}
+
+export interface StudioMemoryEvidence {
+  readonly schemaVersion: typeof STUDIO_SCHEMA_VERSION;
+  readonly comparisonId: string;
+  readonly trialId: string;
+  readonly adapterId: string;
+  readonly adapterVersion: string;
+  readonly retrievedRecordIds: readonly string[];
+  readonly writtenRecordIds: readonly string[];
+  readonly scopes: readonly ("working" | "episodic" | "semantic" | "procedural")[];
+}
+
+export interface StudioCompositionEvidence {
+  readonly schemaVersion: typeof STUDIO_SCHEMA_VERSION;
+  readonly comparisonId: string;
+  readonly trialId: string;
+  readonly slots: readonly {
+    readonly component: StudioComponentId;
+    readonly adapterId: string;
+    readonly adapterVersion: string;
+    readonly status: "active" | "unavailable";
+  }[];
 }
 
 export interface StudioRunError {
@@ -259,6 +290,8 @@ export interface StudioTrajectory {
 export interface StudioTrialSnapshot {
   readonly manifest: StudioTrialManifest;
   readonly context: StudioContextEvidence | null;
+  readonly memory: StudioMemoryEvidence | null;
+  readonly composition: StudioCompositionEvidence | null;
   readonly result: StudioTrialResult | null;
 }
 

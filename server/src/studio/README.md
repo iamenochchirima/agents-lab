@@ -3,18 +3,36 @@
 Studio is a separately owned module family inside the existing Lab server. It does
 not create a second server or use the Platform Lab control-plane run lifecycle.
 
-The first slice supports a deterministic Context Management comparison through
-`/api/studio/`. It runs the same fixed scenario with `full-history`,
-`sliding-window`, or the lexical `relevance-ranked` baseline, using a replay model
-adapter and a Studio-owned evidence root.
+The foundation kernel supports a deterministic Context Management comparison through
+`/api/studio/`. Each trial now runs through a complete baseline harness composition:
+
+```text
+input
+  -> memory read
+  -> context assembly
+  -> planning
+  -> bounded control loop
+  -> model
+  -> tool/computer capability observation
+  -> safety gate
+  -> output
+  -> memory write
+  -> canonical events and evidence
+```
+
+It runs the same fixed scenario with `full-history`, `sliding-window`, or the
+lexical `relevance-ranked` baseline. The replay model is deterministic and the
+Studio-owned evidence root records both Context decisions and the complete
+component composition. A minimal OpenRouter model adapter is available for explicit
+injected live-provider profiles; replay remains the default catalog environment.
 
 ```text
 server/src/studio/
   domain/       Studio records, validation, and lifecycle
-  runtime/      fixed trial-environment assembly
+  runtime/      trial environment, typed kernel contracts, baseline adapters, and runtime
   strategies/   replaceable component strategies
   application/  comparison coordination
-  adapters/     replay model and evidence persistence
+  adapters/     model adapters and evidence persistence
   http/         /api/studio route registration
 ```
 
@@ -54,6 +72,8 @@ JSONL event file documented below.
   trials/<trial-id>/
     config.json
     context.json
+    memory.json
+    composition.json
     result.json
 ```
 
@@ -61,8 +81,24 @@ Configuration is immutable and evidence writes are idempotent. A repeated reques
 the same key and a different definition is a conflict. The current replay execution is
 sequential and completes in the request process; a later provider-backed profile must
 add external request identity and reconciliation before it can claim resumability.
-The deterministic replay profile is not a general OS sandbox; it is safe in this slice
-because it performs no network, filesystem-workspace, or side-effecting tool operation.
+The deterministic replay profile is not a general OS sandbox. It is safe in this slice
+because it performs no network, filesystem-workspace, computer-use, or side-effecting
+tool operation. Computer Use is recorded as unavailable rather than simulated.
+
+## Kernel ownership rules
+
+The kernel is independently owned by `server/src/studio/`. It uses shared server
+contracts for Context messages and token estimation, but it does not import Anesu,
+Platform Lab runners, or platform SDKs.
+
+`StudioComparisonService` owns comparison lifecycle and evidence publication.
+`StudioHarnessRuntime` owns one complete trial turn. Component adapters return typed
+observations and do not write arbitrary evidence files. Context may consume Memory
+results, but Memory has its own read/write evidence and is not folded into Context
+assembly.
+
+The current Memory adapter is a scoped fixture store. It proves the runtime seam and
+evidence shape; it is not the completed memory research subsystem.
 
 ## Experiment interpretation and UI handoff
 

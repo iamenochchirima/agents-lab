@@ -28,9 +28,13 @@ test("Studio runs a controlled context comparison through the existing server", 
     assert.equal(comparison.trials[0].manifest.strategy.id, "full-history");
     assert.equal(comparison.trials[0].context.retainedMessageIds.includes("context-fact-language"), true);
     assert.equal(comparison.trials[0].result.output, "The support agent should use English for this account.");
+    assert.equal(comparison.trials[0].result.grade.status, "pass");
     assert.equal(comparison.trials[1].manifest.strategy.id, "sliding-window");
     assert.equal(comparison.trials[1].context.omittedMessageIds.includes("context-fact-language"), true);
-    assert.equal(comparison.trials[1].result.output, "The required account preference was not present in the model context.");
+    assert.equal(comparison.trials[1].result.output, "The support agent should use English for this account.");
+    assert.equal(comparison.trials[1].result.grade.status, "fail");
+    assert.equal(comparison.trials[0].composition.slots.length, 12);
+    assert.deepEqual(comparison.trials[0].memory.retrievedRecordIds, []);
     assert.equal(
       comparison.trials[0].manifest.fixedControlFingerprint,
       comparison.trials[1].manifest.fixedControlFingerprint,
@@ -50,14 +54,36 @@ test("Studio runs a controlled context comparison through the existing server", 
         "ComparisonCreated",
         "ComparisonStarted",
         "TrialCreated",
+        "InputNormalized",
+        "MemoryRead",
         "ContextAssembled",
+        "PlanProduced",
+        "ControlLoopStarted",
         "ModelRequested",
         "ModelCompleted",
+        "ToolDispatchSkipped",
+        "ComputerUseUnavailable",
+        "SafetyChecked",
+        "OutputCollected",
+        "MemoryWritten",
+        "TrialGraded",
+        "TurnCompleted",
         "TrialCompleted",
         "TrialCreated",
+        "InputNormalized",
+        "MemoryRead",
         "ContextAssembled",
+        "PlanProduced",
+        "ControlLoopStarted",
         "ModelRequested",
         "ModelCompleted",
+        "ToolDispatchSkipped",
+        "ComputerUseUnavailable",
+        "SafetyChecked",
+        "OutputCollected",
+        "MemoryWritten",
+        "TrialGraded",
+        "TurnCompleted",
         "TrialCompleted",
         "ComparisonCompleted",
       ],
@@ -69,6 +95,20 @@ test("Studio runs a controlled context comparison through the existing server", 
     });
     assert.equal(evidence.statusCode, 200);
     assert.equal(JSON.parse(evidence.body).strategyId, "full-history");
+
+    const memoryEvidence = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[0].manifest.trialId}/memory.json`,
+    });
+    assert.equal(memoryEvidence.statusCode, 200);
+    assert.deepEqual(JSON.parse(memoryEvidence.body).retrievedRecordIds, []);
+
+    const compositionEvidence = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[0].manifest.trialId}/composition.json`,
+    });
+    assert.equal(compositionEvidence.statusCode, 200);
+    assert.equal(JSON.parse(compositionEvidence.body).slots.length, 12);
 
     const config = await readFile(join(studioRoot, comparison.manifest.comparisonId, "config.json"), "utf8");
     assert.equal(JSON.parse(config).fixedEnvelope.model, "context-replay-v1");
@@ -101,7 +141,7 @@ test("Studio catalog exposes all harness areas without claiming planned implemen
     const response = await app.inject({ method: "GET", url: "/api/studio/catalog" });
     assert.equal(response.statusCode, 200);
     const catalog = response.json();
-    assert.equal(catalog.components.length, 11);
+    assert.equal(catalog.components.length, 12);
     assert.equal(catalog.components[0].id, "input-perception");
     assert.equal(catalog.components[1].id, "context-management");
     assert.equal(catalog.components[1].status, "available");

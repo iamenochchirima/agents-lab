@@ -72,6 +72,35 @@ test("interruption before configuration and during publication remains explicit"
   }
 });
 
+test("runtime interruptions before a turn and before model dispatch remain recoverable", async () => {
+  for (const point of ["before-turn", "before-model"] as const) {
+    const root = await mkdtemp(join(tmpdir(), `agentlab-studio-${point}-`));
+    try {
+      let comparisonId: string | undefined;
+      const failureInjector: StudioFailureInjector = {
+        inject(injectedPoint, id) {
+          comparisonId = id;
+          if (injectedPoint === point) throw new StudioInjectedCrashError(injectedPoint);
+        },
+      };
+      const service = new StudioComparisonService({
+        evidence: new StudioEvidenceStore(root),
+        failureInjector,
+      });
+
+      await assert.rejects(() => service.create(comparisonRequest(`runtime-${point}`)), StudioInjectedCrashError);
+      assert.ok(comparisonId);
+      const projection = await new StudioComparisonService({ evidence: new StudioEvidenceStore(root) }).inspect(comparisonId);
+      assert.equal(projection.status, "recovery_required");
+      assert.equal(projection.result, null);
+      assert.equal(projection.trials.length, 1);
+      assert.equal(projection.trials[0].result, null);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test("cancellation during a model call leaves only the in-flight trial cancelled", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-cancel-"));
   try {

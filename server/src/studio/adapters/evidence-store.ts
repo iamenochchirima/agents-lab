@@ -6,9 +6,11 @@ import type {
   StudioComparisonManifest,
   StudioComparisonResult,
   StudioComparisonSnapshot,
+  StudioCompositionEvidence,
   StudioContextEvidence,
   StudioEvent,
   StudioEventIntent,
+  StudioMemoryEvidence,
   StudioMetrics,
   StudioTrajectory,
   StudioTrialManifest,
@@ -141,6 +143,16 @@ export class StudioEvidenceStore {
     await writeIdempotent(path, evidence);
   }
 
+  async writeMemoryEvidence(evidence: StudioMemoryEvidence): Promise<void> {
+    const path = join(this.trialDirectory(evidence.comparisonId, evidence.trialId), "memory.json");
+    await writeIdempotent(path, evidence);
+  }
+
+  async writeCompositionEvidence(evidence: StudioCompositionEvidence): Promise<void> {
+    const path = join(this.trialDirectory(evidence.comparisonId, evidence.trialId), "composition.json");
+    await writeIdempotent(path, evidence);
+  }
+
   async writeTrialResult(result: StudioTrialResult): Promise<void> {
     const path = join(this.trialDirectory(result.comparisonId, result.trialId), "result.json");
     await writeIdempotent(path, result);
@@ -207,8 +219,10 @@ export class StudioEvidenceStore {
       const trialId = entry.name;
       const trialManifest = await this.readJson<StudioTrialManifest>(join(trialRoot, trialId, "config.json"));
       const context = await this.readOptionalJson<StudioContextEvidence>(join(trialRoot, trialId, "context.json"));
+      const memory = await this.readOptionalJson<StudioMemoryEvidence>(join(trialRoot, trialId, "memory.json"));
+      const composition = await this.readOptionalJson<StudioCompositionEvidence>(join(trialRoot, trialId, "composition.json"));
       const result = await this.readOptionalJson<StudioTrialResult>(join(trialRoot, trialId, "result.json"));
-      trials.push({ manifest: trialManifest, context, result });
+      trials.push({ manifest: trialManifest, context, memory, composition, result });
     }
     trials.sort((left, right) => left.manifest.ordinal - right.manifest.ordinal);
     return {
@@ -329,7 +343,7 @@ function assertSafeId(value: string): void {
 
 function assertSafeRelativePath(value: string): void {
   const segments = value.split("/");
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|result\.json))$/.test(value)) {
+  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json))$/.test(value)) {
     throw new StudioEvidenceNotFoundError(value);
   }
 }

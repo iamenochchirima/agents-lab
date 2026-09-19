@@ -21,10 +21,11 @@ import type {
   StudioTrialResult,
 } from "../domain/types.js";
 import { resolveStudioCatalog, contextStrategies } from "../catalog.js";
-import { ContextStrategyRegistry, type ContextAssemblyResult } from "../strategies/context-strategy.js";
+import { ContextStrategyRegistry } from "../strategies/context-strategy.js";
 import type { StudioModelAdapter } from "../adapters/replay-model.js";
 import { ReplayModelAdapter } from "../adapters/replay-model.js";
 import { ReplayEnvironmentAssembler, type StudioEnvironmentAssembler } from "../runtime/environment.js";
+import { StudioHarnessRuntime } from "../runtime/harness-runtime.js";
 import {
   StudioEvidenceConflictError,
   StudioEvidenceNotFoundError,
@@ -45,7 +46,7 @@ export class StudioIdempotencyConflictError extends Error {
   }
 }
 
-export type StudioFailurePoint = "before-comparison-write" | "between-trials" | "during-evidence-publication";
+export type StudioFailurePoint = "before-comparison-write" | "before-turn" | "before-model" | "between-trials" | "during-evidence-publication";
 
 export interface StudioFailureInjector {
   inject(point: StudioFailurePoint, comparisonId: string): void | Promise<void>;
@@ -64,6 +65,7 @@ export interface StudioComparisonServiceDependencies {
   readonly strategies?: ContextStrategyRegistry;
   readonly model?: StudioModelAdapter;
   readonly environment?: StudioEnvironmentAssembler;
+  readonly runtime?: StudioHarnessRuntime;
   readonly failureInjector?: StudioFailureInjector;
   readonly now?: () => string;
   readonly tokenCounter?: CharacterTokenEstimator;
@@ -89,6 +91,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
   private readonly strategies: ContextStrategyRegistry;
   private readonly model: StudioModelAdapter;
   private readonly environment: StudioEnvironmentAssembler;
+  private readonly runtime: StudioHarnessRuntime;
   private readonly failureInjector: StudioFailureInjector | null;
   private readonly now: () => string;
   private readonly tokenCounter: CharacterTokenEstimator;
@@ -102,6 +105,11 @@ export class StudioComparisonService implements StudioComparisonRunner {
     this.failureInjector = dependencies.failureInjector ?? null;
     this.now = dependencies.now ?? (() => new Date().toISOString());
     this.tokenCounter = dependencies.tokenCounter ?? new CharacterTokenEstimator();
+    this.runtime = dependencies.runtime ?? StudioHarnessRuntime.createDefault({
+      environment: this.environment,
+      model: this.model,
+      now: this.now,
+    });
   }
 
   async create(request: StudioComparisonRequest): Promise<StudioComparisonProjection> {
@@ -220,7 +228,9 @@ export class StudioComparisonService implements StudioComparisonRunner {
     let completedTrialCount = 0;
     let modelCallCount = 0;
     let inputTokens = 0;
+    let outputTokens = 0;
     let hasInputTokens = false;
+    let hasOutputTokens = false;
     let currentTrial: StudioTrialManifest | null = null;
     let currentTrialStartedAt: string | null = null;
 
@@ -248,20 +258,32 @@ export class StudioComparisonService implements StudioComparisonRunner {
         await this.dependencies.evidence.writeTrialManifest(currentTrial);
         await emit("TrialCreated", { trialId, ordinal: index + 1, strategyId: strategy.id });
 
-        const environment = this.environment.assemble(manifest, scenario);
-        const assembled = this.strategies.get(strategy.id).assemble({
+        await this.failureInjector?.inject("before-turn", manifest.comparisonId);
+        const turn = await this.runtime.execute({
+          comparisonId: manifest.comparisonId,
           trialId,
-          task: environment.task,
-          messages: environment.messages,
-          contextWindowTokens: environment.contextWindowTokens,
-          budgetPolicy: environment.budgetPolicy,
-          tokenCounter: this.tokenCounter,
+          manifest,
+          scenario,
           strategy,
+          context: this.strategies.get(strategy.id),
+          tokenCounter: this.tokenCounter,
+          signal: controller.signal,
+          events: {
+            emit: async (kind, payload) => {
+              if (kind === "ModelRequested") await this.failureInjector?.inject("before-model", manifest.comparisonId);
+              await emit(kind, payload);
+            },
+          },
         });
-        if (assembled.budget.inputTokens !== null) {
-          inputTokens += assembled.budget.inputTokens;
+        if (turn.context.budget.inputTokens !== null) {
+          inputTokens += turn.context.budget.inputTokens;
           hasInputTokens = true;
         }
+        if (turn.model.outputTokens !== null) {
+          outputTokens += turn.model.outputTokens;
+          hasOutputTokens = true;
+        }
+        modelCallCount += 1;
         await this.dependencies.evidence.writeContextEvidence({
           schemaVersion: 1,
           comparisonId: manifest.comparisonId,
@@ -270,38 +292,15 @@ export class StudioComparisonService implements StudioComparisonRunner {
           strategyVersion: strategy.version,
           strategyParameters: strategy.parameters,
           task: scenario.task,
-          retainedMessageIds: assembled.retainedMessageIds,
-          omittedMessageIds: assembled.omittedMessageIds,
-          summarizedMessageIds: assembled.summarizedMessageIds,
-          messages: assembled.messages,
-          budget: assembled.budget,
-          decision: assembled.decision,
+          retainedMessageIds: turn.context.retainedMessageIds,
+          omittedMessageIds: turn.context.omittedMessageIds,
+          summarizedMessageIds: turn.context.summarizedMessageIds,
+          messages: turn.context.messages,
+          budget: turn.context.budget,
+          decision: turn.context.decision,
         });
-        await emit("ContextAssembled", contextEventPayload(assembled, trialId, strategy.id));
-        if (assembled.decision !== "within-budget") {
-          throw new Error(`Context strategy ${strategy.id} did not produce a within-budget context.`);
-        }
-
-        modelCallCount += 1;
-        await emit("ModelRequested", {
-          trialId,
-          provider: this.model.provider,
-          model: this.model.model,
-          messageIds: assembled.messages.map((message) => message.messageId),
-        });
-        const response = await this.model.complete({
-          task: scenario.task,
-          messages: assembled.messages,
-          requiredMessageId: scenario.requiredMessageId,
-          expectedAnswer: scenario.expectedAnswer,
-          seed: manifest.seed,
-        }, controller.signal);
-        throwIfAborted(controller.signal);
-        await emit("ModelCompleted", {
-          trialId,
-          inputTokens: response.inputTokens,
-          outputTokens: response.outputTokens,
-        });
+        await this.dependencies.evidence.writeMemoryEvidence(turn.memory);
+        await this.dependencies.evidence.writeCompositionEvidence(turn.composition);
         const finishedAt = this.now();
         const trialResult: StudioTrialResult = {
           schemaVersion: 1,
@@ -310,11 +309,12 @@ export class StudioComparisonService implements StudioComparisonRunner {
           status: "completed",
           startedAt: currentTrialStartedAt,
           finishedAt,
-          output: response.output,
+          output: turn.output,
+          grade: turn.grade,
           error: null,
         };
         await this.dependencies.evidence.writeTrialResult(trialResult);
-        await emit("TrialCompleted", { trialId, output: response.output });
+        await emit("TrialCompleted", { trialId, output: turn.output, grade: turn.grade });
         completedTrialCount += 1;
         currentTrial = null;
         currentTrialStartedAt = null;
@@ -332,7 +332,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
       };
       await this.failureInjector?.inject("during-evidence-publication", manifest.comparisonId);
       await this.dependencies.evidence.writeTrajectory(trajectory(manifest.comparisonId, startedAt, finishedAt));
-      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, "completed", startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null));
+      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, "completed", startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null));
       await this.dependencies.evidence.writeResult(result);
       await emit("ComparisonCompleted", { trialIds, completedTrialCount });
       return this.inspect(manifest.comparisonId);
@@ -350,6 +350,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
           startedAt: currentTrialStartedAt ?? startedAt,
           finishedAt,
           output: null,
+          grade: null,
           error: failure,
         };
         await this.dependencies.evidence.writeTrialResult(trialResult).catch((writeError) => {
@@ -367,7 +368,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
         error: failure,
       };
       await this.dependencies.evidence.writeTrajectory(trajectory(manifest.comparisonId, startedAt, finishedAt));
-      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, status, startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null));
+      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, status, startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null));
       await this.dependencies.evidence.writeResult(result);
       await emit(cancelled ? "ComparisonCancelled" : "ComparisonFailed", { error: failure, completedTrialCount });
       return this.inspect(manifest.comparisonId);
@@ -391,20 +392,6 @@ export class StudioComparisonService implements StudioComparisonRunner {
     if (snapshot.events.some((event) => event.kind === "ComparisonStarted")) return "recovery_required";
     return "created";
   }
-}
-
-function contextEventPayload(assembled: ContextAssemblyResult, trialId: string, strategyId: string): Record<string, unknown> {
-  return {
-    trialId,
-    strategyId,
-    retainedMessageIds: assembled.retainedMessageIds,
-    omittedMessageIds: assembled.omittedMessageIds,
-    summarizedMessageIds: assembled.summarizedMessageIds,
-    inputTokens: assembled.budget.inputTokens,
-    remainingTokens: assembled.budget.remainingTokens,
-    pressure: assembled.budget.pressure,
-    decision: assembled.decision,
-  };
 }
 
 function fixedControlFingerprint(manifest: StudioComparisonManifest, scenario: StudioScenarioCase): string {
@@ -438,6 +425,7 @@ function metrics(
   completedTrialCount: number,
   modelCallCount: number,
   inputTokens: number | null,
+  outputTokens: number | null,
 ): StudioMetrics {
   return {
     schemaVersion: 1,
@@ -448,8 +436,8 @@ function metrics(
     completedTrialCount,
     modelCallCount,
     inputTokens,
-    outputTokens: null,
-    totalTokens: null,
+    outputTokens,
+    totalTokens: inputTokens !== null && outputTokens !== null ? inputTokens + outputTokens : null,
     costUsd: null,
   };
 }
