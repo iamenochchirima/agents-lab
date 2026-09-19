@@ -740,8 +740,18 @@ what was observed, the exact validation command, and what remains.
   native OpenRouter boundary now recognizes common HTTP 400/413 context-limit
   responses as `LANGGRAPH_CONTEXT_OVERFLOW` without copying the provider body into
   errors. A focused Python test covers the classification and redaction. The bounded
-  shared-compaction retry is still pending because it needs an explicit adapter/service
-  recovery contract.
+  shared-compaction retry was then added in the recovery section below.
+
+- **2026-09-20T00:46:33+02:00 — one-time overflow recovery wired through the Lab.**
+  Added an optional runner recovery seam, LangGraph's forced `provider_overflow`
+  compaction dispatch, deterministic recovery identities, safe per-execution event
+  sources, and evidence replacement for the retained native reference. The common
+  service coalesces concurrent recovery attempts and blocks a second attempt after a
+  persisted recovery request. Added run-service and adapter tests proving one overflow
+  becomes one recovery dispatch, a forced `provider_overflow` snapshot, and ordered
+  evidence. Validation passed: sixteen run-service tests, fourteen focused LangGraph
+  TypeScript tests, forty-one LangGraph Python tests, server typecheck, and
+  `git diff --check`.
 
 ## Commit discipline
 

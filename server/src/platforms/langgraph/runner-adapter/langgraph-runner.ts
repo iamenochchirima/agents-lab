@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   PlatformExecutionReference,
   RunEventIntent,
@@ -119,11 +121,58 @@ export class LangGraphBaselineRunner implements PlatformRunner {
     const configuration = this.configurationFromManifest(manifest);
     const context = await this.prepareContext(manifest, configuration.contextRoot);
     const threadId = manifest.context.sessionId ? langGraphThreadId(manifest.context.sessionId) : manifest.runId;
+    return this.dispatch(manifest, configuration, {
+      runId: manifest.runId,
+      clientTurnId: manifest.context.clientTurnId,
+      threadId,
+      context,
+      eventSource: "langgraph-service",
+    });
+  }
+
+  async recoverContextOverflow(
+    manifest: RunManifest,
+    reference: PlatformExecutionReference,
+  ): Promise<PlatformExecutionReference> {
+    const configuration = this.configurationFromManifest(manifest);
+    if (!manifest.context.sessionId || !manifest.context.turnId) {
+      throw new Error("LangGraph context recovery requires a session-backed turn.");
+    }
+    const native = langGraphExecutionFromReference(reference);
+    const context = await this.prepareContext(manifest, configuration.contextRoot, {
+      forceCompaction: true,
+      trigger: "provider_overflow",
+    });
+    if (!context) throw new Error("LangGraph context recovery did not produce a context snapshot.");
+    const recoveryId = contextRecoveryId(manifest.runId);
+    return this.dispatch(manifest, configuration, {
+      runId: recoveryId,
+      clientTurnId: contextRecoveryClientTurnId(manifest.runId),
+      threadId: native.threadId,
+      context,
+      eventSource: "langgraph-context-recovery",
+    });
+  }
+
+  private async dispatch(
+    manifest: RunManifest,
+    configuration: LangGraphConfiguration,
+    identity: {
+      readonly runId: string;
+      readonly clientTurnId?: string;
+      readonly threadId: string;
+      readonly context?: { readonly sessionId: string; readonly turnId: string; readonly snapshotId: string };
+      readonly eventSource: string;
+    },
+  ): Promise<PlatformExecutionReference> {
+    const requestManifest = identity.runId === manifest.runId
+      ? manifest
+      : { ...manifest, runId: identity.runId };
     const requestBody = JSON.stringify({
       protocolVersion: LANGGRAPH_PROTOCOL_VERSION,
-      runId: manifest.runId,
+      runId: identity.runId,
       ...(manifest.context.sessionId ? { sessionId: manifest.context.sessionId } : {}),
-      ...(manifest.context.clientTurnId ? { clientTurnId: manifest.context.clientTurnId } : {}),
+      ...(identity.clientTurnId ? { clientTurnId: identity.clientTurnId } : {}),
       prompt: manifest.task.prompt,
       systemInstruction: manifest.context.systemInstruction,
       model: {
@@ -131,11 +180,11 @@ export class LangGraphBaselineRunner implements PlatformRunner {
         model: manifest.model.model,
       },
       graph: "baseline",
-      threadId,
+      threadId: identity.threadId,
       durability: "sqlite-sync",
       maxAttempts: configuration.maxAttempts,
       timeoutMs: configuration.timeoutMs,
-      ...(context ? { context } : {}),
+      ...(identity.context ? { context: identity.context } : {}),
       tools: manifest.capabilities?.tools ?? configuration.tools,
     });
     try {
@@ -143,7 +192,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
         method: "POST",
         body: requestBody,
       }));
-      return referenceFromResponse(response, manifest, configuration.serviceUrl);
+      return referenceFromResponse(response, requestManifest, configuration.serviceUrl, manifest.runId, identity.eventSource);
     } catch (error) {
       if (!couldHaveLostAdmission(error)) throw error;
 
@@ -152,10 +201,10 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       // issuing a second POST that could duplicate the graph execution.
       try {
         const inspection = parseInspection(await this.request(
-          `/v1/runs/${encodeURIComponent(`langgraph:${manifest.runId}`)}`,
+          `/v1/runs/${encodeURIComponent(`langgraph:${identity.runId}`)}`,
           { method: "GET" },
         ));
-        return referenceFromInspection(inspection, manifest, configuration.serviceUrl);
+        return referenceFromInspection(inspection, requestManifest, configuration.serviceUrl, manifest.runId, identity.eventSource);
       } catch {
         throw error;
       }
@@ -165,10 +214,11 @@ export class LangGraphBaselineRunner implements PlatformRunner {
   private async prepareContext(
     manifest: RunManifest,
     contextRoot: string,
+    options: { readonly forceCompaction?: boolean; readonly trigger?: "preflight" | "provider_overflow" } = {},
   ): Promise<{ readonly sessionId: string; readonly turnId: string; readonly snapshotId: string } | undefined> {
     const { sessionId, turnId, snapshotId } = manifest.context;
     if (!sessionId || !turnId) return undefined;
-    if (snapshotId) return { sessionId, turnId, snapshotId };
+    if (snapshotId && !options.forceCompaction) return { sessionId, turnId, snapshotId };
 
     const context = new ContextService(
       new ContextSessionStore(contextRoot),
@@ -181,7 +231,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       baseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL,
       timeoutMs: this.options.requestTimeoutMs,
     });
-    const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
+    const prepared = await context.prepareTurn(sessionId, turnId, summarizer, options);
     return { sessionId, turnId, snapshotId: prepared.snapshot.snapshotId };
   }
 
@@ -270,6 +320,8 @@ function readToolConfiguration(value: Readonly<Record<string, unknown>>): LangGr
 interface LangGraphExecutionReference {
   readonly serviceOrigin: string;
   readonly executionId: string;
+  readonly labRunId: string;
+  readonly eventSource: string;
   readonly threadId: string;
   readonly graph: string;
   readonly protocolVersion: number;
@@ -279,10 +331,14 @@ function referenceFromResponse(
   response: ReturnType<typeof parseStartResponse>,
   manifest: RunManifest,
   serviceUrl: string,
+  labRunId = manifest.runId,
+  eventSource = "langgraph-service",
 ): PlatformExecutionReference {
   const native: LangGraphExecutionReference = {
     serviceOrigin: serviceUrl,
     executionId: response.executionId,
+    labRunId,
+    eventSource,
     threadId: response.threadId,
     graph: response.graph,
     protocolVersion: response.protocolVersion,
@@ -299,6 +355,8 @@ function referenceFromInspection(
   inspection: LangGraphInspection,
   manifest: RunManifest,
   serviceUrl: string,
+  labRunId = manifest.runId,
+  eventSource = "langgraph-service",
 ): PlatformExecutionReference {
   if (inspection.runId !== manifest.runId || inspection.executionId !== `langgraph:${manifest.runId}`) {
     throw new Error("LangGraph reconciliation returned a different execution identity.");
@@ -306,6 +364,8 @@ function referenceFromInspection(
   const native: LangGraphExecutionReference = {
     serviceOrigin: serviceUrl,
     executionId: inspection.executionId,
+    labRunId,
+    eventSource,
     threadId: inspection.threadId,
     graph: inspection.graph,
     protocolVersion: inspection.protocolVersion,
@@ -326,6 +386,8 @@ function langGraphExecutionFromReference(reference: PlatformExecutionReference):
   return {
     serviceOrigin: readString(native, "serviceOrigin", "serviceUrl"),
     executionId: readString(native, "executionId"),
+    labRunId: readOptionalString(native, "labRunId") ?? readString(native, "executionId").replace(/^langgraph:/, ""),
+    eventSource: readOptionalString(native, "eventSource") ?? "langgraph-service",
     threadId: readString(native, "threadId"),
     graph: readString(native, "graph"),
     protocolVersion: readPositiveInteger(native, "protocolVersion"),
@@ -334,27 +396,30 @@ function langGraphExecutionFromReference(reference: PlatformExecutionReference):
 
 function inspectionFromWire(inspection: LangGraphInspection, reference: PlatformExecutionReference): RunnerInspection {
   const unknown = inspection.status === "unknown";
+  const labRunId = readOptionalString(reference.native, "labRunId")
+    ?? reference.executionId.replace(/^langgraph:/, "");
+  const eventSource = readOptionalString(reference.native, "eventSource") ?? "langgraph-service";
   return {
     status: unknown ? "running" : inspection.status,
     reference,
     eventIntents: inspection.events.map((event): RunEventIntent => ({
-      source: event.source,
+      source: eventSource,
       sourceSequence: event.sourceSequence,
       kind: event.kind,
-      runId: event.runId,
+      runId: labRunId,
       occurredAt: event.occurredAt,
       payload: event.payload,
     })),
-    result: inspection.result ? runResultFromWire(inspection.result, unknown) : null,
+    result: inspection.result ? runResultFromWire(inspection.result, unknown, labRunId) : null,
     trajectory: {
       schemaVersion: 1,
-      runId: inspection.runId,
+      runId: labRunId,
       phases: inspection.trajectory.phases,
     },
     metrics: {
       schemaVersion: 1,
-      runId: inspection.runId,
-      status: inspection.result ? runResultFromWire(inspection.result, unknown).status : "reconciliation_required",
+      runId: labRunId,
+      status: inspection.result ? runResultFromWire(inspection.result, unknown, labRunId).status : "reconciliation_required",
       durationMs: inspection.metrics.durationMs,
       modelCallCount: inspection.metrics.modelCallCount,
       modelAttemptCount: inspection.metrics.modelAttemptCount,
@@ -368,10 +433,10 @@ function inspectionFromWire(inspection: LangGraphInspection, reference: Platform
   };
 }
 
-function runResultFromWire(result: LangGraphResult, unknown: boolean): RunResult {
+function runResultFromWire(result: LangGraphResult, unknown: boolean, labRunId: string): RunResult {
   return {
     schemaVersion: 1,
-    runId: result.runId,
+    runId: labRunId,
     status: mapResultStatus(result.status, unknown),
     startedAt: result.startedAt,
     finishedAt: result.finishedAt ?? new Date().toISOString(),
@@ -399,6 +464,11 @@ function readString(value: Readonly<Record<string, unknown>>, key: string, legac
   return candidate;
 }
 
+function readOptionalString(value: Readonly<Record<string, unknown>>, key: string): string | undefined {
+  const candidate = value[key];
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
+}
+
 function couldHaveLostAdmission(error: unknown): boolean {
   if (error instanceof LangGraphServiceHttpError) return error.status >= 500;
   return error instanceof LangGraphRunnerUnavailableError || error instanceof TypeError;
@@ -412,4 +482,12 @@ function readPositiveInteger(value: Readonly<Record<string, unknown>>, key: stri
 
 function safeMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function contextRecoveryId(runId: string): string {
+  return `context-recovery-${createHash("sha256").update(runId, "utf8").digest("hex").slice(0, 32)}`;
+}
+
+function contextRecoveryClientTurnId(runId: string): string {
+  return `context-recovery-${createHash("sha256").update(`client:${runId}`, "utf8").digest("hex").slice(0, 32)}`;
 }

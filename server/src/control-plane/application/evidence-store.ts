@@ -214,7 +214,11 @@ export class RunEvidenceStore {
     return events;
   }
 
-  async writeExecutionReference(runId: string, reference: PlatformExecutionReference): Promise<void> {
+  async writeExecutionReference(
+    runId: string,
+    reference: PlatformExecutionReference,
+    options: { readonly allowIdentityChange?: boolean } = {},
+  ): Promise<void> {
     const safeReference = sanitizeEvidenceValue(reference) as PlatformExecutionReference;
     const manifest = await this.readManifest(runId);
     const path = join(this.runDirectory(runId), nativeReferenceFile(safeReference.platform));
@@ -227,7 +231,7 @@ export class RunEvidenceStore {
     // known native identity without allowing a different execution to overwrite it.
     try {
       const existing = await readJson<PlatformExecutionReference>(path);
-      if (existing.executionId !== safeReference.executionId) {
+      if (existing.executionId !== safeReference.executionId && !options.allowIdentityChange) {
         throw new EvidenceConflictError(`Execution identity changed for native evidence: ${path}`);
       }
     } catch (error) {

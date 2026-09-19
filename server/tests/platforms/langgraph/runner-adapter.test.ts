@@ -280,6 +280,107 @@ test("LangGraph adapter compacts shared context before dispatch when the budget 
   }
 });
 
+test("LangGraph adapter submits one recovered native execution after provider overflow", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-langgraph-overflow-"));
+  try {
+    const store = new ContextSessionStore(root);
+    await store.create({
+      sessionId: "session-provider-overflow",
+      platform: "langgraph",
+      variant: "baseline",
+      model: "fake/fake-context",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 1_200,
+      reservedOutputTokens: 100,
+      safetyMarginTokens: 50,
+      compactionThresholdPercent: 50,
+      recentMessageGroups: 0,
+    });
+    const oldTurn = await store.admitTurn(
+      "session-provider-overflow",
+      "run-overflow-old",
+      `Old question ${"x".repeat(600)}`,
+    );
+    await store.settleTurn("session-provider-overflow", oldTurn.turn.turnId, {
+      status: "completed",
+      output: `Old answer ${"y".repeat(600)}`,
+      error: null,
+    });
+    const currentTurn = await store.admitTurn(
+      "session-provider-overflow",
+      "run-provider-overflow",
+      "Current question.",
+    );
+
+    let requestBody: Record<string, any> | null = null;
+    await withProtocolServer(
+      ({ method, url, body }) => {
+        if (method === "POST" && url === "/v1/runs") {
+          requestBody = body as Record<string, any>;
+          const runId = requestBody.runId as string;
+          return {
+            status: 202,
+            body: {
+              protocolVersion: 1,
+              executionId: `langgraph:${runId}`,
+              runId,
+              threadId: langGraphThreadId("session-provider-overflow"),
+              graph: "baseline",
+              status: "queued",
+              idempotent: false,
+            },
+          };
+        }
+        return { status: 404, body: { detail: "not found" } };
+      },
+      async (origin) => {
+        const base = manifest(origin);
+        const recoveryManifest = {
+          ...base,
+          runId: "run-provider-overflow",
+          platformConfig: { ...base.platformConfig, contextRoot: root },
+          model: { provider: "fake" as const, model: "fake-context", contextWindowTokens: 1_200 },
+          context: {
+            ...base.context,
+            sessionId: "session-provider-overflow",
+            turnId: currentTurn.turn.turnId,
+          },
+        } satisfies RunManifest;
+        const reference = {
+          platform: "langgraph",
+          variant: "baseline",
+          executionId: "langgraph:run-provider-overflow",
+          native: {
+            serviceOrigin: origin,
+            executionId: "langgraph:run-provider-overflow",
+            labRunId: "run-provider-overflow",
+            eventSource: "langgraph-service",
+            threadId: langGraphThreadId("session-provider-overflow"),
+            graph: "baseline",
+            protocolVersion: 1,
+          },
+        };
+        const recovered = await LangGraphBaselineRunner.fromOptions({ serviceUrl: origin }).recoverContextOverflow(recoveryManifest, reference);
+        assert.equal(recovered.executionId, `langgraph:${requestBody?.runId}`);
+        assert.equal(recovered.native.labRunId, "run-provider-overflow");
+        assert.equal(recovered.native.eventSource, "langgraph-context-recovery");
+        assert.equal(recovered.native.threadId, langGraphThreadId("session-provider-overflow"));
+      },
+    );
+
+    assert.ok(requestBody);
+    const body = requestBody as Record<string, any>;
+    assert.match(body.runId, /^context-recovery-/);
+    assert.match(body.clientTurnId, /^context-recovery-/);
+    assert.equal(body.context.sessionId, "session-provider-overflow");
+    assert.equal(typeof body.context.snapshotId, "string");
+    const snapshot = await store.readSnapshot("session-provider-overflow", body.context.snapshotId);
+    assert.equal(snapshot.compaction?.trigger, "provider_overflow");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function inspectionBody(status: "completed" | "unknown") {
   return {
     protocolVersion: 1,

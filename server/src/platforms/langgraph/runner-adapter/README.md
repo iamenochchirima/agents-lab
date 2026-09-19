@@ -21,6 +21,13 @@ for reproducible tests. OpenRouter profiles call the selected model with the ser
 credential and timeout settings. Summary calls are not retried after dispatch because
 the provider may have accepted the request even when the response was lost.
 
+If the LangGraph service reports `LANGGRAPH_CONTEXT_OVERFLOW`, the common run service
+invokes the optional LangGraph recovery method once. The adapter forces a new shared
+compaction snapshot, submits a new native execution on the same thread with a
+deterministic recovery identity, and keeps its native events under a separate safe
+source name. A second overflow or a failed recovery remains an explicit provider
+failure; it does not loop.
+
 The adapter is registered by the common server alongside the other first-wave
 baselines. The registration still does not imply that the Python service is
 reachable: `checkConnection()` reports that dependency state, while the runner

@@ -72,6 +72,8 @@ export interface RunServiceDependencies {
  * owns the durable Lab projection and its recovery rules.
  */
 export class RunService {
+  private readonly contextRecoveryInFlight = new Map<string, Promise<PlatformExecutionReference | null>>();
+
   constructor(private readonly dependencies: RunServiceDependencies) {}
 
   async createRun(request: RunRequest): Promise<RunView> {
@@ -320,6 +322,13 @@ export class RunService {
     }
     await this.projectContextSnapshot(runId, await this.dependencies.evidence.readManifest(runId), inspection.eventIntents);
 
+    if (inspection.result?.error?.code === "LANGGRAPH_CONTEXT_OVERFLOW") {
+      const recoveredReference = await this.tryRecoverContextOverflow(runId, runner, reference);
+      if (recoveredReference) {
+        return this.reconcile(runId, runner, recoveredReference);
+      }
+    }
+
     if (inspection.result) {
       await this.dependencies.evidence.writeResult(inspection.result);
       // An ambiguous submission produces a provisional result only. Do not
@@ -396,6 +405,59 @@ export class RunService {
   private async contextProjection(manifest: RunManifest): Promise<ContextProjection | null> {
     if (!this.dependencies.context || !manifest.context.sessionId) return null;
     return this.dependencies.context.projection(manifest.context.sessionId);
+  }
+
+  private async tryRecoverContextOverflow(
+    runId: string,
+    runner: PlatformRunner,
+    reference: PlatformExecutionReference,
+  ): Promise<PlatformExecutionReference | null> {
+    if (!runner.recoverContextOverflow) return null;
+
+    const snapshot = await this.dependencies.evidence.readSnapshot(runId);
+    if (snapshot.events.some((event) => event.source === "control-plane" && event.kind === "ContextRecoveryRequested")) {
+      return null;
+    }
+
+    const existing = this.contextRecoveryInFlight.get(runId);
+    if (existing) return existing;
+
+    const recovery = this.performContextOverflowRecovery(runId, runner, reference);
+    this.contextRecoveryInFlight.set(runId, recovery);
+    try {
+      return await recovery;
+    } finally {
+      if (this.contextRecoveryInFlight.get(runId) === recovery) {
+        this.contextRecoveryInFlight.delete(runId);
+      }
+    }
+  }
+
+  private async performContextOverflowRecovery(
+    runId: string,
+    runner: PlatformRunner,
+    reference: PlatformExecutionReference,
+  ): Promise<PlatformExecutionReference | null> {
+    const manifest = await this.dependencies.evidence.readManifest(runId);
+    await this.appendControlEvent(runId, "ContextRecoveryRequested", {
+      trigger: "provider_overflow",
+      previousExecutionId: reference.executionId,
+    });
+    try {
+      const recovered = await runner.recoverContextOverflow!(manifest, reference);
+      await this.dependencies.evidence.writeExecutionReference(runId, recovered, { allowIdentityChange: true });
+      await this.appendControlEvent(runId, "ContextRecoveryDispatched", {
+        executionId: recovered.executionId,
+        trigger: "provider_overflow",
+      });
+      return recovered;
+    } catch {
+      await this.appendControlEvent(runId, "ContextRecoveryFailed", {
+        code: "CONTEXT_RECOVERY_FAILED",
+        trigger: "provider_overflow",
+      });
+      return null;
+    }
   }
 
   private async appendControlEvent(runId: string, kind: string, payload: Record<string, unknown>): Promise<void> {

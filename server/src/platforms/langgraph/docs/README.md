@@ -40,6 +40,13 @@ OpenRouter profiles use the selected model for the summary through the server-ow
 credential boundary. A summary request is not retried after dispatch because its
 provider outcome may be unknown.
 
+If the graph later reports `LANGGRAPH_CONTEXT_OVERFLOW`, the Lab server performs one
+recovery attempt. The adapter forces a new shared context compaction, keeps the same
+Lab session and native thread, and submits a separate deterministic native execution
+identity. The original provider event and the recovery event stream use separate safe
+source names, so both remain ordered in one Lab evidence file. A second overflow is
+retained as a provider failure.
+
 ## Persistence and tool boundary
 
 LangGraph checkpointers provide thread-scoped short-term state. This baseline does not

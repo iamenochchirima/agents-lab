@@ -46,6 +46,12 @@ export interface PlatformRunner {
   validate(manifest: RunManifest): RunnerValidationResult;
   checkConnection(): Promise<RunnerConnectivity>;
   start(manifest: RunManifest): Promise<PlatformExecutionReference>;
+  /**
+   * Allows a platform with a provider-specific overflow signal to prepare one
+   * bounded context recovery attempt. The common service calls this at most
+   * once for a Lab run and retains the returned native reference.
+   */
+  recoverContextOverflow?(manifest: RunManifest, reference: PlatformExecutionReference): Promise<PlatformExecutionReference>;
   cancel(reference: PlatformExecutionReference, reason: string): Promise<RunnerCancellationResult>;
   inspect(reference: PlatformExecutionReference): Promise<RunnerInspection>;
   /** Releases platform-local workers or client connections when the server stops. */

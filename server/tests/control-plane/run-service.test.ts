@@ -173,6 +173,96 @@ class RecoveringRestateRunner implements PlatformRunner {
   }
 }
 
+class ContextOverflowRunner implements PlatformRunner {
+  readonly platform = "langgraph" as const;
+  readonly variant = "baseline" as const;
+  recoveryCalls = 0;
+
+  manifestConfiguration(): Readonly<Record<string, unknown>> {
+    return { serviceUrl: "http://langgraph.test", protocolVersion: 1, contextRoot: "sessions" };
+  }
+
+  validate(_manifest: RunManifest): RunnerValidationResult {
+    return { valid: true, reason: null };
+  }
+
+  async checkConnection(): Promise<RunnerConnectivity> {
+    return { reachable: true, message: "reachable" };
+  }
+
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
+    return this.reference(manifest.runId, manifest.runId, "langgraph-service");
+  }
+
+  async recoverContextOverflow(manifest: RunManifest): Promise<PlatformExecutionReference> {
+    this.recoveryCalls += 1;
+    return this.reference("context-recovery", manifest.runId, "langgraph-context-recovery");
+  }
+
+  async cancel(_reference: PlatformExecutionReference, _reason: string): Promise<RunnerCancellationResult> {
+    return { accepted: false, alreadyTerminal: true, message: "not used" };
+  }
+
+  async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
+    const runId = String(reference.native.labRunId);
+    const recovered = reference.executionId === "langgraph:context-recovery";
+    const result: RunResult = recovered
+      ? {
+          schemaVersion: 1,
+          runId,
+          status: "completed",
+          startedAt: "2026-09-20T00:00:00.000Z",
+          finishedAt: "2026-09-20T00:00:01.000Z",
+          output: "recovered output",
+          error: null,
+          attemptCount: 1,
+          usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
+        }
+      : {
+          schemaVersion: 1,
+          runId,
+          status: "failed",
+          startedAt: "2026-09-20T00:00:00.000Z",
+          finishedAt: "2026-09-20T00:00:01.000Z",
+          output: null,
+          error: {
+            code: "LANGGRAPH_CONTEXT_OVERFLOW",
+            message: "The provider context window was exceeded.",
+            failureKind: "provider",
+            retryable: false,
+          },
+          attemptCount: 1,
+          usage: { inputTokens: 1_200, outputTokens: null, totalTokens: null },
+        };
+    const source = String(reference.native.eventSource);
+    return {
+      status: recovered ? "completed" : "failed",
+      reference,
+      eventIntents: [event(runId, 1, recovered ? "RunCompleted" : "ModelFailed", source)],
+      result,
+      trajectory: { schemaVersion: 1, runId, phases: [] },
+      metrics: calculateTestMetrics(result),
+    };
+  }
+
+  private reference(executionId: string, labRunId: string, eventSource: string): PlatformExecutionReference {
+    return {
+      platform: this.platform,
+      variant: this.variant,
+      executionId: `langgraph:${executionId}`,
+      native: {
+        serviceOrigin: "http://langgraph.test",
+        executionId: `langgraph:${executionId}`,
+        labRunId,
+        eventSource,
+        threadId: `thread-${labRunId}`,
+        graph: "baseline",
+        protocolVersion: 1,
+      },
+    };
+  }
+}
+
 async function withService(
   run: (service: RunService, store: RunEvidenceStore, runner: FakeRunner, root: string) => Promise<void>,
   options: { readonly allowOpenRouter?: boolean; readonly modelMetadata?: ModelMetadataResolver } = {},
@@ -404,6 +494,47 @@ test("reconciliation replaces a provisional Restate outcome when the workflow be
       "RunSubmissionOutcomeUnknown",
       "RunCompleted",
     ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("provider context overflow performs one bounded recovery dispatch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-langgraph-overflow-recovery-"));
+  try {
+    const runner = new ContextOverflowRunner();
+    const store = new RunEvidenceStore(root);
+    const config = loadServerConfig({
+      AGENTLAB_RUN_ROOT: root,
+      AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+    }, "/repo");
+    const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+    const service = new RunService({ config, context, evidence: store, registry: new PlatformRegistry([runner]) });
+
+    const view = await service.createRun({
+      platform: "langgraph",
+      variant: "baseline",
+      sessionId: "langgraph-overflow-session",
+      clientTurnId: "langgraph-overflow-turn",
+      task: { kind: "prompt", prompt: "Compact and retry this turn." },
+      model: { provider: "fake", model: "fake-context" },
+    });
+
+    assert.equal(view.status, "completed");
+    assert.equal(view.result?.output, "recovered output");
+    assert.equal(runner.recoveryCalls, 1);
+    assert.equal(view.executionReference?.executionId, "langgraph:context-recovery");
+    assert.deepEqual((await store.readEvents(view.runId)).map((item) => item.kind), [
+      "RunCreated",
+      "RunDispatched",
+      "ModelFailed",
+      "ContextRecoveryRequested",
+      "ContextRecoveryDispatched",
+      "RunCompleted",
+    ]);
+    const events = await store.readEvents(view.runId);
+    assert.deepEqual(events.filter((item) => item.source === "langgraph-service").map((item) => item.sourceSequence), [1]);
+    assert.deepEqual(events.filter((item) => item.source === "langgraph-context-recovery").map((item) => item.sourceSequence), [1]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
