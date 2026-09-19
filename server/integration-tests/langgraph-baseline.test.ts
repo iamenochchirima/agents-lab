@@ -248,6 +248,74 @@ async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot:
       assert.equal(response.statusCode, 200, `${file}: ${response.body}`);
     }
 
+    const duplicateResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Calculate 17 plus 25." },
+        model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: 16_384 },
+        sessionId: "session-generic-api",
+        clientTurnId: "client-generic-api",
+        capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
+      },
+    });
+    assert.equal(duplicateResponse.statusCode, 202, duplicateResponse.body);
+    const duplicateRun = duplicateResponse.json() as RunView;
+    assert.equal(duplicateRun.runId, run.runId);
+    assert.equal(duplicateRun.events.length, run.events.length);
+
+    const conflictingResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "This prompt must not replace the admitted turn." },
+        model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: 16_384 },
+        sessionId: "session-generic-api",
+        clientTurnId: "client-generic-api",
+        capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
+      },
+    });
+    assert.equal(conflictingResponse.statusCode, 409, conflictingResponse.body);
+    assert.equal(conflictingResponse.json().error.code, "CONTEXT_CONFLICT");
+
+    const activeResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Hold this session briefly." },
+        model: { provider: "fake", model: "fake-slow-success", contextWindowTokens: 16_384 },
+        sessionId: "session-generic-api-busy",
+        clientTurnId: "client-generic-api-busy-1",
+      },
+    });
+    assert.equal(activeResponse.statusCode, 202, activeResponse.body);
+    const busyResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "This concurrent turn must be rejected." },
+        model: { provider: "fake", model: "fake-slow-success", contextWindowTokens: 16_384 },
+        sessionId: "session-generic-api-busy",
+        clientTurnId: "client-generic-api-busy-2",
+      },
+    });
+    assert.equal(busyResponse.statusCode, 409, busyResponse.body);
+    assert.equal(busyResponse.json().error.code, "CONTEXT_BUSY");
+    let activeRun = activeResponse.json() as RunView;
+    for (let attempt = 0; attempt < 100 && !activeRun.result; attempt += 1) {
+      await delay(25);
+      activeRun = await getRunFromApp(app, activeRun.runId);
+    }
+    assert.equal(activeRun.status, "completed", JSON.stringify(activeRun.result));
+
     const secondCreatedResponse = await app.inject({
       method: "POST",
       url: "/api/runs",

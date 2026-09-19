@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:19:15+02:00
+**Last updated:** 2026-09-20T01:21:42+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -295,11 +295,11 @@ Required rules:
   `sessionId`; do not expose arbitrary user input as a filesystem path or SQL fragment.
 - [ ] Keep `runId` and `thread_id` separate in protocol, native evidence, events, and
   UI details.
-- [ ] Repeating the same `clientTurnId` with the same request fingerprint returns the
+- [x] Repeating the same `clientTurnId` with the same request fingerprint returns the
   original run; the request must not execute the graph twice.
-- [ ] Repeating a `clientTurnId` with a different prompt, model, context, tool, or
+- [x] Repeating a `clientTurnId` with a different prompt, model, context, tool, or
   graph configuration returns a stable conflict and does not mutate the checkpoint.
-- [ ] Admit at most one active turn per session/thread unless LangGraph concurrency is
+- [x] Admit at most one active turn per session/thread unless LangGraph concurrency is
   deliberately proven safe; concurrent requests receive an explicit conflict or join
   the already admitted run.
 - [ ] A new model or context-affecting configuration after a settled turn requires a
@@ -600,7 +600,7 @@ Tests must exercise real boundaries, not only helper functions.
   verify settled/recovery behaviour.
 - [x] Replace the Lab server during a delayed turn while the Python service remains up.
 - [x] Replace both processes and verify the documented outcome.
-- [ ] Exercise duplicate admission, concurrent session conflict, cancellation, stale
+- [x] Exercise duplicate admission, concurrent session conflict, cancellation, stale
   projection, timeout-after-dispatch, and context-overflow fixtures.
 - [x] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
   record model, usage, status, and evidence paths without recording the key.
@@ -828,6 +828,16 @@ what was observed, the exact validation command, and what remains.
   exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`),
   and `git diff --check`. Browser process replacement and the remaining duplicate,
   stale, timeout-after-dispatch, and context-overflow fixtures remain open.
+
+- **2026-09-20T01:21:42+02:00 — generic API admission conflicts verified.** The
+  real-process Fastify acceptance now replays a completed turn with the same
+  `clientTurnId` and confirms the original `runId` and event count, rejects a changed
+  prompt with `CONTEXT_CONFLICT`, and rejects a second active session turn with
+  `CONTEXT_BUSY` before allowing the first to complete. Validation passed:
+  `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server
+  exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`),
+  and `git diff --check`. Stale projection, timeout-after-dispatch, and context-overflow
+  integration fixtures remain open.
 
 ## Commit discipline
 
