@@ -116,6 +116,10 @@ test("Platform Chat reports unavailable, API failure, and cancellation states", 
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Retry this request safely.");
     await clickButton(browser.cdp, "Send");
     await waitForText(browser.cdp, "The fixture rejected this run.");
+    await browser.cdp.send("Page.reload", { ignoreCache: true });
+    await waitForElement(browser.cdp, ".chat-page");
+    await waitForText(browser.cdp, "Previous request was interrupted. Retry to continue.");
+    assert.equal(fixture.state.createRequests, 2, "refresh must not resubmit the pending turn");
     await clickButton(browser.cdp, "Retry");
     await waitForText(browser.cdp, "The calculator result is 42.");
     assert.equal(fixture.state.createRequests, 3);

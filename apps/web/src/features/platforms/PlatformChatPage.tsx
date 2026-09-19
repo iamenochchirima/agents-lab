@@ -30,6 +30,7 @@ import { ContextBudgetMeter } from "./RunStatusPanel";
 import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
 
 const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled", "reconciliation_required"]);
+const pendingTurnStoragePrefix = "agentlab.platform-chat.pending-turn.";
 
 interface PendingTurn {
   readonly request: PlatformRunRequest;
@@ -78,6 +79,37 @@ export function PlatformChatPage() {
       return next.length === current.length ? current : next;
     });
   }, []);
+
+  useEffect(() => {
+    const stored = readPendingTurn(platform.id);
+    if (!stored) return;
+    const assistantMessageId = createId("assistant-restored");
+    setSelectedModel({
+      provider: "openrouter",
+      model: stored.request.model.model,
+      ...(stored.request.model.contextWindowTokens === undefined ? {} : { contextWindowTokens: stored.request.model.contextWindowTokens }),
+    });
+    setVariantId(stored.request.variant);
+    setSessionId(stored.request.sessionId ?? null);
+    setMessages([
+      {
+        id: createId("user-restored"),
+        role: "user",
+        content: stored.request.task.prompt,
+        status: "completed",
+        clientTurnId: stored.request.clientTurnId,
+      },
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "Previous request was interrupted. Retry to continue.",
+        status: "failed",
+        clientTurnId: stored.request.clientTurnId,
+      },
+    ]);
+    setRetryTurn({ request: stored.request, assistantMessageId, conversationVersion: conversationVersion.current });
+    setError("Previous request was interrupted. Retry to continue.");
+  }, [platform.id]);
 
   useEffect(() => {
     const changedPlatform = previousPlatformId.current !== platform.id;
@@ -240,6 +272,7 @@ export function PlatformChatPage() {
       },
     };
     const pendingTurn: PendingTurn = { request, assistantMessageId, conversationVersion: currentConversationVersion };
+    persistPendingTurn(platform.id, request);
     setMessages((current) => [
       ...current,
       {
@@ -274,6 +307,7 @@ export function PlatformChatPage() {
       const run = await createRun(pendingTurn.request);
       if (conversationVersion.current !== pendingTurn.conversationVersion) return;
 
+      clearPendingTurn(platform.id);
       setRetryTurn(null);
       setSelectedModel((current) => synchronizeModelSelection(current, run));
       setLatestRun(run);
@@ -332,6 +366,7 @@ export function PlatformChatPage() {
     setLatestEvents([]);
     setError(null);
     setRetryTurn(null);
+    clearPendingTurn(platform.id);
     eventCursor.current = 0;
     const next = new URLSearchParams(searchParams);
     next.delete("run");
@@ -541,6 +576,59 @@ function chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableBas
   if (!isReady) return connectivity.message;
   if (!selectedModel) return "Select a model.";
   return preservesSession ? "Messages continue in this session." : "Each message starts a platform run.";
+}
+
+function persistPendingTurn(platformId: string, request: PlatformRunRequest): void {
+  if (!request.sessionId || !request.clientTurnId || typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(pendingTurnStorageKey(platformId), JSON.stringify({ request }));
+  } catch {
+    // Storage can be unavailable in private browsing or a restricted document.
+    // The in-memory retry remains available for the current page.
+  }
+}
+
+function readPendingTurn(platformId: string): { readonly request: PlatformRunRequest } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(pendingTurnStorageKey(platformId));
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || !isRecord(parsed.request)) return null;
+    const request = parsed.request;
+    const task = request.task;
+    const model = request.model;
+    if (request.platform !== platformId
+      || typeof request.variant !== "string"
+      || !isRecord(task)
+      || task.kind !== "prompt"
+      || typeof task.prompt !== "string"
+      || !isRecord(model)
+      || model.provider !== "openrouter"
+      || typeof model.model !== "string"
+      || typeof request.sessionId !== "string"
+      || typeof request.clientTurnId !== "string") return null;
+    return { request: request as unknown as PlatformRunRequest };
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingTurn(platformId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(pendingTurnStorageKey(platformId));
+  } catch {
+    // Storage cleanup is best effort; the active component state is authoritative.
+  }
+}
+
+function pendingTurnStorageKey(platformId: string): string {
+  return `${pendingTurnStoragePrefix}${platformId}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function createId(prefix: string): string {
