@@ -513,7 +513,10 @@ function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
 function ChatRunDetails({ error, events, onNewChat, run }: { error: string | null; events: readonly RunEvent[]; onNewChat: () => void; run: RunView }) {
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
-  const native = run.executionReference?.platform === "restate" ? run.executionReference.native : null;
+  const nativePlatform = run.executionReference?.platform;
+  const native = nativePlatform === "restate" || nativePlatform === "langgraph"
+    ? run.executionReference?.native ?? null
+    : null;
   const retrying = isRunRetrying(run, events);
   return (
     <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "reconciliation_required"}>
@@ -530,12 +533,13 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
         )}
         <dl className="chat-run-meta">
           <div><dt>Run</dt><dd title={run.runId}>{run.runId}</dd></div>
+          {getRunSessionId(run) && <div><dt>Session</dt><dd title={getRunSessionId(run) ?? undefined}>{getRunSessionId(run)}</dd></div>}
           <div><dt>Platform status</dt><dd>{formatRunStatus(run.status)}</dd></div>
           <div><dt>Projection</dt><dd>{run.projection.state === "stale" ? "Stale" : "Current"}</dd></div>
           <div><dt>Events</dt><dd>{events.length}</dd></div>
           <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
         </dl>
-        {native && <NativeRunDetails native={native} />}
+        {native && nativePlatform && <NativeRunDetails native={native} platform={nativePlatform} />}
         {run.projection.state === "stale" && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {run.projection.reason ?? "The latest platform state is unavailable."}</p>}
         <details className="chat-activity" open={toolEvents.length > 0}>
           <summary><Wrench aria-hidden="true" size={13} /> Tool activity <small>{toolEvents.length}</small></summary>
@@ -554,20 +558,28 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
   );
 }
 
-function NativeRunDetails({ native }: { native: Record<string, unknown> }) {
-  const fields = [
-    { label: "Workflow", value: native.workflowKey },
-    { label: "Invocation", value: native.invocationId },
-    { label: "Native status", value: native.nativeStatus },
-    { label: "Retries", value: native.retryCount },
-    { label: "Last observed", value: native.lastModifiedAt },
-  ].flatMap(({ label, value }) => typeof value === "string" || typeof value === "number" ? [[label, value] as const] : []);
-  if (fields.length === 0) return null;
+function NativeRunDetails({ native, platform }: { native: Record<string, unknown>; platform: string }) {
+  const fields = platform === "langgraph"
+    ? [
+        { label: "Thread", value: native.threadId },
+        { label: "Graph", value: native.graph },
+        { label: "Event source", value: native.eventSource },
+        { label: "Protocol", value: native.protocolVersion },
+      ]
+    : [
+        { label: "Workflow", value: native.workflowKey },
+        { label: "Invocation", value: native.invocationId },
+        { label: "Native status", value: native.nativeStatus },
+        { label: "Retries", value: native.retryCount },
+        { label: "Last observed", value: native.lastModifiedAt },
+      ];
+  const visibleFields = fields.flatMap(({ label, value }) => typeof value === "string" || typeof value === "number" ? [[label, value] as const] : []);
+  if (visibleFields.length === 0) return null;
   return (
     <details className="chat-activity">
-      <summary><span>Native execution</span><small>Restate</small></summary>
+      <summary><span>Native execution</span><small>{platform === "langgraph" ? "LangGraph" : "Restate"}</small></summary>
       <dl className="chat-run-meta">
-        {fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd title={String(value)}>{String(value)}</dd></div>)}
+        {visibleFields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd title={String(value)}>{String(value)}</dd></div>)}
       </dl>
     </details>
   );

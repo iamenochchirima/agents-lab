@@ -16,9 +16,11 @@ endpoint rather than requiring every optional platform service to be available.
 `RunStatusPanel.tsx` renders the server-derived lifecycle and evidence summary. The
 browser never connects to a platform service or reads the local run directory.
 Platform-native execution references are displayed through the generic
-`executionReference` field rather than a platform-specific response shape. The selected
-scenario, server profile, infrastructure, and experiment IDs are retained in the run
-manifest so the UI configuration is inspectable and reproducible.
+`executionReference` field rather than a platform-specific response shape. The shared
+details disclosure may show safe platform-native identity when it is useful for
+inspection, such as a LangGraph thread and graph or a Restate workflow and invocation.
+The selected scenario, server profile, infrastructure, and experiment IDs are retained
+in the run manifest so the UI configuration is inspectable and reproducible.
 
 Run responses include a projection state. A stale projection is rendered as a
 small status notice and retains the last server-readable run state; the browser

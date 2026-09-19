@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T00:24:58+02:00
+**Last updated:** 2026-09-20T00:53:47+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -506,12 +506,13 @@ boundary with explicit limitations, not as an in-memory test double.
 Use the existing shared Chat route and model picker. Do not create a separate LangGraph
 dashboard for this plan.
 
-- [ ] Open `/platforms/langgraph/chat` and create a new session.
+- [x] Open `/platforms/langgraph/chat` and create a new session in the deterministic
+  browser fixture.
 - [ ] Select a searchable OpenRouter model in the shared picker and send a real prompt.
-- [ ] Send a second prompt and verify one session, two Lab turns, one LangGraph thread,
-  and two distinct run IDs.
-- [ ] Show model identity, session/thread identity, context window usage, graph/native
-  status, and tool/checkpoint details through progressive disclosure.
+- [x] Send a second prompt and verify one session, two Lab turns, one LangGraph thread,
+  and two distinct run IDs in the deterministic browser fixture.
+- [x] Show model identity, session/thread identity, context window usage, graph/native
+  status, and tool details through progressive disclosure in Chat.
 - [ ] Show retrying, compaction, unavailable, cancelled, stale, failed, and
   recovery-required states without fabricated assistant output.
 - [ ] Refresh during a running turn and verify the same run is reused without duplicate
@@ -610,7 +611,9 @@ Tests must exercise real boundaries, not only helper functions.
 
 - [ ] Add deterministic fixture coverage to `apps/web/tests/browser/platform-chat.browser.test.mjs`
   for LangGraph two-turn continuity, context usage, graph/tool events, retry, recovery,
-  cancellation, refresh, stale state, duplicate-key safety, and responsive widths.
+  cancellation, refresh, stale state, duplicate-key safety, and responsive widths. The
+  initial two-turn, context, graph/tool, native identity, and duplicate-key assertions
+  are now present; the remaining states stay open.
 - [ ] Add an opt-in live LangGraph Chat test for real OpenRouter execution.
 - [ ] Add an opt-in browser test that replaces the Lab server during a LangGraph run.
 - [ ] Add an opt-in browser test that replaces the LangGraph service during a run using
@@ -752,6 +755,15 @@ what was observed, the exact validation command, and what remains.
   evidence. Validation passed: sixteen run-service tests, fourteen focused LangGraph
   TypeScript tests, forty-one LangGraph Python tests, server typecheck, and
   `git diff --check`.
+
+- **2026-09-20T00:53:47+02:00 — LangGraph Chat acceptance surface added.** The shared
+  browser Chat now exposes the LangGraph session ID and native thread/graph identity
+  through the existing run-details disclosure, while retaining the shared context
+  meter. Added a deterministic browser acceptance test for two turns, one session and
+  thread, distinct Lab run IDs, tool activity, context usage, model locking, and
+  duplicate-key safety. Validation passed: web typecheck and all twelve platform Chat
+  browser tests; `git diff --check` passed. Real OpenRouter and process-replacement
+  browser acceptance remain open.
 
 ## Commit discipline
 

@@ -241,6 +241,47 @@ test("Restate Chat exposes context pressure and compaction evidence", async () =
   }
 });
 
+test("LangGraph Chat continues one checkpointed session and shows native context", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/langgraph/chat");
+    await waitForText(browser.cdp, "LangGraph");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Remember the checkpoint marker.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "LangGraph fixture completed.");
+
+    const firstTurn = await browser.cdp.evaluate(`JSON.stringify({
+      context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? "",
+      native: document.querySelector('.chat-activity summary')?.textContent?.replace(/\\s+/g, " ").trim() ?? "",
+      session: document.querySelector('.chat-run-meta')?.textContent?.replace(/\\s+/g, " ").trim() ?? "",
+      toolActivity: document.querySelector('.chat-tool-activity')?.textContent?.trim() ?? null,
+    })`).then(JSON.parse);
+    assert.match(firstTurn.context, /8% used/);
+    assert.match(firstTurn.native, /Native executionLangGraph/);
+    assert.match(firstTurn.session, /Session/);
+    assert.match(firstTurn.toolActivity, /calculator.*Completed/i);
+
+    await clickSummary(browser.cdp, "Native execution");
+    const nativeDetails = await browser.cdp.evaluate(`document.querySelector('.chat-activity[open]')?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(nativeDetails, /langgraph:baseline:session-/);
+    assert.match(nativeDetails, /baseline/);
+
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Continue from the checkpoint.");
+    await clickButton(browser.cdp, "Send");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".chat-message-user").length === 2 && document.querySelectorAll(".chat-message-assistant").length === 2');
+    assert.equal(fixture.state.requests[1]?.sessionId, fixture.state.requests[0]?.sessionId, "LangGraph follow-up must address the existing session");
+    assert.notEqual(fixture.state.clientTurnIds[0], fixture.state.clientTurnIds[1], "each LangGraph turn must have a distinct idempotency key");
+    assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1], "each LangGraph turn must have its own Lab run");
+    assert.equal(await browser.cdp.evaluate("document.querySelector('.model-picker-trigger')?.hasAttribute('disabled')"), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Restate Chat shows a bounded retry without mislabeling the run", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -482,7 +523,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const runMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate)-\d+)$/);
+    const runMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph)-\d+)$/);
     if (runMatch && event.request.method === "GET") {
       const runId = runMatch[1];
       const request = state.runRequests.get(runId);
@@ -508,7 +549,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const eventsMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate)-\d+)\/events$/);
+    const eventsMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph)-\d+)\/events$/);
     if (eventsMatch && event.request.method === "GET") {
       const runId = eventsMatch[1];
       const request = state.runRequests.get(runId);
@@ -558,6 +599,7 @@ async function installFixture(cdp) {
 function makeRun(request, status, runIdOverride, mode = "complete") {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
+  const langGraph = platform === "langgraph";
   const compaction = platform === "restate" && mode === "compaction";
   const retrying = platform === "restate" && mode === "retrying";
   const events = platform === "restate"
@@ -568,6 +610,16 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
         : retrying
           ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "ModelRetryScheduled", platform, { reason: "pre_dispatch" })]
         : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
+    : langGraph
+    ? [
+        event(runId, 1, "GraphRunStarted", platform),
+        event(runId, 2, "GraphNodeStarted", platform, { node: "model" }),
+        event(runId, 3, "ToolCallRequested", platform, { toolName: "calculator" }),
+        event(runId, 4, "ToolExecutionStarted", platform, { toolName: "calculator" }),
+        event(runId, 5, "ToolExecutionCompleted", platform, { toolName: "calculator" }),
+        event(runId, 6, "GraphNodeCompleted", platform, { node: "model" }),
+        event(runId, 7, "GraphRunCompleted", platform),
+      ]
     : [
         event(runId, 1, "AgentStarted", platform),
         event(runId, 2, "ModelCallStarted", platform),
@@ -576,14 +628,18 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
         event(runId, 5, "ToolExecutionCompleted", platform, { toolName: "calculator" }),
         event(runId, 6, "AgentCompleted", platform),
       ];
-  const isSessionPlatform = platform === "temporal" || platform === "restate";
+  const isSessionPlatform = platform === "temporal" || platform === "restate" || langGraph;
   const sessionId = request.sessionId ?? "session-chat";
   const terminal = status === "completed" || status === "cancelled" || status === "reconciliation_required";
   const result = terminal ? {
     runId,
     status,
     finishedAt: "2026-09-16T12:00:00.000Z",
-    output: status === "completed" ? platform === "temporal" ? "The calculator result is 42." : compaction ? "Restate fixture compacted." : "Restate fixture completed." : null,
+    output: status === "completed"
+      ? platform === "temporal" ? "The calculator result is 42."
+        : platform === "langgraph" ? "LangGraph fixture completed."
+          : compaction ? "Restate fixture compacted." : "Restate fixture completed."
+      : null,
     error: status === "reconciliation_required" ? {
       code: "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
       message: "Restate did not confirm whether the workflow submission was accepted.",
@@ -608,10 +664,14 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
       ...(isSessionPlatform ? { context: { sessionId, turnId: request.clientTurnId ?? "turn-chat", clientTurnId: request.clientTurnId, snapshotId: `snapshot-${runId}` } } : {}),
     },
     events,
-    executionReference: { platform, variant: "baseline", executionId: runId, native: platform === "restate" ? { workflowKey: `agentlab:${runId}`, invocationId: "inv-restate-1", nativeStatus: status === "reconciliation_required" ? "completed" : "completed", retryCount: 1, lastModifiedAt: "2026-09-16T12:00:00.000Z" } : { fixture: true } },
+    executionReference: { platform, variant: "baseline", executionId: runId, native: platform === "restate"
+      ? { workflowKey: `agentlab:${runId}`, invocationId: "inv-restate-1", nativeStatus: "completed", retryCount: 1, lastModifiedAt: "2026-09-16T12:00:00.000Z" }
+      : langGraph
+        ? { serviceOrigin: "http://127.0.0.1:8090", executionId: `langgraph:${runId}`, labRunId: runId, eventSource: "langgraph-service", threadId: `langgraph:baseline:${sessionId}`, graph: "baseline", protocolVersion: 1 }
+        : { fixture: true } },
     result,
-    trajectory: terminal && platform === "temporal" ? { schemaVersion: 1, runId, phases: [] } : null,
-    metrics: terminal && platform === "temporal" ? { schemaVersion: 1, runId, durationMs: 0, eventCount: events.length } : null,
+    trajectory: terminal && (platform === "temporal" || langGraph) ? { schemaVersion: 1, runId, phases: [] } : null,
+    metrics: terminal && (platform === "temporal" || langGraph) ? { schemaVersion: 1, runId, durationMs: 0, eventCount: events.length } : null,
     context: isSessionPlatform ? {
       scope: "session",
       sessionId,
