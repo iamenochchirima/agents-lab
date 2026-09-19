@@ -68,6 +68,10 @@ class ProviderError(LangGraphModelError):
     code = "LANGGRAPH_PROVIDER_FAILED"
 
 
+class ContextOverflowError(ProviderError):
+    code = "LANGGRAPH_CONTEXT_OVERFLOW"
+
+
 class OutcomeUnknownError(LangGraphModelError):
     failure_kind = "outcome_unknown"
     code = "LANGGRAPH_OUTCOME_UNKNOWN"
@@ -372,6 +376,8 @@ def complete_openrouter_response(
         with urllib_request.urlopen(request, timeout=model.timeout_ms / 1000) as response:
             body = json.loads(read_bounded_response(response).decode("utf-8"))
     except urllib_error.HTTPError as exc:
+        if exc.code in {400, 413} and _is_context_overflow_response(exc):
+            raise ContextOverflowError("OpenRouter rejected the request because its context window was exceeded.") from exc
         if 400 <= exc.code < 500:
             raise ProviderError(f"OpenRouter rejected the request with HTTP {exc.code}.") from exc
         raise OutcomeUnknownError("OpenRouter returned an ambiguous server-side response.") from exc
@@ -440,6 +446,25 @@ def read_bounded_response(response: Any) -> bytes:
             raise ResponseTooLargeError("OpenRouter returned a response larger than the configured safety limit.")
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _is_context_overflow_response(response: Any) -> bool:
+    """Classify common provider overflow wording without persisting its body."""
+    try:
+        body = read_bounded_response(response).decode("utf-8", errors="replace").lower()
+    except Exception:
+        return False
+    return any(
+        phrase in body
+        for phrase in (
+            "context length",
+            "context window",
+            "maximum context",
+            "prompt is too long",
+            "too many tokens",
+            "token limit",
+        )
+    )
 
 
 def initial_messages(state: GraphState) -> list[dict[str, Any]]:

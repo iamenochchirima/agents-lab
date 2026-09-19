@@ -736,6 +736,13 @@ what was observed, the exact validation command, and what remains.
   Validation passed: forty LangGraph Python tests. Full process replacement and
   browser recovery still remain opt-in integration work.
 
+- **2026-09-20T00:38:56+02:00 — provider context overflow classification added.** The
+  native OpenRouter boundary now recognizes common HTTP 400/413 context-limit
+  responses as `LANGGRAPH_CONTEXT_OVERFLOW` without copying the provider body into
+  errors. A focused Python test covers the classification and redaction. The bounded
+  shared-compaction retry is still pending because it needs an explicit adapter/service
+  recovery contract.
+
 ## Commit discipline
 
 Use focused commits. Do not create one large final commit.

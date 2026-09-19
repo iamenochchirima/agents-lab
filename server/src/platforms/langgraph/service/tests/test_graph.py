@@ -8,6 +8,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 
 from variants.baseline import graph as graph_module
 from variants.baseline.graph import (
+    ContextOverflowError,
     ModelConfig,
     ProviderError,
     ToolCall,
@@ -144,6 +145,9 @@ class _FakeProviderResponse:
         body, self.body = self.body, b""
         return body
 
+    def close(self) -> None:
+        return None
+
 
 def _openrouter_model() -> ModelConfig:
     return ModelConfig(
@@ -178,6 +182,23 @@ def test_openrouter_response_is_rejected_before_unbounded_state_growth() -> None
             complete_openrouter(_openrouter_model(), _openrouter_state(), lambda: False)
 
     assert error.value.code == "LANGGRAPH_RESPONSE_TOO_LARGE"
+
+
+def test_openrouter_context_overflow_is_classified_without_exposing_provider_body() -> None:
+    provider_body = b'{"error":{"message":"maximum context length exceeded: private diagnostic"}}'
+    http_error = graph_module.urllib_error.HTTPError(
+        "https://router.test/chat/completions",
+        400,
+        "Bad Request",
+        {},
+        _FakeProviderResponse(provider_body),
+    )
+    with patch.object(graph_module.urllib_request, "urlopen", side_effect=http_error):
+        with pytest.raises(ContextOverflowError, match="context window was exceeded") as error:
+            complete_openrouter(_openrouter_model(), _openrouter_state(), lambda: False)
+
+    assert error.value.code == "LANGGRAPH_CONTEXT_OVERFLOW"
+    assert "private diagnostic" not in str(error.value)
 
 
 def test_openrouter_tool_call_mapping_is_bounded_and_does_not_include_the_secret() -> None:
