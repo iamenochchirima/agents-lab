@@ -25,12 +25,21 @@ execution.
 
 ## Lifecycle and evidence
 
+When a session turn is supplied, the adapter first prepares the Lab-owned context
+snapshot and passes its messages to Mastra. The snapshot ID, token budget, pressure,
+and compaction flag are recorded in `ContextPrepared`. The current direct baseline
+does not use Mastra Memory or Storage, and it does not adopt in-flight work after a
+process restart.
+
 The adapter emits safe event intents in this order for a normal call:
 
 ```text
 AgentStarted
+ContextPreparationStarted
+ContextPrepared
 ModelRequested
 AgentStepCompleted (when Mastra reports a completed step)
+ToolCallRequested / ToolCallValidated / ToolExecutionStarted / ToolExecutionCompleted (when a tool is used)
 ModelCompleted
 AgentCompleted
 RunCompleted
@@ -68,8 +77,10 @@ variant.
 
 - Mastra workflows and snapshots
 - Mastra memory and storage
-- tools, MCP, skills, plugins, OAuth, channels, and external side effects
-- multi-turn threads and durable resume
+- MCP, skills, plugins, OAuth, channels, and external side effects
+- Mastra workflow durability, suspension, and durable resume
+- compaction recovery in this direct baseline when a summary is required; the shared
+  context service reports that limitation instead of silently dropping history
 - exactly-once provider-call claims
 
 These exclusions keep the direct-agent comparison honest. Mastra's official docs

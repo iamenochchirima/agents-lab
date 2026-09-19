@@ -110,6 +110,32 @@ test("Mastra Agent.generate sends the selected OpenRouter model and preserves no
   }
 });
 
+test("Mastra executes the shared calculator through a native Agent.generate tool loop", async () => {
+  const runner = new MastraBaselineRunner();
+  const manifest = buildRunManifest(
+    {
+      platform: "mastra",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Calculate 17 plus 25." },
+      model: { provider: "fake", model: "fake-tool-call" },
+      capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 4, maxCalls: 2 } },
+    },
+    { runId: "mastra-tool-loop", platformConfig: runner.manifestConfiguration() },
+  );
+
+  const inspection = await waitForTerminal(runner, await runner.start(manifest));
+  assert.equal(inspection.status, "completed");
+  assert.equal(inspection.result?.output, 'The calculator returned {"value":42}.');
+  assert.equal(inspection.metrics?.modelCallCount, 2);
+  assert.equal(inspection.metrics?.toolCallCount, 1);
+  assert.equal(inspection.metrics?.toolAttemptCount, 1);
+  assert.deepEqual(
+    inspection.eventIntents.filter((event) => event.kind.startsWith("Tool"))
+      .map((event) => event.kind),
+    ["ToolCallRequested", "ToolCallValidated", "ToolExecutionStarted", "ToolExecutionCompleted"],
+  );
+});
+
 test("Mastra maps provider failure and ambiguous provider outcomes safely", async () => {
   const failedRunner = new MastraBaselineRunner();
   const failed = await waitForTerminal(failedRunner, await failedRunner.start(manifestFor(failedRunner, "fake-provider-failure")));

@@ -6,6 +6,7 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
-    "@mastra/core": "1.66.0"
+    "@mastra/core": "1.66.0",
+    "zod": "4.6.5"
   }
 }

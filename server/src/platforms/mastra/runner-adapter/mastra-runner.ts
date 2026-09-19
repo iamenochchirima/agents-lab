@@ -7,6 +7,7 @@ import type {
   RunTrajectory,
   RunUsage,
 } from "../../../control-plane/domain/types.js";
+import type { AgentExecutionOptionsBase } from "@mastra/core/agent";
 import type {
   PlatformRunner,
   RunnerCancellationResult,
@@ -21,6 +22,7 @@ import {
   type ContextMessage,
   type ContextSummaryGenerator,
 } from "../../../capabilities/context/index.js";
+import type { ToolLifecyclePayload } from "../../../capabilities/tools/contracts.js";
 import {
   configurationFromManifest,
   DEFAULT_EXECUTION_TIMEOUT_MS,
@@ -52,6 +54,8 @@ interface PreparedMastraContext {
   readonly currentMessageId: string;
   readonly messages: readonly ContextMessage[];
 }
+
+type MastraContextMessage = NonNullable<AgentExecutionOptionsBase<unknown>["context"]>[number];
 
 /**
  * Runs one direct Mastra Agent.generate() call in the Lab server process.
@@ -277,14 +281,14 @@ export class MastraBaselineRunner implements PlatformRunner {
     };
   }
 
-  private addEvent(record: MastraExecutionRecord, kind: string, payload: Record<string, unknown>): void {
+  private addEvent(record: MastraExecutionRecord, kind: string, payload: Record<string, unknown> | ToolLifecyclePayload): void {
     record.events.push({
       source: MASTRA_EVENT_SOURCE,
       sourceSequence: record.events.length + 1,
       kind,
       runId: record.manifest.runId,
       occurredAt: this.now().toISOString(),
-      payload,
+      payload: payload as Record<string, unknown>,
     });
   }
 
@@ -356,13 +360,21 @@ function trajectoryFor(record: MastraExecutionRecord): RunTrajectory {
 
 function metricsFor(record: MastraExecutionRecord, usage: RunUsage): RunMetrics {
   const finishedAt = record.events.at(-1)?.occurredAt ?? record.startedAt;
+  const modelCallCount = record.events.filter((event) => event.kind === "AgentStepCompleted").length;
+  const observedModelCallCount = modelCallCount > 0
+    ? modelCallCount
+    : record.events.some((event) => event.kind === "ModelRequested") ? 1 : 0;
+  const toolCallCount = record.events.filter((event) => event.kind === "ToolCallRequested").length;
+  const toolAttemptCount = record.events.filter((event) => event.kind === "ToolExecutionStarted").length;
   return {
     schemaVersion: 1,
     runId: record.manifest.runId,
     status: record.status === "completed" || record.status === "cancelled" ? record.status : "failed",
     durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(record.startedAt)),
-    modelCallCount: record.events.some((event) => event.kind === "ModelRequested") ? 1 : 0,
-    modelAttemptCount: 1,
+    modelCallCount: observedModelCallCount,
+    modelAttemptCount: observedModelCallCount,
+    toolCallCount,
+    toolAttemptCount,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     totalTokens: usage.totalTokens,
@@ -440,6 +452,24 @@ function safeValue(value: unknown, key: string): unknown {
 
 function safeErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function toMastraMessage(message: ContextMessage): MastraContextMessage {
+  if (message.role === "system" || message.role === "developer") {
+    return { role: "system", content: message.content };
+  }
+  if (message.role === "user" || message.role === "assistant") {
+    return { role: message.role, content: message.content };
+  }
+  return {
+    role: "tool",
+    content: [{
+      type: "tool-result",
+      toolCallId: message.metadata?.toolCallId ?? message.messageId,
+      toolName: message.metadata?.toolName ?? "tool",
+      output: { type: "text", value: message.content },
+    }],
+  };
 }
 
 function isTerminal(status: MastraExecutionRecord["status"]): boolean {

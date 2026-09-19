@@ -28,6 +28,8 @@ function fakeModelFromName(modelName: string): MastraModelConfig {
       return createDeterministicFakeModel({ modelId: modelName, failure: "ambiguous" });
     case "fake-tool-call":
       return createDeterministicFakeModel({ modelId: modelName, toolCall: true });
+    case "fake-context":
+      return createDeterministicFakeModel({ modelId: modelName, contextAware: true });
     default:
       throw new Error(`Unsupported Mastra fake model: ${modelName}.`);
   }

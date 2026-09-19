@@ -6,6 +6,7 @@ export interface DeterministicFakeModelOptions {
   readonly delayMs?: number;
   readonly failure?: "provider" | "ambiguous";
   readonly toolCall?: boolean;
+  readonly contextAware?: boolean;
 }
 
 /**
@@ -54,6 +55,24 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
           content: [{ type: "text", text: "The calculator returned {\"value\":42}." }],
           finishReason: "stop",
           usage: { inputTokens: 18, outputTokens: 9, totalTokens: 27 },
+          warnings: [],
+        };
+      }
+
+      if (options.contextAware) {
+        const serializedPrompt = JSON.stringify(prompt);
+        if (serializedPrompt.includes("Stored the test value.")) {
+          return {
+            content: [{ type: "text", text: "conformance-4318" }],
+            finishReason: "stop",
+            usage: { inputTokens: 18, outputTokens: 4, totalTokens: 22 },
+            warnings: [],
+          };
+        }
+        return {
+          content: [{ type: "text", text: "Stored the test value." }],
+          finishReason: "stop",
+          usage: { inputTokens: 9, outputTokens: 5, totalTokens: 14 },
           warnings: [],
         };
       }

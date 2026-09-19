@@ -13,6 +13,7 @@ export const DETERMINISTIC_FAKE_MODELS = [
   "fake-provider-failure",
   "fake-ambiguous",
   "fake-tool-call",
+  "fake-context",
 ] as const;
 
 export type MastraProvider = "fake" | "openrouter";
@@ -113,7 +114,7 @@ function readBoundedInteger(
   maximum: number,
 ): number {
   const value = configuration[key] ?? fallback;
-  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum || value > maximum) {
     throw new Error(`Mastra platform configuration has an invalid ${key}.`);
   }
   return value;

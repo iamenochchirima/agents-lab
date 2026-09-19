@@ -10,6 +10,9 @@ import { RunService } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
 import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
+import { ContextService } from "../src/capabilities/context/context-service.js";
+import { ContextSessionStore } from "../src/capabilities/context/session-store.js";
+import { CharacterTokenEstimator } from "../src/capabilities/context/token-counter.js";
 import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mastra-runner.js";
 
 test("Mastra baseline projects a deterministic Agent.generate run through the common evidence path", async () => {
@@ -73,6 +76,54 @@ test("Mastra process loss becomes reconciliation_required instead of a fabricate
     assert.equal(reconciled.result?.error?.failureKind, "reconciliation");
     assert.equal(reconciled.result?.output, null);
   });
+});
+
+test("Mastra continues a session from the shared context snapshot and reports its budget", async () => {
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-mastra-runs-"));
+  const contextRoot = await mkdtemp(join(tmpdir(), "agentlab-mastra-context-"));
+  try {
+    const runner = new MastraBaselineRunner({ contextRoot });
+    const evidence = new RunEvidenceStore(runRoot);
+    const config = loadServerConfig({
+      AGENTLAB_RUN_ROOT: runRoot,
+      AGENTLAB_CONTEXT_ROOT: contextRoot,
+      AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+    }, "/repo");
+    const registry = new PlatformRegistry([runner]);
+    const context = new ContextService(new ContextSessionStore(contextRoot), new CharacterTokenEstimator());
+    const service = new RunService({ config, evidence, registry, context });
+
+    const firstCreated = await service.createRun({
+      platform: "mastra",
+      variant: "baseline",
+      sessionId: "mastra-context-session",
+      clientTurnId: "turn-1",
+      task: { kind: "prompt", prompt: "Remember conformance-4318." },
+      model: { provider: "fake", model: "fake-context", contextWindowTokens: 16_384 },
+    });
+    const first = await waitForCompletion(service, firstCreated.runId);
+    assert.equal(first.status, "completed");
+    assert.equal(first.result?.output, "Stored the test value.");
+
+    const secondCreated = await service.createRun({
+      platform: "mastra",
+      variant: "baseline",
+      sessionId: "mastra-context-session",
+      clientTurnId: "turn-2",
+      task: { kind: "prompt", prompt: "What value did I ask you to remember?" },
+      model: { provider: "fake", model: "fake-context", contextWindowTokens: 16_384 },
+    });
+    const second = await waitForCompletion(service, secondCreated.runId);
+    assert.equal(second.status, "completed");
+    assert.equal(second.result?.output, "conformance-4318");
+    assert.equal(second.context?.sessionId, "mastra-context-session");
+    assert.notEqual(second.context?.budget.remainingPercent, null);
+    assert.equal(second.events.some((event) => event.kind === "ContextPrepared" && typeof event.payload.snapshotId === "string"), true);
+    await access(join(runRoot, second.runId, "context.json"));
+  } finally {
+    await rm(runRoot, { recursive: true, force: true });
+    await rm(contextRoot, { recursive: true, force: true });
+  }
 });
 
 test("Mastra baseline runs through the generic HTTP API without Temporal", async () => {
