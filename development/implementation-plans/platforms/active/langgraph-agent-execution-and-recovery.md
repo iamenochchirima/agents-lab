@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:06:04+02:00
+**Last updated:** 2026-09-20T01:07:53+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -786,6 +786,13 @@ what was observed, the exact validation command, and what remains.
   tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`) and
   `git diff --check`. The broader server typecheck is currently blocked by an
   unrelated dirty Studio catalog type error in `server/src/studio/catalog.ts`.
+
+- **2026-09-20T01:07:53+02:00 — generic API continuation added.** Extended the same
+  real-process acceptance to submit a second Fastify turn with a new client turn key,
+  then verify a distinct Lab run, the same session and native thread, and a persisted
+  `CheckpointLoaded` event. The opt-in integration test passed again; `git diff --check`
+  passed. Duplicate admission, refresh, service unavailability, and process-replacement
+  browser tests remain open.
 
 ## Commit discipline
 

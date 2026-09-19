@@ -183,6 +183,33 @@ async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot:
       const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/${file}` });
       assert.equal(response.statusCode, 200, `${file}: ${response.body}`);
     }
+
+    const secondCreatedResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Calculate 5 plus 6 from the same checkpointed session." },
+        model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: 16_384 },
+        sessionId: "session-generic-api",
+        clientTurnId: "client-generic-api-2",
+        capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
+      },
+    });
+    assert.equal(secondCreatedResponse.statusCode, 202, secondCreatedResponse.body);
+    let secondRun = secondCreatedResponse.json() as RunView;
+    for (let attempt = 0; attempt < 100 && !secondRun.result; attempt += 1) {
+      await delay(25);
+      const inspectionResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(secondRun.runId)}` });
+      assert.equal(inspectionResponse.statusCode, 200, inspectionResponse.body);
+      secondRun = inspectionResponse.json() as RunView;
+    }
+    assert.equal(secondRun.status, "completed");
+    assert.notEqual(secondRun.runId, run.runId);
+    assert.equal(secondRun.context?.sessionId, run.context?.sessionId);
+    assert.equal(secondRun.executionReference?.native.threadId, run.executionReference?.native.threadId);
+    assert.ok(secondRun.events.some((event) => event.kind === "CheckpointLoaded"));
   } finally {
     await app.close();
     await rm(runRoot, { recursive: true, force: true });
