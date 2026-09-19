@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { once } from "node:events";
 import { join } from "node:path";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
@@ -11,11 +12,11 @@ import test from "node:test";
 
 import { RunEvidenceStore } from "../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
-import { RunService } from "../src/control-plane/application/run-service.js";
+import { RunService, type RunView } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import type { RunManifest } from "../src/control-plane/domain/types.js";
-import { ContextSessionStore } from "../src/capabilities/context/session-store.js";
+import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../src/capabilities/context/index.js";
 import { LangGraphBaselineRunner } from "../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
 
 const shouldRun = process.env.AGENTLAB_RUN_LANGGRAPH_INTEGRATION === "1";
@@ -32,7 +33,7 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
     const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: service.url, contextRoot, timeoutMs: 5_000 });
     assert.equal((await runner.checkConnection()).reachable, true);
 
-    await assertGenericApiRun(runner);
+    await assertGenericApiRun(runner, contextRoot);
 
     const completed = await terminalResult(runner, await runner.start(manifest(runner, "fake-success", "integration-success")));
     assert.equal(completed.status, "completed");
@@ -125,15 +126,25 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
   }
 });
 
-async function assertGenericApiRun(runner: LangGraphBaselineRunner): Promise<void> {
+async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot: string): Promise<void> {
   const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-api-"));
   const config = loadServerConfig(
-    { AGENTLAB_RUN_ROOT: runRoot, AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake" },
+    {
+      AGENTLAB_RUN_ROOT: runRoot,
+      AGENTLAB_CONTEXT_ROOT: contextRoot,
+      AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+    },
     process.cwd(),
   );
   const evidence = new RunEvidenceStore(runRoot);
-  const registry = new PlatformRegistry([runner]);
-  const service = new RunService({ config, evidence, registry });
+  const apiRunner = LangGraphBaselineRunner.fromOptions({
+    serviceUrl: String(runner.manifestConfiguration().serviceUrl),
+    contextRoot: config.contextRoot,
+    timeoutMs: 5_000,
+  });
+  const registry = new PlatformRegistry([apiRunner]);
+  const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+  const service = new RunService({ config, context, evidence, registry });
   const app = buildControlPlaneServer({ config, service, evidence, registry });
 
   try {
@@ -144,23 +155,31 @@ async function assertGenericApiRun(runner: LangGraphBaselineRunner): Promise<voi
       payload: {
         platform: "langgraph",
         variant: "baseline",
-        task: { kind: "prompt", prompt: "Return one generic API checkpoint sentence." },
-        model: { provider: "fake", model: "fake-success" },
+        task: { kind: "prompt", prompt: "Calculate 17 plus 25." },
+        model: { provider: "fake", model: "fake-tool-call", contextWindowTokens: 16_384 },
+        sessionId: "session-generic-api",
+        clientTurnId: "client-generic-api",
+        capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
       },
     });
     assert.equal(createdResponse.statusCode, 202, createdResponse.body);
 
-    let run = createdResponse.json() as { runId: string; result: { output: string } | null; status: string };
+    let run = createdResponse.json() as RunView;
     for (let attempt = 0; attempt < 100 && !run.result; attempt += 1) {
       await delay(25);
       const inspectionResponse = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}` });
       assert.equal(inspectionResponse.statusCode, 200, inspectionResponse.body);
-      run = inspectionResponse.json() as typeof run;
+      run = inspectionResponse.json() as RunView;
     }
 
     assert.equal(run.status, "completed");
-    assert.equal(run.result?.output, "Fake response: Return one generic API checkpoint sentence.");
-    for (const file of ["config.json", "events.jsonl", "trajectory.json", "metrics.json", "result.json", "native/langgraph.json"]) {
+    assert.equal(run.result?.output, 'The calculator returned {"value":42}.');
+    assert.equal(run.manifest.context.sessionId, "session-generic-api");
+    assert.equal(run.context?.sessionId, "session-generic-api");
+    assert.equal(run.executionReference?.native.threadId, runnerThreadId("session-generic-api"));
+    assert.ok(run.events.some((event) => event.kind === "ToolExecutionCompleted"));
+    assert.equal(run.context?.budget.quality, "estimated");
+    for (const file of ["config.json", "events.jsonl", "trajectory.json", "metrics.json", "context.json", "result.json", "native/langgraph.json"]) {
       const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(run.runId)}/evidence/${file}` });
       assert.equal(response.statusCode, 200, `${file}: ${response.body}`);
     }
@@ -168,6 +187,10 @@ async function assertGenericApiRun(runner: LangGraphBaselineRunner): Promise<voi
     await app.close();
     await rm(runRoot, { recursive: true, force: true });
   }
+}
+
+function runnerThreadId(sessionId: string): string {
+  return `langgraph:baseline:${createHash("sha256").update(sessionId, "utf8").digest("hex").slice(0, 32)}`;
 }
 
 function manifest(runner: LangGraphBaselineRunner, model: string, runId: string): RunManifest {
@@ -230,7 +253,7 @@ interface ManagedService {
 
 async function startService(stateDirectory: string): Promise<ManagedService> {
   const port = await freePort();
-  const python = process.env.AGENTLAB_LANGGRAPH_PYTHON ?? "/usr/bin/python3.12";
+  const python = resolvePython();
   const child = spawn(python, ["-m", "uvicorn", "service.app:app", "--host", "127.0.0.1", "--port", String(port)], {
     cwd: platformRoot,
     env: {
@@ -261,6 +284,23 @@ async function startService(stateDirectory: string): Promise<ManagedService> {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     },
   };
+}
+
+function resolvePython(): string {
+  const candidates = [
+    process.env.AGENTLAB_LANGGRAPH_PYTHON,
+    join(platformRoot, ".venv", "bin", "python"),
+    join(platformRoot, ".local311", "bin", "python"),
+    join(platformRoot, ".local", "bin", "python"),
+    "python3.12",
+    "python3.11",
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const selected = candidates.find((candidate) => {
+    const result = spawnSync(candidate, ["-c", "import fastapi, langgraph, uvicorn"], { stdio: "ignore" });
+    return result.status === 0;
+  });
+  assert.ok(selected, "No Python interpreter with the locked LangGraph dependencies was found. Set AGENTLAB_LANGGRAPH_PYTHON.");
+  return selected;
 }
 
 async function waitForHealth(child: ChildProcessWithoutNullStreams, url: string, logs: () => string): Promise<void> {

@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T00:53:47+02:00
+**Last updated:** 2026-09-20T01:06:04+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -593,7 +593,7 @@ Tests must exercise real boundaries, not only helper functions.
 ### Native process-level acceptance without Docker
 
 - [x] Start the locked Python service on an isolated port and verify health/readiness.
-- [ ] Run one fake model/tool turn through the generic Fastify API.
+- [x] Run one fake model/tool turn through the generic Fastify API.
 - [x] Run two fake-model turns in one session and inspect one stable LangGraph thread
   with separate Lab run IDs through the generic Fastify API.
 - [ ] Replace the Python service during a delayed turn using the same SQLite database and
@@ -775,6 +775,17 @@ what was observed, the exact validation command, and what remains.
   checks, the two-turn API smoke, `bash -n scripts/run_local_stack.sh`, and
   `git diff --check`. Real OpenRouter, tool-call, and process-replacement acceptance
   remain open.
+
+- **2026-09-20T01:06:04+02:00 — real-process generic API acceptance strengthened.** The
+  opt-in integration test now uses the prepared locked Python interpreter when
+  available, admits a shared-context session through Fastify, executes the real
+  LangGraph calculator tool path, verifies the native hashed thread and context
+  projection, reads context/native evidence, and still covers cancellation and
+  SQLite service replacement reconciliation. Validation passed:
+  `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server exec
+  tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`) and
+  `git diff --check`. The broader server typecheck is currently blocked by an
+  unrelated dirty Studio catalog type error in `server/src/studio/catalog.ts`.
 
 ## Commit discipline
 
