@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:41:51+02:00
+**Last updated:** 2026-09-20T01:43:18+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -863,7 +863,8 @@ what was observed, the exact validation command, and what remains.
   service/graph tests (`31 passed`), and
   `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server
   exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`).
-  Browser process replacement, the full browser failure-state matrix, and remaining
+  Committed as `a64f955` (`test(langgraph): verify native failure outcomes`). Browser
+  process replacement, the full browser failure-state matrix, and remaining
   documentation/release gates remain open.
 
 ## Commit discipline
