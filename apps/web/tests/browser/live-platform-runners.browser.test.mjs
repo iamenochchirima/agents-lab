@@ -92,6 +92,78 @@ test("live platform runners use the selected OpenRouter model", { skip: !process
   }
 });
 
+test("live Restate Chat continues a real session and renders context usage", { skip: !process.env.AGENTLAB_RUN_LIVE_RESTATE_CHAT_UI }, async (t) => {
+  const availability = await checkPlatform("restate");
+  assert.equal(availability.reachable, true, availability.message);
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-restate-chat-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  const errors = [];
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    cdp.on("Runtime.consoleAPICalled", (params) => {
+      if (params.type === "error") errors.push(params.args?.map((argument) => argument.value ?? argument.description ?? "").join(" ") ?? "console error");
+    });
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/restate/chat` });
+    await waitForElement(cdp, ".chat-page");
+    await waitForText(cdp, "Ready");
+
+    await click(cdp, ".model-picker-trigger");
+    await waitForElement(cdp, '[aria-label="Search OpenRouter models"]');
+    await setInput(cdp, '[aria-label="Search OpenRouter models"]', MODEL_ID);
+    await waitForText(cdp, MODEL_ID);
+    await clickModel(cdp, MODEL_ID);
+
+    await setInput(cdp, 'textarea[aria-label="Message"]', "Give one short sentence about a first live turn.");
+    await clickButton(cdp, "Send");
+    await waitForChatTurn(cdp, 1);
+    const firstTurn = JSON.parse(await cdp.evaluate(`JSON.stringify({
+      userMessages: document.querySelectorAll(".chat-message-user").length,
+      assistantMessages: document.querySelectorAll(".chat-message-assistant.chat-message-status-completed").length,
+      context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+    })`));
+    assert.equal(firstTurn.userMessages, 1);
+    assert.equal(firstTurn.assistantMessages, 1);
+    assert.match(firstTurn.context ?? "", /tokens/);
+    assert.match(firstTurn.context ?? "", /% left/);
+    assert.equal(await cdp.evaluate('document.querySelector(".model-picker-trigger")?.hasAttribute("disabled")'), true);
+
+    await setInput(cdp, 'textarea[aria-label="Message"]', "Give one short sentence continuing the conversation.");
+    await clickButton(cdp, "Send");
+    await waitForChatTurn(cdp, 2);
+    const secondTurn = JSON.parse(await cdp.evaluate(`JSON.stringify({
+      userMessages: document.querySelectorAll(".chat-message-user").length,
+      assistantMessages: document.querySelectorAll(".chat-message-assistant.chat-message-status-completed").length,
+      context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+    })`));
+    assert.equal(secondTurn.userMessages, 2);
+    assert.equal(secondTurn.assistantMessages, 2);
+    assert.match(secondTurn.context ?? "", /tokens/);
+    assert.match(secondTurn.context ?? "", /% left/);
+    assert.deepEqual(errors, []);
+    t.diagnostic(`Restate Chat completed two real turns with ${secondTurn.context}`);
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
 async function checkPlatform(id) {
   try {
     const response = await fetch(`${API_URL}/api/platforms/${encodeURIComponent(id)}/health`);
@@ -156,6 +228,15 @@ async function waitForText(cdp, expected, timeoutMs = 15_000) {
   throw new Error(`Timed out waiting for text ${expected}`);
 }
 
+async function waitForExpression(cdp, expression, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await cdp.evaluate(expression)) return;
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for expression: ${expression}`);
+}
+
 async function waitForCompleted(cdp, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -167,6 +248,10 @@ async function waitForCompleted(cdp, timeoutMs) {
     await delay(1_000);
   }
   throw new Error("Timed out waiting for a platform run to complete.");
+}
+
+async function waitForChatTurn(cdp, expectedAssistantCount, timeoutMs = 120_000) {
+  await waitForExpression(cdp, `document.querySelectorAll('.chat-message-assistant.chat-message-status-completed').length >= ${expectedAssistantCount} && !document.querySelector('.chat-message-assistant.chat-message-status-running, .chat-message-assistant.chat-message-status-pending')`, timeoutMs);
 }
 
 async function waitForPageTarget(debugPort) {
@@ -221,6 +306,12 @@ class CdpClient {
       socket.addEventListener("error", reject, { once: true });
     });
     return new CdpClient(socket);
+  }
+
+  on(method, listener) {
+    const listeners = this.listeners.get(method) ?? [];
+    listeners.push(listener);
+    this.listeners.set(method, listeners);
   }
 
   send(method, params = {}) {

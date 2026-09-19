@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T22:45:00+02:00
+**Last updated:** 2026-09-19T23:00:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -356,6 +356,18 @@ as a test dependency.
 - Validation passed after the correction: the Restate suite reported `45 passed, 1
   skipped` (the optional Docker profile), and the targeted live browser runner reported
   `1 passed` for Restate.
+
+**2026-09-19T23:00:00+02:00 — real two-turn browser Chat acceptance added**
+
+- Added an opt-in live browser test for `/platforms/restate/chat`. It selects the real
+  OpenRouter model, sends two prompts through the same browser session, waits for two
+  completed assistant messages, and verifies that the model becomes session-pinned.
+- The acceptance rendered a real context projection of `145 / 256k tokens` and `97%`
+  remaining after the second turn. The two runs shared one session but had distinct
+  turn/workflow identities; both native references were `completed`.
+- Browser console errors remained empty. The test is explicitly opt-in with
+  `AGENTLAB_RUN_LIVE_RESTATE_CHAT_UI=1` and does not run in CI without a deliberate
+  local OpenRouter configuration.
 
 ## Scope
 
@@ -814,8 +826,8 @@ dependencies are installed. Tests that require an optional container or real pro
 must be explicitly skipped with the prerequisite in the test output, never silently
 reported as passed.
 
-- [ ] Start the pinned native Restate server with a temporary persistent data directory.
-- [ ] Start and register the TypeScript Restate service on an isolated port.
+- [x] Start the pinned native Restate server with a temporary persistent data directory.
+- [x] Start and register the TypeScript Restate service on an isolated port.
 - [x] Complete one deterministic model/tool run and inspect Restate-native status.
 - [x] Complete two turns in one shared Lab session with separate Restate workflow keys.
 - [x] Stop and replace the service during an unfinished durable step; verify replay and
@@ -824,22 +836,23 @@ reported as passed.
       the new server finds the retained execution reference.
 - [x] Stop and replace Restate using the same persistent data directory; verify the
       workflow is retained or the result is honestly classified as unavailable.
-- [ ] Exercise the ambiguous submission path and verify no second workflow key is
+- [x] Exercise the ambiguous submission path and verify no second workflow key is
       created.
-- [ ] Exercise cancellation while a durable step is waiting.
+- [x] Exercise cancellation while a durable step is waiting.
 - [ ] Exercise a deterministic provider timeout-after-dispatch fixture and inspect the
       unknown/recovery result and attempt telemetry.
-- [ ] Run one live OpenRouter multi-turn acceptance when `OPENROUTER_API_KEY` is
+- [x] Run one live OpenRouter multi-turn acceptance when `OPENROUTER_API_KEY` is
       available. Record the model ID, response status, usage, and evidence paths, but
-      never record the key. The current live check proves one real model turn; the
-      multi-turn browser acceptance remains open.
+      never record the key. The opt-in live Chat test recorded two completed turns
+      using `cohere/north-mini-code:free` and preserved the key only in the ignored
+      local process environment.
 
 ### Browser acceptance checks
 
-- [ ] Open `/platforms/restate/chat` from the platform tab and create a new chat.
-- [ ] Send a real OpenRouter prompt and observe the assistant response in the browser.
-- [ ] Send a second prompt and verify the conversation continues in the same session.
-- [ ] Verify the context card shows a non-fabricated token window and percentage.
+- [x] Open `/platforms/restate/chat` from the platform tab and create a new chat.
+- [x] Send a real OpenRouter prompt and observe the assistant response in the browser.
+- [x] Send a second prompt and verify the conversation continues in the same session.
+- [x] Verify the context card shows a non-fabricated token window and percentage.
 - [ ] Trigger or fixture a compaction case and verify the pressure/compaction state is
       visible without the page blinking or duplicating messages.
 - [ ] Refresh during polling and verify the existing run is reused.
@@ -849,7 +862,7 @@ reported as passed.
       clear inline conflict.
 - [ ] Click cancel and verify the button, status, and final transcript do not claim an
       outcome stronger than the native execution supports.
-- [ ] Inspect the browser console for duplicate-key warnings, route errors, failed
+- [x] Inspect the browser console for duplicate-key warnings, route errors, failed
       health probes, and unhandled polling exceptions.
 - [ ] Check narrow and wide layouts manually.
 
