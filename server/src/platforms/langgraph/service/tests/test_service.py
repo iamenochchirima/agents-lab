@@ -201,6 +201,69 @@ def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) 
         assert response.status_code == 409
 
 
+def test_sqlite_store_reopens_with_terminal_records_and_native_events(tmp_path: Path) -> None:
+    database = tmp_path / "reopen.sqlite"
+    request = {
+        "execution_id": "langgraph:run-reopen",
+        "run_id": "run-reopen",
+        "thread_id": "run-reopen",
+        "request_fingerprint": "fingerprint-reopen",
+        "prompt_hash": "hash-reopen",
+        "graph": "baseline",
+        "provider": "fake",
+        "model": "fake-success",
+    }
+    store = SQLiteRunStore(database)
+    record, created = store.create_or_get(request)
+    assert created is True
+    assert record["status"] == "queued"
+    store.append_event("langgraph:run-reopen", "RunCreated", {"graph": "baseline"})
+    store.finish(
+        "langgraph:run-reopen",
+        status="completed",
+        finished_at="2026-09-20T00:00:02Z",
+        output="persisted output",
+        error=None,
+        attempt_count=1,
+        usage={"inputTokens": 4, "outputTokens": 5, "totalTokens": 9},
+    )
+    store.close()
+    store.close()
+
+    reopened = SQLiteRunStore(database)
+    assert reopened.get("langgraph:run-reopen")["output"] == "persisted output"
+    assert reopened.events("langgraph:run-reopen")[0]["kind"] == "RunCreated"
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    assert reopened._connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    reopened.close()
+
+
+def test_unknown_run_re_admission_reuses_the_persisted_outcome(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path / "re-admission.sqlite")
+    request = {
+        "execution_id": "langgraph:run-re-admission",
+        "run_id": "run-re-admission",
+        "thread_id": "run-re-admission",
+        "request_fingerprint": "fingerprint-re-admission",
+        "prompt_hash": "hash-re-admission",
+        "graph": "baseline",
+        "provider": "fake",
+        "model": "fake-delay",
+    }
+    first, created = store.create_or_get(request)
+    assert created is True
+    store.mark_incomplete_unknown("SERVICE_RESTARTED", "The service was replaced during execution.")
+
+    replay, replay_created = store.create_or_get(request)
+    assert replay_created is False
+    assert replay["execution_id"] == first["execution_id"]
+    assert replay["status"] == "unknown"
+    assert [event["kind"] for event in store.events("langgraph:run-re-admission")] == ["RunReconciliationRequired"]
+    store.close()
+
+
 def test_service_rejects_a_concurrent_turn_in_the_same_session(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         first = start_payload("run-session-first", "fake-delay")

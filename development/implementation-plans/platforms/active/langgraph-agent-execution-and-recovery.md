@@ -728,6 +728,14 @@ what was observed, the exact validation command, and what remains.
   bounded summary without becoming exhausted. Validation passed: ten focused
   LangGraph TypeScript tests and `git diff --check`.
 
+- **2026-09-20T00:37:52+02:00 — SQLite replacement semantics hardened.** The
+  platform store now enables WAL, full synchronous commits, foreign-key checks, a
+  bounded busy timeout, and idempotent close. Added tests for reopening terminal run
+  records and native events, replaying an unknown run after replacement without a
+  second admission, and the late-worker race that must not overwrite reconciliation.
+  Validation passed: forty LangGraph Python tests. Full process replacement and
+  browser recovery still remain opt-in integration work.
+
 ## Commit discipline
 
 Use focused commits. Do not create one large final commit.

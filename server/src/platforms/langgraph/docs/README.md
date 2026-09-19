@@ -47,7 +47,16 @@ add a LangGraph Store, Postgres, hosted Agent Server, LangSmith Deployment, subg
 human approval, or automatic in-flight resume. It exposes only the Lab's bounded pure
 `calculator` tool when the request enables it; it does not define a second tool catalog.
 SQLite is used because it makes checkpoint creation and restart inspection observable
-locally; it is not presented as the production persistence profile.
+locally; it is not presented as the production persistence profile. The service enables
+WAL journaling, `synchronous=FULL`, foreign-key checks, and a five-second busy timeout
+for its process-owned connection. The service record tables and LangGraph checkpoint
+tables share the file but have separate responsibilities.
+
+On startup, queued or running service records are changed to `unknown` with a
+`RunReconciliationRequired` event. A later POST with the same immutable run identity
+returns that persisted unknown record with `idempotent=true`; it does not start a
+second graph execution. A late worker completion cannot overwrite that reconciliation
+record.
 
 ## First-party references
 

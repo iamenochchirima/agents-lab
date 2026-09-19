@@ -38,15 +38,21 @@ class SQLiteRunStore:
         database_path.parent.mkdir(parents=True, exist_ok=True)
         self.database_path = database_path
         self._lock = threading.RLock()
+        self._closed = False
         self._connection = sqlite3.connect(database_path, check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
+        self._connection.execute("PRAGMA foreign_keys=ON")
+        self._connection.execute("PRAGMA busy_timeout=5000")
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA synchronous=FULL")
         self._initialize()
 
     def close(self) -> None:
         with self._lock:
+            if self._closed:
+                return
             self._connection.close()
+            self._closed = True
 
     def _initialize(self) -> None:
         with self._lock, self._connection:
