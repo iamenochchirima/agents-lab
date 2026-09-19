@@ -29,7 +29,7 @@
     "test": "pnpm run build && find dist/tests -type f -name '*.test.js' -print0 | xargs -0 node --test",
     "test:langgraph": "pnpm run build && find dist/tests/platforms/langgraph -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/langgraph-baseline.test.js",
     "test:mastra": "pnpm run build && node --test dist/tests/platforms/mastra/mastra-runner.test.js dist/integration-tests/mastra-baseline.test.js",
-    "test:restate": "pnpm run build && find dist/tests/platforms/restate -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/restate-baseline.test.js",
+    "test:restate": "pnpm run build && find dist/tests/platforms/restate -type f -name '*.test.js' -print0 | xargs -0 node --test dist/integration-tests/restate-baseline.test.js dist/integration-tests/restate-restart.test.js",
     "test:dbos": "pnpm run build && node --test dist/tests/platforms/dbos/*.test.js dist/integration-tests/dbos-baseline.test.js",
     "test:inngest": "pnpm run build && node --test dist/tests/platforms/inngest/*.test.js dist/integration-tests/inngest-baseline.test.js",
     "test:temporal": "pnpm run build && node --test dist/integration-tests/temporal-baseline.test.js",

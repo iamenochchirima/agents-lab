@@ -110,6 +110,21 @@ it after the Admin API and service return. A missing native execution is reporte
 `reconciliation_required`; it is not converted into a successful or ordinary model
 failure.
 
+The repository includes a Docker-free replacement exercise. It allocates an isolated
+Restate message-fabric port as well as isolated ingress, Admin API, service, and data
+locations, then replaces the service during an active workflow and replaces both the
+service and Restate server while another workflow is active:
+
+```bash
+AGENTLAB_RUN_RESTATE_NATIVE_RESTART_INTEGRATION=1 \
+  pnpm --filter @agent-harness-lab/lab-server run test:restate
+```
+
+The test uses the deterministic `fake-delay` fixture so the replacement window is
+reproducible. It removes its temporary data directory after the run. The fixture is
+not a claim about OpenRouter exactly-once billing; provider ambiguity is covered by
+the native baseline test and remains `reconciliation_required`.
+
 ## Optional OpenRouter path
 
 Set `OPENROUTER_API_KEY` in the Lab server and Restate service environments (the

@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T22:14:00+02:00
+**Last updated:** 2026-09-19T22:30:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -323,6 +323,22 @@ as a test dependency.
   and clearing the unresolved run through the explicit new-chat action.
 - Validation passed: `node --test apps/web/tests/browser/platform-chat.browser.test.mjs`
   (`5 passed`).
+
+**2026-09-19T22:30:00+02:00 — Docker-free native restart exercise added**
+
+- Added an opt-in native integration test that allocates isolated ingress, Admin API,
+  service, message-fabric, and persistent-data locations. It replaces the service while
+  a `fake-delay` workflow is active, then replaces both the service and Restate server
+  and verifies that the retained workflow completes from the same native execution.
+- The first run exposed the default internal message-fabric port collision with the
+  developer's existing Restate process. The exercise now sets Restate's supported
+  `RESTATE_BIND_PORT` for the isolated node rather than requiring Docker or stopping
+  the user's local stack.
+- Validation passed: `AGENTLAB_RUN_RESTATE_NATIVE_RESTART_INTEGRATION=1 pnpm
+  --filter @agent-harness-lab/lab-server run test:restate` (`42 passed, 4 skipped`).
+- The local-development guide now documents the restart exercise, its deterministic
+  fixture, temporary-data cleanup, and the boundary between workflow replay and
+  external-provider ambiguity.
 
 ## Scope
 
