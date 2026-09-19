@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:00:18+02:00
+**Last updated:** 2026-09-19T23:05:32+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -456,6 +456,16 @@ and the final release/completion record and checklist audit.
   state.
 - Full server validation passed `271 passed, 2 skipped`; the web typecheck/build passed;
   focused evidence and HTTP coverage passed `16/16`.
+
+**2026-09-19T23:05:32+02:00 — operational evidence exposed in Chat**
+
+- Added `logs/operations.jsonl` to the shared browser evidence file list so request
+  diagnostics are inspectable beside the normalized and native run records.
+- Browser acceptance still passes `11/11`, including the evidence-link assertion,
+  duplicate-key check, recovery states, and desktop/tablet/narrow viewport checks.
+- The remaining browser gate is specifically an actual Lab-server process replacement
+  during an active browser run; the native integration already verifies the same
+  replacement at the execution/evidence boundary.
 
 ## Scope
 
