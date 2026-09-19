@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:25:00+02:00
+**Last updated:** 2026-09-19T23:45:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -389,6 +389,18 @@ as a test dependency.
 - The acceptance passed with no browser console errors. This closes the browser
   context-pressure gate without pretending that a fixture is a live provider overflow.
 
+**2026-09-19T23:45:00+02:00 — platform documentation and recovery walkthrough added**
+
+- Updated the platform README with session/turn ownership, recovery semantics, native
+  evidence boundaries, and the no-Docker local entry point.
+- Expanded the architecture and local-development docs with the identity table,
+  terminal write order, bounded Admin introspection query, dependency-readiness order,
+  and safe shutdown guidance.
+- Added `development/playground/restate-recovery.md` as a hands-on walkthrough for
+  inspecting the isolated native service/server replacement exercise. It explicitly
+  separates observed local Workflow recovery from any exactly-once provider claim.
+- `pnpm --filter @agent-harness-lab/web run typecheck` and `git diff --check` passed.
+
 ## Scope
 
 - [ ] Complete the Restate baseline end to end; session continuity is a foundation, not
@@ -760,37 +772,37 @@ new turn over it without recording the decision.
       messages or reuse a non-unique React key when the same run is re-observed.
 - [ ] Show stale, unavailable, retrying, cancelled, and recovery-required states with
       concise inline UI. Do not use browser-native dialogs.
-- [ ] Keep native Restate details behind the existing progressive disclosure path.
+- [x] Keep native Restate details behind the existing progressive disclosure path.
 - [ ] Verify desktop, tablet, and narrow browser widths for the chat, context panel,
       model selector, error state, and run details.
 
 ### 5. Local operations and scripts
 
-- [ ] Verify the native Restate server startup, persistent data directory, Admin API
+- [x] Verify the native Restate server startup, persistent data directory, Admin API
       readiness, service registration, and service readiness sequence.
-- [ ] Update the Restate local-development guide with the no-Docker path first.
-- [ ] Document the optional Docker profile separately without making it a prerequisite.
-- [ ] Add a deterministic restart procedure that uses an isolated temporary data
+- [x] Update the Restate local-development guide with the no-Docker path first.
+- [x] Document the optional Docker profile separately without making it a prerequisite.
+- [x] Add a deterministic restart procedure that uses an isolated temporary data
       directory and ports, so recovery exercises do not destroy the contributor’s
       normal local stack.
-- [ ] Document how to inspect invocation status, retry count, workflow key, journal,
+- [x] Document how to inspect invocation status, retry count, workflow key, journal,
       and service registration through Restate’s supported CLI or Admin API.
-- [ ] Document how to stop a failed process and how to tell an unavailable dependency
+- [x] Document how to stop a failed process and how to tell an unavailable dependency
       from an unresolved execution outcome.
 
 ### 6. Documentation and learning material
 
-- [ ] Update `server/src/platforms/restate/README.md` with the new session and recovery
+- [x] Update `server/src/platforms/restate/README.md` with the new session and recovery
       semantics.
-- [ ] Update Restate architecture and semantics docs with ownership, write order,
+- [x] Update Restate architecture and semantics docs with ownership, write order,
       replay, retry, cancellation, unknown outcomes, and the deliberate non-use of
       Virtual Objects in this slice.
-- [ ] Add a runnable recovery walkthrough under `development/playground/` only if it
+- [x] Add a runnable recovery walkthrough under `development/playground/` only if it
       is clearly a hands-on implementation inspection and not a test, scenario, or
       experiment.
 - [x] Link this active plan from the platform plan index and keep the completed baseline
       plan unchanged as the historical foundation.
-- [ ] Record observed results separately from interpretation and list the local-only
+- [x] Record observed results separately from interpretation and list the local-only
       limitations plainly.
 
 ## Test coverage

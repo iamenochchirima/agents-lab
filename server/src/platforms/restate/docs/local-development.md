@@ -28,6 +28,10 @@ The command stores local Restate state in `lab/restate-native-data/` by default.
 must not be committed. The server exposes ingress on
 `127.0.0.1:8080` and the Admin API/UI on `127.0.0.1:9070`.
 
+Record the service process PID if it is started in the background. For a foreground
+process, `Ctrl-C` is the normal shutdown path. Stop only the process you started; do
+not delete the persistent data directory when testing replay.
+
 Check readiness:
 
 ```bash
@@ -100,6 +104,28 @@ HTTP server while a delayed workflow remains active. If Restate is unavailable, 
 test fails; it does not mark an in-memory substitute as passing. The Docker-backed
 replay test remains opt-in with `AGENTLAB_RUN_RESTATE_INTEGRATION=1` and requires
 Docker.
+
+To inspect a retained invocation without exposing provider data, use the invocation ID
+from `native/restate.json` and request only bounded lifecycle columns:
+
+```bash
+curl --fail --request POST http://127.0.0.1:9070/query \
+  --header 'content-type: application/json' \
+  --data '{"query":"select id, status, completion_result, retry_count, modified_at from sys_invocation where id = '\''<invocation-id>'\''"}'
+```
+
+Use the Admin API for deployment and readiness checks:
+
+```bash
+curl --fail http://127.0.0.1:9070/health
+curl --fail http://127.0.0.1:9070/deployments
+```
+
+If a dependency is unavailable, distinguish the cases in this order: Admin health,
+service registration, service TCP readiness, then invocation inspection. A healthy
+Admin API with no registered service is not a runnable agent. A temporary inspection
+failure preserves the last Lab projection; an accepted invocation whose outcome cannot
+be determined remains recovery-required.
 
 For an isolated restart exercise, use a temporary `AGENTLAB_RESTATE_DATA_DIR` and
 non-default ingress, Admin API, and service ports. Stop the Restate server only after

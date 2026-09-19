@@ -24,6 +24,24 @@ runner values: a `PlatformExecutionReference`, status, event intents, result,
 trajectory, and metrics. It writes `config.json`, `events.jsonl`, `trajectory.json`,
 `metrics.json`, `result.json`, and `native/restate.json`.
 
+## Session and turn boundary
+
+The browser and shared context layer own conversation continuity. Restate owns the
+durable execution of one admitted turn:
+
+| Identity | Owner | Meaning |
+| --- | --- | --- |
+| `sessionId` | browser and `ContextSessionStore` | one conversation and transcript |
+| `clientTurnId` | browser and admission store | one user-submission intent and retry key |
+| `runId` | Lab server | one evidence directory and runner execution |
+| `agentlab:<runId>` | Restate runner | one native Workflow key |
+| invocation ID | Restate | one accepted native invocation |
+| snapshot ID | `ContextService` | one prepared model input |
+
+The Restate service receives the prepared context contract and returns event intents;
+it does not append transcript messages or write `lab/runs`. This prevents a Restate
+replay from becoming a second source of truth for session state.
+
 ## Workflow choice
 
 The baseline uses a Workflow rather than a Basic Service or Virtual Object because a
@@ -53,6 +71,23 @@ submission with that same key and treats `PreviouslyAccepted` as the existing
 workflow. The external model call is not described as exactly once: a request may be
 sent before its acknowledgement is lost.
 
+## Terminal write order
+
+The common server projects a durable result in this order:
+
+1. Admit and persist the context turn and user message.
+2. Persist the immutable run manifest and `RunCreated` event.
+3. Submit the Workflow using the run-derived key.
+4. Persist the redacted native execution reference.
+5. Reconcile native event intents and write the result.
+6. Write trajectory, metrics, context snapshot, and terminal context settlement
+   idempotently.
+
+If a process stops between these boundaries, the next read uses the retained run and
+native reference to reconcile. A missing or ambiguous native execution becomes
+`reconciliation_required`; it is not silently replaced with a new turn. A terminal
+Lab result is retained even if the native Workflow later expires.
+
 ## Native and normalized evidence
 
 The runner keeps the service name, handler, workflow key, optional invocation ID,
@@ -71,3 +106,7 @@ remains responsible for recorded sequence numbers.
 - [TypeScript SDK clients](https://docs.restate.dev/services/invocation/clients/typescript-sdk)
 - [Invocation introspection](https://docs.restate.dev/services/introspection)
 - [Managing invocations and cancellation](https://docs.restate.dev/services/invocation/managing-invocations)
+
+The baseline intentionally does not use a Restate Virtual Object for chat sessions.
+That would introduce a different concurrency and interaction model and belongs in a
+separate experiment rather than being mixed into this run-oriented comparison.
