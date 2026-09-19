@@ -32,6 +32,7 @@ be implemented now.
 
 ## Active plans
 
+- [Studio Memory runtime](active/studio-memory-runtime.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
 - [Studio backend runtime foundation](active/studio-backend.md)
 
