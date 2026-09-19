@@ -62,7 +62,7 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
       href: link.getAttribute("href"),
       target: link.getAttribute("target"),
     })))` ).then(JSON.parse);
-    assert.deepEqual(evidence.map((item) => item.name), ["config.json", "events.jsonl", "context.json", "trajectory.json", "metrics.json", "result.json"]);
+    assert.deepEqual(evidence.map((item) => item.name), ["config.json", "events.jsonl", "logs/operations.jsonl", "context.json", "trajectory.json", "metrics.json", "result.json"]);
     assert.ok(evidence.every((item) => item.href?.startsWith(`http://127.0.0.1:4318/api/runs/${fixture.state.runIds[0]}/evidence/`)));
     assert.ok(evidence.every((item) => item.target === "_blank"));
 

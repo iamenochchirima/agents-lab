@@ -576,6 +576,7 @@ function NativeRunDetails({ native }: { native: Record<string, unknown> }) {
 function availableEvidenceFiles(run: RunView): readonly RunEvidenceFile[] {
   const files: RunEvidenceFile[] = [];
   files.push("config.json", "events.jsonl");
+  files.push("logs/operations.jsonl");
   if (run.context) files.push("context.json");
   if (run.trajectory) files.push("trajectory.json");
   if (run.metrics) files.push("metrics.json");

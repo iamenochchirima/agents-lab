@@ -174,6 +174,7 @@ export const RUN_EVIDENCE_FILES = [
   "metrics.json",
   "context.json",
   "result.json",
+  "logs/operations.jsonl",
 ] as const;
 
 export type RunEvidenceFile = (typeof RUN_EVIDENCE_FILES)[number];
