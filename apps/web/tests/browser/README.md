@@ -43,3 +43,15 @@ AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI=1 \
 The check opens the real Restate Chat route, admits a delayed turn, replaces the Lab
 server, and verifies that the same run finishes in the browser after the replacement.
 It is intentionally opt-in because it stops and starts the configured local server.
+
+For an opt-in live LangGraph Chat check, keep the local LangGraph service and Lab
+server running with an OpenRouter key configured, then run:
+
+```bash
+AGENTLAB_RUN_LIVE_LANGGRAPH_CHAT_UI=1 \
+  node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs
+```
+
+This selects the configured free OpenRouter model, sends two turns through one
+LangGraph session, and verifies the rendered context usage and native thread details.
+It makes real model requests and is skipped unless explicitly enabled.

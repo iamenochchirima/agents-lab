@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:21:42+02:00
+**Last updated:** 2026-09-20T01:29:41+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -508,14 +508,14 @@ dashboard for this plan.
 
 - [x] Open `/platforms/langgraph/chat` and create a new session in the deterministic
   browser fixture.
-- [ ] Select a searchable OpenRouter model in the shared picker and send a real prompt.
+- [x] Select a searchable OpenRouter model in the shared picker and send a real prompt.
 - [x] Send a second prompt and verify one session, two Lab turns, one LangGraph thread,
   and two distinct run IDs in the deterministic browser fixture.
 - [x] Show model identity, session/thread identity, context window usage, graph/native
   status, and tool details through progressive disclosure in Chat.
 - [ ] Show retrying, compaction, unavailable, cancelled, stale, failed, and
   recovery-required states without fabricated assistant output.
-- [ ] Refresh during a running turn and verify the same run is reused without duplicate
+- [x] Refresh during a running turn and verify the same run is reused without duplicate
   assistant messages or duplicate React keys.
 - [ ] Change model or context configuration after a settled turn and require a new chat
   or show a clear inline conflict.
@@ -600,8 +600,9 @@ Tests must exercise real boundaries, not only helper functions.
   verify settled/recovery behaviour.
 - [x] Replace the Lab server during a delayed turn while the Python service remains up.
 - [x] Replace both processes and verify the documented outcome.
-- [x] Exercise duplicate admission, concurrent session conflict, cancellation, stale
-  projection, timeout-after-dispatch, and context-overflow fixtures.
+- [x] Exercise duplicate admission, concurrent session conflict, and cancellation.
+- [ ] Exercise stale projection, timeout-after-dispatch, and context-overflow fixtures
+  through the native LangGraph process boundary.
 - [x] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
   record model, usage, status, and evidence paths without recording the key.
 - [ ] Docker-backed profiles, if any remain in the repository, are explicitly skipped
@@ -614,7 +615,7 @@ Tests must exercise real boundaries, not only helper functions.
   cancellation, refresh, stale state, duplicate-key safety, and responsive widths. The
   initial two-turn, context, graph/tool, native identity, and duplicate-key assertions
   are now present; the remaining states stay open.
-- [ ] Add an opt-in live LangGraph Chat test for real OpenRouter execution.
+- [x] Add an opt-in live LangGraph Chat test for real OpenRouter execution.
 - [ ] Add an opt-in browser test that replaces the Lab server during a LangGraph run.
 - [ ] Add an opt-in browser test that replaces the LangGraph service during a run using
   a temporary SQLite database and verifies the same run result or honest recovery state.
@@ -838,6 +839,19 @@ what was observed, the exact validation command, and what remains.
   exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`),
   and `git diff --check`. Stale projection, timeout-after-dispatch, and context-overflow
   integration fixtures remain open.
+
+- **2026-09-20T01:29:41+02:00 — browser LangGraph recovery surface verified.** Added
+  deterministic Chat coverage for refresh reuse, cancellation without fabricated model
+  output, recovery-required state, native thread disclosure, and duplicate rendering
+  safety. Added an opt-in live Chromium test that selects the real OpenRouter model,
+  completes two LangGraph turns in one session, and verifies context usage and native
+  thread details. Validation passed: `node --test
+  apps/web/tests/browser/platform-chat.browser.test.mjs` (`15 passed`),
+  `AGENTLAB_RUN_LIVE_LANGGRAPH_CHAT_UI=1 node --test
+  apps/web/tests/browser/live-platform-runners.browser.test.mjs` (`1 passed`, `3 skipped`),
+  `node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs` (`4 skipped`),
+  and `git diff --check`. Native stale, timeout-after-dispatch, context-overflow, and
+  browser process-replacement coverage remain open.
 
 ## Commit discipline
 

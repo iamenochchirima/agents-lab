@@ -282,6 +282,81 @@ test("LangGraph Chat continues one checkpointed session and shows native context
   }
 });
 
+test("LangGraph Chat reuses the admitted run after a browser refresh", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setMode("refresh");
+
+  try {
+    await navigate(browser.cdp, "/platforms/langgraph/chat");
+    await waitForText(browser.cdp, "LangGraph");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Continue after a LangGraph refresh.");
+    await clickButton(browser.cdp, "Send");
+    await waitForExpression(browser.cdp, 'new URLSearchParams(location.search).has("run")');
+    const loaded = waitForCdpEvent(browser.cdp, "Page.loadEventFired");
+    await browser.cdp.send("Page.reload", { ignoreCache: true });
+    await loaded;
+    await waitForText(browser.cdp, "LangGraph fixture completed.");
+    assert.equal(fixture.state.createRequests, 1, "refresh must not create a second LangGraph run");
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-message-user").length'), 1);
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-message-assistant").length'), 1);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("LangGraph Chat reports cancellation without claiming a result", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setMode("cancel");
+
+  try {
+    await navigate(browser.cdp, "/platforms/langgraph/chat");
+    await waitForText(browser.cdp, "LangGraph");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Cancel this LangGraph turn.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Stop");
+    await clickButton(browser.cdp, "Stop");
+    await waitForText(browser.cdp, "Cancelled");
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-message-assistant")?.textContent?.includes("LangGraph fixture completed.") ?? false'), false);
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-message-status-cancelled") !== null'), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("LangGraph Chat exposes recovery-required outcomes and native execution details", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setMode("recovery");
+
+  try {
+    await navigate(browser.cdp, "/platforms/langgraph/chat");
+    await waitForText(browser.cdp, "LangGraph");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Recover this LangGraph outcome.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Run outcome needs recovery.");
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-run-details summary small")?.textContent?.trim()'), "reconciliation required");
+
+    await clickSummary(browser.cdp, "Native execution");
+    const nativeDetails = await browser.cdp.evaluate("document.querySelector('.chat-activity[open]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? ''");
+    assert.match(nativeDetails, /langgraph:baseline:session-/);
+    assert.match(nativeDetails, /baseline/);
+
+    await browser.cdp.evaluate('document.querySelector("[role=alert] button")?.click()');
+    await waitForText(browser.cdp, "Start a conversation");
+    assert.equal(await browser.cdp.evaluate("document.querySelector('.chat-run-details') === null"), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Restate Chat shows a bounded retry without mislabeling the run", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -542,6 +617,8 @@ async function installFixture(cdp) {
             : state.mode === "retrying" || state.mode === "refresh"
               ? (runReads <= 2 ? "running" : "completed")
               : "completed"
+        : state.mode === "recovery"
+        ? "reconciliation_required"
         : state.mode === "cancel"
         ? (state.cancelled ? "cancelled" : "running")
         : runReads === 1 ? "running" : "completed";
@@ -568,6 +645,8 @@ async function installFixture(cdp) {
               : (state.mode === "retrying" || state.mode === "refresh") && runReads <= 2
                 ? "running"
                 : "completed"
+        : state.mode === "recovery"
+          ? "reconciliation_required"
         : state.mode === "cancel" && !state.cancelled
           ? "running"
           : state.mode === "cancel"
@@ -577,7 +656,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const cancelMatch = url.pathname.match(/^\/api\/runs\/(run-(?:temporal|restate)-\d+)\/cancel$/);
+    const cancelMatch = url.pathname.match(/^\/api\/runs\/(run-(?:temporal|restate|langgraph)-\d+)\/cancel$/);
     if (cancelMatch && event.request.method === "POST") {
       const runId = cancelMatch[1];
       const request = state.runRequests.get(runId);
@@ -611,7 +690,9 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
           ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "ModelRetryScheduled", platform, { reason: "pre_dispatch" })]
         : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
     : langGraph
-    ? [
+    ? status === "reconciliation_required"
+      ? [event(runId, 1, "GraphRunStarted", platform), event(runId, 2, "RunReconciliationRequired", platform)]
+      : [
         event(runId, 1, "GraphRunStarted", platform),
         event(runId, 2, "GraphNodeStarted", platform, { node: "model" }),
         event(runId, 3, "ToolCallRequested", platform, { toolName: "calculator" }),
@@ -641,8 +722,8 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
           : compaction ? "Restate fixture compacted." : "Restate fixture completed."
       : null,
     error: status === "reconciliation_required" ? {
-      code: "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
-      message: "Restate did not confirm whether the workflow submission was accepted.",
+      code: platform === "langgraph" ? "LANGGRAPH_OUTCOME_UNKNOWN" : "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
+      message: platform === "langgraph" ? "LangGraph did not establish the outcome of the native execution." : "Restate did not confirm whether the workflow submission was accepted.",
       failureKind: "outcome_unknown",
       retryable: true,
     } : null,

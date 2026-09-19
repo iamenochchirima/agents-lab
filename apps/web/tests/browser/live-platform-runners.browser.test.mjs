@@ -165,6 +165,98 @@ test("live Restate Chat continues a real session and renders context usage", { s
   }
 });
 
+test("live LangGraph Chat continues a real checkpointed session", { skip: !process.env.AGENTLAB_RUN_LIVE_LANGGRAPH_CHAT_UI }, async (t) => {
+  const availability = await checkPlatform("langgraph");
+  assert.equal(availability.reachable, true, availability.message);
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-langgraph-chat-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  const errors = [];
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    cdp.on("Runtime.consoleAPICalled", (params) => {
+      if (params.type === "error") errors.push(params.args?.map((argument) => argument.value ?? argument.description ?? "").join(" ") ?? "console error");
+    });
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/langgraph/chat` });
+    await waitForElement(cdp, ".chat-page");
+    await waitForText(cdp, "Ready");
+
+    await click(cdp, ".model-picker-trigger");
+    await waitForElement(cdp, '[aria-label="Search OpenRouter models"]');
+    await setInput(cdp, '[aria-label="Search OpenRouter models"]', MODEL_ID);
+    await waitForText(cdp, MODEL_ID);
+    await clickModel(cdp, MODEL_ID);
+
+    await setInput(cdp, 'textarea[aria-label="Message"]', "Give one short sentence about a first LangGraph turn.");
+    await clickButton(cdp, "Send");
+    await waitForChatTurn(cdp, 1);
+    const firstTurn = JSON.parse(await cdp.evaluate(`JSON.stringify({
+      userMessages: document.querySelectorAll(".chat-message-user").length,
+      assistantMessages: document.querySelectorAll(".chat-message-assistant.chat-message-status-completed").length,
+      context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+      session: document.querySelector(".chat-run-meta")?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+    })`));
+    assert.equal(firstTurn.userMessages, 1);
+    assert.equal(firstTurn.assistantMessages, 1);
+    assert.match(firstTurn.context ?? "", /tokens/);
+    assert.match(firstTurn.context ?? "", /% left/);
+    assert.match(firstTurn.session ?? "", /Session/);
+    assert.equal(await cdp.evaluate('document.querySelector(".model-picker-trigger")?.hasAttribute("disabled")'), true);
+
+    await cdp.evaluate(`(() => {
+      const runDetails = Array.from(document.querySelectorAll("summary"))
+        .find((candidate) => candidate.textContent?.includes("Run details"));
+      if (!runDetails) throw new Error("LangGraph run details disclosure was not rendered.");
+      runDetails.click();
+      const summary = Array.from(document.querySelectorAll("summary"))
+        .find((candidate) => candidate.textContent?.includes("Native execution"));
+      if (!summary) throw new Error("LangGraph native execution disclosure was not rendered.");
+      summary.click();
+    })()`);
+    try {
+      await waitForText(cdp, "langgraph:baseline:");
+      await waitForText(cdp, "baseline");
+    } catch (error) {
+      const body = String(await cdp.evaluate("document.body?.innerText ?? ''"));
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; browser body: ${body.slice(-2500)}`);
+    }
+
+    await setInput(cdp, 'textarea[aria-label="Message"]', "Give one short sentence continuing the LangGraph conversation.");
+    await clickButton(cdp, "Send");
+    await waitForChatTurn(cdp, 2);
+    const secondTurn = JSON.parse(await cdp.evaluate(`JSON.stringify({
+      userMessages: document.querySelectorAll(".chat-message-user").length,
+      assistantMessages: document.querySelectorAll(".chat-message-assistant.chat-message-status-completed").length,
+      context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+    })`));
+    assert.equal(secondTurn.userMessages, 2);
+    assert.equal(secondTurn.assistantMessages, 2);
+    assert.match(secondTurn.context ?? "", /tokens/);
+    assert.match(secondTurn.context ?? "", /% left/);
+    assert.deepEqual(errors, []);
+    t.diagnostic(`LangGraph Chat completed two real turns with ${secondTurn.context}`);
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
 test("live Restate Chat reconciles after the Lab server is replaced", { skip: !process.env.AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI }, async (t) => {
   const serverPid = Number(process.env.AGENTLAB_LAB_SERVER_PID);
   assert.ok(Number.isInteger(serverPid) && serverPid > 0, "Set AGENTLAB_LAB_SERVER_PID to the Lab server listener PID.");
