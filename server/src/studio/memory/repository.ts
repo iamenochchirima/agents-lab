@@ -21,8 +21,14 @@ interface StudioMemoryJournalEvent {
   readonly schemaVersion: 1;
   readonly sequence: number;
   readonly operationIds: readonly string[];
+  readonly operationFingerprints: readonly { readonly operationId: string; readonly fingerprint: string }[];
   readonly decisions: readonly StudioMemoryDecision[];
   readonly state: StudioMemoryState;
+}
+
+export interface StudioMemoryRepositoryHooks {
+  readonly afterJournalAppend?: () => void | Promise<void>;
+  readonly afterSnapshotWrite?: () => void | Promise<void>;
 }
 
 export class StudioMemoryRepositoryError extends Error {
@@ -48,11 +54,12 @@ export class StudioMemoryCorruptStateError extends StudioMemoryRepositoryError {
 
 export class InMemoryStudioMemoryRepository implements StudioMemoryRepository {
   private state: StudioMemoryState;
-  private readonly operations = new Map<string, StudioMemoryApplyResult>();
+  private readonly operations = new Map<string, { readonly fingerprint: string; readonly result: StudioMemoryApplyResult }>();
 
   constructor(
     readonly namespace: StudioMemoryNamespace,
     private readonly limits: StudioMemoryLimits = DEFAULT_STUDIO_MEMORY_LIMITS,
+    private readonly now: () => string = () => new Date().toISOString(),
   ) {
     this.state = emptyState(namespace);
   }
@@ -72,18 +79,24 @@ export class InMemoryStudioMemoryRepository implements StudioMemoryRepository {
   }
 
   async apply(mutations: readonly StudioMemoryMutation[]): Promise<StudioMemoryApplyResult> {
-    const existingResults = mutations
-      .map((mutation) => this.operations.get(mutation.operationId))
-      .filter((result): result is StudioMemoryApplyResult => result !== undefined);
-    if (existingResults.length === mutations.length && mutations.length > 0) {
-      return cloneApplyResult(existingResults.at(-1)!);
+    const existing = mutations.map((mutation) => this.operations.get(mutation.operationId));
+    for (const [index, entry] of existing.entries()) {
+      if (entry && entry.fingerprint !== mutationFingerprint(mutations[index]!)) {
+        throw new StudioMemoryConflictError(`Memory operation ID was reused with different input: ${mutations[index]!.operationId}.`);
+      }
     }
-    if (existingResults.length > 0) {
+    if (existing.every((entry): entry is { readonly fingerprint: string; readonly result: StudioMemoryApplyResult } => entry !== undefined) && mutations.length > 0) {
+      return cloneApplyResult(existing.at(-1)!.result);
+    }
+    if (existing.some((entry) => entry !== undefined)) {
       throw new StudioMemoryConflictError("A Memory operation batch mixes previously applied and new operation IDs.");
     }
-    const applied = applyMutations(this.state, mutations, this.limits);
+    const applied = applyMutations(this.state, mutations, this.limits, this.now);
     this.state = applied.state;
-    for (const mutation of mutations) this.operations.set(mutation.operationId, applied);
+    for (const mutation of mutations) this.operations.set(mutation.operationId, {
+      fingerprint: mutationFingerprint(mutation),
+      result: applied,
+    });
     return cloneApplyResult(applied);
   }
 }
@@ -97,6 +110,8 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     private readonly rootDirectory: string,
     readonly namespace: StudioMemoryNamespace,
     private readonly limits: StudioMemoryLimits = DEFAULT_STUDIO_MEMORY_LIMITS,
+    private readonly now: () => string = () => new Date().toISOString(),
+    private readonly hooks: StudioMemoryRepositoryHooks = {},
   ) {
     assertNamespace(namespace);
     this.recordsPath = join(rootDirectory, "records.json");
@@ -138,28 +153,34 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
       return { state, decisions: [], appliedOperationIds: [] };
     }
     const journal = await readJournal(this.journalPath, this.namespace, this.limits);
-    const appliedOperations = new Map<string, StudioMemoryApplyResult>();
+    const appliedOperations = new Map<string, { readonly fingerprint: string; readonly result: StudioMemoryApplyResult }>();
     for (const event of journal) {
       const result: StudioMemoryApplyResult = {
         state: event.state,
         decisions: event.decisions,
         appliedOperationIds: event.operationIds,
       };
-      for (const operationId of event.operationIds) appliedOperations.set(operationId, result);
+      for (const entry of event.operationFingerprints) appliedOperations.set(entry.operationId, { fingerprint: entry.fingerprint, result });
     }
     const existing = mutations.map((mutation) => appliedOperations.get(mutation.operationId));
-    if (existing.every((result): result is StudioMemoryApplyResult => result !== undefined)) {
-      return cloneApplyResult(existing.at(-1)!);
+    for (const [index, entry] of existing.entries()) {
+      if (entry && entry.fingerprint !== mutationFingerprint(mutations[index]!)) {
+        throw new StudioMemoryConflictError(`Memory operation ID was reused with different input: ${mutations[index]!.operationId}.`);
+      }
+    }
+    if (existing.every((entry): entry is { readonly fingerprint: string; readonly result: StudioMemoryApplyResult } => entry !== undefined)) {
+      return cloneApplyResult(existing.at(-1)!.result);
     }
     if (existing.some((result) => result !== undefined)) {
       throw new StudioMemoryConflictError("A Memory operation batch mixes previously applied and new operation IDs.");
     }
     const state = journal.at(-1)?.state ?? await this.loadNow();
-    const result = applyMutations(state, mutations, this.limits);
+    const result = applyMutations(state, mutations, this.limits, this.now);
     const event: StudioMemoryJournalEvent = {
       schemaVersion: 1,
       sequence: journal.length + 1,
       operationIds: result.appliedOperationIds,
+      operationFingerprints: mutations.map((mutation) => ({ operationId: mutation.operationId, fingerprint: mutationFingerprint(mutation) })),
       decisions: result.decisions,
       state: result.state,
     };
@@ -170,7 +191,9 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     }
     await mkdir(this.rootDirectory, { recursive: true });
     await appendFile(this.journalPath, serialized, { encoding: "utf8" });
+    await this.hooks.afterJournalAppend?.();
     await atomicWriteJson(this.recordsPath, result.state);
+    await this.hooks.afterSnapshotWrite?.();
     return result;
   }
 
@@ -185,6 +208,7 @@ function applyMutations(
   input: StudioMemoryState,
   mutations: readonly StudioMemoryMutation[],
   limits: StudioMemoryLimits,
+  now: () => string,
 ): StudioMemoryApplyResult {
   const records = new Map(input.records.map((record) => [record.recordId, record]));
   const decisions: StudioMemoryDecision[] = [];
@@ -212,7 +236,7 @@ function applyMutations(
         records.set(target.recordId, {
           ...target,
           state: mutation.operation === "expire" ? "expired" : "discarded",
-          updatedAt: new Date().toISOString(),
+          updatedAt: now(),
         });
         recordId = target.recordId;
         changed = true;
@@ -321,10 +345,14 @@ function validateJournalEvent(
   limits: StudioMemoryLimits,
 ): StudioMemoryJournalEvent {
   validateState(event.state, namespace, limits, path);
-  if (event.operationIds.length !== event.decisions.length || event.operationIds.some((operationId) => !event.decisions.some((decision) => decision.operationId === operationId))) {
+  if (event.operationIds.length !== event.decisions.length || event.operationFingerprints.length !== event.operationIds.length || event.operationIds.some((operationId) => !event.decisions.some((decision) => decision.operationId === operationId)) || event.operationIds.some((operationId) => !event.operationFingerprints.some((entry) => entry.operationId === operationId && typeof entry.fingerprint === "string"))) {
     throw new StudioMemoryCorruptStateError(path);
   }
   return event;
+}
+
+function mutationFingerprint(mutation: StudioMemoryMutation): string {
+  return stableJson(mutation);
 }
 
 function validateState(state: StudioMemoryState, namespace: StudioMemoryNamespace, limits: StudioMemoryLimits, path: string): StudioMemoryState {

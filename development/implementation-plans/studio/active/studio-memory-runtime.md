@@ -370,47 +370,47 @@ It must not claim exactly-once Memory writes.
 
 ### 1. Domain contracts and catalog
 
-- [ ] Add versioned Memory record, namespace, query, candidate, decision, and policy
+- [x] Add versioned Memory record, namespace, query, candidate, decision, and policy
       types.
-- [ ] Define explicit scope, lifecycle, provenance, revision, supersession, and
+- [x] Define explicit scope, lifecycle, provenance, revision, supersession, and
       retention semantics.
-- [ ] Define retrieval, write, and consolidation result contracts with decision
+- [x] Define retrieval, write, and consolidation result contracts with decision
       reasons and bounded diagnostic detail.
-- [ ] Add Memory experiment and scenario descriptors to the Studio catalog.
-- [ ] Extend request validation to accept `component: "memory"` only for registered
+- [x] Add Memory experiment and scenario descriptors to the Studio catalog.
+- [x] Extend request validation to accept `component: "memory"` only for registered
       Memory experiments and policies.
-- [ ] Preserve the existing Context request shape, validation, catalog, and response
+- [x] Preserve the existing Context request shape, validation, catalog, and response
       semantics.
-- [ ] Define Memory-specific graders without putting grading logic in the model
+- [x] Define Memory-specific graders without putting grading logic in the model
       adapter.
 
 ### 2. Repository and deterministic policies
 
-- [ ] Implement the trial-local Memory repository with atomic snapshot and journal
+- [x] Implement the trial-local Memory repository with atomic snapshot and journal
       persistence.
-- [ ] Implement restart loading and recovery validation.
-- [ ] Implement the no-memory control policy.
-- [ ] Implement bounded working-memory policy.
-- [ ] Implement episodic lexical retrieval and append policy.
-- [ ] Implement semantic keyed-fact retrieval, update, supersession, and conflict
+- [x] Implement restart loading and recovery validation.
+- [x] Implement the no-memory control policy.
+- [x] Implement bounded working-memory policy.
+- [x] Implement episodic lexical retrieval and append policy.
+- [x] Implement semantic keyed-fact retrieval, update, supersession, and conflict
       policy.
-- [ ] Implement procedural cache retrieval and write policy.
-- [ ] Implement deterministic deduplication, expiry, and consolidation policies.
-- [ ] Make every policy expose adapter ID/version and its effective parameters.
+- [x] Implement procedural cache retrieval and write policy.
+- [x] Implement deterministic deduplication, expiry, and consolidation policies.
+- [x] Make every policy expose adapter ID/version and its effective parameters.
 
 ### 3. Runtime integration
 
 - [ ] Keep `StudioHarnessRuntime` responsible for one complete turn and add a narrow
       Memory-aware trial/sequence runner around it.
-- [ ] Add seeded fixture loading before a trial starts.
-- [ ] Add retrieval evidence before Context assembly and write/consolidation evidence
+- [x] Add seeded fixture loading before a trial starts.
+- [x] Add retrieval evidence before Context assembly and write/consolidation evidence
       after the model/output phase.
-- [ ] Support the Memory scenario turn sequence without breaking the current single-
+- [x] Support the Memory scenario turn sequence without breaking the current single-
       turn Context scenario.
-- [ ] Ensure each strategy slot receives an isolated Memory namespace.
-- [ ] Keep Context as the only component that decides how retrieved records enter the
+- [x] Ensure each strategy slot receives an isolated Memory namespace.
+- [x] Keep Context as the only component that decides how retrieved records enter the
       model-visible message budget.
-- [ ] Add Memory-specific grade and metrics aggregation while preserving current
+- [x] Add Memory-specific grade and metrics aggregation while preserving current
       Context grades and metrics.
 - [ ] Emit canonical Memory events: `MemorySeeded`, `MemoryCandidatesRanked`,
       `MemoryRetrieved`, `MemoryWriteDecided`, `MemoryConsolidated`,
@@ -418,12 +418,12 @@ It must not claim exactly-once Memory writes.
 
 ### 4. Evidence and HTTP projection
 
-- [ ] Extend `StudioMemoryEvidence` to include candidates, scores/reasons, selected
+- [x] Extend `StudioMemoryEvidence` to include candidates, scores/reasons, selected
       records, writes, updates, deletes, expiries, consolidation, and state revision.
-- [ ] Add safe Memory state and decision evidence to the allowlisted route.
-- [ ] Keep raw content exposure bounded and consistent with existing Studio evidence
+- [x] Add safe Memory state and decision evidence to the allowlisted route.
+- [x] Keep raw content exposure bounded and consistent with existing Studio evidence
       rules.
-- [ ] Return Memory trial projections with strategy identity, grade, counters, and
+- [x] Return Memory trial projections with strategy identity, grade, counters, and
       recovery status.
 - [ ] Add catalog and request examples to the Studio backend README.
 
@@ -448,10 +448,10 @@ It must not claim exactly-once Memory writes.
 
 ### 6. Documentation and inspection procedure
 
-- [ ] Update `server/src/studio/README.md` with Memory ownership, state layout,
+- [x] Update `server/src/studio/README.md` with Memory ownership, state layout,
       policies, limits, and limitations.
 - [ ] Update the Studio roadmap and active-plan index when this plan is completed.
-- [ ] Add a backend-only curl/Node inspection procedure for submitting a Memory
+- [x] Add a backend-only curl/Node inspection procedure for submitting a Memory
       comparison and reading its evidence.
 - [ ] Document observed results separately from interpretation and open questions.
 - [ ] Record validation results and known limitations before archiving this plan.

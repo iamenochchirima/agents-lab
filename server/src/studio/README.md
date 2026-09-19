@@ -3,8 +3,8 @@
 Studio is a separately owned module family inside the existing Lab server. It does
 not create a second server or use the Platform Lab control-plane run lifecycle.
 
-The foundation kernel supports a deterministic Context Management comparison through
-`/api/studio/`. Each trial now runs through a complete baseline harness composition:
+The foundation kernel supports deterministic Context Management and Memory comparisons
+through `/api/studio/`. Each trial runs through a complete baseline harness composition:
 
 ```text
 input
@@ -20,11 +20,14 @@ input
   -> canonical events and evidence
 ```
 
-It runs the same fixed scenario with `full-history`, `sliding-window`, or the
-lexical `relevance-ranked` baseline. The replay model is deterministic and the
-Studio-owned evidence root records both Context decisions and the complete
-component composition. A minimal OpenRouter model adapter is available for explicit
-injected live-provider profiles; replay remains the default catalog environment.
+Context comparisons vary `full-history`, `sliding-window`, or the lexical
+`relevance-ranked` baseline. Memory comparisons vary an isolated Memory policy while
+holding Context fixed. The initial Memory policies are `no-memory`, `working-memory`,
+`episodic-lexical`, `semantic-keyed-facts`, and `procedural-cache`. The replay model
+is deterministic and the Studio-owned evidence root records Context decisions,
+Memory decisions, and the complete component composition. A minimal OpenRouter model
+adapter is available for explicit injected live-provider profiles; replay remains the
+default catalog environment.
 
 ```text
 server/src/studio/
@@ -46,16 +49,23 @@ versioned system, deterministic environment, experiment, and scenario catalog en
 the request supplies the component strategies and a seed. An `x-idempotency-key`
 header is preferred, with `idempotencyKey` accepted in the JSON body for local use.
 
-The first catalog accepts `neutral-agent@1`, `deterministic-replay@1`,
-`compare-context-retention@1`, and `context-old-important-fact@1`. The available
-strategies are `full-history@1`, `sliding-window@1`, and `relevance-ranked@1`.
-The latter two accept bounded string parameters: `recentMessages` and
-`maxMessages`, respectively.
+The catalog accepts `neutral-agent@1` and `deterministic-replay@1`, plus these
+executable experiments:
+
+- `compare-context-retention@1` — varies Context retention for the old-fact case.
+- `compare-memory-retrieval@1` — varies Memory retrieval for a seeded preference.
+- `compare-memory-updates@1` — checks keyed-fact supersession for a changed preference.
+
+Memory records use four explicit scopes: working, episodic, semantic, and procedural.
+The local baselines use deterministic lexical matching and keyed revision rules. They
+are inspectable fixtures, not claims of embedding-quality retrieval or production
+memory quality. Context's `recentMessages` and `maxMessages` remain bounded string
+parameters for the applicable Context strategies.
 
 `GET /api/studio/catalog` returns the versioned, safe catalog for the Studio UI. It
-lists all twelve harness areas, marks Context Management as currently available, and
-marks the other areas as planned. Planned entries are discoverable but expose no fake
-strategies or executable run path.
+lists all twelve harness areas, marks Context Management and Memory as currently
+available, and marks the other areas as planned. Planned entries are discoverable but
+expose no fake strategies or executable run path.
 
 `GET /api/studio/comparisons/:comparisonId` returns the safe projection, including each
 trial's context evidence and result. `GET /api/studio/comparisons/:comparisonId/events`
@@ -71,8 +81,11 @@ JSONL event file documented below.
   result.json
   trials/<trial-id>/
     config.json
-    context.json
-    memory.json
+    context.json                      # model-visible Context decision
+    memory.json                       # Memory retrieval/write summary
+    memory/
+      records.json                    # current trial-local Memory state
+      events.jsonl                    # Memory operation journal
     composition.json
     result.json
 ```
@@ -93,12 +106,17 @@ Platform Lab runners, or platform SDKs.
 
 `StudioComparisonService` owns comparison lifecycle and evidence publication.
 `StudioHarnessRuntime` owns one complete trial turn. Component adapters return typed
-observations and do not write arbitrary evidence files. Context may consume Memory
-results, but Memory has its own read/write evidence and is not folded into Context
-assembly.
+observations and do not write arbitrary evidence files. Memory retrieves records and
+decides what to persist; Context serializes retrieved records as model-visible
+messages, applies ordering and token budgets, and records what it omitted. Retrieved
+Memory content is labelled untrusted in Context metadata and does not become a system
+instruction merely because it was selected.
 
-The current Memory adapter is a scoped fixture store. It proves the runtime seam and
-evidence shape; it is not the completed memory research subsystem.
+The current Memory slice is intentionally local and deterministic. Durable policies
+write under the trial evidence namespace; working memory is process-local and is not
+carried across a restart. The no-memory policy ignores fixture seeding and never
+persists turn output. Repository writes are at-least-once-safe through operation IDs;
+the implementation does not claim exactly-once persistence.
 
 ## Experiment interpretation and UI handoff
 
@@ -113,3 +131,20 @@ Once this contract is stable, the Studio screen can submit the comparison, poll 
 projection or event endpoint, and link each visible trial to its bounded evidence files.
 The UI should render the server's safe projections and availability honestly; it should
 not recreate strategy selection, token budgets, or benchmark conclusions in the browser.
+
+## Local inspection
+
+Build and run the focused backend checks from the repository root:
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server build
+node --test server/dist/tests/studio/*.test.js server/dist/tests/studio/memory/*.test.js
+```
+
+For a manual run, submit a request matching the `memoryRequest` fixture in
+`server/tests/studio/http.test.ts` to `POST /api/studio/comparisons`, then use the
+returned comparison ID with `GET /api/studio/comparisons/:comparisonId` and the
+allowlisted evidence route for `trials/:trialId/memory.json` or
+`trials/:trialId/memory/records.json`. Compare the fixed-control fingerprint and
+Memory evidence before interpreting the grade; a passing fixture only describes that
+fixture and policy combination.

@@ -14,6 +14,7 @@ import {
   StudioEventObservability,
   UnavailableComputerUseAdapter,
   createBaselineStudioComponents,
+  memoryRecordsAsMessages,
 } from "../../src/studio/runtime/baseline-components.js";
 import {
   StudioHarnessCompositionError,
@@ -83,6 +84,36 @@ test("the runtime rejects a composition with a missing required slot", () => {
     () => assertStudioHarnessComponents({} as never),
     (error: unknown) => error instanceof StudioHarnessCompositionError && /slot is missing/.test((error as Error).message),
   );
+});
+
+test("Memory-to-Context serialization preserves provenance without upgrading trust", () => {
+  const messages = memoryRecordsAsMessages([{
+    schemaVersion: 1,
+    recordId: "fact-language",
+    namespace: { comparisonId: "comparison-1", trialId: "trial-1", scenarioId: "scenario-1", sessionId: "session-1" },
+    scope: "semantic",
+    content: "English is preferred.",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    sourceMessageIds: ["setup-1"],
+    createdAt: "2026-09-20T00:00:00.000Z",
+    updatedAt: "2026-09-20T00:00:00.000Z",
+    revision: 1,
+    state: "active",
+    supersedesRecordId: null,
+    expiresAt: null,
+    metadata: { fixture: "test" },
+  }], "studio-scenario", "2026-09-20T00:01:00.000Z");
+
+  assert.equal(messages[0]?.source, "memory");
+  assert.deepEqual(messages[0]?.metadata, {
+    memoryRecordId: "fact-language",
+    memoryScope: "semantic",
+    memorySource: "fixture-memory",
+    memoryRevision: "1",
+    memoryState: "active",
+    memoryTrust: "retrieved-untrusted",
+  });
 });
 
 test("the replay adapter returns its fixture response without grading context", async () => {

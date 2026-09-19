@@ -14,6 +14,7 @@ export interface StudioModule {
 export interface StudioModuleOptions {
   /** Explicit injection keeps live-provider execution opt-in. */
   readonly model?: StudioModelAdapter;
+  readonly now?: () => string;
   readonly memoryFactory?: ConstructorParameters<typeof StudioComparisonService>[0]["memoryFactory"];
 }
 
@@ -27,6 +28,7 @@ export function createStudioModule(runsRoot: string, options: StudioModuleOption
   const service = new StudioComparisonService({
     evidence,
     model: options.model,
+    now: options.now,
     memoryFactory: options.memoryFactory ?? ((input) => {
       const policy = policies.get(input.strategy.id);
       if (!policy) throw new Error(`Unknown Studio Memory policy: ${input.strategy.id}.`);
@@ -37,8 +39,8 @@ export function createStudioModule(runsRoot: string, options: StudioModuleOption
         sessionId: `studio-${input.scenario.id}`,
       } as const;
       const repository = policy.scope === "working"
-        ? new InMemoryStudioMemoryRepository(namespace, DEFAULT_STUDIO_MEMORY_LIMITS)
-        : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace);
+        ? new InMemoryStudioMemoryRepository(namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now)
+        : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now);
       return new PolicyMemoryStore(
         policy,
         repository,

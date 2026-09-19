@@ -246,7 +246,14 @@ export function memoryRecordsAsMessages(records: readonly StudioMemoryRecord[], 
     content: record.content,
     source: "memory" as const,
     createdAt: record.createdAt || now,
-    metadata: { scope: record.scope, recordId: record.recordId },
+    metadata: {
+      memoryRecordId: record.recordId,
+      memoryScope: record.scope,
+      memorySource: record.source,
+      memoryRevision: String(record.revision),
+      memoryState: record.state,
+      memoryTrust: "retrieved-untrusted",
+    },
   }));
 }
 

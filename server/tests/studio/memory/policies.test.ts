@@ -6,7 +6,9 @@ import {
   InMemoryStudioMemoryRepository,
   NoMemoryPolicy,
   PolicyMemoryStore,
+  ProceduralCachePolicy,
   SemanticFactPolicy,
+  WorkingMemoryPolicy,
   type StudioMemoryNamespace,
 } from "../../../src/studio/memory/index.js";
 
@@ -112,4 +114,42 @@ test("semantic fact policy proposes update, no-op, and expiry decisions", async 
   assert.equal(noop[0]?.operation, "noop");
   const expiry = policy.proposeConsolidation({ state: seeded.state, now: "2026-09-20T01:00:00.000Z" });
   assert.equal(expiry[0]?.operation, "expire");
+});
+
+test("procedural cache policy only accepts keyed procedure output", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const state = await repository.load();
+  const policy = new ProceduralCachePolicy();
+  const accepted = policy.proposeWrite({
+    state,
+    task: "resolve an invoice dispute",
+    turnId: "turn-procedure",
+    output: "Procedure: invoice-dispute => verify the invoice and request approval",
+    now: "2026-09-20T00:00:00.000Z",
+  });
+  assert.equal(accepted[0]?.operation, "add");
+  assert.equal(accepted[0]?.candidate?.logicalKey, "invoice-dispute");
+  assert.deepEqual(policy.proposeWrite({
+    state,
+    task: "resolve an invoice dispute",
+    turnId: "turn-freeform",
+    output: "I would verify the invoice first.",
+    now: "2026-09-20T00:00:01.000Z",
+  }), []);
+});
+
+test("working memory is bounded to its repository instance", async () => {
+  const firstRepository = new InMemoryStudioMemoryRepository(namespace);
+  const policy = new WorkingMemoryPolicy();
+  const state = await firstRepository.load();
+  const mutations = policy.proposeWrite({
+    state,
+    task: "remember this turn",
+    turnId: "turn-1",
+    output: "A bounded working note.",
+    now: "2026-09-20T00:00:00.000Z",
+  });
+  await firstRepository.apply(mutations);
+  assert.equal((await firstRepository.load()).records.length, 1);
+  assert.equal((await new InMemoryStudioMemoryRepository(namespace).load()).records.length, 0);
 });
