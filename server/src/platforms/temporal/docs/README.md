@@ -9,7 +9,7 @@ complement the [server boundary](../../../../README.md) and the [run API contrac
 - [Semantics](semantics.md): durability, evidence, retries, cancellation, and restart behaviour.
 - [Local development](local-development.md): start the dependency, run the stack, and inspect evidence.
 
-The [completed implementation plan](../../../../../development/implementation-plans/completed/lab-server-temporal-baseline.md)
+The [completed implementation plan](../../../../../development/implementation-plans/platforms/completed/lab-server-temporal-baseline.md)
 records the promised scope, tests, and known limits of this first slice.
 
 ## Current boundary

@@ -84,5 +84,5 @@ for success, pre-dispatch retry, ambiguous failure, timeout, cancellation, and
 server reconciliation. The controlled worker restart exercise is
 documented in the [development playground](../../../../../../development/playground/temporal-baseline/README.md).
 See the [Temporal local-development notes](../../docs/local-development.md)
-and the [completed implementation plan](../../../../../../development/implementation-plans/completed/lab-server-temporal-baseline.md)
+and the [completed implementation plan](../../../../../../development/implementation-plans/platforms/completed/lab-server-temporal-baseline.md)
 for current evidence and limits.

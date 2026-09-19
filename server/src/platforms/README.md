@@ -5,7 +5,7 @@ built with that platform. Platform-specific agent definitions belong inside the 
 that constructs them.
 
 Every real platform implementation gets its own plan copied from
-[`development/implementation-plans/templates/platform-baseline.md`](../../../development/implementation-plans/templates/platform-baseline.md).
+[`development/implementation-plans/platforms/templates/platform-baseline.md`](../../../development/implementation-plans/platforms/templates/platform-baseline.md).
 The plan names the files an agent owns, the local services it needs, the platform's
 execution and durability semantics, its native evidence, and the exact tests that make
 it runnable. A platform adapter may change common server code only after recording why
@@ -104,7 +104,7 @@ into every platform. The selected platform owns execution, state, durability, an
 native telemetry behaviour.
 
 Anesu is intentionally absent from this table. It is an extraction-ready
-standalone project under [`anesu/`](../anesu/README.md), connected
+standalone project under [`anesu/`](../../../anesu/README.md), connected
 to the Lab through [`integrations/anesu/`](../integrations/anesu/README.md).
 
 When implementation starts, a harness variant may add an `agents/` directory for its

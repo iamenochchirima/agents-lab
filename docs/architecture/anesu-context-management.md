@@ -81,4 +81,4 @@ available, reports an unknown provider context window, uses a deterministic boun
 transcript summary rather than a model-generated semantic summary, and permits one
 provider-overflow recovery revision. Provider-specific tokenizers, semantic summaries,
 retention policy, runtime-level compaction fault injection, broader crash/race testing,
-and additional manual acceptance remain tracked in the [active implementation plan](../../development/implementation-plans/active/anesu-context-management.md).
+and additional manual acceptance remain recorded in the [Anesu context-management plan](../../development/implementation-plans/anesu/completed/anesu-context-management.md).

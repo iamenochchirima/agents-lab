@@ -174,5 +174,5 @@ provider calls, tools, sandboxing, and additional component strategies are later
 slices.
 
 See the [Temporal local development guide](src/platforms/temporal/docs/local-development.md)
-and the [completed implementation plan](../development/implementation-plans/completed/lab-server-temporal-baseline.md)
+and the [completed implementation plan](../development/implementation-plans/platforms/completed/lab-server-temporal-baseline.md)
 for the current scope and recovery semantics.

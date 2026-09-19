@@ -1,6 +1,7 @@
 # Implementation plan template
 
-Copy this file into `active/` and rename it for the implementation slice. Replace every
+Copy this file into the relevant product's `active/` directory and rename it for the
+implementation slice. Replace every
 `[placeholder]`, including example links. Remove sections that are truly irrelevant only
 after writing `Not applicable — [reason]`; do not silently omit failure semantics for
 stateful, networked, or side-effecting work.

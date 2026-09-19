@@ -2,8 +2,8 @@
 
 **Audit date:** 2026-09-15T11:20:00+02:00
 **Last updated:** 2026-09-15T11:33:11+02:00
-**Scope:** Active implementation plans for Restate, LangGraph, Mastra, Inngest, Trigger.dev, DBOS, Hatchet, Vercel Workflows, and AWS Step Functions.
-**Method:** First-party documentation and first-party source repositories only. Sources were checked on the audit date. The findings below are the source baseline; follow-up corrections are recorded in the active plans after the audit.
+**Scope:** Platform implementation plans for Restate, LangGraph, Mastra, Inngest, Trigger.dev, DBOS, Hatchet, Vercel Workflows, and AWS Step Functions.
+**Method:** First-party documentation and first-party source repositories only. Sources were checked on the audit date. The findings below are the source baseline; follow-up corrections are recorded in the platform plans after the audit.
 
 ## How to read this audit
 
@@ -12,28 +12,28 @@
 - **Unresolved** means the plan or source review does not yet establish a decision needed for implementation.
 - **Flag** means the plan wording at audit time was stale, too broad, or likely to mislead an implementing agent.
 
-The active plans were subsequently corrected for the runtime, local-profile, and
+The platform plans were subsequently corrected for the runtime, local-profile, and
 workflow-type findings called out below. Open decisions remain explicit gates for the
 implementing agents rather than being presented as verified platform behaviour.
 
-The active plans are linked for traceability, but they are intentionally not edited here.
+The platform plans are linked for traceability, but they are intentionally not edited here.
 
 ## Executive summary
 
 The status column describes the plans as they stood when the audit was performed;
-the follow-up edits are reflected in the active plan files and their timestamps.
+the follow-up edits are reflected in the platform plan files and their timestamps.
 
 | Platform | Audit result at audit time | Highest-priority finding |
 | --- | --- | --- |
-| [Restate](../../development/implementation-plans/active/restate-baseline.md) | Needs correction | The plan's Node 20+ floor conflicts with current TypeScript SDK guidance of Node 22+. |
-| [LangGraph](../../development/implementation-plans/active/langgraph-baseline.md) | Mostly aligned | Local `langgraph dev` is in-memory and development-only; the custom SQLite service must not be presented as production-equivalent. |
-| [Mastra](../../development/implementation-plans/active/mastra-baseline.md) | Aligned as a deliberately shallow baseline | `Agent.generate()` is valid for the direct baseline, but it is not Mastra workflow durability or snapshot recovery. |
-| [Inngest](../../development/implementation-plans/active/inngest-baseline.md) | Mostly aligned | Local semantics are documented as representative, but exact SDK/version/readiness and 24-hour idempotency limits are not yet explicit. |
-| [Trigger.dev](../../development/implementation-plans/active/trigger-dev-baseline.md) | Aligned with an important caveat | Local task execution still depends on a Trigger server and secret; it is not an offline local emulator. |
-| [DBOS](../../development/implementation-plans/active/dbos-baseline.md) | Mostly aligned | Postgres is the real required dependency; DBOS does not require a separate orchestration server for the open-source local baseline. |
-| [Hatchet](../../development/implementation-plans/active/hatchet-baseline.md) | Needs a local-runtime decision | Current Hatchet documentation has an embedded TypeScript mode that the plan does not account for. |
-| [Vercel Workflows](../../development/implementation-plans/active/vercel-workflows-baseline.md) | Needs clarification | The official durable SDK is `workflow`; “Vercel Workflow/AI SDK” is not a precise implementation boundary. |
-| [AWS Step Functions](../../development/implementation-plans/active/aws-step-functions-baseline.md) | Needs a workflow-type decision | Standard and Express have materially different identity, durability, cancellation, and delivery semantics. |
+| [Restate](../../development/implementation-plans/platforms/completed/restate-baseline.md) | Needs correction | The plan's Node 20+ floor conflicts with current TypeScript SDK guidance of Node 22+. |
+| [LangGraph](../../development/implementation-plans/platforms/completed/langgraph-baseline.md) | Mostly aligned | Local `langgraph dev` is in-memory and development-only; the custom SQLite service must not be presented as production-equivalent. |
+| [Mastra](../../development/implementation-plans/platforms/completed/mastra-baseline.md) | Aligned as a deliberately shallow baseline | `Agent.generate()` is valid for the direct baseline, but it is not Mastra workflow durability or snapshot recovery. |
+| [Inngest](../../development/implementation-plans/platforms/completed/inngest-baseline.md) | Mostly aligned | Local semantics are documented as representative, but exact SDK/version/readiness and 24-hour idempotency limits are not yet explicit. |
+| [Trigger.dev](../../development/implementation-plans/platforms/completed/trigger-dev-baseline.md) | Aligned with an important caveat | Local task execution still depends on a Trigger server and secret; it is not an offline local emulator. |
+| [DBOS](../../development/implementation-plans/platforms/completed/dbos-baseline.md) | Mostly aligned | Postgres is the real required dependency; DBOS does not require a separate orchestration server for the open-source local baseline. |
+| [Hatchet](../../development/implementation-plans/platforms/completed/hatchet-baseline.md) | Needs a local-runtime decision | Current Hatchet documentation has an embedded TypeScript mode that the plan does not account for. |
+| [Vercel Workflows](../../development/implementation-plans/platforms/completed/vercel-workflows-baseline.md) | Needs clarification | The official durable SDK is `workflow`; “Vercel Workflow/AI SDK” is not a precise implementation boundary. |
+| [AWS Step Functions](../../development/implementation-plans/platforms/active/aws-step-functions-baseline.md) | Needs a workflow-type decision | Standard and Express have materially different identity, durability, cancellation, and delivery semantics. |
 
 ## Cross-plan findings
 
@@ -68,7 +68,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## Restate
 
-**Plan:** [`restate-baseline.md`](../../development/implementation-plans/active/restate-baseline.md)
+**Plan:** [`restate-baseline.md`](../../development/implementation-plans/platforms/completed/restate-baseline.md)
 **Audit result:** Needs a runtime correction and a package/server compatibility check.
 
 ### Official runtime and SDK
@@ -121,7 +121,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## LangGraph
 
-**Plan:** [`langgraph-baseline.md`](../../development/implementation-plans/active/langgraph-baseline.md)
+**Plan:** [`langgraph-baseline.md`](../../development/implementation-plans/platforms/completed/langgraph-baseline.md)
 **Audit result:** Mostly aligned, with a clear development-only persistence boundary.
 
 ### Official runtime and SDK
@@ -170,7 +170,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## Mastra
 
-**Plan:** [`mastra-baseline.md`](../../development/implementation-plans/active/mastra-baseline.md)
+**Plan:** [`mastra-baseline.md`](../../development/implementation-plans/platforms/completed/mastra-baseline.md)
 **Audit result:** Aligned as a direct, in-process agent baseline; it must not be described as Mastra workflow durability.
 
 ### Official runtime and SDK
@@ -222,7 +222,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## Inngest
 
-**Plan:** [`inngest-baseline.md`](../../development/implementation-plans/active/inngest-baseline.md)
+**Plan:** [`inngest-baseline.md`](../../development/implementation-plans/platforms/completed/inngest-baseline.md)
 **Audit result:** Mostly aligned; local readiness and idempotency retention need to become concrete.
 
 ### Official runtime and SDK
@@ -273,7 +273,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## Trigger.dev
 
-**Plan:** [`trigger-dev-baseline.md`](../../development/implementation-plans/active/trigger-dev-baseline.md)
+**Plan:** [`trigger-dev-baseline.md`](../../development/implementation-plans/platforms/completed/trigger-dev-baseline.md)
 **Audit result:** Aligned with a material local-server dependency that must be explicit.
 
 ### Official runtime and SDK
@@ -323,7 +323,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## DBOS
 
-**Plan:** [`dbos-baseline.md`](../../development/implementation-plans/active/dbos-baseline.md)
+**Plan:** [`dbos-baseline.md`](../../development/implementation-plans/platforms/completed/dbos-baseline.md)
 **Audit result:** Mostly aligned; the plan should distinguish the DBOS library from its optional production control service.
 
 ### Official runtime and SDK
@@ -372,7 +372,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## Hatchet
 
-**Plan:** [`hatchet-baseline.md`](../../development/implementation-plans/active/hatchet-baseline.md)
+**Plan:** [`hatchet-baseline.md`](../../development/implementation-plans/platforms/completed/hatchet-baseline.md)
 **Audit result:** The plan needs to choose between Hatchet embedded mode and the full local server/worker stack.
 
 ### Official runtime and SDK
@@ -424,7 +424,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## Vercel Workflows
 
-**Plan:** [`vercel-workflows-baseline.md`](../../development/implementation-plans/active/vercel-workflows-baseline.md)
+**Plan:** [`vercel-workflows-baseline.md`](../../development/implementation-plans/platforms/completed/vercel-workflows-baseline.md)
 **Audit result:** The durable SDK, local backend, and framework boundary need to be named precisely.
 
 ### Official runtime and SDK
@@ -474,7 +474,7 @@ The platform implementations can be developed independently after each plan fixe
 
 ## AWS Step Functions
 
-**Plan:** [`aws-step-functions-baseline.md`](../../development/implementation-plans/active/aws-step-functions-baseline.md)
+**Plan:** [`aws-step-functions-baseline.md`](../../development/implementation-plans/platforms/active/aws-step-functions-baseline.md)
 **Audit result:** The plan must choose Standard or Express before implementation.
 
 ### Official runtime and SDK

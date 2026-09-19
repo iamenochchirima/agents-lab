@@ -4,7 +4,7 @@ Run one bounded agent workload through multiple execution platforms and compare 
 observed lifecycle without treating the platforms as equivalent implementations.
 
 This scenario is the acceptance workload for
-[the cross-platform agent conformance plan](../../../development/implementation-plans/completed/platform-agent-conformance.md).
+[the cross-platform agent conformance plan](../../../development/implementation-plans/platforms/completed/platform-agent-conformance.md).
 It is independent of platform code: the same inputs and observations are used for
 Temporal, Restate, LangGraph, and Mastra.
 

@@ -25,7 +25,7 @@ code must not branch on fields such as workflow IDs, graph checkpoints, or servi
 object keys.
 
 Future platform implementations should begin with the
-[platform implementation-plan template](../../../../development/implementation-plans/templates/platform-baseline.md)
+[platform implementation-plan template](../../../../development/implementation-plans/platforms/templates/platform-baseline.md)
 and must pass the runner contract tests before they are marked runnable.
 
 ## Runner invariants

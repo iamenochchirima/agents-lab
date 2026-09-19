@@ -277,7 +277,7 @@ function ContextManagementView({ area }: { area: ComponentAreaDescriptor }) {
   const [parameterValues, setParameterValues] = useState<Readonly<Record<string, string>>>({});
   const selectedStrategy = getStrategy(selectedStrategyId, contextStrategies);
   const selectedCase = contextCases.find((testCase) => testCase.id === selectedCaseId) ?? contextCases[0];
-  const contextPlanPath = pathForDocument("development/implementation-plans/completed/context-management.md");
+  const contextPlanPath = pathForDocument("development/implementation-plans/platforms/completed/context-management.md");
 
   const parameterKey = `${selectedStrategy.id}:`;
   const selectedParameterValues = useMemo(() => {

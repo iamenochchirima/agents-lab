@@ -1,162 +1,37 @@
 # Implementation plans
 
-**Last updated:** 2026-09-17T00:35:55+02:00
+**Last updated:** 2026-09-19T20:04:55+02:00
 
-This directory contains the execution contracts for substantial implementation slices.
-They are deliberately more specific than a roadmap: each plan defines scope, ownership,
-required tests, validation commands, limitations, and a completion gate.
+Implementation plans are execution contracts for substantial work. Each plan records
+scope, ownership, tests, validation, limitations, and the completion gate. Plans are
+organized by the product they change.
 
 ```text
 implementation-plans/
-├── active/       # plans currently governing implementation work
-└── completed/    # completed plans retained with date and validation evidence
+├── platforms/       # Temporal, Restate, LangGraph, Mastra, and other platforms
+├── anesu/           # Computer Native agent
+├── studio/          # Studio and component experiments
+├── README.md
+└── TEMPLATE.md
 ```
 
 ## Plan lifecycle
 
-1. Create a dated plan in `active/` before starting a substantial slice.
-2. Keep its checklists accurate while implementing; unchecked work is not silently
-   treated as complete.
-3. Record validation results and known limitations before declaring the slice complete.
-4. Commit each coherent, validated implementation section; do not hold a large plan for
-   one final commit.
-5. Add a **Completed** timestamp, commit hashes or range, and concise completion record.
-6. Move the plan unchanged in substance to `completed/` so later contributors can see
-   what was promised, what was delivered, and how it was verified.
+1. Create a dated plan in the product's `active/` directory.
+2. Keep its checklist honest while work is in progress.
+3. Record validation results and known limitations before completion.
+4. Commit coherent implementation sections separately.
+5. Add the completion timestamp and commit hashes.
+6. Move the plan to that product's `completed/` directory.
 
-Timestamps use ISO 8601 (`YYYY-MM-DDTHH:MM:SS±HH:MM`) for stable sorting and
-unambiguous history.
+Timestamps use ISO 8601 with a timezone. Start a new plan from
+[the reusable template](TEMPLATE.md), then put it in the correct product directory.
 
-Start a new plan from [the template](TEMPLATE.md). It is intentionally concise enough
-for a UI slice, while making failure, recovery, ownership, and evidence questions
-mandatory whenever the work has state or external effects.
+## Product indexes
 
-The Anesu follow-on order is recorded in the [follow-on queue](anesu-follow-on-queue.md).
+- [Platforms](platforms/README.md)
+- [Anesu](anesu/README.md)
+- [Studio](studio/README.md)
 
-The completed Anesu implementation plan is
-[process execution](completed/anesu-process-execution.md); the workspace and
-filesystem capability remains archived below.
-
-## Active plans
-
-The next Anesu component is selected from the
-[follow-on queue](anesu-follow-on-queue.md); the workspace and filesystem
-category is complete and archived below.
-
-The first platform implementation batch is coordinated by the archived
-[platform batch plan](completed/platform-parallel-implementation.md). Its accepted
-local baselines are complete; Trigger.dev is implementation-ready with external
-server/worker and manual UI acceptance deferred. The next platform step is the active
-[cross-platform agent conformance plan](completed/platform-agent-conformance.md), which
-extends Temporal, Restate, LangGraph, and Mastra through one comparable agent workload.
-AWS Step Functions remains outside that implementation wave.
-
-The first Platform Lab completion wave is archived in the
-[Platform completion wave](completed/platform-completion-wave.md). It closed the
-connected context, Restate tool-loop, and browser Chat slices before the next native
-platform session adapter is planned.
-
-The one-command local comparison stack is documented in the
-[completed launcher plan](completed/local-stack-launcher.md). It starts the priority
-local platform services before the shared Lab server and web app.
-
-The completed shared model slice is recorded in the
-[OpenRouter model selection plan](completed/openrouter-model-selection.md).
-
-The Anesu memory slice is complete in
-[the completed memory plan](completed/anesu-memory.md). It followed the
-browser interaction slice and used local Hermes and OpenClaw code as design references.
-
-Those completed Anesu plans describe bounded implementation slices, not a
-production-ready product. The current maturity gate and remaining work are recorded in
-[Anesu production-readiness gaps](active/anesu-production-readiness-gaps.md).
-The next active Anesu slice is [core hardening and production foundation](active/anesu-core-hardening.md).
-
-The first context slice is archived in the
-[session context and compaction plan](completed/context-management.md). It covers the
-shared context semantics and first Temporal integration; long-term memory remains a
-separate follow-on capability.
-
-The additive Component Lab UI slice is tracked in the
-[Component Lab UI plan](active/component-lab-ui.md). It establishes the visual area
-catalog and Context Management preview without changing Platform Lab execution.
-
-The first backend slice for the standalone Studio interface is tracked in the
-[Studio backend runtime foundation](active/studio-backend.md). It uses the existing
-Lab server process with separately owned Studio modules and starts with a deterministic
-two-strategy Context comparison, with a third relevance-ranked baseline available in
-the same seam.
-
-## Completed plans
-
-- [Platform UI](completed/platform-ui.md) — completed 2026-09-14T17:24:17+02:00;
-  established the first clean Platform workspace and configuration surface before runner
-  execution existed.
-- [Anesu terminal agent](completed/anesu-tui.md) — completed
-  2026-09-15T00:54:57+02:00; delivered the first streamed, evidence-producing local
-  terminal turn.
-- [Anesu reliable terminal and workspace inspection](completed/anesu-reliable-terminal-and-workspace-inspection.md) — completed
-  2026-09-15T10:21:25+02:00; delivered bounded real-provider turns, the standalone
-  terminal interface, and read-only workspace inspection with durable round evidence.
-- [Anesu workspace actions](completed/anesu-workspace-actions.md) —
-  completed 2026-09-15T16:32:00+02:00; delivered approval-gated file and directory
-  actions, quarantine-backed deletion and restore, multi-file patch journaling, and
-  restart reconciliation.
-- [Anesu workspace and filesystem capability](completed/anesu-workspace-filesystem.md) —
-  completed 2026-09-15T16:34:52+02:00; completed the local workspace category with
-  bounded directory-tree quarantine, restoration, exact-token purge, recovery, TUI,
-  security, and end-to-end tests.
-- [Anesu process execution](completed/anesu-process-execution.md) —
-  completed 2026-09-15T17:48:00+02:00; delivered approval-gated, bounded local
-  foreground command execution with sanitized environment, lifecycle evidence,
-  cancellation, recovery, TUI activity, and real-provider acceptance.
-- [Anesu browser interaction](completed/anesu-browser-interaction.md) —
-  completed 2026-09-16T08:34:37+02:00; delivered an approval-gated managed Chromium
-  capability with bounded snapshots, artifacts, dialog handling, cancellation, durable
-  evidence, TUI activity, security policy, and real-model local-fixture acceptance.
-- [Anesu memory](completed/anesu-memory.md) — completed
-  2026-09-16T11:10:00+02:00; delivered bounded durable Markdown memory, a rebuildable
-  local index, approval-gated lifecycle tools, append-only evidence, and shared approval
-  and cancellation UX.
-- [Restate baseline](completed/restate-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the local durable workflow baseline, generic
-  runner integration, native evidence, and shared UI execution path.
-- [LangGraph baseline](completed/langgraph-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the local Python graph baseline, checkpointed
-  service boundary, generic runner integration, and shared UI execution path.
-- [Mastra baseline](completed/mastra-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the local TypeScript runtime baseline, lifecycle
-  evidence, generic runner integration, and shared UI execution path.
-- [Inngest baseline](completed/inngest-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the local Dev Server/function baseline,
-  event-backed lifecycle evidence, and shared UI execution path.
-- [DBOS baseline](completed/dbos-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the local PostgreSQL-backed workflow baseline,
-  lifecycle projection, and shared UI execution path.
-- [Hatchet baseline](completed/hatchet-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the embedded local worker baseline, native
-  task evidence, generic runner integration, and shared UI execution path.
-- [Vercel Workflows baseline](completed/vercel-workflows-baseline.md) — completed
-  2026-09-15T17:40:00+02:00; delivered the local Workflow World baseline, workflow
-  evidence, generic runner integration, and shared UI execution path.
-- [Lab server + Temporal baseline](completed/lab-server-temporal-baseline.md) — completed
-  2026-09-15T01:46:55+02:00; delivered the first end-to-end Platform UI, Fastify, local
-  Temporal, worker, and evidence path.
-- [Server platform foundation](completed/server-platform-foundation.md) — completed
-  2026-09-15T10:22:54+02:00; established the generic runner, registry, execution-reference,
-  evidence, and future-platform plan seams around the Temporal baseline.
-- [Platform completion wave](completed/platform-completion-wave.md) — completed
-  2026-09-16T23:26:41+02:00; closed the connected context, Restate tool-loop, and browser
-  Chat implementation wave with focused validation and no Docker requirement.
-- [Session context, token budgets, and bounded compaction](completed/context-management.md)
-  — completed 2026-09-16T23:26:41+02:00; delivered the first Temporal session/context
-  adapter, bounded compaction, keyed turn admission, and safe context projections.
-- [Tool-enabled turn loop](completed/tool-enabled-turn-loop.md) — completed
-  2026-09-16T23:26:41+02:00; delivered the bounded Restate calculator loop and browser
-  tool activity disclosure.
-- [Browser Chat surface](completed/browser-chat-surface.md) — completed
-  2026-09-16T23:26:41+02:00; delivered browser-first Chat routes, Temporal continuity,
-  safe evidence links, and registered-platform route coverage.
-
-Completed plans are retained rather than deleted because their scope, trade-offs, and
-validation results remain useful project history.
+The product indexes are the authoritative lists of active and completed plans. Do not
+add a plan directly to a shared `active/` or `completed/` directory.
