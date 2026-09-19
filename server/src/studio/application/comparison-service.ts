@@ -16,6 +16,7 @@ import type {
   StudioMetrics,
   StudioRunError,
   StudioScenarioCase,
+  StudioStrategyVariant,
   StudioTrajectory,
   StudioTrialManifest,
   StudioTrialResult,
@@ -26,6 +27,8 @@ import type { StudioModelAdapter } from "../adapters/replay-model.js";
 import { ReplayModelAdapter } from "../adapters/replay-model.js";
 import { ReplayEnvironmentAssembler, type StudioEnvironmentAssembler } from "../runtime/environment.js";
 import { StudioHarnessRuntime } from "../runtime/harness-runtime.js";
+import type { StudioMemoryStore } from "../runtime/contracts.js";
+import { memoryPolicies } from "../memory/policies.js";
 import {
   StudioEvidenceConflictError,
   StudioEvidenceNotFoundError,
@@ -69,6 +72,12 @@ export interface StudioComparisonServiceDependencies {
   readonly failureInjector?: StudioFailureInjector;
   readonly now?: () => string;
   readonly tokenCounter?: CharacterTokenEstimator;
+  readonly memoryFactory?: (input: {
+    readonly comparisonId: string;
+    readonly trialId: string;
+    readonly scenario: StudioScenarioCase;
+    readonly strategy: StudioStrategyVariant;
+  }) => StudioMemoryStore;
 }
 
 export interface StudioComparisonRunner {
@@ -187,9 +196,9 @@ export class StudioComparisonService implements StudioComparisonRunner {
     const catalog = resolveStudioCatalog(request);
     const requestedStrategies = request.experiment.subject.strategies;
     const resolvedStrategies = requestedStrategies.map((strategy) => {
-      const implementation = this.strategies.get(strategy.id);
+      const implementation = manifestStrategyImplementation(requestedComponent(request), strategy, this.strategies);
       if (implementation.version !== strategy.version) {
-        throw new InvalidStudioRequestError(`Context strategy version is unavailable: ${strategy.id}@${strategy.version}.`);
+        throw new InvalidStudioRequestError(`Studio strategy version is unavailable: ${strategy.id}@${strategy.version}.`);
       }
       return strategy;
     });
@@ -259,13 +268,23 @@ export class StudioComparisonService implements StudioComparisonRunner {
         await emit("TrialCreated", { trialId, ordinal: index + 1, strategyId: strategy.id });
 
         await this.failureInjector?.inject("before-turn", manifest.comparisonId);
+        const contextStrategy = manifest.experiment.fixedContextStrategy
+          ? this.strategies.get(manifest.experiment.fixedContextStrategy.id)
+          : this.strategies.get(strategy.id);
+        const memory = manifest.experiment.changedComponent === "memory"
+          ? this.dependencies.memoryFactory?.({ comparisonId: manifest.comparisonId, trialId, scenario, strategy })
+          : undefined;
+        if (manifest.experiment.changedComponent === "memory" && !memory) {
+          throw new InvalidStudioRequestError("Memory experiments require a configured Studio Memory factory.");
+        }
         const turn = await this.runtime.execute({
           comparisonId: manifest.comparisonId,
           trialId,
           manifest,
           scenario,
           strategy,
-          context: this.strategies.get(strategy.id),
+          context: contextStrategy,
+          memory,
           tokenCounter: this.tokenCounter,
           signal: controller.signal,
           events: {
@@ -288,9 +307,9 @@ export class StudioComparisonService implements StudioComparisonRunner {
           schemaVersion: 1,
           comparisonId: manifest.comparisonId,
           trialId,
-          strategyId: strategy.id,
-          strategyVersion: strategy.version,
-          strategyParameters: strategy.parameters,
+          strategyId: contextStrategy.id,
+          strategyVersion: contextStrategy.version,
+          strategyParameters: manifest.experiment.fixedContextStrategy?.parameters ?? (manifest.experiment.changedComponent === "context-management" ? strategy.parameters : {}),
           task: scenario.task,
           retainedMessageIds: turn.context.retainedMessageIds,
           omittedMessageIds: turn.context.omittedMessageIds,
@@ -398,9 +417,31 @@ function fixedControlFingerprint(manifest: StudioComparisonManifest, scenario: S
   return sha256(stableStringify({
     system: manifest.system,
     environment: manifest.environment,
-    scenario: { id: scenario.id, version: scenario.version, messages: scenario.messages, task: scenario.task },
+    scenario: {
+      id: scenario.id,
+      version: scenario.version,
+      messages: scenario.messages,
+      memorySeeds: scenario.memorySeeds,
+      task: scenario.task,
+    },
+    fixedContextStrategy: manifest.experiment.fixedContextStrategy,
     seed: manifest.seed,
   }));
+}
+
+function requestedComponent(request: StudioComparisonRequest): StudioComparisonRequest["experiment"]["subject"]["component"] {
+  return request.experiment.subject.component;
+}
+
+function manifestStrategyImplementation(
+  component: StudioComparisonRequest["experiment"]["subject"]["component"],
+  strategy: StudioStrategyVariant,
+  contextRegistry: ContextStrategyRegistry,
+): { readonly version: string } {
+  if (component === "context-management") return contextRegistry.get(strategy.id);
+  const implementation = memoryPolicies().find((policy) => policy.adapterId === strategy.id);
+  if (!implementation) throw new InvalidStudioRequestError(`Memory policy is unavailable: ${strategy.id}.`);
+  return { version: implementation.adapterVersion };
 }
 
 function requestFingerprint(request: StudioComparisonRequest): string {

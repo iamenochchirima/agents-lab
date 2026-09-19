@@ -27,6 +27,7 @@ export type {
 
 export type StudioRuntimeEventKind =
   | "InputNormalized"
+  | "MemorySeeded"
   | "MemoryRead"
   | "MemoryConsolidated"
   | "ContextAssembled"

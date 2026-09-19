@@ -6,6 +6,7 @@ import type {
   StudioMemoryCandidate,
   StudioMemoryDecision,
   StudioMemoryScope,
+  StudioMemorySeed,
 } from "../memory/contracts.js";
 
 export const STUDIO_SCHEMA_VERSION = 1 as const;
@@ -118,6 +119,8 @@ export interface StudioScenarioCase {
   readonly messages: readonly ContextMessage[];
   readonly requiredMessageId: string;
   readonly expectedAnswer: string;
+  readonly requiredMemoryRecordId?: string;
+  readonly memorySeeds?: readonly StudioMemorySeed[];
 }
 
 export interface StudioExperimentDefinition {
@@ -130,6 +133,7 @@ export interface StudioExperimentDefinition {
     readonly id: string;
     readonly version: string;
   };
+  readonly fixedContextStrategy?: StudioStrategyVariant;
   readonly strategies: readonly StudioStrategyVariant[];
 }
 
@@ -219,6 +223,7 @@ export interface StudioMemoryEvidence {
   readonly trialId: string;
   readonly adapterId: string;
   readonly adapterVersion: string;
+  readonly seededRecordIds: readonly string[];
   readonly stateRevision: number;
   readonly queryTerms: readonly string[];
   readonly candidates: readonly StudioMemoryCandidate[];

@@ -146,6 +146,7 @@ export interface StudioMemoryStoreAdapter {
   readonly adapterId: string;
   readonly adapterVersion: string;
   readonly scope: StudioMemoryScope | "none";
+  seed?(seeds: readonly StudioMemorySeed[], operationId: string): Promise<void>;
   read(input: {
     readonly task: string;
     readonly now?: string;

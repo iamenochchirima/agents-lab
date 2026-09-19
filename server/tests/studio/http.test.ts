@@ -138,6 +138,41 @@ test("Studio can execute a three-strategy Context comparison through the same se
   });
 });
 
+test("Studio runs a Memory comparison with fixed Context and isolated durable policies", async () => {
+  await withStudioApp(async (app) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: memoryRequest("memory-comparison-1"),
+    });
+
+    assert.equal(response.statusCode, 202);
+    const comparison = response.json();
+    assert.equal(comparison.status, "completed");
+    assert.deepEqual(
+      comparison.trials.map((trial: { manifest: { strategy: { id: string } } }) => trial.manifest.strategy.id),
+      ["no-memory", "semantic-keyed-facts"],
+    );
+    assert.deepEqual(
+      comparison.trials.map((trial: { result: { grade: { status: string } } }) => trial.result.grade.status),
+      ["fail", "pass"],
+    );
+    assert.equal(comparison.trials[0].context.strategyId, "full-history");
+    assert.equal(comparison.trials[1].context.strategyId, "full-history");
+    assert.deepEqual(comparison.trials[0].memory.retrievedRecordIds, []);
+    assert.deepEqual(comparison.trials[1].memory.retrievedRecordIds, ["memory-fact-language"]);
+    assert.equal(comparison.trials[0].manifest.fixedControlFingerprint, comparison.trials[1].manifest.fixedControlFingerprint);
+    assert.equal(comparison.events.filter((event: { kind: string }) => event.kind === "MemorySeeded").length, 2);
+
+    const memoryState = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[1].manifest.trialId}/memory/records.json`,
+    });
+    assert.equal(memoryState.statusCode, 200);
+    assert.match(memoryState.body, /memory-fact-language/);
+  });
+});
+
 test("Studio catalog exposes all harness areas without claiming planned implementations", async () => {
   await withStudioApp(async (app) => {
     const response = await app.inject({ method: "GET", url: "/api/studio/catalog" });
@@ -149,8 +184,9 @@ test("Studio catalog exposes all harness areas without claiming planned implemen
     assert.equal(catalog.components[1].status, "available");
     assert.deepEqual(catalog.components[1].strategies.map((strategy: { id: string }) => strategy.id), ["full-history", "sliding-window", "relevance-ranked"]);
     assert.equal(catalog.components[3].id, "memory");
-    assert.equal(catalog.components[3].status, "planned");
-    assert.deepEqual(catalog.components[3].strategies, []);
+    assert.equal(catalog.components[3].status, "available");
+    assert.deepEqual(catalog.components[3].strategies.map((strategy: { id: string }) => strategy.id), ["no-memory", "semantic-keyed-facts", "episodic-lexical", "working-memory", "procedural-cache"]);
+    assert.equal(catalog.components[3].experiments[0].id, "compare-memory-retrieval");
     assert.equal(JSON.stringify(catalog).includes("expectedAnswer"), false);
     assert.equal(JSON.stringify(catalog).includes("context-fact-language"), false);
   });
@@ -239,6 +275,27 @@ function comparisonRequest(idempotencyKey = "context-comparison-1", includeRelev
       },
     },
     seed: "seed-1",
+    idempotencyKey,
+  };
+}
+
+function memoryRequest(idempotencyKey = "memory-comparison-1"): StudioComparisonRequest {
+  return {
+    system: { id: "neutral-agent", version: "1" },
+    environment: { id: "deterministic-replay", version: "1" },
+    experiment: {
+      id: "compare-memory-retrieval",
+      version: "1",
+      scenario: { id: "memory-previous-preference", version: "1" },
+      subject: {
+        component: "memory",
+        strategies: [
+          { id: "no-memory", version: "1", parameters: {} },
+          { id: "semantic-keyed-facts", version: "1", parameters: {} },
+        ],
+      },
+    },
+    seed: "seed-memory-1",
     idempotencyKey,
   };
 }

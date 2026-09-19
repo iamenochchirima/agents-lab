@@ -4,6 +4,7 @@ import { StudioComparisonService } from "./application/comparison-service.js";
 import { StudioEvidenceStore } from "./adapters/evidence-store.js";
 import type { StudioModelAdapter } from "./adapters/replay-model.js";
 import { registerStudioRoutes } from "./http/routes.js";
+import { DEFAULT_STUDIO_MEMORY_LIMITS, FileStudioMemoryRepository, PolicyMemoryStore, memoryPolicies } from "./memory/index.js";
 
 export interface StudioModule {
   readonly service: StudioComparisonService;
@@ -13,6 +14,7 @@ export interface StudioModule {
 export interface StudioModuleOptions {
   /** Explicit injection keeps live-provider execution opt-in. */
   readonly model?: StudioModelAdapter;
+  readonly memoryFactory?: ConstructorParameters<typeof StudioComparisonService>[0]["memoryFactory"];
 }
 
 /**
@@ -20,9 +22,26 @@ export interface StudioModuleOptions {
  * composition. The returned module is registered on the same Fastify instance.
  */
 export function createStudioModule(runsRoot: string, options: StudioModuleOptions = {}): StudioModule {
+  const evidence = new StudioEvidenceStore(runsRoot);
+  const policies = new Map(memoryPolicies().map((policy) => [policy.adapterId, policy]));
   const service = new StudioComparisonService({
-    evidence: new StudioEvidenceStore(runsRoot),
+    evidence,
     model: options.model,
+    memoryFactory: options.memoryFactory ?? ((input) => {
+      const policy = policies.get(input.strategy.id);
+      if (!policy) throw new Error(`Unknown Studio Memory policy: ${input.strategy.id}.`);
+      const namespace = {
+        comparisonId: input.comparisonId,
+        trialId: input.trialId,
+        scenarioId: input.scenario.id,
+        sessionId: `studio-${input.scenario.id}`,
+      } as const;
+      return new PolicyMemoryStore(
+        policy,
+        new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace),
+        DEFAULT_STUDIO_MEMORY_LIMITS,
+      );
+    }),
   });
   return {
     service,

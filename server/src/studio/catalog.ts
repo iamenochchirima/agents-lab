@@ -89,6 +89,42 @@ export const contextExperiment: StudioExperimentDefinition = {
   ],
 };
 
+export const memoryScenario: StudioScenarioCase = {
+  id: "memory-previous-preference",
+  version: "1",
+  name: "Previous preference recall",
+  task: "What language should the support agent use for my account?",
+  requiredMessageId: "memory-no-transcript-source",
+  requiredMemoryRecordId: "memory-fact-language",
+  expectedAnswer: "The support agent should use English for this account.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-fact-language",
+    scope: "semantic",
+    content: "The preferred support language for the account is English.",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    sourceMessageIds: ["memory-setup-preference"],
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "previous-preference" },
+  }],
+};
+
+export const memoryExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-retrieval",
+  version: "1",
+  name: "Compare Memory retrieval policies",
+  hypothesis: "A scoped Memory policy can preserve a previous preference while avoiding unrelated records.",
+  changedComponent: "memory",
+  scenario: { id: memoryScenario.id, version: memoryScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+    { id: "episodic-lexical", version: "1", parameters: {} },
+  ],
+};
+
 const contextStrategyDescriptors = [
   {
     id: "full-history",
@@ -110,6 +146,44 @@ const contextStrategyDescriptors = [
     name: "Relevance ranked",
     summary: "Retain non-system messages with the most lexical overlap with the task, then restore source order.",
     parameters: [{ id: "maxMessages", description: "Maximum number of highest-scoring non-system messages to retain.", defaultValue: "4", options: ["1", "2", "4", "8"] }],
+  },
+] as const;
+
+const memoryStrategyDescriptors = [
+  {
+    id: "no-memory",
+    version: "1",
+    name: "No memory",
+    summary: "Return no records and persist no turn output. This is the control condition.",
+    parameters: [],
+  },
+  {
+    id: "semantic-keyed-facts",
+    version: "1",
+    name: "Semantic keyed facts",
+    summary: "Retrieve active keyed facts by deterministic lexical overlap and revise them by supersession.",
+    parameters: [],
+  },
+  {
+    id: "episodic-lexical",
+    version: "1",
+    name: "Episodic lexical",
+    summary: "Append turn records and retrieve active episodic records by lexical overlap and recency.",
+    parameters: [],
+  },
+  {
+    id: "working-memory",
+    version: "1",
+    name: "Working memory",
+    summary: "Keep bounded working records within the current trial/session.",
+    parameters: [],
+  },
+  {
+    id: "procedural-cache",
+    version: "1",
+    name: "Procedural cache",
+    summary: "Retrieve exact or lexical matches for reusable procedure records.",
+    parameters: [],
   },
 ] as const;
 
@@ -139,7 +213,29 @@ const componentDescriptors: readonly StudioComponentDescriptor[] = [
     }],
   },
   plannedComponent("planning-reasoning", 3, "Planning / reasoning", "Compare ways to decompose and review work before acting."),
-  plannedComponent("memory", 4, "Memory", "Control what is retained, retrieved, consolidated, or forgotten."),
+  {
+    id: "memory",
+    ordinal: 4,
+    name: "Memory",
+    summary: "Control what is retained, retrieved, consolidated, or forgotten.",
+    status: "available",
+    strategies: memoryStrategyDescriptors,
+    experiments: [{
+      id: memoryExperiment.id,
+      version: memoryExperiment.version,
+      name: memoryExperiment.name,
+      hypothesis: memoryExperiment.hypothesis,
+      scenario: {
+        id: memoryScenario.id,
+        version: memoryScenario.version,
+        name: memoryScenario.name,
+        task: memoryScenario.task,
+        intendedObservation: "Compare whether a previous preference is retrieved by the selected Memory policy.",
+        controls: ["scenario fixture", "full-history Context", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
+      },
+      strategies: memoryStrategyDescriptors,
+    }],
+  },
   plannedComponent("tool-use", 5, "Tool use", "Select, validate, execute, and recover from tool calls."),
   plannedComponent("computer-use", 6, "Computer use", "Observe and act on interactive interfaces, then verify and recover."),
   plannedComponent("control-orchestration", 7, "Control / orchestration", "Coordinate loops, graphs, delegation, termination, and interruption."),
@@ -182,13 +278,19 @@ export function resolveStudioCatalog(request: {
   if (request.environment.id !== replayEnvironment.id || request.environment.version !== replayEnvironment.version) {
     throw new StudioCatalogError(`Unknown Studio environment: ${request.environment.id}@${request.environment.version}.`);
   }
-  if (request.experiment.id !== contextExperiment.id || request.experiment.version !== contextExperiment.version) {
-    throw new StudioCatalogError(`Unknown Studio experiment: ${request.experiment.id}@${request.experiment.version}.`);
+  if (request.experiment.id === contextExperiment.id && request.experiment.version === contextExperiment.version) {
+    if (request.experiment.scenario.id !== contextScenario.id || request.experiment.scenario.version !== contextScenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment: contextExperiment, scenario: contextScenario } as const;
   }
-  if (request.experiment.scenario.id !== contextScenario.id || request.experiment.scenario.version !== contextScenario.version) {
-    throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+  if (request.experiment.id === memoryExperiment.id && request.experiment.version === memoryExperiment.version) {
+    if (request.experiment.scenario.id !== memoryScenario.id || request.experiment.scenario.version !== memoryScenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment: memoryExperiment, scenario: memoryScenario } as const;
   }
-  return { system: studioSystem, environment: replayEnvironment, experiment: contextExperiment, scenario: contextScenario } as const;
+  throw new StudioCatalogError(`Unknown Studio experiment: ${request.experiment.id}@${request.experiment.version}.`);
 }
 
 function messages(entries: readonly [ContextMessage["role"], string, string?][]): readonly ContextMessage[] {

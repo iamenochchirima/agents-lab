@@ -69,6 +69,18 @@ export class StudioHarnessRuntime {
       untrustedMessageIds: normalized.untrustedMessageIds,
     });
 
+    const seededRecordIds = input.scenario.memorySeeds?.map((seed) => seed.recordId) ?? [];
+    if (seededRecordIds.length > 0) {
+      if (!components.memory.seed) throw new StudioHarnessCompositionError("The Memory scenario requires a seed-capable Memory adapter.");
+      await components.memory.seed(input.scenario.memorySeeds ?? [], `seed-${input.trialId}`);
+      await input.events.emit("MemorySeeded", {
+        trialId: input.trialId,
+        adapterId: components.memory.adapterId,
+        adapterVersion: components.memory.adapterVersion,
+        seededRecordIds,
+      });
+    }
+
     const memoryRead = await components.memory.read({ task: normalized.task, now: this.now(), signal: input.signal });
     await input.events.emit("MemoryRead", {
       trialId: input.trialId,
@@ -208,7 +220,7 @@ export class StudioHarnessRuntime {
       stateRevision: memoryConsolidated.stateRevision,
     });
 
-    const grade = gradeContext(input.scenario, context.retainedMessageIds, output.output);
+    const grade = gradeContext(input.scenario, context.retainedMessageIds, memoryRead.retrievedRecordIds, output.output);
     await input.events.emit("TrialGraded", { trialId: input.trialId, ...grade });
     await input.events.emit("TurnCompleted", {
       trialId: input.trialId,
@@ -228,6 +240,7 @@ export class StudioHarnessRuntime {
         trialId: input.trialId,
         adapterId: components.memory.adapterId,
         adapterVersion: components.memory.adapterVersion,
+        seededRecordIds,
         stateRevision: memoryConsolidated.stateRevision,
         queryTerms: memoryRead.queryTerms,
         candidates: memoryRead.candidates,
@@ -326,7 +339,24 @@ function compositionEvidence(input: HarnessTurnInput, components: StudioHarnessC
   };
 }
 
-function gradeContext(scenario: StudioScenarioCase, retainedMessageIds: readonly string[], output: string) {
+function gradeContext(
+  scenario: StudioScenarioCase,
+  retainedMessageIds: readonly string[],
+  retrievedMemoryRecordIds: readonly string[],
+  output: string,
+) {
+  if (scenario.requiredMemoryRecordId) {
+    const retrieved = retrievedMemoryRecordIds.includes(scenario.requiredMemoryRecordId);
+    const outputPresent = output.trim().length > 0;
+    return {
+      graderId: "memory-source-presence-v1",
+      status: retrieved && outputPresent ? "pass" as const : "fail" as const,
+      reason: retrieved
+        ? "The required Memory record was retrieved and the model returned output."
+        : "The required Memory record was not retrieved.",
+      requiredSourceId: scenario.requiredMemoryRecordId,
+    };
+  }
   const retained = retainedMessageIds.includes(scenario.requiredMessageId);
   const outputPresent = output.trim().length > 0;
   return {

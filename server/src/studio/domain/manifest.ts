@@ -66,8 +66,8 @@ export function validateStudioComparisonRequest(request: StudioComparisonRequest
   assertIdentifier(request.experiment.scenario.id, "experiment.scenario.id");
   assertVersion(request.experiment.scenario.version, "experiment.scenario.version");
 
-  if (request.experiment.subject.component !== "context-management") {
-    throw new InvalidStudioRequestError("Only context-management is available in the first Studio slice.");
+  if (request.experiment.subject.component !== "context-management" && request.experiment.subject.component !== "memory") {
+    throw new InvalidStudioRequestError("Only context-management and memory are available in the current Studio slice.");
   }
 
   const strategies = request.experiment.subject.strategies;

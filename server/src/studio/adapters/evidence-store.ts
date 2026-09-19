@@ -67,6 +67,10 @@ export class StudioEvidenceStore {
     return join(this.rootDirectory, comparisonId);
   }
 
+  memoryDirectory(comparisonId: string, trialId: string): string {
+    return join(this.trialDirectory(comparisonId, trialId), "memory");
+  }
+
   async createComparison(manifest: StudioComparisonManifest): Promise<void> {
     const directory = this.comparisonDirectory(manifest.comparisonId);
     await mkdir(join(directory, "trials"), { recursive: true });
@@ -343,7 +347,7 @@ function assertSafeId(value: string): void {
 
 function assertSafeRelativePath(value: string): void {
   const segments = value.split("/");
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json))$/.test(value)) {
+  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json)|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/memory\/(records\.json|events\.jsonl))$/.test(value)) {
     throw new StudioEvidenceNotFoundError(value);
   }
 }

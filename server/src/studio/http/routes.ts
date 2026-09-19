@@ -100,8 +100,8 @@ function parseComparisonRequest(body: unknown, headerIdempotencyKey: string | un
   const scenario = versionedReference(experiment.scenario, "experiment.scenario");
   const subject = record(experiment.subject, "experiment.subject must be an object.");
   const component = stringValue(subject.component, "experiment.subject.component");
-  if (component !== "context-management") {
-    throw new InvalidStudioApiRequestError("Only context-management is available in the first Studio slice.");
+  if (component !== "context-management" && component !== "memory") {
+    throw new InvalidStudioApiRequestError("Only context-management and memory are available in the current Studio slice.");
   }
   if (!Array.isArray(subject.strategies)) {
     throw new InvalidStudioApiRequestError("experiment.subject.strategies must be an array.");
@@ -115,7 +115,7 @@ function parseComparisonRequest(body: unknown, headerIdempotencyKey: string | un
     experiment: {
       ...experimentReference,
       scenario,
-      subject: { component: "context-management", strategies },
+      subject: { component: component as "context-management" | "memory", strategies },
     },
     seed,
     idempotencyKey,
