@@ -58,6 +58,7 @@ lab/runs/<run-id>/
   trajectory.json
   metrics.json
   result.json
+  logs/operations.jsonl
   native/restate.json
 ```
 

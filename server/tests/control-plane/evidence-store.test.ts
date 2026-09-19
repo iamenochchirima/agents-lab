@@ -197,6 +197,49 @@ test("redacts credential-shaped native fields and rejects oversized evidence", a
   });
 });
 
+test("writes bounded operational logs in order without retaining prompts or credentials", async () => {
+  await withStore(async (store, root) => {
+    const entries = await Promise.all([
+      store.appendOperationalLog({
+        runId: manifest.runId,
+        occurredAt: "2026-09-15T08:00:01.000Z",
+        level: "info",
+        operation: "run.create",
+        requestId: "req-one",
+        platform: manifest.platform,
+        variant: manifest.variant,
+        status: "running",
+        nativeStatus: "RUNNING",
+        outcome: "running",
+        durationMs: 12,
+      }),
+      store.appendOperationalLog({
+        runId: manifest.runId,
+        occurredAt: "2026-09-15T08:00:02.000Z",
+        level: "warn",
+        operation: "run.reconcile",
+        requestId: "req-two",
+        platform: manifest.platform,
+        variant: manifest.variant,
+        status: "reconciliation_required",
+        nativeStatus: "UNKNOWN",
+        outcome: "stale",
+        durationMs: 4,
+        code: "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
+      }),
+    ]);
+
+    assert.deepEqual(entries.map((entry) => entry.recordedSequence), [1, 2]);
+    const contents = await readFile(join(root, manifest.runId, "logs/operations.jsonl"), "utf8");
+    const records = contents.trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.deepEqual(records.map((record) => record.operation), ["run.create", "run.reconcile"]);
+    assert.equal(contents.includes(manifest.task.prompt), false);
+    assert.equal(contents.includes("apiKey"), false);
+    assert.equal(contents.includes("secret"), false);
+    assert.equal(await store.readAllowlistedFile(manifest.runId, "logs/operations.jsonl"), contents);
+  });
+});
+
 test("reads schema-v1 Temporal native references through the generic execution field", async () => {
   await withStore(async (store, root) => {
     await writeFile(

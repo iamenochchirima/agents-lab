@@ -186,6 +186,12 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
     const native = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/native/temporal.json` });
     assert.equal(native.statusCode, 200);
 
+    const logs = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/logs/operations.jsonl` });
+    assert.equal(logs.statusCode, 200);
+    assert.equal(logs.headers["content-type"], "application/x-ndjson; charset=utf-8");
+    assert.equal(JSON.parse(logs.body).requestId, "request-test-1");
+    assert.equal(logs.body.includes("Hello"), false);
+
     const wrongPlatformNative = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/native/restate.json` });
     assert.equal(wrongPlatformNative.statusCode, 400);
 

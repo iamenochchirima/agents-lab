@@ -125,6 +125,32 @@ export interface RunEventIntent<TPayload = Record<string, unknown>> {
   readonly payload: TPayload;
 }
 
+/**
+ * Safe operator evidence for a run lifecycle operation. This deliberately
+ * contains classifications and timing, not prompts, model output, or native
+ * request payloads.
+ */
+export interface OperationalLogIntent {
+  readonly runId: string;
+  readonly occurredAt: string;
+  readonly level: "info" | "warn" | "error";
+  readonly operation: string;
+  readonly requestId?: string;
+  readonly platform?: string;
+  readonly variant?: string;
+  readonly status?: string;
+  readonly nativeStatus?: string;
+  readonly outcome?: string;
+  readonly durationMs?: number | null;
+  readonly code?: string;
+}
+
+export interface OperationalLogEntry extends OperationalLogIntent {
+  readonly schemaVersion: 1;
+  readonly logId: string;
+  readonly recordedSequence: number;
+}
+
 export interface RunError {
   readonly code: string;
   readonly message: string;

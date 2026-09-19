@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T22:50:00+02:00
+**Last updated:** 2026-09-19T23:00:18+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -442,6 +442,20 @@ as a test dependency.
 The remaining completion work is intentionally narrower now: browser validation while
 the Lab server is replaced during a live run, desktop/tablet/narrow layout verification,
 and the final release/completion record and checklist audit.
+
+**2026-09-19T23:00:18+02:00 — bounded operational evidence added**
+
+- Added `logs/operations.jsonl` to the common evidence store with per-run ordering,
+  line/file bounds, safe field validation, and the existing evidence redaction boundary.
+- The HTTP run-create, recovery, and cancellation paths record request identity, platform
+  and variant, normalized status, native status when available, outcome classification,
+  timing, and stable error codes. Prompts, output, credentials, and arbitrary native
+  payloads are not written.
+- The log stream is readable through the existing allowlisted evidence endpoint and is
+  covered by evidence-store and HTTP tests. A failed diagnostic write cannot change run
+  state.
+- Full server validation passed `271 passed, 2 skipped`; the web typecheck/build passed;
+  focused evidence and HTTP coverage passed `16/16`.
 
 ## Scope
 
@@ -992,8 +1006,10 @@ Expected unavailable profiles must be recorded explicitly:
 - [x] Documentation update: required. The session/recovery contract, local commands,
       failure semantics, and evidence shape change.
 - [x] Analytics: not applicable. This Lab slice does not add product analytics.
-- [ ] Structured logs: required only for safe recovery classifications, request IDs,
-      native status, and timing. Do not log prompts or credentials by default.
+- [x] Structured logs: required only for safe recovery classifications, request IDs,
+      native status, and timing. Do not log prompts or credentials by default. The
+      bounded `logs/operations.jsonl` stream now records these fields through the
+      existing safe evidence endpoint.
 - [x] Metrics: required in run evidence for model calls, retries, tool calls, duration,
       and unknown/recovery outcomes. No external metrics service is required.
 - [x] Version/release identity: retain the server version and platform dependency pins
@@ -1003,10 +1019,9 @@ Expected unavailable profiles must be recorded explicitly:
 - [x] Rollback: document how to disable `restate/baseline` or revert only the Restate
       commits while preserving existing run evidence and other platform runners.
 
-The separate structured-log sink remains open. Safe recovery classifications, request
-identity, native status, timings, and metrics are currently retained in normalized run
-events and `metrics.json`; this is sufficient for Lab evidence but is not yet a separate
-operational log stream.
+The structured operational log stream is intentionally local to each run. It is bounded
+and diagnostic, not a replacement for a centralized production log sink; the Lab does not
+require an external logging service for this plan.
 
 ## Completion gate
 

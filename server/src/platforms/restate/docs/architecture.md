@@ -93,8 +93,12 @@ Lab result is retained even if the native Workflow later expires.
 The runner keeps the service name, handler, workflow key, optional invocation ID,
 submission outcome, native status, retry count, safe endpoint labels, and stable error
 codes in the native execution reference. The common evidence store owns persistence
-and deduplication. The workflow emits monotonic event intents, but the common store
-remains responsible for recorded sequence numbers.
+and deduplication. The HTTP boundary also appends bounded operator records to
+`logs/operations.jsonl` for create, recovery, and cancellation requests. Those records
+contain request identity, safe status classifications, native status, timing, and error
+codes only; prompts, output, credentials, and arbitrary native payloads are excluded.
+The workflow emits monotonic event intents, but the common store remains responsible
+for recorded sequence numbers.
 
 ## Official references
 

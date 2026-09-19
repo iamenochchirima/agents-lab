@@ -10,6 +10,7 @@ import { InvalidRunRequestError } from "../domain/manifest.js";
 import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError } from "../../capabilities/context/session-store.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunCapabilities, RunRequest, RunSelection } from "../domain/types.js";
+import type { RunView } from "../application/run-service.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
 
 export interface ControlPlaneServerDependencies {
@@ -98,8 +99,10 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   });
 
   app.post("/api/runs", async (request, reply) => {
+    const startedAt = Date.now();
     try {
       const run = await dependencies.service.createRun(parseRunRequest(request.body));
+      await recordRunOperation(dependencies.evidence, run, "run.create", request.id, startedAt);
       return reply.code(202).send(run);
     } catch (error) {
       return sendError(reply, error);
@@ -107,8 +110,13 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   });
 
   app.get<{ Params: { runId: string } }>("/api/runs/:runId", async (request, reply) => {
+    const startedAt = Date.now();
     try {
-      return reply.send(await dependencies.service.getRun(request.params.runId));
+      const run = await dependencies.service.getRun(request.params.runId);
+      if (run.projection.state === "stale" || run.status === "reconciliation_required") {
+        await recordRunOperation(dependencies.evidence, run, "run.reconcile", request.id, startedAt);
+      }
+      return reply.send(run);
     } catch (error) {
       return sendError(reply, error);
     }
@@ -133,10 +141,13 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   });
 
   app.post<{ Params: { runId: string }; Body: unknown }>("/api/runs/:runId/cancel", async (request, reply) => {
+    const startedAt = Date.now();
     try {
       const body = request.body;
       const reason = body === undefined || body === null ? undefined : parseCancelBody(body);
-      return reply.send(await dependencies.service.cancelRun(request.params.runId, reason));
+      const run = await dependencies.service.cancelRun(request.params.runId, reason);
+      await recordRunOperation(dependencies.evidence, run, "run.cancel", request.id, startedAt);
+      return reply.send(run);
     } catch (error) {
       return sendError(reply, error);
     }
@@ -205,6 +216,40 @@ function parseRunRequest(body: unknown): RunRequest {
     ...(capabilities === undefined ? {} : { capabilities }),
     selection,
   };
+}
+
+async function recordRunOperation(
+  evidence: RunEvidenceStore,
+  run: RunView,
+  operation: "run.create" | "run.reconcile" | "run.cancel",
+  requestId: string,
+  startedAt: number,
+): Promise<void> {
+  const error = run.result?.error;
+  await evidence.appendOperationalLog({
+    runId: run.runId,
+    occurredAt: new Date().toISOString(),
+    level: run.status === "failed" || run.status === "reconciliation_required" ? "warn" : "info",
+    operation,
+    requestId,
+    platform: run.manifest.platform,
+    variant: run.manifest.variant,
+    status: run.status,
+    nativeStatus: nativeStatus(run),
+    outcome: run.projection.state === "stale" ? "stale" : run.status,
+    durationMs: Math.max(0, Date.now() - startedAt),
+    code: error?.code,
+  }).catch(() => undefined);
+}
+
+function nativeStatus(run: RunView): string | undefined {
+  const native = run.executionReference?.native;
+  if (!native || typeof native !== "object") return undefined;
+  for (const key of ["nativeStatus", "workflowStatus", "status"]) {
+    const value = native[key];
+    if (typeof value === "string" && value.length > 0 && value.length <= 256) return value;
+  }
+  return undefined;
 }
 
 function parseRunCapabilities(value: unknown): RunCapabilities | undefined {

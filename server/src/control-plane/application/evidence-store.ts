@@ -3,6 +3,8 @@ import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises
 import { dirname, join } from "node:path";
 
 import type {
+  OperationalLogEntry,
+  OperationalLogIntent,
   RunEvent,
   RunEventIntent,
   RunManifest,
@@ -21,6 +23,9 @@ const MAX_RESULT_BYTES = 512 * 1024;
 const MAX_TRAJECTORY_BYTES = 512 * 1024;
 const MAX_METRICS_BYTES = 128 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;
+const MAX_OPERATIONAL_LOG_LINE_BYTES = 32 * 1024;
+const MAX_OPERATIONAL_LOG_BYTES = 8 * 1024 * 1024;
+const OPERATIONAL_LOG_FILE = "logs/operations.jsonl" as const;
 
 export class InvalidRunIdError extends Error {
   constructor(readonly runId: string) {
@@ -135,6 +140,27 @@ export class RunEvidenceStore {
     const safeIntent = sanitizeEvidenceValue(intent) as RunEventIntent<TPayload>;
     const previous = this.eventQueues.get(safeIntent.runId) ?? Promise.resolve();
     const operation = previous.catch(() => undefined).then(() => this.appendEventNow(safeIntent));
+    this.eventQueues.set(safeIntent.runId, operation);
+
+    try {
+      return await operation;
+    } finally {
+      if (this.eventQueues.get(safeIntent.runId) === operation) {
+        this.eventQueues.delete(safeIntent.runId);
+      }
+    }
+  }
+
+  /**
+   * Appends bounded operator evidence without making it part of the run's
+   * event ordering contract. Operational logs are diagnostic and at-least-once:
+   * a failed log write must never change the platform result.
+   */
+  async appendOperationalLog(intent: OperationalLogIntent): Promise<OperationalLogEntry> {
+    const safeIntent = sanitizeEvidenceValue(intent) as OperationalLogIntent;
+    validateOperationalLogIntent(safeIntent);
+    const previous = this.eventQueues.get(safeIntent.runId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(() => this.appendOperationalLogNow(safeIntent));
     this.eventQueues.set(safeIntent.runId, operation);
 
     try {
@@ -333,6 +359,33 @@ export class RunEvidenceStore {
     return event;
   }
 
+  private async appendOperationalLogNow(intent: OperationalLogIntent): Promise<OperationalLogEntry> {
+    const path = join(this.runDirectory(intent.runId), OPERATIONAL_LOG_FILE);
+    await mkdir(dirname(path), { recursive: true });
+
+    let contents = "";
+    try {
+      contents = await readFile(path, "utf8");
+    } catch (error) {
+      if (!isNodeError(error, "ENOENT")) throw error;
+    }
+
+    const recordedSequence = contents.length === 0 ? 1 : contents.split("\n").filter(Boolean).length + 1;
+    const entry: OperationalLogEntry = {
+      schemaVersion: 1,
+      logId: `${intent.runId}:log:${recordedSequence}:${randomUUID()}`,
+      recordedSequence,
+      ...intent,
+    };
+    assertEvidenceSize(entry, path, MAX_OPERATIONAL_LOG_LINE_BYTES);
+    const line = `${stableJson(entry)}\n`;
+    if (Buffer.byteLength(contents, "utf8") + Buffer.byteLength(line, "utf8") > MAX_OPERATIONAL_LOG_BYTES) {
+      throw new EvidenceLimitError(path, MAX_OPERATIONAL_LOG_BYTES);
+    }
+    await appendFile(path, line, "utf8");
+    return entry;
+  }
+
   private async writeIdempotent<T>(path: string, value: T): Promise<void> {
     try {
       const existing = await readJson<T>(path);
@@ -368,6 +421,7 @@ export type EvidenceFileName =
   | "metrics.json"
   | "context.json"
   | "result.json"
+  | "logs/operations.jsonl"
   | `native/${string}.json`;
 
 export function isAllowlistedEvidenceFile(fileName: string, platform: string): fileName is EvidenceFileName {
@@ -377,6 +431,7 @@ export function isAllowlistedEvidenceFile(fileName: string, platform: string): f
     fileName === "metrics.json" ||
     fileName === "context.json" ||
     fileName === "result.json" ||
+    fileName === OPERATIONAL_LOG_FILE ||
     fileName === nativeReferenceFile(platform);
 }
 
@@ -524,6 +579,33 @@ function sameEventIntent(event: RunEvent, intent: RunEventIntent): boolean {
     event.occurredAt === intent.occurredAt &&
     deepEqual(event.payload, intent.payload)
   );
+}
+
+function validateOperationalLogIntent(intent: OperationalLogIntent): void {
+  assertSafeRunId(intent.runId);
+  if (!isIsoDate(intent.occurredAt)) throw new Error("Operational log timestamps must be valid ISO dates.");
+  if (!(["info", "warn", "error"] as const).includes(intent.level)) {
+    throw new Error("Operational log level is invalid.");
+  }
+  if (!/^[a-z][a-z0-9._:-]{0,127}$/.test(intent.operation)) {
+    throw new Error("Operational log operation is not safe.");
+  }
+  for (const value of [intent.requestId, intent.platform, intent.variant, intent.status, intent.nativeStatus, intent.outcome, intent.code]) {
+    if (value !== undefined && (!isSafeOperationalString(value) || value.length > 256)) {
+      throw new Error("Operational log contains an unsafe string.");
+    }
+  }
+  if (intent.durationMs !== undefined && intent.durationMs !== null && (!Number.isFinite(intent.durationMs) || intent.durationMs < 0)) {
+    throw new Error("Operational log duration must be a finite non-negative number.");
+  }
+}
+
+function isIsoDate(value: string): boolean {
+  return !Number.isNaN(Date.parse(value)) && isSafeOperationalString(value);
+}
+
+function isSafeOperationalString(value: string): boolean {
+  return typeof value === "string" && value.length > 0 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
 function validateStoredEvent(event: RunEvent, path: string, line: number): void {
