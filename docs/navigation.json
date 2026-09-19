@@ -110,6 +110,7 @@
         "development/implementation-plans/anesu/completed/anesu-workspace-actions.md",
         "development/implementation-plans/anesu/completed/anesu-workspace-filesystem.md",
         "development/implementation-plans/platforms/completed/restate-baseline.md",
+        "development/implementation-plans/platforms/active/langgraph-agent-execution-and-recovery.md",
         "development/implementation-plans/platforms/completed/restate-session-continuity-and-recovery.md",
         "development/implementation-plans/platforms/completed/langgraph-baseline.md",
         "development/implementation-plans/platforms/completed/mastra-baseline.md",
