@@ -29,3 +29,17 @@ endpoint first; unavailable services are reported as diagnostics and are not cla
 validated. The test makes real provider requests and is intentionally skipped without
 the opt-in flag. Set `AGENTLAB_LIVE_PLATFORM_IDS=inngest` (comma-separated) to repeat
 one platform after its local dependency becomes available.
+
+To verify browser reconciliation across an actual Lab-server replacement, use the
+deterministic Restate delay fixture. This replaces only the Lab server on port 4318;
+it does not restart the user's native Restate process or call OpenRouter:
+
+```bash
+AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI=1 \
+  AGENTLAB_LAB_SERVER_PID="$(lsof -tiTCP:4318 -sTCP:LISTEN | head -n1)" \
+  node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs
+```
+
+The check opens the real Restate Chat route, admits a delayed turn, replaces the Lab
+server, and verifies that the same run finishes in the browser after the replacement.
+It is intentionally opt-in because it stops and starts the configured local server.

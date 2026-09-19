@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:05:32+02:00
+**Last updated:** 2026-09-19T23:18:11+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -442,6 +442,19 @@ as a test dependency.
 The remaining completion work is intentionally narrower now: browser validation while
 the Lab server is replaced during a live run, desktop/tablet/narrow layout verification,
 and the final release/completion record and checklist audit.
+
+**2026-09-19T23:18:11+02:00 — live browser Lab-server replacement acceptance added**
+
+- Added an opt-in browser acceptance test that starts a deterministic `fake-delay`
+  Restate turn, replaces the actual Lab-server process, and verifies that the existing
+  Chat page reconciles the retained run to one completed assistant message.
+- The test validates the listener PID before stopping it, starts the replacement with
+  `scripts/run_local_stack.sh server`, and cleans up the replacement process group.
+- Validation passed: `AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI=1
+  AGENTLAB_LAB_SERVER_PID="$(lsof -tiTCP:4318 -sTCP:LISTEN | head -n1)" node --test
+  apps/web/tests/browser/live-platform-runners.browser.test.mjs` (`1 passed, 2 skipped`).
+- The remaining completion gate is the manual visual check at the supported widths and
+  the final completion record/checklist audit.
 
 **2026-09-19T23:00:18+02:00 — bounded operational evidence added**
 
@@ -954,8 +967,9 @@ reported as passed.
 - [x] Trigger or fixture a compaction case and verify the pressure/compaction state is
       visible without the page blinking or duplicating messages.
 - [x] Refresh during polling and verify the existing run is reused.
-- [ ] Restart the Lab server during a run and verify the browser eventually shows the
-      reconciled result or explicit recovery state.
+- [x] Restart the Lab server during a run and verify the browser eventually shows the
+      reconciled result or explicit recovery state. The opt-in live browser replacement
+      test above verifies the reconciled result.
 - [x] Change the model after a turn and verify the UI requires a new chat or gives a
       clear inline conflict.
 - [x] Click cancel and verify the button, status, and final transcript do not claim an
@@ -992,6 +1006,10 @@ Native acceptance commands must be recorded with the exact binary and SDK versio
 ./scripts/run_local_stack.sh restate
 AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 \
   pnpm --filter @agent-harness-lab/lab-server run test:restate
+
+AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI=1 \
+  AGENTLAB_LAB_SERVER_PID="$(lsof -tiTCP:4318 -sTCP:LISTEN | head -n1)" \
+  node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs
 ```
 
 The exact script arguments may change if the current launcher exposes a more precise

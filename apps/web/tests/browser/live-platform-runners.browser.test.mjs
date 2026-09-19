@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +10,7 @@ const API_URL = process.env.AGENTLAB_API_URL ?? "http://127.0.0.1:4318";
 const WEB_URL = process.env.AGENTLAB_WEB_URL ?? "http://127.0.0.1:5173";
 const CHROME_BIN = process.env.AGENTLAB_CHROME_BIN ?? "google-chrome";
 const MODEL_ID = "cohere/north-mini-code:free";
+const REPO_ROOT = process.env.AGENTLAB_REPO_ROOT ?? process.cwd();
 const PLATFORMS = [
   "temporal",
   "restate",
@@ -164,6 +165,91 @@ test("live Restate Chat continues a real session and renders context usage", { s
   }
 });
 
+test("live Restate Chat reconciles after the Lab server is replaced", { skip: !process.env.AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI }, async (t) => {
+  const serverPid = Number(process.env.AGENTLAB_LAB_SERVER_PID);
+  assert.ok(Number.isInteger(serverPid) && serverPid > 0, "Set AGENTLAB_LAB_SERVER_PID to the Lab server listener PID.");
+  const command = spawnSync("ps", ["-p", String(serverPid), "-o", "args="], { encoding: "utf8" }).stdout.trim();
+  assert.match(command, /agents-lab/);
+  assert.match(command, /control-plane[\\/]bootstrap[\\/]server/);
+
+  const sessionId = `browser-restart-${Date.now()}`;
+  const createdResponse = await fetch(`${API_URL}/api/runs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-request-id": `browser-restart-${Date.now()}` },
+    body: JSON.stringify({
+      platform: "restate",
+      variant: "baseline",
+      sessionId,
+      clientTurnId: `${sessionId}-turn-1`,
+      task: { kind: "prompt", prompt: "Browser restart recovery." },
+      model: { provider: "fake", model: "fake-delay", contextWindowTokens: 100_000 },
+    }),
+  });
+  const createdBody = await createdResponse.json();
+  assert.equal(createdResponse.status, 202, JSON.stringify(createdBody));
+  assert.ok(createdBody.runId);
+  assert.match(createdBody.status, /queued|running/);
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-restate-server-restart-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  let replacement;
+  let replacementOutput = "";
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/restate/chat?run=${encodeURIComponent(createdBody.runId)}` });
+    await waitForElement(cdp, ".chat-page");
+    await waitForText(cdp, createdBody.runId);
+
+    process.kill(serverPid, "SIGTERM");
+    await waitForHttpFailure(`${API_URL}/ready`);
+
+    replacement = spawn("./scripts/run_local_stack.sh", ["server"], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        AGENTLAB_API_HOST: new URL(API_URL).hostname,
+        AGENTLAB_API_PORT: new URL(API_URL).port || "4318",
+      },
+    });
+    replacement.stdout?.on("data", (chunk) => { replacementOutput += String(chunk); });
+    replacement.stderr?.on("data", (chunk) => { replacementOutput += String(chunk); });
+    await waitForHttp(`${API_URL}/ready`, 20_000, () => replacementOutput);
+    try {
+      await waitForText(cdp, "Fake response: Browser restart recovery.", 30_000);
+    } catch (error) {
+      const body = String(await cdp.evaluate("document.body?.innerText ?? ''"));
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; browser body: ${body}`);
+    }
+    assert.equal(await cdp.evaluate("document.querySelectorAll('.chat-message-assistant.chat-message-status-completed').length"), 1);
+    assert.equal(await cdp.evaluate("document.body.innerText.includes('Start a new chat before sending another turn.')"), false);
+    t.diagnostic(`Browser reconciled ${createdBody.runId} after replacing Lab server PID ${serverPid}.`);
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    if (replacement?.pid && replacement.exitCode === null) {
+      await stopDetachedProcess(replacement);
+    }
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
 async function checkPlatform(id) {
   try {
     const response = await fetch(`${API_URL}/api/platforms/${encodeURIComponent(id)}/health`);
@@ -250,6 +336,33 @@ async function waitForCompleted(cdp, timeoutMs) {
   throw new Error("Timed out waiting for a platform run to complete.");
 }
 
+async function waitForHttp(url, timeoutMs = 20_000, diagnostic = () => "") {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      // The replacement process is still starting.
+    }
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for ${url}. Replacement output: ${diagnostic()}`);
+}
+
+async function waitForHttpFailure(url, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await fetch(url);
+    } catch {
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error(`The replaced service remained reachable at ${url}`);
+}
+
 async function waitForChatTurn(cdp, expectedAssistantCount, timeoutMs = 120_000) {
   await waitForExpression(cdp, `document.querySelectorAll('.chat-message-assistant.chat-message-status-completed').length >= ${expectedAssistantCount} && !document.querySelector('.chat-message-assistant.chat-message-status-running, .chat-message-assistant.chat-message-status-pending')`, timeoutMs);
 }
@@ -284,6 +397,23 @@ async function unusedPort() {
 async function waitForExit(child) {
   if (child.exitCode !== null) return;
   await new Promise((resolve) => child.once("exit", resolve));
+}
+
+async function stopDetachedProcess(child) {
+  if (child.exitCode !== null || !child.pid) return;
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    child.kill("SIGTERM");
+  }
+  await Promise.race([waitForExit(child), delay(3_000)]);
+  if (child.exitCode === null) {
+    try {
+      process.kill(-child.pid, "SIGKILL");
+    } catch {
+      child.kill("SIGKILL");
+    }
+  }
 }
 
 function delay(milliseconds) {
