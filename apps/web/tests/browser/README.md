@@ -55,3 +55,18 @@ AGENTLAB_RUN_LIVE_LANGGRAPH_CHAT_UI=1 \
 This selects the configured free OpenRouter model, sends two turns through one
 LangGraph session, and verifies the rendered context usage and native thread details.
 It makes real model requests and is skipped unless explicitly enabled.
+
+To verify browser recovery after replacing the local LangGraph process, run the Lab
+server and LangGraph service as separate processes (do not use the aggregate launcher,
+whose supervisor will stop the other children when one is replaced), then run:
+
+```bash
+AGENTLAB_RUN_LIVE_LANGGRAPH_SERVICE_RESTART_UI=1 \
+  AGENTLAB_LANGGRAPH_SERVICE_PID="$(lsof -tiTCP:2024 -sTCP:LISTEN | head -n1)" \
+  node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs
+```
+
+The check admits a deterministic delayed run, opens the real LangGraph Chat route,
+stops the validated native service, restarts it against the same SQLite path, and
+expects `Run outcome needs recovery.` with no fabricated completed assistant message.
+It is destructive and opt-in; cleanup stops only the replacement process it starts.

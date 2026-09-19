@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:43:18+02:00
+**Last updated:** 2026-09-20T01:48:09+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -618,7 +618,8 @@ Tests must exercise real boundaries, not only helper functions.
 - [x] Add an opt-in live LangGraph Chat test for real OpenRouter execution.
 - [ ] Add an opt-in browser test that replaces the Lab server during a LangGraph run.
 - [ ] Add an opt-in browser test that replaces the LangGraph service during a run using
-  a temporary SQLite database and verifies the same run result or honest recovery state.
+  the same configured SQLite database and verifies the same run result or honest recovery
+  state.
 - [ ] Keep all destructive process replacement tests opt-in and document their cleanup.
 
 ## Local operations and commands
@@ -866,6 +867,17 @@ what was observed, the exact validation command, and what remains.
   Committed as `a64f955` (`test(langgraph): verify native failure outcomes`). Browser
   process replacement, the full browser failure-state matrix, and remaining
   documentation/release gates remain open.
+
+- **2026-09-20T01:48:09+02:00 — browser native-replacement acceptance scaffolded.** Added
+  an opt-in Chromium test that validates the supplied LangGraph service PID, admits a
+  deterministic delayed run, replaces the native process against the same SQLite path,
+  and requires the Chat surface to show `Run outcome needs recovery.` without a
+  fabricated completed assistant message. Documented the safe separate-process setup.
+  Validation passed: `node --check apps/web/tests/browser/live-platform-runners.browser.test.mjs`,
+  the default live suite (`5 skipped`), `node --test
+  apps/web/tests/browser/platform-chat.browser.test.mjs` (`15 passed`), and
+  `git diff --check`. The destructive opt-in browser run remains unexecuted and must
+  be run with an explicit service PID before this plan item is checked.
 
 ## Commit discipline
 

@@ -257,6 +257,102 @@ test("live LangGraph Chat continues a real checkpointed session", { skip: !proce
   }
 });
 
+test("live LangGraph Chat shows recovery after the native service is replaced", { skip: !process.env.AGENTLAB_RUN_LIVE_LANGGRAPH_SERVICE_RESTART_UI }, async (t) => {
+  const serviceUrl = process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024";
+  const servicePid = Number(process.env.AGENTLAB_LANGGRAPH_SERVICE_PID);
+  assert.ok(Number.isInteger(servicePid) && servicePid > 0, "Set AGENTLAB_LANGGRAPH_SERVICE_PID to the LangGraph listener PID.");
+  const command = spawnSync("ps", ["-p", String(servicePid), "-o", "args="], { encoding: "utf8" }).stdout.trim();
+  assert.match(command, /agents-lab/);
+  assert.match(command, /service\.app:app/);
+
+  const healthResponse = await fetch(`${serviceUrl}/health`);
+  const health = await healthResponse.json();
+  assert.equal(healthResponse.status, 200, JSON.stringify(health));
+  assert.equal(health.status, "ready");
+  assert.ok(typeof health.checkpointPath === "string" && health.checkpointPath.length > 0);
+  const stateDirectory = health.checkpointPath.replace(/[\\/]langgraph\.sqlite$/, "");
+
+  const sessionId = `browser-langgraph-restart-${Date.now()}`;
+  const createdResponse = await fetch(`${API_URL}/api/runs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-request-id": `${sessionId}-request` },
+    body: JSON.stringify({
+      platform: "langgraph",
+      variant: "baseline",
+      sessionId,
+      clientTurnId: `${sessionId}-turn-1`,
+      task: { kind: "prompt", prompt: "Wait for the native service replacement." },
+      model: { provider: "fake", model: "fake-delay", contextWindowTokens: 100_000 },
+    }),
+  });
+  const createdBody = await createdResponse.json();
+  assert.equal(createdResponse.status, 202, JSON.stringify(createdBody));
+  assert.ok(createdBody.runId);
+  await waitForNativeRun(serviceUrl, createdBody.runId, "running");
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-langgraph-service-restart-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  let replacement;
+  let replacementOutput = "";
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/langgraph/chat?run=${encodeURIComponent(createdBody.runId)}` });
+    await waitForElement(cdp, ".chat-page");
+    await waitForText(cdp, createdBody.runId);
+
+    process.kill(servicePid, "SIGTERM");
+    await waitForHttpFailure(`${serviceUrl}/health`);
+
+    replacement = spawn("./scripts/run_local_stack.sh", ["langgraph"], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        AGENTLAB_LANGGRAPH_HOST: new URL(serviceUrl).hostname,
+        AGENTLAB_LANGGRAPH_PORT: new URL(serviceUrl).port || "2024",
+        AGENTLAB_LANGGRAPH_STATE_DIR: stateDirectory,
+      },
+    });
+    replacement.stdout?.on("data", (chunk) => { replacementOutput += String(chunk); });
+    replacement.stderr?.on("data", (chunk) => { replacementOutput += String(chunk); });
+    await waitForHttp(`${serviceUrl}/health`, 20_000, () => replacementOutput);
+    await waitForText(cdp, "Run outcome needs recovery.", 30_000);
+
+    const recovery = JSON.parse(await cdp.evaluate(`JSON.stringify({
+      recovery: document.body.innerText.includes("Run outcome needs recovery."),
+      status: document.querySelector(".chat-run-meta")?.textContent?.replace(/\\s+/g, " ").trim() ?? "",
+      completedAssistantMessages: document.querySelectorAll(".chat-message-assistant.chat-message-status-completed").length,
+    })`));
+    assert.equal(recovery.recovery, true);
+    assert.match(recovery.status, /reconciliation required/i);
+    assert.equal(recovery.completedAssistantMessages, 0);
+    t.diagnostic(`LangGraph Chat showed recovery-required state after replacing native service PID ${servicePid}.`);
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    if (replacement?.pid && replacement.exitCode === null) {
+      await stopDetachedProcess(replacement);
+    }
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
 test("live Restate Chat reconciles after the Lab server is replaced", { skip: !process.env.AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI }, async (t) => {
   const serverPid = Number(process.env.AGENTLAB_LAB_SERVER_PID);
   assert.ok(Number.isInteger(serverPid) && serverPid > 0, "Set AGENTLAB_LAB_SERVER_PID to the Lab server listener PID.");
@@ -413,6 +509,20 @@ async function waitForExpression(cdp, expression, timeoutMs = 15_000) {
     await delay(100);
   }
   throw new Error(`Timed out waiting for expression: ${expression}`);
+}
+
+async function waitForNativeRun(serviceUrl, runId, expected, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  const executionId = `langgraph:${runId}`;
+  while (Date.now() < deadline) {
+    const response = await fetch(`${serviceUrl}/v1/runs/${encodeURIComponent(executionId)}`);
+    if (response.ok) {
+      const inspection = await response.json();
+      if (inspection.status === expected) return;
+    }
+    await delay(100);
+  }
+  throw new Error(`Timed out waiting for LangGraph execution ${executionId} to reach ${expected}.`);
 }
 
 async function waitForCompleted(cdp, timeoutMs) {
