@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:48:09+02:00
+**Last updated:** 2026-09-20T01:55:08+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -513,7 +513,7 @@ dashboard for this plan.
   and two distinct run IDs in the deterministic browser fixture.
 - [x] Show model identity, session/thread identity, context window usage, graph/native
   status, and tool details through progressive disclosure in Chat.
-- [ ] Show retrying, compaction, unavailable, cancelled, stale, failed, and
+- [x] Show retrying, compaction, unavailable, cancelled, stale, failed, and
   recovery-required states without fabricated assistant output.
 - [x] Refresh during a running turn and verify the same run is reused without duplicate
   assistant messages or duplicate React keys.
@@ -610,11 +610,11 @@ Tests must exercise real boundaries, not only helper functions.
 
 ### Browser acceptance
 
-- [ ] Add deterministic fixture coverage to `apps/web/tests/browser/platform-chat.browser.test.mjs`
+- [x] Add deterministic fixture coverage to `apps/web/tests/browser/platform-chat.browser.test.mjs`
   for LangGraph two-turn continuity, context usage, graph/tool events, retry, recovery,
   cancellation, refresh, stale state, duplicate-key safety, and responsive widths. The
-  initial two-turn, context, graph/tool, native identity, and duplicate-key assertions
-  are now present; the remaining states stay open.
+  fixture now also covers retrying, compaction evidence, provider failure, unavailable
+  health, and stale projection without fabricated assistant output.
 - [x] Add an opt-in live LangGraph Chat test for real OpenRouter execution.
 - [ ] Add an opt-in browser test that replaces the Lab server during a LangGraph run.
 - [ ] Add an opt-in browser test that replaces the LangGraph service during a run using
@@ -878,6 +878,16 @@ what was observed, the exact validation command, and what remains.
   apps/web/tests/browser/platform-chat.browser.test.mjs` (`15 passed`), and
   `git diff --check`. The destructive opt-in browser run remains unexecuted and must
   be run with an explicit service PID before this plan item is checked.
+
+- **2026-09-20T01:55:08+02:00 — deterministic LangGraph browser failure matrix completed.**
+  Extended the shared browser fixture with LangGraph retry, compaction, provider failure,
+  unavailable health, and stale projection states. The acceptance tests verify context
+  pressure and compaction evidence, terminal failure without a completed assistant
+  message, honest unavailable/stale states, and zero browser console errors. Validation
+  passed: `node --check apps/web/tests/browser/platform-chat.browser.test.mjs` and
+  `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` (`17 passed`).
+  Committed as `de293e2` (`test(web): cover LangGraph Chat failure states`). The live
+  process-replacement checks and remaining documentation/release gates remain open.
 
 ## Commit discipline
 
