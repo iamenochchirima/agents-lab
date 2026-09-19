@@ -59,6 +59,10 @@ environment instead.
 If a required local service fails to become ready, the launcher stops the processes it
 started and points to the relevant log files instead of claiming that the stack works.
 
+The standalone `langgraph` command also replaces an existing LangGraph process when it
+belongs to this repository, so restarting that service does not require manually
+finding its PID. An unrelated process on the configured port is never stopped.
+
 Port replacement is limited to processes whose command belongs to this repository. If
 an unrelated application owns a configured port, the launcher leaves it untouched and
 reports the conflict.

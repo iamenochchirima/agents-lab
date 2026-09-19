@@ -441,6 +441,7 @@ run_langgraph() {
   fi
   local python_command
   python_command="$(resolve_langgraph_python)" || exit 1
+  ensure_port_available "LangGraph service" "$LANGGRAPH_HOST" "$LANGGRAPH_PORT"
 
   echo "Starting LangGraph Python service."
   cd "$platform_directory"

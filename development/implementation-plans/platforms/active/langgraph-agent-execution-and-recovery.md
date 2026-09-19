@@ -592,10 +592,10 @@ Tests must exercise real boundaries, not only helper functions.
 
 ### Native process-level acceptance without Docker
 
-- [ ] Start the locked Python service on an isolated port and verify health/readiness.
+- [x] Start the locked Python service on an isolated port and verify health/readiness.
 - [ ] Run one fake model/tool turn through the generic Fastify API.
-- [ ] Run two turns in one session and inspect one stable LangGraph thread with separate
-  Lab run IDs.
+- [x] Run two fake-model turns in one session and inspect one stable LangGraph thread
+  with separate Lab run IDs through the generic Fastify API.
 - [ ] Replace the Python service during a delayed turn using the same SQLite database and
   verify settled/recovery behaviour.
 - [ ] Replace the Lab server during a delayed turn while the Python service remains up.
@@ -764,6 +764,17 @@ what was observed, the exact validation command, and what remains.
   duplicate-key safety. Validation passed: web typecheck and all twelve platform Chat
   browser tests; `git diff --check` passed. Real OpenRouter and process-replacement
   browser acceptance remain open.
+
+- **2026-09-20T01:01:01+02:00 — no-Docker local API smoke completed.** Restarted the
+  workspace-owned LangGraph process with the current protocol, then ran two fake-model
+  turns through an isolated Fastify server on port `4320`. Both completed with one
+  stable `langgraph:baseline:<hash>` thread, separate Lab run IDs, a native
+  `CheckpointLoaded` event on the second turn, graph/checkpoint/model events, and
+  estimated context budgets. The standalone LangGraph launcher now replaces an older
+  workspace-owned listener before starting. Validation passed: health/readiness curl
+  checks, the two-turn API smoke, `bash -n scripts/run_local_stack.sh`, and
+  `git diff --check`. Real OpenRouter, tool-call, and process-replacement acceptance
+  remain open.
 
 ## Commit discipline
 
