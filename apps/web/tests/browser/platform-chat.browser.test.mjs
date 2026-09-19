@@ -241,6 +241,33 @@ test("Restate Chat exposes context pressure and compaction evidence", async () =
   }
 });
 
+test("Platform Chat preserves a stale projection without fabricating a result", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setMode("stale");
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal/chat");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Show the last known state.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "The platform is temporarily unavailable; showing the last known state.");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+
+    const stale = await browser.cdp.evaluate(`JSON.stringify({
+      projection: document.querySelector(".chat-run-details")?.textContent?.replace(/\\s+/g, " ").trim() ?? "",
+      assistantMessages: document.querySelectorAll(".chat-message-assistant").length,
+      output: document.querySelector(".chat-message-assistant p")?.textContent?.trim() ?? null,
+    })`).then(JSON.parse);
+    assert.match(stale.projection, /Stale/);
+    assert.equal(stale.assistantMessages, 1);
+    assert.equal(stale.output, "The calculator result is 42.");
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Platform Chat opens for every registered platform", async () => {
   const browser = await openBrowser();
   await installFixture(browser.cdp);
@@ -473,7 +500,9 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
       },
       updatedAt: "2026-09-16T12:00:00.000Z",
     } : null,
-    projection: { state: "current", observedAt: "2026-09-16T12:00:00.000Z", reason: null },
+    projection: mode === "stale"
+      ? { state: "stale", observedAt: "2026-09-16T12:00:00.000Z", reason: "The platform is temporarily unavailable; showing the last known state." }
+      : { state: "current", observedAt: "2026-09-16T12:00:00.000Z", reason: null },
   };
 }
 

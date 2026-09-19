@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T23:45:00+02:00
+**Last updated:** 2026-09-20T00:05:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -400,6 +400,16 @@ as a test dependency.
   inspecting the isolated native service/server replacement exercise. It explicitly
   separates observed local Workflow recovery from any exactly-once provider claim.
 - `pnpm --filter @agent-harness-lab/web run typecheck` and `git diff --check` passed.
+
+**2026-09-20T00:05:00+02:00 — stale projection and rollback acceptance added**
+
+- Added a browser fixture for a temporary platform outage after a run has been
+  admitted. The Chat surface preserves the last assistant result, labels the run
+  projection `Stale`, and shows the unavailable-state reason without fabricating a new
+  result. The full browser fixture suite now passes `7/7` with no console errors.
+- Added local rollback guidance that preserves Lab evidence, disables the baseline by
+  stopping only its dependency, and avoids reusing a newer native journal with an
+  older Restate binary.
 
 ## Scope
 

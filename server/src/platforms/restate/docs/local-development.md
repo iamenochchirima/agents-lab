@@ -127,6 +127,21 @@ Admin API with no registered service is not a runnable agent. A temporary inspec
 failure preserves the last Lab projection; an accepted invocation whose outcome cannot
 be determined remains recovery-required.
 
+## Rollback and disablement
+
+To disable the baseline locally without deleting evidence, stop the Restate service and
+leave the Lab server running. The platform health endpoint will report Restate as
+unavailable, while completed Lab run records remain readable. Do not remove
+`lab/runs/<run-id>/` or the Restate data directory when the goal is to inspect a prior
+run.
+
+For a code rollback, revert only the focused Restate commits and restart the Lab server,
+service, and native Restate process. Existing evidence is versioned independently of
+the service process; preserve it for comparison. A native journal created by a newer
+profile must not be reused with an older binary unless the pinned Restate version is
+known to support that downgrade. The safe local rollback is a new temporary data
+directory plus the previous application version.
+
 For an isolated restart exercise, use a temporary `AGENTLAB_RESTATE_DATA_DIR` and
 non-default ingress, Admin API, and service ports. Stop the Restate server only after
 the service has stopped accepting new work, then start the same binary with the same
