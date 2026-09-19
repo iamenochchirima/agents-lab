@@ -46,6 +46,7 @@ test("the Restate fake model distinguishes safe retry from ambiguous outcome", a
   const model = new FakeRestateModel();
   const retry = await model.complete({ ...input, model: "fake-pre-dispatch-retry" }, new AbortController().signal);
   const unknown = await model.complete({ ...input, model: "fake-unknown" }, new AbortController().signal);
+  const timeout = await model.complete({ ...input, model: "fake-timeout-after-dispatch" }, new AbortController().signal);
 
   assert.equal(retry.kind, "failure");
   assert.equal(retry.kind === "failure" ? retry.failureKind : null, "pre_dispatch");
@@ -53,6 +54,14 @@ test("the Restate fake model distinguishes safe retry from ambiguous outcome", a
   assert.equal(unknown.kind, "failure");
   assert.equal(unknown.kind === "failure" ? unknown.failureKind : null, "outcome_unknown");
   assert.equal(unknown.kind === "failure" ? unknown.requestSent : false, true);
+  assert.deepEqual(timeout, {
+    kind: "failure",
+    code: "FAKE_PROVIDER_TIMEOUT_AFTER_DISPATCH",
+    message: "The deterministic adapter simulates a provider timeout after dispatch.",
+    failureKind: "outcome_unknown",
+    retryable: false,
+    requestSent: true,
+  });
 
   const retrySuccess = await model.complete({ ...input, model: "fake-pre-dispatch-retry-once", attempt: 2 }, new AbortController().signal);
   assert.equal(retrySuccess.kind, "success");

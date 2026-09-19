@@ -350,6 +350,17 @@ test("the workflow stops after the configured pre-dispatch retry budget", async 
   assert.equal(result.eventIntents.filter((event) => event.kind === "ModelRetryScheduled").length, 2);
 });
 
+test("the workflow preserves a deterministic timeout after provider dispatch as unknown", async () => {
+  const result = await runWorkflow("fake-timeout-after-dispatch");
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "FAKE_PROVIDER_TIMEOUT_AFTER_DISPATCH");
+  assert.equal(result.error?.failureKind, "outcome_unknown");
+  assert.equal(result.metrics.modelAttemptCount, 1);
+  assert.equal(result.eventIntents.filter((event) => event.kind === "ModelRetryScheduled").length, 0);
+  assert.equal(result.eventIntents.find((event) => event.kind === "ModelFailed")?.payload.requestSent, true);
+});
+
 test("the workflow fails closed for duplicate provider call IDs", async () => {
   const result = await runWorkflow("fake-tool-duplicate");
 

@@ -43,6 +43,17 @@ export class FakeRestateModel implements ModelAdapter {
       };
     }
 
+    if (input.model === "fake-timeout-after-dispatch") {
+      return {
+        kind: "failure",
+        code: "FAKE_PROVIDER_TIMEOUT_AFTER_DISPATCH",
+        message: "The deterministic adapter simulates a provider timeout after dispatch.",
+        failureKind: "outcome_unknown",
+        retryable: false,
+        requestSent: true,
+      };
+    }
+
     if (input.model === "fake-context-overflow") {
       // Context summarization is a model operation too. Keep it deterministic
       // while making the first actual request fail with a provider-style,
@@ -160,6 +171,7 @@ export class FakeRestateModel implements ModelAdapter {
       input.model !== "fake-success" &&
       input.model !== "fake-delay" &&
       input.model !== "fake-tool-call-delay" &&
+      input.model !== "fake-timeout-after-dispatch" &&
       input.model !== "fake-pre-dispatch-retry-once" &&
       input.model !== "fake-context" &&
       input.model !== "fake-context-overflow"

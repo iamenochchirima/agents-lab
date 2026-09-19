@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-20T00:05:00+02:00
+**Last updated:** 2026-09-20T00:25:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -410,6 +410,16 @@ as a test dependency.
 - Added local rollback guidance that preserves Lab evidence, disables the baseline by
   stopping only its dependency, and avoids reusing a newer native journal with an
   older Restate binary.
+
+**2026-09-20T00:25:00+02:00 — deterministic post-dispatch timeout coverage added**
+
+- Added the explicit `fake-timeout-after-dispatch` fixture. It returns
+  `FAKE_PROVIDER_TIMEOUT_AFTER_DISPATCH` with `outcome_unknown`, `requestSent: true`,
+  and no retry permission, making it distinct from the generic ambiguous fixture.
+- Model, workflow, and native integration tests all verify that the result remains
+  unknown/recovery-classified and that no `ModelRetryScheduled` event is emitted.
+- Native validation passed: `46 passed, 1 skipped`; the only skipped test is the
+  optional Docker-backed profile.
 
 ## Scope
 
@@ -881,7 +891,7 @@ reported as passed.
 - [x] Exercise the ambiguous submission path and verify no second workflow key is
       created.
 - [x] Exercise cancellation while a durable step is waiting.
-- [ ] Exercise a deterministic provider timeout-after-dispatch fixture and inspect the
+- [x] Exercise a deterministic provider timeout-after-dispatch fixture and inspect the
       unknown/recovery result and attempt telemetry.
 - [x] Run one live OpenRouter multi-turn acceptance when `OPENROUTER_API_KEY` is
       available. Record the model ID, response status, usage, and evidence paths, but

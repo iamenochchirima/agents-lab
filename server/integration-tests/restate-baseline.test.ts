@@ -147,6 +147,24 @@ test(
       assert.equal(unknownInspection.result?.error?.code, "FAKE_MODEL_OUTCOME_UNKNOWN");
       assert.equal(unknownInspection.result?.error?.failureKind, "outcome_unknown");
       assert.equal(unknownInspection.eventIntents.some((event) => event.kind === "ModelRetryScheduled"), false);
+
+      const timeoutRunId = `restate-native-${Date.now()}-timeout`;
+      const timeoutManifest = buildRunManifest({
+        platform: "restate",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Preserve the post-dispatch timeout outcome." },
+        model: { provider: "fake", model: "fake-timeout-after-dispatch" },
+      }, { runId: timeoutRunId, platformConfig: runner.manifestConfiguration() });
+      const timeoutReference = await runner.start(timeoutManifest);
+      let timeoutInspection = await runner.inspect(timeoutReference);
+      for (let attempt = 0; attempt < 80 && !timeoutInspection.result; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        timeoutInspection = await runner.inspect(timeoutInspection.reference);
+      }
+      assert.equal(timeoutInspection.status, "failed");
+      assert.equal(timeoutInspection.result?.error?.code, "FAKE_PROVIDER_TIMEOUT_AFTER_DISPATCH");
+      assert.equal(timeoutInspection.result?.error?.failureKind, "outcome_unknown");
+      assert.equal(timeoutInspection.eventIntents.some((event) => event.kind === "ModelRetryScheduled"), false);
     } finally {
       await environment.stop();
     }

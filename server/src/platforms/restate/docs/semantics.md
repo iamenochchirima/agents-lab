@@ -39,7 +39,7 @@ window. Restate journal replay prevents ordinary replay from re-running a comple
 when the response was lost.
 
 The fake provider supports `fake-success`, `fake-delay`, `fake-failure`,
-`fake-unknown`, `fake-pre-dispatch-retry`, `fake-pre-dispatch-retry-once`, `fake-tool-call`,
+`fake-unknown`, `fake-timeout-after-dispatch`, `fake-pre-dispatch-retry`, `fake-pre-dispatch-retry-once`, `fake-tool-call`,
 `fake-tool-malformed`, `fake-tool-unknown`, `fake-tool-duplicate`, `fake-tool-loop`,
 and `fake-tool-call-delay`. Unknown fake model names are configuration failures. OpenRouter
 uses the same provider-neutral messages and tool definition, and reports missing
