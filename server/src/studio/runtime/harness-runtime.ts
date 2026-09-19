@@ -12,6 +12,7 @@ import type {
   StudioHarnessComponentFactory,
   StudioHarnessComponents,
   StudioHarnessRuntimeDependencies,
+  StudioMemoryStore,
 } from "./contracts.js";
 
 /**
@@ -22,16 +23,19 @@ import type {
 export class StudioHarnessRuntime {
   private readonly environment: StudioEnvironmentAssembler;
   private readonly model: StudioModelAdapter;
+  private readonly memory?: StudioMemoryStore;
   private readonly componentsFactory: StudioHarnessComponentFactory;
   private readonly now: () => string;
 
   constructor(dependencies: StudioHarnessRuntimeDependencies) {
     this.environment = dependencies.environment ?? new ReplayEnvironmentAssembler();
     this.model = dependencies.model;
+    this.memory = dependencies.memory;
     this.now = dependencies.now ?? (() => new Date().toISOString());
     this.componentsFactory = dependencies.components ?? ((input) => createBaselineStudioComponents({
       context: input.context,
       model: this.model,
+      memory: input.memory ?? this.memory,
       now: input.now,
     }));
   }
@@ -46,6 +50,7 @@ export class StudioHarnessRuntime {
       scenario: input.scenario,
       context: input.context,
       model: this.model,
+      memory: input.memory ?? this.memory,
       now: this.now,
     });
     assertStudioHarnessComponents(components);
@@ -64,7 +69,7 @@ export class StudioHarnessRuntime {
       untrustedMessageIds: normalized.untrustedMessageIds,
     });
 
-    const memoryRead = await components.memory.read({ task: normalized.task, signal: input.signal });
+    const memoryRead = await components.memory.read({ task: normalized.task, now: this.now(), signal: input.signal });
     await input.events.emit("MemoryRead", {
       trialId: input.trialId,
       adapterId: components.memory.adapterId,
@@ -182,7 +187,10 @@ export class StudioHarnessRuntime {
     });
     const memoryWrite = await components.memory.write({
       trialId: input.trialId,
+      task: normalized.task,
+      turnId: input.trialId,
       output: output.output,
+      now: this.now(),
       signal: input.signal,
     });
     await input.events.emit("MemoryWritten", {
@@ -190,6 +198,14 @@ export class StudioHarnessRuntime {
       adapterId: components.memory.adapterId,
       adapterVersion: components.memory.adapterVersion,
       writtenRecordIds: memoryWrite.writtenRecordIds,
+    });
+    const memoryConsolidated = await components.memory.consolidate({ now: this.now(), signal: input.signal });
+    await input.events.emit("MemoryConsolidated", {
+      trialId: input.trialId,
+      adapterId: components.memory.adapterId,
+      adapterVersion: components.memory.adapterVersion,
+      expiredRecordIds: memoryConsolidated.expiredRecordIds,
+      stateRevision: memoryConsolidated.stateRevision,
     });
 
     const grade = gradeContext(input.scenario, context.retainedMessageIds, output.output);
@@ -212,9 +228,18 @@ export class StudioHarnessRuntime {
         trialId: input.trialId,
         adapterId: components.memory.adapterId,
         adapterVersion: components.memory.adapterVersion,
+        stateRevision: memoryConsolidated.stateRevision,
+        queryTerms: memoryRead.queryTerms,
+        candidates: memoryRead.candidates,
         retrievedRecordIds: memoryRead.retrievedRecordIds,
+        omittedRecordIds: memoryRead.omittedRecordIds,
         writtenRecordIds: memoryWrite.writtenRecordIds,
-        scopes: memoryRead.records.map((record) => record.scope).concat(memoryWrite.writtenRecordIds.length > 0 ? ["working"] : []),
+        updatedRecordIds: memoryWrite.updatedRecordIds,
+        discardedRecordIds: memoryWrite.discardedRecordIds,
+        expiredRecordIds: [...new Set([...memoryWrite.expiredRecordIds, ...memoryConsolidated.expiredRecordIds])],
+        decisions: [...memoryWrite.decisions, ...memoryConsolidated.decisions],
+        activeRecordIds: memoryConsolidated.activeRecordIds,
+        scopes: memoryConsolidated.scopes,
       },
       composition,
     };
@@ -223,6 +248,7 @@ export class StudioHarnessRuntime {
   static createDefault(dependencies: {
     readonly environment?: StudioEnvironmentAssembler;
     readonly model: StudioModelAdapter;
+    readonly memory?: StudioMemoryStore;
     readonly components?: StudioHarnessComponentFactory;
     readonly now?: () => string;
   }): StudioHarnessRuntime {

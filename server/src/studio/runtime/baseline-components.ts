@@ -24,12 +24,13 @@ const BASELINE_VERSION = "1";
 export function createBaselineStudioComponents(options: {
   readonly context: ContextStrategy;
   readonly model: StudioModelAdapter;
+  readonly memory?: StudioMemoryStore;
   readonly now?: () => string;
 }): StudioHarnessComponents {
   const now = options.now ?? (() => new Date().toISOString());
   return {
     input: new BaselineInputNormalizer(),
-    memory: new FixtureMemoryStore(now),
+    memory: options.memory ?? new FixtureMemoryStore(now),
     context: options.context,
     planner: new SingleStepPlanner(),
     tools: new FixtureToolUseAdapter(),
@@ -43,8 +44,8 @@ export function createBaselineStudioComponents(options: {
   };
 }
 
-export const baselineStudioComponentFactory: StudioHarnessComponentFactory = ({ context, model, now }) =>
-  createBaselineStudioComponents({ context, model, now });
+export const baselineStudioComponentFactory: StudioHarnessComponentFactory = ({ context, model, memory, now }) =>
+  createBaselineStudioComponents({ context, model, memory, now });
 
 export class BaselineInputNormalizer implements StudioInputNormalizer {
   readonly adapterId = "canonical-input-normalizer";
@@ -69,28 +70,58 @@ export class BaselineInputNormalizer implements StudioInputNormalizer {
 export class FixtureMemoryStore implements StudioMemoryStore {
   readonly adapterId = "fixture-memory";
   readonly adapterVersion = BASELINE_VERSION;
+  readonly scope = "working" as const;
   private readonly records = new Map<string, StudioMemoryRecord>();
 
   constructor(private readonly now: () => string) {}
 
-  async read(_input: { readonly task: string; readonly signal: AbortSignal }) {
+  async read(_input: { readonly task: string; readonly now?: string; readonly signal: AbortSignal }) {
+    const records = [...this.records.values()];
     return {
-      records: [...this.records.values()],
-      retrievedRecordIds: [...this.records.keys()],
+      stateRevision: records.length,
+      queryTerms: [],
+      candidates: records.map((record) => ({ record, score: 1, reason: "Fixture Memory returns all working records.", selected: true })),
+      records,
+      retrievedRecordIds: records.map((record) => record.recordId),
+      omittedRecordIds: [],
     };
   }
 
-  async write(input: { readonly trialId: string; readonly output: string; readonly signal: AbortSignal }) {
+  async write(input: { readonly trialId?: string; readonly task: string; readonly turnId: string; readonly output: string; readonly now?: string; readonly signal: AbortSignal }) {
     if (input.signal.aborted) throw abortError("Memory write was cancelled.");
-    const recordId = `working-${input.trialId}`;
+    const turnId = input.trialId ?? input.turnId;
+    const recordId = `working-${turnId}`;
     this.records.set(recordId, {
+      schemaVersion: 1,
       recordId,
+      namespace: { comparisonId: "fixture", trialId: turnId, scenarioId: "fixture", sessionId: `studio-${turnId}` },
       scope: "working",
       content: input.output,
+      logicalKey: null,
       source: "studio-turn-output",
-      createdAt: this.now(),
+      sourceMessageIds: [input.turnId],
+      createdAt: input.now ?? this.now(),
+      updatedAt: input.now ?? this.now(),
+      revision: this.records.size + 1,
+      state: "active",
+      supersedesRecordId: null,
+      expiresAt: null,
+      metadata: {},
     });
-    return { writtenRecordIds: [recordId] };
+    return {
+      stateRevision: this.records.size,
+      decisions: [],
+      writtenRecordIds: [recordId],
+      updatedRecordIds: [],
+      discardedRecordIds: [],
+      expiredRecordIds: [],
+      activeRecordIds: [...this.records.keys()],
+      scopes: ["working"] as const,
+    };
+  }
+
+  async consolidate(_input: { readonly now?: string; readonly signal: AbortSignal }) {
+    return { stateRevision: this.records.size, decisions: [], expiredRecordIds: [], activeRecordIds: [...this.records.keys()], scopes: ["working"] as const };
   }
 }
 

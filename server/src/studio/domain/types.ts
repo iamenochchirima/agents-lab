@@ -2,6 +2,11 @@ import type {
   ContextBudget,
   ContextMessage,
 } from "../../capabilities/context/contracts.js";
+import type {
+  StudioMemoryCandidate,
+  StudioMemoryDecision,
+  StudioMemoryScope,
+} from "../memory/contracts.js";
 
 export const STUDIO_SCHEMA_VERSION = 1 as const;
 export const STUDIO_CONTEXT_COMPONENT = "context-management" as const;
@@ -214,9 +219,18 @@ export interface StudioMemoryEvidence {
   readonly trialId: string;
   readonly adapterId: string;
   readonly adapterVersion: string;
+  readonly stateRevision: number;
+  readonly queryTerms: readonly string[];
+  readonly candidates: readonly StudioMemoryCandidate[];
   readonly retrievedRecordIds: readonly string[];
+  readonly omittedRecordIds: readonly string[];
   readonly writtenRecordIds: readonly string[];
-  readonly scopes: readonly ("working" | "episodic" | "semantic" | "procedural")[];
+  readonly updatedRecordIds: readonly string[];
+  readonly discardedRecordIds: readonly string[];
+  readonly expiredRecordIds: readonly string[];
+  readonly decisions: readonly StudioMemoryDecision[];
+  readonly activeRecordIds: readonly string[];
+  readonly scopes: readonly StudioMemoryScope[];
 }
 
 export interface StudioCompositionEvidence {

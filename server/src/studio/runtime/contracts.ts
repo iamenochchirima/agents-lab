@@ -12,10 +12,23 @@ import type {
 } from "../domain/types.js";
 import type { StudioModelAdapter, StudioModelResponse } from "../adapters/replay-model.js";
 import type { ToolCall, ToolDefinition, ToolValidationResult } from "../../capabilities/tools/contracts.js";
+import type { StudioMemoryStoreAdapter } from "../memory/contracts.js";
+export type {
+  StudioMemoryCandidate,
+  StudioMemoryLimits,
+  StudioMemoryMutation,
+  StudioMemoryNamespace,
+  StudioMemoryPolicy,
+  StudioMemoryRecord,
+  StudioMemoryScope,
+  StudioMemorySeed,
+  StudioMemoryState,
+} from "../memory/contracts.js";
 
 export type StudioRuntimeEventKind =
   | "InputNormalized"
   | "MemoryRead"
+  | "MemoryConsolidated"
   | "ContextAssembled"
   | "PlanProduced"
   | "ControlLoopStarted"
@@ -46,27 +59,7 @@ export interface StudioInputNormalizer {
   normalize(input: { readonly task: string; readonly messages: readonly ContextMessage[] }): StudioNormalizedInput;
 }
 
-export type StudioMemoryScope = "working" | "episodic" | "semantic" | "procedural";
-
-export interface StudioMemoryRecord {
-  readonly recordId: string;
-  readonly scope: StudioMemoryScope;
-  readonly content: string;
-  readonly source: string;
-  readonly createdAt: string;
-}
-
-export interface StudioMemoryStore {
-  readonly adapterId: string;
-  readonly adapterVersion: string;
-  read(input: { readonly task: string; readonly signal: AbortSignal }): Promise<{
-    readonly records: readonly StudioMemoryRecord[];
-    readonly retrievedRecordIds: readonly string[];
-  }>;
-  write(input: { readonly trialId: string; readonly output: string; readonly signal: AbortSignal }): Promise<{
-    readonly writtenRecordIds: readonly string[];
-  }>;
-}
+export type StudioMemoryStore = StudioMemoryStoreAdapter;
 
 export interface StudioPlanner {
   readonly adapterId: string;
@@ -154,6 +147,7 @@ export interface StudioHarnessComponentFactoryInput {
   readonly scenario: StudioScenarioCase;
   readonly context: ContextStrategy;
   readonly model: StudioModelAdapter;
+  readonly memory?: StudioMemoryStore;
   readonly now: () => string;
 }
 
@@ -168,6 +162,7 @@ export interface HarnessTurnInput {
   readonly scenario: StudioScenarioCase;
   readonly strategy: StudioStrategyVariant;
   readonly context: ContextStrategy;
+  readonly memory?: StudioMemoryStore;
   readonly tokenCounter: ContextTokenCounter;
   readonly signal: AbortSignal;
   readonly events: StudioRuntimeEventSink;
@@ -186,6 +181,7 @@ export interface HarnessTurnResult {
 export interface StudioHarnessRuntimeDependencies {
   readonly environment?: StudioEnvironmentAssembler;
   readonly model: StudioModelAdapter;
+  readonly memory?: StudioMemoryStore;
   readonly components?: StudioHarnessComponentFactory;
   readonly now?: () => string;
 }

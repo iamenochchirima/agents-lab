@@ -64,6 +64,22 @@ use owns the observe-and-act interaction policy.
 An experiment that varies one harness component or strategy while holding the
 scenario and surrounding harness configuration fixed.
 
+**Memory**:
+A harness subsystem that decides what information is persisted, how it is scoped and
+revised, and what can be retrieved for a later turn. Retrieved Memory is not
+automatically model-visible; Context decides how a retrieved record is represented,
+ordered, budgeted, and passed to the model.
+
+**Memory record**:
+A scoped, provenance-bearing representation that may be retrieved for a future turn.
+It has its own lifetime, revision, and lifecycle state and is distinct from the raw
+conversation transcript, a Context message, or a tool result.
+
+**Memory policy**:
+The explicit read, write, update, retention, and consolidation rules applied to Memory
+records in one harness configuration. A Memory policy is the changed variable in a
+Memory component experiment; it is not a model provider or a Context strategy.
+
 **Agent definition**:
 A named, platform-specific construction of one agent system, including its identity, instructions, roles, topology, and platform-owned orchestration choices.
 _Avoid_: using an agent definition as the scenario workload.

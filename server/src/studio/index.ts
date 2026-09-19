@@ -44,4 +44,5 @@ export * from "./runtime/environment.js";
 export * from "./runtime/contracts.js";
 export * from "./runtime/baseline-components.js";
 export * from "./runtime/harness-runtime.js";
+export * from "./memory/index.js";
 export * from "./strategies/index.js";
