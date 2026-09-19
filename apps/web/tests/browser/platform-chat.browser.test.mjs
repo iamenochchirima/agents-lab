@@ -276,7 +276,9 @@ test("Restate Chat reuses the admitted run after a browser refresh", async () =>
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Continue after refresh.");
     await clickButton(browser.cdp, "Send");
     await waitForExpression(browser.cdp, 'new URLSearchParams(location.search).has("run")');
+    const loaded = waitForCdpEvent(browser.cdp, "Page.loadEventFired");
     await browser.cdp.send("Page.reload", { ignoreCache: true });
+    await loaded;
     await waitForText(browser.cdp, "Restate fixture completed.");
     assert.equal(fixture.state.createRequests, 1, "refresh must not create a second Restate run");
     assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-message-user").length'), 1);
@@ -369,6 +371,40 @@ test("Platform Chat opens for every registered platform", async () => {
 
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
     assert.equal(browser.dialogs.length, 0, "Chat must not open native browser dialogs");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Platform Chat remains usable at desktop, tablet, and narrow widths", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+
+  try {
+    for (const width of [1280, 768, 390]) {
+      await browser.cdp.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await navigate(browser.cdp, "/platforms/restate/chat");
+      await waitForText(browser.cdp, "Ready");
+      const layout = await browser.cdp.evaluate(`JSON.stringify({
+        width: window.innerWidth,
+        overflow: document.documentElement.scrollWidth > window.innerWidth,
+        composer: Boolean(document.querySelector('textarea[aria-label="Message"]')),
+        model: Boolean(document.querySelector(".model-picker-trigger")),
+        heading: document.querySelector(".chat-heading h1")?.textContent?.trim() ?? null,
+      })`).then(JSON.parse);
+      assert.equal(layout.width, width);
+      assert.equal(layout.overflow, false, `horizontal overflow at ${width}px`);
+      assert.equal(layout.composer, true);
+      assert.equal(layout.model, true);
+      assert.equal(layout.heading, "Chat");
+    }
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
   }
@@ -748,6 +784,16 @@ async function waitForExpression(cdp, expression, timeoutMs = 10_000) {
     await delay(50);
   }
   throw new Error(`Timed out waiting for expression: ${expression}`);
+}
+
+function waitForCdpEvent(cdp, method, timeoutMs = 10_000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timed out waiting for CDP event ${method}`)), timeoutMs);
+    cdp.on(method, (params) => {
+      clearTimeout(timer);
+      resolve(params);
+    });
+  });
 }
 
 async function fulfill(cdp, requestId, response) {

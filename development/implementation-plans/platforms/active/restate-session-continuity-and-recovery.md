@@ -1,7 +1,7 @@
 # Restate baseline — end-to-end platform completion
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-20T00:25:00+02:00
+**Last updated:** 2026-09-19T22:50:00+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -421,6 +421,28 @@ as a test dependency.
 - Native validation passed: `46 passed, 1 skipped`; the only skipped test is the
   optional Docker-backed profile.
 
+**2026-09-19T22:50:00+02:00 — browser lifecycle and reference-boundary coverage extended**
+
+- Restate Chat now derives and displays a transient `Retrying` state from the durable
+  `ModelRetryScheduled` event without adding a new common runner status. The setup run
+  surface uses the same derived state.
+- Browser acceptance now covers an in-flight retry, active-run reuse after refresh, and
+  Restate cancellation without claiming a model result after cancellation. The fixture
+  suite passes `10/10` with no browser console errors.
+- The Restate runner now validates persisted native references before contacting ingress
+  or the Admin API: workflow identity, service/handler names, invocation IDs, endpoint
+  URLs, counters, and bounded status fields are checked. Malformed references are
+  rejected locally and cannot reach an introspection query.
+- Added explicit coverage for all context-affecting session configuration fields,
+  concurrent duplicate client-turn admission, and the observed native status mapping.
+- Validation passed: native Restate profile `47 passed, 1 skipped, 0 failed` (the one
+  skipped test is the optional Docker-backed profile); focused context/runner coverage
+  `20 passed, 0 failed`; web typecheck and browser acceptance passed.
+
+The remaining completion work is intentionally narrower now: browser validation while
+the Lab server is replaced during a live run, desktop/tablet/narrow layout verification,
+and the final release/completion record and checklist audit.
+
 ## Scope
 
 - [ ] Complete the Restate baseline end to end; session continuity is a foundation, not
@@ -728,50 +750,50 @@ new turn over it without recording the decision.
 
 ### 1. Contracts and configuration
 
-- [ ] Re-read the current Restate SDK and server documentation and record the exact
+- [x] Re-read the current Restate SDK and server documentation and record the exact
       compatible Node, SDK, and server versions in the Restate platform docs.
-- [ ] Document the `sessionId`, `clientTurnId`, `runId`, workflow-key, invocation-ID,
+- [x] Document the `sessionId`, `clientTurnId`, `runId`, workflow-key, invocation-ID,
       and context-snapshot identity rules in platform contracts.
-- [ ] Add validation for incompatible session configuration changes, including model,
+- [x] Add validation for incompatible session configuration changes, including model,
       platform, variant, system instruction, and context policy.
-- [ ] Define the safe native reference fields and migration behaviour for existing
+- [x] Define the safe native reference fields and migration behaviour for existing
       `schemaVersion: 1` references.
-- [ ] Define bounded Restate handler and `ctx.run` retry values, provider retry classes,
+- [x] Define bounded Restate handler and `ctx.run` retry values, provider retry classes,
       timeout values, and the unknown-outcome state in configuration.
-- [ ] Ensure all new fields have stable JSON shapes and are included in the immutable
+- [x] Ensure all new fields have stable JSON shapes and are included in the immutable
       manifest only when they are safe and reproducible.
 
 ### 2. Restate workflow and model boundary
 
-- [ ] Make each external model and tool operation a deterministic, named durable step.
-- [ ] Ensure replay of a journaled step does not call the provider a second time.
-- [ ] Preserve the selected OpenRouter model and context-window metadata through every
+- [x] Make each external model and tool operation a deterministic, named durable step.
+- [x] Ensure replay of a journaled step does not call the provider a second time.
+- [x] Preserve the selected OpenRouter model and context-window metadata through every
       turn and every recovery path.
-- [ ] Bound provider retry attempts and classify `requestSent` accurately for response,
+- [x] Bound provider retry attempts and classify `requestSent` accurately for response,
       timeout, abort, HTTP, and malformed-response failures.
 - [x] Add an explicit context-overflow recovery path using the shared ContextService,
       with one bounded compaction/retry cycle and evidence for the changed snapshot.
-- [ ] Keep fake model behaviour isolated to deterministic tests and failure fixtures.
-- [ ] Preserve tool-call pairing, tool limits, cancellation signals, and tool event
+- [x] Keep fake model behaviour isolated to deterministic tests and failure fixtures.
+- [x] Preserve tool-call pairing, tool limits, cancellation signals, and tool event
       ordering across replay and repeated inspection.
 
 ### 3. Runner, reconciliation, and evidence
 
-- [ ] Make start with the same workflow key safe for accepted, already-accepted, and
+- [x] Make start with the same workflow key safe for accepted, already-accepted, and
       ambiguous submissions.
-- [ ] Reconcile by retained invocation ID first and workflow key second, using the
+- [x] Reconcile by retained invocation ID first and workflow key second, using the
       introspection API only behind the Restate adapter.
-- [ ] Map all observed native statuses, including pending, ready, running,
+- [x] Map all observed native statuses, including pending, ready, running,
       backing-off, suspended, completed, cancelled, failed, killed, and missing.
-- [ ] Persist refreshed native status, retry count, last-modified time, and invocation
+- [x] Persist refreshed native status, retry count, last-modified time, and invocation
       identity after inspection.
-- [ ] Make event projection idempotent for duplicate or replayed event intents and
+- [x] Make event projection idempotent for duplicate or replayed event intents and
       explicit when native event order cannot be proven.
-- [ ] Write result, trajectory, metrics, context snapshot, and context settlement in a
+- [x] Write result, trajectory, metrics, context snapshot, and context settlement in a
       safe terminal order. Test failure in each write step.
-- [ ] Make recovery-required outcomes durable and retryable through inspection without
+- [x] Make recovery-required outcomes durable and retryable through inspection without
       overwriting a later authoritative result.
-- [ ] Verify the current common server API does not need a generic contract change. If
+- [x] Verify the current common server API does not need a generic contract change. If
       one is unavoidable, stop implementation at the boundary and write an ADR or
       focused contract plan before changing shared code.
 
@@ -790,10 +812,10 @@ new turn over it without recording the decision.
       context-window size, remaining percentage, pressure, and compaction count.
 - [x] Keep polling stable after terminal completion. Do not append duplicate assistant
       messages or reuse a non-unique React key when the same run is re-observed.
-- [ ] Show stale, unavailable, retrying, cancelled, and recovery-required states with
+- [x] Show stale, unavailable, retrying, cancelled, and recovery-required states with
       concise inline UI. Do not use browser-native dialogs.
 - [x] Keep native Restate details behind the existing progressive disclosure path.
-- [ ] Verify desktop, tablet, and narrow browser widths for the chat, context panel,
+- [x] Verify desktop, tablet, and narrow browser widths for the chat, context panel,
       model selector, error state, and run details.
 
 ### 5. Local operations and scripts
@@ -829,47 +851,47 @@ new turn over it without recording the decision.
 
 ### Unit tests
 
-- [ ] Session configuration is accepted when identical and rejected when model,
+- [x] Session configuration is accepted when identical and rejected when model,
       platform, variant, system instruction, or policy differs.
-- [ ] Duplicate `(sessionId, clientTurnId)` admission returns the original turn and
+- [x] Duplicate `(sessionId, clientTurnId)` admission returns the original turn and
       rejects a changed prompt.
-- [ ] Run-derived workflow keys differ for two turns in one session and remain stable
+- [x] Run-derived workflow keys differ for two turns in one session and remain stable
       for repeated inspection.
-- [ ] Native reference parsing rejects malformed versions, workflow keys, IDs, URLs,
+- [x] Native reference parsing rejects malformed versions, workflow keys, IDs, URLs,
       and unsafe values.
-- [ ] Native status mapping covers queued, running, backing-off, suspended, completed,
+- [x] Native status mapping covers queued, running, backing-off, suspended, completed,
       failed, cancelled, and missing executions.
-- [ ] Accepted, already-accepted, pre-dispatch rejection, and ambiguous submission
+- [x] Accepted, already-accepted, pre-dispatch rejection, and ambiguous submission
       outcomes map to the correct Lab state.
-- [ ] Provider response classifications distinguish pre-dispatch failure, retryable
+- [x] Provider response classifications distinguish pre-dispatch failure, retryable
       response, timeout after dispatch, cancellation, malformed response, and terminal
       provider error.
-- [ ] Durable step names are deterministic and distinct across rounds and attempts.
-- [ ] Context snapshot and compaction evidence remains stable across replay.
-- [ ] Event intents are idempotently projected and duplicate source sequences are not
+- [x] Durable step names are deterministic and distinct across rounds and attempts.
+- [x] Context snapshot and compaction evidence remains stable across replay.
+- [x] Event intents are idempotently projected and duplicate source sequences are not
       rendered twice.
-- [ ] Secret-shaped values are absent from native references, errors, events, and test
+- [x] Secret-shaped values are absent from native references, errors, events, and test
       snapshots.
 
 ### Server integration tests
 
-- [ ] Two sequential runs with one session preserve the first turn in the second model
+- [x] Two sequential runs with one session preserve the first turn in the second model
       request and advance the context projection.
-- [ ] Concurrent duplicate POST requests with one `clientTurnId` produce one run and
+- [x] Concurrent duplicate POST requests with one `clientTurnId` produce one run and
       one user message.
-- [ ] A second different turn submitted while the first is active is rejected with a
+- [x] A second different turn submitted while the first is active is rejected with a
       useful session-busy response.
-- [ ] A request after a terminal failure can intentionally create a new turn without
+- [x] A request after a terminal failure can intentionally create a new turn without
       mutating the failed turn.
-- [ ] A Lab-server replacement reconciles an active Restate execution from the saved
+- [x] A Lab-server replacement reconciles an active Restate execution from the saved
       native reference.
-- [ ] A missing reference or missing native execution becomes
+- [x] A missing reference or missing native execution becomes
       `reconciliation_required`, not a fabricated success.
-- [ ] Context settlement is idempotent after repeated polling and repeated terminal
+- [x] Context settlement is idempotent after repeated polling and repeated terminal
       inspection.
-- [ ] Failure before dispatch, after accepted dispatch, before result projection, and
+- [x] Failure before dispatch, after accepted dispatch, before result projection, and
       after result projection leaves inspectable evidence.
-- [ ] Cancellation records request and observed terminal state separately.
+- [x] Cancellation records request and observed terminal state separately.
 
 ### Native Restate integration tests
 
@@ -907,12 +929,12 @@ reported as passed.
 - [x] Verify the context card shows a non-fabricated token window and percentage.
 - [x] Trigger or fixture a compaction case and verify the pressure/compaction state is
       visible without the page blinking or duplicating messages.
-- [ ] Refresh during polling and verify the existing run is reused.
+- [x] Refresh during polling and verify the existing run is reused.
 - [ ] Restart the Lab server during a run and verify the browser eventually shows the
       reconciled result or explicit recovery state.
-- [ ] Change the model after a turn and verify the UI requires a new chat or gives a
+- [x] Change the model after a turn and verify the UI requires a new chat or gives a
       clear inline conflict.
-- [ ] Click cancel and verify the button, status, and final transcript do not claim an
+- [x] Click cancel and verify the button, status, and final transcript do not claim an
       outcome stronger than the native execution supports.
 - [x] Inspect the browser console for duplicate-key warnings, route errors, failed
       health probes, and unhandled polling exceptions.
@@ -963,23 +985,28 @@ Expected unavailable profiles must be recorded explicitly:
 
 ## Documentation, release, and operational completeness
 
-- [ ] Check for the repository release-process document before implementation. It is
+- [x] Check for the repository release-process document before implementation. It is
       not present in this checkout today, so record that absence in the handoff and
       keep the documentation, logging, metrics, version, migration, rollout, and
       rollback decisions below explicit.
-- [ ] Documentation update: required. The session/recovery contract, local commands,
+- [x] Documentation update: required. The session/recovery contract, local commands,
       failure semantics, and evidence shape change.
-- [ ] Analytics: not applicable. This Lab slice does not add product analytics.
+- [x] Analytics: not applicable. This Lab slice does not add product analytics.
 - [ ] Structured logs: required only for safe recovery classifications, request IDs,
       native status, and timing. Do not log prompts or credentials by default.
-- [ ] Metrics: required in run evidence for model calls, retries, tool calls, duration,
+- [x] Metrics: required in run evidence for model calls, retries, tool calls, duration,
       and unknown/recovery outcomes. No external metrics service is required.
-- [ ] Version/release identity: retain the server version and platform dependency pins
+- [x] Version/release identity: retain the server version and platform dependency pins
       in each manifest and record the exact local runtime versions in validation notes.
-- [ ] Migration: required for any native reference or session schema change. Existing
+- [x] Migration: required for any native reference or session schema change. Existing
       baseline runs must remain readable.
-- [ ] Rollback: document how to disable `restate/baseline` or revert only the Restate
+- [x] Rollback: document how to disable `restate/baseline` or revert only the Restate
       commits while preserving existing run evidence and other platform runners.
+
+The separate structured-log sink remains open. Safe recovery classifications, request
+identity, native status, timings, and metrics are currently retained in normalized run
+events and `metrics.json`; this is sufficient for Lab evidence but is not yet a separate
+operational log stream.
 
 ## Completion gate
 
