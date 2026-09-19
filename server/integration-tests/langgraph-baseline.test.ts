@@ -123,6 +123,8 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
     );
     assert.equal(recovered.status, "reconciliation_required");
     assert.equal(recovered.error?.failureKind, "reconciliation");
+
+    await assertLabServerReplacement(service.url, contextRoot);
   } finally {
     await service?.stop();
     await rm(stateDirectory, { recursive: true, force: true });
@@ -275,6 +277,71 @@ async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot:
     await app.close();
     await rm(runRoot, { recursive: true, force: true });
   }
+}
+
+async function assertLabServerReplacement(serviceUrl: string, contextRoot: string): Promise<void> {
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-server-restart-"));
+  let app = await buildIntegrationApp(runRoot, serviceUrl, contextRoot);
+  try {
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Return a short response after the server replacement." },
+        model: { provider: "fake", model: "fake-slow-success", contextWindowTokens: 16_384 },
+        sessionId: "session-lab-server-restart",
+        clientTurnId: "client-lab-server-restart",
+      },
+    });
+    assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+    const created = createdResponse.json() as RunView;
+    assert.equal(created.result, null);
+
+    await app.close();
+    app = await buildIntegrationApp(runRoot, serviceUrl, contextRoot);
+    let recovered = await getRunFromApp(app, created.runId);
+    for (let attempt = 0; attempt < 240 && !recovered.result; attempt += 1) {
+      await delay(25);
+      recovered = await getRunFromApp(app, created.runId);
+    }
+    assert.equal(recovered.status, "completed", JSON.stringify(recovered.result));
+    assert.ok(recovered.result?.output);
+
+    const eventCount = recovered.events.length;
+    const inspectedAgain = await getRunFromApp(app, created.runId);
+    assert.equal(inspectedAgain.status, "completed");
+    assert.equal(inspectedAgain.events.length, eventCount);
+  } finally {
+    await app.close();
+    await rm(runRoot, { recursive: true, force: true });
+  }
+}
+
+async function buildIntegrationApp(runRoot: string, serviceUrl: string, contextRoot: string) {
+  const config = loadServerConfig(
+    {
+      AGENTLAB_RUN_ROOT: runRoot,
+      AGENTLAB_CONTEXT_ROOT: contextRoot,
+      AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+    },
+    process.cwd(),
+  );
+  const evidence = new RunEvidenceStore(runRoot);
+  const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl, contextRoot, timeoutMs: 5_000 });
+  const registry = new PlatformRegistry([runner]);
+  const context = new ContextService(new ContextSessionStore(contextRoot, config.context), new CharacterTokenEstimator());
+  const service = new RunService({ config, context, evidence, registry });
+  const app = buildControlPlaneServer({ config, service, evidence, registry });
+  await app.ready();
+  return app;
+}
+
+async function getRunFromApp(app: Awaited<ReturnType<typeof buildIntegrationApp>>, runId: string): Promise<RunView> {
+  const response = await app.inject({ method: "GET", url: `/api/runs/${encodeURIComponent(runId)}` });
+  assert.equal(response.statusCode, 200, response.body);
+  return response.json() as RunView;
 }
 
 function runnerThreadId(sessionId: string): string {

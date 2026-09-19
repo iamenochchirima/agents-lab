@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:13:04+02:00
+**Last updated:** 2026-09-20T01:17:03+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -456,7 +456,7 @@ boundary with explicit limitations, not as an in-memory test double.
 - [ ] During an active model or tool step, replace the service and classify the prior
   execution as completed, resumable, failed, or unknown based on persisted evidence;
   never infer provider success merely because a checkpoint exists.
-- [ ] Replace the Lab server while the Python service and graph remain active, then
+- [x] Replace the Lab server while the Python service and graph remain active, then
   reconcile the retained execution by stable `runId` and `thread_id`.
 - [ ] If both Lab server and Python service are replaced, recover settled state and
   expose explicit recovery-required/unknown state for an interrupted external call.
@@ -598,7 +598,7 @@ Tests must exercise real boundaries, not only helper functions.
   with separate Lab run IDs through the generic Fastify API.
 - [ ] Replace the Python service during a delayed turn using the same SQLite database and
   verify settled/recovery behaviour.
-- [ ] Replace the Lab server during a delayed turn while the Python service remains up.
+- [x] Replace the Lab server during a delayed turn while the Python service remains up.
 - [ ] Replace both processes and verify the documented outcome.
 - [ ] Exercise duplicate admission, concurrent session conflict, cancellation, stale
   projection, timeout-after-dispatch, and context-overflow fixtures.
@@ -807,6 +807,16 @@ what was observed, the exact validation command, and what remains.
   @agent-harness-lab/lab-server exec tsx --test integration-tests/langgraph-baseline.test.ts`
   (`1 passed`, `1 skipped`), and `git diff --check`. Live browser execution, process
   replacement, and the remaining retry/cancellation/unknown-outcome matrix remain open.
+
+- **2026-09-20T01:17:03+02:00 — Lab-server replacement acceptance added.** Added a
+  deterministic `fake-slow-success` fixture that creates a bounded completion window
+  without becoming a timeout, then rebuilt the Fastify Lab server against the same run
+  root while the Python LangGraph service remained active. The replacement server
+  recovered the original run by `runId`, projected one completed result, and a repeated
+  inspection did not append duplicate events. Validation passed: the LangGraph graph
+  suite (`10 passed`), the no-Docker real-process integration (`1 passed`, `1 skipped`),
+  and `git diff --check`. Both-process replacement, explicit unknown-outcome fixtures,
+  and browser process-replacement coverage remain open.
 
 ## Commit discipline
 

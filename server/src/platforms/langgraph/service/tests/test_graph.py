@@ -77,6 +77,26 @@ def test_pre_dispatch_retry_is_bounded_and_observable() -> None:
     assert [payload["attempt"] for payload in requests] == [1, 2]
 
 
+def test_slow_success_fixture_waits_without_becoming_a_timeout() -> None:
+    events: list[tuple[str, dict]] = []
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-slow-success", api_key=None, timeout_ms=500),
+            lambda kind, payload: events.append((kind, payload)),
+            lambda: False,
+            "run-slow-success-test",
+            2,
+            checkpointer,
+        )
+        snapshot = graph.invoke(
+            {"prompt": "wait briefly", "system_instruction": "answer", "output": "", "attempt_count": 0},
+            {"configurable": {"thread_id": "thread-slow-success-test"}, "run_id": "run-slow-success-test"},
+        )
+
+    assert snapshot["output"] == "Fake delayed response: wait briefly"
+    assert any(kind == "ModelRequested" for kind, _ in events)
+
+
 def test_tool_turn_uses_a_real_tool_node_and_returns_the_tool_result() -> None:
     events: list[tuple[str, dict]] = []
     with SqliteSaver.from_conn_string(":memory:") as checkpointer:

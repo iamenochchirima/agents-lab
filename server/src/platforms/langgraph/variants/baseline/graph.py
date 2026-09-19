@@ -315,6 +315,16 @@ def complete_fake(
                 raise CancellationError("The deterministic model observed cancellation while waiting.")
             time.sleep(0.02)
         raise TimeoutError("The deterministic model exceeded the configured node timeout.")
+    if model == "fake-slow-success":
+        # This fixture creates a real observation window for restart tests while
+        # retaining a deterministic successful result. It is deliberately
+        # shorter than the node timeout and has no external side effect.
+        deadline = time.monotonic() + min(250, max(100, timeout_ms // 4)) / 1000
+        while time.monotonic() < deadline:
+            if is_cancelled():
+                raise CancellationError("The deterministic model observed cancellation while waiting.")
+            time.sleep(0.02)
+        return ModelResponse(f"Fake delayed response: {prompt}", [], empty_usage())
     if model == "fake-context":
         remembered = any("conformance-4318" in str(message.get("content", "")) for message in messages)
         if prompt.startswith("Remember"):

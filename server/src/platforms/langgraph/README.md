@@ -85,6 +85,9 @@ The complete resolved environment is in [`requirements.lock`](requirements.lock)
 - Fake models are deterministic test fixtures. OpenRouter runs use the selected
   catalog model through the Python process environment, and its API key never
   crosses the JSON seam.
+- The `fake-slow-success` fixture is reserved for process-replacement acceptance: it
+  waits briefly, remains cancellable, and then completes without an external side
+  effect. It is not a production model profile.
 - Node retries are bounded. A retried model call can be duplicated; the baseline does not claim exactly-once model execution.
 - Cancellation is cooperative. A process restart that interrupts an active run produces `unknown` and requires reconciliation rather than fabricated success or failure.
 
