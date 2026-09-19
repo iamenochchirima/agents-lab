@@ -1,7 +1,7 @@
 # Restate session continuity and recovery
 
 **Created:** 2026-09-19T20:38:46+02:00
-**Last updated:** 2026-09-19T21:13:16+02:00
+**Last updated:** 2026-09-19T21:19:33+02:00
 **Status:** Active
 **Owner:** Primary platform implementation agent
 **Platform:** `restate`
@@ -128,6 +128,9 @@ browser chat
 - The browser keeps a stable `clientTurnId` for a failed POST and exposes an inline
   retry that reuses that key. The browser acceptance fixture confirms no duplicate
   visible assistant message or React key warning.
+- A pending session turn is retained in browser `sessionStorage` until the server
+  acknowledges a run. Refreshing after a lost POST restores the request and offers the
+  same-key retry without automatically resubmitting it.
 - Restate Chat now has a browser acceptance case for two turns in one `sessionId`,
   with distinct turn keys and distinct workflow/run identities.
 - The Restate workflow test confirms that a later turn prepares its model input from
@@ -495,7 +498,7 @@ new turn over it without recording the decision.
 - [x] Persist the active `sessionId` for the current chat and generate a new
       `clientTurnId` for each send.
 - [x] Reuse the same `clientTurnId` when the browser retries a request after a failed
-      or lost POST response. Browser-refresh persistence remains open.
+      or lost POST response, including after a browser refresh.
 - [x] Ensure `New chat` clears the active run list and creates a fresh session instead
       of reusing a session with incompatible configuration.
 - [x] Pin the session model/configuration after the first admitted turn, or visibly
