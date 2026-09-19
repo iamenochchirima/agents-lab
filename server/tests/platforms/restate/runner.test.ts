@@ -81,11 +81,16 @@ test("workflow keys are deterministic and native statuses remain honest", () => 
   assert.equal(workflowKeyForRun("run-123"), "agentlab:run-123");
   assert.throws(() => workflowKeyForRun("bad key"));
   assert.equal(mapNativeStatus("pending"), "queued");
+  assert.equal(mapNativeStatus("ready"), "queued");
   assert.equal(mapNativeStatus("backing-off"), "running");
+  assert.equal(mapNativeStatus("suspended"), "running");
+  assert.equal(mapNativeStatus("failed"), "failed");
   assert.equal(mapNativeStatus("completed"), "completed");
   assert.equal(mapNativeStatus("completed", "failure"), "failed");
   assert.equal(mapNativeStatus("canceled"), "cancelled");
+  assert.equal(mapNativeStatus("aborted"), "failed");
   assert.equal(mapNativeStatus("killed"), "failed");
+  assert.equal(mapNativeStatus("purged"), "failed");
 });
 
 test("runner submits through the Restate workflow boundary with a stable key", async () => {

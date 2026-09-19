@@ -217,6 +217,25 @@ test("client turn keys replay one durable run and reject a changed prompt", asyn
   });
 });
 
+test("concurrent duplicate client turns create one run and one user message", async () => {
+  await withService(async (service, _store, runner) => {
+    runner.state = "running";
+    const request = {
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-concurrent-replay",
+      clientTurnId: "client-turn-concurrent-1",
+      task: { kind: "prompt" as const, prompt: "Admit this turn once" },
+      model: { provider: "fake", model: "fake-success" },
+    };
+
+    const [first, second] = await Promise.all([service.createRun(request), service.createRun(request)]);
+
+    assert.equal(first.runId, second.runId);
+    assert.equal(runner.startCalls, 1);
+  });
+});
+
 test("a different client turn cannot overtake an active session turn", async () => {
   await withService(async (service, _store, runner) => {
     runner.state = "running";

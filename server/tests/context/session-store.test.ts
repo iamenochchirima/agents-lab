@@ -74,6 +74,42 @@ test("session store persists a transcript, active turn, and context snapshot", a
   });
 });
 
+test("session configuration conflicts include every context-affecting field", async () => {
+  await withStore(async (store) => {
+    const input = {
+      sessionId: "session-configuration-fields",
+      platform: "temporal",
+      variant: "baseline",
+      model: "fake/fake-success",
+      systemInstruction: "Answer directly.",
+      contextWindowTokens: 100,
+      reservedOutputTokens: 10,
+      safetyMarginTokens: 5,
+      compactionThresholdPercent: 20,
+      recentMessageGroups: 2,
+    } as const;
+    await store.create(input);
+    const changes = [
+      { platform: "restate" },
+      { variant: "other" },
+      { model: "fake/other" },
+      { systemInstruction: "Answer with detail." },
+      { contextWindowTokens: 200 },
+      { reservedOutputTokens: 11 },
+      { safetyMarginTokens: 6 },
+      { compactionThresholdPercent: 30 },
+      { recentMessageGroups: 3 },
+    ];
+
+    for (const change of changes) {
+      await assert.rejects(
+        () => store.create({ ...input, ...change }),
+        ContextSessionConflictError,
+      );
+    }
+  });
+});
+
 test("duplicate admission and settlement are idempotent, while concurrent turns are rejected", async () => {
   await withStore(async (store) => {
     const session = await store.create({
