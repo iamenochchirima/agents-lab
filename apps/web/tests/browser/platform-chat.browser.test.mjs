@@ -241,6 +241,75 @@ test("Restate Chat exposes context pressure and compaction evidence", async () =
   }
 });
 
+test("Restate Chat shows a bounded retry without mislabeling the run", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+  fixture.setMode("retrying");
+
+  try {
+    await navigate(browser.cdp, "/platforms/restate/chat");
+    await waitForText(browser.cdp, "Ready");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Retry this model request safely.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Retrying model request");
+    assert.match(await browser.cdp.evaluate('document.querySelector(".chat-run-details summary small")?.textContent?.trim() ?? ""'), /retrying/i);
+    await waitForText(browser.cdp, "Restate fixture completed.");
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-run-retrying") === null'), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Restate Chat reuses the admitted run after a browser refresh", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+  fixture.setMode("refresh");
+
+  try {
+    await navigate(browser.cdp, "/platforms/restate/chat");
+    await waitForText(browser.cdp, "Ready");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Continue after refresh.");
+    await clickButton(browser.cdp, "Send");
+    await waitForExpression(browser.cdp, 'new URLSearchParams(location.search).has("run")');
+    await browser.cdp.send("Page.reload", { ignoreCache: true });
+    await waitForText(browser.cdp, "Restate fixture completed.");
+    assert.equal(fixture.state.createRequests, 1, "refresh must not create a second Restate run");
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-message-user").length'), 1);
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-message-assistant").length'), 1);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Restate Chat reports cancellation without claiming a model result", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+  fixture.setMode("cancel");
+
+  try {
+    await navigate(browser.cdp, "/platforms/restate/chat");
+    await waitForText(browser.cdp, "Ready");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Cancel this Restate turn.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Stop");
+    await clickButton(browser.cdp, "Stop");
+    await waitForText(browser.cdp, "Cancelled");
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-message-assistant")?.textContent?.includes("Restate fixture completed.") ?? false'), false);
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".chat-message-status-cancelled") !== null'), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Platform Chat preserves a stale projection without fabricating a result", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -388,7 +457,15 @@ async function installFixture(cdp) {
       state.runReads += 1;
       const runReads = (state.runReadsById.get(runId) ?? 0) + 1;
       state.runReadsById.set(runId, runReads);
-      const status = request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel"
+      const status = request.platform === "restate"
+        ? state.mode === "recovery"
+          ? "reconciliation_required"
+          : state.mode === "cancel"
+            ? (state.cancelled ? "cancelled" : "running")
+            : state.mode === "retrying" || state.mode === "refresh"
+              ? (runReads <= 2 ? "running" : "completed")
+              : "completed"
+        : state.mode === "cancel"
         ? (state.cancelled ? "cancelled" : "running")
         : runReads === 1 ? "running" : "completed";
       await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode) });
@@ -404,7 +481,21 @@ async function installFixture(cdp) {
         return;
       }
       const runReads = state.runReadsById.get(runId) ?? 0;
-      const run = makeRun(request, request.platform === "restate" ? state.mode === "recovery" ? "reconciliation_required" : "completed" : state.mode === "cancel" && !state.cancelled ? "running" : state.mode === "cancel" ? "cancelled" : runReads > 1 ? "completed" : "running", runId, state.mode);
+      const run = makeRun(request, request.platform === "restate"
+        ? state.mode === "recovery"
+          ? "reconciliation_required"
+          : state.mode === "cancel" && !state.cancelled
+            ? "running"
+            : state.mode === "cancel"
+              ? "cancelled"
+              : (state.mode === "retrying" || state.mode === "refresh") && runReads <= 2
+                ? "running"
+                : "completed"
+        : state.mode === "cancel" && !state.cancelled
+          ? "running"
+          : state.mode === "cancel"
+            ? "cancelled"
+            : runReads > 1 ? "completed" : "running", runId, state.mode);
       await fulfill(cdp, event.requestId, { status: 200, body: { runId: run.runId, events: run.events, nextSequence: run.events.at(-1)?.recordedSequence ?? 0, hasMore: false, done: run.result !== null } });
       return;
     }
@@ -432,11 +523,14 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
   const compaction = platform === "restate" && mode === "compaction";
+  const retrying = platform === "restate" && mode === "retrying";
   const events = platform === "restate"
     ? status === "reconciliation_required"
       ? [event(runId, 1, "RunSubmissionOutcomeUnknown", platform), event(runId, 2, "RunReconciliationRequired", platform)]
       : compaction
         ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "ContextCompactionStarted", platform), event(runId, 3, "ContextCompacted", platform), event(runId, 4, "AgentCompleted", platform)]
+        : retrying
+          ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "ModelRetryScheduled", platform, { reason: "pre_dispatch" })]
         : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "AgentCompleted", platform)]
     : [
         event(runId, 1, "AgentStarted", platform),

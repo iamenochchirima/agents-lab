@@ -834,6 +834,15 @@
   margin: 0;
 }
 
+.chat-run-retrying {
+  align-items: center;
+  color: var(--accent-strong);
+  display: flex;
+  font-size: 0.72rem;
+  gap: 7px;
+  margin: 0;
+}
+
 .chat-message {
   display: grid;
   gap: 6px;
@@ -1850,6 +1859,11 @@
 }
 
 .run-status-running {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.run-status-retrying {
   background: var(--accent-soft);
   color: var(--accent-strong);
 }

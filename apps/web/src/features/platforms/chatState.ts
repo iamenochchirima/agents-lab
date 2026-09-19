@@ -94,6 +94,24 @@ export function runBelongsToPlatform(run: Pick<RunView, "manifest">, platformId:
   return run.manifest.platform === platformId;
 }
 
+/**
+ * A retry is a transient projection state, not a new public run status. It is
+ * derived from the last durable retry event so the UI can explain the pause
+ * between attempts without weakening the common runner contract.
+ */
+export function isRunRetrying(run: Pick<RunView, "status">, events: readonly RunEvent[]): boolean {
+  if (run.status !== "queued" && run.status !== "running") return false;
+  let lastRetryIndex = -1;
+  let lastProgressIndex = -1;
+  events.forEach((event, index) => {
+    if (event.kind === "ModelRetryScheduled") lastRetryIndex = index;
+    if (event.kind === "ModelRequested" || event.kind === "ModelCompleted" || event.kind === "ModelFailed") {
+      lastProgressIndex = index;
+    }
+  });
+  return lastRetryIndex > lastProgressIndex;
+}
+
 export function deduplicateMessages(messages: readonly ChatMessage[]): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
   for (const message of messages) byId.set(message.id, message);

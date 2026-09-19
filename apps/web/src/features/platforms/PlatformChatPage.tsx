@@ -27,7 +27,7 @@ import {
   type RunView,
 } from "./platformApi";
 import { ContextBudgetMeter } from "./RunStatusPanel";
-import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
+import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, isRunRetrying, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
 
 const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled", "reconciliation_required"]);
 const pendingTurnStoragePrefix = "agentlab.platform-chat.pending-turn.";
@@ -514,10 +514,12 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
   const native = run.executionReference?.platform === "restate" ? run.executionReference.native : null;
+  const retrying = isRunRetrying(run, events);
   return (
     <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "reconciliation_required"}>
-      <summary><span>Run details</span><small>{run.status.replaceAll("_", " ")}</small></summary>
+      <summary><span>Run details</span><small>{retrying ? "retrying" : run.status.replaceAll("_", " ")}</small></summary>
       <div className="chat-run-details-body">
+        {retrying && <p className="chat-run-retrying" role="status"><LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> Retrying model request…</p>}
         {error && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {error}</p>}
         {run.status === "reconciliation_required" && (
           <div className="chat-availability-error" role="alert">

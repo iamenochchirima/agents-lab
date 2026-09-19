@@ -1,6 +1,7 @@
 import { Ban, CheckCircle2, CircleAlert, Clock3, LoaderCircle, RotateCw, XCircle } from "lucide-react";
 
 import type { ContextProjection, RunEvent, RunStatus, RunView } from "./platformApi";
+import { isRunRetrying } from "./chatState";
 
 interface RunStatusPanelProps {
   readonly error: string | null;
@@ -35,17 +36,19 @@ export function RunStatusPanel(props: RunStatusPanelProps) {
   const StatusIcon = statusIcons[props.run.status];
   const canCancel = props.run.status === "created" || props.run.status === "queued" || props.run.status === "running";
   const result = props.run.result;
+  const retrying = isRunRetrying(props.run, props.events);
+  const statusLabel = retrying ? "Retrying" : statusLabels[props.run.status];
 
   return (
     <section aria-live="polite" className="run-status-panel">
       <header className="run-status-header">
         <div>
           <span className="eyebrow">Run</span>
-          <h2>{statusLabels[props.run.status]}</h2>
+          <h2>{statusLabel}</h2>
         </div>
-        <div className={`run-status-badge run-status-${props.run.status}`}>
+        <div className={`run-status-badge run-status-${retrying ? "retrying" : props.run.status}`}>
           <StatusIcon aria-hidden="true" className={props.run.status === "running" ? "is-spinning" : undefined} size={14} />
-          {statusLabels[props.run.status]}
+          {statusLabel}
         </div>
       </header>
 
