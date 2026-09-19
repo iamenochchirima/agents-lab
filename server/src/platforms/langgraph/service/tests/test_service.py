@@ -188,6 +188,63 @@ def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None
         assert prepared["payload"]["remainingPercent"] == 79
 
 
+def test_service_marks_provider_overflow_snapshot_as_context_recovery(tmp_path: Path) -> None:
+    context_root = tmp_path / "sessions"
+    snapshot_directory = context_root / "session-recovery" / "snapshots"
+    snapshot_directory.mkdir(parents=True)
+    snapshot_id = "snapshot-recovery-1"
+    (snapshot_directory / f"{snapshot_id}.json").write_text(
+        json.dumps({
+            "schemaVersion": 1,
+            "snapshotId": snapshot_id,
+            "sessionId": "session-recovery",
+            "sessionRevision": 3,
+            "compactionRevision": 1,
+            "model": "fake/fake-success",
+            "messages": [
+                {"role": "system", "content": "Answer directly."},
+                {"role": "user", "content": "Recover this turn."},
+            ],
+            "budget": {
+                "inputTokens": 10,
+                "remainingTokens": 8_000,
+                "remainingPercent": 80,
+                "quality": "estimated",
+                "pressure": "normal",
+            },
+            "compaction": {"trigger": "provider_overflow"},
+        }),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            ServiceConfig(
+                state_dir=tmp_path / "state",
+                context_root=context_root,
+                default_timeout_ms=500,
+            )
+        )
+    )
+    with client:
+        request = start_payload("run-service-recovery-context", "fake-success")
+        request["prompt"] = "Recover this turn."
+        request["context"] = {
+            "sessionId": "session-recovery",
+            "turnId": "turn-recovery",
+            "snapshotId": snapshot_id,
+        }
+        request["sessionId"] = "session-recovery"
+        request["threadId"] = thread_id_for_session("session-recovery")
+        started = client.post("/v1/runs", json=request)
+        assert started.status_code == 202
+        inspection = wait_for_terminal(client, "langgraph:run-service-recovery-context")
+
+        assert inspection["status"] == "completed"
+        prepared = next(event for event in inspection["events"] if event["kind"] == "ContextRecoveryPrepared")
+        assert prepared["payload"]["snapshotId"] == snapshot_id
+        assert prepared["payload"]["compacted"] is True
+
+
 def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         first = client.post("/v1/runs", json=start_payload("run-idempotent"))

@@ -97,6 +97,23 @@ def test_slow_success_fixture_waits_without_becoming_a_timeout() -> None:
     assert any(kind == "ModelRequested" for kind, _ in events)
 
 
+def test_context_overflow_fixture_is_explicit() -> None:
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-context-overflow", api_key=None, timeout_ms=500),
+            lambda _kind, _payload: None,
+            lambda: False,
+            "run-context-overflow-test",
+            1,
+            checkpointer,
+        )
+        with pytest.raises(ContextOverflowError, match="context is too large"):
+            graph.invoke(
+                {"prompt": "overflow", "system_instruction": "answer", "output": "", "attempt_count": 0},
+                {"configurable": {"thread_id": "thread-context-overflow-test"}, "run_id": "run-context-overflow-test"},
+            )
+
+
 def test_tool_turn_uses_a_real_tool_node_and_returns_the_tool_result() -> None:
     events: list[tuple[str, dict]] = []
     with SqliteSaver.from_conn_string(":memory:") as checkpointer:

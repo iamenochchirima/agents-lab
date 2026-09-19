@@ -304,6 +304,10 @@ def complete_fake(
         return ModelResponse(f"Fake response after retry: {prompt}", [], empty_usage())
     if model == "fake-pre-dispatch-failure":
         raise PreDispatchError("The deterministic model failed before dispatch.")
+    if model == "fake-context-overflow" and "overflow" in prompt.lower():
+        raise ContextOverflowError("The deterministic provider rejected the request because the context is too large.")
+    if model == "fake-context-overflow":
+        return ModelResponse(f"Fake response: {prompt}", [], empty_usage())
     if model == "fake-provider-failure":
         raise ProviderError("The deterministic model returned a provider failure.")
     if model == "fake-ambiguous":

@@ -47,6 +47,11 @@ identity. The original provider event and the recovery event stream use separate
 source names, so both remain ordered in one Lab evidence file. A second overflow is
 retained as a provider failure.
 
+The recovery snapshot carries `compaction.trigger = "provider_overflow"`; the Python
+service reports that preparation as `ContextRecoveryPrepared`. Ordinary preflight or
+non-compacted snapshots remain `ContextPrepared`. This keeps the shared context
+decision visible without copying the full snapshot into the native event payload.
+
 ## Persistence and tool boundary
 
 LangGraph checkpointers provide thread-scoped short-term state. This baseline does not

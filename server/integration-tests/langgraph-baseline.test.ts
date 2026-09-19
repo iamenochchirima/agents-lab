@@ -126,6 +126,10 @@ test("real LangGraph service completes, cancels, restarts, and reconciles a base
 
     await assertLabServerReplacement(service.url, contextRoot);
     await assertBothProcessReplacement();
+    await assertNativeTimeoutOutcome(service.url, contextRoot);
+    await assertNativeContextOverflowRecovery(service.url, contextRoot);
+    await assertNativeAmbiguousOutcome(service.url, contextRoot);
+    await assertNativeStaleProjection();
   } finally {
     await service?.stop();
     await rm(stateDirectory, { recursive: true, force: true });
@@ -426,6 +430,141 @@ async function assertBothProcessReplacement(): Promise<void> {
     }
     assert.equal(recovered.status, "reconciliation_required", JSON.stringify(recovered.result));
     assert.equal(recovered.result?.error?.failureKind, "reconciliation");
+  } finally {
+    await app?.close();
+    await nativeService?.stop();
+    await rm(stateDirectory, { recursive: true, force: true });
+    await rm(runRoot, { recursive: true, force: true });
+  }
+}
+
+async function assertNativeContextOverflowRecovery(serviceUrl: string, contextRoot: string): Promise<void> {
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-overflow-"));
+  const app = await buildIntegrationApp(runRoot, serviceUrl, contextRoot);
+  try {
+    const seedResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Seed the context before recovery." },
+        model: { provider: "fake", model: "fake-context-overflow", contextWindowTokens: 8_192 },
+        sessionId: "session-native-context-overflow",
+        clientTurnId: "client-native-context-overflow-seed",
+      },
+    });
+    assert.equal(seedResponse.statusCode, 202, seedResponse.body);
+    let seedRun = seedResponse.json() as RunView;
+    for (let attempt = 0; attempt < 100 && !seedRun.result; attempt += 1) {
+      await delay(25);
+      seedRun = await getRunFromApp(app, seedRun.runId);
+    }
+    assert.equal(seedRun.status, "completed", JSON.stringify(seedRun.result));
+
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Trigger one bounded context overflow recovery." },
+        model: { provider: "fake", model: "fake-context-overflow", contextWindowTokens: 8_192 },
+        sessionId: "session-native-context-overflow",
+        clientTurnId: "client-native-context-overflow",
+      },
+    });
+    assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+    let run = createdResponse.json() as RunView;
+    for (let attempt = 0; attempt < 100 && !run.result; attempt += 1) {
+      await delay(25);
+      run = await getRunFromApp(app, run.runId);
+    }
+    assert.equal(run.status, "failed", JSON.stringify(run.result));
+    assert.equal(run.result?.error?.code, "LANGGRAPH_CONTEXT_OVERFLOW");
+    assert.equal(run.events.filter((event) => event.kind === "ContextRecoveryRequested").length, 1, JSON.stringify({ status: run.status, result: run.result, events: run.events.map((event) => event.kind) }));
+    assert.equal(run.events.filter((event) => event.kind === "ContextRecoveryDispatched").length, 1, JSON.stringify({ result: run.result, events: run.events.map((event) => ({ kind: event.kind, source: event.source, payload: event.payload })) }));
+    assert.ok(run.events.some((event) => event.kind === "ContextRecoveryPrepared"));
+    assert.ok(run.events.some((event) => event.source === "langgraph-context-recovery"));
+  } finally {
+    await app.close();
+    await rm(runRoot, { recursive: true, force: true });
+  }
+}
+
+async function assertNativeTimeoutOutcome(serviceUrl: string, contextRoot: string): Promise<void> {
+  const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl, contextRoot, timeoutMs: 5_000 });
+  const reference = await runner.start(manifest(runner, "fake-timeout", "integration-timeout"));
+  const result = await terminalResult(runner, reference);
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "LANGGRAPH_MODEL_TIMEOUT");
+  assert.equal(result.error?.failureKind, "timeout");
+  assert.equal(result.attemptCount, 1);
+}
+
+async function assertNativeAmbiguousOutcome(serviceUrl: string, contextRoot: string): Promise<void> {
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-ambiguous-"));
+  const app = await buildIntegrationApp(runRoot, serviceUrl, contextRoot);
+  try {
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Simulate an ambiguous provider acknowledgement." },
+        model: { provider: "fake", model: "fake-ambiguous", contextWindowTokens: 16_384 },
+        sessionId: "session-native-ambiguous",
+        clientTurnId: "client-native-ambiguous",
+      },
+    });
+    assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+    let run = createdResponse.json() as RunView;
+    for (let attempt = 0; attempt < 100 && !run.result; attempt += 1) {
+      await delay(25);
+      run = await getRunFromApp(app, run.runId);
+    }
+    assert.equal(run.status, "reconciliation_required");
+    assert.equal(run.result?.error?.failureKind, "reconciliation");
+    assert.equal(run.result?.error?.code, "LANGGRAPH_OUTCOME_UNKNOWN");
+  } finally {
+    await app.close();
+    await rm(runRoot, { recursive: true, force: true });
+  }
+}
+
+async function assertNativeStaleProjection(): Promise<void> {
+  const stateDirectory = await mkdtemp(join(tmpdir(), "agentlab-langgraph-stale-"));
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-stale-runs-"));
+  const contextRoot = join(stateDirectory, "sessions");
+  let nativeService: ManagedService | null = null;
+  let app: Awaited<ReturnType<typeof buildIntegrationApp>> | null = null;
+  try {
+    nativeService = await startService(stateDirectory);
+    app = await buildIntegrationApp(runRoot, nativeService.url, contextRoot);
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Show the last known projection while the service is unavailable." },
+        model: { provider: "fake", model: "fake-slow-success", contextWindowTokens: 16_384 },
+        sessionId: "session-native-stale",
+        clientTurnId: "client-native-stale",
+      },
+    });
+    assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+    const created = createdResponse.json() as RunView;
+    await waitForNativeStatus(nativeService.url, `langgraph:${created.runId}`, "running");
+    await nativeService.stop("SIGKILL");
+    nativeService = null;
+
+    const stale = await getRunFromApp(app, created.runId);
+    assert.equal(stale.projection.state, "stale");
+    assert.equal(stale.result, null);
+    assert.match(stale.projection.reason ?? "", /temporarily unavailable/i);
   } finally {
     await app?.close();
     await nativeService?.stop();

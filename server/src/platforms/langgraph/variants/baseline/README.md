@@ -27,7 +27,9 @@ Supported deterministic models:
 - `fake-timeout`
 - `fake-cancel`
 - `fake-delay`
+- `fake-slow-success`
 - `fake-context`
+- `fake-context-overflow`
 - `fake-tool-call`
 
 The `openrouter` provider uses `OPENROUTER_API_KEY` inside the Python service. The

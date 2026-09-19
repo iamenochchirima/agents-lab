@@ -592,22 +592,31 @@ def load_context_snapshot(
         raise ConfigurationError("The shared LangGraph context snapshot does not contain the admitted user turn.")
     budget = snapshot.get("budget") if isinstance(snapshot.get("budget"), dict) else {}
     compaction = snapshot.get("compaction")
-    emit("ContextPrepared", {
-        "sessionId": session_id,
-        "turnId": request.context.turn_id,
-        "contextSource": "shared-snapshot",
-        "messageCount": len(messages),
-        "snapshotId": snapshot_id,
-        "sessionRevision": snapshot.get("sessionRevision"),
-        "compactionRevision": snapshot.get("compactionRevision"),
-        "inputTokens": budget.get("inputTokens"),
-        "remainingTokens": budget.get("remainingTokens"),
-        "remainingPercent": budget.get("remainingPercent"),
-        "pressure": budget.get("pressure"),
-        "quality": budget.get("quality", "unknown"),
-        "compacted": compaction is not None,
-    })
+    emit(
+        "ContextRecoveryPrepared" if is_provider_overflow_compaction(compaction) else "ContextPrepared",
+        {
+            "sessionId": session_id,
+            "turnId": request.context.turn_id,
+            "contextSource": "shared-snapshot",
+            "messageCount": len(messages),
+            "snapshotId": snapshot_id,
+            "sessionRevision": snapshot.get("sessionRevision"),
+            "compactionRevision": snapshot.get("compactionRevision"),
+            "inputTokens": budget.get("inputTokens"),
+            "remainingTokens": budget.get("remainingTokens"),
+            "remainingPercent": budget.get("remainingPercent"),
+            "pressure": budget.get("pressure"),
+            "quality": budget.get("quality", "unknown"),
+            "compacted": compaction is not None,
+        },
+    )
     return messages
+
+
+def is_provider_overflow_compaction(value: Any) -> bool:
+    """Identify the one recovery snapshot that follows a provider rejection."""
+
+    return isinstance(value, dict) and value.get("trigger") == "provider_overflow"
 
 
 def native_context_message(message: Any, line_number: int) -> dict[str, Any]:

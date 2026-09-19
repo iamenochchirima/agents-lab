@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:29:41+02:00
+**Last updated:** 2026-09-20T01:41:51+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -601,8 +601,8 @@ Tests must exercise real boundaries, not only helper functions.
 - [x] Replace the Lab server during a delayed turn while the Python service remains up.
 - [x] Replace both processes and verify the documented outcome.
 - [x] Exercise duplicate admission, concurrent session conflict, and cancellation.
-- [ ] Exercise stale projection, timeout-after-dispatch, and context-overflow fixtures
-  through the native LangGraph process boundary.
+- [x] Exercise stale projection, timeout-after-dispatch, ambiguous provider outcome,
+  and context-overflow fixtures through the native LangGraph process boundary.
 - [x] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
   record model, usage, status, and evidence paths without recording the key.
 - [ ] Docker-backed profiles, if any remain in the repository, are explicitly skipped
@@ -852,6 +852,19 @@ what was observed, the exact validation command, and what remains.
   `node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs` (`4 skipped`),
   and `git diff --check`. Native stale, timeout-after-dispatch, context-overflow, and
   browser process-replacement coverage remain open.
+
+- **2026-09-20T01:41:51+02:00 — native failure matrix completed.** Added a deterministic
+  `fake-context-overflow` fixture, made the Python service label a snapshot with the
+  explicit `provider_overflow` compaction trigger as `ContextRecoveryPrepared`, and
+  added a service regression test for that event contract. The real no-Docker process
+  acceptance now verifies timeout-after-dispatch, one bounded context recovery followed
+  by a terminal second overflow, an ambiguous provider acknowledgement, and stale
+  projection after the native service is stopped. Validation passed: LangGraph Python
+  service/graph tests (`31 passed`), and
+  `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server
+  exec tsx --test integration-tests/langgraph-baseline.test.ts` (`1 passed`, `1 skipped`).
+  Browser process replacement, the full browser failure-state matrix, and remaining
+  documentation/release gates remain open.
 
 ## Commit discipline
 
