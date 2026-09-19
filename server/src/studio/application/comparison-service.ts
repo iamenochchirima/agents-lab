@@ -441,6 +441,9 @@ function manifestStrategyImplementation(
   if (component === "context-management") return contextRegistry.get(strategy.id);
   const implementation = memoryPolicies().find((policy) => policy.adapterId === strategy.id);
   if (!implementation) throw new InvalidStudioRequestError(`Memory policy is unavailable: ${strategy.id}.`);
+  if (Object.keys(strategy.parameters).length > 0) {
+    throw new InvalidStudioRequestError(`Memory policy ${strategy.id} does not accept parameters in this slice.`);
+  }
   return { version: implementation.adapterVersion };
 }
 

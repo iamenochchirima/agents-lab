@@ -202,3 +202,19 @@ test("Memory store turns an unchanged keyed fact into a NOOP", async () => {
   assert.deepEqual(result.writtenRecordIds, []);
   assert.equal((await repository.load()).records.length, 1);
 });
+
+test("Memory store rejects cancelled reads and writes before mutating state", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const store = new PolicyMemoryStore(new EpisodicLexicalPolicy(), repository, limits);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    () => store.read({ task: "support language", signal: controller.signal }),
+    (error: unknown) => error instanceof Error && error.name === "AbortError",
+  );
+  await assert.rejects(
+    () => store.write({ task: "support language", turnId: "cancelled-turn", output: "A note", signal: controller.signal }),
+    (error: unknown) => error instanceof Error && error.name === "AbortError",
+  );
+  assert.deepEqual((await repository.load()).records, []);
+});

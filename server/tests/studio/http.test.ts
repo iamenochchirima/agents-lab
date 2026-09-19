@@ -316,6 +316,31 @@ test("Studio rejects unsupported strategies and does not create a comparison", a
   });
 });
 
+test("Studio rejects parameters that a Memory policy does not declare", async () => {
+  await withStudioApp(async (app, studioRoot) => {
+    const request = memoryRequest("memory-invalid-parameters");
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: {
+        ...request,
+        experiment: {
+          ...request.experiment,
+          subject: {
+            ...request.experiment.subject,
+            strategies: [
+              { id: "no-memory", version: "1", parameters: { maxRecords: "1" } },
+              request.experiment.subject.strategies[1],
+            ],
+          },
+        },
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(await readDirectoryOrEmpty(studioRoot), []);
+  });
+});
+
 function comparisonRequest(idempotencyKey = "context-comparison-1", includeRelevance = false): StudioComparisonRequest {
   const strategies: StudioComparisonRequest["experiment"]["subject"]["strategies"][number][] = [
     { id: "full-history", version: "1", parameters: {} },
