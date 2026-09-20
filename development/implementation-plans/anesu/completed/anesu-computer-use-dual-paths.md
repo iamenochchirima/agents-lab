@@ -1036,19 +1036,37 @@ Before moving this plan to `completed/`, verify:
 
 ## Completion record
 
-Complete this section only when archiving the plan.
-
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-20T15:00:24+02:00`
+**Commits:** `d08ada8`, `837f0a7`, `2382ddd`, `cc7f42`, `3ef9209`, `0b8e61d`
 
 ### Validation
 
-- `[command]` — `[passed/failed and concise result]`
-- `[manual check]` — `[what was observed]`
+- `pnpm --filter @agent-harness-lab/anesu typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/anesu test` — passed, 500 tests.
+- `pnpm --filter @agent-harness-lab/anesu coverage` — passed, 89.59% line,
+  76.57% branch, and 86.08% function coverage.
+- `git diff --check` — passed for the scoped implementation and plan changes.
+- Live TypeSafe fixture — Jev selected the exact accessibility target; one `a`
+  approval dispatched it; fresh observation verified success after an uncertain CUA
+  acknowledgement; no retry was sent.
+- Live traditional fixture — the Dots vision route proposed a window-local click;
+  one `a` approval dispatched it; fresh observation verified success after an
+  uncertain CUA acknowledgement; no retry was sent.
+- Live compare fixture — traditional and Jev proposals were both recorded; their
+  target agreement allowed one primary approval and one traditional click; fresh
+  observation verified success; Jev remained shadow-only and sent no input.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- The stored NVIDIA free route remains subject to an upstream capacity error. The
+  successful traditional and compare checks used the live Dots free route with
+  temporary longer diagnostic deadlines; provider availability and visual grounding
+  quality remain model-dependent.
+- The shipped host slice requires Linux/X11, an isolated display, Xvfb or Xephyr,
+  `dbus-run-session`, Chrome, and an AT-SPI-capable window manager/application.
+- Arbitrary-application goal verification, local OCR/segmentation, richer artifact
+  layouts, and exhaustive production hardening remain in the gap register; this plan
+  intentionally closes the initial dual-path implementation slice only.
 
 ### Historical-scope note
 

@@ -12,7 +12,6 @@ order is recorded in the [Anesu follow-on queue](anesu-follow-on-queue.md).
 
 - [Core hardening and production foundation](active/anesu-core-hardening.md)
 - [Production-readiness gaps](active/anesu-production-readiness-gaps.md)
-- [Computer-use dual paths](active/anesu-computer-use-dual-paths.md)
 
 ## Completed plans
 
@@ -25,3 +24,4 @@ order is recorded in the [Anesu follow-on queue](anesu-follow-on-queue.md).
 - [Memory](completed/anesu-memory.md)
 - [Skills foundation](completed/anesu-skills-foundation.md)
 - [Context management](completed/anesu-context-management.md)
+- [Computer-use dual paths](completed/anesu-computer-use-dual-paths.md)

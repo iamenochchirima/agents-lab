@@ -112,9 +112,10 @@ provenance, and incident runbooks.
 
 ### Computer use: traditional and TypeSafe/Jev paths
 
-Status: **Planned next standalone Anesu capability after core hardening. Active plan.**
+Status: **Initial standalone dual-path slice complete. Later hardening remains in the
+production-readiness register.**
 
-Plan: [Anesu computer-use dual paths](active/anesu-computer-use-dual-paths.md)
+Plan: [Anesu computer-use dual paths](completed/anesu-computer-use-dual-paths.md)
 
 This single plan begins with a deliberately browser-only visible validation stage, then
 covers one real, explicitly selected graphical environment with two selectable decision
@@ -137,7 +138,8 @@ This must consume the standalone runtime. It must not create a second agent loop
 ## Implementation order
 
 1. Complete [core hardening and production foundation](active/anesu-core-hardening.md).
-2. Implement the [computer-use dual-path slice](active/anesu-computer-use-dual-paths.md).
+2. The initial [computer-use dual-path slice](completed/anesu-computer-use-dual-paths.md)
+   is complete; later hardening follows the production-readiness register.
 3. The first [Context Management](completed/anesu-context-management.md) slice is
    complete; its later maturity gaps remain in the production-readiness register.
 4. Extend the completed Skills foundation only through a new scoped active plan.
