@@ -1,16 +1,18 @@
 # Mastra agent runtime and durable workflows
 
 **Created:** `2026-09-20T11:34:37+02:00`<br>
-**Last updated:** `2026-09-20T12:14:23+02:00`<br>
+**Last updated:** `2026-09-20T14:08:45+02:00`<br>
 **Status:** Active<br>
 **Owner:** Primary platform implementation agent<br>
 **Platform:** `mastra`<br>
 **Variants:** `baseline` and `workflow`
 
-This is the next major platform implementation after the completed Restate and
-LangGraph execution waves. It expands the existing Mastra direct-agent baseline and
-adds one native Mastra workflow profile. It does not redesign the common server or
-implement Mastra Studio.
+This is the single end-to-end completion plan for the Mastra platform profile. The
+first implementation wave already added the native workflow, local persistence,
+suspend/resume support, server wiring, and Chat controls. This plan closes the
+remaining gap between that code and a complete, inspectable platform implementation.
+It does not start another platform, redesign the common server, or implement Mastra
+Studio. AWS Step Functions is parked separately and is not part of this work.
 
 ## Start here
 
@@ -117,6 +119,81 @@ The plan deliberately keeps two behaviours visible instead of collapsing them:
 This gives the Lab a useful comparison between a direct agent call and Mastra-native
 workflow state without pretending either profile is equivalent to Temporal or to a
 distributed production deployment.
+
+## Execution order
+
+This work is one implementation phase with five reviewable sections. The sections
+must be completed in order where they share contracts. Independent work may be
+delegated only after the contract and configuration checkpoint is committed.
+
+### Phase 1: baseline agent completion
+
+Finish the direct Mastra path around a registered Mastra instance. Confirm real model
+selection, native tool and usage events, shared context snapshots, compaction metadata,
+two-turn sessions, cancellation, and honest process-local recovery. Keep deterministic
+models only in tests.
+
+Exit condition: `mastra/baseline` completes through the actual server API with a real
+Mastra Agent, a deterministic test model, the shared calculator tool, context usage,
+and inspectable evidence.
+
+### Phase 2: native workflow durability
+
+Finish the `mastra/workflow` path as the no-Docker local durability profile. Verify
+typed workflow steps, native LibSQL snapshots, approval suspension, resume payload
+validation, duplicate admission, cancellation, and inspection after a fresh runner
+opens the same storage file.
+
+Exit condition: a suspended workflow can be inspected and resumed as the same native
+run after server replacement, without fabricating terminal success or creating a
+second execution.
+
+### Phase 3: recovery, evidence, and operations
+
+Make failure and inspection behaviour production-readable. Complete native evidence
+versioning and redaction, normalized event ordering, operation logs, storage failure
+diagnostics, retention guidance, and the workflow rollback switch. Preserve unknown
+provider outcomes as unknown.
+
+Exit condition: every terminal, suspended, cancelled, unavailable, and reconciliation
+required outcome has bounded normalized and native evidence with no secrets.
+
+### Phase 4: browser acceptance
+
+Connect the completed server behaviour to the existing shared Chat surface. Verify
+variant selection, model selection, context-window usage, tool events, suspension and
+resume, failure states, unavailable storage, Compare isolation, and responsive layout.
+Fix React key, polling, hydration, route, and duplicate-message errors found during
+the actual browser run.
+
+Exit condition: a contributor can run both Mastra variants from the browser, inspect
+the meaningful state, resume the deterministic approval flow, and see no known console
+or polling errors.
+
+### Phase 5: documentation, playground, and archive
+
+Add the runnable Mastra playground, update platform and architecture documentation,
+record exact validation and manual acceptance results, record the missing release
+process reference as a limitation, and move this plan to `completed/` only after every
+applicable checklist item is checked.
+
+Exit condition: a fresh contributor can reproduce the no-Docker flow from the docs and
+inspect the same evidence without relying on private paths or unstated setup.
+
+### Commit boundaries
+
+Create focused commits at the phase boundaries, with smaller commits inside a phase
+when the code and tests form a coherent review unit:
+
+1. contract, configuration, and baseline agent completion;
+2. workflow storage, suspension, resume, and native lifecycle;
+3. recovery, evidence, diagnostics, and operational controls;
+4. browser acceptance and shared UI fixes;
+5. playground, documentation, validation record, and plan archive.
+
+The primary agent owns common server integration, cross-platform compatibility,
+conflict resolution, final browser acceptance, and archiving. Platform-local baseline,
+workflow, and documentation work may be delegated using the ownership table below.
 
 ## Platform and variant identity
 
@@ -528,18 +605,18 @@ Evidence rules:
 - [x] Confirm the exact Lab-to-Mastra identity mapping and duplicate admission rules.
 - [x] Confirm the Lab context snapshot remains canonical and document why Mastra
       Memory is not enabled in this wave.
-- [ ] Commit the stable contract/configuration checkpoint before parallel work begins.
+- [x] Commit the stable contract/configuration checkpoint before parallel work begins.
 
 ### 2. Baseline agent completion
 
-- [ ] Register the agent through a Mastra instance so shared runtime services are
+- [x] Register the agent through a Mastra instance so shared runtime services are
       available without leaking Mastra objects into common code.
-- [ ] Preserve the real OpenRouter model selection and secret boundary.
-- [ ] Use `generate()`/`stream()` deliberately and map native step/tool/usage events.
-- [ ] Validate model output, usage, finish reason, tool calls, and empty/aborted output.
-- [ ] Preserve shared context snapshots, compaction revisions, and context meter data.
-- [ ] Exercise a two-turn conversation with the same session and separate run IDs.
-- [ ] Keep process replacement honest: completed evidence survives, in-flight direct
+- [x] Preserve the real OpenRouter model selection and secret boundary.
+- [x] Use `generate()`/`stream()` deliberately and map native step/tool/usage events.
+- [x] Validate model output, usage, finish reason, tool calls, and empty/aborted output.
+- [x] Preserve shared context snapshots, compaction revisions, and context meter data.
+- [x] Exercise a two-turn conversation with the same session and separate run IDs.
+- [x] Keep process replacement honest: completed evidence survives, in-flight direct
       work is not adopted.
 
 ### 3. Native workflow variant
@@ -567,11 +644,11 @@ Evidence rules:
 
 ### 5. Evidence and operations
 
-- [ ] Implement and version `mastra.native.v2` evidence validation/redaction.
-- [ ] Preserve native event summaries and normalized event ordering across inspection.
-- [ ] Record safe structured operation logs, retry counts, status, and durations.
-- [ ] Add storage retention and cleanup guidance for local workflow state and Lab runs.
-- [ ] Add a rollback switch that disables `mastra/workflow` without removing existing
+- [x] Implement and version `mastra.native.v2` evidence validation/redaction.
+- [x] Preserve native event summaries and normalized event ordering across inspection.
+- [x] Record safe structured operation logs, retry counts, status, and durations.
+- [x] Add storage retention and cleanup guidance for local workflow state and Lab runs.
+- [x] Add a rollback switch that disables `mastra/workflow` without removing existing
       evidence or breaking `mastra/baseline`.
 
 ### 6. Documentation and playground
@@ -590,44 +667,44 @@ Evidence rules:
 
 ### Unit tests
 
-- [ ] package/version/runtime probe and feature availability
-- [ ] baseline/workflow variant identity and registration
-- [ ] configuration validation, absolute storage path, limits, and redaction
-- [ ] model factory and OpenRouter request boundary
-- [ ] native agent stream/event mapping and usage normalization
-- [ ] typed tool input/output, abort signal, tool failure, timeout, and call limits
-- [ ] workflow step schemas, transitions, state, suspend payload, and resume payload
-- [ ] deterministic native IDs and duplicate start/resume semantics
+- [x] package/version/runtime probe and feature availability
+- [x] baseline/workflow variant identity and registration
+- [x] configuration validation, absolute storage path, limits, and redaction
+- [x] model factory and OpenRouter request boundary
+- [x] native agent stream/event mapping and usage normalization
+- [x] typed tool input/output, abort signal, tool failure, timeout, and call limits
+- [x] workflow step schemas, transitions, state, suspend payload, and resume payload
+- [x] deterministic native IDs and duplicate start/resume semantics
 - [ ] cancellation, timeout, provider failure, pre-dispatch retry, and post-dispatch unknown outcome
-- [ ] native evidence schema, safe paths, atomic writes, and terminal-result cardinality
+- [x] native evidence schema, safe paths, atomic writes, and terminal-result cardinality
 - [ ] event ordering, duplicate events, stale inspection, and bounded native state
 
 ### Integration tests
 
-- [ ] generic server API accepts `mastra/baseline` and `mastra/workflow`
-- [ ] unknown variants and unavailable storage are rejected clearly
-- [ ] real local Mastra baseline completes with deterministic model and calculator tool
-- [ ] real local workflow completes through native `createWorkflow` execution
-- [ ] workflow suspends, persists a snapshot, and exposes resumable native state
-- [ ] workflow resumes from the same native run after a fresh runner process opens the
+- [x] generic server API accepts `mastra/baseline` and `mastra/workflow`
+- [x] unknown variants and unavailable storage are rejected clearly
+- [x] real local Mastra baseline completes with deterministic model and calculator tool
+- [x] real local workflow completes through native `createWorkflow` execution
+- [x] workflow suspends, persists a snapshot, and exposes resumable native state
+- [x] workflow resumes from the same native run after a fresh runner process opens the
       same LibSQL file
-- [ ] duplicate start and duplicate resume do not create a second native execution
-- [ ] cancellation during baseline generation and workflow execution is honest
-- [ ] server replacement produces completion, resumable state, or reconciliation-required
+- [x] duplicate start and duplicate resume do not create a second native execution
+- [x] cancellation during baseline generation and workflow execution is honest
+- [x] server replacement produces completion, resumable state, or reconciliation-required
       according to observed native storage—not according to a fabricated assumption
-- [ ] normalized and native evidence survive after the runtime exits
+- [x] normalized and native evidence survive after the runtime exits
 - [ ] Compare runs remain independent
 
 ### Browser acceptance
 
 - [ ] Mastra baseline Chat sends two turns with a real selected model and shows context usage.
-- [ ] Mastra workflow Chat selects the workflow variant and displays native step/tool events.
+- [x] Mastra workflow Chat selects the workflow variant and displays native step/tool events.
 - [ ] Deterministic approval flow shows a compact resume action and returns to the same run.
 - [ ] Failed, cancelled, unavailable, and unknown states render without duplicate messages,
       blinking polling, or fake assistant output.
 - [ ] Model picker search displays the full selected model name and does not expose secrets.
-- [ ] Desktop, tablet, and mobile layouts remain usable without document overflow.
-- [ ] Browser console has no React key, hydration, fetch-loop, or route errors.
+- [x] Desktop, tablet, and mobile layouts remain usable without document overflow.
+- [x] Browser console has no React key, hydration, fetch-loop, or route errors.
 
 ### Manual acceptance
 
@@ -677,6 +754,32 @@ full conformance scope is larger than the native workflow slice.
 
 Implemented in this wave:
 
+- The baseline agent is registered through a platform-local `Mastra` instance while the
+  common runner sees only the Lab runner contract (`0c90413`).
+- Baseline and workflow inspection references expose versioned `mastra.native.v2` summaries
+  with native status, bounded event/model/tool counts, and context-prepared state
+  (`0c90413`).
+- The deterministic AI SDK v2 fixture exercises a real Mastra `Agent.stream()` output,
+  full-stream lifecycle, finish reason, and usage projection (`931feb1`).
+- Both Mastra variants now use the platform-local summary boundary for shared context
+  compaction. Fake profiles use a bounded deterministic summary, while configured
+  provider profiles use a one-step Mastra summary agent; oversized-session acceptance
+  is covered for the baseline and workflow HTTP paths (`6d97ed7`).
+- Invalid LibSQL construction and initialization paths remain server-safe: the workflow
+  runner reports unavailable storage through readiness and rejects start with an actionable
+  error instead of crashing the process (`f18b3fb`).
+- The server has an explicit Mastra workflow enable/disable switch and absolute storage
+  path configuration. Disabling the workflow leaves the baseline and retained evidence
+  intact (`3eb0eaf`).
+- Native Mastra references are checked against the bounded `mastra.native.v2` shape before
+  inspection crosses the runner boundary, with focused version/count/string tests
+  (`2626450`).
+- Workflow shutdown now awaits in-flight native work before closing LibSQL, and cancelled
+  native state is projected as a cancelled Lab result (`3e26f7b`).
+- Corrupt workflow storage is reported as unavailable through both the runner and HTTP
+  readiness boundary; local retention and cleanup guidance is documented (`f535a16`).
+- Mastra native evidence is visible in Chat, including safe evidence links and a workflow
+  variant acceptance path (`7ee382d`, `f25b925`).
 - `@mastra/libsql@1.23.0` is pinned alongside the existing `@mastra/core@1.66.0`.
 - The public Mastra workflow, LibSQL, suspend/resume, and native state APIs have an
   offline probe and deterministic runner tests.
@@ -700,14 +803,36 @@ Validation completed on `2026-09-20T12:14:23+02:00`:
 - `pnpm --filter @agent-harness-lab/web build` — passed; existing large-chunk warning remains.
 - `git diff --check` — passed.
 
+Additional validation completed on `2026-09-20T13:38:44+02:00`:
+
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/mastra/mastra-runner.test.ts tests/platforms/mastra/mastra-workflow-runner.test.ts` — 11 passed, 0 failed.
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
+- `git diff --check` — passed.
+
+Additional validation completed on `2026-09-20T13:56:22+02:00`:
+
+- Mastra baseline/workflow context, HTTP, evidence, and configuration tests — 21 passed, 0 failed.
+- Mastra native evidence tests — 2 passed, 0 failed.
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
+- `git diff --check` — passed.
+
+Additional validation completed on `2026-09-20T14:08:45+02:00`:
+
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — 19 passed, 0 failed;
+  this includes baseline Mastra native evidence and workflow-variant selection/details.
+- `pnpm --filter @agent-harness-lab/web run build` — passed; the existing large-chunk warning
+  remains.
+- `git diff --check` — passed.
+
 Still open before this plan can be archived:
 
-- Baseline registration through a Mastra instance and deliberate native streaming
-  coverage remain to be completed or explicitly scoped out.
-- Storage corruption/unavailable diagnostics, native evidence schema versioning,
-  retention/cleanup, and a workflow rollback switch remain open.
-- Compare independence, browser acceptance without console/polling errors, two-turn
-  context continuity, and real OpenRouter manual acceptance remain open.
+- The custom workflow approval form is still represented by the explicit `Approve and resume`
+  action; a free-form application dialog is not needed by the current boolean-only resume
+  contract, but this remains a deliberate UI limitation to revisit if the contract grows.
+- Compare independence, browser approval/resume, and browser rendering of every Mastra
+  failure/recovery state still need platform-specific acceptance.
+- Real OpenRouter manual acceptance remains open; automated tests use a provider-shaped
+  fetch fixture and never spend provider credits.
 - The Mastra workflow still uses a local single-process LibSQL profile; it does not
   claim distributed ownership or exactly-once provider/external-side-effect safety.
 - The requested playground and a release-process record remain open. The repository's
@@ -721,12 +846,12 @@ inventing a release policy.
 
 ### Documentation checklist
 
-- [ ] Mastra README and local guides match the commands, package versions, storage path,
+- [x] Mastra README and local guides match the commands, package versions, storage path,
       variant names, and failure behaviour.
-- [ ] Architecture/ownership documentation is updated if the optional resume seam or
+- [x] Architecture/ownership documentation is updated if the optional resume seam or
       storage boundary changes common server responsibilities.
-- [ ] UI/API documentation names only capabilities actually registered as runnable.
-- [ ] Official upstream links and access timestamps are retained in the platform docs.
+- [x] UI/API documentation names only capabilities actually registered as runnable.
+- [x] Official upstream links and access timestamps are retained in the platform docs.
 - [ ] Playground instructions are separate from tests, scenarios, experiments, and
       published product docs.
 
