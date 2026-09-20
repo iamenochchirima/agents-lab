@@ -106,6 +106,23 @@ start the local stack again with the same storage path, reload the run URL, and 
 it. This validates local snapshot inspection. It does not simulate a distributed
 production database or claim multi-process safety.
 
+## Retention and cleanup
+
+The workflow database and Lab run evidence are local development state. The server does
+not delete them automatically because retained snapshots and evidence are needed for
+restart and comparison exercises. After confirming that no run is needed, stop the
+local stack and remove only the configured files/directories:
+
+```bash
+rm -f lab/mastra/mastra-workflows.db
+rm -rf lab/runs lab/sessions
+```
+
+Use a separate temporary `AGENTLAB_MASTRA_STORAGE_PATH`, `AGENTLAB_RUN_ROOT`, and
+`AGENTLAB_CONTEXT_ROOT` for experiments that should be disposable. A corrupt or
+unreadable workflow file makes only `mastra/workflow` unavailable; the baseline does
+not fabricate a result from that failure.
+
 Required checks:
 
 ```bash

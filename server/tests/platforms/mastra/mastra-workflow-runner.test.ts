@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -42,6 +42,23 @@ test("Mastra workflow reports an invalid storage path as unavailable", async () 
     assert.equal(connectivity.reachable, false);
     assert.match(connectivity.message, /storage|database|connection/i);
     await assert.rejects(runner.start(manifestFor(runner, "Say hello.", "mastra-invalid-storage")), /storage|database|connection/i);
+  } finally {
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Mastra workflow reports a corrupt storage file as unavailable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-corrupt-storage-"));
+  const storagePath = join(root, "workflow.db");
+  await writeFile(storagePath, "not a sqlite database", "utf8");
+  const runner = new MastraWorkflowRunner({ storagePath });
+
+  try {
+    const connectivity = await runner.checkConnection();
+    assert.equal(connectivity.reachable, false);
+    assert.match(connectivity.message, /storage|database|connection|malformed/i);
+    await assert.rejects(runner.start(manifestFor(runner, "Say hello.", "mastra-corrupt-storage")), /storage|database|connection|malformed/i);
   } finally {
     await runner.close();
     await rm(root, { recursive: true, force: true });
