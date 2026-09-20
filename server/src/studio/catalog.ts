@@ -212,6 +212,15 @@ export const memoryMultiturnUpdateScenario: StudioScenarioCase = {
       expectedAnswer: "The support agent should use Spanish for this account.",
       messages: [],
     },
+    {
+      turnId: "turn-03-recall-after-reopen",
+      ordinal: 3,
+      task: "Confirm the current support language after reopening Memory.",
+      requiredMessageId: "memory-multiturn-update-no-transcript-source",
+      requiredMemoryRecordId: "memory-multiturn-update-language-r2",
+      expectedAnswer: "The support agent should use Spanish for this account.",
+      messages: [],
+    },
   ],
 };
 

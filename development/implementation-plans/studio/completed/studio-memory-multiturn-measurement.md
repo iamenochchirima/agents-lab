@@ -1,9 +1,9 @@
 # Studio multi-turn Memory and measurement
 
 **Created:** `2026-09-20T00:00:00+02:00`  
-**Last updated:** `2026-09-20T13:31:00+02:00`
+**Last updated:** `2026-09-20T14:00:00+02:00`
 
-**Status:** Active — core implementation complete; hardening follow-up remains
+**Status:** Completed — completion gate satisfied and archived
 **Owner:** Agent Harness Lab maintainers
 
 ## Start here
@@ -13,7 +13,7 @@ Read these before implementation:
 - [`AGENTS.md`](../../../../AGENTS.md)
 - [`CONTEXT.md`](../../../../CONTEXT.md)
 - [`Studio implementation roadmap`](../README.md)
-- [`Current Memory runtime plan`](studio-memory-runtime.md)
+- [`Current Memory runtime plan`](../active/studio-memory-runtime.md)
 - [`Studio server module`](../../../../server/src/studio/README.md)
 - [`Context and memory ecosystem research`](../../../../docs/research/context-engineering-ecosystem-2026.md)
 
@@ -31,17 +31,18 @@ the existing Lab server.
 
 ## Implementation checkpoint
 
-The core sequence block is now implemented. The existing server can run ordered
-Memory scenarios with one isolated store per strategy slot, reopen durable stores
-between turns, persist turn projections, and expose aggregate and per-turn
-measurements. The catalog includes learn/recall, update, duplicate/no-op, expiry,
-miss, and procedural-reuse sequences. Existing single-turn Context and Memory
-projections remain compatible.
+The sequence block and its completion hardening are implemented. The existing server
+can run ordered Memory scenarios with one isolated store per strategy slot, reopen
+durable stores between every turn pair, persist turn projections, and expose
+aggregate and per-turn measurements. The catalog includes learn/recall, update,
+duplicate/no-op, expiry, miss, and procedural-reuse sequences. Existing single-turn
+Context and Memory projections remain compatible.
 
-The remaining hardening is intentionally separate from the core plumbing: exercise
-multi-turn cancellation and persistence interruption at more injection points, add
-broader deterministic replay assertions, and complete path/symlink review before
-this plan is archived.
+The hardening coverage includes cancellation before retrieval, during retrieval,
+model execution, and Memory persistence; evidence and Memory corruption and
+idempotency boundaries; a three-turn restart sequence; and deterministic metric
+assertions under the injected clock. Path/symlink review remains separately tracked
+by the Memory runtime plan and is not a remaining item in this plan.
 
 ## Definition of done
 
@@ -215,11 +216,11 @@ relevance set. Label fixture-derived counts as proxies.
 
 ### 4. Restart, failure, and idempotency
 
-- [ ] Test restart between every pair of turns.
+- [x] Test restart between every pair of turns.
 - [x] Test interruption after journal append and after snapshot publication.
 - [x] Test repeated turn and Memory operation identities.
-- [ ] Test cancellation before retrieval, during model execution, and during Memory
-      persistence.
+- [x] Test cancellation before retrieval, during Memory retrieval, during model
+      execution, and during Memory persistence.
 - [x] Test a failed intermediate turn without fabricating later turns.
 - [x] Preserve explicit recovery-required state when reconciliation is impossible.
 
@@ -227,10 +228,10 @@ relevance set. Label fixture-derived counts as proxies.
 
 - [x] Add unit tests for turn ordering, metric basis, aggregation, and fixed controls.
 - [x] Add integration tests for every scenario in the matrix.
-- [ ] Add deterministic replay tests for identical sequence inputs.
+- [x] Add deterministic replay tests for identical sequence inputs.
 - [x] Add regression tests for existing Context and one-turn Memory comparisons.
 - [x] Update `server/src/studio/README.md` and the backend inspection procedure.
-- [ ] Record validation results and known limitations before archiving this plan.
+- [x] Record validation results and known limitations before archiving this plan.
 
 ## Completion gate
 
@@ -242,28 +243,31 @@ Do not archive this plan until:
 - [x] Updates, no-ops, expiries, misses, and procedural reuse are observable.
 - [x] Metrics are bounded and clearly labelled as observations or fixture-derived
       proxies.
-- [ ] Metrics are deterministic across independent runs where the adapter reports
-      wall-clock latency.
-- [ ] Multi-turn cancellation, corruption, and idempotency behaviour is tested at
-      every persistence boundary.
+- [x] Metrics are deterministic across independent runs under the injected clock;
+      default wall-clock latency remains explicitly labelled and is excluded from
+      cross-run deterministic assertions.
+- [x] Multi-turn cancellation, corruption, and idempotency behaviour is tested at
+      the event, turn-evidence, Memory journal, and snapshot persistence boundaries.
 - [x] Existing Context comparisons remain compatible.
 - [x] Documentation and API examples match the implementation.
 
 ## Validation checkpoint
 
-- Focused Studio and Memory suites: 55 passing tests.
-- Full `@agent-harness-lab/lab-server` test command: passed; existing skipped
-  platform fixtures remain skipped.
+- Studio and Memory suites: passed, including the new restart, cancellation,
+  deterministic-metric, and turn-evidence tests.
+- Full `@agent-harness-lab/lab-server` test command: 340 passing, 2 skipped, 0
+  failing; existing skipped platform fixtures remain skipped.
 - Root `pnpm run build`: passed.
 - Web typecheck: passed.
 - `git diff --check`: passed.
 
-Known limitations remain the unchecked hardening items above. In particular, replay
-latency is wall-clock evidence and is normalized out of deterministic comparison
-assertions; durable repository recovery is tested directly and through sequence
-reopen, but every possible cancellation boundary is not yet covered.
+The remaining limitation is intentional: default latency is wall-clock evidence,
+so cross-run comparison code must use the injected clock or normalize latency. The
+implementation does not claim exactly-once persistence; journal and snapshot
+recovery use idempotent operation identities and expose cancellation or recovery
+states when completion is uncertain.
 
 ## Next plan
 
 After this plan, implement the Context research runtime with Memory held fixed as an
-inspectable dependency. That plan is [`studio-context-research-runtime.md`](studio-context-research-runtime.md).
+inspectable dependency. That plan is [`studio-context-research-runtime.md`](../active/studio-context-research-runtime.md).

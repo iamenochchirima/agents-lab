@@ -388,6 +388,12 @@ test("Studio exposes the multi-turn Memory scenario matrix", async () => {
 
       if (memoryCase.experimentId === "compare-memory-multiturn-updates") {
         assert.deepEqual(comparison.trials[1].turns[1].memory.retrievedRecordIds, ["memory-multiturn-update-language-r2"]);
+        assert.deepEqual(comparison.trials[1].turns[2].memory.retrievedRecordIds, ["memory-multiturn-update-language-r2"]);
+        assert.equal(
+          comparison.events.filter((event: { kind: string; payload?: { trialId?: string } }) =>
+            event.kind === "MemoryStoreReopened" && event.payload?.trialId === comparison.trials[1].manifest.trialId).length,
+          2,
+        );
       }
       if (memoryCase.experimentId === "compare-memory-multiturn-deduplication") {
         assert.equal(comparison.trials[1].turns[1].memory.decisions.some((decision: { operation: string }) => decision.operation === "noop"), true);

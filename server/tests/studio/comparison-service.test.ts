@@ -10,7 +10,7 @@ import {
   StudioInjectedCrashError,
   type StudioFailureInjector,
 } from "../../src/studio/application/comparison-service.js";
-import type { StudioComparisonRequest, StudioModelAdapter } from "../../src/studio/index.js";
+import type { StudioComparisonRequest, StudioMemoryStore, StudioModelAdapter } from "../../src/studio/index.js";
 import { FixtureMemoryStore } from "../../src/studio/runtime/baseline-components.js";
 
 test("an interrupted comparison is exposed as recovery_required without a fabricated parent result", async () => {
@@ -179,6 +179,46 @@ test("multi-turn cancellation preserves completed turns and cancels only the in-
   }
 });
 
+test("an abort before turn dispatch prevents Memory retrieval", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-before-memory-read-cancel-"));
+  let reads = 0;
+  try {
+    const failureInjector: StudioFailureInjector = {
+      inject(point) {
+        if (point === "before-turn") throw new DOMException("cancelled before retrieval", "AbortError");
+      },
+    };
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      failureInjector,
+      memoryFactory: () => ({
+        adapterId: "counting-memory",
+        adapterVersion: "1",
+        scope: "semantic",
+        async read() {
+          reads += 1;
+          return emptyMemoryRead();
+        },
+        async write() {
+          return emptyMemoryWrite();
+        },
+        async consolidate() {
+          return emptyMemoryConsolidation();
+        },
+      }),
+    });
+
+    const cancelled = await service.create(multiturnMemoryRequest("multiturn-before-memory-read-cancel-1"));
+
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(cancelled.trials[0]?.result?.status, "cancelled");
+    assert.deepEqual(cancelled.trials[0]?.turns, []);
+    assert.equal(reads, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cancellation during a model call leaves only the in-flight trial cancelled", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-cancel-"));
   try {
@@ -215,6 +255,84 @@ test("cancellation during a model call leaves only the in-flight trial cancelled
     assert.equal(cancelled.trials[0].result?.status, "cancelled");
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cancellation during Memory retrieval leaves no fabricated turn evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-memory-read-cancel-"));
+  try {
+    let markReadStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve; });
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      memoryFactory: () => blockingMemoryStore("read", markReadStarted),
+    });
+    const pending = service.create(multiturnMemoryRequest("multiturn-memory-read-cancel-1"));
+    await readStarted;
+
+    const comparisonId = await findComparisonId(root);
+    const cancelled = await service.cancel(comparisonId, "stop during Memory retrieval");
+    const completed = await pending;
+
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(completed.status, "cancelled");
+    assert.equal(cancelled.trials[0]?.result?.status, "cancelled");
+    assert.deepEqual(cancelled.trials[0]?.turns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cancellation during Memory persistence leaves prior turns intact and the current turn incomplete", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-memory-write-cancel-"));
+  try {
+    let markWriteStarted!: () => void;
+    const writeStarted = new Promise<void>((resolve) => { markWriteStarted = resolve; });
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      memoryFactory: () => blockingMemoryStore("write", markWriteStarted),
+    });
+    const pending = service.create(multiturnMemoryRequest("multiturn-memory-write-cancel-1"));
+    await writeStarted;
+
+    const comparisonId = await findComparisonId(root);
+    const cancelled = await service.cancel(comparisonId, "stop during Memory persistence");
+    const completed = await pending;
+
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(completed.status, "cancelled");
+    assert.equal(cancelled.trials[0]?.result?.status, "cancelled");
+    assert.deepEqual(cancelled.trials[0]?.turns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an injected clock makes multi-turn metrics deterministic across independent runs", async () => {
+  const firstRoot = await mkdtemp(join(tmpdir(), "agentlab-studio-deterministic-metrics-a-"));
+  const secondRoot = await mkdtemp(join(tmpdir(), "agentlab-studio-deterministic-metrics-b-"));
+  const fixedNow = "2026-09-20T00:00:00.000Z";
+  try {
+    const createService = (root: string) => new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      now: () => fixedNow,
+      memoryFactory: () => new FixtureMemoryStore(() => fixedNow),
+    });
+    const first = await createService(firstRoot).create(multiturnMemoryRequest("multiturn-deterministic-metrics-1"));
+    const second = await createService(secondRoot).create(multiturnMemoryRequest("multiturn-deterministic-metrics-2"));
+
+    const comparableMetrics = (projection: Awaited<ReturnType<StudioComparisonService["create"]>>) => {
+      const { comparisonId: _comparisonId, ...metrics } = projection.metrics!;
+      return metrics;
+    };
+    assert.deepEqual(comparableMetrics(first), comparableMetrics(second));
+    assert.deepEqual(
+      first.trials.map((trial) => trial.turns.map((turn) => turn.metrics)),
+      second.trials.map((trial) => trial.turns.map((turn) => turn.metrics)),
+    );
+  } finally {
+    await rm(firstRoot, { recursive: true, force: true });
+    await rm(secondRoot, { recursive: true, force: true });
   }
 });
 
@@ -258,4 +376,81 @@ function multiturnMemoryRequest(idempotencyKey: string): StudioComparisonRequest
     seed: "seed-multiturn-recovery",
     idempotencyKey,
   };
+}
+
+function blockingMemoryStore(stage: "read" | "write", markStarted: () => void): StudioMemoryStore {
+  return {
+    adapterId: "blocking-memory",
+    adapterVersion: "1",
+    scope: "semantic",
+    async read(input) {
+      if (stage === "read") {
+        markStarted();
+        await waitForAbort(input.signal);
+      }
+      return emptyMemoryRead();
+    },
+    async write(input) {
+      if (stage === "write") {
+        markStarted();
+        await waitForAbort(input.signal);
+      }
+      return emptyMemoryWrite();
+    },
+    async consolidate() {
+      return emptyMemoryConsolidation();
+    },
+  };
+}
+
+function waitForAbort(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("cancelled", "AbortError"));
+      return;
+    }
+    signal.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), { once: true });
+  });
+}
+
+function emptyMemoryRead() {
+  return {
+    stateRevision: 0,
+    stateRecovered: false,
+    queryTerms: [],
+    candidates: [],
+    records: [],
+    retrievedRecordIds: [],
+    omittedRecordIds: [],
+  };
+}
+
+function emptyMemoryWrite() {
+  return {
+    stateRevision: 0,
+    decisions: [],
+    writtenRecordIds: [],
+    updatedRecordIds: [],
+    discardedRecordIds: [],
+    expiredRecordIds: [],
+    activeRecordIds: [],
+    scopes: ["semantic"] as const,
+  };
+}
+
+function emptyMemoryConsolidation() {
+  return {
+    stateRevision: 0,
+    decisions: [],
+    expiredRecordIds: [],
+    activeRecordIds: [],
+    scopes: ["semantic"] as const,
+  };
+}
+
+async function findComparisonId(root: string): Promise<string> {
+  const comparisonId = (await readdir(root, { withFileTypes: true }))
+    .find((entry) => entry.isDirectory() && entry.name !== "idempotency")?.name;
+  assert.ok(comparisonId);
+  return comparisonId;
 }

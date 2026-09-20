@@ -35,7 +35,6 @@ be implemented now.
 ## Active plans
 
 - [Studio Memory runtime](active/studio-memory-runtime.md)
-- [Studio multi-turn Memory and measurement](active/studio-memory-multiturn-measurement.md)
 - [Studio Context research runtime](active/studio-context-research-runtime.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
 - [Studio backend runtime foundation](active/studio-backend.md)
@@ -43,3 +42,4 @@ be implemented now.
 ## Completed plans
 
 - [Studio foundation kernel](completed/studio-runtime-kernel.md)
+- [Studio multi-turn Memory and measurement](completed/studio-memory-multiturn-measurement.md)
