@@ -318,6 +318,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
             record, idempotent = await request.app.state.service.start_run(body)
         except RunConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        runtime = request.app.state.service.health()
         return StartRunResponse(
             execution_id=record["execution_id"],
             run_id=record["run_id"],
@@ -325,6 +326,9 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
             graph=record["graph"],
             status=record["status"],
             idempotent=not idempotent,
+            service_version=runtime.service_version,
+            langgraph_version=runtime.langgraph_version,
+            python_version=runtime.python_version,
         )
 
     @app.get("/v1/runs/{execution_id}", response_model=RunInspection)

@@ -194,6 +194,11 @@ class StartRunResponse(ProtocolModel):
     graph: Literal["baseline"]
     status: PlatformStatus
     idempotent: bool
+    # Runtime identity is retained in the native execution reference so an
+    # evidence record can be interpreted after the local environment changes.
+    service_version: str | None = None
+    langgraph_version: str | None = None
+    python_version: str | None = None
 
 
 class CancelRunRequest(ProtocolModel):

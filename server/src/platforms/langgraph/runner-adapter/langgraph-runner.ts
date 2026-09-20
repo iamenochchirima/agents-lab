@@ -325,6 +325,9 @@ interface LangGraphExecutionReference {
   readonly threadId: string;
   readonly graph: string;
   readonly protocolVersion: number;
+  readonly serviceVersion?: string;
+  readonly langgraphVersion?: string;
+  readonly pythonVersion?: string;
 }
 
 function referenceFromResponse(
@@ -342,6 +345,9 @@ function referenceFromResponse(
     threadId: response.threadId,
     graph: response.graph,
     protocolVersion: response.protocolVersion,
+    ...(response.serviceVersion ? { serviceVersion: response.serviceVersion } : {}),
+    ...(response.langgraphVersion ? { langgraphVersion: response.langgraphVersion } : {}),
+    ...(response.pythonVersion ? { pythonVersion: response.pythonVersion } : {}),
   };
   return {
     platform: manifest.platform,

@@ -23,6 +23,25 @@ test("LangGraph protocol parsing accepts the complete health response", () => {
   assert.equal(health.langgraphVersion, "1.2.10");
 });
 
+test("LangGraph start parsing preserves runtime identity when supplied", () => {
+  const start = parseStartResponse({
+    protocolVersion: 1,
+    executionId: "langgraph:run-versions",
+    runId: "run-versions",
+    threadId: "run-versions",
+    graph: "baseline",
+    status: "queued",
+    idempotent: false,
+    serviceVersion: "0.1.0",
+    langgraphVersion: "1.2.10",
+    pythonVersion: "3.11.16",
+  });
+
+  assert.equal(start.serviceVersion, "0.1.0");
+  assert.equal(start.langgraphVersion, "1.2.10");
+  assert.equal(start.pythonVersion, "3.11.16");
+});
+
 test("LangGraph protocol parsing rejects incompatible or malformed responses", () => {
   assert.throws(
     () => parseStartResponse({ protocolVersion: 2 }),

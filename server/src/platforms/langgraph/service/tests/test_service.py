@@ -251,6 +251,9 @@ def test_service_start_is_idempotent_and_conflicts_are_rejected(tmp_path: Path) 
         second = client.post("/v1/runs", json=start_payload("run-idempotent"))
         assert first.status_code == second.status_code == 202
         assert second.json()["idempotent"] is True
+        assert first.json()["serviceVersion"] == "0.1.0"
+        assert first.json()["langgraphVersion"]
+        assert first.json()["pythonVersion"]
 
         conflict = start_payload("run-idempotent")
         conflict["prompt"] = "A different immutable prompt."

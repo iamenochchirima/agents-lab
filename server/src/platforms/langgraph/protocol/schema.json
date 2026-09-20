@@ -121,7 +121,9 @@
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 },
         "runId": { "$ref": "#/$defs/identity" }, "threadId": { "$ref": "#/$defs/identity" }, "graph": { "const": "baseline" },
-        "status": { "$ref": "#/$defs/status" }, "idempotent": { "type": "boolean" }
+        "status": { "$ref": "#/$defs/status" }, "idempotent": { "type": "boolean" },
+        "serviceVersion": { "type": "string", "minLength": 1 }, "langgraphVersion": { "type": "string", "minLength": 1 },
+        "pythonVersion": { "type": "string", "minLength": 1 }
       }
     },
     "inspection": {

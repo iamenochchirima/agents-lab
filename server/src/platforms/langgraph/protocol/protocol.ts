@@ -43,6 +43,9 @@ export interface LangGraphStartResponse {
   readonly graph: "baseline";
   readonly status: LangGraphPlatformStatus;
   readonly idempotent: boolean;
+  readonly serviceVersion?: string;
+  readonly langgraphVersion?: string;
+  readonly pythonVersion?: string;
 }
 
 export interface LangGraphHealthResponse {
@@ -146,7 +149,7 @@ export function parseHealthResponse(value: unknown): LangGraphHealthResponse {
 
 export function parseStartResponse(value: unknown): LangGraphStartResponse {
   const object = requireObject(value, "LangGraph start response");
-  requireOnly(object, ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "idempotent"], "LangGraph start response");
+  requireOnly(object, ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "idempotent", "serviceVersion", "langgraphVersion", "pythonVersion"], "LangGraph start response");
   requireProtocol(object);
   requireString(object, "executionId");
   requireString(object, "runId");
@@ -154,6 +157,9 @@ export function parseStartResponse(value: unknown): LangGraphStartResponse {
   if (object.graph !== "baseline") throw new Error("LangGraph start response has an invalid graph.");
   requireStatus(object.status);
   requireBoolean(object, "idempotent");
+  for (const key of ["serviceVersion", "langgraphVersion", "pythonVersion"] as const) {
+    if (object[key] !== undefined) requireString(object, key);
+  }
   return object as unknown as LangGraphStartResponse;
 }
 

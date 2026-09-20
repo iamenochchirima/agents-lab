@@ -83,7 +83,7 @@ test("LangGraph adapter validates and maps the local protocol", async () => {
       if (method === "POST" && url === "/v1/runs") {
         assert.equal((body as Record<string, unknown>).runId, "langgraph-test-run");
         assert.deepEqual((body as Record<string, unknown>).model, { provider: "fake", model: "fake-success" });
-        return { status: 202, body: { protocolVersion: 1, executionId: "langgraph:langgraph-test-run", runId: "langgraph-test-run", threadId: "langgraph-test-run", graph: "baseline", status: "queued", idempotent: false } };
+        return { status: 202, body: { protocolVersion: 1, executionId: "langgraph:langgraph-test-run", runId: "langgraph-test-run", threadId: "langgraph-test-run", graph: "baseline", status: "queued", idempotent: false, serviceVersion: "0.1.0", langgraphVersion: "1.2.10", pythonVersion: "3.12.3" } };
       }
       if (method === "GET" && url === "/v1/runs/langgraph%3Alanggraph-test-run") {
         return { body: inspectionBody("completed") };
@@ -103,6 +103,9 @@ test("LangGraph adapter validates and maps the local protocol", async () => {
       assert.equal(reference.executionId, "langgraph:langgraph-test-run");
       assert.equal(reference.native.threadId, "langgraph-test-run");
       assert.equal(reference.native.serviceOrigin, origin);
+      assert.equal(reference.native.serviceVersion, "0.1.0");
+      assert.equal(reference.native.langgraphVersion, "1.2.10");
+      assert.equal(reference.native.pythonVersion, "3.12.3");
       assert.equal("prompt" in reference.native, false);
       const inspection = await runner.inspect(reference);
       assert.equal(inspection.status, "completed");
