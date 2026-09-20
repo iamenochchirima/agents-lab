@@ -1,7 +1,7 @@
 # Cross-platform production acceptance and comparison
 
 **Created:** `2026-09-20T13:11:14+02:00`<br>
-**Last updated:** `2026-09-20T16:02:44+02:00`<br>
+**Last updated:** `2026-09-20T16:05:12+02:00`<br>
 **Status:** Active — Phase 0 and the shared server contract are underway; final matrix remains gated by Mastra completion<br>
 **Owner:** Primary platform integration owner<br>
 **Platforms:** Temporal, Restate, LangGraph, Mastra<br>
@@ -186,7 +186,7 @@ exactly-once delivery to a model provider or external tool.
 ### 4. Browser Compare and Chat
 
 - [x] Make Compare submit the same workload and model to selected platforms.
-- [ ] Show one result row per platform with independent status, output, error, and run ID.
+- [x] Show one result row per platform with independent status, output, error, and a link to its run ID/details.
 - [x] Show partial completion when one platform fails or is unavailable.
 - [ ] Keep model selection, task, scenario, experiment, and tool settings consistent.
 - [ ] Show context usage and tool activity for each Chat run.
