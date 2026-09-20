@@ -193,6 +193,13 @@ bounded `HTTP 502 ResourceExhausted` response from NVIDIA's free worker pool bef
 proposal was available. The live traditional acceptance item remains open until a free
 vision route returns a correct proposal that is approved and verified on the fixture.
 
+A later live Dots run with a 60-second development deadline reached the structured
+approval panel and showed canonical coordinates `(390,530)`. The visible fixture control
+was elsewhere on the 1280x720 desktop, so the proposal was denied and no native input was
+sent. This confirms the approval and no-side-effect boundary, but it is not traditional
+acceptance evidence; the Dots route remains unsuitable for the completion gate until its
+coordinate grounding is reliable.
+
 The CUA adapter now also translates the bounded native move, type, keypress, scroll,
 and drag operations through the pinned SDK, with the same one-observation consumption
 and no-retry rule. The traditional native runner now selects one of those operations

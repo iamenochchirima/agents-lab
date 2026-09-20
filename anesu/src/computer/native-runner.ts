@@ -142,10 +142,15 @@ function validateOptionalDecisionReason(value: unknown): void {
 }
 
 function coordinateValue(value: Record<string, unknown>, canonical: string, providerAlias: string, label: string): number {
-  if (value[canonical] !== undefined && value[providerAlias] !== undefined) {
-    throw new ToolExecutionError(`Native computer decision must provide only one ${label} field.`);
+  const canonicalValue = value[canonical];
+  const aliasValue = value[providerAlias];
+  if (canonicalValue !== undefined && aliasValue !== undefined) {
+    const parsedCanonical = finiteNumber(canonicalValue, label);
+    const parsedAlias = finiteNumber(aliasValue, label);
+    if (parsedCanonical !== parsedAlias) throw new ToolExecutionError(`Native computer decision provided conflicting ${label} fields.`);
+    return parsedCanonical;
   }
-  return finiteNumber(value[canonical] ?? value[providerAlias], label);
+  return finiteNumber(canonicalValue ?? aliasValue, label);
 }
 
 function nativeSelection(value: Record<string, unknown>): NativeSelection {

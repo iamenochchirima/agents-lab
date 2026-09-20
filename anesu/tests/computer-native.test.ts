@@ -220,7 +220,7 @@ test("native traditional converts bounded normalized coordinates using the obser
 });
 
 test("native traditional normalizes the declared provider coordinate aliases", async () => {
-  const fixture = await setup({ operation: "click", x_abs: 0.625, y_abs: 0.5 }, { maxActions: 1 });
+  const fixture = await setup({ operation: "click", x_abs: 0.625, y: 0.5, y_abs: 0.5 }, { maxActions: 1 });
   try {
     await fixture.runner.run("native_traditional_provider_aliases", "Reveal the safe result.", {
       approveComputer: async () => ({ decision: "allow-once" }),

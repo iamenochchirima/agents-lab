@@ -94,7 +94,8 @@ in either a strict tool call or the supported strict JSON form.
 
 The traditional response boundary accepts the declared bounded `reason` metadata and the
 provider's explicit `x_abs`/`y_abs` coordinate aliases, while rejecting all other unknown
-fields. If a provider returns a complete coordinate tuple in the `[0, 1]` range, Anesu
+fields. Equal duplicate canonical/alias values are accepted; conflicting duplicates are
+rejected. If a provider returns a complete coordinate tuple in the `[0, 1]` range, Anesu
 converts it against the current observed screen dimensions before approval; absolute pixel
 coordinates remain unchanged. The approval panel therefore shows the canonical coordinates
 that will be dispatched, not the provider's raw representation.
