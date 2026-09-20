@@ -50,24 +50,26 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     contextRoot: config.contextRoot,
   });
   const mastraRunner = new MastraBaselineRunner({ contextRoot: config.contextRoot });
-  const mastraWorkflowRunner = new MastraWorkflowRunner({ contextRoot: config.contextRoot });
+  const mastraWorkflowRunner = config.mastra.workflowEnabled
+    ? new MastraWorkflowRunner({ contextRoot: config.contextRoot, storagePath: config.mastra.workflowStoragePath })
+    : null;
   const inngestRunner = new InngestBaselineRunner();
   const triggerDevRunner = TriggerDevBaselineRunner.fromEnvironment();
   const dbosRunner = new DbosBaselineRunner();
   const hatchetRunner = await HatchetBaselineRunner.connect();
   const vercelWorkflowsRunner = new VercelWorkflowsBaselineRunner();
-  const runners = [
+  const runners: PlatformRunner[] = [
     runner,
     restateRunner,
     langgraphRunner,
     mastraRunner,
-    mastraWorkflowRunner,
     inngestRunner,
     triggerDevRunner,
     dbosRunner,
     hatchetRunner,
     vercelWorkflowsRunner,
-  ] as const;
+  ];
+  if (mastraWorkflowRunner) runners.push(mastraWorkflowRunner);
   const evidence = new RunEvidenceStore(config.runsRoot);
   const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
   const registry = new PlatformRegistry(runners);

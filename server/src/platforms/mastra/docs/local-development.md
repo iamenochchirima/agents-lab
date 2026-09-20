@@ -77,8 +77,19 @@ native workflow snapshots.
 ```
 
 The workflow store defaults to `lab/mastra/mastra-workflows.db`. Override it with an
-absolute `AGENTLAB_MASTRA_WORKFLOW_STORAGE` path when running restart exercises. The
+absolute `AGENTLAB_MASTRA_STORAGE_PATH` path when running restart exercises. The older
+`AGENTLAB_MASTRA_WORKFLOW_STORAGE` name remains accepted for local compatibility. The
 file is local runtime state and must not be committed.
+
+To roll back the workflow variant without removing baseline support, set
+`AGENTLAB_MASTRA_WORKFLOW_ENABLED=false`. The server then keeps `mastra/workflow`
+visible as unavailable/planned and does not open the workflow database. Existing run
+directories and workflow files are retained.
+
+Both baseline and workflow runs use the Lab context session. When the shared context
+budget is due, the adapter compacts older turns before dispatch and records the
+compaction revision and safe budget in the run context evidence. This is separate from
+Mastra Memory, which is not enabled in this profile.
 
 To exercise the native approval boundary, select `Mastra workflow` in Chat and send a
 prompt beginning with `[approval]`, for example:

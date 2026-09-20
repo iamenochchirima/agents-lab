@@ -13,6 +13,8 @@ test("local server environment loads supported values and preserves explicit val
     filePath,
     [
       "AGENTLAB_ALLOWED_MODEL_PROVIDERS=fake,openrouter",
+      "AGENTLAB_MASTRA_WORKFLOW_ENABLED=false",
+      "AGENTLAB_MASTRA_STORAGE_PATH=var/mastra/workflows.db",
       "OPENROUTER_API_KEY='local-secret'",
       "ANESU_PROVIDER=ignored",
     ].join("\n"),
@@ -24,8 +26,10 @@ test("local server environment loads supported values and preserves explicit val
 
   const loaded = loadLocalServerEnvironment(environment, filePath);
 
-  assert.deepEqual(loaded, ["AGENTLAB_ALLOWED_MODEL_PROVIDERS"]);
+  assert.deepEqual(loaded, ["AGENTLAB_ALLOWED_MODEL_PROVIDERS", "AGENTLAB_MASTRA_WORKFLOW_ENABLED", "AGENTLAB_MASTRA_STORAGE_PATH"]);
   assert.equal(environment.AGENTLAB_ALLOWED_MODEL_PROVIDERS, "fake,openrouter");
+  assert.equal(environment.AGENTLAB_MASTRA_WORKFLOW_ENABLED, "false");
+  assert.equal(environment.AGENTLAB_MASTRA_STORAGE_PATH, "var/mastra/workflows.db");
   assert.equal(environment.OPENROUTER_API_KEY, "explicit-secret");
   assert.equal(environment.ANESU_PROVIDER, undefined);
 });

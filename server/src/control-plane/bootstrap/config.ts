@@ -27,6 +27,10 @@ export const DEFAULTS = {
     catalogCacheTtlMs: OPENROUTER_DEFAULT_CATALOG_CACHE_TTL_MS,
     catalogLimit: OPENROUTER_DEFAULT_CATALOG_LIMIT,
   },
+  mastra: {
+    workflowEnabled: true,
+    workflowStoragePath: "lab/mastra/mastra-workflows.db",
+  },
   context: DEFAULT_CONTEXT_SESSION_LIMITS,
 } as const;
 
@@ -61,6 +65,10 @@ export interface ServerConfig {
     readonly catalogCacheTtlMs: number;
     readonly catalogLimit: number;
     readonly defaultModel: string | null;
+  };
+  readonly mastra: {
+    readonly workflowEnabled: boolean;
+    readonly workflowStoragePath: string;
   };
 }
 
@@ -186,6 +194,21 @@ export function loadServerConfig(
       ),
       defaultModel: nonEmptyOrNull(environment.AGENTLAB_OPENROUTER_DEFAULT_MODEL) ?? nonEmptyOrNull(environment.OPENROUTER_MODEL),
     },
+    mastra: {
+      workflowEnabled: parseBoolean(
+        "AGENTLAB_MASTRA_WORKFLOW_ENABLED",
+        environment.AGENTLAB_MASTRA_WORKFLOW_ENABLED,
+        DEFAULTS.mastra.workflowEnabled,
+      ),
+      workflowStoragePath: resolve(
+        workingDirectory,
+        requiredString(
+          environment.AGENTLAB_MASTRA_STORAGE_PATH ?? environment.AGENTLAB_MASTRA_WORKFLOW_STORAGE,
+          DEFAULTS.mastra.workflowStoragePath,
+          "AGENTLAB_MASTRA_STORAGE_PATH",
+        ),
+      ),
+    },
   };
 
   return Object.freeze(config);
@@ -237,6 +260,13 @@ function parseInteger(name: string, value: string | undefined, fallback: number)
     throw new InvalidServerConfigError(`${name} must be an integer.`);
   }
   return Number(resolved);
+}
+
+function parseBoolean(name: string, value: string | undefined, fallback: boolean): boolean {
+  const resolved = value === undefined ? String(fallback) : value.trim().toLowerCase();
+  if (resolved === "true") return true;
+  if (resolved === "false") return false;
+  throw new InvalidServerConfigError(`${name} must be true or false.`);
 }
 
 function parseHttpUrl(value: string | undefined, fallback: string, name: string): string {

@@ -45,7 +45,9 @@ the profile is explicitly single-process.
 
 When a session turn is supplied, the adapter first prepares the Lab-owned context
 snapshot and passes its messages to Mastra. The snapshot ID, token budget, pressure,
-and compaction flag are recorded in `ContextPrepared`. The current direct baseline
+and compaction flag are recorded in `ContextPrepared`. If the budget is due, the
+selected Mastra model performs the summary call for a real provider profile; fake
+profiles use a bounded deterministic extractive summary. The current direct baseline
 does not use Mastra Memory or Storage, and it does not adopt in-flight work after a
 process restart.
 
@@ -96,8 +98,6 @@ variant is the separate storage-backed suspension/resumption profile described a
 - Mastra memory and storage
 - MCP, skills, plugins, OAuth, channels, and external side effects
 - distributed workflow storage and multi-process ownership
-- compaction recovery in this direct baseline when a summary is required; the shared
-  context service reports that limitation instead of silently dropping history
 - exactly-once provider-call claims
 
 These exclusions keep the direct-agent comparison honest. Mastra's official docs

@@ -16,6 +16,8 @@ test("configuration has safe local defaults and resolves the run root", () => {
   assert.equal(config.openRouter.apiKey, null);
   assert.equal(config.openRouter.baseUrl, "https://openrouter.ai/api/v1");
   assert.equal(config.openRouter.catalogLimit, 40);
+  assert.equal(config.mastra.workflowEnabled, true);
+  assert.equal(config.mastra.workflowStoragePath, "/repo/lab/mastra/mastra-workflows.db");
   assert.equal(config.runsRoot, "/repo/lab/runs");
   assert.equal(config.contextRoot, "/repo/lab/sessions");
   assert.equal(config.context.maxSessionBytes, DEFAULTS.context.maxSessionBytes);
@@ -39,6 +41,8 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
       AGENTLAB_OPENROUTER_CATALOG_LIMIT: "25",
       AGENTLAB_TEMPORAL_PRE_DISPATCH_RETRY_LIMIT: "0",
       AGENTLAB_TEMPORAL_QUERY_TIMEOUT_MS: "750",
+      AGENTLAB_MASTRA_WORKFLOW_ENABLED: "false",
+      AGENTLAB_MASTRA_STORAGE_PATH: "var/mastra/workflows.db",
     },
     "/repo",
   );
@@ -55,6 +59,8 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   assert.equal(config.openRouter.catalogLimit, 25);
   assert.equal(config.temporal.preDispatchRetryLimit, 0);
   assert.equal(config.temporal.queryTimeoutMs, 750);
+  assert.equal(config.mastra.workflowEnabled, false);
+  assert.equal(config.mastra.workflowStoragePath, "/repo/var/mastra/workflows.db");
 });
 
 test("invalid or missing explicit configuration fails before startup", () => {
@@ -72,6 +78,10 @@ test("invalid or missing explicit configuration fails before startup", () => {
   );
   assert.throws(
     () => loadServerConfig({ AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES: "not-a-size" }),
+    (error: unknown) => error instanceof InvalidServerConfigError,
+  );
+  assert.throws(
+    () => loadServerConfig({ AGENTLAB_MASTRA_WORKFLOW_ENABLED: "sometimes" }),
     (error: unknown) => error instanceof InvalidServerConfigError,
   );
 });
