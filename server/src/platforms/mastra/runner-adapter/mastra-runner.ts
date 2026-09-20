@@ -39,6 +39,7 @@ import { createBaselineAgentRuntime } from "../variants/baseline/agent.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "../variants/baseline/models/factory.js";
 import { MASTRA_EVENT_SOURCE, type MastraExecutionRecord } from "../variants/baseline/contracts.js";
 import { createMastraContextSummaryGenerator } from "./context-summary.js";
+import { MASTRA_NATIVE_EVIDENCE_SCHEMA, validateMastraNativeEvidence } from "./native-evidence.js";
 
 const EXECUTION_ID_PREFIX = "mastra:";
 
@@ -165,11 +166,13 @@ export class MastraBaselineRunner implements PlatformRunner {
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const record = this.requireExecution(reference);
+    const native = { ...record.reference.native, ...nativeSummaryFor(record) };
+    validateMastraNativeEvidence(native, "baseline");
     return {
       status: record.status,
       reference: {
         ...record.reference,
-        native: { ...record.reference.native, ...nativeSummaryFor(record) },
+        native,
       },
       eventIntents: record.events,
       result: record.result,
@@ -309,27 +312,30 @@ export class MastraBaselineRunner implements PlatformRunner {
 }
 
 function referenceFor(manifest: RunManifest): PlatformExecutionReference {
+  const native = {
+    schemaVersion: 2,
+    evidenceSchema: MASTRA_NATIVE_EVIDENCE_SCHEMA,
+    mastraVersion: MASTRA_CORE_VERSION,
+    agentId: MASTRA_AGENT_ID,
+    operation: MASTRA_OPERATION,
+    processScoped: true,
+    storage: MASTRA_STORAGE_MODE,
+    modelProvider: manifest.model.provider,
+    model: manifest.model.model,
+  };
+  validateMastraNativeEvidence(native, "baseline");
   return {
     platform: manifest.platform,
     variant: manifest.variant,
     executionId: `${EXECUTION_ID_PREFIX}${manifest.runId}`,
-    native: {
-      schemaVersion: 2,
-      evidenceSchema: "mastra.native.v2",
-      mastraVersion: MASTRA_CORE_VERSION,
-      agentId: MASTRA_AGENT_ID,
-      operation: MASTRA_OPERATION,
-      processScoped: true,
-      storage: MASTRA_STORAGE_MODE,
-      modelProvider: manifest.model.provider,
-      model: manifest.model.model,
-    },
+    native,
   };
 }
 
 function nativeSummaryFor(record: MastraExecutionRecord): Readonly<Record<string, unknown>> {
   return {
-    evidenceSchema: "mastra.native.v2",
+    evidenceSchema: MASTRA_NATIVE_EVIDENCE_SCHEMA,
+    schemaVersion: 2,
     nativeStatus: record.status,
     eventCount: record.events.length,
     modelStepCount: record.events.filter((event) => event.kind === "AgentStepCompleted").length,

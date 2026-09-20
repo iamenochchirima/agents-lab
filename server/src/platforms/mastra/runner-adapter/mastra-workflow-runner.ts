@@ -25,12 +25,14 @@ import { CharacterTokenEstimator, ContextService, ContextSessionStore, type Cont
 import {
   DEFAULT_MAX_TOOL_CALLS,
   DEFAULT_MAX_TOOL_ROUNDS,
+  MASTRA_CORE_VERSION,
   safeEnvironment,
   type MastraEnvironment,
 } from "../variants/baseline/config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "../variants/baseline/models/factory.js";
 import { createMastraWorkflow, MASTRA_WORKFLOW_ID, type MastraWorkflowEventSink, type MastraWorkflowInput } from "../variants/workflow/workflow.js";
 import { createMastraContextSummaryGenerator } from "./context-summary.js";
+import { MASTRA_NATIVE_EVIDENCE_SCHEMA, validateMastraNativeEvidence } from "./native-evidence.js";
 
 const EXECUTION_ID_PREFIX = "mastra-workflow:";
 const WORKFLOW_STORAGE_ENV = "AGENTLAB_MASTRA_WORKFLOW_STORAGE";
@@ -390,20 +392,23 @@ export class MastraWorkflowRunner implements PlatformRunner {
 }
 
 function referenceFor(manifest: RunManifest, storagePath: string): PlatformExecutionReference {
+  const native = {
+    schemaVersion: 2,
+    evidenceSchema: MASTRA_NATIVE_EVIDENCE_SCHEMA,
+    mastraVersion: MASTRA_CORE_VERSION,
+    workflowId: MASTRA_WORKFLOW_ID,
+    workflowRunId: manifest.runId,
+    storage: "libsql-file",
+    storagePath: "configured-local-file",
+    processScoped: false,
+    localSingleProcess: true,
+  };
+  validateMastraNativeEvidence(native, "workflow");
   return {
     platform: "mastra",
     variant: "workflow",
     executionId: `${EXECUTION_ID_PREFIX}${manifest.runId}`,
-    native: {
-      schemaVersion: 2,
-      evidenceSchema: "mastra.native.v2",
-      workflowId: MASTRA_WORKFLOW_ID,
-      workflowRunId: manifest.runId,
-      storage: "libsql-file",
-      storagePath: "configured-local-file",
-      processScoped: false,
-      localSingleProcess: true,
-    },
+    native,
   };
 }
 
@@ -470,11 +475,13 @@ function manifestForNative(reference: PlatformExecutionReference, runId: string,
 }
 
 function inspectionFromRecord(record: MastraWorkflowExecutionRecord): RunnerInspection {
+  const native = { ...record.reference.native, ...nativeSummaryFor(record) };
+  validateMastraNativeEvidence(native, "workflow");
   return {
     status: record.status,
     reference: {
       ...record.reference,
-      native: { ...record.reference.native, ...nativeSummaryFor(record) },
+      native,
     },
     eventIntents: record.events,
     result: record.result,
@@ -485,7 +492,8 @@ function inspectionFromRecord(record: MastraWorkflowExecutionRecord): RunnerInsp
 
 function nativeSummaryFor(record: MastraWorkflowExecutionRecord): Readonly<Record<string, unknown>> {
   return {
-    evidenceSchema: "mastra.native.v2",
+    evidenceSchema: MASTRA_NATIVE_EVIDENCE_SCHEMA,
+    schemaVersion: 2,
     nativeStatus: record.nativeStatus,
     eventCount: record.events.length,
     modelRequestCount: record.events.filter((event) => event.kind === "ModelRequested").length,
