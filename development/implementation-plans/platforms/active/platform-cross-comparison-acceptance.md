@@ -1,8 +1,8 @@
 # Cross-platform production acceptance and comparison
 
 **Created:** `2026-09-20T13:11:14+02:00`<br>
-**Last updated:** `2026-09-20T14:11:05+02:00`<br>
-**Status:** Active — queued behind Mastra completion<br>
+**Last updated:** `2026-09-20T15:52:01+02:00`<br>
+**Status:** Active — Phase 0 and the shared server contract are underway; final matrix remains gated by Mastra completion<br>
 **Owner:** Primary platform integration owner<br>
 **Platforms:** Temporal, Restate, LangGraph, Mastra<br>
 **Priority:** Next platform phase after `mastra-agent-runtime-and-workflows.md`
@@ -149,26 +149,26 @@ exactly-once delivery to a model provider or external tool.
 ### 1. Shared comparison contract
 
 - [ ] Verify the four baseline registrations and their real connectivity responses.
-- [ ] Define and validate the optional `comparisonId` correlation field, or record
+- [x] Define and validate the optional `comparisonId` correlation field, or record
       evidence that the existing request is sufficient without adding it.
-- [ ] Ensure the immutable manifest records the same task, model, tool limits, scenario,
+- [x] Ensure the immutable manifest records the same task, model, tool limits, scenario,
       experiment, and comparison identity for every member.
-- [ ] Ensure each member receives a new session identity and run identity.
-- [ ] Reject malformed comparison IDs and mismatched member manifests.
-- [ ] Preserve platform-specific variant configuration inside each platform boundary.
+- [x] Ensure each member receives a new session identity and run identity.
+- [x] Reject malformed comparison IDs and mismatched member manifests.
+- [x] Preserve platform-specific variant configuration inside each platform boundary.
 
 ### 2. Server and evidence integration
 
 - [ ] Keep `RunEvidenceStore` as the sole writer for normalized `lab/runs/<run-id>/`
       records.
-- [ ] Persist comparison correlation only as safe manifest metadata; do not create a
+- [x] Persist comparison correlation only as safe manifest metadata; do not create a
       second mutable evidence writer or merge event streams into one run.
 - [ ] Ensure each member writes `config.json`, `events.jsonl`, `context.json`,
       `trajectory.json`, `metrics.json`, and `result.json` when applicable.
 - [ ] Retain `native/temporal.json`, `native/restate.json`, `native/langgraph.json`,
       or `native/mastra.json` without flattening platform-specific details.
 - [ ] Verify event ordering and terminal-result cardinality independently per run.
-- [ ] Add a server-side comparison acceptance test that checks partial success,
+- [x] Add a server-side comparison acceptance test that checks partial success,
       independent failures, duplicate admission, and stale inspection.
 
 ### 3. Platform acceptance
@@ -325,18 +325,18 @@ lab/runs/<run-id>/
 - [ ] Re-read the Mastra completion record and confirm all four baseline variants are
       runnable before starting this plan.
 - [ ] Recheck installed platform package/runtime versions and local service commands.
-- [ ] Decide whether `comparisonId` is required, then commit the contract decision and
+- [x] Decide whether `comparisonId` is required, then commit the contract decision and
       tests before changing the Compare UI.
 - [ ] Freeze the workload, model settings, tool limits, and context policy for the first
       acceptance matrix.
 
 ### Phase 1: server comparison support
 
-- [ ] Add the smallest manifest/API change needed for comparison correlation.
-- [ ] Preserve independent run IDs, sessions, native references, and evidence roots.
-- [ ] Add server tests for identical inputs, different run identities, partial success,
+- [x] Add the smallest manifest/API change needed for comparison correlation.
+- [x] Preserve independent run IDs, sessions, native references, and evidence roots.
+- [x] Add server tests for identical inputs, different run identities, partial success,
       duplicate requests, unavailable dependencies, and stale projections.
-- [ ] Add a deterministic comparison fixture that does not call OpenRouter.
+- [x] Add a deterministic comparison fixture that does not call OpenRouter.
 
 ### Phase 2: platform matrix
 

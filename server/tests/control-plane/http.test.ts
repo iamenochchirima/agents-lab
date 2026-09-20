@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -49,6 +49,68 @@ class HttpRunner implements PlatformRunner {
       eventIntents: [
         { source: "temporal-workflow", sourceSequence: 1, kind: "AgentStarted", runId, occurredAt: "2026-09-15T08:00:00.000Z", payload: {} },
         ...(this.running && !this.cancelled ? [] : [{ source: "temporal-workflow", sourceSequence: 2, kind: this.cancelled ? "RunCancelled" : "RunCompleted", runId, occurredAt: "2026-09-15T08:00:01.000Z", payload: {} }]),
+      ],
+      result,
+      trajectory: { schemaVersion: 1, runId, phases: [] },
+      metrics: null,
+    };
+  }
+}
+
+class ComparisonHttpRunner implements PlatformRunner {
+  readonly variant = "baseline" as const;
+  startCalls = 0;
+
+  constructor(
+    readonly platform: "temporal" | "restate",
+    readonly outcome: "completed" | "failed",
+  ) {}
+
+  manifestConfiguration(): Readonly<Record<string, unknown>> {
+    return { profile: `comparison-${this.platform}` };
+  }
+
+  validate(manifest: RunManifest) {
+    return manifest.platform === this.platform && manifest.variant === this.variant
+      ? { valid: true, reason: null }
+      : { valid: false, reason: "Unexpected comparison runner selection." };
+  }
+
+  async checkConnection() {
+    return { reachable: true, message: `${this.platform} comparison fixture is ready.` };
+  }
+
+  async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
+    this.startCalls += 1;
+    return referenceFor(manifest);
+  }
+
+  async cancel() {
+    return { accepted: false, alreadyTerminal: true, message: "The comparison fixture is already terminal." };
+  }
+
+  async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
+    const runId = reference.executionId.replace("agentlab:", "");
+    const failed = this.outcome === "failed";
+    const result: RunResult = {
+      schemaVersion: 1,
+      runId,
+      status: this.outcome,
+      startedAt: "2026-09-20T08:00:00.000Z",
+      finishedAt: "2026-09-20T08:00:01.000Z",
+      output: failed ? null : `${this.platform} comparison output`,
+      error: failed
+        ? { code: `${this.platform.toUpperCase()}_COMPARISON_FAILURE`, message: `${this.platform} fixture failed.`, failureKind: "provider", retryable: false }
+        : null,
+      attemptCount: 1,
+      usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+    };
+    return {
+      status: this.outcome,
+      reference,
+      eventIntents: [
+        { source: `${this.platform}-fixture`, sourceSequence: 1, kind: "AgentStarted", runId, occurredAt: "2026-09-20T08:00:00.000Z", payload: {} },
+        { source: `${this.platform}-fixture`, sourceSequence: 2, kind: failed ? "RunFailed" : "RunCompleted", runId, occurredAt: result.finishedAt, payload: {} },
       ],
       result,
       trajectory: { schemaVersion: 1, runId, phases: [] },
@@ -230,6 +292,74 @@ test("comparison members retain one correlation ID and independent run sessions"
     assert.notEqual(first.runId, second.runId);
     assert.notEqual(first.manifest.context.sessionId, second.manifest.context.sessionId);
   }, undefined, { context: true });
+});
+
+test("comparison members keep terminal outcomes and evidence independent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-http-comparison-"));
+  try {
+    const completedRunner = new ComparisonHttpRunner("temporal", "completed");
+    const failedRunner = new ComparisonHttpRunner("restate", "failed");
+    const evidence = new RunEvidenceStore(root);
+    const config = loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo");
+    const registry = new PlatformRegistry([completedRunner, failedRunner]);
+    const service = new RunService({ config, evidence, registry });
+    const app = buildControlPlaneServer({ config, service, evidence, registry });
+    await app.ready();
+
+    try {
+      const createMember = (platform: string) => app.inject({
+        method: "POST",
+        url: "/api/runs",
+        payload: {
+          platform,
+          variant: "baseline",
+          comparisonId: "comparison-http-partial",
+          task: { kind: "prompt", prompt: "Use the same deterministic comparison task." },
+          model: { provider: "fake", model: "fake-success" },
+        },
+      });
+
+      const [completedResponse, failedResponse] = await Promise.all([
+        createMember("temporal"),
+        createMember("restate"),
+      ]);
+      assert.equal(completedResponse.statusCode, 202);
+      assert.equal(failedResponse.statusCode, 202);
+
+      const completed = completedResponse.json();
+      const failed = failedResponse.json();
+      assert.equal(completed.status, "completed");
+      assert.equal(failed.status, "failed");
+      assert.equal(completed.manifest.comparisonId, failed.manifest.comparisonId);
+      assert.deepEqual(completed.manifest.task, failed.manifest.task);
+      assert.deepEqual(completed.manifest.model, failed.manifest.model);
+      assert.equal(completed.manifest.platformConfig.profile, "comparison-temporal");
+      assert.equal(failed.manifest.platformConfig.profile, "comparison-restate");
+      assert.notEqual(completed.runId, failed.runId);
+      assert.notEqual(completed.executionReference.executionId, failed.executionReference.executionId);
+      assert.equal(completed.result.output, "temporal comparison output");
+      assert.equal(failed.result.output, null);
+      assert.equal(failed.result.error.code, "RESTATE_COMPARISON_FAILURE");
+      assert.equal(completedRunner.startCalls, 1);
+      assert.equal(failedRunner.startCalls, 1);
+
+      const completedEvents = await readFile(join(root, completed.runId, "events.jsonl"), "utf8");
+      const failedEvents = await readFile(join(root, failed.runId, "events.jsonl"), "utf8");
+      assert.match(completedEvents, /RunCompleted/);
+      assert.doesNotMatch(completedEvents, /RunFailed/);
+      assert.match(failedEvents, /RunFailed/);
+      assert.doesNotMatch(failedEvents, /RunCompleted/);
+
+      const completedNative = await readFile(join(root, completed.runId, "native/temporal.json"), "utf8");
+      const failedNative = await readFile(join(root, failed.runId, "native/restate.json"), "utf8");
+      assert.match(completedNative, /agentlab:/);
+      assert.match(failedNative, /agentlab:/);
+    } finally {
+      await app.close();
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("HTTP API returns structured validation and health responses", async () => {
