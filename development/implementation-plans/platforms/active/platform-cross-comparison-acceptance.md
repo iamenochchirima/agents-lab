@@ -1,7 +1,7 @@
 # Cross-platform production acceptance and comparison
 
 **Created:** `2026-09-20T13:11:14+02:00`<br>
-**Last updated:** `2026-09-20T13:11:14+02:00`<br>
+**Last updated:** `2026-09-20T14:11:05+02:00`<br>
 **Status:** Active — queued behind Mastra completion<br>
 **Owner:** Primary platform integration owner<br>
 **Platforms:** Temporal, Restate, LangGraph, Mastra<br>
