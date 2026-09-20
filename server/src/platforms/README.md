@@ -105,6 +105,19 @@ is opt-in and must record the model identifier, package/runtime versions, local 
 commands, run IDs, observed statuses, and evidence inspection. It must never retain an
 API key, authorization header, raw provider response, or sensitive prompt.
 
+The capability-specific matrix is also opt-in. With Temporal, Restate, LangGraph, Mastra,
+and the shared local HTTP fixture running, use:
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix
+```
+
+It sends the same `local-safe` profile through all four native runner boundaries and fails
+if a platform is unavailable, a connected tool does not execute, or event identity is not
+unique. Set `AGENTLAB_LOCAL_FIXTURE_URL` when the fixture is not at its default loopback
+endpoint. The command does not start a second fixture because external platform services
+must use the same endpoint.
+
 Run the native profile with:
 
 ```bash

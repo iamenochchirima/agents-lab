@@ -1,7 +1,7 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T21:43:00+02:00
+**Last updated:** 2026-09-20T21:55:00+02:00
 **Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -551,6 +551,7 @@ unrelated twenty-minute UI slices.
     pnpm --filter @agent-harness-lab/lab-server run test:restate
     pnpm --filter @agent-harness-lab/lab-server run test:temporal
     pnpm --filter @agent-harness-lab/lab-server run test:langgraph
+    pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix
     pnpm --filter @agent-harness-lab/web run typecheck
     pnpm --filter @agent-harness-lab/web run build
     pnpm --filter @agent-harness-lab/web run generate:docs
