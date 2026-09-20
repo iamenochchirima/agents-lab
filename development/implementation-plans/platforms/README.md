@@ -9,6 +9,7 @@ It does not contain Anesu or Studio work. Those have their own plan directories.
 
 ## Active plans
 
+- [Mastra agent runtime and durable workflows](active/mastra-agent-runtime-and-workflows.md) — expands the direct Mastra baseline and adds a native workflow profile with local persisted state.
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
 

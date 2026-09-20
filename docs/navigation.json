@@ -119,6 +119,7 @@
         "development/implementation-plans/platforms/completed/dbos-baseline.md",
         "development/implementation-plans/platforms/completed/hatchet-baseline.md",
         "development/implementation-plans/platforms/completed/vercel-workflows-baseline.md",
+        "development/implementation-plans/platforms/active/mastra-agent-runtime-and-workflows.md",
         "development/implementation-plans/platforms/active/aws-step-functions-baseline.md",
         "development/implementation-plans/anesu/completed/anesu-reliable-terminal-and-workspace-inspection.md",
         "development/implementation-plans/anesu/completed/anesu-tui.md",
