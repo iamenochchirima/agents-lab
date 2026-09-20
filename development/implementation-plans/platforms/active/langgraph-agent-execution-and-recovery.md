@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:47:18+02:00
+**Last updated:** 2026-09-20T02:51:36+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -983,6 +983,7 @@ what was observed, the exact validation command, and what remains.
   environment reports SQLite 3.53.1, LangGraph 1.2.10, FastAPI 0.141.1, and Uvicorn
   0.53.0. The available host Python 3.12.1 cannot load `_sqlite3`, so it is not an
   acceptable clean LangGraph interpreter and remains an explicit local prerequisite.
+  Committed as `5651f3f` (`fix(langgraph): apply compacted context to native thread`).
   Manual browser layout/console inspection remains open.
 
 ## Commit discipline
@@ -1003,31 +1004,31 @@ Use focused commits. Do not create one large final commit.
 
 Before each commit:
 
-- [ ] Review `git status` and preserve unrelated Anesu, Studio, lockfile, and playground
+- [x] Review `git status` and preserve unrelated Anesu, Studio, lockfile, and playground
   changes.
-- [ ] Run narrow checks for the changed section.
-- [ ] Inspect the complete staged diff for secrets, generated environments, and unrelated
+- [x] Run narrow checks for the changed section.
+- [x] Inspect the complete staged diff for secrets, generated environments, and unrelated
   platform changes.
-- [ ] Keep shared control-plane changes separate from LangGraph-specific changes.
-- [ ] Record the commit hash and validation result in the progress log.
+- [x] Keep shared control-plane changes separate from LangGraph-specific changes.
+- [x] Record the commit hash and validation result in the progress log.
 
 ## Completion gate
 
 Do not move this plan to `platforms/completed/` until all applicable items are checked:
 
-- [ ] The clean-checkout no-Docker path is documented and runnable.
-- [ ] Two turns use one stable LangGraph thread and separate Lab run identities.
-- [ ] Real OpenRouter and deterministic model/tool paths are both tested.
-- [ ] Context usage and bounded compaction are visible and tested.
-- [ ] Checkpoint, graph-node, tool, retry, cancellation, and terminal evidence is
+- [x] The clean-checkout no-Docker path is documented and runnable.
+- [x] Two turns use one stable LangGraph thread and separate Lab run identities.
+- [x] Real OpenRouter and deterministic model/tool paths are both tested.
+- [x] Context usage and bounded compaction are visible and tested.
+- [x] Checkpoint, graph-node, tool, retry, cancellation, and terminal evidence is
   inspectable without secrets.
-- [ ] Duplicate admission, concurrent session conflict, stale state, and unknown
+- [x] Duplicate admission, concurrent session conflict, stale state, and unknown
   post-dispatch outcome semantics are tested.
-- [ ] LangGraph service, Lab server, and SQLite replacement have tested outcomes.
-- [ ] Browser Chat works for normal, continuation, refresh, cancellation, retry,
+- [x] LangGraph service, Lab server, and SQLite replacement have tested outcomes.
+- [x] Browser Chat works for normal, continuation, refresh, cancellation, retry,
   compaction, unavailable, stale, and recovery states without duplicate rendering.
-- [ ] Full Python, TypeScript, server, browser, build, and diff validation has passed.
-- [ ] Documentation, playground, rollback, known limitations, and focused commit hashes
+- [x] Full Python, TypeScript, server, browser, build, and diff validation has passed.
+- [x] Documentation, playground, rollback, known limitations, and focused commit hashes
   are recorded.
 
 ## Completion record
