@@ -34,6 +34,7 @@ test(
   },
   async () => {
     const fixtureUrl = (process.env.AGENTLAB_LOCAL_FIXTURE_URL ?? "http://127.0.0.1:9191").replace(/\/$/, "");
+    const sharedContextRoot = process.env.AGENTLAB_CONTEXT_ROOT ?? join(process.cwd(), "lab/sessions");
     await assertFixtureReady(fixtureUrl);
     const roots = await Promise.all([
       mkdtemp(join(tmpdir(), "agentlab-platform-matrix-temporal-")),
@@ -47,7 +48,7 @@ test(
         ...process.env,
         AGENTLAB_LOCAL_FIXTURE_URL: fixtureUrl,
         AGENTLAB_RUN_ROOT: roots[0]!,
-        AGENTLAB_CONTEXT_ROOT: join(roots[0]!, "sessions"),
+        AGENTLAB_CONTEXT_ROOT: sharedContextRoot,
         AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
       }, process.cwd());
       const temporal = await TemporalBaselineRunner.connect(temporalConfig);
@@ -57,19 +58,19 @@ test(
         ...process.env,
         AGENTLAB_LOCAL_FIXTURE_URL: fixtureUrl,
         AGENTLAB_RUN_ROOT: roots[1]!,
-        AGENTLAB_CONTEXT_ROOT: join(roots[1]!, "sessions"),
+        AGENTLAB_CONTEXT_ROOT: sharedContextRoot,
         AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
       }));
       runners.push(restate);
 
       const langgraph = LangGraphBaselineRunner.fromOptions({
         serviceUrl: process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024",
-        contextRoot: join(roots[2]!, "sessions"),
+        contextRoot: sharedContextRoot,
         timeoutMs: 30_000,
       });
       runners.push(langgraph);
 
-      const mastra = new MastraBaselineRunner({ contextRoot: join(roots[3]!, "sessions") });
+      const mastra = new MastraBaselineRunner({ contextRoot: sharedContextRoot });
       runners.push(mastra);
 
       for (const runner of runners) {
@@ -83,7 +84,7 @@ test(
           ...process.env,
           AGENTLAB_LOCAL_FIXTURE_URL: fixtureUrl,
           AGENTLAB_RUN_ROOT: root,
-          AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+          AGENTLAB_CONTEXT_ROOT: sharedContextRoot,
           AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
         }, process.cwd());
         const service = new RunService({
@@ -122,7 +123,7 @@ test(
           platform: runner.platform,
           variant: runner.variant,
           task: { kind: "prompt", prompt: "Write the approved value to the local fixture." },
-          model: { provider: "fake", model: "fake-write-tool", contextWindowTokens: 16_384 },
+          model: { provider: "fake", model: "fake-connected-write", contextWindowTokens: 16_384 },
           capabilities: {
             profileId: "local-write-approved",
             tools: { enabledNames: [], maxRounds: 4, maxCalls: 4 },
@@ -155,7 +156,7 @@ async function assertFixtureReady(url: string): Promise<void> {
 function writeApproval(platform: string) {
   return {
     schemaVersion: 1 as const,
-    decisionId: `matrix-${platform}-fixture-write`,
+    decisionId: `approval_matrix_${platform}_fixture_write`,
     capabilityId: "fixture_write",
     version: "1.0.0",
     allowedOperations: ["write"],
