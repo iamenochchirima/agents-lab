@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T01:55:08+02:00
+**Last updated:** 2026-09-20T02:00:52+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -616,11 +616,11 @@ Tests must exercise real boundaries, not only helper functions.
   fixture now also covers retrying, compaction evidence, provider failure, unavailable
   health, and stale projection without fabricated assistant output.
 - [x] Add an opt-in live LangGraph Chat test for real OpenRouter execution.
-- [ ] Add an opt-in browser test that replaces the Lab server during a LangGraph run.
-- [ ] Add an opt-in browser test that replaces the LangGraph service during a run using
+- [x] Add an opt-in browser test that replaces the Lab server during a LangGraph run.
+- [x] Add an opt-in browser test that replaces the LangGraph service during a run using
   the same configured SQLite database and verifies the same run result or honest recovery
   state.
-- [ ] Keep all destructive process replacement tests opt-in and document their cleanup.
+- [x] Keep all destructive process replacement tests opt-in and document their cleanup.
 
 ## Local operations and commands
 
@@ -896,7 +896,19 @@ what was observed, the exact validation command, and what remains.
   covering two-turn identity, evidence, and controlled interruption. Documentation
   generation passed with 72 curated documents; `git diff --check` passed. The remaining
   release gates are structured logging/metrics/version evidence, final manual browser
-  inspection, and opt-in destructive process replacement.
+  inspection, and opt-in destructive process replacement. Committed as `635841c`
+  (`docs(langgraph): document local recovery workflow`).
+
+- **2026-09-20T02:02:00+02:00 — browser process-replacement acceptance completed as code.**
+  Added the opt-in LangGraph Lab-server replacement check alongside the native-service
+  replacement check. The former uses `fake-slow-success` and expects one reconciled
+  completed assistant message; the latter reopens the same SQLite path and expects an
+  honest recovery-required state. Both validate repository-owned PIDs, document cleanup,
+  and remain skipped unless explicitly enabled. Validation passed: `node --check
+  apps/web/tests/browser/live-platform-runners.browser.test.mjs`, the default live suite
+  (`6 skipped`), and `git diff --check`. Committed as `0c754cb` (`test(web): cover
+  LangGraph server replacement`). The destructive opt-in runs themselves remain
+  unexecuted.
 
 ## Commit discipline
 
