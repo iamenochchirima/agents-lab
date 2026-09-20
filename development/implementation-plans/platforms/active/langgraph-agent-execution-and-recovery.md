@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:51:36+02:00
+**Last updated:** 2026-09-20T02:57:42+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -261,8 +261,11 @@ and must remain unstaged and unchanged.
 
 Before production changes, record the current baseline behaviour and close each question:
 
-- [ ] Confirm the exact Python interpreter selected by `scripts/run_local_stack.sh` and
-  verify Python 3.11 and 3.12 behaviour from a clean virtual environment.
+- [x] Confirm the exact Python interpreter selected by `scripts/run_local_stack.sh` and
+  verify the launcher-selected Python 3.11 behaviour from its locked environment.
+- [ ] Verify Python 3.12 behaviour from a clean virtual environment. The available
+  host Python 3.12.1 cannot import its standard-library `_sqlite3` module; install a
+  compatible Python 3.12 build before claiming that variant is validated.
 - [x] Confirm the Python service's SQLite connection mode, journal mode, busy timeout,
   checkpointer lifetime, and whether concurrent graph calls can share one database.
 - [x] Confirm how `graph.stream(..., stream_mode=["updates", "checkpoints", "tasks"],
@@ -524,9 +527,9 @@ dashboard for this plan.
 - [x] Replace the Lab server during a delayed run and verify browser reconciliation.
 - [x] Replace the LangGraph service during a delayed run and verify completion or an
   explicit recovery state.
-- [ ] Inspect wide, tablet, and narrow layouts manually; keep the platform tab row and
+- [x] Inspect wide, tablet, and narrow layouts manually; keep the platform tab row and
   Chat controls usable without a blinking polling surface.
-- [ ] Inspect the browser console for route errors, failed health probes, duplicate-key
+- [x] Inspect the browser console for route errors, failed health probes, duplicate-key
   warnings, unhandled polling exceptions, and unexpected network loops.
 
 ## Evidence and observability
@@ -985,6 +988,14 @@ what was observed, the exact validation command, and what remains.
   acceptable clean LangGraph interpreter and remains an explicit local prerequisite.
   Committed as `5651f3f` (`fix(langgraph): apply compacted context to native thread`).
   Manual browser layout/console inspection remains open.
+
+- **2026-09-20T02:57:42+02:00 — manual browser inspection completed.** Ran a live
+  Chromium inspection of `/platforms/langgraph/chat` at 1280px, 768px, and 390px
+  viewports. The document had no horizontal overflow; the composer, model control,
+  platform tabs, and session actions remained usable, with the tab rows intentionally
+  scrollable at narrow widths. The live LangGraph health endpoint returned HTTP 200 and
+  the browser console collected no errors across all three viewports. Automated
+  responsive and duplicate-key checks remain in `platform-chat.browser.test.mjs`.
 
 ## Commit discipline
 
