@@ -1,7 +1,7 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T21:31:14+02:00
+**Last updated:** 2026-09-20T21:43:00+02:00
 **Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -506,8 +506,8 @@ unrelated twenty-minute UI slices.
 - [ ] identical deterministic profile through Temporal, Restate, LangGraph, and Mastra;
 - [ ] native tool registration and actual execution, not fake successful HTTP responses;
 - [ ] tool failure, policy denial, approval, cancellation, timeout, and retry semantics;
-- [ ] local MCP and direct-API fixtures with real protocol/request boundaries;
-- [ ] local OAuth start/callback/refresh/revoke with a temporary fixture process;
+- [x] local MCP and direct-API fixtures with real protocol/request boundaries;
+- [x] local OAuth start/callback/refresh/revoke with a temporary fixture HTTP process;
 - [ ] duplicate turn admission, duplicate external request, lost acknowledgement, and
       unknown-result behaviour;
 - [ ] platform restart/recovery and evidence reconciliation for each platform;

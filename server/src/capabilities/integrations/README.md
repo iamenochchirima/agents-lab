@@ -16,6 +16,13 @@ validation, cancellation, retry, idempotency, and unknown-outcome behaviour with
 requiring Docker or an external account. A provider adapter must preserve those semantics
 and add provider-specific evidence behind its platform-owned native boundary.
 
+The same fixture exposes `/mcp` as a bounded MCP Streamable HTTP endpoint and
+`/oauth/authorize`, `/oauth/token`, and `/oauth/revoke` as a deterministic OAuth provider
+boundary. `HttpMcpServer` and `HttpOAuthProvider` are protocol adapters only; the transport
+allowlist, PKCE/state rules, limits, secret store, and policy decisions remain in the
+shared integration contracts. These endpoints exercise real request boundaries locally;
+they do not represent a production social-account provider.
+
 Connection references are opaque and use the `conn_` prefix. The local fixture reference is
 `conn_local_fixture`; its HTTP service name and endpoint are not authorization references.
 
