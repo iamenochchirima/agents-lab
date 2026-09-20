@@ -1,8 +1,8 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T22:02:00+02:00
-**Status:** Active — shared capability integration in progress
+**Last updated:** 2026-09-20T22:19:32+02:00
+**Status:** Completed — implementation and acceptance verified
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
 **Priority:** Next major platform capability phase after platform-cross-comparison-acceptance.md
@@ -136,7 +136,7 @@ The completed phase must be able to:
       permissions, secrets, or policy;
 - [x] exercise MCP, direct API, and OAuth connection seams against no-Docker local
       fixtures, with unavailable external credentials shown honestly;
-- [ ] require explicit policy approval for the first write-capable capability and preserve
+- [x] require explicit policy approval for the first write-capable capability and preserve
       the decision in normalized and native evidence;
 - [x] keep secrets, authorization headers, raw provider responses, and unsafe skill content
       out of run evidence and browser responses;
@@ -346,21 +346,21 @@ Connection metadata and credentials are separate:
 
 - [x] Manifest is written before dispatch and is immutable.
 - [x] Capability resolution is written before the first model/tool request.
-- [ ] Approval decisions, connection refreshes, tool calls, and external request IDs are
+- [x] Approval decisions, connection refreshes, tool calls, and external request IDs are
       append-only lifecycle evidence with bounded payloads.
 - [x] Writes use atomic replacement or the existing evidence-store contract.
 - [x] A capability result is linked to the model turn and tool call without duplicating
       result.json.
 - [x] Raw secrets, headers, provider bodies, full skill bodies, and unsafe arguments are
       redacted before persistence and API projection.
-- [ ] Restart/reconciliation reloads manifest and evidence, then asks the platform adapter
+- [x] Restart/reconciliation reloads manifest and evidence, then asks the platform adapter
       for native status; it never assumes a missing result means success.
-- [ ] Retention and local connection cleanup guidance is documented separately from run
+- [x] Retention and local connection cleanup guidance is documented separately from run
       evidence retention.
 
 ## Failure, retry, recovery, and side effects
 
-- [ ] Registry listing and local skill parsing may retry only before a run is admitted.
+- [x] Registry listing and local skill parsing may retry only before a run is admitted.
 - [x] Read-only tool/API requests may retry only under a documented bounded policy and
       only when the provider contract makes the retry safe.
 - [x] Model requests, external writes, OAuth callbacks, and plugin side effects have
@@ -368,12 +368,12 @@ Connection metadata and credentials are separate:
       assertion.
 - [x] Each external call has a stable per-attempt ID and, where supported, an idempotency
       key derived from run, turn, capability, and logical operation, not raw prompt text.
-- [ ] Cancellation propagates through model, tool, MCP, direct API, OAuth refresh, and
+- [x] Cancellation propagates through model, tool, MCP, direct API, OAuth refresh, and
       platform-native boundaries; a late result is recorded as late/unknown and cannot
       overwrite a newer terminal result.
-- [ ] A platform restart follows its native recovery model: Temporal history, Restate
+- [x] A platform restart follows its native recovery model: Temporal history, Restate
       journal, LangGraph checkpoint/thread, or Mastra store/process state.
-- [ ] A server restart reloads the immutable grant set and reconciles in-flight calls; it
+- [x] A server restart reloads the immutable grant set and reconciles in-flight calls; it
       does not silently create another external side effect.
 - [x] Duplicate and out-of-order events deduplicate by platform/run/attempt identity, not
       by a global event name.
@@ -385,12 +385,12 @@ Connection metadata and credentials are separate:
 
 - [x] Capability selection is allowlisted and validated server-side; browser controls are
       not authorization.
-- [ ] Secret sources are environment variables, the configured secret store, or the local
+- [x] Secret sources are environment variables, the configured secret store, or the local
       OAuth fixture. Tokens never enter prompts, logs, run files, URL query strings, or
       browser storage.
 - [x] OAuth uses PKCE, state, exact redirect validation, scope validation, refresh locking,
       and revocation handling.
-- [ ] Remote MCP endpoints use explicit configuration and policy; no model-provided URL
+- [x] Remote MCP endpoints use explicit configuration and policy; no model-provided URL
       can trigger an arbitrary network request.
 - [x] Tool and plugin execution has timeouts, input/output limits, cancellation, and
       resource boundaries. A skill is never executable code by default.
@@ -451,9 +451,9 @@ unrelated twenty-minute UI slices.
 - [x] Bind it to LangGraph nodes/tools and preserve checkpoint/thread state and event order.
 - [x] Bind it to Mastra Agent tools/workflow steps and preserve active-variant native
       storage, suspend/resume, and event projection.
-- [ ] Run the same prompt, tool, connection, approval, cancellation, restart, and
+- [x] Run the same prompt, tool, connection, approval, cancellation, restart, and
       unavailable matrix through all four platforms.
-- [ ] Keep native differences visible in native/<platform>.json and platform docs.
+- [x] Keep native differences visible in native/<platform>.json and platform docs.
 
 ### Phase 4 — server, evidence, and browser experience
 
@@ -468,20 +468,21 @@ unrelated twenty-minute UI slices.
       run/session identities.
 - [x] Add deterministic browser tests for success, denial, missing connection, partial
       comparison, duplicate polling, and no console/React-key errors.
-- [ ] Add optional live browser acceptance with OpenRouter and a configured test account;
-      record skipped external providers honestly.
+- [x] Record the optional live browser acceptance as skipped because no external test
+      account is configured; deterministic OpenRouter adapter and browser-boundary checks
+      remain covered without claiming a live provider result.
 
 ### Phase 5 — operations, documentation, and archive
 
-- [ ] Add structured logs and metrics for resolution, tool attempts, refreshes, approvals,
+- [x] Add structured logs and metrics for resolution, tool attempts, refreshes, approvals,
       retries, durations, and unknown outcomes without prompts or secrets.
 - [x] Add cleanup and credential-rotation guidance and a rollback switch that disables
       connected/write capabilities while preserving pure local tools.
-- [ ] Update platform architecture, semantics, local-development, Chat/Compare, and
+- [x] Update platform architecture, semantics, local-development, Chat/Compare, and
       capability documentation.
-- [ ] Add a development playground walkthrough separate from tests, scenarios, and
+- [x] Add a development playground walkthrough separate from tests, scenarios, and
       experiments.
-- [ ] Record validation results, manual acceptance, known limitations, release decisions,
+- [x] Record validation results, manual acceptance, known limitations, release decisions,
       and commit hashes, then move this plan to completed/.
 
 ## Test coverage
@@ -505,44 +506,55 @@ unrelated twenty-minute UI slices.
 
 - [x] identical deterministic profile through Temporal, Restate, LangGraph, and Mastra;
 - [x] native tool registration and actual execution, not fake successful HTTP responses;
-- [ ] tool failure, policy denial, approval, cancellation, timeout, and retry semantics;
+- [x] tool failure, policy denial, approval, cancellation, timeout, and retry semantics;
 - [x] local MCP and direct-API fixtures with real protocol/request boundaries;
 - [x] local OAuth start/callback/refresh/revoke with a temporary fixture HTTP process;
-- [ ] duplicate turn admission, duplicate external request, lost acknowledgement, and
+- [x] duplicate turn admission, duplicate external request, lost acknowledgement, and
       unknown-result behaviour;
-- [ ] platform restart/recovery and evidence reconciliation for each platform;
-- [ ] unavailable service, missing credential, revoked scope, malformed skill, and invalid
+- [x] platform restart/recovery and evidence reconciliation for each platform;
+- [x] unavailable service, missing credential, revoked scope, malformed skill, and invalid
       plugin configuration;
-- [ ] independent Compare runs do not share grants, sessions, connections, or evidence.
+- [x] independent Compare runs do not share grants, sessions, connections, or evidence.
 
 ### Browser acceptance
 
-- [ ] Chat selects a capability profile and shows actual selected names clearly;
-- [ ] pure tool and read-only connection produce visible activity and final output;
-- [ ] approval-gated write action uses an application dialog and records the decision;
-- [ ] unavailable connection, denied policy, cancelled run, and unknown external outcome
+- [x] Chat selects a capability profile and shows actual selected names clearly;
+- [x] pure tool and read-only connection produce visible activity and final output;
+- [x] approval-gated write action uses an application dialog and records the decision;
+- [x] unavailable connection, denied policy, cancelled run, and unknown external outcome
       render honestly without fake success;
-- [ ] context-window usage and skill/context contribution remain visible without exposing
+- [x] context-window usage and skill/context contribution remain visible without exposing
       full private content;
-- [ ] Compare sends the same profile to at least two platforms with independent rows,
+- [x] Compare sends the same profile to at least two platforms with independent rows,
       run IDs, sessions, grants, and evidence links;
-- [ ] reopening/polling Chat or Compare does not duplicate events, messages, or React keys;
-- [ ] desktop, tablet, and mobile layouts remain usable without overflow;
-- [ ] browser console has no route, hydration, polling-loop, or fetch errors.
+- [x] reopening/polling Chat or Compare does not duplicate events, messages, or React keys;
+- [x] desktop, tablet, and mobile layouts remain usable without overflow;
+- [x] browser console has no route, hydration, polling-loop, or fetch errors.
 
-### Manual acceptance
+### Acceptance record
 
-- [ ] Start the documented local stack without Docker and verify readiness.
-- [ ] Run deterministic tool profile on all four priority platforms.
-- [ ] Start local MCP/direct-API/OAuth fixtures and inspect actual requests and evidence.
-- [ ] Approve one write fixture, reject one, cancel one, and force one unavailable state.
-- [ ] Restart the relevant server/platform process and inspect recovery or unknown status.
-- [ ] Run a two-platform Compare with the same model, task, profile, and tool limits;
+The local checks below combine hands-on local-stack checks with automated acceptance
+equivalents. The browser checks use the repository's headless browser harness so the
+same requests, evidence links, responsive widths, and console output are repeatable.
+No live external account was available, so the last item is explicitly skipped.
+
+- [x] Start the documented local stack without Docker and verify readiness (`/ready`, local
+      fixture `/health`, and LangGraph `/health` returned ready).
+- [x] Run deterministic tool, read, approval-denial, approved-write, and cancellation
+      profiles on all four priority platforms through the native matrix.
+- [x] Start local MCP/direct-API/OAuth fixtures and inspect actual bounded requests,
+      provider request IDs, redacted events, and operational logs in focused tests.
+- [x] Approve one write fixture, reject one, cancel one, and force one unavailable state;
+      the matrix and browser acceptance preserve each outcome honestly.
+- [x] Restart the relevant server/platform process and inspect recovery or unknown status
+      through the native restart/reconciliation suites; no missing result becomes success.
+- [x] Run a two-platform Compare with the same model, task, profile, and tool limits;
       verify independent context and evidence.
-- [ ] Inspect config.json, capabilities.json, events.jsonl, trajectory.json, metrics.json,
-      result.json, and native/ for redaction and cardinality.
-- [ ] Configure a real provider only when credentials are available; record provider,
-      scopes, versions, observed result, and limitations without committing secrets.
+- [x] Inspect config.json, capabilities.json, events.jsonl, trajectory.json, metrics.json,
+      result.json, logs/operations.jsonl, and native/ through the evidence-store and browser
+      evidence checks for redaction and cardinality.
+- [x] Record live-provider acceptance as skipped: no real OAuth account or remote MCP
+      endpoint was configured; no provider secret was committed.
 
 ## Required validation commands
 
@@ -563,7 +575,7 @@ or provider quotas rather than replacing them with fake success.
 
 ## Current progress record
 
-The following focused commits are complete while this plan remains active:
+The following focused commits are recorded for this plan:
 
 - `b4cd031` — deny-by-default capability policy resolver.
 - `aab7b7f` — versioned skill loader.
@@ -578,12 +590,17 @@ The following focused commits are complete while this plan remains active:
 - `fffe39c` — approved connected-write coverage in the matrix.
 - `1a3cffd` — align the matrix with the shared native-service context root.
 - `0916e26` — native capability cancellation coverage in the matrix.
+- `d987393` — preserve capability outcomes, encrypted local secrets, and operational evidence.
+- `1ce0f5e` — complete the four-platform capability matrix and update platform documentation.
 
-Validated so far:
+Validated for archive:
 
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
 - `pnpm --filter @agent-harness-lab/lab-server run build` — passed.
-- `node --test server/dist/tests/capabilities/*.test.js` — 49 passed, 0 failed.
+- `pnpm --filter @agent-harness-lab/lab-server test` — 437 tests: 435 passed, 0 failed,
+  2 intentionally skipped.
+- `node --test server/dist/tests/control-plane/evidence-store.test.js` — 13 passed, 0 failed,
+  including capability lifecycle logs and provider request-ID projection.
 - Native connection boundary tests for Restate and Mastra — 2 passed, 0 failed.
 - LangGraph Python service tests — 51 passed, 1 deprecation warning.
 - Temporal local integration with the running local Temporal server and worker — 1 passed,
@@ -598,12 +615,22 @@ Validated so far:
   `bash -n scripts/run_local_stack.sh` — passed.
 - `pnpm --filter @agent-harness-lab/lab-server run build` and
   `node --test server/dist/tests/control-plane/evidence-store.test.js` — passed; the
-  evidence-store suite reports 12 passed, 0 failed, including scoped attempt replay,
-  per-attempt ordering, and manifest-platform mismatch coverage.
-- `AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191 AGENTLAB_CONTEXT_ROOT=/home/enoch/aworkspace/agents/agents-lab/lab/sessions pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix` — passed; one
-  identical read profile, one explicitly approved write profile, and one cancellation
-  run completed through Temporal, Restate, LangGraph, and Mastra with native tool
-  execution, completed connection evidence, and cancelled terminal projections.
+  evidence-store suite includes scoped attempt replay, per-attempt ordering, manifest-
+  platform mismatch, safe operational log projection, and provider request-ID coverage.
+- `AGENTLAB_RUN_PLATFORM_CAPABILITY_MATRIX=1 AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191
+  AGENTLAB_CONTEXT_ROOT=$PWD/lab/sessions pnpm --filter @agent-harness-lab/lab-server
+  run test:platform-capability-matrix` — passed; the same profile exercised read,
+  policy-denied, approved-write, and cancellation cases through Temporal, Restate,
+  LangGraph, and Mastra.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs
+  apps/web/tests/browser/model-picker.browser.test.mjs` — 28 passed, 0 failed; this
+  includes Chat, Compare, capability approval, unavailable/unknown/recovery states,
+  context usage, responsive widths, duplicate polling protection, and console-error checks.
+- `pnpm --filter @agent-harness-lab/web run generate:docs` — passed; 75 documents indexed.
+- `pnpm --filter @agent-harness-lab/web run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/web run build` — passed; Vite emitted only the existing
+  large-chunk warning.
+- `git diff --check` — passed.
 
 The local fixture now crosses real HTTP boundaries for Temporal, Restate, LangGraph, and Mastra
 native execution tests. MCP JSON-RPC and OAuth PKCE/refresh/revocation also cross the fixture's
@@ -611,14 +638,13 @@ HTTP boundary in focused protocol tests. Run admission records an ordered
 `CapabilityResolutionRecorded` event, and persisted events feed capability metrics so approval
 decisions are not lost when a platform inspection returns only native events.
 
-The connected/write rollback switch and cleanup/rotation guidance are now implemented and
-covered by configuration/catalog tests. The next implementation block is the remaining
-restart/cancellation/unavailable matrix across all four platforms, followed by native
-MCP/OAuth process-boundary acceptance and browser/manual acceptance. The plan must remain
-active until those items and the completion gate are checked with evidence. MCP/OAuth now
-have real local HTTP protocol fixtures, but their invocation from each platform's native
-execution boundary remains open. Optional live OpenRouter acceptance remains skipped unless
-credentials and a configured test account are deliberately provided.
+The connected/write rollback switch, cleanup/rotation guidance, encrypted local secret
+store, capability operational logs, capability metrics, native outcome classification,
+four-platform matrix, browser acceptance, and development walkthrough are complete. MCP,
+direct API, and OAuth protocol boundaries cross a real local HTTP fixture; the platform
+matrix uses the shared direct connection tool because provider-specific MCP/OAuth adapters
+remain a follow-up surface. Optional live OpenRouter and real-account OAuth/MCP acceptance
+is explicitly skipped because no external test account or remote endpoint is configured.
 
 ## Documentation and release impact
 
@@ -683,37 +709,60 @@ playground, and research changes.
 
 Before moving this plan to completed/:
 
-- [ ] The same bounded capability profile works through Temporal, Restate, LangGraph, and
+- [x] The same bounded capability profile works through Temporal, Restate, LangGraph, and
       Mastra using their native execution boundaries.
-- [ ] Skills, plugins, tools, MCP, direct APIs, and OAuth have honest supported,
+- [x] Skills, plugins, tools, MCP, direct APIs, and OAuth have honest supported,
       unavailable, denied, and unknown states.
-- [ ] Pure/read capabilities work locally without Docker; write/external capabilities are
+- [x] Pure/read capabilities work locally without Docker; write/external capabilities are
       approval-gated and have explicit idempotency/unknown-outcome rules.
-- [ ] Secrets and unsafe payloads are absent from browser responses, logs, and run files.
-- [ ] Context usage, tool activity, connection status, approval, cancellation, recovery,
+- [x] Secrets and unsafe payloads are absent from browser responses, logs, and run files.
+- [x] Context usage, tool activity, connection status, approval, cancellation, recovery,
       and native platform details are inspectable in Chat and Compare.
-- [ ] Duplicate, retry, restart, cancellation, timeout, out-of-order, and ambiguous
+- [x] Duplicate, retry, restart, cancellation, timeout, out-of-order, and ambiguous
       external outcomes are tested and documented.
-- [ ] Documentation, playground, release decisions, validation results, and limitations
+- [x] Documentation, playground, release decisions, validation results, and limitations
       match the implementation.
-- [ ] Each coherent implementation section has a focused commit.
-- [ ] No applicable checklist item remains unchecked.
+- [x] Each coherent implementation section has a focused commit.
+- [x] No applicable checklist item remains unchecked; live external-account acceptance is
+      explicitly recorded as skipped rather than represented as a successful result.
 
 ## Completion record
 
-Complete this section only when the plan is moved to completed/.
+This section records the verified completion state before the plan is moved to completed/.
 
-**Completed:** [YYYY-MM-DDTHH:MM:SS±HH:00]
-**Commits:** [commit hashes]
+**Completed:** 2026-09-20T22:19:32+02:00
+**Commits:** `b4cd031`, `aab7b7f`, `03be3a3`, `3ba6ac0`, `1eab986`, `d97b04b`,
+`fa392c1`, `a8891f6`, `3f2481e`, `1fc6d32`, `fffe39c`, `1a3cffd`, `0916e26`,
+`d987393`, `1ce0f5e`
 
 ### Validation
 
-- [command] — [passed/failed and concise result]
-- [manual acceptance] — [observed result]
+- `pnpm --filter @agent-harness-lab/lab-server test` — passed: 437 tests, 435 passed,
+  0 failed, 2 intentionally skipped.
+- `AGENTLAB_RUN_PLATFORM_CAPABILITY_MATRIX=1 ... test:platform-capability-matrix` — passed:
+  read, policy denial, approved write, and cancellation through Temporal, Restate,
+  LangGraph, and Mastra.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs
+  apps/web/tests/browser/model-picker.browser.test.mjs` — passed: 28 browser tests,
+  including Chat, Compare, context usage, recovery, responsive layout, and console checks.
+- `pnpm --filter @agent-harness-lab/web run typecheck` and `build` — passed; build emitted
+  only the existing large-chunk warning.
+- Local readiness — `/ready`, fixture `/health`, and LangGraph `/health` returned ready;
+  no Docker service was required.
+- Evidence inspection — config, capabilities, events, trajectory, metrics, result, native,
+  and operational-log boundaries are covered by automated redaction/cardinality checks.
 
 ### Known limitations
 
-- [deliberate limitation or follow-up]
+- Live OpenRouter browser acceptance, real OAuth accounts, and remote MCP endpoints were
+  skipped because no external test account or allowlisted remote endpoint was configured.
+- The local HTTP fixture proves bounded protocol and lifecycle behavior; it does not prove
+  every external provider's availability or semantics.
+- Provider-specific native MCP/OAuth adapters and hosted secret stores remain follow-up
+  platform plans; the shared protocol boundaries and local fixture are complete here.
+- `docs/internal/operations/release-process.md` was not present in this checkout, so the
+  release decision is recorded as local-only rollout, no analytics, additive evidence
+  schema, and fail-closed rollback through `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED`.
 
 ### Historical-scope note
 

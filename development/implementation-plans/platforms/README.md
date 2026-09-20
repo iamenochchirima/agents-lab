@@ -9,7 +9,6 @@ It does not contain Anesu or Studio work. Those have their own plan directories.
 
 ## Active plans
 
-- [Platform capabilities, tools, skills, and connections](active/platform-capabilities-and-integrations.md) — adds the shared capability boundary and native platform bindings after cross-platform acceptance.
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
 
@@ -34,6 +33,7 @@ Functions remains parked.
 - [Cross-platform agent conformance](completed/platform-agent-conformance.md)
 - [Mastra agent runtime and durable workflows](completed/mastra-agent-runtime-and-workflows.md)
 - [Cross-platform production acceptance and comparison](completed/platform-cross-comparison-acceptance.md)
+- [Platform capabilities, tools, skills, and connections](completed/platform-capabilities-and-integrations.md)
 
 ### Platform baselines
 
