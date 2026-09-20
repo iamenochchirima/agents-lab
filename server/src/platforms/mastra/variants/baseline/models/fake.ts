@@ -11,7 +11,8 @@ export interface DeterministicFakeModelOptions {
 
 /**
  * Provides a minimal AI SDK v2 language-model implementation so the real
- * Agent.generate() lifecycle can run without a provider or test framework.
+ * Agent.generate() and Agent.stream() lifecycles can run without a provider
+ * or test framework.
  * The runner injects this only for the fake provider; real runs use Mastra's
  * model router instead.
  */
@@ -84,8 +85,35 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
         warnings: [],
       };
     },
-    doStream: async () => {
-      throw new Error("The Mastra baseline fake model only supports Agent.generate().");
+    doStream: async ({ abortSignal }: FakeStreamOptions = {}) => {
+      if (abortSignal?.aborted) throw abortError();
+      const text = options.responseText ?? "Deterministic Mastra response.";
+      const stream = new ReadableStream<Record<string, unknown>>({
+        start(controller) {
+          controller.enqueue({ type: "stream-start", warnings: [] });
+          controller.enqueue({
+            type: "response-metadata",
+            id: `${options.modelId}-stream`,
+            modelId: options.modelId,
+            timestamp: new Date(0),
+          });
+          controller.enqueue({ type: "text-start", id: "mastra-text-1" });
+          controller.enqueue({ type: "text-delta", id: "mastra-text-1", delta: text });
+          controller.enqueue({ type: "text-end", id: "mastra-text-1" });
+          controller.enqueue({
+            type: "finish",
+            finishReason: "stop",
+            usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
+          });
+          controller.close();
+        },
+      });
+      return {
+        stream,
+        request: { body: "{}" },
+        response: { headers: {} },
+        rawResponse: {},
+      };
     },
   } as unknown as MastraModelConfig;
 }
@@ -93,6 +121,10 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
 interface FakeGenerateOptions {
   readonly abortSignal?: AbortSignal;
   readonly prompt?: unknown;
+}
+
+interface FakeStreamOptions {
+  readonly abortSignal?: AbortSignal;
 }
 
 function containsToolResult(prompt: unknown): boolean {

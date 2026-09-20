@@ -55,6 +55,36 @@ test("Mastra registers the baseline agent on a Mastra instance", () => {
   assert.equal(runtime.agent.id, MASTRA_AGENT_ID);
 });
 
+test("registered Mastra agent exposes native stream output and usage", async () => {
+  const runner = new MastraBaselineRunner();
+  const manifest = manifestFor(runner, "fake-success", "fake", "mastra-native-stream");
+  const runtime = createBaselineAgentRuntime(manifest, (selectedManifest) => createDeterministicFakeModel({
+    modelId: selectedManifest.model.model,
+    responseText: "Streamed Mastra response.",
+  }), {
+    runId: manifest.runId,
+    turnId: `${manifest.runId}:turn:1`,
+    signal: new AbortController().signal,
+    maxToolCalls: 8,
+  });
+
+  const stream = await runtime.agent.stream(manifest.task.prompt, {
+    runId: manifest.runId,
+    abortSignal: new AbortController().signal,
+  });
+  const chunks: Array<{ type: string }> = [];
+  for await (const chunk of stream.fullStream) chunks.push({ type: chunk.type });
+
+  assert.equal(await stream.text, "Streamed Mastra response.");
+  assert.equal(await stream.finishReason, "stop");
+  const usage = await stream.totalUsage;
+  assert.equal(usage.inputTokens, 3);
+  assert.equal(usage.outputTokens, 4);
+  assert.equal(usage.totalTokens, 7);
+  assert.ok(chunks.some((chunk) => chunk.type === "text-delta"));
+  assert.ok(chunks.some((chunk) => chunk.type === "finish"));
+});
+
 test("Mastra runs a real Agent.generate call and duplicate start is idempotent", async () => {
   let modelFactoryCalls = 0;
   const runner = new MastraBaselineRunner({
