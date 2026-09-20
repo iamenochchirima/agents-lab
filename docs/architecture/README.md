@@ -11,3 +11,5 @@ Start with:
 - [UI and documentation](ui-and-docs.md), which describes how the planning interface consumes repository Markdown.
 - [Anesu context management](anesu-context-management.md), which describes context
   ownership, lifecycle, persistence, and recovery.
+- [Platform capabilities](platform-capabilities.md), which describes profile resolution,
+  skills, tools, connections, approvals, and native platform ownership.
