@@ -63,15 +63,15 @@ not part of the default test command.
 
 The locked baseline currently uses:
 
-- Python `>=3.11,<3.13` (the verified launcher runtime is Python 3.11.16).
+- Python `>=3.11,<3.13` (verified runtimes are Python 3.11.16 and 3.12.3).
 - `langgraph==1.2.10`.
 - `langgraph-checkpoint-sqlite==3.1.1`.
 - FastAPI `0.141.1` and Uvicorn `0.53.0` for the platform-local HTTP seam.
 
 The launcher-selected local environment was verified with Python 3.11.16 and SQLite
-3.53.1. A compatible Python 3.12 installation must expose its standard-library
-`sqlite3` module; the available host Python 3.12.1 does not, so the launcher correctly
-selects the working 3.11 environment instead.
+3.53.1. A clean Python 3.12.3 virtual environment was also verified with SQLite 3.45.1.
+The unrelated `/usr/local` Python 3.12.1 build does not expose `_sqlite3`, so the
+launcher skips it and selects a working interpreter instead.
 
 The complete resolved environment is in [`requirements.lock`](requirements.lock). The baseline uses LangGraph's versioned `v2` stream parts for updates, tasks, and checkpoints. It does not claim token streaming for the raw OpenRouter request path.
 

@@ -227,7 +227,15 @@ resolve_langgraph_python() {
 
   if [[ -n "$configured_python" ]]; then
     require_command "$configured_python"
-    if ! "$configured_python" -c 'import sqlite3, fastapi, langgraph, uvicorn' >/dev/null 2>&1; then
+    if ! "$configured_python" -c 'import sys; raise SystemExit(0 if (sys.version_info >= (3, 11) and sys.version_info < (3, 13)) else 1)' >/dev/null 2>&1; then
+      echo "LangGraph requires Python 3.11 or 3.12; $configured_python is not compatible." >&2
+      return 1
+    fi
+    if ! "$configured_python" -c 'import sqlite3' >/dev/null 2>&1; then
+      echo "LangGraph requires a Python build with the standard-library sqlite3 module; $configured_python does not provide it." >&2
+      return 1
+    fi
+    if ! "$configured_python" -c 'import fastapi, langgraph, uvicorn' >/dev/null 2>&1; then
       echo "LangGraph dependencies are not installed for $configured_python." >&2
       echo "Install $platform_directory/requirements.lock or unset AGENTLAB_LANGGRAPH_PYTHON to let the launcher prepare .venv." >&2
       return 1
@@ -247,17 +255,38 @@ resolve_langgraph_python() {
     fi
   done
 
-  require_command python3
-  if ! python3 -c 'import sys; raise SystemExit(0 if (sys.version_info >= (3, 11) and sys.version_info < (3, 13)) else 1)' >/dev/null 2>&1; then
+  # Prefer a system interpreter with a working sqlite3 module when a prepared
+  # environment is not already available. Some hosts have more than one Python
+  # build on PATH; checking sqlite3 here prevents creating a venv that can never
+  # load LangGraph's SQLite checkpointer.
+  local base_python=""
+  for candidate in \
+    /usr/bin/python3.12 \
+    /usr/bin/python3.11 \
+    /usr/local/bin/python3.12 \
+    /usr/local/bin/python3.11 \
+    "$(command -v python3.12 2>/dev/null || true)" \
+    "$(command -v python3.11 2>/dev/null || true)" \
+    "$(command -v python3 2>/dev/null || true)"; do
+    if [[ -n "$candidate" && -x "$candidate" ]] && "$candidate" -c 'import sys, sqlite3; raise SystemExit(0 if (sys.version_info >= (3, 11) and sys.version_info < (3, 13)) else 1)' >/dev/null 2>&1; then
+      base_python="$candidate"
+      break
+    fi
+  done
+
+  if [[ -z "$base_python" ]]; then
     echo "LangGraph requires Python 3.11 or 3.12." >&2
-    echo "Set AGENTLAB_LANGGRAPH_PYTHON to a compatible interpreter with the locked dependencies installed." >&2
+    echo "Set AGENTLAB_LANGGRAPH_PYTHON to a compatible interpreter with sqlite3 enabled." >&2
     return 1
   fi
 
   local virtual_environment="${AGENTLAB_LANGGRAPH_VENV:-$platform_directory/.venv}"
-  if [[ ! -x "$virtual_environment/bin/python" ]]; then
+  if [[ -x "$virtual_environment/bin/python" ]] && ! "$virtual_environment/bin/python" -c 'import sys, sqlite3; raise SystemExit(0 if (sys.version_info >= (3, 11) and sys.version_info < (3, 13)) else 1)' >/dev/null 2>&1; then
+    echo "Rebuilding the local LangGraph Python environment with $base_python at $virtual_environment." >&2
+    "$base_python" -m venv --clear "$virtual_environment"
+  elif [[ ! -x "$virtual_environment/bin/python" ]]; then
     echo "Preparing the local LangGraph Python environment at $virtual_environment." >&2
-    python3 -m venv "$virtual_environment"
+    "$base_python" -m venv "$virtual_environment"
   fi
   if ! "$virtual_environment/bin/python" -c 'import sqlite3, fastapi, langgraph, uvicorn' >/dev/null 2>&1; then
     echo "Installing the locked LangGraph dependencies." >&2

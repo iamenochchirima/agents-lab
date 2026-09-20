@@ -53,8 +53,10 @@ deployed Hatchet server; see the platform's [local-development guide](../server/
 The launcher checks for installed frontend/server dependencies and prints the temporary
 log directory when the stack stops. If the local LangGraph environment is missing, it
 creates the ignored `server/src/platforms/langgraph/.venv` and installs the locked
-requirements automatically. Set `AGENTLAB_LANGGRAPH_PYTHON` to use an already prepared
-environment instead.
+requirements automatically. It selects a compatible Python 3.11 or 3.12 interpreter
+with the standard-library `sqlite3` module before creating that environment; this
+avoids accidentally building a virtual environment from a broken Python installation.
+Set `AGENTLAB_LANGGRAPH_PYTHON` to use an already prepared environment instead.
 
 If a required local service fails to become ready, the launcher stops the processes it
 started and points to the relevant log files instead of claiming that the stack works.
