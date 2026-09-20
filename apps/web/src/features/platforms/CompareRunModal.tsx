@@ -1,9 +1,11 @@
 import { Check, CircleAlert, LoaderCircle, Play, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { ModelPicker } from "../models/ModelPicker";
+import { appPaths } from "../../routes/paths";
 import { isRunnableBaseline, platformCatalog } from "./platformCatalog";
 import {
   createRun,
@@ -187,11 +189,12 @@ export function CompareRunModal(props: CompareRunModalProps) {
               <span className="run-section-label">Runs</span>
               {entries.map((entry) => <div className="comparison-result" key={entry.platformId}>
                 <strong>{entry.platformName}</strong>
-              <span className={`comparison-result-status comparison-result-${entry.phase}`}>
-                  {entry.phase === "checking" || entry.phase === "starting" || entry.phase === "running" ? <LoaderCircle aria-hidden="true" className="is-spinning" size={13} /> : entry.phase === "error" ? <CircleAlert aria-hidden="true" size={13} /> : null}
-                  {entry.error ?? entry.run?.status ?? entry.phase}
+                <span className={`comparison-result-status comparison-result-${entry.phase}`}>
+                    {entry.phase === "checking" || entry.phase === "starting" || entry.phase === "running" ? <LoaderCircle aria-hidden="true" className="is-spinning" size={13} /> : entry.phase === "error" ? <CircleAlert aria-hidden="true" size={13} /> : null}
+                    {entry.error ?? entry.run?.status ?? entry.phase}
                 </span>
                 {entry.run?.result?.output && <small className="comparison-result-output">{entry.run.result.output}</small>}
+                {entry.run && <Link className="comparison-result-link" to={`${appPaths.platformSection(entry.platformId, "chat")}?run=${encodeURIComponent(entry.run.runId)}`}>Open run</Link>}
               </div>)}
             </div>
           )}

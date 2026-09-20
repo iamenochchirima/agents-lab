@@ -220,6 +220,9 @@ test("Compare starts independent platform runs with one comparison identity", as
     assert.equal(new Set(fixture.state.requests.map((request) => request.comparisonId)).size, 1);
     assert.match(fixture.state.requests[0]?.comparisonId ?? "", /^comparison-[A-Za-z0-9-]+$/);
     assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1]);
+    const runLinks = await browser.cdp.evaluate('Array.from(document.querySelectorAll(".comparison-result-link")).map((link) => link.getAttribute("href"))');
+    assert.equal(runLinks.length, 2);
+    assert.equal(runLinks.every((href) => href?.match(/^\/platforms\/(?:temporal|mastra)\/chat\?run=run-/)), true);
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -247,6 +250,7 @@ test("Compare keeps a completed member when another platform fails", async () =>
     assert.equal(fixture.state.requests.length, 2);
     assert.equal(new Set(fixture.state.requests.map((request) => request.comparisonId)).size, 1);
     assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1]);
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-link").length'), 2);
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();

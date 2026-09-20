@@ -1,7 +1,7 @@
 # Cross-platform production acceptance and comparison
 
 **Created:** `2026-09-20T13:11:14+02:00`<br>
-**Last updated:** `2026-09-20T15:56:18+02:00`<br>
+**Last updated:** `2026-09-20T16:02:44+02:00`<br>
 **Status:** Active — Phase 0 and the shared server contract are underway; final matrix remains gated by Mastra completion<br>
 **Owner:** Primary platform integration owner<br>
 **Platforms:** Temporal, Restate, LangGraph, Mastra<br>
@@ -185,12 +185,12 @@ exactly-once delivery to a model provider or external tool.
 
 ### 4. Browser Compare and Chat
 
-- [ ] Make Compare submit the same workload and model to selected platforms.
+- [x] Make Compare submit the same workload and model to selected platforms.
 - [ ] Show one result row per platform with independent status, output, error, and run ID.
-- [ ] Show partial completion when one platform fails or is unavailable.
+- [x] Show partial completion when one platform fails or is unavailable.
 - [ ] Keep model selection, task, scenario, experiment, and tool settings consistent.
 - [ ] Show context usage and tool activity for each Chat run.
-- [ ] Link each result to its own run details and evidence files.
+- [x] Link each result to its own Platform Chat run details and evidence files.
 - [ ] Prevent polling races, duplicate assistant messages, duplicate React keys, and
       stale comparison rows after closing and reopening the modal.
 - [ ] Verify desktop, tablet, and mobile layouts without overflow or hidden results.
@@ -386,7 +386,7 @@ semantics. Shared-file changes are integrated sequentially by the primary agent.
 
 - [ ] comparison ID validation and manifest propagation;
 - [ ] identical workload with independent run/session/client-turn identities;
-- [ ] comparison row status and partial-result projection;
+- [x] comparison row status and partial-result projection;
 - [ ] event and terminal-result isolation across runs;
 - [ ] context projection and unknown-token handling;
 - [ ] tool capability and calculator evidence consistency;
@@ -406,9 +406,9 @@ semantics. Shared-file changes are integrated sequentially by the primary agent.
 
 - [ ] each platform Chat runs a prompt and displays the actual output;
 - [ ] each platform Chat shows model, tool activity, context usage, and evidence links;
-- [ ] Compare submits the same task to at least two platforms;
-- [ ] Compare keeps runs and context sessions independent;
-- [ ] Compare renders partial success and unavailable states honestly;
+- [x] Compare submits the same task to at least two platforms;
+- [x] Compare keeps runs and context sessions independent;
+- [x] Compare renders partial success and unavailable states honestly;
 - [ ] reopening or polling a comparison does not duplicate messages or rows;
 - [ ] desktop, tablet, and mobile layouts remain usable;
 - [ ] browser console has no React key, hydration, route, or polling-loop errors.
