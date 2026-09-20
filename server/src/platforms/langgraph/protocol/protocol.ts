@@ -60,6 +60,27 @@ export interface LangGraphHealthResponse {
   readonly message: string;
 }
 
+export interface LangGraphRecoveryDiagnostics {
+  readonly protocolVersion: typeof LANGGRAPH_PROTOCOL_VERSION;
+  readonly status: "clean" | "attention";
+  readonly limit: number;
+  readonly orphanCheckpointThreads: readonly {
+    readonly threadId: string;
+    readonly checkpointCount: number;
+    readonly latestCheckpointId: string | null;
+  }[];
+  readonly orphanWriteCount: number;
+  readonly uncheckpointedRuns: readonly {
+    readonly executionId: string;
+    readonly runId: string;
+    readonly threadId: string;
+    readonly status: "queued" | "running" | "unknown";
+    readonly message: string;
+  }[];
+  readonly truncated: boolean;
+  readonly message: string;
+}
+
 export interface LangGraphEvent {
   readonly source: "langgraph-service";
   readonly sourceSequence: number;
@@ -147,6 +168,23 @@ export function parseHealthResponse(value: unknown): LangGraphHealthResponse {
   return object as unknown as LangGraphHealthResponse;
 }
 
+export function parseRecoveryDiagnostics(value: unknown): LangGraphRecoveryDiagnostics {
+  const object = requireObject(value, "LangGraph recovery diagnostics");
+  requireOnly(object, ["protocolVersion", "status", "limit", "orphanCheckpointThreads", "orphanWriteCount", "uncheckpointedRuns", "truncated", "message"], "LangGraph recovery diagnostics");
+  requireProtocol(object);
+  if (object.status !== "clean" && object.status !== "attention") throw new Error("LangGraph recovery diagnostics has an invalid status.");
+  requirePositiveInteger(object, "limit");
+  if (object.limit > 100) throw new Error("LangGraph recovery diagnostics limit cannot exceed 100.");
+  if (!Array.isArray(object.orphanCheckpointThreads)) throw new Error("LangGraph orphan checkpoint threads must be an array.");
+  object.orphanCheckpointThreads.forEach(validateOrphanCheckpointThread);
+  requireNonNegativeInteger(object, "orphanWriteCount");
+  if (!Array.isArray(object.uncheckpointedRuns)) throw new Error("LangGraph uncheckpointed runs must be an array.");
+  object.uncheckpointedRuns.forEach(validateUncheckpointedRun);
+  requireBoolean(object, "truncated");
+  requireString(object, "message");
+  return object as unknown as LangGraphRecoveryDiagnostics;
+}
+
 export function parseStartResponse(value: unknown): LangGraphStartResponse {
   const object = requireObject(value, "LangGraph start response");
   requireOnly(object, ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "idempotent", "serviceVersion", "langgraphVersion", "pythonVersion"], "LangGraph start response");
@@ -216,6 +254,24 @@ function validateEvent(value: unknown): void {
   requireString(event, "runId");
   requireString(event, "occurredAt");
   requireObject(event.payload, "LangGraph event payload");
+}
+
+function validateOrphanCheckpointThread(value: unknown): void {
+  const thread = requireObject(value, "LangGraph orphan checkpoint thread");
+  requireOnly(thread, ["threadId", "checkpointCount", "latestCheckpointId"], "LangGraph orphan checkpoint thread");
+  requireString(thread, "threadId");
+  requirePositiveInteger(thread, "checkpointCount");
+  if (thread.latestCheckpointId !== null && typeof thread.latestCheckpointId !== "string") throw new Error("Invalid LangGraph latest checkpoint ID.");
+}
+
+function validateUncheckpointedRun(value: unknown): void {
+  const run = requireObject(value, "LangGraph uncheckpointed run");
+  requireOnly(run, ["executionId", "runId", "threadId", "status", "message"], "LangGraph uncheckpointed run");
+  requireString(run, "executionId");
+  requireString(run, "runId");
+  requireString(run, "threadId");
+  if (run.status !== "queued" && run.status !== "running" && run.status !== "unknown") throw new Error("Invalid LangGraph uncheckpointed run status.");
+  requireString(run, "message");
 }
 
 function validateResult(value: unknown): void {

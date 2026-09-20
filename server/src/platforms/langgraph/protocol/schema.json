@@ -6,6 +6,7 @@
     { "$ref": "#/$defs/startRequest" },
     { "$ref": "#/$defs/startResponse" },
     { "$ref": "#/$defs/healthResponse" },
+    { "$ref": "#/$defs/recoveryDiagnostics" },
     { "$ref": "#/$defs/inspection" },
     { "$ref": "#/$defs/cancelRequest" },
     { "$ref": "#/$defs/cancelResponse" }
@@ -114,6 +115,40 @@
         "langgraphVersion": { "type": "string", "minLength": 1 }, "pythonVersion": { "type": "string", "minLength": 1 },
         "status": { "type": "string", "enum": ["ready", "unavailable"] }, "checkpointPath": { "type": "string", "minLength": 1 },
         "checkpointPathWritable": { "type": "boolean" }, "message": { "type": "string", "minLength": 1 }
+      }
+    },
+    "orphanCheckpointThread": {
+      "type": "object", "additionalProperties": false,
+      "required": ["threadId", "checkpointCount", "latestCheckpointId"],
+      "properties": {
+        "threadId": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "checkpointCount": { "type": "integer", "minimum": 1 },
+        "latestCheckpointId": { "type": ["string", "null"], "maxLength": 255 }
+      }
+    },
+    "uncheckpointedRun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executionId", "runId", "threadId", "status", "message"],
+      "properties": {
+        "executionId": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "runId": { "$ref": "#/$defs/identity" },
+        "threadId": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "status": { "type": "string", "enum": ["queued", "running", "unknown"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "recoveryDiagnostics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "status", "limit", "orphanCheckpointThreads", "orphanWriteCount", "uncheckpointedRuns", "truncated", "message"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocol" },
+        "status": { "type": "string", "enum": ["clean", "attention"] },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "orphanCheckpointThreads": { "type": "array", "items": { "$ref": "#/$defs/orphanCheckpointThread" } },
+        "orphanWriteCount": { "type": "integer", "minimum": 0 },
+        "uncheckpointedRuns": { "type": "array", "items": { "$ref": "#/$defs/uncheckpointedRun" } },
+        "truncated": { "type": "boolean" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 }
       }
     },
     "startResponse": {

@@ -70,6 +70,13 @@ returns that persisted unknown record with `idempotent=true`; it does not start 
 second graph execution. A late worker completion cannot overwrite that reconciliation
 record.
 
+`GET /v1/recovery/diagnostics` is a bounded, read-only operator check. It reports
+checkpoint threads with no owning service run, orphan writes, and admitted
+queued/running/unknown records with no persisted checkpoint. It never adopts, resumes,
+or deletes state. A `clean` response means no such rows were observed in the bounded
+scan; it does not prove that a provider call completed. SQLite and Lab evidence
+retention remain separate operational policies and are not performed by this endpoint.
+
 ## Observed behaviour and Lab guarantees
 
 The following table separates what the local implementation currently observes from

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   parseHealthResponse,
   parseInspection,
+  parseRecoveryDiagnostics,
   parseStartResponse,
 } from "../../../src/platforms/langgraph/protocol/protocol.js";
 
@@ -40,6 +41,48 @@ test("LangGraph start parsing preserves runtime identity when supplied", () => {
   assert.equal(start.serviceVersion, "0.1.0");
   assert.equal(start.langgraphVersion, "1.2.10");
   assert.equal(start.pythonVersion, "3.11.16");
+});
+
+test("LangGraph recovery diagnostics parsing preserves bounded orphan state", () => {
+  const diagnostics = parseRecoveryDiagnostics({
+    protocolVersion: 1,
+    status: "attention",
+    limit: 10,
+    orphanCheckpointThreads: [
+      { threadId: "langgraph:orphan", checkpointCount: 2, latestCheckpointId: "checkpoint-2" },
+    ],
+    orphanWriteCount: 1,
+    uncheckpointedRuns: [
+      {
+        executionId: "langgraph:run-1",
+        runId: "run-1",
+        threadId: "langgraph:run-1",
+        status: "unknown",
+        message: "Inspect before cleanup.",
+      },
+    ],
+    truncated: false,
+    message: "Recovery attention is required.",
+  });
+
+  assert.equal(diagnostics.orphanCheckpointThreads[0]?.checkpointCount, 2);
+  assert.equal(diagnostics.uncheckpointedRuns[0]?.status, "unknown");
+});
+
+test("LangGraph recovery diagnostics rejects an unbounded operator query", () => {
+  assert.throws(
+    () => parseRecoveryDiagnostics({
+      protocolVersion: 1,
+      status: "clean",
+      limit: 101,
+      orphanCheckpointThreads: [],
+      orphanWriteCount: 0,
+      uncheckpointedRuns: [],
+      truncated: false,
+      message: "No recovery attention is required.",
+    }),
+    /limit cannot exceed 100/,
+  );
 });
 
 test("LangGraph protocol parsing rejects incompatible or malformed responses", () => {

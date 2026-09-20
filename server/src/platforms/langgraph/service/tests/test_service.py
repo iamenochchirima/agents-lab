@@ -526,6 +526,88 @@ def test_service_startup_marks_unfinished_records_unknown(tmp_path: Path) -> Non
         assert inspection.json()["result"]["error"]["code"] == "SERVICE_RESTARTED"
 
 
+def test_recovery_diagnostics_reports_orphan_checkpoint_state_without_deleting_it(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path / "langgraph.sqlite")
+    request = {
+        "execution_id": "langgraph:run-without-checkpoint",
+        "run_id": "run-without-checkpoint",
+        "thread_id": "thread-without-checkpoint",
+        "request_fingerprint": "fingerprint",
+        "prompt_hash": "hash",
+        "graph": "baseline",
+        "provider": "fake",
+        "model": "fake-success",
+    }
+    store.create_or_get(request)
+    store.update_status("langgraph:run-without-checkpoint", "running", started_at="2026-09-15T10:00:00Z")
+    with sqlite3.connect(tmp_path / "langgraph.sqlite") as connection:
+        connection.executescript(
+            """
+            CREATE TABLE checkpoints (
+                thread_id TEXT NOT NULL,
+                checkpoint_ns TEXT NOT NULL DEFAULT '',
+                checkpoint_id TEXT NOT NULL,
+                parent_checkpoint_id TEXT,
+                type TEXT,
+                checkpoint BLOB,
+                metadata BLOB,
+                PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+            );
+            CREATE TABLE writes (
+                thread_id TEXT NOT NULL,
+                checkpoint_ns TEXT NOT NULL DEFAULT '',
+                checkpoint_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                idx INTEGER NOT NULL,
+                channel TEXT NOT NULL,
+                type TEXT,
+                value BLOB,
+                PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+            );
+            """
+        )
+        connection.execute(
+            "INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("orphan-thread", "", "checkpoint-orphan", None, "msgpack", b"bounded", b"{}"),
+        )
+        connection.execute(
+            "INSERT INTO writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ("orphan-thread", "", "missing-checkpoint", "task-orphan", 0, "output", "msgpack", b"orphan"),
+        )
+    store.close()
+
+    with TestClient(create_app(ServiceConfig(state_dir=tmp_path))) as client:
+        response = client.get("/v1/recovery/diagnostics?limit=10")
+        assert response.status_code == 200
+        diagnostics = response.json()
+        assert diagnostics["status"] == "attention"
+        assert diagnostics["orphanCheckpointThreads"] == [{
+            "threadId": "orphan-thread",
+            "checkpointCount": 1,
+            "latestCheckpointId": "checkpoint-orphan",
+        }]
+        assert diagnostics["orphanWriteCount"] == 1
+        assert diagnostics["uncheckpointedRuns"] == [{
+            "executionId": "langgraph:run-without-checkpoint",
+            "runId": "run-without-checkpoint",
+            "threadId": "thread-without-checkpoint",
+            "status": "unknown",
+            "message": "The run has no persisted LangGraph checkpoint; inspect before any manual cleanup.",
+        }]
+
+        with sqlite3.connect(tmp_path / "langgraph.sqlite") as connection:
+            assert connection.execute("SELECT COUNT(*) FROM checkpoints WHERE thread_id = 'orphan-thread'").fetchone()[0] == 1
+
+
+def test_recovery_diagnostics_is_clean_before_the_first_graph_run(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        response = client.get("/v1/recovery/diagnostics")
+        assert response.status_code == 200
+        assert response.json()["status"] == "clean"
+        assert response.json()["orphanCheckpointThreads"] == []
+        assert response.json()["orphanWriteCount"] == 0
+
+
 def test_store_terminal_completion_cannot_overwrite_shutdown_reconciliation(tmp_path: Path) -> None:
     store = SQLiteRunStore(tmp_path / "shutdown-race.sqlite")
     request = {

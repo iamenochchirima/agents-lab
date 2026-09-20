@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from protocol.models import (
@@ -22,6 +22,7 @@ from protocol.models import (
     CancelRunResponse,
     HealthResponse,
     RunInspection,
+    RecoveryDiagnosticsResponse,
     StartRunRequest,
     StartRunResponse,
     WireCheckpoint,
@@ -337,6 +338,28 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
             return request.app.state.service.inspection(execution_id)
         except RunNotFoundError as exc:
             raise HTTPException(status_code=404, detail="LangGraph execution not found.") from exc
+
+    @app.get("/v1/recovery/diagnostics", response_model=RecoveryDiagnosticsResponse)
+    async def recovery_diagnostics(
+        request: Request,
+        limit: int = Query(default=100, ge=1, le=100),
+    ) -> RecoveryDiagnosticsResponse:
+        diagnostics = request.app.state.service.store.recovery_diagnostics(limit)
+        has_attention = bool(
+            diagnostics["orphanCheckpointThreads"]
+            or diagnostics["orphanWriteCount"]
+            or diagnostics["uncheckpointedRuns"]
+        )
+        return RecoveryDiagnosticsResponse(
+            status="attention" if has_attention else "clean",
+            limit=limit,
+            message=(
+                "Recovery diagnostics found state without a complete ownership chain."
+                if has_attention
+                else "No orphan checkpoint or uncheckpointed run state was found."
+            ),
+            **diagnostics,
+        )
 
     @app.post("/v1/runs/{execution_id}/cancel", response_model=CancelRunResponse)
     async def cancel_run(request: Request, execution_id: str, body: CancelRunRequest) -> CancelRunResponse:

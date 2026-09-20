@@ -333,6 +333,139 @@ class SQLiteRunStore:
             )
             self.append_event(execution_id, "RunReconciliationRequired", {"code": reason_code, "message": reason})
 
+    def recovery_diagnostics(self, limit: int = 100) -> dict[str, Any]:
+        """Return bounded, read-only diagnostics for state without an owner.
+
+        A checkpoint is not an execution result. This report therefore never
+        adopts or deletes checkpoint state: it identifies checkpoint threads
+        that have no service-run owner, writes whose checkpoint row is missing,
+        and admitted nonterminal/unknown runs that have no checkpoint yet.
+        """
+
+        bounded_limit = max(1, min(limit, 100))
+        with self._lock:
+            checkpointer_tables = {
+                row["name"]
+                for row in self._connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('checkpoints', 'writes')"
+                ).fetchall()
+            }
+            if "checkpoints" not in checkpointer_tables:
+                uncheckpointed_rows = self._connection.execute(
+                    """
+                    SELECT execution_id, run_id, thread_id, status
+                    FROM service_runs
+                    WHERE status IN ('queued', 'running', 'unknown')
+                    ORDER BY created_at, execution_id
+                    LIMIT ?
+                    """,
+                    (bounded_limit,),
+                ).fetchall()
+                uncheckpointed_total = int(self._connection.execute(
+                    "SELECT COUNT(*) FROM service_runs WHERE status IN ('queued', 'running', 'unknown')"
+                ).fetchone()[0])
+                return {
+                    "orphanCheckpointThreads": [],
+                    "orphanWriteCount": 0,
+                    "uncheckpointedRuns": [
+                        {
+                            "executionId": row["execution_id"],
+                            "runId": row["run_id"],
+                            "threadId": row["thread_id"],
+                            "status": row["status"],
+                            "message": "The run has no persisted LangGraph checkpoint; inspect before any manual cleanup.",
+                        }
+                        for row in uncheckpointed_rows
+                    ],
+                    "truncated": uncheckpointed_total > len(uncheckpointed_rows),
+                }
+            orphan_checkpoint_rows = self._connection.execute(
+                """
+                SELECT checkpoints.thread_id,
+                       COUNT(*) AS checkpoint_count,
+                       MAX(checkpoints.checkpoint_id) AS latest_checkpoint_id
+                FROM checkpoints
+                LEFT JOIN (SELECT DISTINCT thread_id FROM service_runs) AS owners
+                  ON owners.thread_id = checkpoints.thread_id
+                WHERE owners.thread_id IS NULL
+                GROUP BY checkpoints.thread_id
+                ORDER BY checkpoints.thread_id
+                LIMIT ?
+                """,
+                (bounded_limit,),
+            ).fetchall()
+            orphan_checkpoint_total = int(self._connection.execute(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT checkpoints.thread_id
+                    FROM checkpoints
+                    LEFT JOIN (SELECT DISTINCT thread_id FROM service_runs) AS owners
+                      ON owners.thread_id = checkpoints.thread_id
+                    WHERE owners.thread_id IS NULL
+                    GROUP BY checkpoints.thread_id
+                )
+                """
+            ).fetchone()[0])
+            orphan_write_count = 0
+            if "writes" in checkpointer_tables:
+                orphan_write_count = int(self._connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM writes
+                    LEFT JOIN checkpoints
+                      ON checkpoints.thread_id = writes.thread_id
+                     AND checkpoints.checkpoint_ns = writes.checkpoint_ns
+                     AND checkpoints.checkpoint_id = writes.checkpoint_id
+                    WHERE checkpoints.thread_id IS NULL
+                    """
+                ).fetchone()[0])
+            uncheckpointed_rows = self._connection.execute(
+                """
+                SELECT runs.execution_id, runs.run_id, runs.thread_id, runs.status
+                FROM service_runs AS runs
+                LEFT JOIN (SELECT DISTINCT thread_id FROM checkpoints) AS checkpoints
+                  ON checkpoints.thread_id = runs.thread_id
+                WHERE runs.status IN ('queued', 'running', 'unknown')
+                  AND checkpoints.thread_id IS NULL
+                ORDER BY runs.created_at, runs.execution_id
+                LIMIT ?
+                """,
+                (bounded_limit,),
+            ).fetchall()
+            uncheckpointed_total = int(self._connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM service_runs AS runs
+                LEFT JOIN (SELECT DISTINCT thread_id FROM checkpoints) AS checkpoints
+                  ON checkpoints.thread_id = runs.thread_id
+                WHERE runs.status IN ('queued', 'running', 'unknown')
+                  AND checkpoints.thread_id IS NULL
+                """
+            ).fetchone()[0])
+
+        return {
+            "orphanCheckpointThreads": [
+                {
+                    "threadId": row["thread_id"],
+                    "checkpointCount": int(row["checkpoint_count"]),
+                    "latestCheckpointId": row["latest_checkpoint_id"],
+                }
+                for row in orphan_checkpoint_rows
+            ],
+            "orphanWriteCount": orphan_write_count,
+            "uncheckpointedRuns": [
+                {
+                    "executionId": row["execution_id"],
+                    "runId": row["run_id"],
+                    "threadId": row["thread_id"],
+                    "status": row["status"],
+                    "message": "The run has no persisted LangGraph checkpoint; inspect before any manual cleanup.",
+                }
+                for row in uncheckpointed_rows
+            ],
+            "truncated": orphan_checkpoint_total > len(orphan_checkpoint_rows) or uncheckpointed_total > len(uncheckpointed_rows),
+        }
+
     def _row_to_run(self, row: sqlite3.Row) -> dict[str, Any]:
         record = dict(row)
         record["error"] = json.loads(record.pop("error_json")) if record["error_json"] else None

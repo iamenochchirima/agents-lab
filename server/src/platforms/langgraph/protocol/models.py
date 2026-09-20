@@ -116,6 +116,31 @@ class HealthResponse(ProtocolModel):
     message: str
 
 
+class OrphanCheckpointThread(ProtocolModel):
+    thread_id: str = Field(min_length=1, max_length=255)
+    checkpoint_count: int = Field(ge=1)
+    latest_checkpoint_id: str | None = Field(default=None, max_length=255)
+
+
+class UncheckpointedRun(ProtocolModel):
+    execution_id: str = Field(min_length=1, max_length=255)
+    run_id: str = Field(min_length=1, max_length=128)
+    thread_id: str = Field(min_length=1, max_length=255)
+    status: Literal["queued", "running", "unknown"]
+    message: str = Field(min_length=1, max_length=500)
+
+
+class RecoveryDiagnosticsResponse(ProtocolModel):
+    protocol_version: Literal[PROTOCOL_VERSION] = PROTOCOL_VERSION
+    status: Literal["clean", "attention"]
+    limit: int = Field(ge=1, le=100)
+    orphan_checkpoint_threads: list[OrphanCheckpointThread]
+    orphan_write_count: int = Field(ge=0)
+    uncheckpointed_runs: list[UncheckpointedRun]
+    truncated: bool
+    message: str = Field(min_length=1, max_length=500)
+
+
 class ErrorResponse(ProtocolModel):
     code: str
     message: str

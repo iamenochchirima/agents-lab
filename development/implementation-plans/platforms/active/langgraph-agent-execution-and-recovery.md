@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:23:31+02:00
+**Last updated:** 2026-09-20T02:30:20+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -460,9 +460,9 @@ boundary with explicit limitations, not as an in-memory test double.
   reconcile the retained execution by stable `runId` and `thread_id`.
 - [x] If both Lab server and Python service are replaced, recover settled state and
   expose explicit recovery-required/unknown state for an interrupted external call.
-- [ ] On startup, inspect nonterminal service records and mark or resume them according
+- [x] On startup, inspect nonterminal service records and mark or resume them according
   to the documented rule; do not silently start a second graph for every stale record.
-- [ ] Handle orphaned checkpoints and run records with bounded diagnostics and cleanup
+- [x] Handle orphaned checkpoints and run records with bounded diagnostics and cleanup
   rules. Never delete evidence as part of ordinary recovery.
 - [ ] Define retention for SQLite run state and Lab evidence separately; cleanup is not
   part of the default acceptance path.
@@ -937,6 +937,18 @@ what was observed, the exact validation command, and what remains.
   17 deterministic browser tests, web typecheck, `bash -n scripts/run_local_stack.sh`,
   and `git diff --check`. Remaining plan work includes the broader completion audit,
   manual layout/console inspection, and release/migration/rollback records.
+
+- **2026-09-20T02:30:20+02:00 — bounded recovery diagnostics implemented.** Added the
+  read-only `GET /v1/recovery/diagnostics?limit=...` service endpoint, strict Python and
+  TypeScript protocol models/parsers, and the JSON schema entry. The report identifies
+  checkpoint threads without a service-run owner, orphan writes, and admitted
+  nonterminal/unknown runs without a checkpoint. It never adopts, resumes, deletes, or
+  treats a checkpoint as proof of provider completion. Fresh databases without
+  checkpointer tables return a clean bounded response, and tests verify orphan state is
+  retained after inspection. Validation passed: LangGraph service tests (`46 passed`),
+  focused TypeScript tests (`19 passed`, `1 skipped`), schema JSON parsing, and
+  `git diff --check`. Retention, structured logs/metrics, migration/rollback records,
+  and manual browser inspection remain open.
 
 ## Commit discipline
 
