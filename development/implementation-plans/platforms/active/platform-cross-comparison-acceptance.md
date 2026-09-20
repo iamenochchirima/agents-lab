@@ -517,7 +517,11 @@ Complete only when the plan is moved to `completed/`.
 - `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/control-plane/http.test.ts` — 8 passed.
 - `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
 - `node --test dist/tests/platforms/temporal/*.test.js dist/tests/platforms/restate/*.test.js dist/tests/platforms/langgraph/*.test.js dist/tests/platforms/mastra/*.test.js` — 98 passed, 2 skipped provider/service tests.
-- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — all 15 deterministic browser cases passed, including Compare; no browser console errors were reported.
+- `node --test dist/integration-tests/temporal-baseline.test.js` — 1 local Temporal integration test passed.
+- `AGENTLAB_RUN_RESTATE_NATIVE_INTEGRATION=1 node --test dist/integration-tests/restate-baseline.test.js` — 3 native Restate integration tests passed without Docker; the separate Docker replay test remained skipped.
+- `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 node --test dist/integration-tests/langgraph-baseline.test.js` — 1 local LangGraph integration test passed; the OpenRouter test remained skipped.
+- `node --test dist/integration-tests/mastra-baseline.test.js` — 6 Mastra integration tests passed.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — all 21 deterministic browser cases passed, including all-success and partial Compare; no browser console errors were reported.
 - Local `/health` — Temporal, Restate, and Mastra baseline reachable; LangGraph baseline registered but unavailable because its local Python service was not running. Mastra workflow storage, Inngest, Trigger.dev, DBOS, and Hatchet also reported their documented local availability failures. This is a connectivity observation, not a completion claim.
 
 **Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`<br>

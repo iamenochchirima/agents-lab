@@ -226,6 +226,33 @@ test("Compare starts independent platform runs with one comparison identity", as
   }
 });
 
+test("Compare keeps a completed member when another platform fails", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await clickButton(browser.cdp, "Compare");
+    await waitForText(browser.cdp, "One task, multiple platforms");
+    await toggleComparisonPlatform(browser.cdp, "Mastra");
+    await waitForExpression(browser.cdp, 'Array.from(document.querySelectorAll(".comparison-platform-picker input")).filter((input) => input.checked).length === 2');
+    fixture.setFailedPlatforms(["mastra"]);
+    await setInput(browser.cdp, ".compare-task-field textarea", "Keep each comparison result independent.");
+    await clickButton(browser.cdp, "Run comparison");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-result-completed").length === 1 && document.querySelectorAll(".comparison-result-failed").length === 1');
+
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-output").length'), 1);
+    assert.equal(fixture.state.requests.length, 2);
+    assert.equal(new Set(fixture.state.requests.map((request) => request.comparisonId)).size, 1);
+    assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1]);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Restate Chat continues a session across workflow turns and requires a model", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -707,6 +734,7 @@ async function installFixture(cdp) {
     cancelled: false,
     restateAvailable: false,
     langGraphAvailable: true,
+    failedPlatforms: new Set(),
   };
 
   cdp.on("Fetch.requestPaused", (event) => {
@@ -780,7 +808,7 @@ async function installFixture(cdp) {
       state.runReads += 1;
       const runReads = (state.runReadsById.get(runId) ?? 0) + 1;
       state.runReadsById.set(runId, runReads);
-      const status = fixtureStatus(request, state.mode, runReads, state.cancelled);
+      const status = fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms);
       await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode) });
       return;
     }
@@ -794,7 +822,7 @@ async function installFixture(cdp) {
         return;
       }
       const runReads = state.runReadsById.get(runId) ?? 0;
-      const run = makeRun(request, fixtureStatus(request, state.mode, runReads, state.cancelled), runId, state.mode);
+      const run = makeRun(request, fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms), runId, state.mode);
       await fulfill(cdp, event.requestId, { status: 200, body: { runId: run.runId, events: run.events, nextSequence: run.events.at(-1)?.recordedSequence ?? 0, hasMore: false, done: run.result !== null } });
       return;
     }
@@ -816,11 +844,13 @@ async function installFixture(cdp) {
     setMode: (mode) => { state.mode = mode; state.apiErrorOncePending = mode === "api-error-once"; },
     setRestateAvailable: (available) => { state.restateAvailable = available; },
     setLangGraphAvailable: (available) => { state.langGraphAvailable = available; },
+    setFailedPlatforms: (platforms) => { state.failedPlatforms = new Set(platforms); },
   };
 }
 
-function fixtureStatus(request, mode, runReads, cancelled) {
+function fixtureStatus(request, mode, runReads, cancelled, failedPlatforms = new Set()) {
   if (mode === "recovery") return "reconciliation_required";
+  if (failedPlatforms.has(request.platform)) return runReads <= 1 ? "running" : "failed";
   if (mode === "failed") return runReads <= 1 ? "running" : "failed";
   if (mode === "cancel") return cancelled ? "cancelled" : "running";
   if ((request.platform === "restate" || request.platform === "langgraph") && (mode === "retrying" || mode === "refresh")) {
