@@ -28,9 +28,11 @@ The TypeScript server defaults to `http://127.0.0.1:2024`; override it with
 `AGENTLAB_LANGGRAPH_SERVICE_URL` when the Python service runs elsewhere. Both
 processes must share `AGENTLAB_CONTEXT_ROOT` (the local stack sets this to
 `lab/sessions`). Before dispatch, the TypeScript adapter prepares the Lab-owned
-context snapshot and sends only its session, turn, and snapshot identity through the
-protocol. The Python service loads that immutable snapshot and reports the same budget
-and compaction metadata in its native events.
+context snapshot and sends its session, turn, snapshot identity, compaction revision,
+and context-window metadata through the protocol. It does not copy the prepared
+message list into native metadata. The Python service loads the immutable snapshot,
+rejects stale metadata, and reports the same budget and compaction metadata in its
+native events.
 
 ```bash
 cd server/src/platforms/langgraph

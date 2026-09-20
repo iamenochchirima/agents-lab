@@ -144,7 +144,7 @@ test("LangGraph runner maps start, inspect, and cancel without leaking native ty
     const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: "http://127.0.0.1:2024" });
     const runManifest: RunManifest = {
       ...manifest(runner),
-      context: { systemInstruction: "Respond directly.", sessionId: "session-langgraph-test", turnId: "turn-1", snapshotId: "snapshot-langgraph-test" },
+      context: { systemInstruction: "Respond directly." },
       capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
     };
     assert.deepEqual(await runner.checkConnection(), { reachable: true, message: "ready" });
@@ -153,7 +153,7 @@ test("LangGraph runner maps start, inspect, and cancel without leaking native ty
     const reference = await runner.start(runManifest);
     assert.equal(reference.executionId, "langgraph:run-langgraph-test");
     assert.equal(reference.native["threadId"], "run-langgraph-test");
-    assert.deepEqual(requestBodies[0]?.context, { sessionId: "session-langgraph-test", turnId: "turn-1", snapshotId: "snapshot-langgraph-test" });
+    assert.equal(requestBodies[0]?.context, undefined);
     assert.deepEqual(requestBodies[0]?.tools, { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 });
 
     const inspection = await runner.inspect(reference);
@@ -208,6 +208,8 @@ test("LangGraph runner prepares and hands off the exact shared context snapshot"
         assert.equal(request.context.sessionId, "session-langgraph-handoff");
         assert.equal(request.context.turnId, turn.turn.turnId);
         assert.match(request.context.snapshotId, /^snapshot-/);
+        assert.equal(request.context.compactionRevision, 0);
+        assert.equal(request.context.contextWindowTokens, 16_384);
         return {
           status: 202,
           body: {

@@ -11,9 +11,11 @@ It owns:
 - conversion of source-sequenced service events into generic event intents.
 
 For a session turn, the adapter prepares the shared Lab context snapshot before the
-HTTP dispatch. It sends only the session ID, turn ID, and immutable snapshot ID across
-the Python boundary. The Python service reads that snapshot from the shared context
-root; it does not rebuild or compact the transcript independently.
+HTTP dispatch. It sends the session ID, turn ID, immutable snapshot ID, compaction
+revision, and context-window metadata across the Python boundary. It does not copy the
+prepared message list into native metadata. The Python service reads that snapshot from
+the shared context root, rejects stale metadata, and does not rebuild or compact the
+transcript independently.
 
 If the shared context budget requires compaction, the adapter uses a bounded summary
 request before dispatch. Fake model profiles use a deterministic extractive summary

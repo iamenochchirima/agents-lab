@@ -146,6 +146,7 @@ def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None
                 {"role": "user", "content": "What value did you remember?"},
             ],
             "budget": {
+                "contextWindowTokens": 16_384,
                 "inputTokens": 66,
                 "remainingTokens": 13_000,
                 "remainingPercent": 79,
@@ -172,6 +173,8 @@ def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None
             "sessionId": "session-snapshot",
             "turnId": "turn-2",
             "snapshotId": snapshot_id,
+            "compactionRevision": 0,
+            "contextWindowTokens": 16_384,
         }
         request["sessionId"] = "session-snapshot"
         request["threadId"] = thread_id_for_session("session-snapshot")
@@ -186,6 +189,44 @@ def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None
         assert prepared["payload"]["snapshotId"] == snapshot_id
         assert prepared["payload"]["quality"] == "exact"
         assert prepared["payload"]["remainingPercent"] == 79
+
+
+def test_service_rejects_stale_shared_context_metadata(tmp_path: Path) -> None:
+    context_root = tmp_path / "sessions"
+    snapshot_directory = context_root / "session-snapshot" / "snapshots"
+    snapshot_directory.mkdir(parents=True)
+    snapshot_id = "snapshot-stale-metadata"
+    (snapshot_directory / f"{snapshot_id}.json").write_text(
+        json.dumps({
+            "snapshotId": snapshot_id,
+            "sessionId": "session-snapshot",
+            "compactionRevision": 2,
+            "messages": [{"role": "user", "content": "Current question?"}],
+            "budget": {"contextWindowTokens": 16_384},
+            "compaction": None,
+        }),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(ServiceConfig(state_dir=tmp_path / "state", context_root=context_root, default_timeout_ms=500)))
+    with client:
+        request = start_payload("run-stale-context-metadata", "fake-success")
+        request.update({
+            "prompt": "Current question?",
+            "sessionId": "session-snapshot",
+            "threadId": thread_id_for_session("session-snapshot"),
+            "context": {
+                "sessionId": "session-snapshot",
+                "turnId": "turn-2",
+                "snapshotId": snapshot_id,
+                "compactionRevision": 1,
+                "contextWindowTokens": 16_384,
+            },
+        })
+        response = client.post("/v1/runs", json=request)
+        assert response.status_code == 202
+        inspection = wait_for_terminal(client, "langgraph:run-stale-context-metadata")
+        assert inspection["status"] == "failed"
+        assert inspection["result"]["error"]["code"] == "LANGGRAPH_MODEL_CONFIGURATION"
 
 
 def test_service_marks_provider_overflow_snapshot_as_context_recovery(tmp_path: Path) -> None:

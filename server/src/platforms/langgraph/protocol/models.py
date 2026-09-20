@@ -52,6 +52,10 @@ class ContextSelection(ProtocolModel):
     # Optional for direct service callers that still exercise the legacy
     # transcript bridge. Lab server requests always provide the shared snapshot.
     snapshot_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    # These immutable facts let the service reject a stale or mismatched snapshot
+    # without copying the prepared message list across the process boundary.
+    compaction_revision: int | None = Field(default=None, ge=0)
+    context_window_tokens: int | None = Field(default=None, ge=1)
 
 
 def thread_id_for_session(session_id: str) -> str:

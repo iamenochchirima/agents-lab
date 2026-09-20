@@ -428,8 +428,9 @@ invent a second generic context implementation or add long-term memory.
 
 - [x] Prepare the shared context snapshot before the graph turn using system instructions,
   transcript, selected tools, and the configured context window.
-- [ ] Pass the snapshot identity, compaction revision, budget, and bounded prepared input
-  to the Python service without duplicating the whole context into native metadata.
+- [x] Pass the snapshot identity, compaction revision, context-window budget metadata,
+  and bounded prepared input identity to the Python service without duplicating the
+  whole context into native metadata.
 - [ ] Make the LangGraph checkpoint the source of platform-native short-term graph state;
   make the shared context snapshot the source of Lab-wide context budgeting and display.
 - [ ] Define how prior checkpoint messages and a newly prepared compacted context are
@@ -949,6 +950,14 @@ what was observed, the exact validation command, and what remains.
   focused TypeScript tests (`19 passed`, `1 skipped`), schema JSON parsing, and
   `git diff --check`. Retention, structured logs/metrics, migration/rollback records,
   and manual browser inspection remain open.
+
+- **2026-09-20T02:41:12+02:00 — snapshot metadata binding hardened.** LangGraph dispatch
+  now carries the immutable compaction revision and context-window metadata alongside
+  the snapshot identity. The Python service rejects stale revision or window metadata
+  before graph execution, while the prepared message list remains filesystem-owned and
+  is not duplicated in the wire protocol. Validation passed: 10 focused TypeScript
+  tests (one skipped) and 36 Python protocol/service tests. The first test fixtures were
+  updated to create real context sessions where a snapshot is required.
 
 ## Commit discipline
 

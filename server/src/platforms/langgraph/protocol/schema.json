@@ -26,7 +26,9 @@
       "properties": {
         "sessionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
         "turnId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "snapshotId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" }
+        "snapshotId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+        "compactionRevision": { "type": "integer", "minimum": 0 },
+        "contextWindowTokens": { "type": "integer", "minimum": 1 }
       }
     },
     "tools": {

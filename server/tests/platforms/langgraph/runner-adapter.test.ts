@@ -158,8 +158,24 @@ test("LangGraph adapter reports an unavailable service without fabricating a run
 });
 
 test("LangGraph adapter maps a Lab session to one stable native thread", async () => {
-  await withProtocolServer(
-    ({ method, url, body }) => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-langgraph-thread-"));
+  try {
+    const store = new ContextSessionStore(root);
+    await store.create({
+      sessionId: "session-thread-test",
+      platform: "langgraph",
+      variant: "baseline",
+      model: "fake/fake-success",
+      systemInstruction: "answer directly",
+      contextWindowTokens: 256_000,
+      reservedOutputTokens: 4_096,
+      safetyMarginTokens: 1_024,
+      compactionThresholdPercent: 20,
+    });
+    const turn = await store.admitTurn("session-thread-test", "langgraph-test-run", "hello", undefined, "turn-1");
+
+    await withProtocolServer(
+      ({ method, url, body }) => {
       if (method === "POST" && url === "/v1/runs") {
         const request = body as Record<string, any>;
         assert.equal(request.sessionId, "session-thread-test");
@@ -179,23 +195,26 @@ test("LangGraph adapter maps a Lab session to one stable native thread", async (
         };
       }
       return { status: 404, body: { detail: "not found" } };
-    },
-    async (origin) => {
-      const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: origin });
-      const request = {
-        ...manifest(origin),
-        context: {
-          ...manifest(origin).context,
-          sessionId: "session-thread-test",
-          turnId: "turn-1",
-          clientTurnId: "turn-1",
-          snapshotId: "snapshot-1",
-        },
-      } satisfies RunManifest;
-      const reference = await runner.start(request);
-      assert.equal(reference.native.threadId, langGraphThreadId("session-thread-test"));
-    },
-  );
+      },
+      async (origin) => {
+        const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: origin, contextRoot: root });
+        const request = {
+          ...manifest(origin),
+          context: {
+            ...manifest(origin).context,
+            sessionId: "session-thread-test",
+            turnId: turn.turn.turnId,
+            clientTurnId: "turn-1",
+          },
+          platformConfig: { ...manifest(origin).platformConfig, contextRoot: root },
+        } satisfies RunManifest;
+        const reference = await runner.start(request);
+        assert.equal(reference.native.threadId, langGraphThreadId("session-thread-test"));
+      },
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("LangGraph adapter compacts shared context before dispatch when the budget is due", async () => {

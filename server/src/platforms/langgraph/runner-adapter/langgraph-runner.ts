@@ -161,7 +161,13 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       readonly runId: string;
       readonly clientTurnId?: string;
       readonly threadId: string;
-      readonly context?: { readonly sessionId: string; readonly turnId: string; readonly snapshotId: string };
+      readonly context?: {
+        readonly sessionId: string;
+        readonly turnId: string;
+        readonly snapshotId: string;
+        readonly compactionRevision?: number;
+        readonly contextWindowTokens?: number;
+      };
       readonly eventSource: string;
     },
   ): Promise<PlatformExecutionReference> {
@@ -218,8 +224,6 @@ export class LangGraphBaselineRunner implements PlatformRunner {
   ): Promise<{ readonly sessionId: string; readonly turnId: string; readonly snapshotId: string } | undefined> {
     const { sessionId, turnId, snapshotId } = manifest.context;
     if (!sessionId || !turnId) return undefined;
-    if (snapshotId && !options.forceCompaction) return { sessionId, turnId, snapshotId };
-
     const context = new ContextService(
       new ContextSessionStore(contextRoot),
       new CharacterTokenEstimator(),
@@ -231,8 +235,10 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       baseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL,
       timeoutMs: this.options.requestTimeoutMs,
     });
-    const prepared = await context.prepareTurn(sessionId, turnId, summarizer, options);
-    return { sessionId, turnId, snapshotId: prepared.snapshot.snapshotId };
+    const snapshot = snapshotId && !options.forceCompaction
+      ? await context.readSnapshot(sessionId, snapshotId)
+      : (await context.prepareTurn(sessionId, turnId, summarizer, options)).snapshot;
+    return contextIdentity(snapshot, sessionId, turnId);
   }
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
@@ -496,4 +502,26 @@ function contextRecoveryId(runId: string): string {
 
 function contextRecoveryClientTurnId(runId: string): string {
   return `context-recovery-${createHash("sha256").update(`client:${runId}`, "utf8").digest("hex").slice(0, 32)}`;
+}
+
+function contextIdentity(
+  snapshot: { readonly snapshotId: string; readonly compactionRevision: number; readonly budget: { readonly contextWindowTokens: number | null } },
+  sessionId: string,
+  turnId: string,
+): {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly snapshotId: string;
+  readonly compactionRevision: number;
+  readonly contextWindowTokens?: number;
+} {
+  return {
+    sessionId,
+    turnId,
+    snapshotId: snapshot.snapshotId,
+    compactionRevision: snapshot.compactionRevision,
+    ...(typeof snapshot.budget.contextWindowTokens === "number"
+      ? { contextWindowTokens: snapshot.budget.contextWindowTokens }
+      : {}),
+  };
 }

@@ -611,6 +611,8 @@ def load_context_snapshot(
         raise ConfigurationError("The shared LangGraph context snapshot is not an object.")
     if snapshot.get("snapshotId") != snapshot_id or snapshot.get("sessionId") != session_id:
         raise ConfigurationError("The shared LangGraph context snapshot identity does not match the request.")
+    if request.context.compaction_revision is not None and request.context.compaction_revision != snapshot.get("compactionRevision"):
+        raise ConfigurationError("The shared LangGraph context snapshot compaction revision does not match the request.")
     raw_messages = snapshot.get("messages")
     if not isinstance(raw_messages, list):
         raise ConfigurationError("The shared LangGraph context snapshot has no message list.")
@@ -618,6 +620,8 @@ def load_context_snapshot(
     if not any(message.get("role") == "user" and message.get("content") == request.prompt for message in messages):
         raise ConfigurationError("The shared LangGraph context snapshot does not contain the admitted user turn.")
     budget = snapshot.get("budget") if isinstance(snapshot.get("budget"), dict) else {}
+    if request.context.context_window_tokens is not None and request.context.context_window_tokens != budget.get("contextWindowTokens"):
+        raise ConfigurationError("The shared LangGraph context window does not match the request.")
     compaction = snapshot.get("compaction")
     emit(
         "ContextRecoveryPrepared" if is_provider_overflow_compaction(compaction) else "ContextPrepared",

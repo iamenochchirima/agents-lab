@@ -26,7 +26,13 @@ export interface LangGraphStartRequest {
   readonly durability: "sqlite-sync";
   readonly maxAttempts: number;
   readonly timeoutMs: number;
-  readonly context?: { readonly sessionId: string; readonly turnId: string; readonly snapshotId: string };
+  readonly context?: {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly snapshotId: string;
+    readonly compactionRevision?: number;
+    readonly contextWindowTokens?: number;
+  };
   readonly tools?: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
 }
 
