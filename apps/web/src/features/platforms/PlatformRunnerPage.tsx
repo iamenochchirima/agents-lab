@@ -9,9 +9,9 @@ import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { ModelPicker } from "../models/ModelPicker";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
-import { isRunnableBaseline } from "./platformCatalog";
+import { isRunnableVariant } from "./platformCatalog";
 import { appPaths } from "../../routes/paths";
-import { cancelRun, createRun, DEFAULT_PLATFORM_CAPABILITIES, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
+import { cancelRun, createRun, DEFAULT_PLATFORM_CAPABILITIES, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, resumeRun, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
 export function PlatformRunnerPage() {
@@ -31,21 +31,22 @@ export function PlatformRunnerPage() {
   const [runError, setRunError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [platformConnectivity, setPlatformConnectivity] = useState<PlatformConnectivity | null>(null);
   const [connectivityError, setConnectivityError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const eventCursor = useRef(0);
   const previousPlatformId = useRef(platform.id);
   const runIdFromUrl = searchParams.get("run");
-  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id) && variantId === "baseline";
+  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id);
 
   const environments = useMemo(
     () => environmentCatalog.filter((environment) => platform.computerEnvironmentIds.includes(environment.id)),
     [platform.computerEnvironmentIds],
   );
 
-  const hasRunnableBaseline = isRunnableBaseline(platform) && variantId === "baseline";
-  const isRunnable = hasRunnableBaseline && platformConnectivity?.reachable === true;
+  const hasRunnableVariant = isRunnableVariant(platform, variantId);
+  const isRunnable = hasRunnableVariant && platformConnectivity?.reachable === true;
   const taskError = task.trim().length === 0 ? "Enter a task prompt." : null;
 
   useEffect(() => {
@@ -73,11 +74,11 @@ export function PlatformRunnerPage() {
 
     setPlatformConnectivity(null);
     setConnectivityError(null);
-    if (!isRunnableBaseline(platform)) {
+    if (!isRunnableVariant(platform, variantId)) {
       return () => controller.abort();
     }
 
-    void getPlatformConnectivity(platform.id, controller.signal)
+    void getPlatformConnectivity(platform.id, variantId, controller.signal)
       .then((connectivity) => {
         if (!stopped) setPlatformConnectivity(connectivity);
       })
@@ -90,7 +91,7 @@ export function PlatformRunnerPage() {
       stopped = true;
       controller.abort();
     };
-  }, [platform.id]);
+  }, [platform.id, variantId]);
 
   useEffect(() => {
     const activeRunId = run?.runId ?? runIdFromUrl;
@@ -197,6 +198,20 @@ export function PlatformRunnerPage() {
     }
   }
 
+  async function continueRun() {
+    if (!run || isResuming) return;
+    setIsResuming(true);
+    try {
+      const resumed = await resumeRun(run.runId, true);
+      setRun(resumed);
+      setRunEvents(resumed.events.slice());
+    } catch (error) {
+      setRunError(toUserMessage(error));
+    } finally {
+      setIsResuming(false);
+    }
+  }
+
   return (
     <div className="runner-page">
       <header className="runner-heading">
@@ -232,7 +247,7 @@ export function PlatformRunnerPage() {
             value={task}
           />
           <div className="task-surface-footer">
-            <span>{runAvailabilityLabel({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity, selectedModel })}</span>
+            <span>{runAvailabilityLabel({ connectivityError, hasRunnableVariant, isRunnable, platformConnectivity, selectedModel })}</span>
             <button className="button button-primary" disabled={!isRunnable || Boolean(taskError) || !selectedModel || isSubmitting} onClick={() => void submitRun()} type="button">
               {isSubmitting ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Play aria-hidden="true" size={14} />} {isSubmitting ? "Starting" : "Run"}
             </button>
@@ -242,7 +257,7 @@ export function PlatformRunnerPage() {
         <section className="runner-controls" aria-label="Run configuration">
           <div className="runner-controls-heading">
             <span><Settings2 aria-hidden="true" size={15} /> Configuration</span>
-            <small className={isRunnable ? "runner-connected" : undefined}>{runAvailabilityStatus({ connectivityError, hasRunnableBaseline, isRunnable, platformConnectivity })}</small>
+            <small className={isRunnable ? "runner-connected" : undefined}>{runAvailabilityStatus({ connectivityError, hasRunnableVariant, isRunnable, platformConnectivity })}</small>
           </div>
           <div className="runner-control-grid">
             {platform.kind === "compute-native" ? (
@@ -271,7 +286,7 @@ export function PlatformRunnerPage() {
 
         {taskError && task.length > 0 && <p className="runner-validation-error" role="status">{taskError}</p>}
         {runError && !run && <p className="runner-validation-error" role="alert">{runError}</p>}
-        {run && <RunStatusPanel error={runError} events={runEvents} isCancelling={isCancelling} isRefreshing={!isTerminalStatus(run.status)} onCancel={() => void stopRun()} run={run} />}
+        {run && <RunStatusPanel error={runError} events={runEvents} isCancelling={isCancelling} isRefreshing={!isTerminalStatus(run.status)} isResuming={isResuming} onCancel={() => void stopRun()} onResume={() => void continueRun()} run={run} />}
       </main>
 
       <CompareRunModal
@@ -314,16 +329,16 @@ function toUserMessage(error: unknown): string {
 
 function runAvailabilityStatus({
   connectivityError,
-  hasRunnableBaseline,
+  hasRunnableVariant,
   isRunnable,
   platformConnectivity,
 }: {
   connectivityError: string | null;
-  hasRunnableBaseline: boolean;
+  hasRunnableVariant: boolean;
   isRunnable: boolean;
   platformConnectivity: PlatformConnectivity | null;
 }): string {
-  if (!hasRunnableBaseline) return "Unavailable";
+  if (!hasRunnableVariant) return "Unavailable";
   if (isRunnable) return "Ready";
   if (connectivityError) return "Unavailable";
   if (!platformConnectivity) return "Checking";
@@ -332,18 +347,18 @@ function runAvailabilityStatus({
 
 function runAvailabilityLabel({
   connectivityError,
-  hasRunnableBaseline,
+  hasRunnableVariant,
   isRunnable,
   platformConnectivity,
   selectedModel,
 }: {
   connectivityError: string | null;
-  hasRunnableBaseline: boolean;
+  hasRunnableVariant: boolean;
   isRunnable: boolean;
   platformConnectivity: PlatformConnectivity | null;
   selectedModel: ModelSelection | null;
 }): string {
-  if (!hasRunnableBaseline) return "This platform is not available yet.";
+  if (!hasRunnableVariant) return "This platform is not available yet.";
   if (isRunnable && selectedModel) return "OpenRouter model selected.";
   if (isRunnable) return "Select an OpenRouter model to run.";
   if (connectivityError) return connectivityError;

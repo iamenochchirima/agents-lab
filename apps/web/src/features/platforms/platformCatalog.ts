@@ -80,8 +80,11 @@ export const platformCatalog: readonly PlatformDescriptor[] = [
   {
     ...plannedPlatform("mastra", "Mastra", "Agent and workflow runtime", "An agent and workflow runtime with a direct-agent baseline and separate durability options.", "TypeScript", "Node.js application service", "Agent and workflow primitives", "Variant-defined; the baseline is process-local", "server/src/platforms/mastra/README.md"),
     status: "ready",
-    backendProfiles: [{ id: "local-lab-server", name: "Local Lab server", description: "Runs the direct Mastra agent in the Lab server process.", status: "ready" }],
-    variants: [{ id: "baseline", name: "Mastra baseline", description: "A direct Mastra agent execution in the Lab server.", status: "ready" }],
+    backendProfiles: [{ id: "local-lab-server", name: "Local Lab server", description: "Runs Mastra agents and workflows in the Lab server process.", status: "ready" }],
+    variants: [
+      { id: "baseline", name: "Mastra baseline", description: "A direct Mastra agent execution in the Lab server.", status: "ready" },
+      { id: "workflow", name: "Mastra workflow", description: "A native Mastra workflow with local file-backed snapshots.", status: "ready" },
+    ],
   },
   {
     ...plannedPlatform("vercel-workflows", "Vercel Workflow / AI SDK", "Durable workflow execution", "Vercel workflow execution together with AI SDK agent primitives.", "TypeScript", "Node.js or Vercel runtime", "Workflow-hosted agent loop", "Workflow-managed state, waits, and recovery", "server/src/platforms/vercel-workflows/README.md"),
@@ -131,7 +134,11 @@ export function getPlatform(platformId: string | undefined): PlatformDescriptor 
 }
 
 export function isRunnableBaseline(platform: PlatformDescriptor): boolean {
+  return isRunnableVariant(platform, "baseline");
+}
+
+export function isRunnableVariant(platform: PlatformDescriptor, variantId: string): boolean {
   return platform.kind === "backend"
     && platform.status === "ready"
-    && platform.variants.some((variant) => variant.id === "baseline" && variant.status === "ready");
+    && platform.variants.some((variant) => variant.id === variantId && variant.status === "ready");
 }

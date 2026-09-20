@@ -8,7 +8,9 @@ interface RunStatusPanelProps {
   readonly events: readonly RunEvent[];
   readonly isCancelling: boolean;
   readonly isRefreshing: boolean;
+  readonly isResuming?: boolean;
   readonly onCancel: () => void;
+  readonly onResume?: () => void;
   readonly run: RunView;
 }
 
@@ -16,6 +18,7 @@ const statusLabels: Record<RunStatus, string> = {
   created: "Created",
   queued: "Queued",
   running: "Running",
+  suspended: "Suspended",
   completed: "Completed",
   failed: "Failed",
   cancelled: "Cancelled",
@@ -26,6 +29,7 @@ const statusIcons: Record<RunStatus, typeof Clock3> = {
   created: Clock3,
   queued: Clock3,
   running: LoaderCircle,
+  suspended: CircleAlert,
   completed: CheckCircle2,
   failed: XCircle,
   cancelled: Ban,
@@ -34,7 +38,7 @@ const statusIcons: Record<RunStatus, typeof Clock3> = {
 
 export function RunStatusPanel(props: RunStatusPanelProps) {
   const StatusIcon = statusIcons[props.run.status];
-  const canCancel = props.run.status === "created" || props.run.status === "queued" || props.run.status === "running";
+  const canCancel = props.run.status === "created" || props.run.status === "queued" || props.run.status === "running" || props.run.status === "suspended";
   const result = props.run.result;
   const retrying = isRunRetrying(props.run, props.events);
   const statusLabel = retrying ? "Retrying" : statusLabels[props.run.status];
@@ -59,6 +63,12 @@ export function RunStatusPanel(props: RunStatusPanelProps) {
           <button className="quiet-button run-cancel-button" disabled={props.isCancelling} onClick={props.onCancel} type="button">
             {props.isCancelling ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Ban aria-hidden="true" size={14} />}
             {props.isCancelling ? "Cancelling" : "Cancel"}
+          </button>
+        )}
+        {props.run.status === "suspended" && props.onResume && (
+          <button className="quiet-button run-cancel-button" disabled={props.isResuming} onClick={props.onResume} type="button">
+            {props.isResuming ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <RotateCw aria-hidden="true" size={14} />}
+            {props.isResuming ? "Resuming" : "Approve and resume"}
           </button>
         )}
       </div>

@@ -1,6 +1,6 @@
 import type { ModelSelection, RunEvent, RunStatus, RunView } from "./platformApi";
 
-export type ChatMessageStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type ChatMessageStatus = "pending" | "running" | "suspended" | "completed" | "failed" | "cancelled";
 
 export interface ChatMessage {
   readonly id: string;
@@ -176,6 +176,7 @@ function assistantStatus(status: RunStatus): ChatMessageStatus {
   if (status === "completed") return "completed";
   if (status === "failed" || status === "reconciliation_required") return "failed";
   if (status === "cancelled") return "cancelled";
+  if (status === "suspended") return "suspended";
   if (status === "running" || status === "queued") return "running";
   return "pending";
 }

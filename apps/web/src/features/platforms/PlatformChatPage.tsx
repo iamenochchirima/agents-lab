@@ -8,7 +8,7 @@ import { ModelPicker } from "../models/ModelPicker";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
-import { isRunnableBaseline } from "./platformCatalog";
+import { isRunnableVariant } from "./platformCatalog";
 import {
   cancelRun,
   createRun,
@@ -18,6 +18,7 @@ import {
   getRunEvents,
   getRunEvidenceUrl,
   PlatformApiError,
+  resumeRun,
   type ModelSelection,
   type PlatformConnectivity,
   type PlatformRunRequest,
@@ -55,6 +56,7 @@ export function PlatformChatPage() {
   const [latestEvents, setLatestEvents] = useState<RunEvent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [retryTurn, setRetryTurn] = useState<PendingTurn | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectivity, setConnectivity] = useState<PlatformConnectivity | null>(null);
@@ -66,9 +68,9 @@ export function PlatformChatPage() {
   const ignoredUrlRunId = useRef<string | null>(null);
   searchParamsRef.current = searchParams;
 
-  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id) && variantId === "baseline";
-  const hasRunnableBaseline = isRunnableBaseline(platform) && variantId === "baseline";
-  const isReady = hasRunnableBaseline && connectivity?.reachable === true;
+  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id);
+  const hasRunnableVariant = isRunnableVariant(platform, variantId);
+  const isReady = hasRunnableVariant && connectivity?.reachable === true;
   const hasActiveRun = activeRunId !== null;
   const modelPickerDisabled = isModelPickerDisabled({ hasActiveRun, preservesSession, sessionId });
   const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null;
@@ -143,11 +145,11 @@ export function PlatformChatPage() {
     setConnectivity(null);
     setConnectivityError(null);
 
-    if (!isRunnableBaseline(platform)) {
+    if (!isRunnableVariant(platform, variantId)) {
       return () => controller.abort();
     }
 
-    void getPlatformConnectivity(platform.id, controller.signal)
+    void getPlatformConnectivity(platform.id, variantId, controller.signal)
       .then((result) => {
         if (!stopped) setConnectivity(result);
       })
@@ -160,7 +162,7 @@ export function PlatformChatPage() {
       stopped = true;
       controller.abort();
     };
-  }, [platform.id]);
+  }, [platform.id, variantId]);
 
   useEffect(() => {
     if (!activeRunId) return;
@@ -355,6 +357,22 @@ export function PlatformChatPage() {
     }
   }
 
+  async function resumeActiveRun() {
+    if (!latestRun || latestRun.status !== "suspended" || isResuming) return;
+    setIsResuming(true);
+    try {
+      const resumed = await resumeRun(latestRun.runId, true);
+      setLatestRun(resumed);
+      setLatestEvents(mergeEvents([], resumed.events));
+      setMessages((current) => upsertRunMessages(current, resumed));
+      setError(null);
+    } catch (requestError) {
+      setError(toUserMessage(requestError));
+    } finally {
+      setIsResuming(false);
+    }
+  }
+
   function newConversation() {
     conversationVersion.current += 1;
     ignoredUrlRunId.current = searchParams.get("run");
@@ -417,7 +435,7 @@ export function PlatformChatPage() {
               value={prompt}
             />
             <div className="chat-composer-footer">
-              <span>{chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableBaseline, isReady, selectedModel, preservesSession })}</span>
+              <span>{chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, selectedModel, preservesSession })}</span>
               <div className="chat-composer-actions">
                 {hasActiveRun && <button className="quiet-button" disabled={isCancelling} onClick={() => void stopActiveRun()} type="button"><Ban aria-hidden="true" size={14} /> {isCancelling ? "Cancelling" : "Stop"}</button>}
                 <button className="button button-primary" disabled={!canSubmit} type="submit">
@@ -457,13 +475,13 @@ export function PlatformChatPage() {
               </div>
             </details>
             {preservesSession && <p className="chat-session-note">Session active. Use New chat to change model.</p>}
-            {!preservesSession && hasRunnableBaseline && <p className="chat-session-note">Each turn starts a new platform run.</p>}
-            {!isReady && <p className="chat-availability-error">{connectivityError ?? connectivity?.message ?? (!hasRunnableBaseline ? "This platform is not available yet." : "Checking server availability…")}</p>}
+            {!preservesSession && hasRunnableVariant && <p className="chat-session-note">Each turn starts a new platform run.</p>}
+            {!isReady && <p className="chat-availability-error">{connectivityError ?? connectivity?.message ?? (!hasRunnableVariant ? "This platform is not available yet." : "Checking server availability…")}</p>}
           </section>
 
           {error && !latestRun && <p className="chat-availability-error" role="status">{error}</p>}
           {latestRun?.context && <ContextBudgetMeter context={latestRun.context} />}
-          {latestRun && <ChatRunDetails error={error} events={latestEvents} onNewChat={newConversation} run={latestRun} />}
+          {latestRun && <ChatRunDetails error={error} events={latestEvents} isResuming={isResuming} onNewChat={newConversation} onResume={() => void resumeActiveRun()} run={latestRun} />}
         </aside>
       </main>
     </div>
@@ -472,7 +490,7 @@ export function PlatformChatPage() {
 
 function ChatMessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: () => void }) {
   const isAssistant = message.role === "assistant";
-  const StatusIcon = message.status === "completed" ? CheckCircle2 : message.status === "failed" ? XCircle : LoaderCircle;
+  const StatusIcon = message.status === "completed" ? CheckCircle2 : message.status === "failed" ? XCircle : message.status === "suspended" ? CircleAlert : LoaderCircle;
   const statusLabel = chatMessageStatusLabel(message.status);
   return (
     <article aria-label={`${isAssistant ? "Agent" : "You"} message, ${statusLabel}`} className={`chat-message chat-message-${message.role} chat-message-status-${message.status}`}>
@@ -489,6 +507,7 @@ function chatMessageStatusLabel(status: ChatMessage["status"]): string {
   switch (status) {
     case "pending": return "Starting…";
     case "running": return "Working…";
+    case "suspended": return "Waiting for approval";
     case "completed": return "Completed";
     case "failed": return "Failed";
     case "cancelled": return "Cancelled";
@@ -510,7 +529,7 @@ function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
   return <div aria-live="polite" className={`chat-tool-activity chat-tool-${state}`} role="status"><Wrench aria-hidden="true" size={13} /> {label}</div>;
 }
 
-function ChatRunDetails({ error, events, onNewChat, run }: { error: string | null; events: readonly RunEvent[]; onNewChat: () => void; run: RunView }) {
+function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }: { error: string | null; events: readonly RunEvent[]; isResuming: boolean; onNewChat: () => void; onResume: () => void; run: RunView }) {
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
   const nativePlatform = run.executionReference?.platform;
@@ -519,7 +538,7 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
     : null;
   const retrying = isRunRetrying(run, events);
   return (
-    <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "reconciliation_required"}>
+    <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "suspended" || run.status === "reconciliation_required"}>
       <summary><span>Run details</span><small>{retrying ? "retrying" : run.status.replaceAll("_", " ")}</small></summary>
       <div className="chat-run-details-body">
         {retrying && <p className="chat-run-retrying" role="status"><LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> Retrying model request…</p>}
@@ -529,6 +548,13 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
             <CircleAlert aria-hidden="true" size={14} />
             <span>Run outcome needs recovery. Start a new chat before sending another turn.</span>
             <button className="chat-retry-button" onClick={onNewChat} type="button">New chat</button>
+          </div>
+        )}
+        {run.status === "suspended" && (
+          <div className="chat-availability-error" role="status">
+            <CircleAlert aria-hidden="true" size={14} />
+            <span>This workflow is waiting for approval.</span>
+            <button className="chat-retry-button" disabled={isResuming} onClick={onResume} type="button">{isResuming ? "Resuming…" : "Approve and resume"}</button>
           </div>
         )}
         <dl className="chat-run-meta">
@@ -612,8 +638,8 @@ function getRunSessionId(run: RunView): string | null {
   return run.context?.sessionId ?? run.manifest.context?.sessionId ?? null;
 }
 
-function chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableBaseline, isReady, preservesSession, selectedModel }: { connectivity: PlatformConnectivity | null; connectivityError: string | null; hasRunnableBaseline: boolean; isReady: boolean; preservesSession: boolean; selectedModel: ModelSelection | null }): string {
-  if (!hasRunnableBaseline) return "Platform not available yet.";
+function chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, preservesSession, selectedModel }: { connectivity: PlatformConnectivity | null; connectivityError: string | null; hasRunnableVariant: boolean; isReady: boolean; preservesSession: boolean; selectedModel: ModelSelection | null }): string {
+  if (!hasRunnableVariant) return "Platform not available yet.";
   if (connectivityError) return connectivityError;
   if (!connectivity) return "Checking server…";
   if (!isReady) return connectivity.message;

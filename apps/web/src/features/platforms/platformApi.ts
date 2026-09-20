@@ -2,6 +2,7 @@ export const RUN_STATUSES = [
   "created",
   "queued",
   "running",
+  "suspended",
   "completed",
   "failed",
   "cancelled",
@@ -30,7 +31,7 @@ export interface RunError {
 
 export interface RunResult {
   readonly runId: string;
-  readonly status: Exclude<RunStatus, "created" | "queued" | "running">;
+  readonly status: Exclude<RunStatus, "created" | "queued" | "running" | "suspended">;
   readonly finishedAt: string;
   readonly output: string | null;
   readonly error: RunError | null;
@@ -196,11 +197,11 @@ export function getPlatformApiBaseUrl(): string {
   return API_BASE_URL;
 }
 
-export async function getPlatformConnectivity(platformId: string, signal?: AbortSignal): Promise<PlatformConnectivity> {
+export async function getPlatformConnectivity(platformId: string, variant = "baseline", signal?: AbortSignal): Promise<PlatformConnectivity> {
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/platforms/${encodeURIComponent(platformId)}/health`, {
+    response = await fetch(`${API_BASE_URL}/api/platforms/${encodeURIComponent(platformId)}/health?variant=${encodeURIComponent(variant)}`, {
       headers: { "content-type": "application/json" },
       signal,
     });
@@ -261,6 +262,14 @@ export function getRunEvidenceUrl(runId: string, fileName: RunEvidenceFile): str
 export async function cancelRun(runId: string, reason: string, signal?: AbortSignal): Promise<RunView> {
   return requestJson<RunView>(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
     body: JSON.stringify({ reason }),
+    method: "POST",
+    signal,
+  });
+}
+
+export async function resumeRun(runId: string, approved: boolean, signal?: AbortSignal): Promise<RunView> {
+  return requestJson<RunView>(`/api/runs/${encodeURIComponent(runId)}/resume`, {
+    body: JSON.stringify({ approved }),
     method: "POST",
     signal,
   });
