@@ -175,6 +175,8 @@ export interface OperationalLogIntent {
   readonly level: "info" | "warn" | "error";
   readonly operation: string;
   readonly requestId?: string;
+  /** Provider or external-system request identity when the event exposes one. */
+  readonly providerRequestId?: string;
   readonly platform?: string;
   readonly variant?: string;
   readonly status?: string;
@@ -254,4 +256,24 @@ export interface RunMetrics {
   readonly connectionUnknownCount?: number;
   /** Approval decisions observed during the run. */
   readonly approvalDecisionCount?: number;
+  /** Model or platform retry decisions observed in normalized lifecycle events. */
+  readonly retryCount?: number;
+  /** Tool calls that ended with a validation, policy, or execution failure. */
+  readonly toolFailureCount?: number;
+  /** Tool calls cancelled before or during execution. */
+  readonly toolCancellationCount?: number;
+  /** Tool calls that exceeded their configured deadline. */
+  readonly toolTimeoutCount?: number;
+  /** Calls whose external outcome could not be established. */
+  readonly unknownOutcomeCount?: number;
+  /** Number of capability resolution decisions recorded for this run. */
+  readonly capabilityResolutionCount?: number;
+  /** Sum of bounded tool execution durations reported by lifecycle events. */
+  readonly toolDurationMs?: number;
+  /** Approval decisions grouped by outcome. */
+  readonly approvalGrantedCount?: number;
+  readonly approvalDeniedCount?: number;
+  readonly approvalRequiredCount?: number;
+  /** OAuth refresh lifecycle events observed by the run boundary. */
+  readonly oauthRefreshCount?: number;
 }

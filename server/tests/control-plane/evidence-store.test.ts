@@ -367,6 +367,78 @@ test("writes bounded operational logs in order without retaining prompts or cred
   });
 });
 
+test("projects capability lifecycle events into safe operational logs", async () => {
+  await withStore(async (store, root) => {
+    const events = [
+      {
+        kind: "CapabilityResolutionRecorded",
+        payload: {
+          profileId: "local-safe",
+          decisions: [{ capabilityId: "fixture_lookup", status: "granted" }],
+          grants: [{ capabilityId: "fixture_lookup" }],
+          prompt: manifest.task.prompt,
+          apiKey: "secret",
+        },
+      },
+      {
+        kind: "ToolExecutionStarted",
+        payload: { toolCallId: "tool-1", toolName: "fixture_lookup", attempt: 1 },
+      },
+      {
+        kind: "ToolExecutionCompleted",
+        payload: {
+          toolCallId: "tool-1",
+          toolName: "fixture_lookup",
+          durationMs: 12,
+          connection: { requestId: "request-1", status: "completed", providerRequestIds: ["provider-1"] },
+        },
+      },
+      {
+        kind: "ModelRetryScheduled",
+        payload: { nextAttempt: 2, backoffMs: 10 },
+      },
+      {
+        kind: "TaskSubmissionOutcomeUnknown",
+        payload: { code: "SUBMISSION_UNKNOWN", providerRequestId: "provider-2" },
+      },
+      {
+        kind: "OAuthRefreshCompleted",
+        payload: { requestId: "oauth-refresh-1", status: "completed" },
+      },
+    ] as const;
+
+    for (const [index, event] of events.entries()) {
+      await store.appendEvent({
+        source: "platform-test",
+        sourceSequence: index + 1,
+        kind: event.kind,
+        runId: manifest.runId,
+        occurredAt: `2026-09-15T08:00:${String(index + 1).padStart(2, "0")}.000Z`,
+        payload: event.payload,
+      });
+    }
+
+    const contents = await readFile(join(root, manifest.runId, "logs/operations.jsonl"), "utf8");
+    const records = contents.trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.deepEqual(records.map((record) => record.operation), [
+      "capability.resolve",
+      "tool.execute",
+      "tool.execute",
+      "model.retry",
+      "connection.unknown",
+      "oauth.refresh",
+    ]);
+    assert.equal(records[2]?.requestId, "request-1");
+    assert.equal(records[2]?.providerRequestId, "provider-1");
+    assert.equal(records[2]?.durationMs, 12);
+    assert.equal(records[3]?.retryCount, 1);
+    assert.equal(records[4]?.level, "warn");
+    assert.equal(contents.includes(manifest.task.prompt), false);
+    assert.equal(contents.includes("secret"), false);
+    assert.equal(contents.includes("provider-1"), true);
+  });
+});
+
 test("reads schema-v1 Temporal native references through the generic execution field", async () => {
   await withStore(async (store, root) => {
     await writeFile(

@@ -319,6 +319,11 @@ test("a selected capability profile is resolved before dispatch and retained as 
     const metrics = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/metrics.json` });
     assert.equal(metrics.statusCode, 200);
     assert.equal(metrics.json().approvalDecisionCount, 2);
+    assert.equal(metrics.json().capabilityResolutionCount, 1);
+    assert.equal(metrics.json().approvalGrantedCount, 2);
+    assert.equal(metrics.json().approvalDeniedCount, 0);
+    assert.equal(metrics.json().approvalRequiredCount, 0);
+    assert.equal(metrics.json().unknownOutcomeCount, 0);
   });
 });
 

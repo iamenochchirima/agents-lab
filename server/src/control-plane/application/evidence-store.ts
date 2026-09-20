@@ -389,6 +389,13 @@ export class RunEvidenceStore {
     };
     assertEvidenceSize(event, path, MAX_EVENT_BYTES);
     await appendFile(path, `${stableJson(event)}\n`, "utf8");
+    const operationalLog = operationalLogForEvent(event, manifest);
+    if (operationalLog) {
+      // The normalized event is authoritative. A diagnostic log write may be
+      // lost during an outage and must never change the run result or event
+      // ordering contract.
+      await this.appendOperationalLogNow(operationalLog).catch(() => undefined);
+    }
     return event;
   }
 
@@ -457,6 +464,108 @@ function redactContextSnapshot(snapshot: ContextSnapshot): ContextSnapshot {
         }
       : message),
   };
+}
+
+function operationalLogForEvent(event: RunEvent, manifest: RunManifest): OperationalLogIntent | null {
+  const payload = isRecord(event.payload) ? event.payload : {};
+  const kind = event.kind;
+  let operation: string;
+  let level: OperationalLogIntent["level"] = "info";
+
+  if (kind === "CapabilityResolutionRecorded") {
+    operation = "capability.resolve";
+    level = hasDeniedDecision(payload) ? "warn" : "info";
+  } else if (kind === "ToolExecutionStarted") {
+    operation = "tool.execute";
+  } else if (kind === "ToolExecutionCompleted") {
+    operation = "tool.execute";
+  } else if (kind === "ToolExecutionFailed" || kind === "ToolCallRejected" || kind === "ToolPolicyDenied") {
+    operation = kind === "ToolPolicyDenied" ? "tool.approval" : "tool.execute";
+    level = "warn";
+  } else if (kind === "ToolExecutionCancelled") {
+    operation = "tool.execute";
+    level = "warn";
+  } else if (kind === "ToolExecutionUnknown" || kind.endsWith("OutcomeUnknown")) {
+    operation = "connection.unknown";
+    level = "warn";
+  } else if (kind === "ModelRetryScheduled" || kind === "ModelRetryRequested") {
+    operation = "model.retry";
+    level = "warn";
+  } else if (kind === "OAuthRefreshStarted" || kind === "OAuthRefreshCompleted" || kind === "OAuthRefreshFailed") {
+    operation = "oauth.refresh";
+    level = kind === "OAuthRefreshFailed" ? "warn" : "info";
+  } else {
+    return null;
+  }
+
+  const connection = isRecord(payload.connection) ? payload.connection : null;
+  const requestId = firstString(payload.requestId, payload.operationId, connection?.requestId, payload.toolCallId);
+  const providerRequestId = firstString(
+    payload.providerRequestId,
+    connection?.providerRequestId,
+    Array.isArray(connection?.providerRequestIds) ? connection.providerRequestIds[0] : null,
+  );
+  const status = kind === "CapabilityResolutionRecorded"
+    ? (hasDeniedDecision(payload) ? "denied" : "granted")
+    : firstString(payload.status, connection?.status) ?? statusForEvent(kind);
+  const code = firstString(payload.code, connection?.errorCode);
+  const durationMs = finiteNonNegativeNumber(payload.durationMs);
+  const retryCount = finiteNonNegativeNumber(payload.retryCount)
+    ?? (kind === "ModelRetryScheduled" && finiteNonNegativeNumber(payload.nextAttempt) !== null
+      ? Math.max(0, Number(payload.nextAttempt) - 1)
+      : null);
+  const outcome = kind === "CapabilityResolutionRecorded"
+    ? `${arrayLength(payload.grants)} grants/${arrayLength(payload.decisions)} decisions`
+    : status;
+
+  return {
+    runId: event.runId,
+    occurredAt: event.occurredAt,
+    level,
+    operation,
+    ...(requestId ? { requestId } : {}),
+    ...(providerRequestId ? { providerRequestId } : {}),
+    platform: manifest.platform,
+    variant: manifest.variant,
+    ...(status ? { status } : {}),
+    ...(typeof payload.nativeStatus === "string" ? { nativeStatus: payload.nativeStatus } : {}),
+    ...(outcome ? { outcome } : {}),
+    ...(durationMs !== null ? { durationMs } : {}),
+    ...(retryCount !== null ? { retryCount } : {}),
+    ...(code ? { code } : {}),
+  };
+}
+
+function hasDeniedDecision(payload: Record<string, unknown>): boolean {
+  return Array.isArray(payload.decisions)
+    && payload.decisions.some((decision) => isRecord(decision) && decision.status === "denied");
+}
+
+function arrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.length > 0) return value.slice(0, 256);
+  }
+  return null;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function statusForEvent(kind: string): string {
+  if (kind === "ToolExecutionStarted") return "started";
+  if (kind === "ToolExecutionCompleted") return "completed";
+  if (kind === "ToolExecutionCancelled") return "cancelled";
+  if (kind === "ToolCallRejected" || kind === "ToolPolicyDenied") return "denied";
+  if (kind === "ModelRetryScheduled" || kind === "ModelRetryRequested") return "scheduled";
+  if (kind === "OAuthRefreshStarted") return "started";
+  if (kind === "OAuthRefreshCompleted") return "completed";
+  if (kind === "OAuthRefreshFailed") return "failed";
+  return "failed";
 }
 
 export type EvidenceFileName =
@@ -725,7 +834,7 @@ function validateOperationalLogIntent(intent: OperationalLogIntent): void {
   if (!/^[a-z][a-z0-9._:-]{0,127}$/.test(intent.operation)) {
     throw new Error("Operational log operation is not safe.");
   }
-  for (const value of [intent.requestId, intent.platform, intent.variant, intent.status, intent.nativeStatus, intent.outcome, intent.code]) {
+  for (const value of [intent.requestId, intent.providerRequestId, intent.platform, intent.variant, intent.status, intent.nativeStatus, intent.outcome, intent.code]) {
     if (value !== undefined && (!isSafeOperationalString(value) || value.length > 256)) {
       throw new Error("Operational log contains an unsafe string.");
     }

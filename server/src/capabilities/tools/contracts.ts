@@ -13,7 +13,7 @@ export const TOOL_SCHEMA_VERSION = 1 as const;
 
 export type ToolRiskClass = "pure" | "read" | "write" | "external";
 export type ToolExecutionKind = "in_process" | "connection";
-export type ToolExecutionStatus = "completed" | "failed" | "cancelled" | "timed_out";
+export type ToolExecutionStatus = "completed" | "failed" | "cancelled" | "timed_out" | "unknown";
 
 export interface ToolLimits {
   readonly maxArgumentBytes: number;
@@ -88,7 +88,7 @@ export interface ToolPolicyDecision {
 }
 
 export interface ToolExecutionError {
-  readonly code: "TOOL_EXECUTION_FAILED" | "TOOL_CANCELLED" | "TOOL_TIMEOUT" | "TOOL_RESULT_TOO_LARGE";
+  readonly code: "TOOL_EXECUTION_FAILED" | "TOOL_CANCELLED" | "TOOL_TIMEOUT" | "TOOL_RESULT_TOO_LARGE" | "TOOL_UNKNOWN";
   readonly message: string;
 }
 
@@ -109,7 +109,8 @@ export type ToolLifecycleKind =
   | "ToolExecutionStarted"
   | "ToolExecutionCompleted"
   | "ToolExecutionFailed"
-  | "ToolExecutionCancelled";
+  | "ToolExecutionCancelled"
+  | "ToolExecutionUnknown";
 
 export interface ToolLifecyclePayload {
   readonly toolCallId: string;

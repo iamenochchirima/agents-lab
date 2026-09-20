@@ -570,18 +570,6 @@ export class RunService {
         connectionRef: grant.connectionRef ?? null,
       })),
     });
-    await this.dependencies.evidence.appendOperationalLog({
-      runId: manifest.runId,
-      occurredAt: manifest.createdAt,
-      level: resolution.decisions.some((decision) => decision.status === "denied") ? "warn" : "info",
-      operation: "capability.resolve",
-      requestId: manifest.capabilities?.profileId ?? "inline",
-      platform: manifest.platform,
-      variant: manifest.variant,
-      status: resolution.decisions.some((decision) => decision.status === "denied") ? "denied" : "granted",
-      outcome: `${resolution.grants.length} grants/${resolution.decisions.length} decisions`,
-      retryCount: 0,
-    }).catch(() => undefined);
   }
 
   private async recordDispatchFailure(manifest: RunManifest, error: unknown): Promise<void> {
@@ -727,17 +715,45 @@ function withCapabilityMetrics(metrics: RunMetrics, events: readonly RunEventInt
   return { ...metrics, ...capabilityMetricCounts(events) };
 }
 
-function capabilityMetricCounts(events: readonly RunEventIntent[]): Pick<RunMetrics, "toolCallCount" | "toolAttemptCount" | "connectionCallCount" | "connectionUnknownCount" | "approvalDecisionCount"> {
+function capabilityMetricCounts(events: readonly RunEventIntent[]): Pick<RunMetrics, "toolCallCount" | "toolAttemptCount" | "connectionCallCount" | "connectionUnknownCount" | "approvalDecisionCount" | "retryCount" | "toolFailureCount" | "toolCancellationCount" | "toolTimeoutCount" | "unknownOutcomeCount" | "capabilityResolutionCount" | "toolDurationMs" | "approvalGrantedCount" | "approvalDeniedCount" | "approvalRequiredCount" | "oauthRefreshCount"> {
   const resolutionDecisionCount = events.reduce((count, event) => {
     if (event.kind !== "CapabilityResolutionRecorded" || !isRecord(event.payload) || !Array.isArray(event.payload.decisions)) return count;
     return count + event.payload.decisions.length;
+  }, 0);
+  const toolFailureEvents = events.filter((event) => ["ToolExecutionFailed", "ToolCallRejected", "ToolPolicyDenied"].includes(event.kind));
+  const unknownOutcomeEvents = events.filter((event) => event.kind === "ToolExecutionUnknown" || event.kind.endsWith("OutcomeUnknown") || (isRecord(event.payload) && isRecord(event.payload.connection) && event.payload.connection.status === "unknown"));
+  const capabilityResolutionEvents = events.filter((event) => event.kind === "CapabilityResolutionRecorded");
+  const approvalOutcomes = capabilityResolutionEvents.reduce((counts, event) => {
+    if (!isRecord(event.payload) || !Array.isArray(event.payload.decisions)) return counts;
+    for (const decision of event.payload.decisions) {
+      if (!isRecord(decision) || typeof decision.status !== "string") continue;
+      if (decision.status === "granted") counts.granted += 1;
+      else if (decision.status === "denied") counts.denied += 1;
+      else if (decision.status === "approval_required") counts.required += 1;
+    }
+    return counts;
+  }, { granted: 0, denied: 0, required: 0 });
+  const toolDurationMs = events.reduce((duration, event) => {
+    if (!event.kind.startsWith("ToolExecution") || !isRecord(event.payload) || typeof event.payload.durationMs !== "number" || !Number.isFinite(event.payload.durationMs) || event.payload.durationMs < 0) return duration;
+    return duration + event.payload.durationMs;
   }, 0);
   return {
     toolCallCount: events.filter((event) => event.kind === "ToolCallRequested").length,
     toolAttemptCount: events.filter((event) => event.kind === "ToolExecutionStarted").length,
     connectionCallCount: events.filter((event) => event.kind === "ToolExecutionCompleted" || event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionUnknown").filter((event) => isRecord(event.payload.connection)).length,
-    connectionUnknownCount: events.filter((event) => event.kind === "ToolExecutionUnknown" || event.payload.connection && isRecord(event.payload.connection) && event.payload.connection.status === "unknown").length,
+    connectionUnknownCount: unknownOutcomeEvents.length,
     approvalDecisionCount: resolutionDecisionCount + events.filter((event) => event.kind === "ToolPolicyDenied" || event.kind === "WorkflowSuspended" || event.kind === "WorkflowResumed").length,
+    retryCount: events.filter((event) => event.kind === "ModelRetryScheduled" || event.kind === "ModelRetryRequested").length,
+    toolFailureCount: toolFailureEvents.length,
+    toolCancellationCount: events.filter((event) => event.kind === "ToolExecutionCancelled" || (isRecord(event.payload) && event.payload.status === "cancelled")).length,
+    toolTimeoutCount: toolFailureEvents.filter((event) => isRecord(event.payload) && typeof event.payload.code === "string" && event.payload.code.includes("TIMEOUT")).length,
+    unknownOutcomeCount: unknownOutcomeEvents.length,
+    capabilityResolutionCount: capabilityResolutionEvents.length,
+    toolDurationMs,
+    approvalGrantedCount: approvalOutcomes.granted,
+    approvalDeniedCount: approvalOutcomes.denied,
+    approvalRequiredCount: approvalOutcomes.required,
+    oauthRefreshCount: events.filter((event) => event.kind === "OAuthRefreshStarted" || event.kind === "OAuthRefreshCompleted" || event.kind === "OAuthRefreshFailed").length,
   };
 }
 

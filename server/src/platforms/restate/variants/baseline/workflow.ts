@@ -356,6 +356,7 @@ export const baselineWorkflow = restate.workflow({
           }
 
           let executionHalted = false;
+          let toolOutcomeUnknown = false;
           let callLimitExceeded = false;
 
           for (let index = 0; index < calls.length; index += 1) {
@@ -424,11 +425,18 @@ export const baselineWorkflow = restate.workflow({
             await recordTool(toolEventKind(toolResult), call, toolPayload(toolResult, round));
             messages = [...messages, toolResultMessage(resultId, call.name, toolResult.content)];
 
-            if (toolResult.status !== "completed") executionHalted = true;
+            if (toolResult.status !== "completed") {
+              executionHalted = true;
+              toolOutcomeUnknown ||= toolResult.status === "unknown";
+            }
           }
 
           if (executionHalted) {
-            const failure = internalFailure("TOOL_EXECUTION_FAILED", "A tool execution did not complete, so the run was stopped.", "provider");
+            const failure = internalFailure(
+              toolOutcomeUnknown ? "TOOL_UNKNOWN" : "TOOL_EXECUTION_FAILED",
+              toolOutcomeUnknown ? "A tool may have been dispatched, but its external outcome is unknown." : "A tool execution did not complete, so the run was stopped.",
+              toolOutcomeUnknown ? "outcome_unknown" : "provider",
+            );
             await record("AgentFailed", { code: failure.code, failureKind: failure.failureKind, round });
             await completePhase(executionPhase);
             await record("RunFailed", { code: failure.code, failureKind: failure.failureKind });
@@ -629,6 +637,7 @@ function toolPayload(result: ToolExecutionResult, round: number): ToolEventDetai
 function toolEventKind(result: ToolExecutionResult): string {
   if (result.status === "completed") return "ToolExecutionCompleted";
   if (result.status === "cancelled" || result.status === "timed_out") return "ToolExecutionCancelled";
+  if (result.status === "unknown") return "ToolExecutionUnknown";
   return "ToolExecutionFailed";
 }
 

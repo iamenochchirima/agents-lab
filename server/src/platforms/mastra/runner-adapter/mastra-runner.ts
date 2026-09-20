@@ -424,6 +424,15 @@ function failureFor(record: MastraExecutionRecord, error: unknown): NonNullable<
     };
   }
 
+  if (error instanceof Error && error.name === "TOOL_UNKNOWN") {
+    return {
+      code: "MASTRA_OUTCOME_UNKNOWN",
+      message: "A Mastra tool may have been dispatched but its external outcome could not be confirmed.",
+      failureKind: "outcome_unknown",
+      retryable: false,
+    };
+  }
+
   if (error instanceof Error && error.name === "ProviderError") {
     return {
       code: "MASTRA_PROVIDER_FAILURE",

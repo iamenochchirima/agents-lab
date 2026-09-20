@@ -192,6 +192,16 @@ export class ToolRegistry {
           connection,
         );
       }
+      if (error instanceof Error && (error.name === "API_OUTCOME_UNKNOWN" || error.name === "CONNECTION_OUTCOME_UNKNOWN")) {
+        return failure(
+          "TOOL_UNKNOWN",
+          "The external operation may have been dispatched; its outcome is unknown.",
+          durationMs,
+          "unknown",
+          implementation.definition.limits.maxResultBytes,
+          connection,
+        );
+      }
       return failure(
         "TOOL_EXECUTION_FAILED",
         safeErrorMessage(error, `Tool execution failed: ${validated.call.name}.`),

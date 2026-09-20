@@ -214,9 +214,10 @@ function toolPayload(call: ToolCall): ToolLifecyclePayload {
   };
 }
 
-function toolEventKind(status: "completed" | "failed" | "cancelled" | "timed_out"): ToolLifecycleKind {
+function toolEventKind(status: "completed" | "failed" | "cancelled" | "timed_out" | "unknown"): ToolLifecycleKind {
   if (status === "completed") return "ToolExecutionCompleted";
   if (status === "cancelled" || status === "timed_out") return "ToolExecutionCancelled";
+  if (status === "unknown") return "ToolExecutionUnknown";
   return "ToolExecutionFailed";
 }
 

@@ -430,7 +430,11 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...(toolResult.connection ? { connection: toolResult.connection } : {}), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
         continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];
         if (toolResult.status !== "completed") {
-          const failure = temporalFailure(toolResult.error?.code ?? "TOOL_EXECUTION_FAILED", "A tool execution did not complete, so the run was stopped.", toolResult.status === "cancelled" ? "cancelled" : "provider");
+          const failure = temporalFailure(
+            toolResult.error?.code ?? "TOOL_EXECUTION_FAILED",
+            "A tool execution did not complete, so the run was stopped.",
+            toolResult.status === "cancelled" ? "cancelled" : toolResult.status === "unknown" ? "outcome_unknown" : "provider",
+          );
           if (toolResult.status === "cancelled") return cancel(attemptCount);
           return fail(failure, attemptCount);
         }
@@ -523,6 +527,7 @@ function toolEventPayload(call: ToolCall, attempt: number): Record<string, unkno
 function toolEventKind(result: ToolExecutionResult): string {
   if (result.status === "completed") return "ToolExecutionCompleted";
   if (result.status === "cancelled" || result.status === "timed_out") return "ToolExecutionCancelled";
+  if (result.status === "unknown") return "ToolExecutionUnknown";
   return "ToolExecutionFailed";
 }
 

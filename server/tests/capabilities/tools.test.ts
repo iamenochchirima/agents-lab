@@ -185,6 +185,30 @@ test("tool execution reports a timeout as a classified result", async () => {
   assert.equal(result.error?.code, "TOOL_TIMEOUT");
 });
 
+test("tool execution preserves a dispatched external operation as unknown", async () => {
+  const value = new ToolRegistry({ enabledNames: ["unknown-write"] });
+  value.register({
+    ...calculatorTool,
+    definition: { ...calculatorTool.definition, name: "unknown-write", riskClass: "write" as const },
+    execute: async () => {
+      const error = new Error("acknowledgement lost");
+      error.name = "API_OUTCOME_UNKNOWN";
+      throw error;
+    },
+  });
+  const validation = value.validateCall(call({ operation: "add", left: 1, right: 1 }, "unknown-write", "call-unknown-write-1"));
+  assert.equal(validation.accepted, true);
+  if (!validation.accepted) return;
+
+  const result = await value.execute(validation, {
+    runId: "run-1",
+    turnId: "turn-1",
+    signal: new AbortController().signal,
+  });
+  assert.equal(result.status, "unknown");
+  assert.equal(result.error?.code, "TOOL_UNKNOWN");
+});
+
 test("tool execution distinguishes cancellation before start from a deadline", async () => {
   const value = registry();
   const validation = value.validateCall(call({ operation: "add", left: 1, right: 1 }, "calculator", "call-cancelled-1"));
