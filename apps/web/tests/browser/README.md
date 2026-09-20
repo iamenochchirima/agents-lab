@@ -70,3 +70,18 @@ The check admits a deterministic delayed run, opens the real LangGraph Chat rout
 stops the validated native service, restarts it against the same SQLite path, and
 expects `Run outcome needs recovery.` with no fabricated completed assistant message.
 It is destructive and opt-in; cleanup stops only the replacement process it starts.
+
+To verify browser reconciliation after replacing only the Lab server while the
+LangGraph service remains active, run the server and LangGraph service separately and
+provide the listener PID:
+
+```bash
+AGENTLAB_RUN_LIVE_LANGGRAPH_SERVER_RESTART_UI=1 \
+  AGENTLAB_LAB_SERVER_PID="$(lsof -tiTCP:4318 -sTCP:LISTEN | head -n1)" \
+  node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs
+```
+
+This uses the deterministic `fake-slow-success` model, reopens the existing run after
+the server replacement, and expects one completed assistant message. It is also
+destructive and opt-in; use a repository-owned server PID and keep the LangGraph
+service running during the check.

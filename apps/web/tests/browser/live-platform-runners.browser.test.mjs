@@ -353,6 +353,93 @@ test("live LangGraph Chat shows recovery after the native service is replaced", 
   }
 });
 
+test("live LangGraph Chat reconciles after the Lab server is replaced", { skip: !process.env.AGENTLAB_RUN_LIVE_LANGGRAPH_SERVER_RESTART_UI }, async (t) => {
+  const serverPid = Number(process.env.AGENTLAB_LAB_SERVER_PID);
+  assert.ok(Number.isInteger(serverPid) && serverPid > 0, "Set AGENTLAB_LAB_SERVER_PID to the Lab server listener PID.");
+  const command = spawnSync("ps", ["-p", String(serverPid), "-o", "args="], { encoding: "utf8" }).stdout.trim();
+  assert.match(command, /agents-lab/);
+  assert.match(command, /control-plane[\\/]bootstrap[\\/]server/);
+
+  const serviceUrl = process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024";
+  const sessionId = `browser-langgraph-server-restart-${Date.now()}`;
+  const createdResponse = await fetch(`${API_URL}/api/runs`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-request-id": `${sessionId}-request` },
+    body: JSON.stringify({
+      platform: "langgraph",
+      variant: "baseline",
+      sessionId,
+      clientTurnId: `${sessionId}-turn-1`,
+      task: { kind: "prompt", prompt: "Browser LangGraph server replacement recovery." },
+      model: { provider: "fake", model: "fake-slow-success", contextWindowTokens: 100_000 },
+    }),
+  });
+  const createdBody = await createdResponse.json();
+  assert.equal(createdResponse.status, 202, JSON.stringify(createdBody));
+  assert.ok(createdBody.runId);
+  assert.match(createdBody.status, /queued|running/);
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-langgraph-server-restart-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  let replacement;
+  let replacementOutput = "";
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/langgraph/chat?run=${encodeURIComponent(createdBody.runId)}` });
+    await waitForElement(cdp, ".chat-page");
+    await waitForText(cdp, createdBody.runId);
+
+    process.kill(serverPid, "SIGTERM");
+    await waitForHttpFailure(`${API_URL}/ready`);
+
+    replacement = spawn("./scripts/run_local_stack.sh", ["server"], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        AGENTLAB_API_HOST: new URL(API_URL).hostname,
+        AGENTLAB_API_PORT: new URL(API_URL).port || "4318",
+        AGENTLAB_LANGGRAPH_SERVICE_URL: serviceUrl,
+      },
+    });
+    replacement.stdout?.on("data", (chunk) => { replacementOutput += String(chunk); });
+    replacement.stderr?.on("data", (chunk) => { replacementOutput += String(chunk); });
+    await waitForHttp(`${API_URL}/ready`, 20_000, () => replacementOutput);
+    try {
+      await waitForText(cdp, "Fake delayed response: Browser LangGraph server replacement recovery.", 30_000);
+    } catch (error) {
+      const body = String(await cdp.evaluate("document.body?.innerText ?? ''"));
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; browser body: ${body}`);
+    }
+    assert.equal(await cdp.evaluate("document.querySelectorAll('.chat-message-assistant.chat-message-status-completed').length"), 1);
+    assert.equal(await cdp.evaluate("document.body.innerText.includes('Run outcome needs recovery.')"), false);
+    t.diagnostic(`Browser reconciled ${createdBody.runId} after replacing Lab server PID ${serverPid}.`);
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    if (replacement?.pid && replacement.exitCode === null) {
+      await stopDetachedProcess(replacement);
+    }
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
 test("live Restate Chat reconciles after the Lab server is replaced", { skip: !process.env.AGENTLAB_RUN_LIVE_RESTATE_SERVER_RESTART_UI }, async (t) => {
   const serverPid = Number(process.env.AGENTLAB_LAB_SERVER_PID);
   assert.ok(Number.isInteger(serverPid) && serverPid > 0, "Set AGENTLAB_LAB_SERVER_PID to the Lab server listener PID.");
