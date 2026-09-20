@@ -11,9 +11,6 @@ It does not contain Anesu or Studio work. Those have their own plan directories.
 
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
-- [LangGraph agent execution — end-to-end continuation and recovery](active/langgraph-agent-execution-and-recovery.md)
-  — next major platform implementation: session/thread identity, graph/tool execution,
-  shared context, SQLite restart recovery, evidence, and browser acceptance.
 
 The completed [cross-platform agent conformance plan](completed/platform-agent-conformance.md)
 was the foundation for the completed Restate slice. AWS Step Functions remains parked.
@@ -39,6 +36,7 @@ was the foundation for the completed Restate slice. AWS Step Functions remains p
 - [Restate](completed/restate-baseline.md)
 - [Restate session continuity and recovery](completed/restate-session-continuity-and-recovery.md)
 - [LangGraph](completed/langgraph-baseline.md)
+- [LangGraph agent execution — end-to-end continuation and recovery](completed/langgraph-agent-execution-and-recovery.md)
 - [Mastra](completed/mastra-baseline.md)
 - [Inngest](completed/inngest-baseline.md)
 - [DBOS](completed/dbos-baseline.md)

@@ -1,8 +1,8 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:57:42+02:00
-**Status:** Active  
+**Last updated:** 2026-09-20T03:12:04+02:00
+**Status:** Completed
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
 **Variant:** `baseline`
@@ -263,9 +263,10 @@ Before production changes, record the current baseline behaviour and close each 
 
 - [x] Confirm the exact Python interpreter selected by `scripts/run_local_stack.sh` and
   verify the launcher-selected Python 3.11 behaviour from its locked environment.
-- [ ] Verify Python 3.12 behaviour from a clean virtual environment. The available
-  host Python 3.12.1 cannot import its standard-library `_sqlite3` module; install a
-  compatible Python 3.12 build before claiming that variant is validated.
+- [x] Verify Python 3.12 behaviour from a clean virtual environment. The working
+  `/usr/bin/python3.12` build was used to create a temporary environment from
+  `requirements.lock`; the unrelated `/usr/local` Python 3.12.1 build is rejected
+  because it lacks `_sqlite3`.
 - [x] Confirm the Python service's SQLite connection mode, journal mode, busy timeout,
   checkpointer lifetime, and whether concurrent graph calls can share one database.
 - [x] Confirm how `graph.stream(..., stream_mode=["updates", "checkpoints", "tasks"],
@@ -680,7 +681,7 @@ record the exact prerequisite and keep the plan active.
   controlled restart.
 - [x] Update browser-test documentation with all opt-in live and process-replacement
   commands.
-- [ ] Update platform navigation and plan index when the plan is archived.
+- [x] Update platform navigation and plan index when the plan is archived.
 - [x] Check for `docs/internal/operations/release-process.md`; it is absent in this
   checkout, so documentation, logging, metrics, version, migration, rollout, and
   rollback decisions are recorded in this plan and the platform notes.
@@ -997,6 +998,16 @@ what was observed, the exact validation command, and what remains.
   the browser console collected no errors across all three viewports. Automated
   responsive and duplicate-key checks remain in `platform-chat.browser.test.mjs`.
 
+- **2026-09-20T03:06:18+02:00 — Python 3.12 and launcher selection verified.** The
+  system `/usr/bin/python3.12` (Python 3.12.3, SQLite 3.45.1) installed the locked
+  requirements into a clean temporary virtual environment and passed the full LangGraph
+  Python suite (`48 passed`). The service also started through
+  `AGENTLAB_LANGGRAPH_PYTHON=/tmp/agentlab-langgraph312.AnABZA/bin/python
+  ./scripts/run_local_stack.sh langgraph`; `/health` returned ready with Python 3.12.3.
+  The launcher now searches for a compatible system interpreter with `sqlite3` before
+  creating `.venv`, and reports a specific prerequisite error for a broken configured
+  interpreter.
+
 ## Commit discipline
 
 Use focused commits. Do not create one large final commit.
@@ -1044,21 +1055,30 @@ Do not move this plan to `platforms/completed/` until all applicable items are c
 
 ## Completion record
 
-Complete only when archiving this plan.
-
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`  
-**Commits:** `[focused commit hashes]`
+**Completed:** `2026-09-20T03:12:04+02:00`
+**Commits:** `5651f3f`, `8376bb9`, `d3afbc6`, `a25943b`, `b05f41c`, `4c88701`,
+`4695bea`, `3d8a079`, `0c754cb`, `635841c`, `de293e2`
 
 ### Validation
 
-- `[command]` — `[result]`
-- `[native restart exercise]` — `[result]`
-- `[browser acceptance]` — `[result]`
-- `[manual UI inspection]` — `[result]`
+- `server/src/platforms/langgraph/.local311/bin/python -m pytest server/src/platforms/langgraph/service/tests server/src/platforms/langgraph/variants/baseline/tests -q` — `48 passed`.
+- `/tmp/agentlab-langgraph312.AnABZA/bin/python -m pytest server/src/platforms/langgraph/service/tests server/src/platforms/langgraph/variants/baseline/tests -q` — `48 passed` on Python 3.12.3 / SQLite 3.45.1.
+- `pnpm --filter @agent-harness-lab/lab-server test` — `313 passed, 2 skipped`; the intentional skips are provider/process opt-ins.
+- `AGENTLAB_RUN_LANGGRAPH_INTEGRATION=1 pnpm --filter @agent-harness-lab/lab-server exec tsx --test integration-tests/langgraph-baseline.test.ts` — `1 passed, 1 skipped` without Docker.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — `17 passed`.
+- `pnpm --filter @agent-harness-lab/web run typecheck && pnpm --filter @agent-harness-lab/web run build` — passed; Vite emitted only the existing large-chunk warning.
+- `AGENTLAB_RUN_LIVE_LANGGRAPH_CHAT_UI=1 node --test apps/web/tests/browser/live-platform-runners.browser.test.mjs` — `1 passed, 5 skipped`; two real OpenRouter turns completed.
+- Manual Chromium inspection at 1280px, 768px, and 390px — no document overflow, usable controls, intentional horizontal tab scrolling, HTTP 200 LangGraph health, and no browser console errors.
+- `git diff --check` and `bash -n scripts/run_local_stack.sh` — passed.
 
 ### Known limitations
 
-- `[deliberate local-only limitation or follow-up]`
+- SQLite remains a single-process local persistence profile; a distributed production
+  deployment needs a separate database and operations plan.
+- OpenRouter calls are never claimed exactly-once. Ambiguous post-dispatch outcomes stay
+  reconciliation-required unless a future provider-specific idempotency contract exists.
+- The `/usr/local` Python 3.12.1 build lacks `_sqlite3`; the launcher skips it and uses
+  a compatible Python 3.11 or 3.12 interpreter instead.
 
 This plan records the run-oriented LangGraph baseline at completion time. Hosted
 LangGraph/LangSmith deployment, production database infrastructure, long-term memory,
