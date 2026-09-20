@@ -943,14 +943,38 @@ Before moving this plan to `completed/`, verify:
 
 ## Commit discipline and handoff
 
-- [ ] Commit contracts/configuration, host/strategy implementation, and TUI/evidence as
+- [x] Commit contracts/configuration, host/strategy implementation, and TUI/evidence as
       reviewable validated sections when practical.
-- [ ] Run the narrow validation relevant to each section before committing it.
-- [ ] Review `git status` and each diff; preserve unrelated `.anesu-trash` or user files.
-- [ ] Record changed files, validation results, real-backend prerequisites, and known
+- [x] Run the narrow validation relevant to each section before committing it.
+- [x] Review `git status` and each diff; preserve unrelated `.anesu-trash` or user files.
+- [x] Record changed files, validation results, real-backend prerequisites, and known
       limitations in the handoff.
 - [ ] Record implementation commit hashes in the completion record when the plan is
       archived.
+
+### Current handoff snapshot
+
+- **Implementation commits:** `d08ada8` adds the dual-path computer-use slice and
+  `837f0a7` adds provider-response compatibility for bounded rationales, explicit
+  `x_abs`/`y_abs` aliases, and normalized coordinates.
+- **Changed implementation surface:** `anesu/src/computer/`, the Anesu runtime/config,
+  TUI and tool wiring, disposable Xvfb/Xephyr launchers, focused computer tests, the
+  computer-use playground, research notes, and the active plan/gap register. The
+  follow-up commit touched only the native runner, its focused tests, its README, and
+  this plan.
+- **Validation:** `pnpm --filter @agent-harness-lab/anesu typecheck` passed;
+  `pnpm --filter @agent-harness-lab/anesu test` passed all 499 tests;
+  `pnpm --filter @agent-harness-lab/anesu coverage` passed with 89.56% line,
+  76.58% branch, and 85.99% function coverage; scoped `git diff --check` passed.
+- **Real-backend prerequisites:** Linux/X11, an isolated `DISPLAY`, Xvfb or Xephyr,
+  xauth, `dbus-run-session`, Chrome, an AT-SPI-capable application/window manager,
+  and configured TypeSafe/OpenRouter credentials as required by the selected strategy.
+- **Open acceptance evidence:** the TypeSafe/Jev path has a live successful fixture
+  run. Traditional mode reaches observation and approval when the provider responds,
+  and its provider-shape/coordinate normalization is covered; NVIDIA's latest live
+  attempts returned bounded `HTTP 502 ResourceExhausted`, while other free routes were
+  rate-limited, rejected, or selected incorrect coordinates. Live traditional success
+  and live compare-mode verification remain open.
 
 ## Completion record
 
