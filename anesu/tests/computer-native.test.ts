@@ -188,6 +188,28 @@ test("native traditional vision sends one bounded screenshot message per decisio
     assert.equal(result.ok, true);
     assert.equal(fixture.requestBodies.length, 1);
     assert.equal(fixture.requestBodies[0]?.messages && Array.isArray(fixture.requestBodies[0].messages) ? fixture.requestBodies[0].messages.length : -1, 2);
+    const systemMessage = fixture.requestBodies[0]?.messages && Array.isArray(fixture.requestBodies[0].messages)
+      ? fixture.requestBodies[0].messages[0]
+      : undefined;
+    const systemContent = typeof systemMessage === "object" && systemMessage !== null
+      ? (systemMessage as { readonly content?: unknown }).content
+      : undefined;
+    if (typeof systemContent !== "string") throw new Error("Traditional vision request did not include a string system prompt.");
+    assert.match(systemContent, /full screenshot coordinate frame/u);
+    assert.match(systemContent, /visible bounding box/u);
+    const userMessage = fixture.requestBodies[0]?.messages && Array.isArray(fixture.requestBodies[0].messages)
+      ? fixture.requestBodies[0].messages[1]
+      : undefined;
+    const userContent = typeof userMessage === "object" && userMessage !== null
+      ? (userMessage as { readonly content?: unknown }).content
+      : undefined;
+    if (!Array.isArray(userContent)) throw new Error("Traditional vision request did not include multimodal user content.");
+    const userText = userContent[0] && typeof userContent[0] === "object" && !Array.isArray(userContent[0])
+      ? (userContent[0] as { readonly text?: unknown }).text
+      : undefined;
+    if (typeof userText !== "string") throw new Error("Traditional vision request did not include a text part.");
+    assert.match(userText, /^Goal:/u);
+    assert.match(userText, /Screenshot size:/u);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
