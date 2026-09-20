@@ -50,10 +50,11 @@ development/playground/<slice-name>/
 ```
 
 The first slices are `anesu-terminal-turn`, `anesu-browser-turn`,
-`anesu-context-management`, and `temporal-baseline`. The Anesu slices make text-only,
+`anesu-context-management`, `temporal-baseline`, and `platform-comparison`. The Anesu slices make text-only,
 context, and browser turns observable from input through persisted session evidence. The latter makes one durable
 Temporal run observable across the API, worker, workflow, model activity, and Lab
-evidence projection.
+evidence projection. The platform-comparison slice makes one shared task and its
+independent member evidence observable across the four priority platform profiles.
 
 ## Expectations for every slice
 

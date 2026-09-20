@@ -91,6 +91,31 @@ Restate use native local services, LangGraph uses its loopback Python service wi
 SQLite checkpoints, and Mastra runs directly in the Lab server process. Docker is
 optional for this profile.
 
+## Four-platform acceptance profile
+
+The current browser acceptance profile uses Temporal, Restate, LangGraph, and Mastra.
+The same workload and selected OpenRouter model can be submitted through each Chat
+page or through Compare. Compare correlates member runs with `comparisonId`, while each
+member keeps its own context session, client turn, native execution, lifecycle status,
+and `lab/runs/<run-id>/` evidence.
+
+The deterministic acceptance suite uses the same runner and tool boundaries with
+provider-shaped fixtures, so it runs without an OpenRouter key. Real-model acceptance
+is opt-in and must record the model identifier, package/runtime versions, local service
+commands, run IDs, observed statuses, and evidence inspection. It must never retain an
+API key, authorization header, raw provider response, or sensitive prompt.
+
+Run the native profile with:
+
+```bash
+temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+./scripts/run_local_stack.sh
+```
+
+The profile is intentionally not a lowest-common-denominator durability claim. Native
+workflow history, Restate journal/state, LangGraph checkpoints, and Mastra process or
+LibSQL state remain inspectable in their platform-owned boundaries.
+
 Every baseline variant has the same responsibility layout:
 
 ```text

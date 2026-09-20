@@ -36,3 +36,21 @@ model recorded by the active run. Once a session exists, the model picker is fix
 the conversation; use New chat before switching models. Chat does not concatenate
 browser history into prompts as a substitute for the platform adapter's real context
 handling.
+
+## Compare
+
+Compare creates one ordinary run per selected platform. The browser sends the same task,
+model, scenario, experiment, and deny-by-default calculator capability to every member,
+but gives each member a new session ID, client-turn ID, Lab run ID, native execution
+identity, and evidence directory. An opaque `comparisonId` correlates the members; it
+is not a session or evidence identity.
+
+Connectivity is checked per platform before dispatch. An unavailable member renders an
+unavailable row and is not presented as a completed run. A failed, cancelled, or
+reconciliation-required member remains visible beside successful peers. Closing and
+reopening Compare clears the previous rows, and stale requests are ignored after the
+modal generation changes. Native details remain in each run's progressive disclosure.
+
+The browser never fabricates output, token counts, health, or terminal success. When
+token information is unavailable, the context projection says that its quality is
+unknown rather than displaying a false percentage.
