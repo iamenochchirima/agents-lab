@@ -47,6 +47,8 @@ export interface RunCapabilities {
 export interface RunRequest {
   readonly platform: string;
   readonly variant: string;
+  /** Correlates independent members of one browser comparison. */
+  readonly comparisonId?: string;
   readonly sessionId?: string;
   /** Stable client-generated key for retrying one turn within a session. */
   readonly clientTurnId?: string;
@@ -72,6 +74,7 @@ export interface RunManifest {
   readonly serverVersion: string;
   readonly platform: string;
   readonly variant: string;
+  readonly comparisonId?: string;
   readonly task: {
     readonly kind: "prompt";
     readonly prompt: string;

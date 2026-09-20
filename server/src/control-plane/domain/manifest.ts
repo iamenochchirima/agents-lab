@@ -36,6 +36,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     serverVersion: options.serverVersion ?? "0.0.0-dev",
     platform: request.platform.trim(),
     variant: request.variant.trim(),
+    ...(request.comparisonId === undefined ? {} : { comparisonId: request.comparisonId }),
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
     context: {
       systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
@@ -87,6 +88,10 @@ export function validateRunRequest(request: RunRequest): void {
 
   if (request.clientTurnId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.clientTurnId)) {
     throw new InvalidRunRequestError("clientTurnId must use letters, numbers, dots, colons, hyphens, or underscores.");
+  }
+
+  if (request.comparisonId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.comparisonId)) {
+    throw new InvalidRunRequestError("comparisonId must use letters, numbers, dots, colons, hyphens, or underscores.");
   }
 
   const prompt = request.task.prompt.trim();

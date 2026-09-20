@@ -199,6 +199,33 @@ test("Mastra Chat selects the workflow variant and shows native workflow details
   }
 });
 
+test("Compare starts independent platform runs with one comparison identity", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await clickButton(browser.cdp, "Compare");
+    await waitForText(browser.cdp, "One task, multiple platforms");
+    await toggleComparisonPlatform(browser.cdp, "Mastra");
+    await waitForExpression(browser.cdp, 'Array.from(document.querySelectorAll(".comparison-platform-picker input")).filter((input) => input.checked).length === 2');
+    await setInput(browser.cdp, '.compare-task-field textarea', "Compare the same task.");
+    await clickButton(browser.cdp, "Run comparison");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-result-completed").length === 2');
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-output").length'), 2);
+
+    assert.equal(fixture.state.requests.length, 2);
+    assert.equal(new Set(fixture.state.requests.map((request) => request.comparisonId)).size, 1);
+    assert.match(fixture.state.requests[0]?.comparisonId ?? "", /^comparison-[A-Za-z0-9-]+$/);
+    assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1]);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Restate Chat continues a session across workflow turns and requires a model", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -883,6 +910,7 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
     manifest: {
       platform,
       variant: request.variant ?? "baseline",
+      comparisonId: request.comparisonId,
       task: { prompt: request.task?.prompt ?? "fixture" },
       model: {
         provider: "openrouter",
@@ -1013,6 +1041,21 @@ async function chooseVariant(cdp, variant) {
     setter.call(select, ${JSON.stringify(variant)});
     select.dispatchEvent(new Event("change", { bubbles: true }));
   })()`);
+}
+
+async function toggleComparisonPlatform(cdp, platformName) {
+  const target = JSON.stringify(platformName);
+  const bounds = JSON.parse(await cdp.evaluate(
+    "JSON.stringify((() => {" +
+      "const label = Array.from(document.querySelectorAll('.comparison-platform-picker label')).find((candidate) => candidate.textContent?.replace(/\\\\s+/g, ' ').trim().startsWith(" + target + "));" +
+      "if (!label) return null;" +
+      "const rect = label.getBoundingClientRect();" +
+      "return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };" +
+    "})())",
+  ));
+  if (!bounds) throw new Error("Comparison platform not found: " + platformName);
+  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: bounds.x, y: bounds.y, button: "left", clickCount: 1 });
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: bounds.x, y: bounds.y, button: "left", clickCount: 1 });
 }
 
 async function clickModel(cdp, modelId) {

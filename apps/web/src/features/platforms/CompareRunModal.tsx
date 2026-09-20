@@ -116,6 +116,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
   async function runComparison() {
     if (!canRun) return;
     const generation = comparisonGeneration.current;
+    const comparisonId = createComparisonId();
 
     const selection: RunSelection = {
       scenarioId,
@@ -137,6 +138,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
         const run = await createRun({
           platform: platform.id,
           variant: variant.id,
+          comparisonId,
           task: { kind: "prompt", prompt: task.trim() },
           model: selectedModel!,
           capabilities: DEFAULT_PLATFORM_CAPABILITIES,
@@ -214,4 +216,11 @@ function toUserMessage(error: unknown): string {
   if (error instanceof PlatformApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "The comparison could not be started.";
+}
+
+function createComparisonId(): string {
+  const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `comparison-${random}`;
 }

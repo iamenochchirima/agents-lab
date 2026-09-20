@@ -49,6 +49,7 @@ export interface RunView {
   readonly manifest: {
     readonly platform: string;
     readonly variant: string;
+    readonly comparisonId?: string;
     readonly task: { readonly prompt: string };
     readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly clientTurnId?: string; readonly snapshotId?: string };
     readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
@@ -142,6 +143,7 @@ export interface ModelCatalog {
 export interface PlatformRunRequest {
   readonly platform: string;
   readonly variant: string;
+  readonly comparisonId?: string;
   readonly task: { readonly kind: "prompt"; readonly prompt: string };
   readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
   readonly capabilities?: PlatformRunCapabilities;

@@ -200,6 +200,9 @@ function parseRunRequest(body: unknown): RunRequest {
   if (body.clientTurnId !== undefined && typeof body.clientTurnId !== "string") {
     throw new InvalidApiRequestError("clientTurnId must be a string when provided.");
   }
+  if (body.comparisonId !== undefined && typeof body.comparisonId !== "string") {
+    throw new InvalidApiRequestError("comparisonId must be a string when provided.");
+  }
   if (!isRecord(body.task) || body.task.kind !== "prompt" || typeof body.task.prompt !== "string") {
     throw new InvalidApiRequestError("task must contain kind=prompt and a string prompt.");
   }
@@ -217,6 +220,7 @@ function parseRunRequest(body: unknown): RunRequest {
   return {
     platform: body.platform,
     variant: body.variant,
+    comparisonId: body.comparisonId,
     sessionId: body.sessionId,
     clientTurnId: body.clientTurnId,
     task: { kind: "prompt", prompt: body.task.prompt },

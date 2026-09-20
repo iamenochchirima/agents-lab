@@ -14,6 +14,7 @@ const validRequest: RunRequest = {
 test("manifest contains immutable safe run configuration", () => {
   const manifest = buildRunManifest({
     ...validRequest,
+    comparisonId: "comparison-test-1",
     selection: {
       scenarioId: "research",
       backendProfileId: "local-temporal-stack",
@@ -30,6 +31,7 @@ test("manifest contains immutable safe run configuration", () => {
   assert.equal(manifest.runId, "run-test-1");
   assert.equal(manifest.createdAt, "2026-09-15T08:00:00.000Z");
   assert.equal(manifest.model.provider, "fake");
+  assert.equal(manifest.comparisonId, "comparison-test-1");
   assert.deepEqual(manifest.selection, {
     scenarioId: "research",
     backendProfileId: "local-temporal-stack",
@@ -67,6 +69,20 @@ test("invalid platform identifiers are rejected before persistence", () => {
 test("only supported model adapters are accepted", () => {
   assert.throws(
     () => buildRunManifest({ ...validRequest, model: { provider: "unknown", model: "x" } }, { runId: "run-test-4" }),
+    (error: unknown) => error instanceof InvalidRunRequestError,
+  );
+});
+
+test("comparison identifiers are bounded and safe in the immutable manifest", () => {
+  const manifest = buildRunManifest({ ...validRequest, comparisonId: "comparison-2026-09-20-a" }, { runId: "run-comparison-1" });
+  assert.equal(manifest.comparisonId, "comparison-2026-09-20-a");
+
+  assert.throws(
+    () => buildRunManifest({ ...validRequest, comparisonId: "../comparison" }, { runId: "run-comparison-invalid" }),
+    (error: unknown) => error instanceof InvalidRunRequestError,
+  );
+  assert.throws(
+    () => buildRunManifest({ ...validRequest, comparisonId: "x".repeat(129) }, { runId: "run-comparison-too-long" }),
     (error: unknown) => error instanceof InvalidRunRequestError,
   );
 });

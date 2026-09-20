@@ -158,6 +158,7 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
         variant: "baseline",
         task: { kind: "prompt", prompt: "Hello" },
         model: { provider: "fake", model: "fake-success" },
+        comparisonId: "comparison-http-1",
         capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 } },
         selection: { scenarioId: "research", backendProfileId: "local-temporal-stack" },
       },
@@ -172,6 +173,7 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
       reason: null,
     });
     assert.deepEqual(run.manifest.selection, { scenarioId: "research", backendProfileId: "local-temporal-stack" });
+    assert.equal(run.manifest.comparisonId, "comparison-http-1");
     assert.deepEqual(run.manifest.capabilities, { tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 } });
 
     const events = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/events?after=2&limit=2` });
@@ -198,6 +200,36 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
     const traversal = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/../config.json` });
     assert.notEqual(traversal.statusCode, 200);
   });
+});
+
+test("comparison members retain one correlation ID and independent run sessions", async () => {
+  await withApp(async (app) => {
+    const createMember = (prompt: string) => app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        comparisonId: "comparison-http-members",
+        task: { kind: "prompt", prompt },
+        model: { provider: "fake", model: "fake-success" },
+      },
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      createMember("First comparison member."),
+      createMember("Second comparison member."),
+    ]);
+    assert.equal(firstResponse.statusCode, 202);
+    assert.equal(secondResponse.statusCode, 202);
+
+    const first = firstResponse.json();
+    const second = secondResponse.json();
+    assert.equal(first.manifest.comparisonId, "comparison-http-members");
+    assert.equal(second.manifest.comparisonId, "comparison-http-members");
+    assert.notEqual(first.runId, second.runId);
+    assert.notEqual(first.manifest.context.sessionId, second.manifest.context.sessionId);
+  }, undefined, { context: true });
 });
 
 test("HTTP API returns structured validation and health responses", async () => {
