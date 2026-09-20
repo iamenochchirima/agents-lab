@@ -191,6 +191,96 @@ def test_service_reads_the_exact_shared_context_snapshot(tmp_path: Path) -> None
         assert prepared["payload"]["remainingPercent"] == 79
 
 
+def test_service_replaces_native_history_when_context_compaction_advances(tmp_path: Path) -> None:
+    context_root = tmp_path / "sessions"
+    snapshot_directory = context_root / "session-compaction" / "snapshots"
+    snapshot_directory.mkdir(parents=True)
+
+    def write_snapshot(snapshot_id: str, compaction_revision: int, messages: list[dict], compaction: dict | None) -> None:
+        (snapshot_directory / f"{snapshot_id}.json").write_text(
+            json.dumps({
+                "schemaVersion": 1,
+                "snapshotId": snapshot_id,
+                "sessionId": "session-compaction",
+                "sessionRevision": compaction_revision + 1,
+                "compactionRevision": compaction_revision,
+                "model": "fake/fake-success",
+                "messages": messages,
+                "budget": {
+                    "contextWindowTokens": 16_384,
+                    "inputTokens": 120,
+                    "remainingTokens": 12_000,
+                    "remainingPercent": 73,
+                    "quality": "estimated",
+                    "pressure": "normal",
+                },
+                "compaction": compaction,
+            }),
+            encoding="utf-8",
+        )
+
+    write_snapshot(
+        "snapshot-compaction-0",
+        0,
+        [
+            {"role": "system", "content": "Answer directly."},
+            {"role": "user", "content": "First turn."},
+        ],
+        None,
+    )
+    write_snapshot(
+        "snapshot-compaction-1",
+        1,
+        [
+            {"role": "system", "content": "Answer directly."},
+            {"role": "assistant", "content": "Summary of the earlier conversation."},
+            {"role": "user", "content": "Second turn after compaction."},
+        ],
+        {"trigger": "preflight"},
+    )
+
+    with TestClient(create_app(ServiceConfig(state_dir=tmp_path / "state", context_root=context_root))) as client:
+        first = start_payload("run-compaction-first", "fake-success")
+        first.update({
+            "prompt": "First turn.",
+            "sessionId": "session-compaction",
+            "clientTurnId": "client-compaction-first",
+            "threadId": thread_id_for_session("session-compaction"),
+            "context": {
+                "sessionId": "session-compaction",
+                "turnId": "turn-compaction-first",
+                "snapshotId": "snapshot-compaction-0",
+                "compactionRevision": 0,
+                "contextWindowTokens": 16_384,
+            },
+        })
+        assert client.post("/v1/runs", json=first).status_code == 202
+        first_inspection = wait_for_terminal(client, "langgraph:run-compaction-first")
+        assert first_inspection["status"] == "completed"
+
+        second = start_payload("run-compaction-second", "fake-success")
+        second.update({
+            "prompt": "Second turn after compaction.",
+            "sessionId": "session-compaction",
+            "clientTurnId": "client-compaction-second",
+            "threadId": thread_id_for_session("session-compaction"),
+            "context": {
+                "sessionId": "session-compaction",
+                "turnId": "turn-compaction-second",
+                "snapshotId": "snapshot-compaction-1",
+                "compactionRevision": 1,
+                "contextWindowTokens": 16_384,
+            },
+        })
+        assert client.post("/v1/runs", json=second).status_code == 202
+        second_inspection = wait_for_terminal(client, "langgraph:run-compaction-second")
+
+    assert second_inspection["status"] == "completed"
+    kinds = [event["kind"] for event in second_inspection["events"]]
+    assert "CheckpointContextReplaced" in kinds
+    assert "CheckpointLoaded" not in kinds
+
+
 def test_service_rejects_stale_shared_context_metadata(tmp_path: Path) -> None:
     context_root = tmp_path / "sessions"
     snapshot_directory = context_root / "session-snapshot" / "snapshots"

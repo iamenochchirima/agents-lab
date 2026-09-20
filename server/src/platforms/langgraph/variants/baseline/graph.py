@@ -44,6 +44,11 @@ class GraphState(TypedDict, total=False):
     tool_call_count: int
     pending_tool_calls: list[dict[str, Any]]
     usage: dict[str, int | None]
+    # The shared context revision that produced `messages`. A higher revision
+    # must replace the native checkpoint transcript before the next model node;
+    # otherwise a provider-overflow recovery would compact the Lab snapshot but
+    # silently continue using the old LangGraph history.
+    context_compaction_revision: int
 
 
 class LangGraphModelError(Exception):

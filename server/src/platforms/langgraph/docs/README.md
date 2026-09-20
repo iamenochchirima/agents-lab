@@ -52,6 +52,12 @@ service reports that preparation as `ContextRecoveryPrepared`. Ordinary prefligh
 non-compacted snapshots remain `ContextPrepared`. This keeps the shared context
 decision visible without copying the full snapshot into the native event payload.
 
+When a later snapshot advances `compactionRevision`, the graph emits
+`CheckpointContextReplaced` and uses that prepared snapshot as the next model input.
+An unchanged revision continues from the native checkpoint and appends only the new
+turn. A regressed revision fails closed. This prevents a successful checkpoint from
+silently defeating a newer shared compaction decision.
+
 ## Persistence and tool boundary
 
 LangGraph checkpointers provide thread-scoped short-term state. This baseline does not

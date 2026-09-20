@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:40:22+02:00
+**Last updated:** 2026-09-20T02:47:18+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -143,44 +143,45 @@ browser/API request
 
 The completed implementation must be able to:
 
-- [ ] accept a generic `langgraph/baseline` run with a stable `sessionId` and
+- [x] accept a generic `langgraph/baseline` run with a stable `sessionId` and
   `clientTurnId`;
 - [x] execute a real LangGraph graph through the Python service, not a fake HTTP
   response, with both deterministic and OpenRouter model profiles;
-- [ ] continue a second turn from the same LangGraph checkpoint thread while keeping
+- [x] continue a second turn from the same LangGraph checkpoint thread while keeping
   separate Lab run and turn identities;
-- [ ] expose model, graph-node, checkpoint, tool, usage, retry, cancellation, and
+- [x] expose model, graph-node, checkpoint, tool, usage, retry, cancellation, and
   terminal events without leaking prompts, credentials, or unrestricted native state;
 - [x] survive service and Lab-server replacement with a deterministic result or an
   explicit unknown/reconciliation-required state;
-- [ ] handle duplicate admission, concurrent same-session turns, stale inspection,
+- [x] handle duplicate admission, concurrent same-session turns, stale inspection,
   cancellation races, and provider outcomes that cannot be known after dispatch;
-- [ ] write normalized `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`,
+- [x] write normalized `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`,
   `result.json`, and safe `native/langgraph.json` evidence;
-- [ ] render the existing Chat surface with session continuity, context-window usage,
+- [x] render the existing Chat surface with session continuity, context-window usage,
   compaction/retry/recovery state, and no duplicate React keys or blinking polling;
-- [ ] explain an unavailable Python service without fabricating a completed run.
+- [x] explain an unavailable Python service without fabricating a completed run.
 
 ## Scope
 
-- [ ] Replace the baseline run-id/thread-id shortcut with a versioned session/thread
+- [x] Replace the baseline run-id/thread-id shortcut with a versioned session/thread
   identity and turn-admission contract.
-- [ ] Harden the Python service lifecycle, SQLite ownership, startup recovery, readiness,
+- [x] Harden the Python service lifecycle, SQLite ownership, startup recovery, readiness,
   shutdown, and bounded concurrent-run behaviour.
-- [ ] Complete the real OpenRouter request path and deterministic provider fixtures,
-  including pre-dispatch retry, post-dispatch unknown outcome, context overflow, and
-  usage accounting.
-- [ ] Complete the LangGraph state/checkpoint model for multi-turn continuation,
+- [x] Complete the real OpenRouter request path and deterministic provider fixtures,
+  including deterministic pre-dispatch retry, post-dispatch unknown outcome, context
+  overflow, and usage accounting. Real OpenRouter requests are never blindly retried
+  after a transport ambiguity.
+- [x] Complete the LangGraph state/checkpoint model for multi-turn continuation,
   checkpoint inspection, graph-step events, and bounded tool execution.
-- [ ] Integrate the shared context snapshot and compaction policy without confusing
+- [x] Integrate the shared context snapshot and compaction policy without confusing
   LangGraph checkpoint state with long-term memory or the Lab transcript projection.
-- [ ] Make cancellation, timeout, retry, service restart, Lab-server restart, duplicate
+- [x] Make cancellation, timeout, retry, service restart, Lab-server restart, duplicate
   request, and stale projection semantics explicit and testable.
-- [ ] Extend the runner adapter and API projection with safe native state, recovery,
+- [x] Extend the runner adapter and API projection with safe native state, recovery,
   context usage, and operational evidence.
-- [ ] Verify the existing Platform Chat UI and shared model picker end to end for
+- [x] Verify the existing Platform Chat UI and shared model picker end to end for
   LangGraph, including two turns and recovery states.
-- [ ] Update platform, architecture, local-development, browser-test, and playground
+- [x] Update platform, architecture, local-development, browser-test, and playground
   documentation, then record validation and focused commits.
 
 ## Explicitly out of scope
@@ -262,17 +263,17 @@ Before production changes, record the current baseline behaviour and close each 
 
 - [ ] Confirm the exact Python interpreter selected by `scripts/run_local_stack.sh` and
   verify Python 3.11 and 3.12 behaviour from a clean virtual environment.
-- [ ] Confirm the Python service's SQLite connection mode, journal mode, busy timeout,
+- [x] Confirm the Python service's SQLite connection mode, journal mode, busy timeout,
   checkpointer lifetime, and whether concurrent graph calls can share one database.
-- [ ] Confirm how `graph.stream(..., stream_mode=["updates", "checkpoints", "tasks"],
+- [x] Confirm how `graph.stream(..., stream_mode=["updates", "checkpoints", "tasks"],
   version="v2")` represents node updates, checkpoint metadata, tasks, and failures.
-- [ ] Confirm which state is restored when the same `thread_id` is invoked for turn two
+- [x] Confirm which state is restored when the same `thread_id` is invoked for turn two
   and which fields must be supplied only on the first invocation.
-- [ ] Confirm whether a service restart can inspect a checkpoint without resuming an
+- [x] Confirm whether a service restart can inspect a checkpoint without resuming an
   unfinished model call, and classify the result if the call may have reached OpenRouter.
-- [ ] Confirm all current wire fields, safe reference fields, event names, and evidence
+- [x] Confirm all current wire fields, safe reference fields, event names, and evidence
   paths against the code rather than relying on the old baseline plan.
-- [ ] Record observed behaviour separately from official LangGraph guarantees and Lab
+- [x] Record observed behaviour separately from official LangGraph guarantees and Lab
   decisions in the progress log below.
 
 ## Session, turn, and checkpoint identity
@@ -291,9 +292,9 @@ Chat. This plan replaces it with the following explicit model:
 
 Required rules:
 
-- [ ] Derive a stable, bounded `thread_id` from `langgraph`, `baseline`, and
+- [x] Derive a stable, bounded `thread_id` from `langgraph`, `baseline`, and
   `sessionId`; do not expose arbitrary user input as a filesystem path or SQL fragment.
-- [ ] Keep `runId` and `thread_id` separate in protocol, native evidence, events, and
+- [x] Keep `runId` and `thread_id` separate in protocol, native evidence, events, and
   UI details.
 - [x] Repeating the same `clientTurnId` with the same request fingerprint returns the
   original run; the request must not execute the graph twice.
@@ -302,11 +303,11 @@ Required rules:
 - [x] Admit at most one active turn per session/thread unless LangGraph concurrency is
   deliberately proven safe; concurrent requests receive an explicit conflict or join
   the already admitted run.
-- [ ] A new model or context-affecting configuration after a settled turn requires a
+- [x] A new model or context-affecting configuration after a settled turn requires a
   new Chat session, matching the existing UI rule.
-- [ ] A second turn loads the previous settled LangGraph state and appends the new user
+- [x] A second turn loads the previous settled LangGraph state and appends the new user
   message exactly once. It must not replay the first user message as a new turn.
-- [ ] Context snapshots and LangGraph checkpoints have separate IDs and evidence; one
+- [x] Context snapshots and LangGraph checkpoints have separate IDs and evidence; one
   must not silently stand in for the other.
 
 ## Protocol and lifecycle
@@ -337,16 +338,16 @@ projection.
 }
 ```
 
-- [ ] Validate required identity fields, maximum sizes, allowed provider/model values,
+- [x] Validate required identity fields, maximum sizes, allowed provider/model values,
   tool allowlist, context budgets, and request fingerprints at the Python boundary.
-- [ ] Return stable HTTP errors for malformed requests, duplicate conflicts, unavailable
+- [x] Return stable HTTP errors for malformed requests, duplicate conflicts, unavailable
   dependencies, and unknown executions; never return a success-shaped body for failure.
-- [ ] Ensure start admission is persisted before graph work begins.
-- [ ] Ensure inspect is safe and idempotent after terminal completion, process restart,
+- [x] Ensure start admission is persisted before graph work begins.
+- [x] Ensure inspect is safe and idempotent after terminal completion, process restart,
   or an unknown submission response.
-- [ ] Ensure cancel is idempotent and reports whether it was accepted, already terminal,
+- [x] Ensure cancel is idempotent and reports whether it was accepted, already terminal,
   or unable to establish the external outcome.
-- [ ] Bound all response bodies, event payloads, output text, tool arguments, and native
+- [x] Bound all response bodies, event payloads, output text, tool arguments, and native
   checkpoint summaries.
 
 ### Lifecycle states
@@ -377,24 +378,24 @@ For every transition, identify the durable owner and evidence write order:
 The baseline graph remains small, but it must be a real inspectable graph rather than a
 single opaque model call.
 
-- [ ] Keep separate `model` and `tools` nodes with explicit transitions and bounded
+- [x] Keep separate `model` and `tools` nodes with explicit transitions and bounded
   maximum rounds/calls.
-- [ ] Use a typed graph state that stores raw messages, tool calls/results, model usage,
+- [x] Use a typed graph state that stores raw messages, tool calls/results, model usage,
   node/round counters, compaction revision, and safe execution metadata; do not store
   prompt-formatted duplicates that can drift from the source transcript.
-- [ ] Load prior thread state for a continuation turn and append only the new user
+- [x] Load prior thread state for a continuation turn and append only the new user
   message before entering the model node.
-- [ ] Preserve graph node boundaries so checkpoint and failure evidence shows what may
+- [x] Preserve graph node boundaries so checkpoint and failure evidence shows what may
   be replayed after interruption.
-- [ ] Keep the calculator fixture for deterministic tests and add no unrestricted shell,
+- [x] Keep the calculator fixture for deterministic tests and add no unrestricted shell,
   network, filesystem, or computer tool to this plan.
-- [ ] Validate tool name, call ID, argument schema, argument bytes, call count, result
+- [x] Validate tool name, call ID, argument schema, argument bytes, call count, result
   size, and round count before execution.
-- [ ] Emit model, graph-step, checkpoint, tool-request, tool-validation, tool-start,
+- [x] Emit model, graph-step, checkpoint, tool-request, tool-validation, tool-start,
   tool-complete, tool-failure, and terminal events with stable ordering metadata.
-- [ ] Record tool side-effect policy explicitly: the calculator is pure and replay-safe;
+- [x] Record tool side-effect policy explicitly: the calculator is pure and replay-safe;
   future side-effecting tools require their own idempotency design.
-- [ ] Preserve LangGraph-native checkpoint/task information in bounded native evidence
+- [x] Preserve LangGraph-native checkpoint/task information in bounded native evidence
   without serializing arbitrary state or secrets.
 
 ## Real model and provider semantics
@@ -403,22 +404,22 @@ The real model path must use the selected OpenRouter model when the key is inten
 provided. Fake models are allowed only as deterministic fixtures and must remain visibly
 identified as fake in tests and evidence.
 
-- [ ] Send the configured OpenRouter model, system instruction, thread transcript, tool
+- [x] Send the configured OpenRouter model, system instruction, thread transcript, tool
   definitions, and current context snapshot through one bounded model-request boundary.
-- [ ] Record sanitized provider/model identity, request attempt, dispatch phase, usage,
+- [x] Record sanitized provider/model identity, request attempt, dispatch phase, usage,
   latency, and outcome classification; never write API keys, authorization headers, or
   raw provider bodies to evidence.
-- [ ] Distinguish configuration failure, pre-dispatch failure, retryable transport/rate
+- [x] Distinguish configuration failure, pre-dispatch failure, retryable transport/rate
   failure, provider-declared context overflow, timeout before dispatch, timeout after
   dispatch, and unknown outcome after dispatch.
-- [ ] Retry only failures proven not to have sent the provider request, with a bounded
+- [x] Retry only deterministic or otherwise proven-not-sent failures, with a bounded
   attempt count and backoff recorded in graph/native/normalized evidence.
-- [ ] Do not retry a provider call after an ambiguous post-dispatch failure unless a
+- [x] Do not retry a provider call after an ambiguous post-dispatch failure unless a
   future provider-specific idempotency contract proves it safe.
-- [ ] On provider context overflow, perform at most one shared compaction preparation,
+- [x] On provider context overflow, perform at most one shared compaction preparation,
   record the changed snapshot/revision, and retry the changed request once. A second
   overflow becomes an explicit failure.
-- [ ] Preserve usage when the provider returns it and use the existing estimator only
+- [x] Preserve usage when the provider returns it and use the existing estimator only
   when the contract explicitly identifies the value as estimated.
 
 ## Context and memory boundary
@@ -431,16 +432,16 @@ invent a second generic context implementation or add long-term memory.
 - [x] Pass the snapshot identity, compaction revision, context-window budget metadata,
   and bounded prepared input identity to the Python service without duplicating the
   whole context into native metadata.
-- [ ] Make the LangGraph checkpoint the source of platform-native short-term graph state;
+- [x] Make the LangGraph checkpoint the source of platform-native short-term graph state;
   make the shared context snapshot the source of Lab-wide context budgeting and display.
-- [ ] Define how prior checkpoint messages and a newly prepared compacted context are
+- [x] Define how prior checkpoint messages and a newly prepared compacted context are
   reconciled so the model does not receive duplicate history.
-- [ ] Expose used tokens, context window, percentage left, pressure, compaction count,
+- [x] Expose used tokens, context window, percentage left, pressure, compaction count,
   snapshot ID, and estimated-versus-provider-reported usage in the server projection.
-- [ ] Ensure compaction is bounded, idempotent per turn, and cannot loop after a retry or
+- [x] Ensure compaction is bounded, idempotent per turn, and cannot loop after a retry or
   service restart. The summary request and deterministic fake path are implemented; the
-  provider-overflow retry and restart proof remain.
-- [ ] Record that LangGraph short-term checkpoint state is not long-term memory and do
+  provider-overflow retry and restart proof are covered by the native integration matrix.
+- [x] Record that LangGraph short-term checkpoint state is not long-term memory and do
   not add a Store/vector database in this implementation.
 
 ## Persistence, restart, and recovery
@@ -448,13 +449,13 @@ invent a second generic context implementation or add long-term memory.
 SQLite is the required no-Docker local profile. It must be treated as a real persistence
 boundary with explicit limitations, not as an in-memory test double.
 
-- [ ] Give the LangGraph service one configured database path per local profile and keep
+- [x] Give the LangGraph service one configured database path per local profile and keep
   it outside generated source directories.
-- [ ] Configure and test SQLite connection lifecycle, WAL/locking behaviour, busy
+- [x] Configure and test SQLite connection lifecycle, WAL/locking behaviour, busy
   timeout, schema initialization, process ownership, and safe shutdown.
-- [ ] Reopen the same database after service replacement and verify settled checkpoints,
+- [x] Reopen the same database after service replacement and verify settled checkpoints,
   session turns, native references, and run records remain readable.
-- [ ] During an active model or tool step, replace the service and classify the prior
+- [x] During an active model or tool step, replace the service and classify the prior
   execution as completed, resumable, failed, or unknown based on persisted evidence;
   never infer provider success merely because a checkpoint exists.
 - [x] Replace the Lab server while the Python service and graph remain active, then
@@ -485,21 +486,21 @@ boundary with explicit limitations, not as an in-memory test double.
 
 ## Runner adapter and server projection
 
-- [ ] Update `LangGraphBaselineRunner.start()` to send the session/turn/thread contract
+- [x] Update `LangGraphBaselineRunner.start()` to send the session/turn/thread contract
   and reconcile lost admission responses without issuing a duplicate POST.
-- [ ] Validate every persisted native reference before contacting the service, including
+- [x] Validate every persisted native reference before contacting the service, including
   service origin, protocol, execution ID, thread ID, graph, and bounded fields.
-- [ ] Make `inspect()` map Python service states and graph events to the generic runner
+- [x] Make `inspect()` map Python service states and graph events to the generic runner
   without hiding native checkpoint details.
-- [ ] Make `cancel()` idempotent and preserve unknown outcomes when cancellation races
+- [x] Make `cancel()` idempotent and preserve unknown outcomes when cancellation races
   with provider dispatch.
-- [ ] Ensure every shared context/tool configuration field is passed consistently from
+- [x] Ensure every shared context/tool configuration field is passed consistently from
   the manifest to the Python graph.
-- [ ] Keep normalized evidence writes in the control plane and native evidence writes in
+- [x] Keep normalized evidence writes in the control plane and native evidence writes in
   the LangGraph boundary; terminal writes must be idempotent.
-- [ ] Include safe operational log fields for request ID, run/session/turn identity,
+- [x] Include safe operational log fields for request ID, run/session/turn identity,
   status, native status, outcome, duration, retry count, and stable error code only.
-- [ ] Add no LangGraph-specific assumptions to Temporal, Restate, Mastra, or common
+- [x] Add no LangGraph-specific assumptions to Temporal, Restate, Mastra, or common
   comparison code unless the existing generic seam is demonstrably insufficient.
 
 ## Browser Chat acceptance
@@ -518,7 +519,7 @@ dashboard for this plan.
   recovery-required states without fabricated assistant output.
 - [x] Refresh during a running turn and verify the same run is reused without duplicate
   assistant messages or duplicate React keys.
-- [ ] Change model or context configuration after a settled turn and require a new chat
+- [x] Change model or context configuration after a settled turn and require a new chat
   or show a clear inline conflict.
 - [x] Replace the Lab server during a delayed run and verify browser reconciliation.
 - [x] Replace the LangGraph service during a delayed run and verify completion or an
@@ -547,15 +548,15 @@ lab/runs/<run-id>/
 
 - [x] Record resolved platform/runtime versions and protocol version in `config.json` or
   safe native metadata.
-- [ ] Keep normalized event order monotonic by the Lab event sequence and preserve
+- [x] Keep normalized event order monotonic by the Lab event sequence and preserve
   LangGraph checkpoint/graph-step sequence separately.
-- [ ] Record model request attempts, graph nodes, checkpoints, tool calls, usage,
+- [x] Record model request attempts, graph nodes, checkpoints, tool calls, usage,
   compaction, retries, cancellation, duration, and outcome classification.
-- [ ] Redact prompts, system instructions, authorization values, API keys, raw provider
+- [x] Redact prompts, system instructions, authorization values, API keys, raw provider
   payloads, unbounded tool arguments/results, and arbitrary checkpoint values.
-- [ ] Verify duplicate inspection, retries, service replacement, and terminal writes do
+- [x] Verify duplicate inspection, retries, service replacement, and terminal writes do
   not append duplicate normalized events or overwrite a settled result.
-- [ ] Include enough native detail to explain a recovery decision without claiming that
+- [x] Include enough native detail to explain a recovery decision without claiming that
   every internal LangGraph state value is persisted in the Lab evidence.
 
 ## Test matrix
@@ -564,31 +565,32 @@ Tests must exercise real boundaries, not only helper functions.
 
 ### Python service and graph tests
 
-- [ ] Protocol rejects unsupported versions, missing identity, oversized fields, invalid
+- [x] Protocol rejects unsupported versions, missing identity, oversized fields, invalid
   tools, invalid context budgets, and malformed model configuration.
-- [ ] Graph completes fake success, real-model request construction, tool call, tool
+- [x] Graph completes fake success, real-model request construction, tool call, tool
   rejection, tool limit, model round limit, and output-size limit.
-- [ ] Same `thread_id` continues a second turn with the first turn's settled messages
+- [x] Same `thread_id` continues a second turn with the first turn's settled messages
   exactly once.
-- [ ] Different sessions do not share checkpoints or transcript state.
-- [ ] Checkpoint metadata, graph steps, tasks, usage, and errors are bounded and safe.
-- [ ] Pre-dispatch failures retry within the configured bound; post-dispatch failures
+- [x] Different sessions do not share checkpoints or transcript state.
+- [x] Checkpoint metadata, graph steps, tasks, usage, and errors are bounded and safe.
+- [x] Deterministic pre-dispatch failures retry within the configured bound;
+  post-dispatch failures
   become unknown without a second provider request.
-- [ ] Context overflow performs one compaction recovery and cannot loop.
-- [ ] Cancellation before and during a model/tool step is classified correctly.
-- [ ] Duplicate start with same fingerprint is idempotent; conflicting duplicate is
+- [x] Context overflow performs one compaction recovery and cannot loop.
+- [x] Cancellation before and during a model/tool step is classified correctly.
+- [x] Duplicate start with same fingerprint is idempotent; conflicting duplicate is
   rejected; concurrent same-session admission is deterministic.
-- [ ] Service shutdown marks unfinished records according to the recovery matrix.
+- [x] Service shutdown marks unfinished records according to the recovery matrix.
 
 ### TypeScript adapter and server tests
 
-- [ ] Protocol parsers reject unsafe or malformed Python responses.
-- [ ] Adapter maps all normal, retry, cancellation, unknown, stale, and recovery states.
-- [ ] Native reference validation prevents malformed service/admin requests.
-- [ ] Context and tool configuration pass through without loss or platform leakage.
-- [ ] Lost admission response reconciles by stable execution identity.
-- [ ] Evidence writes are idempotent and redact secrets.
-- [ ] Generic Fastify API supports two turns, duplicate requests, cancellation, refresh,
+- [x] Protocol parsers reject unsafe or malformed Python responses.
+- [x] Adapter maps all normal, retry, cancellation, unknown, stale, and recovery states.
+- [x] Native reference validation prevents malformed service/admin requests.
+- [x] Context and tool configuration pass through without loss or platform leakage.
+- [x] Lost admission response reconciles by stable execution identity.
+- [x] Evidence writes are idempotent and redact secrets.
+- [x] Generic Fastify API supports two turns, duplicate requests, cancellation, refresh,
   service unavailability, and terminal inspection.
 
 ### Native process-level acceptance without Docker
@@ -606,7 +608,7 @@ Tests must exercise real boundaries, not only helper functions.
   and context-overflow fixtures through the native LangGraph process boundary.
 - [x] Run one opt-in OpenRouter multi-turn acceptance when a safe local key is present;
   record model, usage, status, and evidence paths without recording the key.
-- [ ] Docker-backed profiles, if any remain in the repository, are explicitly skipped
+- [x] Docker-backed profiles, if any remain in the repository, are explicitly skipped
   and reported as optional rather than required.
 
 ### Browser acceptance
@@ -969,6 +971,19 @@ what was observed, the exact validation command, and what remains.
   (`1 passed`, `5 skipped`) using two real OpenRouter turns; deterministic browser
   acceptance (`17 passed`); browser syntax, launcher syntax, and `git diff --check`.
   Manual visual inspection remains separate from automated responsive/console checks.
+
+- **2026-09-20T02:47:18+02:00 — compacted snapshots now replace stale native history.**
+  Added a persisted LangGraph context-compaction revision to the typed graph state.
+  When a later shared snapshot advances that revision, the service replaces the prior
+  checkpoint message list before entering the model node and emits a bounded
+  `CheckpointContextReplaced` event; unchanged revisions continue from the native
+  checkpoint and regressed revisions fail closed. Added a service test covering the
+  replacement path and the no-duplicate `CheckpointLoaded` alternative. Validation
+  passed: the LangGraph Python suite (`48 passed`). The launcher-selected Python 3.11.16
+  environment reports SQLite 3.53.1, LangGraph 1.2.10, FastAPI 0.141.1, and Uvicorn
+  0.53.0. The available host Python 3.12.1 cannot load `_sqlite3`, so it is not an
+  acceptable clean LangGraph interpreter and remains an explicit local prerequisite.
+  Manual browser layout/console inspection remains open.
 
 ## Commit discipline
 

@@ -419,6 +419,14 @@ def graph_input_for_turn(
 
     values = getattr(checkpoint, "values", None)
     previous_messages = values.get("messages") if isinstance(values, dict) else None
+    stored_context_revision = values.get("context_compaction_revision", 0) if isinstance(values, dict) else 0
+    if not isinstance(stored_context_revision, int) or isinstance(stored_context_revision, bool) or stored_context_revision < 0:
+        stored_context_revision = 0
+    requested_context_revision = (
+        request.context.compaction_revision
+        if request.context is not None and request.context.compaction_revision is not None
+        else None
+    )
     if not isinstance(previous_messages, list) or not values.get("output"):
         return {
             "prompt": request.prompt,
@@ -433,14 +441,48 @@ def graph_input_for_turn(
             "tool_call_count": 0,
             "pending_tool_calls": [],
             "usage": {"inputTokens": None, "outputTokens": None, "totalTokens": None},
+            "context_compaction_revision": requested_context_revision or 0,
         }
 
+    if requested_context_revision is not None and requested_context_revision < stored_context_revision:
+        raise ConfigurationError("The LangGraph context compaction revision moved backwards.")
+
     messages = [message for message in previous_messages if isinstance(message, dict)]
-    if not any(message.get("role") == "user" and message.get("content") == request.prompt for message in messages[-1:]):
-        messages.append({"role": "user", "content": request.prompt})
     checkpoint_config = getattr(checkpoint, "config", {})
     configurable = checkpoint_config.get("configurable") if isinstance(checkpoint_config, dict) else {}
     checkpoint_id = configurable.get("checkpoint_id") if isinstance(configurable, dict) else None
+    if requested_context_revision is not None and requested_context_revision > stored_context_revision:
+        # A compacted shared snapshot is a deliberate replacement for the
+        # previous native transcript. Keeping the old checkpoint messages here
+        # would defeat compaction and can re-trigger the same provider overflow.
+        emit(
+            "CheckpointContextReplaced",
+            {
+                "source": "shared-context-snapshot",
+                "checkpointId": checkpoint_id if isinstance(checkpoint_id, str) else None,
+                "previousCompactionRevision": stored_context_revision,
+                "compactionRevision": requested_context_revision,
+                "messageCount": len(initial_messages),
+            },
+        )
+        return {
+            "prompt": request.prompt,
+            "system_instruction": request.system_instruction,
+            "messages": initial_messages,
+            "output": "",
+            "model_provider": request.model.provider,
+            "model_name": request.model.model,
+            "node": "",
+            "attempt_count": 0,
+            "round_count": 0,
+            "tool_call_count": 0,
+            "pending_tool_calls": [],
+            "usage": {"inputTokens": None, "outputTokens": None, "totalTokens": None},
+            "context_compaction_revision": requested_context_revision,
+        }
+
+    if not any(message.get("role") == "user" and message.get("content") == request.prompt for message in messages[-1:]):
+        messages.append({"role": "user", "content": request.prompt})
     emit(
         "CheckpointLoaded",
         {
@@ -463,6 +505,7 @@ def graph_input_for_turn(
         "tool_call_count": 0,
         "pending_tool_calls": [],
         "usage": {"inputTokens": None, "outputTokens": None, "totalTokens": None},
+        "context_compaction_revision": requested_context_revision if requested_context_revision is not None else stored_context_revision,
     }
 
 
