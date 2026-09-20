@@ -85,17 +85,36 @@ test("Mastra workflow suspends, resumes, and can be inspected by a replacement r
   }
 });
 
+test("Mastra workflow cancellation remains cancelled after native inspection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-cancel-"));
+  const runner = new MastraWorkflowRunner({ storagePath: join(root, "workflow.db") });
+
+  try {
+    const reference = await runner.start(manifestFor(runner, "Run slowly.", "mastra-workflow-cancel", "fake-slow"));
+    const cancellation = await runner.cancel(reference, "stop for test");
+    assert.equal(cancellation.accepted, true);
+    const cancelled = await waitForStatus(runner, reference, "cancelled");
+    assert.equal(cancelled.result?.status, "cancelled");
+    assert.equal(cancelled.result?.error?.failureKind, "cancelled");
+    assert.ok(cancelled.eventIntents.some((event) => event.kind === "RunCancelled"));
+  } finally {
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function manifestFor(
   runner: MastraWorkflowRunner,
   prompt: string,
   runId = `mastra-workflow-${prompt.replaceAll(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+  model = "fake-success",
 ): RunManifest {
   return buildRunManifest(
     {
       platform: "mastra",
       variant: "workflow",
       task: { kind: "prompt", prompt },
-      model: { provider: "fake", model: "fake-success" },
+      model: { provider: "fake", model },
     },
     { runId, platformConfig: runner.manifestConfiguration() },
   );
@@ -111,7 +130,7 @@ async function waitForTerminal(
 async function waitForStatus(
   runner: MastraWorkflowRunner,
   reference: Awaited<ReturnType<MastraWorkflowRunner["start"]>>,
-  expected: "suspended" | "completed",
+  expected: "suspended" | "completed" | "cancelled",
 ) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const inspection = await runner.inspect(reference);

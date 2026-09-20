@@ -77,6 +77,7 @@ export class MastraWorkflowRunner implements PlatformRunner {
   private readonly modelFactory: MastraModelFactory;
   private readonly now: () => Date;
   private readonly executions = new Map<string, MastraWorkflowExecutionRecord>();
+  private readonly inFlight = new Map<string, Promise<void>>();
   private readonly storage: LibSQLStore | null;
   private readonly mastra: Mastra;
   private readonly workflow;
@@ -177,7 +178,7 @@ export class MastraWorkflowRunner implements PlatformRunner {
 
     const workflow = this.mastra.getWorkflowById(MASTRA_WORKFLOW_ID);
     const run = await workflow.createRun({ runId: manifest.runId });
-    void this.execute(record, run, false);
+    this.launch(record, run, false);
     return reference;
   }
 
@@ -213,7 +214,7 @@ export class MastraWorkflowRunner implements PlatformRunner {
     resumedRecord.nativeStatus = "running";
     this.executions.set(runId, resumedRecord);
     this.addEvent(resumedRecord, "WorkflowResumed", { approved: resumeData.approved });
-    void this.execute(resumedRecord, run, true, resumeData);
+    this.launch(resumedRecord, run, true, resumeData);
     return { accepted: true, alreadyTerminal: false, message: "Mastra workflow resume accepted." };
   }
 
@@ -232,7 +233,23 @@ export class MastraWorkflowRunner implements PlatformRunner {
 
   async close(): Promise<void> {
     await this.ready;
+    await Promise.all(this.inFlight.values());
     await this.storage?.close();
+  }
+
+  private launch(
+    record: MastraWorkflowExecutionRecord,
+    run: Awaited<ReturnType<typeof this.workflow.createRun>>,
+    resume: boolean,
+    resumeData?: { approved: boolean },
+  ): void {
+    const operation = this.execute(record, run, resume, resumeData);
+    this.inFlight.set(record.manifest.runId, operation);
+    void operation.finally(() => {
+      if (this.inFlight.get(record.manifest.runId) === operation) {
+        this.inFlight.delete(record.manifest.runId);
+      }
+    }).catch(() => undefined);
   }
 
   private async ensureStorageReady(): Promise<void> {
@@ -336,8 +353,17 @@ export class MastraWorkflowRunner implements PlatformRunner {
       }
       return;
     }
-    if (state.status === "canceled") record.status = "cancelled";
-    else if (state.status === "failed" || state.status === "tripwire" || state.status === "bailed") record.status = "failed";
+    if (state.status === "canceled") {
+      record.status = "cancelled";
+      if (!record.result) {
+        if (!record.events.some((event) => event.kind === "RunCancelled")) {
+          this.addEvent(record, "RunCancelled", { nativeStatus: state.status });
+        }
+        record.result = failureResult(record, "cancelled", "The Mastra workflow was cancelled.", "cancelled");
+        record.trajectory = trajectoryFor(record);
+        record.metrics = metricsFor(record);
+      }
+    } else if (state.status === "failed" || state.status === "tripwire" || state.status === "bailed") record.status = "failed";
     else if (state.status === "running" || state.status === "pending" || state.status === "waiting" || state.status === "paused") record.status = "running";
   }
 
