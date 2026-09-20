@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { mkdirSync } from "node:fs";
 
 import { LibSQLStore } from "@mastra/libsql";
 import { Mastra } from "@mastra/core/mastra";
@@ -93,6 +94,10 @@ export class MastraWorkflowRunner implements PlatformRunner {
     this.storageError = null;
     let storage: LibSQLStore | null = null;
     try {
+      // LibSQL does not create missing parent directories. Creating only the
+      // configured storage parent keeps the default no-Docker profile runnable
+      // from a clean checkout without broad filesystem writes.
+      mkdirSync(dirname(this.storagePath), { recursive: true });
       storage = new LibSQLStore({ id: "agentlab-mastra-workflows", url: `file:${this.storagePath}` });
     } catch (error) {
       this.storageError = errorMessage(error, "Mastra workflow storage could not be opened.");

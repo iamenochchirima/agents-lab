@@ -54,17 +54,41 @@ export function CompareRunModal(props: CompareRunModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const comparisonGeneration = useRef(0);
   const isOpenRef = useRef(props.open);
+  const requestControllers = useRef(new Set<AbortController>());
+  const comparisonInProgress = useRef(false);
   isOpenRef.current = props.open;
+
+  function createRequestController(): AbortController {
+    const controller = new AbortController();
+    requestControllers.current.add(controller);
+    return controller;
+  }
+
+  function releaseRequestController(controller: AbortController): void {
+    requestControllers.current.delete(controller);
+  }
+
+  function abortRequests(): void {
+    for (const controller of requestControllers.current) controller.abort();
+    requestControllers.current.clear();
+  }
 
   useEffect(() => {
     comparisonGeneration.current += 1;
-    if (!props.open) return;
+    if (!props.open) {
+      abortRequests();
+      comparisonInProgress.current = false;
+      return;
+    }
     closeButtonRef.current?.focus();
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key === "Escape") props.onClose();
     }
     document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      abortRequests();
+    };
   }, [props.open]);
 
   useEffect(() => {
@@ -76,6 +100,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
     setTask(props.initialTask);
     setEntries([]);
     setIsRunning(false);
+    comparisonInProgress.current = false;
   }, [props.open, props.initialExperimentId, props.initialModel, props.initialPlatformId, props.initialScenarioId, props.initialTask]);
 
   const selectedPlatforms = useMemo(
@@ -92,13 +117,16 @@ export function CompareRunModal(props: CompareRunModalProps) {
     const timeout = window.setTimeout(() => {
       void Promise.all(entries.map(async (entry) => {
         if (!entry.run || isTerminalStatus(entry.run.status)) return;
+        const controller = createRequestController();
         try {
-          const run = await getRun(entry.run.runId);
+          const run = await getRun(entry.run.runId, controller.signal);
           if (stopped || !isOpenRef.current) return;
           setEntries((current) => current.map((candidate) => candidate.platformId === entry.platformId ? { ...candidate, error: undefined, phase: run.status, run } : candidate));
         } catch (error) {
-          if (stopped || !isOpenRef.current) return;
+          if (stopped || !isOpenRef.current || isAbortError(error)) return;
           setEntries((current) => current.map((candidate) => candidate.platformId === entry.platformId ? { ...candidate, error: toUserMessage(error) } : candidate));
+        } finally {
+          releaseRequestController(controller);
         }
       }));
     }, 800);
@@ -116,7 +144,8 @@ export function CompareRunModal(props: CompareRunModalProps) {
   }
 
   async function runComparison() {
-    if (!canRun) return;
+    if (!canRun || comparisonInProgress.current) return;
+    comparisonInProgress.current = true;
     const generation = comparisonGeneration.current;
     const comparisonId = createComparisonId();
 
@@ -132,8 +161,9 @@ export function CompareRunModal(props: CompareRunModalProps) {
     })));
 
     await Promise.all(selectedPlatforms.map(async (platform) => {
+      const controller = createRequestController();
       try {
-        const connectivity = await getPlatformConnectivity(platform.id);
+        const connectivity = await getPlatformConnectivity(platform.id, "baseline", controller.signal);
         if (!connectivity.reachable) throw new PlatformApiError(connectivity.message, 503, "PLATFORM_UNAVAILABLE");
         updateEntry(platform.id, { error: undefined, phase: "starting" }, generation);
         const variant = platform.variants.find((candidate) => candidate.id === "baseline") ?? platform.variants[0];
@@ -144,18 +174,25 @@ export function CompareRunModal(props: CompareRunModalProps) {
           task: { kind: "prompt", prompt: task.trim() },
           model: selectedModel!,
           capabilities: DEFAULT_PLATFORM_CAPABILITIES,
+          sessionId: `comparison-${comparisonId}-${platform.id}`,
+          clientTurnId: `comparison-turn-${comparisonId}-${platform.id}`,
           selection: {
             ...selection,
             ...(platform.backendProfiles[0] ? { backendProfileId: platform.backendProfiles[0].id } : {}),
             ...(platform.infrastructure[0] ? { infrastructureId: platform.infrastructure[0].id } : {}),
           },
-        });
+        }, controller.signal);
         updateEntry(platform.id, { error: undefined, phase: run.status, run }, generation);
       } catch (error) {
-        updateEntry(platform.id, { error: toUserMessage(error), phase: "error" }, generation);
+        if (!isAbortError(error)) updateEntry(platform.id, { error: toUserMessage(error), phase: "error" }, generation);
+      } finally {
+        releaseRequestController(controller);
       }
     }));
-    if (isOpenRef.current && comparisonGeneration.current === generation) setIsRunning(false);
+    if (isOpenRef.current && comparisonGeneration.current === generation) {
+      comparisonInProgress.current = false;
+      setIsRunning(false);
+    }
   }
 
   function updateEntry(platformId: string, patch: Partial<ComparisonEntry>, generation = comparisonGeneration.current) {
@@ -219,6 +256,10 @@ function toUserMessage(error: unknown): string {
   if (error instanceof PlatformApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "The comparison could not be started.";
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function createComparisonId(): string {

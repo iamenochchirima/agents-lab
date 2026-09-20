@@ -604,11 +604,12 @@ start_all() {
   cleanup() {
     trap - EXIT INT TERM
     local index pid exit_code=$?
-    for ((index = ${#pids[@]} - 1; index >= 0; index--)); do
-      pid="${pids[$index]}"
+    local -a cleanup_pids=("${pids[@]-}")
+    for ((index = ${#cleanup_pids[@]} - 1; index >= 0; index--)); do
+      pid="${cleanup_pids[$index]}"
       kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
     done
-    for pid in "${pids[@]}"; do
+    for pid in "${cleanup_pids[@]}"; do
       wait "$pid" 2>/dev/null || true
     done
     echo "Local stack stopped. Logs retained at $log_directory"
