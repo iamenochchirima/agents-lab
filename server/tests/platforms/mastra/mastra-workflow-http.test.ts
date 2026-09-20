@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -71,6 +71,40 @@ test("Mastra workflow suspend and resume work through the HTTP server boundary",
     const native = await app.inject({ method: "GET", url: `/api/runs/${createdRun.runId}/evidence/native/mastra.json` });
     assert.equal(native.statusCode, 200);
     assert.equal(native.json().native.nativeStatus, "success");
+  } finally {
+    await app.close();
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Mastra workflow storage failure is visible through server readiness", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-health-"));
+  const storageDirectory = join(root, "workflow-storage-directory");
+  await mkdir(storageDirectory);
+  const config = loadServerConfig({
+    AGENTLAB_RUN_ROOT: join(root, "runs"),
+    AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+  }, root);
+  const runner = new MastraWorkflowRunner({
+    storagePath: storageDirectory,
+    contextRoot: config.contextRoot,
+  });
+  const evidence = new RunEvidenceStore(config.runsRoot);
+  const registry = new PlatformRegistry([runner]);
+  const service = new RunService({ config, evidence, registry });
+  const app = buildControlPlaneServer({ config, service, evidence, registry });
+
+  try {
+    await app.ready();
+    const health = await app.inject({ method: "GET", url: "/health" });
+    assert.equal(health.statusCode, 503);
+    assert.equal(health.json<{ status: string }>().status, "degraded");
+    assert.match(health.body, /Mastra workflow storage is unavailable/i);
+
+    const selected = await app.inject({ method: "GET", url: "/api/platforms/mastra/health?variant=workflow" });
+    assert.equal(selected.statusCode, 200);
+    assert.equal(selected.json<{ reachable: boolean }>().reachable, false);
   } finally {
     await app.close();
     await runner.close();
