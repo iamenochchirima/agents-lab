@@ -956,14 +956,15 @@ Before moving this plan to `completed/`, verify:
 - [x] Review `git status` and each diff; preserve unrelated `.anesu-trash` or user files.
 - [x] Record changed files, validation results, real-backend prerequisites, and known
       limitations in the handoff.
-- [ ] Record implementation commit hashes in the completion record when the plan is
+- [x] Record implementation commit hashes in the completion record when the plan is
       archived.
 
 ### Current handoff snapshot
 
-- **Implementation commits:** `d08ada8` adds the dual-path computer-use slice and
+- **Implementation commits:** `d08ada8` adds the dual-path computer-use slice,
   `837f0a7` adds provider-response compatibility for bounded rationales, explicit
-  `x_abs`/`y_abs` aliases, and normalized coordinates.
+  `x_abs`/`y_abs` aliases, and normalized coordinates, and `2382ddd` accepts equivalent
+  canonical/alias coordinates while rejecting conflicting duplicates.
 - **Changed implementation surface:** `anesu/src/computer/`, the Anesu runtime/config,
   TUI and tool wiring, disposable Xvfb/Xephyr launchers, focused computer tests, the
   computer-use playground, research notes, and the active plan/gap register. The
