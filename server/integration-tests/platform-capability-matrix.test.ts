@@ -13,6 +13,8 @@ import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import type { PlatformRunner } from "../src/control-plane/ports/runner.js";
 import { LangGraphBaselineRunner } from "../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
 import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mastra-runner.js";
+import { defaultMastraModelFactory } from "../src/platforms/mastra/variants/baseline/models/factory.js";
+import { createDeterministicFakeModel } from "../src/platforms/mastra/variants/baseline/models/fake.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
 import { RestateBaselineRunner } from "../src/platforms/restate/runner-adapter/restate-runner.js";
 import { TemporalBaselineRunner } from "../src/platforms/temporal/runner-adapter/temporal-runner.js";
@@ -70,7 +72,12 @@ test(
       });
       runners.push(langgraph);
 
-      const mastra = new MastraBaselineRunner({ contextRoot: sharedContextRoot });
+      const mastra = new MastraBaselineRunner({
+        contextRoot: sharedContextRoot,
+        modelFactory: (manifest) => manifest.model.model === "fake-slow"
+          ? createDeterministicFakeModel({ modelId: "fake-slow", delayMs: 5_000 })
+          : defaultMastraModelFactory(manifest),
+      });
       runners.push(mastra);
 
       for (const runner of runners) {
@@ -135,6 +142,21 @@ test(
         assert.equal(writeCompleted.manifest.capabilities?.resolution?.decisions.some((decision) => decision.status === "granted" && decision.capabilityId === "fixture_write"), true);
         const writeEvent = writeCompleted.events.find((event) => event.kind === "ToolExecutionCompleted" && event.payload.toolName === "fixture_write");
         assert.equal((writeEvent?.payload.connection as { status?: string } | undefined)?.status, "completed");
+
+        const cancellationModel = runner.platform === "restate"
+          ? "fake-delay"
+          : runner.platform === "mastra"
+            ? "fake-slow"
+            : "fake-cancel";
+        const cancellationCreated = await service.createRun({
+          platform: runner.platform,
+          variant: runner.variant,
+          task: { kind: "prompt", prompt: "Cancel this deterministic run." },
+          model: { provider: "fake", model: cancellationModel, contextWindowTokens: 16_384 },
+        });
+        await service.cancelRun(cancellationCreated.runId, "platform capability matrix cancellation");
+        const cancelled = await waitForTerminal(service, cancellationCreated.runId);
+        assert.equal(cancelled.status, "cancelled", `${runner.platform} cancellation was not preserved: ${JSON.stringify(cancelled.result)}`);
       }
     } finally {
       await Promise.all(runners.map((runner) => runner.close?.()));
