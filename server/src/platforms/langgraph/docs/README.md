@@ -2,7 +2,10 @@
 
 ## What is implemented
 
-The baseline is a small `StateGraph` with one model node. The graph is compiled with `SqliteSaver`, invoked with a stable `thread_id`, and consumed through the platform-local FastAPI service. The service streams LangGraph `v2` updates, tasks, and checkpoint parts into a redacted native event log.
+The baseline is a small `StateGraph` with one model node and a bounded tools node. The
+graph is compiled with `SqliteSaver`, invoked with a stable `thread_id`, and consumed
+through the platform-local FastAPI service. The service streams LangGraph `v2` updates,
+tasks, and checkpoint parts into a redacted native event log.
 
 The TypeScript side sends and validates JSON only. This is the seam that lets the Lab compare LangGraph with other platforms without pretending their state models are identical.
 
@@ -58,12 +61,36 @@ An unchanged revision continues from the native checkpoint and appends only the 
 turn. A regressed revision fails closed. This prevents a successful checkpoint from
 silently defeating a newer shared compaction decision.
 
-## Persistence and tool boundary
+## Shared capabilities and tool boundary
 
 LangGraph checkpointers provide thread-scoped short-term state. This baseline does not
 add a LangGraph Store, Postgres, hosted Agent Server, LangSmith Deployment, subgraphs,
-human approval, or automatic in-flight resume. It exposes only the Lab's bounded pure
-`calculator` tool when the request enables it; it does not define a second tool catalog.
+or automatic in-flight resume. Capability profile selection belongs to the common Lab
+server, not the Python service. The server resolves `local-safe` or
+`local-write-approved` and sends the resulting `enabledNames` and `approvedNames` in
+the platform request. The Python service does not resolve profile IDs or accept
+credentials from the request.
+
+The effective baseline tools are:
+
+- `calculator`: a bounded, pure arithmetic tool;
+- `fixture_lookup`: a read-only, deterministic local provider fixture; and
+- `fixture_write`: a write-shaped local fixture used to test approval boundaries.
+
+`local-safe` enables the calculator and read fixture. The write profile enables the
+write fixture only after the common resolver receives a matching, unexpired approval.
+The native graph checks the approval again. If `fixture_write` is enabled but absent
+from `approvedNames`, the tool node emits `ToolCallRejected` with
+`APPROVAL_REQUIRED`, returns a bounded error message to the model, and does not call
+the fixture implementation. An approved fixture write returns a deterministic
+acknowledgement; it is not an external provider write and does not establish
+exactly-once side-effect semantics. This second check keeps a malformed or direct
+platform request from bypassing the shared server policy.
+
+The platform does not define a second tool catalog. The common capability catalog is
+the source of profile and grant identity; the Python graph owns only the native
+translation, argument validation, execution boundary, and native tool events.
+
 SQLite is used because it makes checkpoint creation and restart inspection observable
 locally; it is not presented as the production persistence profile. The service enables
 WAL journaling, `synchronous=FULL`, foreign-key checks, and a five-second busy timeout
@@ -94,7 +121,7 @@ what the Lab intentionally guarantees at its common runner boundary:
 | Model calls | Fake fixtures are deterministic; OpenRouter usage depends on the selected provider and network response. | Pre-dispatch failures may retry within the configured bound; an ambiguous post-dispatch result is never reported as success. |
 | Checkpoints | SQLite checkpoints survive a service restart when they were committed before interruption. | A checkpoint alone does not prove that an interrupted provider call completed. The run becomes `unknown`/`reconciliation_required` when that outcome cannot be established. |
 | Context | The TypeScript context service prepares the budget and compaction snapshot before dispatch. | Context usage is displayed from the shared snapshot; LangGraph checkpoint state is not treated as long-term memory or a second context authority. |
-| Tools | The baseline exposes only the pure calculator with bounded calls and rounds. | Tool arguments, names, results, and call counts are validated at the native boundary; side-effecting tools are out of scope here. |
+| Tools | Profile-selected calculator/read fixture calls are deterministic; the write fixture returns a bounded acknowledgement only after approval. | Tool names, arguments, results, approval, and call counts are validated at both the shared server boundary and the native graph boundary; no external side effect is claimed. |
 | Evidence | Native events retain bounded graph, checkpoint, model, tool, retry, and recovery metadata. | Normalized Lab evidence remains owned by the Lab server and is written idempotently; secrets and arbitrary checkpoint values are excluded. |
 
 The service exposes `GET /health`, `POST /v1/runs`, `GET /v1/runs/{executionId}`, and

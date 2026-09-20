@@ -22,6 +22,15 @@ The Platform UI selects an OpenRouter model from the shared server catalog. The
 Python graph service receives only the provider/model selection and reads the
 provider key from its process environment.
 
+The shared server resolves the selected capability profile before dispatch. The
+`local-safe` profile enables the bounded `calculator` tool and the read-only
+`fixture_lookup` connection, and adds the `research-summary` skill as untrusted
+context. The `local-write-approved` profile also declares `fixture_write`, but
+the server does not enable it unless the request contains a matching, unexpired
+approval. The browser can select a profile but cannot add capabilities, widen
+the allowlist, or provide credentials. LangGraph receives the resulting
+`enabledNames` and `approvedNames` as part of the platform-local request.
+
 The platform-local protocol is defined in [`protocol/`](protocol/) and is validated independently by Pydantic and TypeScript. `runId` remains the stable Lab identity for one turn, while a Lab `sessionId` maps to one bounded hashed LangGraph `thread_id` for the conversation. `clientTurnId` makes one session turn retryable without starting a second graph execution. A checkpoint ID, graph run ID, and node task ID remain separate native details.
 
 The TypeScript server defaults to `http://127.0.0.1:2024`; override it with
@@ -79,9 +88,18 @@ The complete resolved environment is in [`requirements.lock`](requirements.lock)
 
 - SQLite checkpoints persist graph state across service process restarts when a checkpoint was written.
 - The service's own run registry and redacted event log use the same SQLite file, but they are not the Lab's normalized evidence store.
-- The graph has a `model` node and a bounded `tools` node. The only registered tool is
-  the pure `calculator`; it has no filesystem, network, subprocess, or external side
-  effects. Tool calls are validated again at the execution boundary.
+- The graph has a `model` node and a bounded `tools` node. The effective tool set
+  comes from the server-resolved capability profile: `calculator` is a pure local
+  tool, `fixture_lookup` reads deterministic provider-shaped local data, and
+  `fixture_write` is a write-shaped fixture used to exercise approval handling.
+  The fixture tools do not connect to an external provider. Tool names, arguments,
+  limits, and approval are validated again at the Python execution boundary.
+- A run using `local-safe` can read `alpha` from `fixture_lookup` and receives the
+  bounded local fixture value. It cannot invoke `fixture_write`. A write-capable
+  request without `fixture_write` in `approvedNames` is rejected with
+  `APPROVAL_REQUIRED` before execution; a request with the matching approval
+  receives the deterministic fixture acknowledgement. This is a policy and
+  boundary test, not evidence of an external write or exactly-once side effect.
 - The graph consumes a Lab-prepared context snapshot for normal server runs. The
   snapshot contains the exact messages, token budget, pressure, and compaction record
   used for the request. When its compaction revision advances, the graph replaces the

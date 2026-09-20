@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { loadServerConfig } from "../../src/control-plane/bootstrap/config.js";
 import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../../src/capabilities/context/index.js";
+import { createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
@@ -145,8 +146,10 @@ async function withApp(
     const context = options.context
       ? new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator())
       : undefined;
-    const service = new RunService({ config, context, evidence, registry: new PlatformRegistry([runner]) });
-    const app = buildControlPlaneServer({ config, service, evidence, registry: new PlatformRegistry([runner]), modelCatalog });
+    const capabilities = createDefaultCapabilityCatalog();
+    const registry = new PlatformRegistry([runner]);
+    const service = new RunService({ config, context, evidence, registry, capabilities });
+    const app = buildControlPlaneServer({ config, service, evidence, registry, modelCatalog, capabilities });
     await app.ready();
     try {
       await run(app, runner, root);
@@ -192,6 +195,17 @@ test("HTTP API exposes only safe, searchable OpenRouter model metadata", async (
     const invalidProvider = await app.inject({ method: "GET", url: "/api/models?provider=fake" });
     assert.equal(invalidProvider.statusCode, 400);
   }, modelCatalog);
+});
+
+test("HTTP API exposes server-owned capability profiles without secrets", async () => {
+  await withApp(async (app) => {
+    const response = await app.inject({ method: "GET", url: "/api/capabilities" });
+    assert.equal(response.statusCode, 200);
+    const body = response.json();
+    assert.deepEqual(body.profiles.map((profile: { id: string }) => profile.id), ["local-safe", "local-write-approved"]);
+    assert.equal(JSON.stringify(body).includes("accessToken"), false);
+    assert.equal(JSON.stringify(body).includes("secret"), false);
+  });
 });
 
 function modelCatalogResult() {
@@ -247,6 +261,9 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
     assert.equal(evidence.statusCode, 200);
     assert.equal(JSON.parse(evidence.body).output, "hello");
 
+    const capabilities = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/capabilities.json` });
+    assert.equal(capabilities.statusCode, 200);
+
     const native = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/native/temporal.json` });
     assert.equal(native.statusCode, 200);
 
@@ -261,6 +278,65 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
 
     const traversal = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/../config.json` });
     assert.notEqual(traversal.statusCode, 200);
+  });
+});
+
+test("a selected capability profile is resolved before dispatch and retained as redacted evidence", async () => {
+  await withApp(async (app) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Read the local fixture." },
+        model: { provider: "fake", model: "fake-success" },
+        capabilities: { profileId: "local-safe" },
+      },
+    });
+    assert.equal(response.statusCode, 202);
+    const run = response.json();
+    assert.equal(run.manifest.capabilities.profileId, "local-safe");
+    assert.deepEqual(run.manifest.capabilities.tools.enabledNames, ["calculator", "fixture_lookup"]);
+    assert.deepEqual(run.manifest.capabilities.resolution.grants.map((grant: { manifest: { id: string } }) => grant.manifest.id), ["calculator", "fixture_lookup"]);
+    const evidence = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/capabilities.json` });
+    assert.equal(evidence.statusCode, 200);
+    assert.equal(evidence.body.includes("accessToken"), false);
+  });
+});
+
+test("HTTP retains an explicit write approval in the immutable run manifest", async () => {
+  await withApp(async (app) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "temporal",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Use the approved local write fixture." },
+        model: { provider: "fake", model: "fake-success" },
+        capabilities: {
+          profileId: "local-write-approved",
+          tools: { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 },
+          approvals: [{
+            schemaVersion: 1,
+            decisionId: "approval_fixture_write_http",
+            capabilityId: "fixture_write",
+            version: "1.0.0",
+            allowedOperations: ["write"],
+            decision: "approved",
+            decidedAt: "2026-09-20T00:00:00.000Z",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+          }],
+        },
+      },
+    });
+    assert.equal(response.statusCode, 202);
+    const run = response.json();
+    assert.deepEqual(run.manifest.capabilities.tools.enabledNames, ["calculator", "fixture_lookup", "fixture_write"]);
+    assert.deepEqual(run.manifest.capabilities.tools.approvedNames, ["fixture_write"]);
+    assert.equal(run.manifest.capabilities.resolution.decisions.find((decision: { capabilityId: string }) => decision.capabilityId === "fixture_write").status, "granted");
+    assert.equal(run.manifest.capabilities.approvals[0].decision, "approved");
   });
 });
 
