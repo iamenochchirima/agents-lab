@@ -1,7 +1,7 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T21:58:00+02:00
+**Last updated:** 2026-09-20T22:02:00+02:00
 **Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -577,6 +577,7 @@ The following focused commits are complete while this plan remains active:
 - `1fc6d32` — opt-in four-platform capability matrix and local-service documentation.
 - `fffe39c` — approved connected-write coverage in the matrix.
 - `1a3cffd` — align the matrix with the shared native-service context root.
+- `0916e26` — native capability cancellation coverage in the matrix.
 
 Validated so far:
 
@@ -600,9 +601,9 @@ Validated so far:
   evidence-store suite reports 12 passed, 0 failed, including scoped attempt replay,
   per-attempt ordering, and manifest-platform mismatch coverage.
 - `AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191 AGENTLAB_CONTEXT_ROOT=/home/enoch/aworkspace/agents/agents-lab/lab/sessions pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix` — passed; one
-  identical read profile and one explicitly approved write profile completed through
-  Temporal, Restate, LangGraph, and Mastra with native tool execution and completed
-  connection evidence.
+  identical read profile, one explicitly approved write profile, and one cancellation
+  run completed through Temporal, Restate, LangGraph, and Mastra with native tool
+  execution, completed connection evidence, and cancelled terminal projections.
 
 The local fixture now crosses real HTTP boundaries for Temporal, Restate, LangGraph, and Mastra
 native execution tests. MCP JSON-RPC and OAuth PKCE/refresh/revocation also cross the fixture's
