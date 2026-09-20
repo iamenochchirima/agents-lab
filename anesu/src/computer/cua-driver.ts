@@ -233,6 +233,7 @@ type AccessibilityWindow = {
   readonly snapshotId?: string;
   readonly appName?: string;
   readonly windowTitle?: string;
+  readonly windowBounds?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly elements: readonly Record<string, unknown>[];
 };
 
@@ -244,13 +245,60 @@ function stringValue(value: unknown, maxLength: number): string | undefined {
   return typeof value === "string" && value.length > 0 && value.length <= maxLength ? value : undefined;
 }
 
-function normalizedAccessibilityWindow(value: unknown): AccessibilityWindow | undefined {
+function normalizedWindowBounds(value: unknown): AccessibilityWindow["windowBounds"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const bounds = value as Record<string, unknown>;
+  const values = [bounds.x, bounds.y, bounds.width, bounds.height];
+  if (values.some((entry) => typeof entry !== "number" || !Number.isFinite(entry))) return undefined;
+  const [x, y, width, height] = values as [number, number, number, number];
+  return width > 0 && height > 0 ? { x, y, width, height } : undefined;
+}
+
+function normalizedElementFrame(
+  value: unknown,
+  windowBounds: AccessibilityWindow["windowBounds"],
+  screenshotWidth?: number,
+  screenshotHeight?: number,
+): Record<string, number> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const frame = value as Record<string, unknown>;
+  const frameX = frame.x;
+  const frameY = frame.y;
+  const frameWidth = frame.width ?? frame.w;
+  const frameHeight = frame.height ?? frame.h;
+  const values = [frameX, frameY, frameWidth, frameHeight];
+  if (values.some((entry) => typeof entry !== "number" || !Number.isFinite(entry))) return undefined;
+  const [x, y, width, height] = values as [number, number, number, number];
+  if (width <= 0 || height <= 0) return undefined;
+  if (!windowBounds || screenshotWidth === undefined || screenshotHeight === undefined) {
+    return { x, y, width, height };
+  }
+
+  // Linux AT-SPI reports element bounds in display coordinates, while
+  // get_window_state returns a screenshot cropped to the window content. The
+  // bottom-aligned crop accounts for title bars/decorations; the same scale is
+  // applied to bounds when CUA downsizes the screenshot.
+  const pixelScale = screenshotWidth / windowBounds.width;
+  if (!Number.isFinite(pixelScale) || pixelScale <= 0) return undefined;
+  const captureHeightInScreenUnits = screenshotHeight / pixelScale;
+  const originX = windowBounds.x;
+  const originY = windowBounds.y + Math.max(0, windowBounds.height - captureHeightInScreenUnits);
+  return {
+    x: (x - originX) * pixelScale,
+    y: (y - originY) * pixelScale,
+    width: width * pixelScale,
+    height: height * pixelScale,
+  };
+}
+
+function normalizedAccessibilityWindow(value: unknown, screenshotWidth?: number, screenshotHeight?: number): AccessibilityWindow | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   const pid = finiteInteger(record.pid);
   const windowId = typeof record.windowId === "bigint"
     ? record.windowId.toString()
     : stringValue(record.windowId, 128);
+  const windowBounds = normalizedWindowBounds(record.window_bounds ?? record.windowBounds);
   const rawElements = Array.isArray(record.elements) ? record.elements : [];
   if (pid === undefined || !windowId) return undefined;
   const elements = rawElements.slice(0, 256).flatMap((raw): Record<string, unknown>[] => {
@@ -263,12 +311,7 @@ function normalizedAccessibilityWindow(value: unknown): AccessibilityWindow | un
     const actions = Array.isArray(element.actions)
       ? element.actions.filter((action): action is string => typeof action === "string" && action.length <= 64).slice(0, 16)
       : [];
-    const frame = element.frame && typeof element.frame === "object" && !Array.isArray(element.frame)
-      ? element.frame as Record<string, unknown>
-      : undefined;
-    const normalizedFrame = frame && ["x", "y", "width", "height"].every((key) => typeof frame[key] === "number" && Number.isFinite(frame[key]))
-      ? { x: frame.x, y: frame.y, width: frame.width, height: frame.height }
-      : undefined;
+    const normalizedFrame = normalizedElementFrame(element.frame, windowBounds, screenshotWidth, screenshotHeight);
     return [{
       elementToken: token,
       role,
@@ -285,6 +328,7 @@ function normalizedAccessibilityWindow(value: unknown): AccessibilityWindow | un
     ...(stringValue(record.snapshotId, 256) ? { snapshotId: stringValue(record.snapshotId, 256) } : {}),
     ...(stringValue(record.appName, 128) ? { appName: stringValue(record.appName, 128) } : {}),
     ...(stringValue(record.windowTitle, 512) ? { windowTitle: stringValue(record.windowTitle, 512) } : {}),
+    ...(windowBounds ? { windowBounds } : {}),
     elements,
   };
 }
@@ -516,7 +560,6 @@ export class CuaEnvironment implements ComputerEnvironment {
         maxDepth: 16,
       }), asyncOptions(signal));
       const stateRecord = state && typeof state === "object" && !Array.isArray(state) ? state as Record<string, unknown> : {};
-      const accessibility = normalizedAccessibilityWindow(state);
       this.generation += 1;
       const snapshotId = stringValue(stateRecord.snapshotId, 256);
       const appName = stringValue(stateRecord.appName, 128);
@@ -525,6 +568,7 @@ export class CuaEnvironment implements ComputerEnvironment {
       const screenshotWidth = typeof stateRecord.screenshotWidth === "number" && Number.isFinite(stateRecord.screenshotWidth) && stateRecord.screenshotWidth > 0 ? stateRecord.screenshotWidth : undefined;
       const screenshotHeight = typeof stateRecord.screenshotHeight === "number" && Number.isFinite(stateRecord.screenshotHeight) && stateRecord.screenshotHeight > 0 ? stateRecord.screenshotHeight : undefined;
       const scaleFactor = typeof stateRecord.screenshotScale === "number" && Number.isFinite(stateRecord.screenshotScale) && stateRecord.screenshotScale > 0 ? stateRecord.screenshotScale : undefined;
+      const accessibility = normalizedAccessibilityWindow(state, screenshotWidth, screenshotHeight);
       const structured = JSON.stringify({
         window: {
           pid: window.pid,

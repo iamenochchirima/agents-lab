@@ -230,6 +230,17 @@ the native effect as uncertain; Anesu did not retry it. The run required tempora
 traditional host/coordinate acceptance for one live route; the stored NVIDIA route and
 other free routes remain provider-availability or model-capability risks.
 
+The first live compare attempts correctly stopped before approval, first because the
+real CUA Linux payload used `{x,y,w,h}` bounds that the adapter had discarded, then
+because an unstable visual proposal fell outside the localized Jev frame. The adapter
+now canonicalizes both CUA's `{x,y,w,h}` and compatible `{x,y,width,height}` shapes,
+and converts Linux AT-SPI screen-space bounds into the same window-screenshot frame
+using `window_bounds`, screenshot dimensions, and the decoration crop. A subsequent
+live compare run produced a traditional coordinate `(415,315)` inside Jev's localized
+button frame, showed both proposals in evidence, rendered one primary approval, sent
+one click, and verified the fixture result from a fresh observation after CUA reported
+an uncertain effect. The shadow Jev strategy sent no native input.
+
 The CUA adapter now also translates the bounded native move, type, keypress, scroll,
 and drag operations through the pinned SDK, with the same one-observation consumption
 and no-retry rule. The traditional native runner now selects one of those operations
@@ -910,7 +921,8 @@ slice indefinitely.
       small safe task in a visible disposable fixture. The ordinary `pnpm run chat`
       path remains the normal console entry point when a caller supplies an already
       configured native host. The stored TypeSafe configuration completed this check;
-      traditional provider selection remains a separate open acceptance item.
+      the traditional acceptance used the same command with a temporary Dots model
+      override because the stored NVIDIA free route is currently capacity-limited.
 - [x] Complete one real native TypeSafe task in the disposable Ubuntu/X11 fixture:
       Jev proposed the accessibility target, the structured TUI approval panel showed
       the target label, one `a` approval dispatched the token, and the fresh fixture
@@ -932,8 +944,12 @@ slice indefinitely.
       rejected; the provider parser exposes those bounded nested errors. Traditional
       acceptance is therefore proven for one live provider route, while provider
       availability and model-specific grounding remain operational limitations.
-- [ ] Run compare mode and verify only the primary strategy changes the fixture while
-      both proposals are visible in evidence.
+- [x] Run compare mode and verify only the primary strategy changes the fixture while
+      both proposals are visible in evidence. A live Xvfb + GNOME + Chrome run produced
+      agreeing traditional and Jev proposals, showed both in the run evidence, used
+      one `a` approval for the traditional primary action, verified the safe result,
+      and sent no native input for the Jev shadow proposal. Earlier disagreement runs
+      stopped before approval as intended.
 - [x] Cancel with Ctrl+C and verify the run stops without claiming an unverified action.
       A live TypeSafe/X11 fixture run reached the structured approval panel; Ctrl+C
       cancelled the pending action, emitted `failed` before input, and did not dispatch
@@ -965,9 +981,12 @@ Before moving this plan to `completed/`, verify:
 - [x] Both selectable strategies perform real proposals through the shared lifecycle,
       approval, and evidence boundary, then use the appropriate real environment
       executor; no deterministic echo path is presented as computer use.
-- [ ] One declared host profile completes a visible, safe manual task through each
+- [x] One declared host profile completes a visible, safe manual task through each
       available strategy, or the unsupported strategy/host is explicitly documented as
-      unavailable with a concrete reason.
+      unavailable with a concrete reason. The same isolated Ubuntu/X11 + GNOME + Chrome
+      profile completed TypeSafe, traditional, and compare tasks; traditional and
+      compare used the live Dots free route because the stored NVIDIA route returned a
+      bounded upstream capacity error.
 - [x] Approval, cancellation, stale-target protection, post-action verification,
       recovery, and bounded evidence are implemented and covered by focused tests.
 - [x] Compare mode is shadow-only for the non-primary strategy.
@@ -994,25 +1013,26 @@ Before moving this plan to `completed/`, verify:
   `x_abs`/`y_abs` aliases, and normalized coordinates, `2382ddd` accepts equivalent
   canonical/alias coordinates while rejecting conflicting duplicates, and `cc7f42`
   clarifies the traditional vision coordinate context and bounded observation payload.
+  `3ef9209` aligns native vision with CUA window frames; the archive commit for this
+  plan adds Linux AT-SPI frame normalization and records live compare acceptance.
 - **Changed implementation surface:** `anesu/src/computer/`, the Anesu runtime/config,
   TUI and tool wiring, disposable Xvfb/Xephyr launchers, focused computer tests, the
   computer-use playground, research notes, and the active plan/gap register. The
   follow-up commit touched only the native runner, its focused tests, its README, and
   this plan.
 - **Validation:** `pnpm --filter @agent-harness-lab/anesu typecheck` passed;
-  `pnpm --filter @agent-harness-lab/anesu test` passed all 499 tests after the latest
-  traditional request-boundary change;
-  `pnpm --filter @agent-harness-lab/anesu coverage` passed with 89.56% line,
-  76.58% branch, and 85.99% function coverage; scoped `git diff --check` passed.
+  `pnpm --filter @agent-harness-lab/anesu test` passed all 500 tests after the latest
+  window-frame regression;
+  `pnpm --filter @agent-harness-lab/anesu coverage` passed with 89.59% line,
+  76.57% branch, and 86.08% function coverage; scoped `git diff --check` passed.
 - **Real-backend prerequisites:** Linux/X11, an isolated `DISPLAY`, Xvfb or Xephyr,
   xauth, `dbus-run-session`, Chrome, an AT-SPI-capable application/window manager,
   and configured TypeSafe/OpenRouter credentials as required by the selected strategy.
-- **Open acceptance evidence:** the TypeSafe/Jev path has a live successful fixture
-  run. Traditional mode reaches observation and approval when the provider responds,
-  and its provider-shape/coordinate normalization is covered; NVIDIA's latest live
-  attempts returned bounded `HTTP 502 ResourceExhausted`, while other free routes were
-  rate-limited, rejected, or selected incorrect coordinates. Live traditional success
-  and live compare-mode verification remain open.
+- **Acceptance evidence:** the same isolated Ubuntu/X11 + GNOME + Chrome profile has
+  live successful TypeSafe, traditional, and compare runs. The successful traditional
+  and compare runs used `dots-studio/dots-3-note-preview:free` with temporary 90/120
+  second diagnostic deadlines; the stored NVIDIA free route remains capacity-limited,
+  while other free routes may be rate-limited, rejected, or visually unreliable.
 
 ## Completion record
 

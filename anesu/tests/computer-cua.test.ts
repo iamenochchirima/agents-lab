@@ -85,7 +85,8 @@ class FakeCuaDriver implements CuaDriverClient {
       screenshotWidth: this.liveWindowWidth,
       screenshotHeight: this.liveWindowHeight,
       screenshotScale: this.liveWindowScale,
-      elements: [{ elementIndex: 1n, role: "button", depth: 1, elementToken: "element-1", label: "Reveal safe result", enabled: true, actions: ["click"] }],
+      elements: [{ elementIndex: 1n, role: "button", depth: 1, elementToken: "element-1", label: "Reveal safe result", enabled: true, actions: ["click"], frame: { x: 150, y: 300, w: 80, h: 70 } }],
+      window_bounds: { x: 50, y: 100, width: 800, height: 640 },
       images: [{ mimeType: "image/png", dataBase64: "b".repeat(100) }],
     };
   }
@@ -218,6 +219,8 @@ test("CUA window scope uses the exact accessibility snapshot instead of unauthor
   assert.equal(observation.imageBytes, 100);
   assert.match(observation.text, /Reveal safe result/);
   assert.match(observation.structuredJson ?? "", /accessibility/);
+  const structured = JSON.parse(observation.structuredJson ?? "{}") as { readonly accessibility?: { readonly elements?: ReadonlyArray<{ readonly frame?: unknown }> } };
+  assert.deepEqual(structured.accessibility?.elements?.[0]?.frame, { x: 100, y: 160, width: 80, height: 70 });
 });
 
 test("CUA semantic clicks retain the exact observed window target and element token", async () => {

@@ -20,7 +20,9 @@ The adapter currently provides the first native vertical slice:
 - observations are bounded and expose metadata rather than embedding screenshot
   bytes in the model transcript; both native strategies capture the exact authorized
   foreground-window snapshot so a visual coordinate is interpreted in the same frame
-  that produced it. Desktop capture remains available as an explicit adapter scope.
+  that produced it. On Linux, CUA's screen-space AT-SPI bounds are converted using
+  the reported window bounds and screenshot dimensions before compare-mode grounding.
+  Desktop capture remains available as an explicit adapter scope.
   When CUA exposes it, the observation also carries the bounded agent-cursor position
   for inspection;
 - when CUA exposes Linux window accessibility, Anesu selects one unambiguous
