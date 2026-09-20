@@ -132,6 +132,53 @@ test("an intermediate multi-turn interruption preserves completed turn evidence 
   }
 });
 
+test("multi-turn cancellation preserves completed turns and cancels only the in-flight trial", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-multiturn-cancel-"));
+  try {
+    let markSecondTurn!: () => void;
+    const secondTurnStarted = new Promise<void>((resolve) => { markSecondTurn = resolve; });
+    let calls = 0;
+    const model: StudioModelAdapter = {
+      provider: "replay",
+      model: "multiturn-cancellation-test-model",
+      async complete(request, signal) {
+        calls += 1;
+        if (calls === 2) {
+          markSecondTurn();
+          await new Promise<void>((_resolve, reject) => {
+            if (signal?.aborted) {
+              reject(new DOMException("cancelled", "AbortError"));
+              return;
+            }
+            signal?.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), { once: true });
+          });
+        }
+        return { output: request.expectedAnswer ?? "completed", inputTokens: null, outputTokens: null };
+      },
+    };
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      model,
+      memoryFactory: () => new FixtureMemoryStore(() => "2026-09-20T00:00:00.000Z"),
+    });
+    const pending = service.create(multiturnMemoryRequest("multiturn-cancel-1"));
+    await secondTurnStarted;
+    const comparisonId = (await readdir(root, { withFileTypes: true }))
+      .find((entry) => entry.isDirectory() && entry.name !== "idempotency")?.name;
+    assert.ok(comparisonId);
+    const cancelled = await service.cancel(comparisonId, "stop after the first turn");
+    const completed = await pending;
+
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(completed.status, "cancelled");
+    assert.equal(cancelled.trials.length, 1);
+    assert.equal(cancelled.trials[0].result?.status, "cancelled");
+    assert.deepEqual(cancelled.trials[0].turns.map((turn) => turn.turnId), ["turn-01-learn"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cancellation during a model call leaves only the in-flight trial cancelled", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-cancel-"));
   try {

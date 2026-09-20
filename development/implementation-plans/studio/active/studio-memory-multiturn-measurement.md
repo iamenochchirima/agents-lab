@@ -251,7 +251,7 @@ Do not archive this plan until:
 
 ## Validation checkpoint
 
-- Focused Studio and Memory suites: 54 passing tests.
+- Focused Studio and Memory suites: 55 passing tests.
 - Full `@agent-harness-lab/lab-server` test command: passed; existing skipped
   platform fixtures remain skipped.
 - Root `pnpm run build`: passed.
