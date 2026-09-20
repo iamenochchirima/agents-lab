@@ -16,15 +16,17 @@ slice before the next component strategy is added.
 1. **Foundation kernel:** compose one complete deterministic agent turn through all
    twelve component slots, with baseline adapters, Context strategies, evidence, and
    one opt-in live model adapter.
-2. **Memory:** implement memory scopes, retrieval, writing, consolidation, restart,
-   and Context/Memory comparison cases.
-3. **Context research:** add compaction, summarization, ranking, caching, multimodal
-   sources, and pressure-controlled scenario families.
-4. **Tools and control:** add tool selection, retries, parallel dispatch, loops,
+2. **Memory runtime:** implement memory scopes, retrieval, writing, consolidation,
+   restart, and Context/Memory comparison cases.
+3. **Multi-turn Memory and measurement:** carry Memory across ordered turns and add
+   reproducible retrieval, growth, Context-cost, latency, and recovery measurements.
+4. **Context research:** hold Memory fixed while adding compaction, summarization,
+   ranking, budgeting, caching, and pressure-controlled scenario families.
+5. **Tools and control:** add tool selection, retries, parallel dispatch, loops,
    graphs, replanning, delegation, and termination comparisons.
-5. **Environment and safety:** add real permissions, resource governors, failure
+6. **Environment and safety:** add real permissions, resource governors, failure
    injection, side-effect gates, and computer-use profiles.
-6. **Model and observability:** add provider routing, cost/latency studies,
+7. **Model and observability:** add provider routing, cost/latency studies,
    distributed traces, and richer model-backed experiments.
 
 The roadmap describes the intended order. The active plan defines the work that may
@@ -33,6 +35,8 @@ be implemented now.
 ## Active plans
 
 - [Studio Memory runtime](active/studio-memory-runtime.md)
+- [Studio multi-turn Memory and measurement](active/studio-memory-multiturn-measurement.md)
+- [Studio Context research runtime](active/studio-context-research-runtime.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
 - [Studio backend runtime foundation](active/studio-backend.md)
 

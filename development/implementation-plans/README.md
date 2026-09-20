@@ -1,6 +1,6 @@
 # Implementation plans
 
-**Last updated:** 2026-09-20T00:13:17+02:00
+**Last updated:** 2026-09-20T12:42:28+02:00
 
 Implementation plans are execution contracts for substantial work. Each plan records
 scope, ownership, tests, validation, limitations, and the completion gate. Plans are
