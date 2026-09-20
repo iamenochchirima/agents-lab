@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:00:52+02:00
+**Last updated:** 2026-09-20T02:05:28+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -683,8 +683,8 @@ record the exact prerequisite and keep the plan active.
   duration, retry count, and stable error code only; no prompt or credential logging.
 - [ ] Metrics: model calls, tool calls, graph steps, checkpoint count, retries, duration,
   token usage, compaction, and unknown outcomes in run evidence.
-- [ ] Version identity: platform protocol and resolved Python dependency versions in
-  evidence.
+- [x] Version identity: platform protocol and resolved Python dependency versions are
+  retained as safe native metadata in the execution reference.
 - [ ] Migration: old baseline run records remain readable; changed protocol/reference
   fields have a compatibility or explicit rejection rule.
 - [ ] Rollback: document how to stop LangGraph only, preserve Lab evidence, and revert
@@ -909,6 +909,14 @@ what was observed, the exact validation command, and what remains.
   (`6 skipped`), and `git diff --check`. Committed as `0c754cb` (`test(web): cover
   LangGraph server replacement`). The destructive opt-in runs themselves remain
   unexecuted.
+
+- **2026-09-20T02:05:28+02:00 — runtime version identity retained in native evidence.**
+  Extended the versioned start response and schema with service, LangGraph, and Python
+  runtime metadata. The TypeScript adapter now preserves that metadata in the native
+  execution reference, allowing retained evidence to be interpreted after the local
+  environment changes. Validation passed: 33 Python service/protocol tests, 11
+  TypeScript protocol/adapter tests, Lab server typecheck, and `git diff --check`.
+  Committed as `3d8a079` (`feat(langgraph): retain runtime version evidence`).
 
 ## Commit discipline
 
