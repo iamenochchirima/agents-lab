@@ -109,3 +109,16 @@ configured port. It does not stop an unrelated process. For a controlled replace
 exercise, use the opt-in browser command in
 [`apps/web/tests/browser/README.md`](../../../../apps/web/tests/browser/README.md),
 and keep the supplied PID limited to the repository-owned service.
+
+## Retention and rollback
+
+The launcher does not prune LangGraph SQLite state or Lab evidence. Native state and
+`lab/runs/` have independent retention decisions. For deliberate maintenance, stop
+the service, inspect `GET /v1/recovery/diagnostics`, archive any required evidence,
+and remove only the exact configured state directory. Never delete state as part of
+ordinary restart recovery.
+
+To roll back the local LangGraph implementation, stop the LangGraph process only and
+leave the Lab server, other platform processes, and retained run evidence in place.
+Deploy a compatible service/adapter pair; if the protocol version is incompatible,
+the runner must report the service unavailable instead of guessing at the wire shape.

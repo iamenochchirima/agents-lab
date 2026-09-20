@@ -212,6 +212,7 @@ test("writes bounded operational logs in order without retaining prompts or cred
         nativeStatus: "RUNNING",
         outcome: "running",
         durationMs: 12,
+        retryCount: 1,
       }),
       store.appendOperationalLog({
         runId: manifest.runId,
@@ -233,6 +234,7 @@ test("writes bounded operational logs in order without retaining prompts or cred
     const contents = await readFile(join(root, manifest.runId, "logs/operations.jsonl"), "utf8");
     const records = contents.trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
     assert.deepEqual(records.map((record) => record.operation), ["run.create", "run.reconcile"]);
+    assert.equal(records[0]?.retryCount, 1);
     assert.equal(contents.includes(manifest.task.prompt), false);
     assert.equal(contents.includes("apiKey"), false);
     assert.equal(contents.includes("secret"), false);

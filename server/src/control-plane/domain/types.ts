@@ -142,6 +142,7 @@ export interface OperationalLogIntent {
   readonly nativeStatus?: string;
   readonly outcome?: string;
   readonly durationMs?: number | null;
+  readonly retryCount?: number | null;
   readonly code?: string;
 }
 

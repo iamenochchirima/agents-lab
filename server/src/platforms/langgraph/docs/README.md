@@ -101,6 +101,21 @@ the process boundary observable and reduce accidental lock failures, but they do
 make SQLite a multi-worker production database. Hosted LangGraph, LangSmith, PostgreSQL,
 and distributed worker deployment require separate platform plans.
 
+## Retention and rollback
+
+The local profile has no automatic cleanup. Platform SQLite state is retained until an
+operator deliberately performs maintenance; Lab evidence under `lab/runs/` is a
+separate record and is not removed when native state is reset. Before removing native
+state, stop the LangGraph service, inspect `/v1/recovery/diagnostics`, preserve any
+required run evidence, and remove only the explicitly selected platform state
+directory. Do not use native-state cleanup as a recovery action.
+
+To roll back this platform implementation, stop only the LangGraph service and leave
+the Lab server, other platform services, and `lab/runs/` untouched. Revert the
+LangGraph service, adapter, and protocol changes as one compatible versioned change;
+existing evidence remains readable by the common server, while a protocol-version
+mismatch must be reported as unavailable rather than silently interpreted.
+
 ## First-party references
 
 - [Application structure](https://docs.langchain.com/oss/python/langgraph/application-structure)

@@ -599,8 +599,10 @@ function validateOperationalLogIntent(intent: OperationalLogIntent): void {
       throw new Error("Operational log contains an unsafe string.");
     }
   }
-  if (intent.durationMs !== undefined && intent.durationMs !== null && (!Number.isFinite(intent.durationMs) || intent.durationMs < 0)) {
-    throw new Error("Operational log duration must be a finite non-negative number.");
+  for (const [name, value] of [["duration", intent.durationMs], ["retry count", intent.retryCount]] as const) {
+    if (value !== undefined && value !== null && (!Number.isFinite(value) || value < 0 || !Number.isInteger(value))) {
+      throw new Error(`Operational log ${name} must be a finite non-negative integer.`);
+    }
   }
 }
 

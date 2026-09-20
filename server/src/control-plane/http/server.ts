@@ -238,6 +238,7 @@ async function recordRunOperation(
     nativeStatus: nativeStatus(run),
     outcome: run.projection.state === "stale" ? "stale" : run.status,
     durationMs: Math.max(0, Date.now() - startedAt),
+    retryCount: run.result ? Math.max(0, run.result.attemptCount - 1) : null,
     code: error?.code,
   }).catch(() => undefined);
 }

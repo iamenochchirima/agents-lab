@@ -5,7 +5,7 @@ Owns server logs, traces, and metrics without changing experiment semantics.
 Each retained run may contain `logs/operations.jsonl`. It is a bounded,
 newline-delimited stream of safe lifecycle evidence: operation name, request
 ID, platform and variant, normalized status, native status when exposed by the
-adapter, outcome classification, timing, and safe error code. It never stores
+adapter, outcome classification, retry count, timing, and safe error code. It never stores
 prompts, model output, credentials, or arbitrary native request payloads.
 
 The stream is diagnostic and at-least-once. A failed log write is ignored by

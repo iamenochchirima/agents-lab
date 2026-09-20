@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:30:20+02:00
+**Last updated:** 2026-09-20T02:40:22+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -465,7 +465,7 @@ boundary with explicit limitations, not as an in-memory test double.
   to the documented rule; do not silently start a second graph for every stale record.
 - [x] Handle orphaned checkpoints and run records with bounded diagnostics and cleanup
   rules. Never delete evidence as part of ordinary recovery.
-- [ ] Define retention for SQLite run state and Lab evidence separately; cleanup is not
+- [x] Define retention for SQLite run state and Lab evidence separately; cleanup is not
   part of the default acceptance path.
 
 ### Recovery matrix
@@ -680,15 +680,15 @@ record the exact prerequisite and keep the plan active.
   checkout, so documentation, logging, metrics, version, migration, rollout, and
   rollback decisions are recorded in this plan and the platform notes.
 - [x] Analytics: not applicable; this slice adds no product analytics.
-- [ ] Structured logs: request/run/session/turn identity, status, native status, outcome,
+- [x] Structured logs: request/run/session/turn identity, status, native status, outcome,
   duration, retry count, and stable error code only; no prompt or credential logging.
-- [ ] Metrics: model calls, tool calls, graph steps, checkpoint count, retries, duration,
+- [x] Metrics: model calls, tool calls, graph steps, checkpoint count, retries, duration,
   token usage, compaction, and unknown outcomes in run evidence.
 - [x] Version identity: platform protocol and resolved Python dependency versions are
   retained as safe native metadata in the execution reference.
-- [ ] Migration: old baseline run records remain readable; changed protocol/reference
+- [x] Migration: old baseline run records remain readable; changed protocol/reference
   fields have a compatibility or explicit rejection rule.
-- [ ] Rollback: document how to stop LangGraph only, preserve Lab evidence, and revert
+- [x] Rollback: document how to stop LangGraph only, preserve Lab evidence, and revert
   LangGraph changes without changing Restate, Temporal, or other platform runners.
 
 ## Progress log
@@ -951,13 +951,24 @@ what was observed, the exact validation command, and what remains.
   `git diff --check`. Retention, structured logs/metrics, migration/rollback records,
   and manual browser inspection remain open.
 
-- **2026-09-20T02:41:12+02:00 — snapshot metadata binding hardened.** LangGraph dispatch
+- **2026-09-20T02:39:12+02:00 — snapshot metadata binding hardened.** LangGraph dispatch
   now carries the immutable compaction revision and context-window metadata alongside
   the snapshot identity. The Python service rejects stale revision or window metadata
   before graph execution, while the prepared message list remains filesystem-owned and
   is not duplicated in the wire protocol. Validation passed: 10 focused TypeScript
   tests (one skipped) and 36 Python protocol/service tests. The first test fixtures were
   updated to create real context sessions where a snapshot is required.
+
+- **2026-09-20T02:40:22+02:00 — end-to-end validation and operations records extended.**
+  The shared operational log now records a bounded retry count derived from the terminal
+  attempt count, with redaction and integer bounds covered by evidence-store tests. The
+  retention and rollback rules are documented separately for native SQLite state and
+  Lab evidence. Validation passed: server typecheck; 48 focused TypeScript tests with
+  one intentional native-OpenRouter skip; 47 LangGraph Python tests; the no-Docker
+  integration (`1 passed`, `1 skipped`); live LangGraph browser Chat acceptance
+  (`1 passed`, `5 skipped`) using two real OpenRouter turns; deterministic browser
+  acceptance (`17 passed`); browser syntax, launcher syntax, and `git diff --check`.
+  Manual visual inspection remains separate from automated responsive/console checks.
 
 ## Commit discipline
 
