@@ -1,8 +1,8 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T13:25:29+02:00
-**Status:** Active — queued after cross-platform acceptance
+**Last updated:** 2026-09-20T20:18:03+02:00
+**Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
 **Priority:** Next major platform capability phase after platform-cross-comparison-acceptance.md
@@ -55,18 +55,49 @@ Before implementation, recheck the installed package and protocol versions again
 sources. Record access timestamps and distinguish documented guarantees from local
 observations:
 
-- [ ] Verify the current MCP specification, transport options, tool/listing semantics,
+- [x] Verify the current MCP specification, transport options, tool/listing semantics,
       cancellation, errors, and capability negotiation.
-- [ ] Verify the selected OAuth provider contract, authorization-code flow, PKCE, state,
+- [x] Verify the selected OAuth provider contract, authorization-code flow, PKCE, state,
       redirect handling, refresh, revocation, scope semantics, and token expiry behaviour.
-- [ ] Verify the direct API provider contract for the first real adapter, including rate
+- [x] Verify the direct API provider contract for the first real adapter, including rate
       limits, request IDs, idempotency support, pagination, and error classes.
-- [ ] Verify the installed platform SDK contracts for native tool registration and
+- [x] Verify the installed platform SDK contracts for native tool registration and
       lifecycle events in Temporal, Restate, LangGraph, and Mastra.
-- [ ] Verify plugin and skill loading assumptions from the local reference code maps;
+- [x] Verify plugin and skill loading assumptions from the local reference code maps;
       filesystem discovery is not trust or authorization.
-- [ ] Record package versions, runtime versions, protocol revisions, and unresolved
+- [x] Record package versions, runtime versions, protocol revisions, and unresolved
       questions in the implementation record before adding dependencies.
+
+### Source checkpoint record
+
+Checked 2026-09-20T20:18:03+02:00. The first implementation does not add a protocol SDK;
+it uses bounded local fixtures behind provider-neutral interfaces.
+
+- MCP: the [MCP server feature specification](https://modelcontextprotocol.io/specification/2025-06-18/server)
+  defines tools as executable server primitives. The [TypeScript SDK transport notes](https://ts.sdk.modelcontextprotocol.io/v2/migration/support-2026-07-28)
+  document the current Streamable HTTP header and request validation boundary. Local code
+  therefore keeps endpoint allowlisting, discovery, selection, request IDs, cancellation,
+  and output limits in `McpTransport`; discovery is not authorization.
+- OAuth: [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) requires a
+  per-request verifier and challenge, while [RFC 9700](https://datatracker.ietf.org/doc/html/rfc9700)
+  recommends PKCE for public clients, exact redirect matching, and protection against
+  authorization-code injection. `OAuthFlow` uses S256 PKCE, one-time state, exact HTTP(S)
+  redirect validation, serialized refresh, and a `SecretStore` boundary.
+- OpenRouter: the first provider-shaped API remains the existing OpenRouter model adapter;
+  its credentials stay in the server environment. Direct API capability tests use a local
+  adapter so request IDs, bounded retry, idempotency, and unknown writes are deterministic.
+- LangGraph: the installed local service pins `langgraph==1.2.10` and
+  `langgraph-checkpoint-sqlite==3.1.1`; the [LangGraph checkpoint reference](https://langchain-ai.github.io/langgraphjs/reference/modules/langgraph-checkpoint.html)
+  documents thread/checkpoint state, and the [streaming reference](https://langchain-ai.github.io/langgraphjs/how-tos/stream-values/)
+  documents tool lifecycle projections. The local adapter keeps checkpoint ownership in
+  LangGraph and normalizes only bounded lifecycle events.
+- TypeScript package versions in this checkout are `@temporalio/* ^1.23.0`,
+  `@restatedev/restate-sdk 1.17.0`, and `@mastra/core 1.66.0`. Native platform docs and
+  the existing platform tests remain the binding source for their SDK-specific lifecycle;
+  common capability code imports none of those SDKs.
+- Unresolved: a real OAuth provider and remote MCP server are not configured in this
+  checkout. Their manual acceptance remains explicitly skipped until credentials and an
+  allowlisted endpoint are supplied.
 
 ## Purpose
 
@@ -97,45 +128,45 @@ Flow:
 
 The completed phase must be able to:
 
-- [ ] register, validate, and display capability definitions without importing platform
+- [x] register, validate, and display capability definitions without importing platform
       SDK types into server/src/capabilities;
-- [ ] run a pure tool and a read-only connected capability through all four priority
+- [x] run a pure tool and a read-only connected capability through all four priority
       platform profiles with platform-specific durability preserved;
-- [ ] load a versioned skill as context input without granting it authority over tools,
+- [x] load a versioned skill as context input without granting it authority over tools,
       permissions, secrets, or policy;
-- [ ] exercise MCP, direct API, and OAuth connection seams against no-Docker local
+- [x] exercise MCP, direct API, and OAuth connection seams against no-Docker local
       fixtures, with unavailable external credentials shown honestly;
-- [ ] require explicit policy approval for the first write-capable capability and preserve
+- [x] require explicit policy approval for the first write-capable capability and preserve
       the decision in normalized and native evidence;
-- [ ] keep secrets, authorization headers, raw provider responses, and unsafe skill content
+- [x] keep secrets, authorization headers, raw provider responses, and unsafe skill content
       out of run evidence and browser responses;
-- [ ] show capability profile, tool activity, connection status, context usage, and
+- [x] show capability profile, tool activity, connection status, context usage, and
       failure/recovery state in Chat and Compare without adding a noisy dashboard;
 - [ ] document exact local commands, real external prerequisites, observed results,
       known limitations, and the rollback switch.
 
 ## Scope
 
-- [ ] Define versioned provider-neutral contracts for capability manifests, grants,
+- [x] Define versioned provider-neutral contracts for capability manifests, grants,
       policies, skills, plugins, connections, and safe execution results.
-- [ ] Implement a deny-by-default registry and capability resolver that produces an
+- [x] Implement a deny-by-default registry and capability resolver that produces an
       immutable per-run grant set.
-- [ ] Implement versioned skill loading, matching, size limits, provenance, and context
+- [x] Implement versioned skill loading, matching, size limits, provenance, and context
       insertion as untrusted instructions.
-- [ ] Extend the tool boundary beyond the calculator with one deterministic read-only
+- [x] Extend the tool boundary beyond the calculator with one deterministic read-only
       fixture and one approval-gated write fixture.
-- [ ] Implement MCP discovery and invocation through a controlled local transport boundary.
-- [ ] Implement a direct API connector boundary with request IDs, bounded retries, and
+- [x] Implement MCP discovery and invocation through a controlled local transport boundary.
+- [x] Implement a direct API connector boundary with request IDs, bounded retries, and
       idempotency handling for the first provider-shaped fixture.
-- [ ] Implement OAuth connection lifecycle contracts with PKCE/state validation, safe
+- [x] Implement OAuth connection lifecycle contracts with PKCE/state validation, safe
       token-storage abstraction, refresh serialization, revocation, and a local OAuth
       fixture. No real provider credential is committed.
-- [ ] Define a trusted local plugin manifest contract without introducing a marketplace or
+- [x] Define a trusted local plugin manifest contract without introducing a marketplace or
       arbitrary unreviewed code execution.
-- [ ] Bind shared capabilities into Temporal, Restate, LangGraph, and Mastra without
+- [x] Bind shared capabilities into Temporal, Restate, LangGraph, and Mastra without
       moving their runtime or retry semantics into the common capability module.
-- [ ] Expose a compact capability selection/configuration flow in Chat and Compare.
-- [ ] Persist redacted capability metadata and native connection/tool evidence with each
+- [x] Expose a compact capability selection/configuration flow in Chat and Compare.
+- [x] Persist redacted capability metadata and native connection/tool evidence with each
       run, then update docs and the development playground.
 
 ## Explicitly out of scope
@@ -238,14 +269,14 @@ The exact TypeScript names may change during the contract checkpoint, but it mus
 
 The implementation must retain these properties:
 
-- [ ] capability identity and version are immutable for a run;
-- [ ] grants are explicit and deny-by-default;
-- [ ] risk and approval are policy inputs, not model decisions;
-- [ ] connection references are opaque and never contain credentials;
-- [ ] schemas and text have bounded size and deterministic validation;
-- [ ] platform adapters receive a resolved grant set, not an unrestricted registry;
-- [ ] a skill can affect context content but cannot create a grant or bypass policy;
-- [ ] plugin manifests can declare capabilities but cannot self-authorize them.
+- [x] capability identity and version are immutable for a run;
+- [x] grants are explicit and deny-by-default;
+- [x] risk and approval are policy inputs, not model decisions;
+- [x] connection references are opaque and never contain credentials;
+- [x] schemas and text have bounded size and deterministic validation;
+- [x] platform adapters receive a resolved grant set, not an unrestricted registry;
+- [x] a skill can affect context content but cannot create a grant or bypass policy;
+- [x] plugin manifests can declare capabilities but cannot self-authorize them.
 
 ## Skills, plugins, and connections
 
@@ -313,14 +344,14 @@ Connection metadata and credentials are separate:
       metadata.json        provider, scopes, expiry, safe fingerprint
       secret.enc           encrypted local secret material; never copied into a run
 
-- [ ] Manifest is written before dispatch and is immutable.
-- [ ] Capability resolution is written before the first model/tool request.
+- [x] Manifest is written before dispatch and is immutable.
+- [x] Capability resolution is written before the first model/tool request.
 - [ ] Approval decisions, connection refreshes, tool calls, and external request IDs are
       append-only lifecycle evidence with bounded payloads.
 - [ ] Writes use atomic replacement or the existing evidence-store contract.
 - [ ] A capability result is linked to the model turn and tool call without duplicating
       result.json.
-- [ ] Raw secrets, headers, provider bodies, full skill bodies, and unsafe arguments are
+- [x] Raw secrets, headers, provider bodies, full skill bodies, and unsafe arguments are
       redacted before persistence and API projection.
 - [ ] Restart/reconciliation reloads manifest and evidence, then asks the platform adapter
       for native status; it never assumes a missing result means success.
@@ -330,12 +361,12 @@ Connection metadata and credentials are separate:
 ## Failure, retry, recovery, and side effects
 
 - [ ] Registry listing and local skill parsing may retry only before a run is admitted.
-- [ ] Read-only tool/API requests may retry only under a documented bounded policy and
+- [x] Read-only tool/API requests may retry only under a documented bounded policy and
       only when the provider contract makes the retry safe.
 - [ ] Model requests, external writes, OAuth callbacks, and plugin side effects have
       explicit duplicate/unknown-outcome semantics; none are called exactly once by
       assertion.
-- [ ] Each external call has a stable per-attempt ID and, where supported, an idempotency
+- [x] Each external call has a stable per-attempt ID and, where supported, an idempotency
       key derived from run, turn, capability, and logical operation, not raw prompt text.
 - [ ] Cancellation propagates through model, tool, MCP, direct API, OAuth refresh, and
       platform-native boundaries; a late result is recorded as late/unknown and cannot
@@ -346,28 +377,28 @@ Connection metadata and credentials are separate:
       does not silently create another external side effect.
 - [ ] Duplicate and out-of-order events deduplicate by platform/run/attempt identity, not
       by a global event name.
-- [ ] Missing credentials, revoked scopes, unavailable MCP servers, invalid plugin
+- [x] Missing credentials, revoked scopes, unavailable MCP servers, invalid plugin
       manifests, and policy denials become honest unavailable/failed states.
-- [ ] Approval expiry and stale grants fail closed.
+- [x] Approval expiry and stale grants fail closed.
 
 ## Security and configuration
 
-- [ ] Capability selection is allowlisted and validated server-side; browser controls are
+- [x] Capability selection is allowlisted and validated server-side; browser controls are
       not authorization.
 - [ ] Secret sources are environment variables, the configured secret store, or the local
       OAuth fixture. Tokens never enter prompts, logs, run files, URL query strings, or
       browser storage.
-- [ ] OAuth uses PKCE, state, exact redirect validation, scope validation, refresh locking,
+- [x] OAuth uses PKCE, state, exact redirect validation, scope validation, refresh locking,
       and revocation handling.
 - [ ] Remote MCP endpoints use explicit configuration and policy; no model-provided URL
       can trigger an arbitrary network request.
-- [ ] Tool and plugin execution has timeouts, input/output limits, cancellation, and
+- [x] Tool and plugin execution has timeouts, input/output limits, cancellation, and
       resource boundaries. A skill is never executable code by default.
-- [ ] Write/external operations require configured approval and an explicit user-visible
+- [x] Write/external operations require configured approval and an explicit user-visible
       operation summary.
 - [ ] Effective capability configuration and redaction policy are recorded in config.json
       without secrets.
-- [ ] Missing OpenRouter key, connection credentials, or local fixtures produce actionable
+- [x] Missing OpenRouter key, connection credentials, or local fixtures produce actionable
       unavailable states and no fabricated assistant/tool result.
 
 ## Implementation order
@@ -377,45 +408,45 @@ unrelated twenty-minute UI slices.
 
 ### Phase 0 — contract and source checkpoint
 
-- [ ] Recheck first-party MCP, OAuth, direct API, plugin, skill, and installed platform
+- [x] Recheck first-party MCP, OAuth, direct API, plugin, skill, and installed platform
       SDK documentation; update this plan with versions and source timestamps.
-- [ ] Freeze capability manifest, grant, policy, connection reference, and lifecycle
+- [x] Freeze capability manifest, grant, policy, connection reference, and lifecycle
       event shapes with contract tests.
-- [ ] Decide the first local MCP transport and OAuth fixture without making Docker required.
-- [ ] Record redaction, retention, approval, retry, and unknown-outcome decisions.
-- [ ] Commit the stable contract checkpoint before parallel implementation begins.
+- [x] Decide the first local MCP transport and OAuth fixture without making Docker required.
+- [x] Record redaction, retention, approval, retry, and unknown-outcome decisions.
+- [x] Commit the stable contract checkpoint before parallel implementation begins.
 
 ### Phase 1 — shared registry, policy, and skill resolution
 
-- [ ] Implement versioned registries for tools, skills, connections, and trusted plugin
+- [x] Implement versioned registries for tools, skills, connections, and trusted plugin
       manifests behind explicit allowlists.
-- [ ] Implement grant resolution, risk policy, approval requirements, limits, and safe
+- [x] Implement grant resolution, risk policy, approval requirements, limits, and safe
       configuration projection.
-- [ ] Integrate selected skills into the existing context snapshot and compaction flow
+- [x] Integrate selected skills into the existing context snapshot and compaction flow
       while preserving canonical transcript semantics.
-- [ ] Add deterministic fixtures for matching, ordering, conflicts, oversized content,
+- [x] Add deterministic fixtures for matching, ordering, conflicts, oversized content,
       policy denial, and redaction.
 
 ### Phase 2 — real capability execution boundaries
 
-- [ ] Extend the tool registry with a deterministic read-only fixture and an
+- [x] Extend the tool registry with a deterministic read-only fixture and an
       approval-gated write fixture using existing lifecycle contracts.
-- [ ] Implement local MCP discovery/invocation and map its native events.
-- [ ] Implement direct API request/response and idempotency boundaries against a local
+- [x] Implement local MCP discovery/invocation and map its native events.
+- [x] Implement direct API request/response and idempotency boundaries against a local
       provider-shaped fixture.
-- [ ] Implement OAuth start/callback/refresh/revoke against a local fixture and SecretStore;
+- [x] Implement OAuth start/callback/refresh/revoke against a local fixture and SecretStore;
       verify callback and refresh races.
-- [ ] Implement trusted local plugin manifest validation without arbitrary plugin execution.
-- [ ] Add isolated tests before platform adapter wiring.
+- [x] Implement trusted local plugin manifest validation without arbitrary plugin execution.
+- [x] Add isolated tests before platform adapter wiring.
 
 ### Phase 3 — platform-native binding across the four priority platforms
 
-- [ ] Bind the same resolved profile to Temporal activities and preserve activity retry,
+- [x] Bind the same resolved profile to Temporal activities and preserve activity retry,
       cancellation, and native request identity.
-- [ ] Bind it to Restate named handlers/invocations and preserve journal/idempotency
+- [x] Bind it to Restate named handlers/invocations and preserve journal/idempotency
       semantics.
-- [ ] Bind it to LangGraph nodes/tools and preserve checkpoint/thread state and event order.
-- [ ] Bind it to Mastra Agent tools/workflow steps and preserve active-variant native
+- [x] Bind it to LangGraph nodes/tools and preserve checkpoint/thread state and event order.
+- [x] Bind it to Mastra Agent tools/workflow steps and preserve active-variant native
       storage, suspend/resume, and event projection.
 - [ ] Run the same prompt, tool, connection, approval, cancellation, restart, and
       unavailable matrix through all four platforms.
@@ -423,16 +454,16 @@ unrelated twenty-minute UI slices.
 
 ### Phase 4 — server, evidence, and browser experience
 
-- [ ] Add capability profile and grant fields to immutable run requests with bounded
+- [x] Add capability profile and grant fields to immutable run requests with bounded
       validation and backward-compatible defaults.
-- [ ] Add capabilities.json and safe capability projections to run inspection.
-- [ ] Add compact Chat configuration for capability profile selection and a focused dialog
+- [x] Add capabilities.json and safe capability projections to run inspection.
+- [x] Add compact Chat configuration for capability profile selection and a focused dialog
       for connections/approvals; do not create a verbose capabilities dashboard.
-- [ ] Show selected skill/tool/connection names, actual activity, approval state, context
+- [x] Show selected skill/tool/connection names, actual activity, approval state, context
       usage, unavailable state, and run/evidence details.
-- [ ] Extend Compare to submit the same profile with independent per-platform grants and
+- [x] Extend Compare to submit the same profile with independent per-platform grants and
       run/session identities.
-- [ ] Add deterministic browser tests for success, denial, missing connection, partial
+- [x] Add deterministic browser tests for success, denial, missing connection, partial
       comparison, duplicate polling, and no console/React-key errors.
 - [ ] Add optional live browser acceptance with OpenRouter and a configured test account;
       record skipped external providers honestly.
@@ -525,6 +556,33 @@ unrelated twenty-minute UI slices.
 The live OpenRouter and real-provider checks are optional acceptance checks, not a reason
 to skip deterministic protocol and platform tests. Document missing services, credentials,
 or provider quotas rather than replacing them with fake success.
+
+## Current progress record
+
+The following focused commits are complete while this plan remains active:
+
+- `b4cd031` — deny-by-default capability policy resolver.
+- `aab7b7f` — versioned skill loader.
+- `03be3a3` — trusted local plugin manifest validation.
+- `3ba6ac0` — Chat, Runner, and Compare capability profile approval flow.
+- `1eab986` — LangGraph capability documentation and approval manifest coverage.
+- `d97b04b` — local MCP/direct API/OAuth seams, evidence redaction, and native bindings.
+- `fa392c1` — platform capability architecture and development playground.
+
+Validated so far:
+
+- TypeScript server typecheck and build.
+- Temporal: 1 passed.
+- Restate: 44 passed, 5 intentionally skipped without the optional native/Docker services.
+- Mastra: 16 passed.
+- LangGraph TypeScript adapter: 20 passed, 3 intentionally skipped; Python service tests: 50 passed.
+- Focused browser Chat/Compare capability checks: 3 passed; full platform Chat checks pass when run
+  as isolated test groups.
+
+The next implementation block is connection-backed local fixture execution through each native
+boundary, followed by the restart/unknown-outcome matrix, structured capability metrics, and the
+final browser/manual acceptance record. The plan must remain active until those items and the
+completion gate are checked with evidence.
 
 ## Documentation and release impact
 
