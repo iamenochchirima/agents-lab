@@ -5,6 +5,7 @@ import { StudioEvidenceStore } from "./adapters/evidence-store.js";
 import type { StudioModelAdapter } from "./adapters/replay-model.js";
 import { registerStudioRoutes } from "./http/routes.js";
 import { DEFAULT_STUDIO_MEMORY_LIMITS, FileStudioMemoryRepository, InMemoryStudioMemoryRepository, PolicyMemoryStore, memoryPolicies } from "./memory/index.js";
+import type { StudioMemoryStore } from "./runtime/contracts.js";
 
 export interface StudioModule {
   readonly service: StudioComparisonService;
@@ -25,28 +26,31 @@ export interface StudioModuleOptions {
 export function createStudioModule(runsRoot: string, options: StudioModuleOptions = {}): StudioModule {
   const evidence = new StudioEvidenceStore(runsRoot);
   const policies = new Map(memoryPolicies().map((policy) => [policy.adapterId, policy]));
+  const createMemoryStore = (input: Parameters<NonNullable<StudioModuleOptions["memoryFactory"]>>[0]): StudioMemoryStore => {
+    const policy = policies.get(input.strategy.id);
+    if (!policy) throw new Error(`Unknown Studio Memory policy: ${input.strategy.id}.`);
+    const namespace = {
+      comparisonId: input.comparisonId,
+      trialId: input.trialId,
+      scenarioId: input.scenario.id,
+      sessionId: `studio-${input.scenario.id}`,
+    } as const;
+    const durable = policy.scope !== "working" && policy.scope !== "none";
+    const repository = policy.scope === "working"
+      ? new InMemoryStudioMemoryRepository(namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now)
+      : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now);
+    return new PolicyMemoryStore(
+      policy,
+      repository,
+      DEFAULT_STUDIO_MEMORY_LIMITS,
+      durable ? () => createMemoryStore(input) : undefined,
+    );
+  };
   const service = new StudioComparisonService({
     evidence,
     model: options.model,
     now: options.now,
-    memoryFactory: options.memoryFactory ?? ((input) => {
-      const policy = policies.get(input.strategy.id);
-      if (!policy) throw new Error(`Unknown Studio Memory policy: ${input.strategy.id}.`);
-      const namespace = {
-        comparisonId: input.comparisonId,
-        trialId: input.trialId,
-        scenarioId: input.scenario.id,
-        sessionId: `studio-${input.scenario.id}`,
-      } as const;
-      const repository = policy.scope === "working"
-        ? new InMemoryStudioMemoryRepository(namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now)
-        : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now);
-      return new PolicyMemoryStore(
-        policy,
-        repository,
-        DEFAULT_STUDIO_MEMORY_LIMITS,
-      );
-    }),
+    memoryFactory: options.memoryFactory ?? createMemoryStore,
   });
   return {
     service,

@@ -11,6 +11,7 @@ import type {
   StudioEnvironmentProfile,
   StudioExperimentDefinition,
   StudioScenarioCase,
+  StudioScenarioTurn,
   StudioStrategyDescriptor,
   StudioSystemDefinition,
 } from "./domain/types.js";
@@ -123,6 +124,304 @@ export const memoryExperiment: StudioExperimentDefinition = {
     { id: "no-memory", version: "1", parameters: {} },
     { id: "semantic-keyed-facts", version: "1", parameters: {} },
     { id: "episodic-lexical", version: "1", parameters: {} },
+  ],
+};
+
+const memoryMultiturnTurns: readonly StudioScenarioTurn[] = [
+  {
+    turnId: "turn-01-learn",
+    ordinal: 1,
+    task: "Remember the support language preference for this account.",
+    requiredMessageId: "memory-multiturn-language-source",
+    expectedAnswer: "Preference: support-language = English",
+    messages: messages([
+      ["user", "The preferred support language for this account is English.", "memory-multiturn-language-source"],
+    ]),
+  },
+  {
+    turnId: "turn-02-recall",
+    ordinal: 2,
+    task: "What language should the support agent use for my account?",
+    requiredMessageId: "memory-multiturn-no-transcript-source",
+    requiredMemoryRecordId: "turn-01-learn-add-support-language-record",
+    expectedAnswer: "The support agent should use English for this account.",
+    messages: [],
+  },
+];
+
+export const memoryMultiturnScenario: StudioScenarioCase = {
+  id: "memory-learn-then-recall",
+  version: "1",
+  name: "Learn then recall across turns",
+  task: memoryMultiturnTurns[1]!.task,
+  requiredMessageId: memoryMultiturnTurns[1]!.requiredMessageId,
+  requiredMemoryRecordId: memoryMultiturnTurns[1]!.requiredMemoryRecordId,
+  expectedAnswer: memoryMultiturnTurns[1]!.expectedAnswer,
+  messages: memoryMultiturnTurns[1]!.messages,
+  turns: memoryMultiturnTurns,
+};
+
+export const memoryMultiturnExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-multiturn",
+  version: "1",
+  name: "Compare multi-turn Memory recall",
+  hypothesis: "A persistent keyed Memory policy can carry a preference from one turn into a later turn while the control cannot.",
+  changedComponent: "memory",
+  scenario: { id: memoryMultiturnScenario.id, version: memoryMultiturnScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryMultiturnUpdateScenario: StudioScenarioCase = {
+  id: "memory-multiturn-update-then-recall",
+  version: "1",
+  name: "Update then recall across turns",
+  task: "What language should the support agent use for my account?",
+  requiredMessageId: "memory-multiturn-update-no-transcript-source",
+  requiredMemoryRecordId: "memory-multiturn-update-language-r2",
+  expectedAnswer: "The support agent should use Spanish for this account.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-multiturn-update-language",
+    scope: "semantic",
+    content: "The preferred support language for the account is English.",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "multiturn-update" },
+  }],
+  turns: [
+    {
+      turnId: "turn-01-update",
+      ordinal: 1,
+      task: "Record the updated support language preference.",
+      requiredMessageId: "memory-multiturn-update-source",
+      requiredMemoryRecordId: "memory-multiturn-update-language",
+      expectedAnswer: "Preference: support-language = Spanish",
+      messages: messages([["user", "The new preferred support language is Spanish.", "memory-multiturn-update-source"]]),
+    },
+    {
+      turnId: "turn-02-recall",
+      ordinal: 2,
+      task: "What language should the support agent use for my account?",
+      requiredMessageId: "memory-multiturn-update-no-transcript-source",
+      requiredMemoryRecordId: "memory-multiturn-update-language-r2",
+      expectedAnswer: "The support agent should use Spanish for this account.",
+      messages: [],
+    },
+  ],
+};
+
+export const memoryMultiturnUpdateExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-multiturn-updates",
+  version: "1",
+  name: "Compare multi-turn Memory updates",
+  hypothesis: "A keyed Memory policy can supersede a stale fact and retrieve only the new revision on a later turn.",
+  changedComponent: "memory",
+  scenario: { id: memoryMultiturnUpdateScenario.id, version: memoryMultiturnUpdateScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryMultiturnDuplicateScenario: StudioScenarioCase = {
+  id: "memory-multiturn-duplicate-write",
+  version: "1",
+  name: "Duplicate write across turns",
+  task: "Confirm the preferred support language for the account.",
+  requiredMessageId: "memory-multiturn-duplicate-no-transcript-source",
+  requiredMemoryRecordId: "turn-01-duplicate-add-support-language-record",
+  expectedAnswer: "Preference: support-language = English",
+  messages: [],
+  turns: [
+    {
+      turnId: "turn-01-duplicate",
+      ordinal: 1,
+      task: "Set the preferred support language for the account.",
+      requiredMessageId: "memory-multiturn-duplicate-source",
+      expectedAnswer: "Preference: support-language = English",
+      messages: messages([["user", "The preferred support language is English.", "memory-multiturn-duplicate-source"]]),
+    },
+    {
+      turnId: "turn-02-duplicate",
+      ordinal: 2,
+      task: "Confirm the preferred support language for the account.",
+      requiredMessageId: "memory-multiturn-duplicate-no-transcript-source",
+      requiredMemoryRecordId: "turn-01-duplicate-add-support-language-record",
+      expectedAnswer: "Preference: support-language = English",
+      messages: [],
+    },
+  ],
+};
+
+export const memoryMultiturnDuplicateExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-multiturn-deduplication",
+  version: "1",
+  name: "Compare multi-turn Memory deduplication",
+  hypothesis: "A keyed Memory policy records the same fact again as a NOOP without increasing active state.",
+  changedComponent: "memory",
+  scenario: { id: memoryMultiturnDuplicateScenario.id, version: memoryMultiturnDuplicateScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryMultiturnExpiryScenario: StudioScenarioCase = {
+  id: "memory-multiturn-expiry",
+  version: "1",
+  name: "Expiry across turns",
+  task: "What language should the support agent use for my account?",
+  requiredMessageId: "memory-multiturn-expiry-no-transcript-source",
+  requiredMemoryRecordId: "memory-multiturn-expired-language",
+  expectedAnswer: "The support language preference has expired.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-multiturn-expired-language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    expiresAt: "2020-01-01T00:00:00.000Z",
+    createdAt: "2019-12-01T00:00:00.000Z",
+    metadata: { fixture: "multiturn-expiry" },
+  }],
+  turns: [
+    {
+      turnId: "turn-01-expiry",
+      ordinal: 1,
+      task: "What language should the support agent use for my account?",
+      requiredMessageId: "memory-multiturn-expiry-no-transcript-source",
+      requiredMemoryRecordId: "memory-multiturn-expired-language",
+      expectedAnswer: "The support language preference has expired.",
+      messages: [],
+    },
+    {
+      turnId: "turn-02-expiry",
+      ordinal: 2,
+      task: "What language should the support agent use for my account?",
+      requiredMessageId: "memory-multiturn-expiry-no-transcript-source",
+      requiredMemoryRecordId: "memory-multiturn-expired-language",
+      expectedAnswer: "The support language preference has expired.",
+      messages: [],
+    },
+  ],
+};
+
+export const memoryMultiturnExpiryExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-multiturn-expiry",
+  version: "1",
+  name: "Compare multi-turn Memory expiry",
+  hypothesis: "A retention-aware Memory policy explicitly retires an expired record before the next turn.",
+  changedComponent: "memory",
+  scenario: { id: memoryMultiturnExpiryScenario.id, version: memoryMultiturnExpiryScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryMultiturnMissScenario: StudioScenarioCase = {
+  id: "memory-multiturn-retrieval-miss",
+  version: "1",
+  name: "Miss across turns",
+  task: "What language should the support agent use for my account?",
+  requiredMessageId: "memory-multiturn-miss-no-transcript-source",
+  requiredMemoryRecordId: "memory-multiturn-missing-language",
+  expectedAnswer: "No matching preference was retrieved.",
+  messages: [],
+  memorySeeds: [{
+    recordId: "memory-multiturn-unrelated-invoice",
+    scope: "semantic",
+    content: "Shipment ZX-19 is delayed at the depot.",
+    logicalKey: "shipment-status",
+    source: "fixture-memory",
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "multiturn-miss" },
+  }],
+  turns: [
+    {
+      turnId: "turn-01-miss-setup",
+      ordinal: 1,
+      task: "Review the account invoice status.",
+      requiredMessageId: "memory-multiturn-miss-setup-source",
+      expectedAnswer: "No matching preference was retrieved.",
+      messages: messages([["user", "Please review the invoice dispute.", "memory-multiturn-miss-setup-source"]]),
+    },
+    {
+      turnId: "turn-02-miss-query",
+      ordinal: 2,
+      task: "What language should the support agent use for my account?",
+      requiredMessageId: "memory-multiturn-miss-no-transcript-source",
+      requiredMemoryRecordId: "memory-multiturn-missing-language",
+      expectedAnswer: "No matching preference was retrieved.",
+      messages: [],
+    },
+  ],
+};
+
+export const memoryMultiturnMissExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-multiturn-misses",
+  version: "1",
+  name: "Compare multi-turn Memory misses",
+  hypothesis: "A Memory policy should carry unrelated state across turns without turning it into a false match.",
+  changedComponent: "memory",
+  scenario: { id: memoryMultiturnMissScenario.id, version: memoryMultiturnMissScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  ],
+};
+
+export const memoryMultiturnProcedureScenario: StudioScenarioCase = {
+  id: "memory-multiturn-procedure-reuse",
+  version: "1",
+  name: "Procedural reuse across turns",
+  task: "How should the agent resolve an invoice dispute?",
+  requiredMessageId: "memory-multiturn-procedure-no-transcript-source",
+  requiredMemoryRecordId: "turn-01-procedure-add-invoice-dispute-record",
+  expectedAnswer: "Use the invoice-dispute procedure: verify the invoice and request approval.",
+  messages: [],
+  turns: [
+    {
+      turnId: "turn-01-procedure",
+      ordinal: 1,
+      task: "Save the invoice dispute procedure.",
+      requiredMessageId: "memory-multiturn-procedure-source",
+      expectedAnswer: "procedure:invoice-dispute => Verify the invoice and request approval.",
+      messages: messages([["user", "When an invoice is disputed, verify it and request approval.", "memory-multiturn-procedure-source"]]),
+    },
+    {
+      turnId: "turn-02-procedure",
+      ordinal: 2,
+      task: "How should the agent resolve an invoice dispute?",
+      requiredMessageId: "memory-multiturn-procedure-no-transcript-source",
+      requiredMemoryRecordId: "turn-01-procedure-add-invoice-dispute-record",
+      expectedAnswer: "Use the invoice-dispute procedure: verify the invoice and request approval.",
+      messages: [],
+    },
+  ],
+};
+
+export const memoryMultiturnProcedureExperiment: StudioExperimentDefinition = {
+  id: "compare-memory-multiturn-procedures",
+  version: "1",
+  name: "Compare multi-turn procedural reuse",
+  hypothesis: "A procedural Memory policy can write a reusable procedure and retrieve it for a later matching task.",
+  changedComponent: "memory",
+  scenario: { id: memoryMultiturnProcedureScenario.id, version: memoryMultiturnProcedureScenario.version },
+  fixedContextStrategy: { id: "full-history", version: "1", parameters: {} },
+  strategies: [
+    { id: "no-memory", version: "1", parameters: {} },
+    { id: "procedural-cache", version: "1", parameters: {} },
   ],
 };
 
@@ -396,6 +695,12 @@ const componentDescriptors: readonly StudioComponentDescriptor[] = [
     strategies: memoryStrategyDescriptors,
     experiments: [
       memoryExperimentDescriptor(memoryExperiment, memoryScenario, "Compare whether a previous preference is retrieved by the selected Memory policy."),
+      memoryExperimentDescriptor(memoryMultiturnExperiment, memoryMultiturnScenario, "Compare whether a preference written on one turn is retrieved on a later turn."),
+      memoryExperimentDescriptor(memoryMultiturnUpdateExperiment, memoryMultiturnUpdateScenario, "Compare whether a later query retrieves the superseding Memory revision."),
+      memoryExperimentDescriptor(memoryMultiturnDuplicateExperiment, memoryMultiturnDuplicateScenario, "Compare whether repeated keyed writes become a NOOP."),
+      memoryExperimentDescriptor(memoryMultiturnExpiryExperiment, memoryMultiturnExpiryScenario, "Compare whether expiry is visible before and after a later turn."),
+      memoryExperimentDescriptor(memoryMultiturnMissExperiment, memoryMultiturnMissScenario, "Compare whether unrelated state remains a retrieval miss across turns."),
+      memoryExperimentDescriptor(memoryMultiturnProcedureExperiment, memoryMultiturnProcedureScenario, "Compare whether a procedure written on one turn is reusable on a later turn."),
       memoryExperimentDescriptor(memoryUpdateExperiment, memoryUpdateScenario, "Compare whether the new preference supersedes the seeded stale fact."),
       memoryExperimentDescriptor(memoryMissExperiment, memoryMissScenario, "Confirm unrelated records are omitted without a false match."),
       memoryExperimentDescriptor(memoryDuplicateExperiment, memoryDuplicateScenario, "Confirm an unchanged keyed fact produces a NOOP."),
@@ -456,6 +761,26 @@ export function resolveStudioCatalog(request: {
       throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
     }
     return { system: studioSystem, environment: replayEnvironment, experiment: memoryExperiment, scenario: memoryScenario } as const;
+  }
+  if (request.experiment.id === memoryMultiturnExperiment.id && request.experiment.version === memoryMultiturnExperiment.version) {
+    if (request.experiment.scenario.id !== memoryMultiturnScenario.id || request.experiment.scenario.version !== memoryMultiturnScenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment: memoryMultiturnExperiment, scenario: memoryMultiturnScenario } as const;
+  }
+  const multiturnMemoryExperiments = [
+    [memoryMultiturnUpdateExperiment, memoryMultiturnUpdateScenario],
+    [memoryMultiturnDuplicateExperiment, memoryMultiturnDuplicateScenario],
+    [memoryMultiturnExpiryExperiment, memoryMultiturnExpiryScenario],
+    [memoryMultiturnMissExperiment, memoryMultiturnMissScenario],
+    [memoryMultiturnProcedureExperiment, memoryMultiturnProcedureScenario],
+  ] as const;
+  for (const [experiment, scenario] of multiturnMemoryExperiments) {
+    if (request.experiment.id !== experiment.id || request.experiment.version !== experiment.version) continue;
+    if (request.experiment.scenario.id !== scenario.id || request.experiment.scenario.version !== scenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment, scenario } as const;
   }
   if (request.experiment.id === memoryUpdateExperiment.id && request.experiment.version === memoryUpdateExperiment.version) {
     if (request.experiment.scenario.id !== memoryUpdateScenario.id || request.experiment.scenario.version !== memoryUpdateScenario.version) {

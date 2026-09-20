@@ -16,10 +16,13 @@ import type {
   StudioMetrics,
   StudioRunError,
   StudioScenarioCase,
+  StudioScenarioTurn,
   StudioStrategyVariant,
   StudioTrajectory,
   StudioTrialManifest,
   StudioTrialResult,
+  StudioTurnEvidence,
+  StudioTurnMetrics,
 } from "../domain/types.js";
 import { resolveStudioCatalog, contextStrategies } from "../catalog.js";
 import { ContextStrategyRegistry } from "../strategies/context-strategy.js";
@@ -238,8 +241,19 @@ export class StudioComparisonService implements StudioComparisonRunner {
     let modelCallCount = 0;
     let inputTokens = 0;
     let outputTokens = 0;
+    let costUsd = 0;
     let hasInputTokens = false;
     let hasOutputTokens = false;
+    let hasCost = false;
+    let turnCount = 0;
+    let completedTurnCount = 0;
+    let memoryRetrievedCount = 0;
+    let memoryWrittenCount = 0;
+    let memoryUpdatedCount = 0;
+    let memoryNoopCount = 0;
+    let memoryExpiredCount = 0;
+    let recoveredStateCount = 0;
+    let maxActiveRecordCount = 0;
     let currentTrial: StudioTrialManifest | null = null;
     let currentTrialStartedAt: string | null = null;
 
@@ -267,59 +281,105 @@ export class StudioComparisonService implements StudioComparisonRunner {
         await this.dependencies.evidence.writeTrialManifest(currentTrial);
         await emit("TrialCreated", { trialId, ordinal: index + 1, strategyId: strategy.id });
 
-        await this.failureInjector?.inject("before-turn", manifest.comparisonId);
         const contextStrategy = manifest.experiment.fixedContextStrategy
           ? this.strategies.get(manifest.experiment.fixedContextStrategy.id)
           : this.strategies.get(strategy.id);
-        const memory = manifest.experiment.changedComponent === "memory"
+        let trialMemory = manifest.experiment.changedComponent === "memory"
           ? this.dependencies.memoryFactory?.({ comparisonId: manifest.comparisonId, trialId, scenario, strategy })
           : undefined;
-        if (manifest.experiment.changedComponent === "memory" && !memory) {
+        if (manifest.experiment.changedComponent === "memory" && !trialMemory) {
           throw new InvalidStudioRequestError("Memory experiments require a configured Studio Memory factory.");
         }
-        const turn = await this.runtime.execute({
-          comparisonId: manifest.comparisonId,
-          trialId,
-          manifest,
-          scenario,
-          strategy,
-          context: contextStrategy,
-          memory,
-          tokenCounter: this.tokenCounter,
-          signal: controller.signal,
-          events: {
-            emit: async (kind, payload) => {
-              if (kind === "ModelRequested") await this.failureInjector?.inject("before-model", manifest.comparisonId);
-              await emit(kind, payload);
+        let finalTurn: Awaited<ReturnType<StudioHarnessRuntime["execute"]>> | null = null;
+        const turnDefinitions = scenario.turns ?? [legacyScenarioTurn(scenario)];
+        for (const [turnIndex, turnDefinition] of turnDefinitions.entries()) {
+          throwIfAborted(controller.signal);
+          await this.failureInjector?.inject("before-turn", manifest.comparisonId);
+          const turnStartedAt = this.now();
+          const turnId = scenario.turns ? turnDefinition.turnId : trialId;
+          const turnScenario = scenario.turns
+            ? scenarioForTurn(scenario, turnDefinition, turnIndex === 0)
+            : scenario;
+          const turn = await this.runtime.execute({
+            comparisonId: manifest.comparisonId,
+            trialId,
+            turnId,
+            manifest,
+            scenario: turnScenario,
+            strategy,
+            context: contextStrategy,
+            memory: trialMemory,
+            tokenCounter: this.tokenCounter,
+            signal: controller.signal,
+            events: {
+              emit: async (kind, payload) => {
+                if (kind === "ModelRequested") await this.failureInjector?.inject("before-model", manifest.comparisonId);
+                await emit(kind, { ...payload, turnId });
+              },
             },
-          },
-        });
-        if (turn.context.budget.inputTokens !== null) {
-          inputTokens += turn.context.budget.inputTokens;
-          hasInputTokens = true;
+          });
+          finalTurn = turn;
+          turnCount += 1;
+          completedTurnCount += 1;
+          if (turn.context.budget.inputTokens !== null) {
+            inputTokens += turn.context.budget.inputTokens;
+            hasInputTokens = true;
+          }
+          if (turn.model.outputTokens !== null) {
+            outputTokens += turn.model.outputTokens;
+            hasOutputTokens = true;
+          }
+          if (turn.model.costUsd !== null && turn.model.costUsd !== undefined) {
+            costUsd += turn.model.costUsd;
+            hasCost = true;
+          }
+          modelCallCount += 1;
+          memoryRetrievedCount += turn.memory.retrievedRecordIds.length;
+          memoryWrittenCount += turn.memory.writtenRecordIds.length;
+          memoryUpdatedCount += turn.memory.updatedRecordIds.length;
+          memoryNoopCount += turn.memory.decisions.filter((decision) => decision.operation === "noop").length;
+          memoryExpiredCount += turn.memory.expiredRecordIds.length;
+          if (turn.memory.stateRecovered) recoveredStateCount += 1;
+          maxActiveRecordCount = Math.max(maxActiveRecordCount, turn.memory.activeRecordIds.length);
+
+          const turnMetrics = metricsForTurn(turn, turnScenario, turnStartedAt, this.now());
+          const turnEvidence: StudioTurnEvidence = {
+            schemaVersion: 1,
+            comparisonId: manifest.comparisonId,
+            trialId,
+            turnId,
+            ordinal: turnDefinition.ordinal,
+            task: turnScenario.task,
+            context: contextEvidence(manifest, scenario, strategy, contextStrategy, trialId, turnScenario, turn),
+            memory: turn.memory,
+            composition: turn.composition,
+            result: {
+              status: "completed",
+              startedAt: turnStartedAt,
+              finishedAt: this.now(),
+              output: turn.output,
+              grade: turn.grade,
+              error: null,
+            },
+            metrics: turnMetrics,
+          };
+          await this.dependencies.evidence.writeTurnEvidence(turnEvidence);
+          if (turnIndex < turnDefinitions.length - 1 && trialMemory?.reopen) {
+            trialMemory = trialMemory.reopen();
+            await emit("MemoryStoreReopened", {
+              trialId,
+              turnId,
+              nextTurnId: turnDefinitions[turnIndex + 1]?.turnId ?? null,
+              adapterId: trialMemory.adapterId,
+              adapterVersion: trialMemory.adapterVersion,
+              reason: "Reopened durable Memory state before the next ordered turn.",
+            });
+          }
         }
-        if (turn.model.outputTokens !== null) {
-          outputTokens += turn.model.outputTokens;
-          hasOutputTokens = true;
-        }
-        modelCallCount += 1;
-        await this.dependencies.evidence.writeContextEvidence({
-          schemaVersion: 1,
-          comparisonId: manifest.comparisonId,
-          trialId,
-          strategyId: contextStrategy.id,
-          strategyVersion: contextStrategy.version,
-          strategyParameters: manifest.experiment.fixedContextStrategy?.parameters ?? (manifest.experiment.changedComponent === "context-management" ? strategy.parameters : {}),
-          task: scenario.task,
-          retainedMessageIds: turn.context.retainedMessageIds,
-          omittedMessageIds: turn.context.omittedMessageIds,
-          summarizedMessageIds: turn.context.summarizedMessageIds,
-          messages: turn.context.messages,
-          budget: turn.context.budget,
-          decision: turn.context.decision,
-        });
-        await this.dependencies.evidence.writeMemoryEvidence(turn.memory);
-        await this.dependencies.evidence.writeCompositionEvidence(turn.composition);
+        if (!finalTurn) throw new Error("Studio scenario did not contain any executable turns.");
+        await this.dependencies.evidence.writeContextEvidence(contextEvidence(manifest, scenario, strategy, contextStrategy, trialId, scenario, finalTurn));
+        await this.dependencies.evidence.writeMemoryEvidence(finalTurn.memory);
+        await this.dependencies.evidence.writeCompositionEvidence(finalTurn.composition);
         const finishedAt = this.now();
         const trialResult: StudioTrialResult = {
           schemaVersion: 1,
@@ -328,12 +388,12 @@ export class StudioComparisonService implements StudioComparisonRunner {
           status: "completed",
           startedAt: currentTrialStartedAt,
           finishedAt,
-          output: turn.output,
-          grade: turn.grade,
+          output: finalTurn.output,
+          grade: finalTurn.grade,
           error: null,
         };
         await this.dependencies.evidence.writeTrialResult(trialResult);
-        await emit("TrialCompleted", { trialId, output: turn.output, grade: turn.grade });
+        await emit("TrialCompleted", { trialId, output: finalTurn.output, grade: finalTurn.grade, turnCount: turnDefinitions.length });
         completedTrialCount += 1;
         currentTrial = null;
         currentTrialStartedAt = null;
@@ -351,7 +411,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
       };
       await this.failureInjector?.inject("during-evidence-publication", manifest.comparisonId);
       await this.dependencies.evidence.writeTrajectory(trajectory(manifest.comparisonId, startedAt, finishedAt));
-      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, "completed", startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null));
+      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, "completed", startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null, hasCost ? costUsd : null, turnCount, completedTurnCount, memoryRetrievedCount, memoryWrittenCount, memoryUpdatedCount, memoryNoopCount, memoryExpiredCount, recoveredStateCount, maxActiveRecordCount));
       await this.dependencies.evidence.writeResult(result);
       await emit("ComparisonCompleted", { trialIds, completedTrialCount });
       return this.inspect(manifest.comparisonId);
@@ -387,7 +447,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
         error: failure,
       };
       await this.dependencies.evidence.writeTrajectory(trajectory(manifest.comparisonId, startedAt, finishedAt));
-      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, status, startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null));
+      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, status, startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null, hasCost ? costUsd : null, turnCount, completedTurnCount, memoryRetrievedCount, memoryWrittenCount, memoryUpdatedCount, memoryNoopCount, memoryExpiredCount, recoveredStateCount, maxActiveRecordCount));
       await this.dependencies.evidence.writeResult(result);
       await emit(cancelled ? "ComparisonCancelled" : "ComparisonFailed", { error: failure, completedTrialCount });
       return this.inspect(manifest.comparisonId);
@@ -423,10 +483,94 @@ function fixedControlFingerprint(manifest: StudioComparisonManifest, scenario: S
       messages: scenario.messages,
       memorySeeds: scenario.memorySeeds,
       task: scenario.task,
+      turns: scenario.turns,
     },
     fixedContextStrategy: manifest.experiment.fixedContextStrategy,
     seed: manifest.seed,
   }));
+}
+
+function legacyScenarioTurn(scenario: StudioScenarioCase): StudioScenarioTurn {
+  return {
+    turnId: "turn-1",
+    ordinal: 1,
+    task: scenario.task,
+    messages: scenario.messages,
+    requiredMessageId: scenario.requiredMessageId,
+    expectedAnswer: scenario.expectedAnswer,
+    requiredMemoryRecordId: scenario.requiredMemoryRecordId,
+  };
+}
+
+function scenarioForTurn(
+  scenario: StudioScenarioCase,
+  turn: StudioScenarioTurn,
+  isFirstTurn: boolean,
+): StudioScenarioCase {
+  return {
+    ...scenario,
+    task: turn.task,
+    messages: turn.messages,
+    requiredMessageId: turn.requiredMessageId,
+    expectedAnswer: turn.expectedAnswer,
+    requiredMemoryRecordId: turn.requiredMemoryRecordId,
+    memorySeeds: isFirstTurn ? scenario.memorySeeds : [],
+  };
+}
+
+function contextEvidence(
+  manifest: StudioComparisonManifest,
+  scenario: StudioScenarioCase,
+  strategy: StudioStrategyVariant,
+  contextStrategy: { readonly id: string; readonly version: string },
+  trialId: string,
+  turnScenario: StudioScenarioCase,
+  turn: Awaited<ReturnType<StudioHarnessRuntime["execute"]>>,
+) {
+  return {
+    schemaVersion: 1 as const,
+    comparisonId: manifest.comparisonId,
+    trialId,
+    strategyId: contextStrategy.id,
+    strategyVersion: contextStrategy.version,
+    strategyParameters: manifest.experiment.fixedContextStrategy?.parameters ?? (manifest.experiment.changedComponent === "context-management" ? strategy.parameters : {}),
+    task: turnScenario.task || scenario.task,
+    retainedMessageIds: turn.context.retainedMessageIds,
+    omittedMessageIds: turn.context.omittedMessageIds,
+    summarizedMessageIds: turn.context.summarizedMessageIds,
+    messages: turn.context.messages,
+    budget: turn.context.budget,
+    decision: turn.context.decision,
+  };
+}
+
+function metricsForTurn(
+  turn: Awaited<ReturnType<StudioHarnessRuntime["execute"]>>,
+  scenario: StudioScenarioCase,
+  startedAt: string,
+  finishedAt: string,
+): StudioTurnMetrics {
+  return {
+    contextInputTokens: turn.context.budget.inputTokens,
+    modelInputTokens: turn.model.inputTokens,
+    modelOutputTokens: turn.model.outputTokens,
+    modelCalls: 1,
+    latencyMs: elapsedMs(startedAt, finishedAt),
+    costUsd: turn.model.costUsd ?? null,
+    memoryCandidateCount: turn.memory.candidates.length,
+    memoryRetrievedCount: turn.memory.retrievedRecordIds.length,
+    memoryOmittedCount: turn.memory.omittedRecordIds.length,
+    memoryWrittenCount: turn.memory.writtenRecordIds.length,
+    memoryUpdatedCount: turn.memory.updatedRecordIds.length,
+    memoryNoopCount: turn.memory.decisions.filter((decision) => decision.operation === "noop").length,
+    memoryExpiredCount: turn.memory.expiredRecordIds.length,
+    activeRecordCount: turn.memory.activeRecordIds.length,
+    requiredRecordHit: scenario.requiredMemoryRecordId === undefined
+      ? null
+      : turn.memory.retrievedRecordIds.includes(scenario.requiredMemoryRecordId),
+    stateRecovered: turn.memory.stateRecovered,
+    measurementBasis: measurementBasis(),
+  };
 }
 
 function requestedComponent(request: StudioComparisonRequest): StudioComparisonRequest["experiment"]["subject"]["component"] {
@@ -470,6 +614,16 @@ function metrics(
   modelCallCount: number,
   inputTokens: number | null,
   outputTokens: number | null,
+  costUsd: number | null,
+  turnCount: number,
+  completedTurnCount: number,
+  memoryRetrievedCount: number,
+  memoryWrittenCount: number,
+  memoryUpdatedCount: number,
+  memoryNoopCount: number,
+  memoryExpiredCount: number,
+  recoveredStateCount: number,
+  maxActiveRecordCount: number,
 ): StudioMetrics {
   return {
     schemaVersion: 1,
@@ -482,8 +636,34 @@ function metrics(
     inputTokens,
     outputTokens,
     totalTokens: inputTokens !== null && outputTokens !== null ? inputTokens + outputTokens : null,
-    costUsd: null,
+    costUsd,
+    turnCount,
+    completedTurnCount,
+    memoryRetrievedCount,
+    memoryWrittenCount,
+    memoryUpdatedCount,
+    memoryNoopCount,
+    memoryExpiredCount,
+    recoveredStateCount,
+    maxActiveRecordCount,
+    measurementBasis: measurementBasis(),
   };
+}
+
+function measurementBasis(): StudioTurnMetrics["measurementBasis"] {
+  return {
+    contextTokens: "Context token counter result; null when unavailable.",
+    modelTokens: "Model adapter result; null when the adapter does not report tokens.",
+    latency: "Wall-clock duration measured by the Studio runtime around one replay turn.",
+    cost: "Model adapter result; null when the adapter does not report cost.",
+    memoryCounts: "Fixture-derived counts of ranked records and applied Memory decisions; not precision or recall.",
+  };
+}
+
+function elapsedMs(startedAt: string, finishedAt: string): number | null {
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+  return Number.isFinite(started) && Number.isFinite(finished) ? Math.max(0, finished - started) : null;
 }
 
 function runError(error: unknown, cancelled: boolean): StudioRunError {

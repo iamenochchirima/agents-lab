@@ -54,6 +54,12 @@ executable experiments:
 
 - `compare-context-retention@1` — varies Context retention for the old-fact case.
 - `compare-memory-retrieval@1` — varies Memory retrieval for a seeded preference.
+- `compare-memory-multiturn@1` — writes a preference on one turn and recalls it on a later turn.
+- `compare-memory-multiturn-updates@1` — checks supersession across turns.
+- `compare-memory-multiturn-deduplication@1` — checks repeated keyed writes become a no-op.
+- `compare-memory-multiturn-expiry@1` — checks explicit expiry across turns.
+- `compare-memory-multiturn-misses@1` — checks an unrelated record remains a miss.
+- `compare-memory-multiturn-procedures@1` — checks procedural reuse across turns.
 - `compare-memory-updates@1` — checks keyed-fact supersession for a changed preference.
 - `compare-memory-misses@1` — checks that unrelated records are omitted.
 - `compare-memory-deduplication@1` — checks keyed no-op behavior for unchanged facts.
@@ -87,6 +93,7 @@ JSONL event file documented below.
     config.json
     context.json                      # model-visible Context decision
     memory.json                       # Memory retrieval/write summary
+    turns/<turn-id>.json               # ordered turn Context, Memory, grade, and metrics
     memory/
       records.json                    # current trial-local Memory state
       events.jsonl                    # Memory operation journal
@@ -123,6 +130,14 @@ carried across a restart. The no-memory policy ignores fixture seeding and never
 persists turn output. Repository writes are at-least-once-safe through operation IDs;
 the implementation does not claim exactly-once persistence.
 
+Multi-turn Memory scenarios reuse one strategy-specific store for the full trial. A
+durable policy reopens its trial-local repository between turns, while working Memory
+intentionally remains process-local. The `turns/<turn-id>.json` projections expose
+per-turn retrieval, model-bound Context, write/consolidation decisions, grade, and
+fixture-derived measurements. Aggregate `metrics.json` counts turns and Memory
+decisions but labels them as observations; they are not precision, recall, or a
+general policy ranking.
+
 ## Experiment interpretation and UI handoff
 
 The first procedure is deliberately narrow: submit the same old-important-fact case
@@ -150,6 +165,7 @@ For a manual run, submit a request matching the `memoryRequest` fixture in
 `server/tests/studio/http.test.ts` to `POST /api/studio/comparisons`, then use the
 returned comparison ID with `GET /api/studio/comparisons/:comparisonId` and the
 allowlisted evidence route for `trials/:trialId/memory.json` or
-`trials/:trialId/memory/records.json`. Compare the fixed-control fingerprint and
-Memory evidence before interpreting the grade; a passing fixture only describes that
-fixture and policy combination.
+`trials/:trialId/memory/records.json`. For a temporal run, use the
+`memoryMultiturnRequest` fixture and inspect `trials/:trialId/turns/turn-02-recall.json`.
+Compare the fixed-control fingerprint and Memory evidence before interpreting the
+grade; a passing fixture only describes that fixture and policy combination.

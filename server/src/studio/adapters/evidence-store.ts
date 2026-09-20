@@ -16,6 +16,7 @@ import type {
   StudioTrialManifest,
   StudioTrialResult,
   StudioTrialSnapshot,
+  StudioTurnEvidence,
 } from "../domain/types.js";
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -157,6 +158,12 @@ export class StudioEvidenceStore {
     await writeIdempotent(path, evidence);
   }
 
+  async writeTurnEvidence(evidence: StudioTurnEvidence): Promise<void> {
+    assertSafeId(evidence.turnId);
+    const path = join(this.trialDirectory(evidence.comparisonId, evidence.trialId), "turns", `${evidence.turnId}.json`);
+    await writeIdempotent(path, evidence);
+  }
+
   async writeTrialResult(result: StudioTrialResult): Promise<void> {
     const path = join(this.trialDirectory(result.comparisonId, result.trialId), "result.json");
     await writeIdempotent(path, result);
@@ -226,7 +233,9 @@ export class StudioEvidenceStore {
       const memory = await this.readOptionalJson<StudioMemoryEvidence>(join(trialRoot, trialId, "memory.json"));
       const composition = await this.readOptionalJson<StudioCompositionEvidence>(join(trialRoot, trialId, "composition.json"));
       const result = await this.readOptionalJson<StudioTrialResult>(join(trialRoot, trialId, "result.json"));
-      trials.push({ manifest: trialManifest, context, memory, composition, result });
+      const turnsRoot = join(trialRoot, trialId, "turns");
+      const turns = await this.readTurnEvidence(turnsRoot);
+      trials.push({ manifest: trialManifest, context, memory, composition, result, turns });
     }
     trials.sort((left, right) => left.manifest.ordinal - right.manifest.ordinal);
     return {
@@ -289,6 +298,21 @@ export class StudioEvidenceStore {
     return join(this.comparisonDirectory(comparisonId), "trials", trialId);
   }
 
+  private async readTurnEvidence(directory: string): Promise<readonly StudioTurnEvidence[]> {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) return [];
+      throw error;
+    }
+    const turns: StudioTurnEvidence[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json"))) {
+      turns.push(await this.readJson<StudioTurnEvidence>(join(directory, entry.name)));
+    }
+    return turns.sort((left, right) => left.ordinal - right.ordinal);
+  }
+
   private async readJson<T>(path: string): Promise<T> {
     try {
       return JSON.parse(await readFile(path, "utf8")) as T;
@@ -347,7 +371,7 @@ function assertSafeId(value: string): void {
 
 function assertSafeRelativePath(value: string): void {
   const segments = value.split("/");
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json)|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/memory\/(records\.json|events\.jsonl|decisions\.jsonl))$/.test(value)) {
+  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..") || !/^(config\.json|events\.jsonl|trajectory\.json|metrics\.json|result\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(config\.json|context\.json|memory\.json|composition\.json|result\.json)|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/turns\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.json|trials\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/memory\/(records\.json|events\.jsonl|decisions\.jsonl))$/.test(value)) {
     throw new StudioEvidenceNotFoundError(value);
   }
 }

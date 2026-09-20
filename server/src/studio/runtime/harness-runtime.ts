@@ -42,6 +42,7 @@ export class StudioHarnessRuntime {
 
   async execute(input: HarnessTurnInput): Promise<HarnessTurnResult> {
     throwIfAborted(input.signal);
+    const turnId = input.turnId ?? input.trialId;
     const environment = this.environment.assemble(input.manifest, input.scenario);
     const components = this.componentsFactory({
       comparisonId: input.comparisonId,
@@ -231,7 +232,7 @@ export class StudioHarnessRuntime {
     const memoryWrite = await components.memory.write({
       trialId: input.trialId,
       task: normalized.task,
-      turnId: input.trialId,
+      turnId,
       output: output.output,
       now: this.now(),
       signal: input.signal,

@@ -5,6 +5,17 @@
 **Status:** Active — follows multi-turn Memory and measurement  
 **Owner:** Agent Harness Lab maintainers
 
+## Secondary implementation note
+
+The next safe Context block can begin with a test-only boundary fixture before new
+production strategies are added. It should combine instructions, old and recent
+transcript messages, a grouped tool call/result, a retrieved Memory message with
+provenance, and a deliberately tight budget. The current strategies should be tested
+for deterministic ordering, tie-breaking, provenance preservation, and explicit
+unknown/over-budget states. Group-aware sliding-window behaviour, summaries, source
+class allocation, and provider-overflow recovery remain production work; the current
+runtime must not silently claim those capabilities.
+
 ## Start here
 
 Read these before implementation:

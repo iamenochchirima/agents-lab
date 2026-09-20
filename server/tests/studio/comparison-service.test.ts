@@ -11,6 +11,7 @@ import {
   type StudioFailureInjector,
 } from "../../src/studio/application/comparison-service.js";
 import type { StudioComparisonRequest, StudioModelAdapter } from "../../src/studio/index.js";
+import { FixtureMemoryStore } from "../../src/studio/runtime/baseline-components.js";
 
 test("an interrupted comparison is exposed as recovery_required without a fabricated parent result", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-recovery-"));
@@ -101,6 +102,36 @@ test("runtime interruptions before a turn and before model dispatch remain recov
   }
 });
 
+test("an intermediate multi-turn interruption preserves completed turn evidence only", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-multiturn-recovery-"));
+  try {
+    let comparisonId: string | undefined;
+    let turnStarts = 0;
+    const failureInjector: StudioFailureInjector = {
+      inject(point, id) {
+        comparisonId = id;
+        if (point === "before-turn" && turnStarts++ === 1) throw new StudioInjectedCrashError(point);
+      },
+    };
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      failureInjector,
+      memoryFactory: () => new FixtureMemoryStore(() => "2026-09-20T00:00:00.000Z"),
+    });
+
+    await assert.rejects(() => service.create(multiturnMemoryRequest("multiturn-recovery-1")), StudioInjectedCrashError);
+    assert.ok(comparisonId);
+    const projection = await new StudioComparisonService({ evidence: new StudioEvidenceStore(root) }).inspect(comparisonId);
+    assert.equal(projection.status, "recovery_required");
+    assert.equal(projection.result, null);
+    assert.equal(projection.trials.length, 1);
+    assert.equal(projection.trials[0].result, null);
+    assert.deepEqual(projection.trials[0].turns.map((turn) => turn.turnId), ["turn-01-learn"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cancellation during a model call leaves only the in-flight trial cancelled", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-cancel-"));
   try {
@@ -157,6 +188,27 @@ function comparisonRequest(idempotencyKey: string): StudioComparisonRequest {
       },
     },
     seed: "seed-1",
+    idempotencyKey,
+  };
+}
+
+function multiturnMemoryRequest(idempotencyKey: string): StudioComparisonRequest {
+  return {
+    system: { id: "neutral-agent", version: "1" },
+    environment: { id: "deterministic-replay", version: "1" },
+    experiment: {
+      id: "compare-memory-multiturn",
+      version: "1",
+      scenario: { id: "memory-learn-then-recall", version: "1" },
+      subject: {
+        component: "memory",
+        strategies: [
+          { id: "no-memory", version: "1", parameters: {} },
+          { id: "semantic-keyed-facts", version: "1", parameters: {} },
+        ],
+      },
+    },
+    seed: "seed-multiturn-recovery",
     idempotencyKey,
   };
 }

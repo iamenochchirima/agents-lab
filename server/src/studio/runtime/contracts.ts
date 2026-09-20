@@ -34,6 +34,7 @@ export type StudioRuntimeEventKind =
   | "MemoryWriteDecided"
   | "MemoryStatePersisted"
   | "MemoryStateRecovered"
+  | "MemoryStoreReopened"
   | "MemoryConsolidated"
   | "ContextAssembled"
   | "PlanProduced"
@@ -164,6 +165,8 @@ export type StudioHarnessComponentFactory = (
 export interface HarnessTurnInput {
   readonly comparisonId: string;
   readonly trialId: string;
+  /** Stable sequence identity. Legacy one-turn callers may omit it. */
+  readonly turnId?: string;
   readonly manifest: StudioComparisonManifest;
   readonly scenario: StudioScenarioCase;
   readonly strategy: StudioStrategyVariant;

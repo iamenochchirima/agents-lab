@@ -195,6 +195,46 @@ test("Studio runs a Memory comparison with fixed Context and isolated durable po
   });
 });
 
+test("Studio carries Memory across an ordered turn sequence and exposes turn evidence", async () => {
+  await withStudioApp(async (app) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: memoryMultiturnRequest("memory-multiturn-comparison-1"),
+    });
+
+    assert.equal(response.statusCode, 202);
+    const comparison = response.json();
+    assert.equal(comparison.status, "completed");
+    assert.deepEqual(comparison.trials.map((trial: { manifest: { strategy: { id: string } } }) => trial.manifest.strategy.id), [
+      "no-memory",
+      "semantic-keyed-facts",
+    ]);
+    assert.deepEqual(comparison.trials.map((trial: { turns: { turnId: string }[] }) => trial.turns.map((turn) => turn.turnId)), [
+      ["turn-01-learn", "turn-02-recall"],
+      ["turn-01-learn", "turn-02-recall"],
+    ]);
+    assert.equal(comparison.trials[0].turns[1].metrics.requiredRecordHit, false);
+    assert.equal(comparison.trials[1].turns[0].memory.writtenRecordIds.length, 1);
+    assert.deepEqual(comparison.trials[1].turns[1].memory.retrievedRecordIds, ["turn-01-learn-add-support-language-record"]);
+    assert.equal(comparison.trials[1].turns[1].metrics.requiredRecordHit, true);
+    assert.deepEqual(comparison.trials.map((trial: { result: { grade: { status: string } } }) => trial.result.grade.status), ["fail", "pass"]);
+    assert.equal(comparison.metrics.turnCount, 4);
+    assert.equal(comparison.metrics.completedTurnCount, 4);
+    assert.equal(comparison.metrics.memoryWrittenCount, 1);
+    assert.equal(comparison.metrics.maxActiveRecordCount, 1);
+    assert.equal(comparison.events.some((event: { kind: string }) => event.kind === "MemoryStoreReopened"), true);
+    assert.equal(comparison.events.filter((event: { kind: string; payload?: { turnId?: string } }) => event.payload?.turnId === "turn-02-recall").length > 0, true);
+
+    const turnEvidence = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[1].manifest.trialId}/turns/turn-02-recall.json`,
+    });
+    assert.equal(turnEvidence.statusCode, 200);
+    assert.equal(JSON.parse(turnEvidence.body).metrics.requiredRecordHit, true);
+  });
+});
+
 test("Studio records a Memory revision when a keyed fact changes", async () => {
   await withStudioApp(async (app) => {
     const response = await app.inject({
@@ -293,6 +333,120 @@ test("Studio runs the Memory miss, duplicate, expiry, and procedural fixtures", 
   });
 });
 
+test("Studio exposes the multi-turn Memory scenario matrix", async () => {
+  await withStudioApp(async (app) => {
+    const cases = [
+      {
+        idempotencyKey: "memory-multiturn-update-comparison-1",
+        experimentId: "compare-memory-multiturn-updates",
+        scenarioId: "memory-multiturn-update-then-recall",
+        strategies: ["no-memory", "semantic-keyed-facts"],
+        grades: ["fail", "pass"],
+      },
+      {
+        idempotencyKey: "memory-multiturn-duplicate-comparison-1",
+        experimentId: "compare-memory-multiturn-deduplication",
+        scenarioId: "memory-multiturn-duplicate-write",
+        strategies: ["no-memory", "semantic-keyed-facts"],
+        grades: ["fail", "pass"],
+      },
+      {
+        idempotencyKey: "memory-multiturn-expiry-comparison-1",
+        experimentId: "compare-memory-multiturn-expiry",
+        scenarioId: "memory-multiturn-expiry",
+        strategies: ["no-memory", "semantic-keyed-facts"],
+        grades: ["fail", "fail"],
+      },
+      {
+        idempotencyKey: "memory-multiturn-miss-comparison-1",
+        experimentId: "compare-memory-multiturn-misses",
+        scenarioId: "memory-multiturn-retrieval-miss",
+        strategies: ["no-memory", "semantic-keyed-facts"],
+        grades: ["fail", "fail"],
+      },
+      {
+        idempotencyKey: "memory-multiturn-procedure-comparison-1",
+        experimentId: "compare-memory-multiturn-procedures",
+        scenarioId: "memory-multiturn-procedure-reuse",
+        strategies: ["no-memory", "procedural-cache"],
+        grades: ["fail", "pass"],
+      },
+    ] as const;
+
+    for (const memoryCase of cases) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/studio/comparisons",
+        payload: memoryCaseRequest(memoryCase),
+      });
+      assert.equal(response.statusCode, 202, memoryCase.experimentId);
+      const comparison = response.json();
+      assert.equal(comparison.status, "completed", memoryCase.experimentId);
+      assert.deepEqual(comparison.trials.map((trial: { result: { grade: { status: string } } }) => trial.result.grade.status), memoryCase.grades, memoryCase.experimentId);
+      assert.equal(comparison.metrics.turnCount > comparison.trials.length, true, memoryCase.experimentId);
+      assert.equal(comparison.trials.every((trial: { turns: unknown[] }) => trial.turns.length >= 2), true, memoryCase.experimentId);
+
+      if (memoryCase.experimentId === "compare-memory-multiturn-updates") {
+        assert.deepEqual(comparison.trials[1].turns[1].memory.retrievedRecordIds, ["memory-multiturn-update-language-r2"]);
+      }
+      if (memoryCase.experimentId === "compare-memory-multiturn-deduplication") {
+        assert.equal(comparison.trials[1].turns[1].memory.decisions.some((decision: { operation: string }) => decision.operation === "noop"), true);
+      }
+      if (memoryCase.experimentId === "compare-memory-multiturn-expiry") {
+        assert.equal(comparison.trials[1].turns[0].memory.expiredRecordIds.includes("memory-multiturn-expired-language"), true);
+      }
+      if (memoryCase.experimentId === "compare-memory-multiturn-misses") {
+        assert.equal(comparison.trials[1].turns[1].memory.omittedRecordIds.includes("memory-multiturn-unrelated-invoice"), true);
+      }
+      if (memoryCase.experimentId === "compare-memory-multiturn-procedures") {
+        assert.deepEqual(comparison.trials[1].turns[1].memory.retrievedRecordIds, ["turn-01-procedure-add-invoice-dispute-record"]);
+      }
+    }
+  });
+});
+
+test("Studio multi-turn replay observations are stable across independent comparisons", async () => {
+  await withStudioApp(async (app) => {
+    const firstResponse = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: memoryMultiturnRequest("memory-multiturn-determinism-1"),
+    });
+    const secondResponse = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: memoryMultiturnRequest("memory-multiturn-determinism-2"),
+    });
+    assert.equal(firstResponse.statusCode, 202);
+    assert.equal(secondResponse.statusCode, 202);
+
+    const comparable = (comparison: any) => comparison.trials.map((trial: any) => ({
+      strategy: trial.manifest.strategy,
+      turns: trial.turns.map((turn: any) => ({
+        turnId: turn.turnId,
+        output: turn.result.output,
+        grade: turn.result.grade,
+        context: {
+          retainedMessageIds: turn.context.retainedMessageIds.filter((id: string) => !id.startsWith("studio-system-")),
+          omittedMessageIds: turn.context.omittedMessageIds,
+          messages: turn.context.messages.map((message: any) => ({ messageId: message.messageId.startsWith("studio-system-") ? "studio-system" : message.messageId, content: message.content, source: message.source })),
+        },
+        memory: {
+          retrievedRecordIds: turn.memory.retrievedRecordIds,
+          omittedRecordIds: turn.memory.omittedRecordIds,
+          writtenRecordIds: turn.memory.writtenRecordIds,
+          updatedRecordIds: turn.memory.updatedRecordIds,
+          expiredRecordIds: turn.memory.expiredRecordIds,
+          activeRecordIds: turn.memory.activeRecordIds,
+          decisions: turn.memory.decisions,
+        },
+        metrics: { ...turn.metrics, latencyMs: null },
+      })),
+    }));
+    assert.deepEqual(comparable(firstResponse.json()), comparable(secondResponse.json()));
+  });
+});
+
 test("Studio catalog exposes all harness areas without claiming planned implementations", async () => {
   await withStudioApp(async (app) => {
     const response = await app.inject({ method: "GET", url: "/api/studio/catalog" });
@@ -308,6 +462,12 @@ test("Studio catalog exposes all harness areas without claiming planned implemen
     assert.deepEqual(catalog.components[3].strategies.map((strategy: { id: string }) => strategy.id), ["no-memory", "semantic-keyed-facts", "episodic-lexical", "working-memory", "procedural-cache"]);
     assert.deepEqual(catalog.components[3].experiments.map((experiment: { id: string }) => experiment.id), [
       "compare-memory-retrieval",
+      "compare-memory-multiturn",
+      "compare-memory-multiturn-updates",
+      "compare-memory-multiturn-deduplication",
+      "compare-memory-multiturn-expiry",
+      "compare-memory-multiturn-misses",
+      "compare-memory-multiturn-procedures",
       "compare-memory-updates",
       "compare-memory-misses",
       "compare-memory-deduplication",
@@ -448,6 +608,27 @@ function memoryRequest(idempotencyKey = "memory-comparison-1"): StudioComparison
       },
     },
     seed: "seed-memory-1",
+    idempotencyKey,
+  };
+}
+
+function memoryMultiturnRequest(idempotencyKey = "memory-multiturn-comparison-1"): StudioComparisonRequest {
+  return {
+    system: { id: "neutral-agent", version: "1" },
+    environment: { id: "deterministic-replay", version: "1" },
+    experiment: {
+      id: "compare-memory-multiturn",
+      version: "1",
+      scenario: { id: "memory-learn-then-recall", version: "1" },
+      subject: {
+        component: "memory",
+        strategies: [
+          { id: "no-memory", version: "1", parameters: {} },
+          { id: "semantic-keyed-facts", version: "1", parameters: {} },
+        ],
+      },
+    },
+    seed: "seed-memory-multiturn-1",
     idempotencyKey,
   };
 }

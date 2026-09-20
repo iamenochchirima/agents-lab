@@ -147,6 +147,8 @@ export interface StudioMemoryStoreAdapter {
   readonly adapterId: string;
   readonly adapterVersion: string;
   readonly scope: StudioMemoryScope | "none";
+  /** Reopen durable state between turns without changing the policy. */
+  readonly reopen?: () => StudioMemoryStoreAdapter;
   seed?(seeds: readonly StudioMemorySeed[], operationId: string): Promise<void>;
   read(input: {
     readonly task: string;

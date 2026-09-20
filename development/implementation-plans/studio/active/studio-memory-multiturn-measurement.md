@@ -1,8 +1,9 @@
 # Studio multi-turn Memory and measurement
 
 **Created:** `2026-09-20T00:00:00+02:00`  
-**Last updated:** `2026-09-20T12:42:28+02:00`  
-**Status:** Active — queued after the current Memory runtime slice  
+**Last updated:** `2026-09-20T13:31:00+02:00`
+
+**Status:** Active — core implementation complete; hardening follow-up remains
 **Owner:** Agent Harness Lab maintainers
 
 ## Start here
@@ -27,6 +28,20 @@ than only a final grade.
 This is still a local research runtime. It does not introduce embeddings, hosted
 databases, learned memory managers, or a new server. It remains a Studio module in
 the existing Lab server.
+
+## Implementation checkpoint
+
+The core sequence block is now implemented. The existing server can run ordered
+Memory scenarios with one isolated store per strategy slot, reopen durable stores
+between turns, persist turn projections, and expose aggregate and per-turn
+measurements. The catalog includes learn/recall, update, duplicate/no-op, expiry,
+miss, and procedural-reuse sequences. Existing single-turn Context and Memory
+projections remain compatible.
+
+The remaining hardening is intentionally separate from the core plumbing: exercise
+multi-turn cancellation and persistence interruption at more injection points, add
+broader deterministic replay assertions, and complete path/symlink review before
+this plan is archived.
 
 ## Definition of done
 
@@ -70,22 +85,22 @@ as a general ranking of Memory systems.
 
 ## Scope
 
-- [ ] Add a versioned ordered-turn scenario contract without breaking existing
+- [x] Add a versioned ordered-turn scenario contract without breaking existing
       single-turn Context and Memory requests.
-- [ ] Run multiple turns through one isolated Memory store per strategy slot.
-- [ ] Seed fixture records once per trial and prevent cross-strategy or cross-trial
+- [x] Run multiple turns through one isolated Memory store per strategy slot.
+- [x] Seed fixture records once per trial and prevent cross-strategy or cross-trial
       state leakage.
-- [ ] Execute retrieval, Context assembly, model, write, and consolidation for every
+- [x] Execute retrieval, Context assembly, model, write, and consolidation for every
       turn with deterministic turn and operation identities.
-- [ ] Persist turn-level Memory, Context, grade, event, and trajectory evidence.
-- [ ] Add a measurement projection for Memory quality proxies, state growth, Context
+- [x] Persist turn-level Memory, Context, grade, event, and trajectory evidence.
+- [x] Add a measurement projection for Memory quality proxies, state growth, Context
       cost, latency, model calls, and recovery outcomes.
-- [ ] Add restart/resume inspection between turns and preserve at-least-once-safe
+- [x] Add restart/resume inspection between turns and preserve at-least-once-safe
       Memory semantics.
-- [ ] Add deterministic multi-turn scenarios for learn-then-recall, update-then-
+- [x] Add deterministic multi-turn scenarios for learn-then-recall, update-then-
       recall, duplicate write, expiry, miss, and procedural reuse.
-- [ ] Keep the existing Context comparison response and evidence shape compatible.
-- [ ] Document the turn request shape, metric meanings, limitations, and inspection
+- [x] Keep the existing Context comparison response and evidence shape compatible.
+- [x] Document the turn request shape, metric meanings, limitations, and inspection
       procedure.
 
 ## Explicitly out of scope
@@ -175,61 +190,78 @@ relevance set. Label fixture-derived counts as proxies.
 
 ### 1. Contracts and compatibility
 
-- [ ] Add ordered-turn scenario and turn-result types.
-- [ ] Add turn-level Memory and Context evidence references.
-- [ ] Add nullable metric fields with measurement basis and provenance.
-- [ ] Preserve existing single-turn request validation and projections.
-- [ ] Include turn sequence and fixed controls in the comparison fingerprint.
+- [x] Add ordered-turn scenario and turn-result types.
+- [x] Add turn-level Memory and Context evidence references.
+- [x] Add nullable metric fields with measurement basis and provenance.
+- [x] Preserve existing single-turn request validation and projections.
+- [x] Include turn sequence and fixed controls in the comparison fingerprint.
 
 ### 2. Sequence runtime
 
-- [ ] Add a narrow sequence coordinator around `StudioHarnessRuntime`.
-- [ ] Reuse one strategy-specific Memory store for all turns in a trial.
-- [ ] Execute retrieval, Context, model, write, and consolidation once per turn.
-- [ ] Emit ordered turn-start, Memory, Context, grade, and turn-completed events.
-- [ ] Aggregate the final trial result without hiding intermediate failures.
-- [ ] Keep Memory policy identity as the changed variable and Context fixed.
+- [x] Add a narrow sequence coordinator around `StudioHarnessRuntime`.
+- [x] Reuse one strategy-specific Memory store for all turns in a trial.
+- [x] Execute retrieval, Context, model, write, and consolidation once per turn.
+- [x] Emit ordered turn-start, Memory, Context, grade, and turn-completed events.
+- [x] Aggregate the final trial result without hiding intermediate failures.
+- [x] Keep Memory policy identity as the changed variable and Context fixed.
 
 ### 3. Metrics and evidence
 
-- [ ] Add per-turn metrics and a deterministic aggregate comparison projection.
-- [ ] Record token basis, latency basis, cost basis, and `null` for unavailable data.
-- [ ] Record Memory state growth and decision counts without exposing hidden reasoning.
-- [ ] Add allowlisted turn evidence and preserve existing evidence paths.
-- [ ] Ensure metric calculations do not alter runtime decisions.
+- [x] Add per-turn metrics and a deterministic aggregate comparison projection.
+- [x] Record token basis, latency basis, cost basis, and `null` for unavailable data.
+- [x] Record Memory state growth and decision counts without exposing hidden reasoning.
+- [x] Add allowlisted turn evidence and preserve existing evidence paths.
+- [x] Ensure metric calculations do not alter runtime decisions.
 
 ### 4. Restart, failure, and idempotency
 
 - [ ] Test restart between every pair of turns.
-- [ ] Test interruption after journal append and after snapshot publication.
-- [ ] Test repeated turn and Memory operation identities.
+- [x] Test interruption after journal append and after snapshot publication.
+- [x] Test repeated turn and Memory operation identities.
 - [ ] Test cancellation before retrieval, during model execution, and during Memory
       persistence.
-- [ ] Test a failed intermediate turn without fabricating later turns.
-- [ ] Preserve explicit recovery-required state when reconciliation is impossible.
+- [x] Test a failed intermediate turn without fabricating later turns.
+- [x] Preserve explicit recovery-required state when reconciliation is impossible.
 
 ### 5. Tests and documentation
 
-- [ ] Add unit tests for turn ordering, metric basis, aggregation, and fixed controls.
-- [ ] Add integration tests for every scenario in the matrix.
+- [x] Add unit tests for turn ordering, metric basis, aggregation, and fixed controls.
+- [x] Add integration tests for every scenario in the matrix.
 - [ ] Add deterministic replay tests for identical sequence inputs.
-- [ ] Add regression tests for existing Context and one-turn Memory comparisons.
-- [ ] Update `server/src/studio/README.md` and the backend inspection procedure.
+- [x] Add regression tests for existing Context and one-turn Memory comparisons.
+- [x] Update `server/src/studio/README.md` and the backend inspection procedure.
 - [ ] Record validation results and known limitations before archiving this plan.
 
 ## Completion gate
 
 Do not archive this plan until:
 
-- [ ] A two-turn Memory comparison runs through the existing server.
-- [ ] At least two Memory policies share the same fixed turn sequence and Context.
-- [ ] A later turn retrieves a record written by an earlier turn.
-- [ ] Updates, no-ops, expiries, misses, and procedural reuse are observable.
-- [ ] Metrics are deterministic, bounded, and clearly labelled as observations or
-      fixture-derived proxies.
-- [ ] Restart, cancellation, corruption, and idempotency behaviour is tested.
-- [ ] Existing Context comparisons remain compatible.
-- [ ] Documentation and API examples match the implementation.
+- [x] A two-turn Memory comparison runs through the existing server.
+- [x] At least two Memory policies share the same fixed turn sequence and Context.
+- [x] A later turn retrieves a record written by an earlier turn.
+- [x] Updates, no-ops, expiries, misses, and procedural reuse are observable.
+- [x] Metrics are bounded and clearly labelled as observations or fixture-derived
+      proxies.
+- [ ] Metrics are deterministic across independent runs where the adapter reports
+      wall-clock latency.
+- [ ] Multi-turn cancellation, corruption, and idempotency behaviour is tested at
+      every persistence boundary.
+- [x] Existing Context comparisons remain compatible.
+- [x] Documentation and API examples match the implementation.
+
+## Validation checkpoint
+
+- Focused Studio and Memory suites: 54 passing tests.
+- Full `@agent-harness-lab/lab-server` test command: passed; existing skipped
+  platform fixtures remain skipped.
+- Root `pnpm run build`: passed.
+- Web typecheck: passed.
+- `git diff --check`: passed.
+
+Known limitations remain the unchecked hardening items above. In particular, replay
+latency is wall-clock evidence and is normalized out of deterministic comparison
+assertions; durable repository recovery is tested directly and through sequence
+reopen, but every possible cancellation boundary is not yet covered.
 
 ## Next plan
 

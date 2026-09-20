@@ -121,6 +121,22 @@ export interface StudioScenarioCase {
   readonly expectedAnswer: string;
   readonly requiredMemoryRecordId?: string;
   readonly memorySeeds?: readonly StudioMemorySeed[];
+  /**
+   * Optional ordered turns for temporal experiments. The top-level fields stay
+   * as the compatibility view for existing one-turn callers and point at the
+   * final turn for multi-turn catalog scenarios.
+   */
+  readonly turns?: readonly StudioScenarioTurn[];
+}
+
+export interface StudioScenarioTurn {
+  readonly turnId: string;
+  readonly ordinal: number;
+  readonly task: string;
+  readonly messages: readonly ContextMessage[];
+  readonly requiredMessageId: string;
+  readonly expectedAnswer: string;
+  readonly requiredMemoryRecordId?: string;
 }
 
 export interface StudioExperimentDefinition {
@@ -251,6 +267,46 @@ export interface StudioCompositionEvidence {
   }[];
 }
 
+export interface StudioTurnMetrics {
+  readonly contextInputTokens: number | null;
+  readonly modelInputTokens: number | null;
+  readonly modelOutputTokens: number | null;
+  readonly modelCalls: number;
+  readonly latencyMs: number | null;
+  readonly costUsd: number | null;
+  readonly memoryCandidateCount: number;
+  readonly memoryRetrievedCount: number;
+  readonly memoryOmittedCount: number;
+  readonly memoryWrittenCount: number;
+  readonly memoryUpdatedCount: number;
+  readonly memoryNoopCount: number;
+  readonly memoryExpiredCount: number;
+  readonly activeRecordCount: number;
+  readonly requiredRecordHit: boolean | null;
+  readonly stateRecovered: boolean;
+  readonly measurementBasis: {
+    readonly contextTokens: string;
+    readonly modelTokens: string;
+    readonly latency: string;
+    readonly cost: string;
+    readonly memoryCounts: string;
+  };
+}
+
+export interface StudioTurnEvidence {
+  readonly schemaVersion: typeof STUDIO_SCHEMA_VERSION;
+  readonly comparisonId: string;
+  readonly trialId: string;
+  readonly turnId: string;
+  readonly ordinal: number;
+  readonly task: string;
+  readonly context: StudioContextEvidence;
+  readonly memory: StudioMemoryEvidence;
+  readonly composition: StudioCompositionEvidence;
+  readonly result: Pick<StudioTrialResult, "status" | "output" | "grade" | "error" | "startedAt" | "finishedAt">;
+  readonly metrics: StudioTurnMetrics;
+}
+
 export interface StudioRunError {
   readonly code: string;
   readonly message: string;
@@ -295,6 +351,16 @@ export interface StudioMetrics {
   readonly outputTokens: number | null;
   readonly totalTokens: number | null;
   readonly costUsd: number | null;
+  readonly turnCount: number;
+  readonly completedTurnCount: number;
+  readonly memoryRetrievedCount: number;
+  readonly memoryWrittenCount: number;
+  readonly memoryUpdatedCount: number;
+  readonly memoryNoopCount: number;
+  readonly memoryExpiredCount: number;
+  readonly recoveredStateCount: number;
+  readonly maxActiveRecordCount: number;
+  readonly measurementBasis: StudioTurnMetrics["measurementBasis"];
 }
 
 export interface StudioTrajectory {
@@ -313,6 +379,7 @@ export interface StudioTrialSnapshot {
   readonly memory: StudioMemoryEvidence | null;
   readonly composition: StudioCompositionEvidence | null;
   readonly result: StudioTrialResult | null;
+  readonly turns: readonly StudioTurnEvidence[];
 }
 
 export interface StudioComparisonSnapshot {

@@ -18,10 +18,15 @@ export class PolicyMemoryStore implements StudioMemoryStoreAdapter {
     private readonly policy: StudioMemoryPolicy,
     private readonly repository: StudioMemoryRepository,
     private readonly limits: StudioMemoryLimits,
+    private readonly reopenStore?: () => StudioMemoryStoreAdapter,
   ) {
     this.adapterId = policy.adapterId;
     this.adapterVersion = policy.adapterVersion;
     this.scope = policy.scope;
+  }
+
+  get reopen(): (() => StudioMemoryStoreAdapter) | undefined {
+    return this.reopenStore;
   }
 
   async seed(seeds: readonly StudioMemorySeed[], operationId: string): Promise<void> {

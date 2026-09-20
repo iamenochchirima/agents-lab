@@ -33,9 +33,12 @@ tests. The focused Studio suite currently covers 50 passing tests; the full serv
 suite currently reports 310 passing and 2 skipped tests, and the web typecheck has
 also passed during this implementation pass.
 
-The remaining plan work is deliberately visible: multi-turn Memory sequences, richer
-metrics, path/symlink hardening, and broader failure/cancellation integration coverage. Those
-are follow-up implementation blocks, not implied capabilities of the current slice.
+The multi-turn sequence and measurement block is tracked separately in
+[`studio-memory-multiturn-measurement.md`](studio-memory-multiturn-measurement.md) and
+its core implementation is now present. The remaining hardening in this plan is
+deliberately visible: path/symlink review and broader failure/cancellation integration
+coverage. Those are follow-up hardening items, not implied capabilities of the first
+single-turn slice.
 
 ## Purpose
 
