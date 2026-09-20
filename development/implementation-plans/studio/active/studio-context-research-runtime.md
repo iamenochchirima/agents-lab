@@ -1,7 +1,7 @@
 # Studio Context research runtime
 
 **Created:** `2026-09-20T00:00:00+02:00`  
-**Last updated:** `2026-09-20T12:42:28+02:00`  
+**Last updated:** `2026-09-20T15:57:53+02:00`
 **Status:** Active — follows multi-turn Memory and measurement  
 **Owner:** Agent Harness Lab maintainers
 
@@ -16,6 +16,20 @@ unknown/over-budget states. Group-aware sliding-window behaviour, summaries, sou
 class allocation, and provider-overflow recovery remain production work; the current
 runtime must not silently claim those capabilities.
 
+## Current implementation checkpoint
+
+The first boundary-fixture block is now implemented in
+`server/tests/studio/context-strategy.test.ts`. It exercises the existing
+`full-history`, `sliding-window`, and `relevance-ranked` strategies against one
+fixed fixture containing an instruction, transcript turns, a grouped tool call and
+result, and retrieved Memory carrying untrusted provenance metadata. The tests verify
+stable source order, deterministic relevance ties, metadata and group visibility,
+exact budget pressure, and explicit unknown-token behaviour.
+
+This block intentionally adds no new production strategy. The current strategies
+remain message-based and do not yet guarantee atomic tool-group retention or a
+source-class budget allocation; those are the next production slices.
+
 ## Start here
 
 Read these before implementation:
@@ -24,7 +38,7 @@ Read these before implementation:
 - [`CONTEXT.md`](../../../../CONTEXT.md)
 - [`Studio implementation roadmap`](../README.md)
 - [`Current Memory runtime plan`](studio-memory-runtime.md)
-- [`Multi-turn Memory and measurement plan`](studio-memory-multiturn-measurement.md)
+- [`Multi-turn Memory and measurement plan`](../completed/studio-memory-multiturn-measurement.md)
 - [`Studio server module`](../../../../server/src/studio/README.md)
 - [`Context and memory ecosystem research`](../../../../docs/research/context-engineering-ecosystem-2026.md)
 - [`Shared context semantics`](../../../../server/src/capabilities/context/README.md)

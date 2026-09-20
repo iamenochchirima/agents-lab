@@ -29,6 +29,14 @@ Memory decisions, and the complete component composition. A minimal OpenRouter m
 adapter is available for explicit injected live-provider profiles; replay remains the
 default catalog environment.
 
+The first Context research fixture is kept in the backend test suite while the
+production source-group contract is being designed. It combines an instruction,
+older and recent transcript messages, a grouped tool call/result, and retrieved
+Memory with explicit untrusted provenance metadata. The fixture verifies the current
+strategies' deterministic ordering, relevance tie behaviour, source metadata, and
+budget-quality states. It does not yet claim group-atomic sliding windows,
+source-class allocation, summaries, or provider-overflow recovery.
+
 ```text
 server/src/studio/
   domain/       Studio records, validation, and lifecycle
