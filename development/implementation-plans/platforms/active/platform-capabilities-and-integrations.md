@@ -1,7 +1,7 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T21:55:00+02:00
+**Last updated:** 2026-09-20T21:58:00+02:00
 **Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -503,8 +503,8 @@ unrelated twenty-minute UI slices.
 
 ### Platform integration tests
 
-- [ ] identical deterministic profile through Temporal, Restate, LangGraph, and Mastra;
-- [ ] native tool registration and actual execution, not fake successful HTTP responses;
+- [x] identical deterministic profile through Temporal, Restate, LangGraph, and Mastra;
+- [x] native tool registration and actual execution, not fake successful HTTP responses;
 - [ ] tool failure, policy denial, approval, cancellation, timeout, and retry semantics;
 - [x] local MCP and direct-API fixtures with real protocol/request boundaries;
 - [x] local OAuth start/callback/refresh/revoke with a temporary fixture HTTP process;
@@ -573,6 +573,10 @@ The following focused commits are complete while this plan remains active:
 - `d97b04b` — local MCP/direct API/OAuth seams, evidence redaction, and native bindings.
 - `fa392c1` — platform capability architecture and development playground.
 - `a8891f6` — capability-phase progress record and acceptance state.
+- `3f2481e` — HTTP MCP JSON-RPC and OAuth PKCE fixture boundaries with focused tests.
+- `1fc6d32` — opt-in four-platform capability matrix and local-service documentation.
+- `fffe39c` — approved connected-write coverage in the matrix.
+- `1a3cffd` — align the matrix with the shared native-service context root.
 
 Validated so far:
 
@@ -595,20 +599,25 @@ Validated so far:
   `node --test server/dist/tests/control-plane/evidence-store.test.js` — passed; the
   evidence-store suite reports 12 passed, 0 failed, including scoped attempt replay,
   per-attempt ordering, and manifest-platform mismatch coverage.
+- `AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191 AGENTLAB_CONTEXT_ROOT=/home/enoch/aworkspace/agents/agents-lab/lab/sessions pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix` — passed; one
+  identical read profile and one explicitly approved write profile completed through
+  Temporal, Restate, LangGraph, and Mastra with native tool execution and completed
+  connection evidence.
 
 The local fixture now crosses real HTTP boundaries for Temporal, Restate, LangGraph, and Mastra
-native execution tests. Run admission also records an ordered `CapabilityResolutionRecorded`
-event, and persisted events feed capability metrics so approval decisions are not lost when a
-platform inspection returns only native events.
+native execution tests. MCP JSON-RPC and OAuth PKCE/refresh/revocation also cross the fixture's
+HTTP boundary in focused protocol tests. Run admission records an ordered
+`CapabilityResolutionRecorded` event, and persisted events feed capability metrics so approval
+decisions are not lost when a platform inspection returns only native events.
 
 The connected/write rollback switch and cleanup/rotation guidance are now implemented and
 covered by configuration/catalog tests. The next implementation block is the remaining
-restart/cancellation/unavailable matrix across all four platforms, followed by native MCP/OAuth
-process-boundary acceptance and browser/manual acceptance. The plan must remain active until
-those items and the completion gate are checked with evidence. MCP/OAuth currently have
-deterministic local contract fixtures; their native platform process-boundary acceptance is
-still open. Optional live OpenRouter acceptance remains skipped unless credentials and a
-configured test account are deliberately provided.
+restart/cancellation/unavailable matrix across all four platforms, followed by native
+MCP/OAuth process-boundary acceptance and browser/manual acceptance. The plan must remain
+active until those items and the completion gate are checked with evidence. MCP/OAuth now
+have real local HTTP protocol fixtures, but their invocation from each platform's native
+execution boundary remains open. Optional live OpenRouter acceptance remains skipped unless
+credentials and a configured test account are deliberately provided.
 
 ## Documentation and release impact
 
