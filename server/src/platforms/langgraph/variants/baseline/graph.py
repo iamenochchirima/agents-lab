@@ -323,7 +323,7 @@ def complete_fake(
         # This fixture creates a real observation window for restart tests while
         # retaining a deterministic successful result. It is deliberately
         # shorter than the node timeout and has no external side effect.
-        deadline = time.monotonic() + min(250, max(100, timeout_ms // 4)) / 1000
+        deadline = time.monotonic() + min(2_500, max(100, timeout_ms // 4)) / 1000
         while time.monotonic() < deadline:
             if is_cancelled():
                 raise CancellationError("The deterministic model observed cancellation while waiting.")

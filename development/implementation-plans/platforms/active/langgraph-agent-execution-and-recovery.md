@@ -1,7 +1,7 @@
 # LangGraph agent execution — end-to-end continuation and recovery
 
 **Created:** 2026-09-20T00:11:06+02:00  
-**Last updated:** 2026-09-20T02:05:28+02:00
+**Last updated:** 2026-09-20T02:23:31+02:00
 **Status:** Active  
 **Owner:** Primary platform implementation agent  
 **Platform:** `langgraph`  
@@ -151,7 +151,7 @@ The completed implementation must be able to:
   separate Lab run and turn identities;
 - [ ] expose model, graph-node, checkpoint, tool, usage, retry, cancellation, and
   terminal events without leaking prompts, credentials, or unrestricted native state;
-- [ ] survive service and Lab-server replacement with a deterministic result or an
+- [x] survive service and Lab-server replacement with a deterministic result or an
   explicit unknown/reconciliation-required state;
 - [ ] handle duplicate admission, concurrent same-session turns, stale inspection,
   cancellation races, and provider outcomes that cannot be known after dispatch;
@@ -519,8 +519,8 @@ dashboard for this plan.
   assistant messages or duplicate React keys.
 - [ ] Change model or context configuration after a settled turn and require a new chat
   or show a clear inline conflict.
-- [ ] Replace the Lab server during a delayed run and verify browser reconciliation.
-- [ ] Replace the LangGraph service during a delayed run and verify completion or an
+- [x] Replace the Lab server during a delayed run and verify browser reconciliation.
+- [x] Replace the LangGraph service during a delayed run and verify completion or an
   explicit recovery state.
 - [ ] Inspect wide, tablet, and narrow layouts manually; keep the platform tab row and
   Chat controls usable without a blinking polling surface.
@@ -544,7 +544,7 @@ lab/runs/<run-id>/
   artifacts/
 ```
 
-- [ ] Record resolved platform/runtime versions and protocol version in `config.json` or
+- [x] Record resolved platform/runtime versions and protocol version in `config.json` or
   safe native metadata.
 - [ ] Keep normalized event order monotonic by the Lab event sequence and preserve
   LangGraph checkpoint/graph-step sequence separately.
@@ -917,6 +917,26 @@ what was observed, the exact validation command, and what remains.
   environment changes. Validation passed: 33 Python service/protocol tests, 11
   TypeScript protocol/adapter tests, Lab server typecheck, and `git diff --check`.
   Committed as `3d8a079` (`feat(langgraph): retain runtime version evidence`).
+
+- **2026-09-20T02:23:31+02:00 — destructive browser replacement checks executed.** Fixed
+  custom-port CORS propagation in `scripts/run_local_stack.sh`, forwarded run/context
+  roots into replacement processes, and made the delayed-success fixture provide a
+  deterministic browser observation window. The native-service test now uses `SIGKILL`
+  to model process loss (graceful `SIGTERM` correctly produces cancellation), while the
+  Lab-server test replaces the interrupted server against the same evidence root.
+  Both tests passed against isolated native processes without Docker:
+
+  - `AGENTLAB_RUN_LIVE_LANGGRAPH_SERVICE_RESTART_UI=1 ... node --test
+    apps/web/tests/browser/live-platform-runners.browser.test.mjs` — 1 passed, 5 skipped;
+    run `3e266caf-0cee-4108-a307-a9713e62159e` rendered recovery-required state.
+  - `AGENTLAB_RUN_LIVE_LANGGRAPH_SERVER_RESTART_UI=1 ... node --test
+    apps/web/tests/browser/live-platform-runners.browser.test.mjs` — 1 passed, 5 skipped;
+    run `5a0fa2ac-3af5-4f68-a133-644da7bba6f5` reconciled to one completed result.
+
+  Additional validation passed: 44 Python LangGraph tests, 14 focused TypeScript tests,
+  17 deterministic browser tests, web typecheck, `bash -n scripts/run_local_stack.sh`,
+  and `git diff --check`. Remaining plan work includes the broader completion audit,
+  manual layout/console inspection, and release/migration/rollback records.
 
 ## Commit discipline
 

@@ -314,7 +314,11 @@ test("live LangGraph Chat shows recovery after the native service is replaced", 
     await waitForElement(cdp, ".chat-page");
     await waitForText(cdp, createdBody.runId);
 
-    process.kill(servicePid, "SIGTERM");
+    // Deliberately model process loss rather than graceful shutdown. SIGTERM
+    // asks the service to cancel active work and persist a cancelled result;
+    // this acceptance path must exercise startup reconciliation of an
+    // interrupted execution instead.
+    process.kill(servicePid, "SIGKILL");
     await waitForHttpFailure(`${serviceUrl}/health`);
 
     replacement = spawn("./scripts/run_local_stack.sh", ["langgraph"], {
@@ -403,7 +407,10 @@ test("live LangGraph Chat reconciles after the Lab server is replaced", { skip: 
     await waitForElement(cdp, ".chat-page");
     await waitForText(cdp, createdBody.runId);
 
-    process.kill(serverPid, "SIGTERM");
+    // Deliberately model server process loss. A graceful shutdown is a
+    // different contract and can hide the recovery path behind watcher
+    // restarts.
+    process.kill(serverPid, "SIGKILL");
     await waitForHttpFailure(`${API_URL}/ready`);
 
     replacement = spawn("./scripts/run_local_stack.sh", ["server"], {
@@ -414,7 +421,10 @@ test("live LangGraph Chat reconciles after the Lab server is replaced", { skip: 
         ...process.env,
         AGENTLAB_API_HOST: new URL(API_URL).hostname,
         AGENTLAB_API_PORT: new URL(API_URL).port || "4318",
+        AGENTLAB_API_ORIGIN: new URL(WEB_URL).origin,
         AGENTLAB_LANGGRAPH_SERVICE_URL: serviceUrl,
+        AGENTLAB_CONTEXT_ROOT: process.env.AGENTLAB_CONTEXT_ROOT ?? join(REPO_ROOT, "lab/sessions"),
+        AGENTLAB_RUN_ROOT: process.env.AGENTLAB_RUN_ROOT ?? join(REPO_ROOT, "lab/runs"),
       },
     });
     replacement.stdout?.on("data", (chunk) => { replacementOutput += String(chunk); });
@@ -489,7 +499,10 @@ test("live Restate Chat reconciles after the Lab server is replaced", { skip: !p
     await waitForElement(cdp, ".chat-page");
     await waitForText(cdp, createdBody.runId);
 
-    process.kill(serverPid, "SIGTERM");
+    // Deliberately model server process loss. A graceful shutdown is a
+    // different contract and can hide the recovery path behind watcher
+    // restarts.
+    process.kill(serverPid, "SIGKILL");
     await waitForHttpFailure(`${API_URL}/ready`);
 
     replacement = spawn("./scripts/run_local_stack.sh", ["server"], {
@@ -500,6 +513,9 @@ test("live Restate Chat reconciles after the Lab server is replaced", { skip: !p
         ...process.env,
         AGENTLAB_API_HOST: new URL(API_URL).hostname,
         AGENTLAB_API_PORT: new URL(API_URL).port || "4318",
+        AGENTLAB_API_ORIGIN: new URL(WEB_URL).origin,
+        AGENTLAB_CONTEXT_ROOT: process.env.AGENTLAB_CONTEXT_ROOT ?? join(REPO_ROOT, "lab/sessions"),
+        AGENTLAB_RUN_ROOT: process.env.AGENTLAB_RUN_ROOT ?? join(REPO_ROOT, "lab/runs"),
       },
     });
     replacement.stdout?.on("data", (chunk) => { replacementOutput += String(chunk); });

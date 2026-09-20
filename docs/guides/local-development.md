@@ -54,3 +54,7 @@ Inngest, DBOS, or Trigger.dev are not running. Check the individual platform hea
 endpoints or the platform status in the UI for the profiles included in the local stack.
 Those optional services remain available through named commands in
 [`scripts/README.md`](../../scripts/README.md).
+
+When using a non-default web port, the launcher passes the matching browser origin to
+the server automatically. If the web app and server are started separately, set
+`AGENTLAB_API_ORIGIN` to the web app's origin.

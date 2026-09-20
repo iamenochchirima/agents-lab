@@ -82,3 +82,8 @@ without editing the script:
 ```bash
 AGENTLAB_WEB_HOST=0.0.0.0 AGENTLAB_WEB_PORT=5174 ./scripts/run_local_stack.sh
 ```
+
+When the launcher starts the Lab server, it derives `AGENTLAB_API_ORIGIN` from the
+configured web host and port so browser requests remain allowed on custom local
+profiles. When starting the server separately, set `AGENTLAB_API_ORIGIN` to the
+browser origin explicitly if the frontend is not using `127.0.0.1:5173`.
