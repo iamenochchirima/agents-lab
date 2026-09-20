@@ -136,12 +136,16 @@ test("managed Playwright browser opens a local fixture, snapshots controls, and 
         <p id="status">Not clicked</p>
         <input id="upload" type="file" aria-label="Upload file">
         <a id="download" href="/download" download>Download fixture</a>
+        <label>Country <select id="country" aria-label="Country"><option>South Africa</option><option>Kenya</option></select></label>
         <script>
           document.querySelector('#continue').addEventListener('click', () => {
             document.querySelector('#status').textContent = 'Clicked';
           });
           document.querySelector('#upload').addEventListener('change', (event) => {
             document.querySelector('#status').textContent = 'Uploaded ' + event.target.files[0].name;
+          });
+          document.querySelector('#country').addEventListener('change', (event) => {
+            document.querySelector('#status').textContent = 'Selected ' + event.target.value;
           });
         </script>
       </body></html>
@@ -179,6 +183,9 @@ test("managed Playwright browser opens a local fixture, snapshots controls, and 
     const continueRef = first.references.find((reference) => reference.value === "@e2");
     assert.ok(continueRef);
 
+    const scrolled = await manager.act(session.sessionId, tab.tabId, { kind: "scroll", direction: "down", amount: 100 });
+    assert.match(scrolled.summary, /scroll completed/u);
+
     await manager.act(session.sessionId, tab.tabId, { kind: "click", reference: continueRef });
     const afterClick = await manager.snapshot(session.sessionId, tab.tabId);
     assert.match(afterClick.content, /Clicked/u);
@@ -196,6 +203,11 @@ test("managed Playwright browser opens a local fixture, snapshots controls, and 
     await manager.upload(session.sessionId, tab.tabId, { kind: "upload", reference: uploadRef, sourcePath: uploadSource, maxBytes: 1_024 });
     const afterUpload = await manager.snapshot(session.sessionId, tab.tabId);
     assert.match(afterUpload.content, /Uploaded upload\.txt/u);
+    const countryRef = afterUpload.references.find((reference) => reference.value === "@e5");
+    assert.ok(countryRef);
+    await manager.act(session.sessionId, tab.tabId, { kind: "select", reference: countryRef, value: "South Africa" });
+    const afterSelect = await manager.snapshot(session.sessionId, tab.tabId);
+    assert.match(afterSelect.content, /Selected South Africa/u);
     const waited = await manager.wait(session.sessionId, tab.tabId, { milliseconds: 1 });
     assert.equal(waited.waitedMs, 1);
     const cancelled = new AbortController();

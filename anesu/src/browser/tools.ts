@@ -17,6 +17,7 @@ import type {
   BrowserTabId,
   BrowserTabInfo,
   BrowserWaitResult,
+  BrowserScrollDirection,
 } from "./contracts.js";
 import type { BrowserArtifactInfo } from "./artifacts.js";
 import type { BrowserDownloadTarget } from "./artifacts.js";
@@ -37,6 +38,9 @@ export interface BrowserApprovalRequest {
   readonly documentId: BrowserDocumentId;
   readonly text?: string;
   readonly key?: string;
+  readonly value?: string;
+  readonly direction?: BrowserScrollDirection;
+  readonly amount?: number;
   readonly path?: string;
   readonly maxBytes?: number;
   readonly actionHash: string;
@@ -90,11 +94,14 @@ interface ToolArguments {
 const BROWSER_TOOL_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
   browser_start: [],
   browser_open: ["url"],
+  browser_open_and_click: ["url", "target"],
   browser_tabs: [],
   browser_snapshot: ["tabId"],
   browser_click: ["ref"],
   browser_type: ["ref", "text"],
   browser_press: ["ref", "key"],
+  browser_select: ["ref", "value"],
+  browser_scroll: ["direction", "amount"],
   browser_wait: ["tabId", "milliseconds"],
   browser_screenshot: ["tabId"],
   browser_upload: ["ref", "path"],
@@ -104,9 +111,11 @@ const BROWSER_TOOL_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
 
 const REQUIRED_BROWSER_STRING_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
   browser_open: ["url"],
+  browser_open_and_click: ["url", "target"],
   browser_click: ["ref"],
   browser_type: ["ref", "text"],
   browser_press: ["ref", "key"],
+  browser_select: ["ref", "value"],
   browser_upload: ["ref", "path"],
   browser_download: ["ref"],
 };
@@ -141,7 +150,7 @@ function safeDialog(dialog: BrowserDialogObservation, secrets: readonly string[]
 }
 
 function normalizeStartedActionError(action: BrowserApprovalAction, errorCode: BrowserToolErrorCode): { readonly errorCode: BrowserToolErrorCode; readonly underlyingErrorCode?: BrowserToolErrorCode } {
-  if ((action === "click" || action === "type" || action === "press" || action === "upload" || action === "download")
+  if ((action === "click" || action === "type" || action === "press" || action === "select" || action === "scroll" || action === "upload" || action === "download")
     && (errorCode === "browser-timeout" || errorCode === "browser-cancelled" || errorCode === "browser-crash" || errorCode === "adapter-failure")) {
     return { errorCode: "browser-ambiguous", underlyingErrorCode: errorCode };
   }
@@ -165,6 +174,23 @@ function safeTab(tab: BrowserTabInfo, secrets: readonly string[]): BrowserTabInf
   return { ...tab, url: safeUrl(tab.url, secrets), title: safeText(tab.title, secrets) };
 }
 
+function normalizeTargetLabel(value: string): string {
+  return value.trim().replace(/\s+/gu, " ").replace(/[.…]+$/u, "").toLocaleLowerCase();
+}
+
+function snapshotTargetReference(snapshotContent: string, rawTarget: string): string {
+  const target = normalizeTargetLabel(rawTarget);
+  if (target.length === 0 || target.length > 256) throw new ToolExecutionError("The browser target label must contain between 1 and 256 characters.");
+  const matches: string[] = [];
+  for (const line of snapshotContent.split(/\r?\n/u)) {
+    const match = line.match(/^\[(?<ref>@e[1-9][0-9]*)\]\s+(?<role>button|link|a)\s+(?<label>[^\n]{1,512})$/u);
+    if (match?.groups && normalizeTargetLabel(match.groups.label) === target) matches.push(match.groups.ref);
+  }
+  if (matches.length === 0) throw new BrowserError("invalid-action", `No button or link with the exact accessible label '${rawTarget.trim()}' was found in the current page snapshot.`);
+  if (matches.length > 1) throw new BrowserError("invalid-action", `More than one button or link has the accessible label '${rawTarget.trim()}'; the action was not started.`);
+  return matches[0];
+}
+
 function bounded(value: string, maxBytes: number): string {
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
   const marker = `\n[output truncated at ${maxBytes} bytes]`;
@@ -184,6 +210,11 @@ export const BROWSER_TOOL_DEFINITIONS = [
     name: "browser_open",
     description: "Open an allowed HTTP or HTTPS URL in the active isolated browser session. Unsafe schemes, credentials, private targets, and unsafe redirects are rejected.",
     inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: false },
+  },
+  {
+    name: "browser_open_and_click",
+    description: "For a simple user-requested browser task, open one allowed URL, take a bounded accessibility snapshot, find exactly one button or link by its exact accessible label, request approval, and click it once. This leaves the managed browser open for observation and never accepts selectors, JavaScript, coordinates, or arbitrary page instructions.",
+    inputSchema: { type: "object", properties: { url: { type: "string" }, target: { type: "string", description: "Exact accessible button or link label to click." } }, required: ["url", "target"], additionalProperties: false },
   },
   {
     name: "browser_tabs",
@@ -209,6 +240,16 @@ export const BROWSER_TOOL_DEFINITIONS = [
     name: "browser_press",
     description: "Press a key on an element from the latest browser snapshot. This action requires explicit approval.",
     inputSchema: { type: "object", properties: { ref: { type: "string" }, key: { type: "string" } }, required: ["ref", "key"], additionalProperties: false },
+  },
+  {
+    name: "browser_select",
+    description: "Select one exact visible option label on a native select element from the latest browser snapshot. This action requires explicit approval.",
+    inputSchema: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref", "value"], additionalProperties: false },
+  },
+  {
+    name: "browser_scroll",
+    description: "Scroll the current browser page by a bounded, explicitly requested amount. This action requires explicit approval and invalidates the previous element snapshot.",
+    inputSchema: { type: "object", properties: { direction: { type: "string", enum: ["up", "down", "left", "right"] }, amount: { type: "integer", minimum: 1, maximum: 2_000 } }, required: ["direction", "amount"], additionalProperties: false },
   },
   {
     name: "browser_wait",
@@ -251,11 +292,14 @@ export class BrowserTools {
     switch (name) {
       case "browser_start": return this.start(context.signal);
       case "browser_open": return this.open(args, context.signal);
+      case "browser_open_and_click": return this.openAndClick(callId, args, context);
       case "browser_tabs": return this.tabs(context.signal);
       case "browser_snapshot": return this.snapshot(args, context.signal);
       case "browser_click": return this.approvedAction("click", callId, args, context);
       case "browser_type": return this.approvedAction("type", callId, args, context);
       case "browser_press": return this.approvedAction("press", callId, args, context);
+      case "browser_select": return this.approvedAction("select", callId, args, context);
+      case "browser_scroll": return this.approvedAction("scroll", callId, args, context);
       case "browser_wait": return this.wait(args, context.signal);
       case "browser_screenshot": return this.screenshot(args, context.signal, context.onBrowser);
       case "browser_upload": return this.upload(callId, args, context);
@@ -283,6 +327,12 @@ export class BrowserTools {
         throw new ToolExecutionError(`Tool argument 'milliseconds' must be an integer between 0 and ${maximum}.`);
       }
     }
+    if (name === "browser_scroll") {
+      if (args.direction !== "up" && args.direction !== "down" && args.direction !== "left" && args.direction !== "right") {
+        throw new ToolExecutionError("Tool argument 'direction' must be up, down, left, or right.");
+      }
+      integerArgument(args, "amount", 1, 2_000);
+    }
   }
 
   private async start(signal?: AbortSignal): Promise<BrowserToolOutcome> {
@@ -303,6 +353,30 @@ export class BrowserTools {
     this.activeTabId = tab.tabId;
     const visibleTab = safeTab(tab, this.options.redactionSecrets ?? []);
     return { ok: true, content: stableStringify(visibleTab), summary: `Opened ${visibleTab.url} in browser tab ${tab.tabId}.` };
+  }
+
+  private async openAndClick(callId: string, args: ToolArguments, context: BrowserToolContext): Promise<BrowserToolOutcome> {
+    const url = stringArgument(args, "url", true) ?? "";
+    const target = stringArgument(args, "target", true) ?? "";
+    const started = await this.start(context.signal);
+    if (!started.ok) return started;
+    const opened = await this.open({ url }, context.signal);
+    if (!opened.ok) return opened;
+    const snapshot = await this.snapshot({}, context.signal);
+    if (!snapshot.ok) return snapshot;
+    const parsed = JSON.parse(snapshot.content) as { readonly content?: unknown };
+    if (typeof parsed.content !== "string") throw new BrowserError("invalid-action", "The browser snapshot did not contain bounded page content.");
+    const ref = snapshotTargetReference(parsed.content, target);
+    const clicked = await this.approvedAction("click", `${callId}:click`, { ref }, context);
+    if (!clicked.ok) return clicked;
+    const result = {
+      status: "clicked",
+      url: safeUrl(url, this.options.redactionSecrets ?? []),
+      target: target.trim(),
+      reference: ref,
+      summary: clicked.summary,
+    };
+    return { ok: true, content: bounded(stableStringify(result), this.options.maxOutputBytes), summary: `Opened ${safeUrl(url, this.options.redactionSecrets ?? [])} and clicked '${target.trim()}'.` };
   }
 
   private async tabs(signal?: AbortSignal): Promise<BrowserToolOutcome> {
@@ -571,13 +645,19 @@ export class BrowserTools {
     const sessionId = this.requireSession();
     const tabId = this.activeTabId;
     if (!tabId) throw new BrowserError("tab-not-found", "No active browser tab exists; open a page first.");
-    const ref = stringArgument(args, "ref", true) ?? "";
+    const ref = action === "scroll" ? "document" : stringArgument(args, "ref", true) ?? "";
     const snapshot = this.snapshots.get(tabId);
     if (!snapshot || snapshot.sessionId !== sessionId) {
       throw new BrowserError("stale-reference", "Take a browser snapshot before using an element reference.");
     }
     const text = action === "type" ? stringArgument(args, "text", true) : undefined;
     const key = action === "press" ? stringArgument(args, "key", true) : undefined;
+    const value = action === "select" ? stringArgument(args, "value", true) : undefined;
+    const direction = action === "scroll" ? args.direction as BrowserScrollDirection : undefined;
+    const amount = action === "scroll" ? integerArgument(args, "amount", 1, 2_000) : undefined;
+    if (value !== undefined && (value.length === 0 || value.length > 256)) {
+      throw new ToolExecutionError("Tool argument 'value' must contain between 1 and 256 characters.");
+    }
     const requestWithoutHash = {
       actionId: `browser_action_${randomUUID().replaceAll("-", "")}`,
       callId,
@@ -588,8 +668,13 @@ export class BrowserTools {
       documentId: asBrowserDocumentId(snapshot.documentId),
       ...(text !== undefined ? { text } : {}),
       ...(key !== undefined ? { key } : {}),
+      ...(value !== undefined ? { value } : {}),
+      ...(direction !== undefined ? { direction } : {}),
+      ...(amount !== undefined ? { amount } : {}),
       approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
-      warning: "This browser interaction may submit data or change remote state. The exact action must be approved before it runs.",
+      warning: action === "scroll"
+        ? "This browser interaction changes the managed page viewport. The exact direction and amount must be approved before it runs."
+        : "This browser interaction may submit data or change remote state. The exact action must be approved before it runs.",
     } satisfies Omit<BrowserApprovalRequest, "actionHash">;
     const request: BrowserApprovalRequest = { ...requestWithoutHash, actionHash: hashAction(requestWithoutHash) };
     await context.onBrowser?.({ type: "prepared", request });
@@ -614,7 +699,7 @@ export class BrowserTools {
     }
     await context.onBrowser?.({ type: "started", request });
     const reference: BrowserElementReference = { value: ref, documentId: asBrowserDocumentId(snapshot.documentId) };
-    const actionRequest: BrowserActionRequest = { kind: action, reference, ...(text !== undefined ? { text } : {}), ...(key !== undefined ? { key } : {}) };
+    const actionRequest: BrowserActionRequest = { kind: action, ...(action === "scroll" ? {} : { reference }), ...(text !== undefined ? { text } : {}), ...(key !== undefined ? { key } : {}), ...(value !== undefined ? { value } : {}), ...(direction !== undefined ? { direction } : {}), ...(amount !== undefined ? { amount } : {}) };
     try {
       const result = await this.options.manager.act(sessionId, tabId, actionRequest, context.signal, this.dialogApproval(request, context));
       this.snapshots.delete(tabId);

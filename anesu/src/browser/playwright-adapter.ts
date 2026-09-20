@@ -297,24 +297,49 @@ export class PlaywrightBrowserAdapter implements BrowserAdapter {
     const managed = this.requirePage(sessionId, tabIdValue);
     const reference = request.reference;
     const managedReference = reference ? managed.references.get(reference.value) : undefined;
-    if (!reference || !managedReference) {
+    if (request.kind !== "scroll" && (!reference || !managedReference)) {
       throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before acting.");
     }
     try {
       return await this.runCancellableAction(managed, signal, () => this.withDialogGuard(managed.page, async () => {
-        const locator = await this.requireFreshReference(managedReference, reference.value);
-        if (request.kind === "click") {
-          await locator.click({ timeout: this.actionTimeoutMs });
-        } else if (request.kind === "type") {
-          if (request.text === undefined) throw new BrowserError("invalid-action", "A type action requires text.");
-          await locator.fill(request.text, { timeout: this.actionTimeoutMs });
+        if (request.kind === "scroll") {
+          if (request.direction !== "up" && request.direction !== "down" && request.direction !== "left" && request.direction !== "right") {
+            throw new BrowserError("invalid-action", "A scroll action requires a direction of up, down, left, or right.");
+          }
+          const amount = request.amount;
+          if (typeof amount !== "number" || !Number.isSafeInteger(amount) || amount < 1 || amount > 2_000) {
+            throw new BrowserError("invalid-action", "A scroll action requires an integer amount between 1 and 2000 pixels.");
+          }
+          const horizontal = request.direction === "left" || request.direction === "right";
+          const signedAmount = request.direction === "up" || request.direction === "left" ? -amount : amount;
+          await managed.page.mouse.wheel(horizontal ? signedAmount : 0, horizontal ? 0 : signedAmount);
         } else {
-          if (!request.key) throw new BrowserError("invalid-action", "A press action requires a key.");
-          await locator.press(request.key, { timeout: this.actionTimeoutMs });
+          if (!reference || !managedReference) throw new BrowserError("stale-reference", "The browser element reference is unavailable; take a new snapshot before acting.");
+          const locator = await this.requireFreshReference(managedReference, reference.value);
+          if (request.kind === "click") {
+            await locator.click({ timeout: this.actionTimeoutMs });
+          } else if (request.kind === "type") {
+            if (request.text === undefined) throw new BrowserError("invalid-action", "A type action requires text.");
+            await locator.fill(request.text, { timeout: this.actionTimeoutMs });
+          } else if (request.kind === "press") {
+            if (!request.key) throw new BrowserError("invalid-action", "A press action requires a key.");
+            await locator.press(request.key, { timeout: this.actionTimeoutMs });
+          } else if (request.kind === "select") {
+            if (!request.value) throw new BrowserError("invalid-action", "A select action requires an option label.");
+            const option = await locator.evaluate((element, label) => {
+              if (!(element instanceof HTMLSelectElement)) return { kind: "not-select" as const };
+              const matches = Array.from(element.options).filter((candidate) => candidate.textContent?.trim() === label);
+              return { kind: "select" as const, matches: matches.length };
+            }, request.value);
+            if (option.kind !== "select") throw new BrowserError("invalid-action", "The observed target is not a native select control.");
+            if (option.matches === 0) throw new BrowserError("invalid-action", `No option with the exact visible label '${request.value}' was found.`);
+            if (option.matches > 1) throw new BrowserError("invalid-action", `More than one option has the exact visible label '${request.value}'; the selection was not started.`);
+            await locator.selectOption({ label: request.value }, { timeout: this.actionTimeoutMs });
+          }
         }
         await managed.page.waitForLoadState("domcontentloaded", { timeout: Math.min(this.actionTimeoutMs, 1_000) }).catch(() => undefined);
         const tab = await this.toTabInfo(sessionId, managed);
-        return { sessionId, tab, summary: `${request.kind} completed on ${reference.value}.` };
+        return { sessionId, tab, summary: `${request.kind} completed${reference ? ` on ${reference.value}` : ""}.` };
       }, `The browser action '${request.kind}' encountered a page dialog.`, signal, approveDialog));
     } catch (error) {
       if (error instanceof BrowserError) throw error;

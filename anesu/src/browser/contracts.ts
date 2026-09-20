@@ -9,7 +9,8 @@ export const DEFAULT_BROWSER_READ_RETRY_COUNT = 1;
 export const DEFAULT_BROWSER_READ_ONLY_TIMEOUT_MS = 10_000;
 
 export type BrowserSessionStatus = "active" | "closed" | "expired" | "failed";
-export type BrowserActionKind = "click" | "type" | "press" | "upload" | "download";
+export type BrowserScrollDirection = "up" | "down" | "left" | "right";
+export type BrowserActionKind = "click" | "type" | "press" | "select" | "scroll" | "upload" | "download";
 export type BrowserApprovalAction = BrowserActionKind | "dialog";
 export type BrowserDialogType = "alert" | "beforeunload" | "confirm" | "prompt";
 export type BrowserDialogDecision = "accept" | "dismiss";
@@ -54,6 +55,10 @@ export interface BrowserActionRequest {
   readonly reference?: BrowserElementReference;
   readonly text?: string;
   readonly key?: string;
+  /** Exact visible option label for a native select control. */
+  readonly value?: string;
+  readonly direction?: BrowserScrollDirection;
+  readonly amount?: number;
   readonly sourcePath?: string;
   readonly maxBytes?: number;
 }

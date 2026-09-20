@@ -5,6 +5,9 @@ import { isRetryableModelFailure, type ModelProvider } from "../models/provider.
 import { ToolRegistry, type ToolExecutionContext, type ToolExecutionResult } from "../tools/registry.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionRecord } from "../process/process.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
+import type { ComputerEvent } from "../computer/runner.js";
+import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest } from "../computer/contracts.js";
+import type { ComputerActionRecord, ComputerRunRecord } from "../computer/records.js";
 import type { BrowserActionRecord, BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolErrorCode, BrowserToolEvent } from "../browser/index.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
 import { ProcessSecurityPolicy } from "../security/process-policy.js";
@@ -39,7 +42,7 @@ export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxPatchSetBytes" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "computerDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxPatchSetBytes" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
   readonly memory?: MemoryStore;
   /** Diagnostic/test adapter for exercising context preparation failure semantics. */
   readonly contextCompactor?: ContextCompactor;
@@ -54,6 +57,9 @@ export interface RunTurnOptions {
   readonly onProcess?: (event: ProcessToolEvent) => void | Promise<void>;
   readonly approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>;
   readonly onBrowser?: (event: BrowserToolEvent) => void | Promise<void>;
+  readonly approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>;
+  readonly onComputerApproval?: (event: ComputerApprovalEvent) => void | Promise<void>;
+  readonly onComputer?: (event: ComputerEvent) => void | Promise<void>;
   readonly approveMemory?: MemoryApproval;
   readonly onMemory?: (event: MemoryEvent) => void | Promise<void>;
   readonly onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void | Promise<void>;
@@ -197,6 +203,7 @@ const SIDE_EFFECTING_TOOLS = new Set([
   "apply_patch_set",
   "run_command",
   "browser_start",
+  "browser_open_and_click",
   "browser_click",
   "browser_type",
   "browser_press",
@@ -682,6 +689,9 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       documentId: request.documentId,
       ...(request.text !== undefined ? { text: redactSecrets(request.text, secrets) } : {}),
       ...(request.key !== undefined ? { key: redactSecrets(request.key, secrets) } : {}),
+      ...(request.value !== undefined ? { value: redactSecrets(request.value, secrets) } : {}),
+      ...(request.direction !== undefined ? { direction: request.direction } : {}),
+      ...(request.amount !== undefined ? { amount: request.amount } : {}),
       ...(request.path !== undefined ? { path: redactSecrets(request.path, secrets) } : {}),
       ...(request.maxBytes !== undefined ? { maxBytes: request.maxBytes } : {}),
       ...(request.dialog ? { dialog: {
@@ -777,6 +787,195 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       }
     }
     await options.onBrowser?.(event);
+  };
+  let nativeComputerAction = false;
+  let activeComputerRun: ComputerRunRecord | undefined;
+  const recordComputerRunEvent = async (event: ComputerEvent): Promise<void> => {
+    if (event.type === "started") {
+      const run: ComputerRunRecord = {
+        schemaVersion: 1,
+      runId: event.runId ?? `computer_run_${randomUUID().replaceAll("-", "")}`,
+        callId: event.callId,
+        sessionId: turn.sessionId,
+        turnId: turn.turnId,
+        correlationId: turn.correlationId,
+        environment: event.environment ?? "browser",
+        strategy: event.strategy,
+        goal: bounded(event.goal, 1_000),
+        ...(event.maxActions !== undefined ? { maxActions: event.maxActions } : {}),
+        status: "running",
+        startedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+      };
+      activeComputerRun = run;
+      await turn.writeComputerRun(run);
+    }
+    const run = activeComputerRun;
+    if (!run) return;
+    const { type, ...payload } = event;
+    await turn.appendComputerRunEvent({
+      schemaVersion: 1,
+      eventId: `computer_event_${randomUUID().replaceAll("-", "")}`,
+      runId: run.runId,
+      sessionId: run.sessionId,
+      turnId: run.turnId,
+      correlationId: run.correlationId,
+      kind: type,
+      strategy: event.strategy,
+      payload: payload as Readonly<Record<string, unknown>>,
+    });
+    if ((type === "verified" && event.terminal !== false) || type === "abstained" || type === "failed") {
+      const status = type === "verified"
+        ? event.runStatus ?? (event.success ? "completed" as const : "outcome-unknown" as const)
+        : type === "failed"
+          ? event.runStatus ?? "failed" as const
+          : "failed" as const;
+      activeComputerRun = { ...run, status, summary: bounded(type === "verified" ? event.reason ?? (event.success ? "Computer action verified." : "Computer action outcome is unknown.") : event.reason, 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() };
+      await turn.writeComputerRun(activeComputerRun);
+    }
+  };
+  const computerRecordBase = (request: ComputerApprovalRequest): ComputerActionRecord => ({
+    schemaVersion: 1,
+    actionId: request.actionId,
+    callId: request.callId,
+    sessionId: request.sessionId,
+    turnId: turn.turnId,
+    correlationId: turn.correlationId,
+    environment: "ubuntu-x11-cua",
+    displayId: request.displayId,
+    operation: request.operation,
+    observationId: request.observationId,
+    generation: request.generation,
+    ...(request.x !== undefined ? { x: request.x } : {}),
+    ...(request.y !== undefined ? { y: request.y } : {}),
+    ...(request.endX !== undefined ? { endX: request.endX } : {}),
+    ...(request.endY !== undefined ? { endY: request.endY } : {}),
+    ...(request.textLength !== undefined ? { textLength: request.textLength } : {}),
+    ...(request.textPreview !== undefined ? { textPreview: bounded(redactSecrets(request.textPreview, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]), 160) } : {}),
+    ...(request.key !== undefined ? { key: redactSecrets(request.key, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]) } : {}),
+    ...(request.modifiers !== undefined ? { modifiers: request.modifiers } : {}),
+    ...(request.direction !== undefined ? { direction: request.direction } : {}),
+    ...(request.amount !== undefined ? { amount: request.amount } : {}),
+    ...(request.targetLabel !== undefined ? { targetLabel: bounded(request.targetLabel, 512) } : {}),
+    ...(request.targetRole !== undefined ? { targetRole: bounded(request.targetRole, 64) } : {}),
+    ...(request.targetSource !== undefined ? { targetSource: request.targetSource } : {}),
+    ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
+    status: "prepared",
+    recordedAt: new Date().toISOString(),
+  });
+  const recordComputerApproval = async (event: ComputerApprovalEvent): Promise<void> => {
+    if (activeComputerRun) {
+      await turn.appendComputerRunEvent({
+        schemaVersion: 1,
+        eventId: `computer_approval_${randomUUID().replaceAll("-", "")}`,
+        runId: activeComputerRun.runId,
+        sessionId: activeComputerRun.sessionId,
+        turnId: activeComputerRun.turnId,
+        correlationId: activeComputerRun.correlationId,
+        kind: "approval",
+        strategy: activeComputerRun.strategy,
+        payload: event.type === "prepared"
+          ? { decision: "pending", actionId: event.request.actionId, operation: event.request.operation, targetLabel: event.request.targetLabel ?? null, targetRole: event.request.targetRole ?? null }
+          : { decision: event.decision.decision, actionId: event.request.actionId, operation: event.request.operation, targetLabel: event.request.targetLabel ?? null, targetRole: event.request.targetRole ?? null },
+      });
+    }
+    if (event.request.environment !== "ubuntu-x11-cua") {
+      await options.onComputerApproval?.(event);
+      return;
+    }
+    nativeComputerAction = true;
+    const request = event.request;
+    const base = computerRecordBase(request);
+    const secrets = [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""].filter(Boolean);
+    const record = event.type === "prepared"
+      ? base
+      : event.decision.decision === "allow-once"
+        ? { ...base, status: "approved" as const, decision: "allow-once" as const, recordedAt: new Date().toISOString() }
+        : {
+            ...base,
+            status: "failed" as const,
+            decision: event.decision.decision,
+            errorCode: event.decision.decision === "deny" ? "computer-approval-denied" as const : "computer-approval-unavailable" as const,
+            errorMessage: bounded(redactSecrets(event.decision.reason ?? "The native computer action was not approved.", secrets), 2_000),
+            finishedAt: new Date().toISOString(),
+            recordedAt: new Date().toISOString(),
+          };
+    await turn.writeComputerAction(record);
+    if (event.type === "prepared") {
+      await turn.appendEvent("ComputerPrepared", {
+        actionId: request.actionId,
+        callId: request.callId,
+        sessionId: request.sessionId,
+        environment: request.environment,
+        displayId: request.displayId,
+        operation: request.operation,
+        observationId: request.observationId,
+        generation: request.generation,
+        ...(request.x !== undefined ? { x: request.x } : {}),
+        ...(request.y !== undefined ? { y: request.y } : {}),
+        ...(request.endX !== undefined ? { endX: request.endX } : {}),
+        ...(request.endY !== undefined ? { endY: request.endY } : {}),
+        ...(request.textLength !== undefined ? { textLength: request.textLength } : {}),
+      });
+    } else {
+      await turn.appendEvent("ComputerApprovalDecided", {
+        actionId: request.actionId,
+        callId: request.callId,
+        decision: event.decision.decision,
+      });
+      await checkpoint(options.diagnostics, {
+        type: "after-approval",
+        actionKind: "computer",
+        toolName: "computer",
+        callId: request.callId,
+        identity: request.actionId,
+        decision: event.decision.decision,
+      });
+    }
+    await options.onComputerApproval?.(event);
+  };
+  const recordComputer = async (event: ComputerEvent): Promise<void> => {
+    await recordComputerRunEvent(event);
+    if (event.type === "started" && event.environment === "ubuntu-x11-cua") nativeComputerAction = true;
+    if (nativeComputerAction && (event.type === "act_requested" || event.type === "verified" || event.type === "abstained" || event.type === "failed")) {
+      const actionId = event.type === "failed" ? undefined : event.actionId;
+      const actions = await turn.readComputerActions();
+      const current = actionId ? actions.find((action) => action.actionId === actionId) : actions.at(-1);
+      if (current) {
+        if (event.type === "act_requested" && current.status === "approved") {
+          const running: ComputerActionRecord = { ...current, status: "running", decision: "allow-once", startedAt: new Date().toISOString(), recordedAt: new Date().toISOString() };
+          await turn.writeComputerAction(running);
+          await turn.appendEvent("ComputerStarted", { actionId: running.actionId, callId: running.callId });
+        } else if (event.type === "verified" && current.status === "running") {
+          const terminal: ComputerActionRecord = event.success
+            ? { ...current, status: "completed", decision: "allow-once", summary: bounded(event.reason ?? "Native computer input completed and a fresh observation was captured.", 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() }
+            : { ...current, status: "ambiguous", decision: "allow-once", errorCode: "computer-ambiguous", errorMessage: bounded(event.reason ?? "The native adapter did not confirm the input outcome; the input was not retried.", 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() };
+          await turn.writeComputerAction(terminal);
+          await turn.appendEvent("ComputerCompleted", {
+            actionId: terminal.actionId,
+            callId: terminal.callId,
+            status: terminal.status,
+            errorCode: terminal.errorCode ?? null,
+            recovered: false,
+          });
+        } else if (event.type === "abstained" && current.status === "failed") {
+          await turn.appendEvent("ComputerCompleted", {
+            actionId: current.actionId,
+            callId: current.callId,
+            status: current.status,
+            errorCode: current.errorCode ?? null,
+            recovered: false,
+          });
+        } else if (event.type === "failed" && (current.status === "approved" || current.status === "running")) {
+          const terminal: ComputerActionRecord = current.status === "running"
+            ? { ...current, status: "ambiguous", decision: "allow-once", errorCode: "computer-ambiguous", errorMessage: bounded(event.reason, 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() }
+            : { ...current, status: "failed", errorCode: "computer-environment", errorMessage: bounded(event.reason, 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() };
+          await turn.writeComputerAction(terminal);
+          await turn.appendEvent("ComputerCompleted", { actionId: terminal.actionId, callId: terminal.callId, status: terminal.status, errorCode: terminal.errorCode ?? null, recovered: false });
+        }
+      }
+    }
+    await options.onComputer?.(event);
   };
   const recordMemory = async (event: MemoryEvent): Promise<void> => {
     const request = event.request;
@@ -1118,12 +1317,14 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
           maxOutputBytes: options.config.maxModelOutputBytes,
         });
         let emittedEvent = false;
+        let emittedExecutableEvent = false;
         try {
           await checkpoint(options.diagnostics, { type: "before-model-send", round, attempt, attemptId });
           for await (const event of options.provider.stream(roundRequest, abort.signal)) {
             emittedEvent = true;
             abort.markFirstEvent();
             if (event.type === "text") {
+              emittedExecutableEvent = true;
               const chunkBytes = Buffer.byteLength(event.text, "utf8");
               if (modelOutputBytes + chunkBytes > options.config.maxModelOutputBytes) {
                 throw new AnesuError("resource-limit", `The model response exceeded the ${options.config.maxModelOutputBytes}-byte limit.`);
@@ -1135,6 +1336,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
               options.onText?.(event.text);
               emit({ type: "text", text: event.text, round });
             } else if (event.type === "tool_call") {
+              emittedExecutableEvent = true;
               const callBytes = Buffer.byteLength(JSON.stringify(event.call), "utf8");
               if (modelOutputBytes + callBytes > options.config.maxModelOutputBytes) {
                 throw new AnesuError("resource-limit", `The model response exceeded the ${options.config.maxModelOutputBytes}-byte limit.`);
@@ -1146,7 +1348,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
               }
               callIds.add(event.call.callId);
               toolCalls.push(event.call);
-            } else {
+            } else if (event.type === "completed") {
               usage = event.usage ?? usage;
               providerRequestId = event.providerRequestId ?? providerRequestId;
               providerLatencyMs = event.latencyMs ?? providerLatencyMs;
@@ -1170,7 +1372,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
           break;
         } catch (error) {
           if (isRuntimeInterruptionError(error)) throw error;
-          const canRetry = !abort.signal.aborted && attempt < options.config.modelRetryAttempts && isRetryableModelFailure(error, emittedEvent);
+          const canRetry = !abort.signal.aborted && attempt < options.config.modelRetryAttempts && isRetryableModelFailure(error, emittedExecutableEvent);
           const reason = bounded(safeErrorMessage(error), 1_000);
           await turn.appendEvent("ModelAttemptCompleted", {
             round,
@@ -1246,6 +1448,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       }
 
       messages.push(modelMessageForAssistant(roundText.join(""), toolCalls));
+      let terminalToolExecuted = false;
       for (const call of toolCalls) {
         toolCallCount += 1;
         const processCallLimitReached = call.name === "run_command" && processCalls >= options.config.processCallsPerTurn;
@@ -1264,6 +1467,8 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
         });
         const toolDeadline = call.name === "run_command"
           ? Math.max(options.config.maxToolDurationMs, options.config.processDurationMs + options.config.processTerminationGraceMs + 1_000)
+          : call.name === "computer"
+            ? options.config.computerDurationMs
           : options.config.maxToolDurationMs;
         await checkpoint(options.diagnostics, { type: "before-tool-execution", round, toolName: call.name, callId: call.callId });
         const result = await executeToolWithDeadline(tools, call, toolDeadline, abort.signal, {
@@ -1291,6 +1496,14 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
               }
             : undefined,
           onBrowser: recordBrowser,
+          approveComputer: options.approveComputer
+            ? async (approvalRequest, signal) => {
+                await checkpoint(options.diagnostics, { type: "before-approval", actionKind: "computer", toolName: call.name, callId: call.callId, identity: approvalRequest.actionId });
+                return options.approveComputer!(approvalRequest, signal);
+              }
+            : undefined,
+          onComputerApproval: recordComputerApproval,
+          onComputer: recordComputer,
           approveMemory: options.approveMemory
             ? async (approvalRequest, signal) => {
                 await checkpoint(options.diagnostics, { type: "before-approval", actionKind: "memory", toolName: call.name, callId: call.callId, identity: approvalRequest.operationId });
@@ -1315,7 +1528,13 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
         });
         emit({ type: "tool_completed", round, callId: call.callId, name: call.name, ok: result.ok, summary: result.summary });
         messages.push({ role: "tool", content: result.content, toolCallId: call.callId, name: call.name });
+        if (result.terminal) {
+          response = result.summary;
+          terminalToolExecuted = true;
+          break;
+        }
       }
+      if (terminalToolExecuted) break;
       if (round === options.config.maxModelToolRounds) {
         throw new AnesuError("round-limit", `The model/tool loop reached the ${options.config.maxModelToolRounds}-round limit.`);
       }

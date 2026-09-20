@@ -38,14 +38,50 @@ approved command may access other host resources.
 
 The active browser slice adds an isolated local Chromium capability behind the same tool
 loop. It exposes browser session lifecycle, navigation, bounded snapshots with element
-references, waits/screenshots, approval-gated click/type/press actions, and controlled
+references, waits/screenshots, approval-gated click/type/press/select actions, and controlled
 upload/download artifacts. Browser URLs are checked for unsafe schemes, credentials,
 private targets, metadata addresses, and unsafe redirects.
+For simple natural requests such as “open a URL and click this named link,” the
+`browser_open_and_click` tool performs the bounded open, exact accessible-label match,
+approval, and click workflow in one turn.
 The browser adapter is Playwright-backed, but Playwright is not exposed to the model.
 Timeouts, cancellation, and browser crashes have distinct outcomes; a crashed session
 is quarantined and cleaned rather than reused. Personal browser profiles, remote browser
 providers, arbitrary JavaScript, and page-dialog decisions remain later slices in the
 active implementation plan.
+
+The computer tool is the first computer-use slice. It is opt-in and currently validates
+the dual decision paths against a visible, disposable browser environment: the
+traditional path selects from a bounded visual observation, while the TypeSafe/Jev path
+selects an Anesu-owned `operation + target` action from the current browser snapshot.
+Both paths share approval, execution, freshness, and post-action verification. An
+open-only computer request can now open one user-requested public URL through the
+managed browser policy and return a fresh-snapshot `opened` result without forcing the
+local fixture action. Interactive URL goals remain bounded and application-specific
+when independent success verification is unavailable. The browser computer action space
+also supports explicitly requested common keypresses
+such as Enter through the same approval boundary; the model cannot invent a key name.
+An explicit Ubuntu/X11 profile also connects the traditional path to the installed CUA
+Driver SDK for one bounded foreground click and a fresh desktop observation; it never
+silently attaches to the operator's personal display.
+
+The native environment foundation is now kept separately in
+[`src/computer/`](src/computer/README.md). Anesu pins CUA Driver's TypeScript SDK and
+has a fake-host-tested Ubuntu/X11 adapter with named sessions, the visible CUA agent
+cursor, bounded observations, and stale/duplicate-click protection. It can be
+selected explicitly in normal chat with the Ubuntu/X11 environment setting; the
+default remains the visible browser profile. The current native slice supports
+traditional vision-model and TypeSafe/Jev accessibility actions, plus a native
+shadow-only compare mode that executes at most one agreed click. All paths share TUI
+approval, bounded multi-step re-observation, durable run-level evidence, and restart
+recovery without replay. A disposable Xephyr/Xvfb launcher is included. Optional
+native screenshots can be retained as bounded managed artifacts with
+`ANESU_COMPUTER_ARTIFACTS_ENABLED=true`; raw provider bodies, arbitrary-application
+goal verification, and OCR/visual segmentation remain separate work.
+Traditional or compare mode also requires
+`ANESU_COMPUTER_TRADITIONAL_VISION=true`, an explicit confirmation that the selected
+OpenRouter model accepts image input; otherwise configuration fails before a
+screenshot is sent.
 
 The current memory slice adds durable, inspectable user, workspace, and dated daily
 notes under the state directory. `memory_search` and `memory_get` are bounded read-only
@@ -80,7 +116,9 @@ The command creates a new session unless `--session <session-id>` is supplied. S
 The interactive terminal opens as a compact agent console: a branded context panel shows
 the session, model, workspace, evidence location, and actual registered tools; the status
 ribbon and activity lane show factual turn/tool state; and the composer has a distinct
-prompt. Type `/help` for commands and `/memory` for bounded memory status. Workspace,
+prompt. Type `/help` for commands, `/memory` for bounded memory status, and `/computer`
+to inspect the selected computer environment and native-host readiness without starting
+CUA. Workspace,
 process, browser, and memory changes use the same review panel with explicit approve,
 deny, details, and cancel choices; approval defaults to the safe deny selection. A line
 ending in `\\` continues into a multiline prompt. Ctrl-C cancels an active turn or

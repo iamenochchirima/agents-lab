@@ -68,6 +68,7 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.provider, "deterministic");
   assert.equal(deterministic.model, "deterministic/echo");
   assert.equal(deterministic.timeoutMs, 30_000);
+  assert.equal(deterministic.computerDurationMs, 30_000);
   assert.equal(deterministic.approvalTimeoutMs, 120_000);
   assert.equal(deterministic.modelRetryAttempts, 2);
   assert.equal(deterministic.modelRetryBackoffMs, 250);
@@ -77,10 +78,12 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
     ANESU_MAX_MODEL_REQUEST_BYTES: "1234",
     ANESU_MAX_MODEL_OUTPUT_BYTES: "5678",
     ANESU_MAX_PATCH_SET_BYTES: "777",
+    ANESU_COMPUTER_DURATION_MS: "45000",
   });
   assert.equal(configured.maxModelRequestBytes, 1234);
   assert.equal(configured.maxModelOutputBytes, 5678);
   assert.equal(configured.maxPatchSetBytes, 777);
+  assert.equal(configured.computerDurationMs, 45_000);
   assert.equal(deterministic.processMode, "approval");
   assert.equal(deterministic.processDurationMs, 60_000);
   assert.equal(deterministic.processCallsPerTurn, 4);
@@ -92,6 +95,14 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.browserProfileRetentionMs, 86_400_000);
   assert.equal(deterministic.browserArtifactRetentionMs, 604_800_000);
   assert.equal(deterministic.browserCleanupMaxEntries, 100);
+  assert.equal(deterministic.computerRunRetentionMs, 604_800_000);
+  assert.equal(deterministic.computerCleanupMaxEntries, 100);
+  assert.equal(deterministic.computerArtifactsEnabled, false);
+  assert.equal(deterministic.computerArtifactRetentionMs, 604_800_000);
+  assert.equal(deterministic.computerArtifactCleanupMaxEntries, 100);
+  assert.equal(deterministic.computerArtifactMaxBytes, 4 * 1024 * 1024);
+  assert.equal(deterministic.computerArtifactMaxWidth, 1_920);
+  assert.equal(deterministic.computerArtifactMaxHeight, 1_080);
   assert.equal(deterministic.browserScreenshotMaxWidth, 1_920);
   assert.equal(deterministic.browserScreenshotMaxHeight, 1_080);
   assert.equal(deterministic.memoryEvidenceRetentionDays, 30);
@@ -103,6 +114,26 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   });
   assert.equal(configuredMemoryEvidence.memoryEvidenceRetentionDays, 14);
   assert.equal(configuredMemoryEvidence.memoryEvidenceMaxEntries, 250);
+  const configuredComputerEvidence = loadConfig({ stateDir: tempDirectory() }, {
+    ANESU_COMPUTER_RUN_RETENTION_MS: "1234",
+    ANESU_COMPUTER_CLEANUP_MAX_ENTRIES: "7",
+  });
+  assert.equal(configuredComputerEvidence.computerRunRetentionMs, 1234);
+  assert.equal(configuredComputerEvidence.computerCleanupMaxEntries, 7);
+  const configuredComputerArtifacts = loadConfig({ stateDir: tempDirectory() }, {
+    ANESU_COMPUTER_ARTIFACTS_ENABLED: "true",
+    ANESU_COMPUTER_ARTIFACT_RETENTION_MS: "1234",
+    ANESU_COMPUTER_ARTIFACT_CLEANUP_MAX_ENTRIES: "8",
+    ANESU_COMPUTER_ARTIFACT_MAX_BYTES: "2048",
+    ANESU_COMPUTER_ARTIFACT_MAX_WIDTH: "800",
+    ANESU_COMPUTER_ARTIFACT_MAX_HEIGHT: "600",
+  });
+  assert.equal(configuredComputerArtifacts.computerArtifactsEnabled, true);
+  assert.equal(configuredComputerArtifacts.computerArtifactRetentionMs, 1234);
+  assert.equal(configuredComputerArtifacts.computerArtifactCleanupMaxEntries, 8);
+  assert.equal(configuredComputerArtifacts.computerArtifactMaxBytes, 2048);
+  assert.equal(configuredComputerArtifacts.computerArtifactMaxWidth, 800);
+  assert.equal(configuredComputerArtifacts.computerArtifactMaxHeight, 600);
   assert.equal(disabledBrowser.browserEnabled, false);
   assert.throws(
     () => loadConfig({ stateDir: tempDirectory() }, { ANESU_BROWSER_ENABLED: "sometimes" }),
@@ -1305,6 +1336,37 @@ test("turn retries a provider failure before the first event and records the ret
   assert.notEqual(attempts[0]?.payload.attemptId, attempts[1]?.payload.attemptId);
 });
 
+test("turn retries a provider failure after only a non-executable stream start", async () => {
+  const stateDir = tempDirectory();
+  const session = await openSession(stateDir);
+  let calls = 0;
+  const provider = {
+    provider: "openrouter" as const,
+    model: "openrouter/retry-after-stream-start",
+    async *stream(): AsyncIterable<ModelStreamEvent> {
+      calls += 1;
+      if (calls === 1) {
+        yield { type: "stream_started" };
+        throw new ModelProviderError("temporary upstream capacity failure", { code: "provider", retryable: true });
+      }
+      yield { type: "text", text: "recovered after stream start" };
+      yield { type: "completed" };
+    },
+  };
+
+  const result = await runTurn({
+    session,
+    provider,
+    config: config(stateDir, { firstEventTimeoutMs: 1_000, modelRetryAttempts: 2, modelRetryBackoffMs: 0 }),
+    userPrompt: "retry after a non-executable stream start",
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.assistantText, "recovered after stream start");
+  assert.equal(calls, 2);
+  assert.equal(result.metrics?.modelRequestCount, 2);
+});
+
 test("cancellation during model retry backoff does not dispatch another attempt", async () => {
   const stateDir = tempDirectory();
   const session = await openSession(stateDir);
@@ -2341,11 +2403,12 @@ test("OpenRouter adapter parses streamed text and usage without exposing credent
   };
   const events = [];
   for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
-  assert.deepEqual(events[0], { type: "text", text: "hello" });
-  assert.equal(events[1]?.type, "completed");
-  assert.deepEqual(events[1]?.usage, { inputTokens: 2, outputTokens: 1, totalTokens: 3 });
-  assert.equal(typeof events[1]?.latencyMs, "number");
-  assert.ok((events[1]?.latencyMs ?? -1) >= 0);
+  assert.deepEqual(events[0], { type: "stream_started" });
+  assert.deepEqual(events[1], { type: "text", text: "hello" });
+  assert.equal(events[2]?.type, "completed");
+  assert.deepEqual(events[2]?.usage, { inputTokens: 2, outputTokens: 1, totalTokens: 3 });
+  assert.equal(typeof events[2]?.latencyMs, "number");
+  assert.ok((events[2]?.latencyMs ?? -1) >= 0);
   assert.equal(requestHeaders?.get("authorization"), "Bearer stream-secret");
 });
 
@@ -2404,15 +2467,52 @@ test("OpenRouter adapter normalizes streamed tool calls and serializes the provi
   };
   const events = [];
   for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
-  assert.deepEqual(events[0], { type: "tool_call", call: { callId: "call_1", name: "read_file", argumentsJson: '{"path":"README.txt"}' } });
-  assert.equal(events[1]?.type, "completed");
-  assert.equal(events[1]?.usage, undefined);
-  assert.equal(typeof events[1]?.latencyMs, "number");
+  assert.deepEqual(events[0], { type: "stream_started" });
+  assert.deepEqual(events[1], { type: "tool_call", call: { callId: "call_1", name: "read_file", argumentsJson: '{"path":"README.txt"}' } });
+  assert.equal(events[2]?.type, "completed");
+  assert.equal(events[2]?.usage, undefined);
+  assert.equal(typeof events[2]?.latencyMs, "number");
   assert.deepEqual(requestBody?.tools, [{ type: "function", function: { name: "read_file", description: "Read a file.", parameters: { type: "object" } } }]);
   assert.deepEqual(requestBody?.messages, [
     { role: "assistant", content: null, tool_calls: [{ id: "call_0", type: "function", function: { name: "list_directory", arguments: "{}" } }] },
     { role: "tool", content: "{\"entries\":[]}", tool_call_id: "call_0", name: "list_directory" },
   ]);
+});
+
+test("OpenRouter adapter reports a stream start before a slow buffered tool call completes", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_slow","function":{"name":"browser_open","arguments":"{\\"url\\":\\"https://kasitek.co.za\\"}"}}]}}]}\n\n'));
+      setTimeout(() => {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      }, 80);
+    },
+  });
+  const provider = new OpenRouterModelProvider("openai/example", "slow-stream-secret", async () => new Response(stream, { status: 200 }));
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_test"),
+    turnId: asTurnId("turn_test"),
+    provider: "openrouter",
+    model: "openai/example",
+    messages: [{ role: "user", content: "Open kasitek.co.za." }],
+  };
+  const iterator = provider.stream(request, new AbortController().signal)[Symbol.asyncIterator]();
+  const first = await Promise.race([
+    iterator.next(),
+    new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("stream start was not surfaced promptly")), 40)),
+  ]);
+  assert.deepEqual(first, { value: { type: "stream_started" }, done: false });
+  const events: ModelStreamEvent[] = [];
+  if (!first.done) events.push(first.value);
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) break;
+    events.push(next.value);
+  }
+  assert.deepEqual(events.at(-2), { type: "tool_call", call: { callId: "call_slow", name: "browser_open", argumentsJson: '{"url":"https://kasitek.co.za"}' } });
+  assert.equal(events.at(-1)?.type, "completed");
 });
 
 test("OpenRouter adapter rejects a response stream above its configured byte limit", async () => {
@@ -2456,6 +2556,23 @@ test("OpenRouter adapter classifies incomplete streams and rate limits", async (
   await assert.rejects(
     async () => { for await (const _event of incomplete.stream(request, new AbortController().signal)) void _event; },
     (error: unknown) => error instanceof AnesuError && error.code === "provider-incomplete",
+  );
+  const upstreamCapacity = new OpenRouterModelProvider("openai/example", "secret", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data: {"error":{"code":502,"message":"Upstream error from Nvidia: ResourceExhausted: Worker local total request limit reached (16/16)"}}\n\n'));
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200 });
+  });
+  await assert.rejects(
+    async () => { for await (const _event of upstreamCapacity.stream(request, new AbortController().signal)) void _event; },
+    (error: unknown) => error instanceof ModelProviderError
+      && error.code === "provider"
+      && error.retryable === true
+      && error.message.includes("ResourceExhausted")
+      && !error.message.includes("secret"),
   );
   const rateLimited = new OpenRouterModelProvider("openai/example", "secret", async () => new Response("slow down", { status: 429 }));
   await assert.rejects(
@@ -2704,7 +2821,7 @@ test("OpenRouter adapter classifies stream disconnects without leaking raw trans
     async () => { for await (const event of disconnectedAfterOutput.stream(request, new AbortController().signal)) events.push(event); },
     (error: unknown) => error instanceof ModelProviderError && error.code === "provider" && error.retryable === false,
   );
-  assert.deepEqual(events, [{ type: "text", text: "partial" }]);
+  assert.deepEqual(events, [{ type: "stream_started" }, { type: "text", text: "partial" }]);
 });
 
 test("non-interactive CLI runs against the deterministic local provider", async () => {

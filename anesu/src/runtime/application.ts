@@ -18,6 +18,12 @@ import type { ContextSnapshot } from "../context/context.js";
 import type { MutationApproval, MutationEvent } from "../workspace/mutation.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
+import type { ComputerEvent } from "../computer/runner.js";
+import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest, ComputerEnvironmentKind, ComputerEnvironmentReadiness } from "../computer/contracts.js";
+import type { ComputerStrategy } from "../computer/runner.js";
+import { CuaEnvironment, inspectCuaReadiness } from "../computer/cua-driver.js";
+import { ComputerArtifactStore } from "../computer/artifacts.js";
+import type { ComputerRunSummary } from "../computer/inspection.js";
 import type { MemoryApproval, MemoryEvent, MemorySearchEvidence, MemoryStatus } from "../memory/contracts.js";
 import { MemoryStore, type MemoryEvidenceMaintenanceResult } from "../memory/store.js";
 import { SkillRegistry, type SkillCatalog } from "../skills/index.js";
@@ -33,18 +39,30 @@ export interface ChatApplication {
   readonly workspaceRoot: string;
   readonly evidenceDirectory: string;
   readonly toolNames: readonly string[];
+  readonly computer: ComputerUiStatus;
   readonly readMemoryStatus?: () => Promise<MemoryStatus>;
   readonly readContextSnapshot: () => Promise<ContextSnapshot | undefined>;
   readonly maintainMemoryEvidence?: () => Promise<MemoryEvidenceMaintenanceResult>;
   readonly readSkills?: () => Promise<SkillCatalog>;
+  readonly readComputerRuns?: () => Promise<readonly ComputerRunSummary[]>;
   recoverInterruptedTurns(): Promise<readonly TurnResult[]>;
   readTranscript(): Promise<readonly TranscriptMessage[]>;
-  runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void): Promise<TurnResult>;
+  runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void, onComputer?: (event: ComputerEvent) => void, approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>, onComputerApproval?: (event: ComputerApprovalEvent) => void): Promise<TurnResult>;
   close(): Promise<void>;
+}
+
+export interface ComputerUiStatus {
+  readonly enabled: boolean;
+  readonly environment?: ComputerEnvironmentKind;
+  readonly strategy?: ComputerStrategy;
+  readonly model?: string;
+  readonly isolated?: boolean;
+  readonly visible?: boolean;
+  readonly readiness?: ComputerEnvironmentReadiness;
 }
 export async function openChatApplication(config: AppConfig, requestedSessionId?: string): Promise<ChatApplication> {
   const session = await SessionStore.open(config.stateDir, requestedSessionId, {
-    redactionSecrets: config.openRouterApiKey ? [config.openRouterApiKey] : [],
+    redactionSecrets: [config.openRouterApiKey ?? "", config.computerOpenRouterApiKey ?? "", config.typeSafeApiKey ?? ""].filter(Boolean),
   });
   const lock: SessionLock = await session.acquireLock();
   let memory: MemoryStore | undefined;
@@ -86,6 +104,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       : undefined;
     const browserUrlPolicy = new BrowserUrlPolicy({ allowedLocalHosts: config.browserAllowedLocalHosts });
     const browserAdapter = new PlaywrightBrowserAdapter({
+      headless: config.computerEnabled && config.computerEnvironment === "browser" ? !config.computerBrowserVisible : true,
       actionTimeoutMs: config.browserActionTimeoutMs,
       snapshotMaxChars: config.browserSnapshotMaxChars,
       maxSnapshotReferences: config.browserMaxSnapshotReferences,
@@ -104,6 +123,19 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
     await browserArtifacts.cleanupExpired({
       maxAgeMs: config.browserArtifactRetentionMs,
       maxEntries: config.browserCleanupMaxEntries,
+    });
+    await session.cleanupComputerRuns({
+      maxAgeMs: config.computerRunRetentionMs,
+      maxEntries: config.computerCleanupMaxEntries,
+    });
+    const computerArtifacts = new ComputerArtifactStore(path.join(config.stateDir, "computer-artifacts"), {
+      maxBytes: config.computerArtifactMaxBytes,
+      maxWidth: config.computerArtifactMaxWidth,
+      maxHeight: config.computerArtifactMaxHeight,
+    });
+    await computerArtifacts.cleanupExpired({
+      maxAgeMs: config.computerArtifactRetentionMs,
+      maxEntries: config.computerArtifactCleanupMaxEntries,
     });
     const browserSessions = new BrowserSessionManager(browserAdapter, {
       maxTabs: config.browserMaxTabs,
@@ -132,9 +164,54 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
           maxOutputBytes: config.maxToolOutputBytes,
           maxWaitMs: config.browserWaitMaxMs,
           resolveUpload: browserFilePolicy.resolveUpload.bind(browserFilePolicy),
-          redactionSecrets: [config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""],
+          redactionSecrets: [config.openRouterApiKey ?? "", config.computerOpenRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? "", config.typeSafeApiKey ?? process.env.TYPESAFE_API_KEY ?? ""].filter(Boolean),
         }
       : undefined;
+    const computerToolOptions = !config.computerEnabled
+      ? undefined
+      : config.computerEnvironment === "browser" && browserToolOptions
+        ? {
+            environment: "browser" as const,
+            browser: browserToolOptions,
+            strategy: config.computerStrategy,
+            openRouterApiKey: config.computerOpenRouterApiKey,
+            traditionalModel: config.computerTraditionalModel,
+            traditionalVision: config.computerTraditionalVision,
+            typeSafeApiKey: config.typeSafeApiKey,
+            typeSafeModel: config.computerTypesafeModel,
+            maxActions: config.computerMaxActions,
+          }
+        : config.computerEnvironment === "ubuntu-x11-cua"
+          ? {
+              environment: "ubuntu-x11-cua" as const,
+              strategy: config.computerStrategy,
+              openRouterApiKey: config.computerOpenRouterApiKey,
+              traditionalModel: config.computerTraditionalModel,
+              typeSafeApiKey: config.typeSafeApiKey,
+              typeSafeModel: config.computerTypesafeModel,
+              maxActions: config.computerMaxActions,
+              native: {
+                displayId: config.computerCuaDisplayId,
+                artifactDirectory: path.join(config.stateDir, "computer-artifacts"),
+                artifactStore: computerArtifacts,
+                captureArtifacts: config.computerArtifactsEnabled,
+                strategy: config.computerStrategy,
+                openRouterApiKey: config.computerOpenRouterApiKey,
+                traditionalModel: config.computerTraditionalModel,
+                traditionalVision: config.computerTraditionalVision,
+                typeSafeApiKey: config.typeSafeApiKey,
+                typeSafeModel: config.computerTypesafeModel,
+                maxActions: config.computerMaxActions,
+                maxOutputBytes: config.maxToolOutputBytes,
+                createEnvironment: (screenshotPath: string) => new CuaEnvironment({
+                  screenshotPath,
+                  captureScope: config.computerStrategy === "typesafe" ? "window" : "desktop",
+                  displayId: config.computerCuaDisplayId,
+                  environment: { ...process.env, ANESU_COMPUTER_CUA_ISOLATED_DISPLAY: config.computerCuaIsolatedDisplay ? "true" : "false" },
+                }),
+              },
+            }
+          : undefined;
     const tools = new ToolRegistry(
       workspace,
       config.maxToolOutputBytes,
@@ -142,8 +219,30 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       browserToolOptions,
       memory ? { store: memory, maxResults: config.memoryMaxResults, maxBootstrapChars: config.memoryBootstrapMaxChars } : undefined,
       { registry: skills },
+      computerToolOptions,
     );
     const activeMemory = memory;
+    const computer: ComputerUiStatus = !config.computerEnabled
+      ? { enabled: false }
+      : config.computerEnvironment === "ubuntu-x11-cua"
+        ? {
+            enabled: true,
+            environment: config.computerEnvironment,
+            strategy: config.computerStrategy,
+            model: config.computerStrategy === "typesafe" ? config.computerTypesafeModel : config.computerTraditionalModel,
+            isolated: config.computerCuaIsolatedDisplay,
+            readiness: inspectCuaReadiness({
+              environment: { ...process.env, ANESU_COMPUTER_CUA_ISOLATED_DISPLAY: config.computerCuaIsolatedDisplay ? "true" : "false" },
+            }),
+          }
+        : {
+            enabled: true,
+            environment: config.computerEnvironment,
+            strategy: config.computerStrategy,
+            model: config.computerStrategy === "typesafe" ? config.computerTypesafeModel : config.computerTraditionalModel,
+            visible: config.computerBrowserVisible,
+            readiness: { kind: "browser", available: true, isolated: false },
+          };
     return {
       sessionId: session.metadata.sessionId,
       modelLabel: provider.model,
@@ -154,13 +253,15 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       workspaceRoot: config.workspaceRoot,
       evidenceDirectory: session.sessionDirectory,
       toolNames: tools.definitions.map((definition) => definition.name),
+      computer,
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
       readContextSnapshot: () => session.readLatestContextSnapshot(),
       maintainMemoryEvidence: activeMemory ? () => activeMemory.maintainEvidence() : undefined,
       readSkills: () => skills.list(),
+      readComputerRuns: () => session.readComputerRunSummaries({ limit: 20 }),
       recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess, activeMemory ? (record) => activeMemory.reconcileAction(record) : undefined),
       readTranscript: () => session.readTranscript(),
-      runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch }),
+      runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch, onComputer, approveComputer, onComputerApproval) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveComputer, onComputerApproval, approveMemory, onMemory, onMemorySearch, onComputer }),
       close: async () => {
         try {
           await browserSessions.closeAll();

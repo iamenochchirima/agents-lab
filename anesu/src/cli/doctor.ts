@@ -4,6 +4,7 @@ import { createModelProvider } from "../models/factory.js";
 import { asSessionId, asTurnId, type ModelRequest } from "../runtime/contracts.js";
 import { AnesuError, safeErrorMessage } from "../runtime/errors.js";
 import { Workspace } from "../workspace/workspace.js";
+import { inspectCuaReadiness } from "../computer/cua-driver.js";
 
 interface DoctorResult {
   readonly ok: boolean;
@@ -100,6 +101,18 @@ export async function runDoctor(config: AppConfig, output: Writable): Promise<bo
   output.write(`browser screenshots: ${config.browserScreenshotMaxBytes} bytes, ${config.browserScreenshotMaxWidth}x${config.browserScreenshotMaxHeight} pixels\n`);
   output.write(`browser file artifacts: ${config.browserUploadMaxBytes} upload bytes, ${config.browserDownloadMaxBytes} download bytes\n`);
   output.write(`browser local hosts: ${config.browserAllowedLocalHosts.join(",") || "none"}\n`);
+  output.write(`computer: ${config.computerEnabled ? `${config.computerEnvironment}/${config.computerStrategy}` : "disabled"}\n`);
+  output.write(`computer decision/action deadline: ${config.computerDurationMs}ms\n`);
+  output.write(`computer run retention: ${config.computerRunRetentionMs}ms\n`);
+  output.write(`computer cleanup maximum: ${config.computerCleanupMaxEntries} entries\n`);
+  output.write(`computer observation artifacts: ${config.computerArtifactsEnabled ? "enabled" : "disabled"}\n`);
+  output.write(`computer artifact retention: ${config.computerArtifactRetentionMs}ms\n`);
+  output.write(`computer artifact cleanup maximum: ${config.computerArtifactCleanupMaxEntries} entries\n`);
+  output.write(`computer artifact bounds: ${config.computerArtifactMaxBytes} bytes, ${config.computerArtifactMaxWidth}x${config.computerArtifactMaxHeight} pixels\n`);
+  if (config.computerEnabled && config.computerEnvironment === "ubuntu-x11-cua") {
+    const readiness = inspectCuaReadiness();
+    output.write(`computer CUA display: ${readiness.available ? `ready (${readiness.display})` : `unavailable (${readiness.reason ?? "unknown"})`}\n`);
+  }
   try {
     const result = await probeProvider(config);
     if (!result.ok) {

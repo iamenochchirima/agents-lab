@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readdir, stat } from "node:fs/promises";
+import { lstat, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   asSessionId,
@@ -37,8 +37,10 @@ import { assertMutationTransition, type WorkspaceMutationRecord } from "../works
 import { assertProcessTransition, type ProcessExecutionRecord } from "../process/process.js";
 import { assertBrowserActionTransition, type BrowserActionRecord } from "../browser/records.js";
 import type { BrowserArtifactInfo } from "../browser/artifacts.js";
+import { assertComputerActionTransition, assertComputerRunEvent, assertComputerRunTransition, type ComputerActionRecord, type ComputerRunEventInput, type ComputerRunEventRecord, type ComputerRunRecord } from "../computer/records.js";
 import { assertMemoryActionTransition, type MemoryActionRecord, type MemorySearchEvidence } from "../memory/contracts.js";
 import { contextCompactionRevision, contextSourceRevision, type ContextSnapshot } from "../context/context.js";
+import { emptyComputerRunRetentionResult, summarizeComputerRunEvent, type ComputerRunRetentionOptions, type ComputerRunRetentionResult, type ComputerRunSummary } from "../computer/inspection.js";
 
 const NON_TERMINAL_STATES: readonly TurnStatus[] = ["submitting", "streaming"];
 
@@ -373,6 +375,10 @@ const LIFECYCLE_EVENT_TYPES: ReadonlySet<LifecycleEventType> = new Set([
   "BrowserStarted",
   "BrowserCompleted",
   "BrowserArtifactCreated",
+  "ComputerPrepared",
+  "ComputerApprovalDecided",
+  "ComputerStarted",
+  "ComputerCompleted",
   "MemoryBootstrapLoaded",
   "MemorySearched",
   "MemoryPrepared",
@@ -426,6 +432,10 @@ const ACTION_LIFECYCLE_IDENTITY_FIELDS: Readonly<Partial<Record<LifecycleEventTy
   BrowserApprovalDecided: "actionId",
   BrowserStarted: "actionId",
   BrowserCompleted: "actionId",
+  ComputerPrepared: "actionId",
+  ComputerApprovalDecided: "actionId",
+  ComputerStarted: "actionId",
+  ComputerCompleted: "actionId",
   MemoryPrepared: "operationId",
   MemoryApprovalDecided: "operationId",
   MemoryCommitted: "operationId",
@@ -448,6 +458,13 @@ const ACTION_LIFECYCLE_PREVIOUS: Readonly<Partial<Record<LifecycleEventType, rea
   // Recovery and denied approvals can produce a terminal browser observation without
   // a started event; the action must still have been prepared first.
   BrowserCompleted: ["BrowserPrepared", "BrowserApprovalDecided", "BrowserStarted"],
+  ComputerPrepared: [],
+  ComputerApprovalDecided: ["ComputerPrepared"],
+  ComputerStarted: ["ComputerApprovalDecided"],
+  // Recovery and denied approvals can close a native action without dispatching
+  // input; a started action may also complete without a separate verification
+  // event when the adapter returns a terminal result.
+  ComputerCompleted: ["ComputerPrepared", "ComputerApprovalDecided", "ComputerStarted"],
   MemoryPrepared: [],
   MemoryApprovalDecided: ["MemoryPrepared"],
   // A durable memory commit may be recovered after its approval or terminal write
@@ -482,7 +499,7 @@ function assertActionLifecycleEventOrder(
   const allowedPrevious = ACTION_LIFECYCLE_PREVIOUS[type] ?? [];
   if (previous === undefined) {
     const recoveredTerminal = payload.recovered === true
-      && (type === "ProcessCompleted" || type === "BrowserCompleted" || type === "MemoryCommitted" || type === "MemoryForgotten" || type === "MemoryFailed");
+      && (type === "ProcessCompleted" || type === "BrowserCompleted" || type === "ComputerCompleted" || type === "MemoryCommitted" || type === "MemoryForgotten" || type === "MemoryFailed");
     if (recoveredTerminal) return;
     if (allowedPrevious.length > 0) {
       throw new AnesuError("persistence", `${type} for '${identity}' cannot be recorded before ${allowedPrevious.join(" or ")}.`);
@@ -921,6 +938,8 @@ function assertBrowserActionRecord(
   const validAction = candidate.action === "click"
     || candidate.action === "type"
     || candidate.action === "press"
+    || candidate.action === "select"
+    || candidate.action === "scroll"
     || candidate.action === "upload"
     || candidate.action === "download"
     || candidate.action === "dialog";
@@ -963,6 +982,11 @@ function assertBrowserActionRecord(
       && typeof diagnostic.message === "string");
   const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
   const validNonNegativeInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+  const validScrollDirection = candidate.direction === undefined
+    || candidate.direction === "up"
+    || candidate.direction === "down"
+    || candidate.direction === "left"
+    || candidate.direction === "right";
   if (typeof candidate.sessionId !== "string" || candidate.sessionId.trim().length === 0
     || typeof candidate.callId !== "string" || candidate.callId.trim().length === 0
     || typeof candidate.tabId !== "string" || candidate.tabId.trim().length === 0
@@ -971,6 +995,11 @@ function assertBrowserActionRecord(
     || typeof candidate.documentId !== "string" || candidate.documentId.trim().length === 0
     || (candidate.text !== undefined && typeof candidate.text !== "string")
     || (candidate.key !== undefined && typeof candidate.key !== "string")
+    || (candidate.value !== undefined && (typeof candidate.value !== "string" || candidate.value.length === 0 || candidate.value.length > 256))
+    || (candidate.action === "select" && (typeof candidate.value !== "string" || candidate.value.length === 0 || candidate.value.length > 256))
+    || !validScrollDirection
+    || (candidate.amount !== undefined && (!Number.isSafeInteger(candidate.amount) || (candidate.amount as number) < 1 || (candidate.amount as number) > 2_000))
+    || (candidate.action === "scroll" && (!validScrollDirection || !Number.isSafeInteger(candidate.amount) || (candidate.amount as number) < 1 || (candidate.amount as number) > 2_000))
     || (candidate.path !== undefined && (typeof candidate.path !== "string" || candidate.path.trim().length === 0))
     || (candidate.maxBytes !== undefined && !validNonNegativeInteger(candidate.maxBytes))
     || typeof candidate.actionHash !== "string" || candidate.actionHash.trim().length === 0
@@ -990,6 +1019,111 @@ function assertBrowserActionRecord(
     || typeof candidate.recordedAt !== "string" || candidate.recordedAt.trim().length === 0
     || (candidate.status === "running" && (typeof candidate.startedAt !== "string" || candidate.startedAt.trim().length === 0))) {
     throw new AnesuError("persistence", `Browser action '${String(candidate.actionId)}' has an invalid durable record.`);
+  }
+}
+
+function assertComputerActionRecord(
+  record: unknown,
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is ComputerActionRecord {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Computer action", "actionId");
+  const candidate = record as Record<string, unknown>;
+  const validNonEmptyString = (value: unknown): boolean => typeof value === "string" && value.trim().length > 0;
+  const validCoordinate = (value: unknown): boolean => value === undefined || (typeof value === "number" && Number.isFinite(value));
+  const validStatus = candidate.status === "prepared"
+    || candidate.status === "approved"
+    || candidate.status === "running"
+    || candidate.status === "completed"
+    || candidate.status === "failed"
+    || candidate.status === "cancelled"
+    || candidate.status === "ambiguous";
+  const validOperation = candidate.operation === "click"
+    || candidate.operation === "move"
+    || candidate.operation === "type"
+    || candidate.operation === "press"
+    || candidate.operation === "scroll"
+    || candidate.operation === "drag";
+  const validDirection = candidate.direction === undefined
+    || candidate.direction === "up"
+    || candidate.direction === "down"
+    || candidate.direction === "left"
+    || candidate.direction === "right";
+  const validErrorCode = candidate.errorCode === undefined
+    || candidate.errorCode === "computer-approval-denied"
+    || candidate.errorCode === "computer-approval-unavailable"
+    || candidate.errorCode === "computer-ambiguous"
+    || candidate.errorCode === "computer-blocked"
+    || candidate.errorCode === "computer-cancelled"
+    || candidate.errorCode === "computer-decision"
+    || candidate.errorCode === "computer-environment"
+    || candidate.errorCode === "computer-verification";
+  const validModifiers = candidate.modifiers === undefined
+    || (Array.isArray(candidate.modifiers)
+      && candidate.modifiers.length <= 8
+      && candidate.modifiers.every((value) => validNonEmptyString(value) && (value as string).length <= 32));
+  const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
+  if (candidate.environment !== "ubuntu-x11-cua"
+    || !validNonEmptyString(candidate.callId)
+    || !validNonEmptyString(candidate.sessionId)
+    || !validNonEmptyString(candidate.displayId)
+    || !validOperation
+    || !validNonEmptyString(candidate.observationId)
+    || !Number.isSafeInteger(candidate.generation) || (candidate.generation as number) < 0
+    || !validCoordinate(candidate.x) || !validCoordinate(candidate.y)
+    || !validCoordinate(candidate.endX) || !validCoordinate(candidate.endY)
+    || (candidate.textLength !== undefined && (!validPositiveInteger(candidate.textLength) || (candidate.textLength as number) > 1_024))
+    || (candidate.textPreview !== undefined && (typeof candidate.textPreview !== "string" || candidate.textPreview.length > 160))
+    || (candidate.key !== undefined && !validNonEmptyString(candidate.key))
+    || !validModifiers
+    || !validDirection
+    || (candidate.amount !== undefined && (!validPositiveInteger(candidate.amount) || (candidate.amount as number) > 100))
+    || (candidate.targetLabel !== undefined && (typeof candidate.targetLabel !== "string" || candidate.targetLabel.trim().length === 0 || candidate.targetLabel.length > 512))
+    || (candidate.targetRole !== undefined && (typeof candidate.targetRole !== "string" || candidate.targetRole.trim().length === 0 || candidate.targetRole.length > 64))
+    || (candidate.targetSource !== undefined && candidate.targetSource !== "accessibility" && candidate.targetSource !== "screen")
+    || (candidate.approvalTimeoutMs !== undefined && !validPositiveInteger(candidate.approvalTimeoutMs))
+    || !validStatus
+    || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
+    || (candidate.summary !== undefined && typeof candidate.summary !== "string")
+    || !validErrorCode
+    || (candidate.errorMessage !== undefined && typeof candidate.errorMessage !== "string")
+    || (candidate.startedAt !== undefined && !validNonEmptyString(candidate.startedAt))
+    || (candidate.finishedAt !== undefined && !validNonEmptyString(candidate.finishedAt))
+    || !validNonEmptyString(candidate.recordedAt)
+    || (candidate.status === "running" && !validNonEmptyString(candidate.startedAt))) {
+    throw new AnesuError("persistence", `Computer action '${String(candidate.actionId)}' has an invalid durable record.`);
+  }
+}
+
+function assertComputerRunRecord(
+  record: unknown,
+  expectedSessionId: SessionMetadata["sessionId"],
+  expectedTurnId: TurnRecord["turnId"],
+  expectedCorrelationId: CorrelationId,
+): asserts record is ComputerRunRecord {
+  assertTurnBoundRecord(record, expectedTurnId, expectedCorrelationId, "Computer run", "runId");
+  const candidate = record as Record<string, unknown>;
+  const validString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+  const validStatus = candidate.status === "running"
+    || candidate.status === "completed"
+    || candidate.status === "failed"
+    || candidate.status === "outcome-unknown";
+  const validStrategy = candidate.strategy === "traditional" || candidate.strategy === "typesafe" || candidate.strategy === "compare";
+  if (candidate.sessionId !== expectedSessionId
+    || !validString(candidate.callId)
+    || (candidate.environment !== "browser" && candidate.environment !== "ubuntu-x11-cua")
+    || !validStrategy
+    || !validString(candidate.goal) || candidate.goal.length > 1_000
+    || (candidate.maxActions !== undefined && (!Number.isSafeInteger(candidate.maxActions) || (candidate.maxActions as number) <= 0))
+    || !validStatus
+    || (candidate.summary !== undefined && (typeof candidate.summary !== "string" || candidate.summary.length > 2_000))
+    || !validString(candidate.startedAt)
+    || (candidate.finishedAt !== undefined && !validString(candidate.finishedAt))
+    || !validString(candidate.recordedAt)) {
+    throw new AnesuError("persistence", `Computer run '${String(candidate.runId)}' has an invalid durable record.`);
+  }
+  if (candidate.status === "running" && candidate.finishedAt !== undefined) {
+    throw new AnesuError("persistence", `Computer run '${String(candidate.runId)}' cannot be running after it has finished.`);
   }
 }
 
@@ -1385,6 +1519,162 @@ export class SessionStore {
     return snapshots.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.turnId.localeCompare(right.turnId)).at(-1);
   }
 
+  /**
+   * Read bounded, lossy computer-run projections for inspection surfaces. The
+   * durable event payload is validated first, then reduced to selected
+   * lifecycle fields; screenshots, provider bodies, and arbitrary payload keys
+   * never cross this API boundary.
+   */
+  async readComputerRunSummaries(options: { readonly limit?: number } = {}): Promise<ComputerRunSummary[]> {
+    const limit = options.limit ?? 20;
+    if (!Number.isSafeInteger(limit) || limit <= 0 || limit > 100) {
+      throw new AnesuError("invalid-input", "Computer run summary limit must be between 1 and 100.");
+    }
+    const turnsDirectory = path.join(this.sessionDirectory, "turns");
+    const entries = await readdir(turnsDirectory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Session '${this.metadata.sessionId}' computer runs cannot be listed.`, { cause: error });
+    });
+    const summaries: ComputerRunSummary[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isDirectory()).sort((left, right) => left.name.localeCompare(right.name)).slice(0, 1_000)) {
+      const directory = path.join(turnsDirectory, entry.name);
+      let turnRecord: TurnRecord;
+      try {
+        turnRecord = await readJson<TurnRecord>(path.join(directory, "turn.json"));
+        validateTurnRecord(turnRecord, this.metadata.sessionId, entry.name);
+      } catch (error) {
+        throw new AnesuError("persistence", `Turn '${entry.name}' has an invalid record while reading computer runs.`, { cause: error });
+      }
+      const turn = new TurnStore(this, directory, turnRecord);
+      for (const run of await turn.readComputerRuns()) {
+        const events = await turn.readComputerRunEvents(run.runId);
+        const lastEvent = events.at(-1);
+        summaries.push({
+          run,
+          eventCount: events.length,
+          ...(lastEvent ? { lastEvent: summarizeComputerRunEvent(lastEvent) } : {}),
+        });
+      }
+    }
+    return summaries
+      .sort((left, right) => right.run.startedAt.localeCompare(left.run.startedAt) || right.run.runId.localeCompare(left.run.runId))
+      .slice(0, limit);
+  }
+
+  /** Read one validated computer run by ID without exposing its raw events. */
+  async readComputerRun(runId: string): Promise<ComputerRunRecord> {
+    const safeRunId = safePathSegment(runId, "Computer run ID");
+    const turnsDirectory = path.join(this.sessionDirectory, "turns");
+    const entries = await readdir(turnsDirectory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Session '${this.metadata.sessionId}' computer runs cannot be listed.`, { cause: error });
+    });
+    for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
+      const directory = path.join(turnsDirectory, entry.name);
+      let turnRecord: TurnRecord;
+      try {
+        turnRecord = await readJson<TurnRecord>(path.join(directory, "turn.json"));
+        validateTurnRecord(turnRecord, this.metadata.sessionId, entry.name);
+      } catch (error) {
+        throw new AnesuError("persistence", `Turn '${entry.name}' has an invalid record while reading computer runs.`, { cause: error });
+      }
+      const turn = new TurnStore(this, directory, turnRecord);
+      const runDirectory = path.join(directory, "computer-runs", safeRunId);
+      if (!(await fileExists(path.join(runDirectory, "run.json")))) continue;
+      return await turn.readComputerRun(safeRunId);
+    }
+    throw new AnesuError("persistence", `Computer run '${safeRunId}' was not found in session '${this.metadata.sessionId}'.`);
+  }
+
+  /**
+   * Remove only old terminal run journals under this session. The operation is
+   * bounded, refuses symlinked run directories, and takes a sibling cleanup
+   * lease so an active writer cannot be deleted accidentally. Native input is
+   * never replayed or reconstructed by retention.
+   */
+  async cleanupComputerRuns(options: ComputerRunRetentionOptions): Promise<ComputerRunRetentionResult> {
+    if (!Number.isSafeInteger(options.maxAgeMs) || options.maxAgeMs < 0) {
+      throw new AnesuError("invalid-input", "Computer run retention maxAgeMs must be a non-negative integer.");
+    }
+    if (!Number.isSafeInteger(options.maxEntries) || options.maxEntries <= 0) {
+      throw new AnesuError("invalid-input", "Computer run retention maxEntries must be a positive integer.");
+    }
+    const nowMs = options.now ?? Date.now;
+    const result = { ...emptyComputerRunRetentionResult() } as { -readonly [K in keyof ComputerRunRetentionResult]: ComputerRunRetentionResult[K] };
+    const turnsDirectory = path.join(this.sessionDirectory, "turns");
+    const turnEntries = await readdir(turnsDirectory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Session '${this.metadata.sessionId}' computer-run retention could not scan turns.`, { cause: error });
+    });
+    for (const turnEntry of turnEntries.filter((candidate) => candidate.isDirectory()).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (result.scanned >= options.maxEntries) {
+        result.truncated = true;
+        break;
+      }
+      const turnDirectoryPath = path.join(turnsDirectory, turnEntry.name);
+      let turnRecord: TurnRecord;
+      try {
+        turnRecord = await readJson<TurnRecord>(path.join(turnDirectoryPath, "turn.json"));
+        validateTurnRecord(turnRecord, this.metadata.sessionId, turnEntry.name);
+      } catch {
+        result.failed += 1;
+        continue;
+      }
+      const runsDirectory = path.join(turnDirectoryPath, "computer-runs");
+      const runEntries = await readdir(runsDirectory, { withFileTypes: true }).catch((error) => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        result.failed += 1;
+        return [];
+      });
+      const turn = new TurnStore(this, turnDirectoryPath, turnRecord);
+      for (const runEntry of runEntries.filter((candidate) => candidate.isDirectory()).sort((left, right) => left.name.localeCompare(right.name))) {
+        if (result.scanned >= options.maxEntries) {
+          result.truncated = true;
+          break;
+        }
+        result.scanned += 1;
+        let run: ComputerRunRecord;
+        try {
+          run = await turn.readComputerRun(runEntry.name);
+        } catch {
+          result.failed += 1;
+          continue;
+        }
+        const timestamp = Date.parse(run.finishedAt ?? run.recordedAt ?? run.startedAt);
+        if (run.status === "running" || !Number.isFinite(timestamp) || timestamp > nowMs() - options.maxAgeMs) {
+          result.retained += 1;
+          continue;
+        }
+        const cleanupLeasePath = path.join(runsDirectory, `.${safePathSegment(run.runId, "Computer run ID")}.retention.lock`);
+        let cleanupLease: SessionLock;
+        try {
+          cleanupLease = await SessionLock.acquire(cleanupLeasePath);
+        } catch (error) {
+          if (error instanceof AnesuError && error.code === "lock") {
+            result.retained += 1;
+            continue;
+          }
+          result.failed += 1;
+          continue;
+        }
+        try {
+          const metadata = await lstat(path.join(runsDirectory, runEntry.name));
+          if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+            result.skipped += 1;
+            continue;
+          }
+          await rm(path.join(runsDirectory, runEntry.name), { recursive: true, force: false });
+          result.removed += 1;
+        } catch {
+          result.failed += 1;
+        } finally {
+          await cleanupLease.release().catch(() => undefined);
+        }
+      }
+    }
+    return result;
+  }
+
   async admitTurn(userPrompt: string, provider: TurnRecord["provider"], model: string): Promise<TurnStore> {
     const content = userPrompt.trim();
     if (content.length === 0) throw new AnesuError("invalid-input", "A message is required.");
@@ -1537,6 +1827,46 @@ export class SessionStore {
       }
       for (const artifact of await turn.readBrowserArtifacts()) {
         await turn.ensureBrowserArtifactEvent(artifact);
+      }
+      for (const action of await turn.readComputerActions()) {
+        let reconciledAction = action;
+        if (action.status === "prepared") {
+          reconciledAction = {
+            ...action,
+            status: "failed",
+            decision: "unavailable",
+            errorCode: "computer-approval-unavailable",
+            errorMessage: "The native computer approval ended when the parent process stopped; the input was not replayed.",
+            finishedAt: now(),
+            recordedAt: now(),
+          };
+          await turn.writeComputerAction(reconciledAction);
+        } else if (action.status === "approved") {
+          reconciledAction = {
+            ...action,
+            status: "failed",
+            decision: "unavailable",
+            errorCode: "computer-approval-unavailable",
+            errorMessage: "The approved native computer action had not started when the parent process stopped; the input was not replayed.",
+            finishedAt: now(),
+            recordedAt: now(),
+          };
+          await turn.writeComputerAction(reconciledAction);
+        } else if (action.status === "running") {
+          reconciledAction = {
+            ...action,
+            status: "ambiguous",
+            errorCode: "computer-ambiguous",
+            errorMessage: "The native computer input may have reached the desktop before the parent process stopped; its outcome is unknown and the input was not replayed.",
+            finishedAt: now(),
+            recordedAt: now(),
+          };
+          await turn.writeComputerAction(reconciledAction);
+        }
+        await turn.ensureComputerTerminalEvent(reconciledAction);
+      }
+      for (const run of await turn.readComputerRuns()) {
+        await turn.ensureComputerRunTerminal(run);
       }
       for (const action of await turn.readMemoryActions()) {
         let reconciledAction = action;
@@ -2104,6 +2434,156 @@ export class TurnStore {
     return records;
   }
 
+  async writeComputerAction(record: ComputerActionRecord): Promise<void> {
+    const normalized = this.session.redactEvidence(record);
+    assertComputerActionRecord(normalized, this.turnId, this.correlationId);
+    const directory = path.join(this.directory, "computer-actions");
+    await ensureDirectory(directory);
+    const recordPath = path.join(directory, `${safePathSegment(normalized.actionId, "Computer action ID")}.json`);
+    let previous: ComputerActionRecord | undefined;
+    try {
+      await stat(recordPath);
+      previous = await readJson<ComputerActionRecord>(recordPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    if (previous) {
+      assertComputerActionRecord(previous, this.turnId, this.correlationId);
+      try {
+        assertComputerActionTransition(previous, normalized);
+      } catch (error) {
+        throw new AnesuError("persistence", `Computer action '${normalized.actionId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+      }
+    }
+    await this.session.replaceJson(recordPath, normalized);
+  }
+
+  async readComputerActions(): Promise<ComputerActionRecord[]> {
+    const directory = path.join(this.directory, "computer-actions");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Turn '${this.turnId}' computer action records cannot be listed.`, { cause: error });
+    });
+    const records: ComputerActionRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isFile() && candidate.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name))) {
+      const record = await readJson<ComputerActionRecord>(path.join(directory, entry.name));
+      assertComputerActionRecord(record, this.turnId, this.correlationId);
+      records.push(record);
+    }
+    return records;
+  }
+
+  async writeComputerRun(record: ComputerRunRecord): Promise<void> {
+    const normalized = this.session.redactEvidence(record);
+    assertComputerRunRecord(normalized, this.session.metadata.sessionId, this.turnId, this.correlationId);
+    const directory = path.join(this.directory, "computer-runs", safePathSegment(normalized.runId, "Computer run ID"));
+    await ensureDirectory(directory);
+    const recordPath = path.join(directory, "run.json");
+    let previous: ComputerRunRecord | undefined;
+    if (await fileExists(recordPath)) {
+      previous = await readJson<ComputerRunRecord>(recordPath);
+      assertComputerRunRecord(previous, this.session.metadata.sessionId, this.turnId, this.correlationId);
+    }
+    if (previous) {
+      if (stableStringify(previous) === stableStringify(normalized)) return;
+      try {
+        assertComputerRunTransition(previous, normalized);
+      } catch (error) {
+        throw new AnesuError("persistence", `Computer run '${normalized.runId}' has an invalid state transition: ${error instanceof Error ? error.message : "unknown transition error"}.`, { cause: error });
+      }
+    }
+    await this.session.replaceJson(recordPath, normalized);
+  }
+
+  async readComputerRun(runId: string): Promise<ComputerRunRecord> {
+    const safeRunId = safePathSegment(runId, "Computer run ID");
+    const record = await readJson<ComputerRunRecord>(path.join(this.directory, "computer-runs", safeRunId, "run.json"));
+    assertComputerRunRecord(record, this.session.metadata.sessionId, this.turnId, this.correlationId);
+    return record;
+  }
+
+  async readComputerRuns(): Promise<ComputerRunRecord[]> {
+    const directory = path.join(this.directory, "computer-runs");
+    const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw new AnesuError("persistence", `Turn '${this.turnId}' computer runs cannot be listed.`, { cause: error });
+    });
+    const records: ComputerRunRecord[] = [];
+    for (const entry of entries.filter((candidate) => candidate.isDirectory()).sort((left, right) => left.name.localeCompare(right.name))) {
+      const record = await readJson<ComputerRunRecord>(path.join(directory, entry.name, "run.json"));
+      assertComputerRunRecord(record, this.session.metadata.sessionId, this.turnId, this.correlationId);
+      if (record.runId !== entry.name) throw new AnesuError("persistence", `Computer run directory '${entry.name}' does not match its run ID.`);
+      records.push(record);
+    }
+    return records;
+  }
+
+  async appendComputerRunEvent(input: ComputerRunEventInput): Promise<void> {
+    const run = await this.readComputerRun(input.runId);
+    if (input.sessionId !== run.sessionId || input.turnId !== run.turnId || (run.strategy !== "compare" && input.strategy !== run.strategy) || input.correlationId !== run.correlationId) {
+      throw new AnesuError("persistence", `Computer run event '${input.eventId}' does not match its run identity.`);
+    }
+    const directory = path.join(this.directory, "computer-runs", safePathSegment(input.runId, "Computer run ID"));
+    const eventsPath = path.join(directory, "events.jsonl");
+    const existing = await readJsonLines<ComputerRunEventRecord>(eventsPath);
+    for (const event of existing) assertComputerRunEvent(event);
+    const existingEvent = existing.find((event) => event.eventId === input.eventId);
+    if (existingEvent) {
+      const normalized = this.session.redactEvidence({ ...input, sequence: existingEvent.sequence, recordedAt: input.recordedAt ?? existingEvent.recordedAt });
+      assertComputerRunEvent(normalized);
+      if (stableStringify(existingEvent) !== stableStringify(normalized)) {
+        throw new AnesuError("persistence", `Computer run event '${input.eventId}' was repeated with different evidence.`);
+      }
+      return;
+    }
+    const normalized = this.session.redactEvidence({ ...input, sequence: existing.length + 1, recordedAt: input.recordedAt ?? now() });
+    assertComputerRunEvent(normalized);
+    await this.session.appendJsonLine(eventsPath, normalized);
+  }
+
+  async readComputerRunEvents(runId: string): Promise<ComputerRunEventRecord[]> {
+    const run = await this.readComputerRun(runId);
+    const eventsPath = path.join(this.directory, "computer-runs", safePathSegment(runId, "Computer run ID"), "events.jsonl");
+    const events = await readJsonLines<ComputerRunEventRecord>(eventsPath);
+    events.forEach((event, index) => {
+      assertComputerRunEvent(event);
+      if (event.runId !== run.runId || event.sessionId !== run.sessionId || event.turnId !== run.turnId || (run.strategy !== "compare" && event.strategy !== run.strategy) || event.correlationId !== run.correlationId || event.sequence !== index + 1) {
+        throw new AnesuError("persistence", `Computer run '${runId}' has out-of-order or cross-run event evidence.`);
+      }
+    });
+    return events;
+  }
+
+  /**
+   * Close a run that was still active when the owning process stopped. The
+   * recovery event is written before the terminal run record so an
+   * acknowledgement lost after the append can be repaired idempotently on the
+   * next restart. No host input is attempted here.
+   */
+  async ensureComputerRunTerminal(record: ComputerRunRecord): Promise<void> {
+    if (record.status !== "running") return;
+    const reason = "The computer run was interrupted; its outcome is unknown and no input was replayed.";
+    await this.appendComputerRunEvent({
+      schemaVersion: 1,
+      eventId: `computer_recovery_${record.runId}`,
+      runId: record.runId,
+      sessionId: record.sessionId,
+      turnId: record.turnId,
+      correlationId: record.correlationId,
+      kind: "failed",
+      strategy: record.strategy,
+      payload: { recovered: true, reason, status: "outcome-unknown" },
+    });
+    const timestamp = now();
+    await this.writeComputerRun({
+      ...record,
+      status: "outcome-unknown",
+      summary: reason,
+      finishedAt: timestamp,
+      recordedAt: timestamp,
+    });
+  }
+
   async writeBrowserArtifact(record: BrowserArtifactEvidence): Promise<void> {
     const normalized = this.session.redactEvidence(record);
     assertBrowserArtifactEvidence(normalized, this.turnId, this.correlationId);
@@ -2339,6 +2819,64 @@ export class TurnStore {
       status: record.status,
       errorCode: record.errorCode ?? null,
       underlyingErrorCode: record.underlyingErrorCode ?? null,
+      recovered: true,
+    });
+  }
+
+  async ensureComputerTerminalEvent(record: ComputerActionRecord): Promise<void> {
+    if (record.status !== "completed" && record.status !== "failed" && record.status !== "cancelled" && record.status !== "ambiguous") return;
+    let events = await this.readEvents();
+    const computerEvents = () => events.filter((event) => event.payload.actionId === record.actionId);
+    const basePayload: Record<string, unknown> = {
+      actionId: record.actionId,
+      callId: record.callId,
+      sessionId: record.sessionId,
+      environment: record.environment,
+      displayId: record.displayId,
+      operation: record.operation,
+      observationId: record.observationId,
+      generation: record.generation,
+      ...(record.x !== undefined ? { x: record.x } : {}),
+      ...(record.y !== undefined ? { y: record.y } : {}),
+      ...(record.endX !== undefined ? { endX: record.endX } : {}),
+      ...(record.endY !== undefined ? { endY: record.endY } : {}),
+      ...(record.textLength !== undefined ? { textLength: record.textLength } : {}),
+      ...(record.key !== undefined ? { key: record.key } : {}),
+      ...(record.modifiers !== undefined ? { modifiers: record.modifiers } : {}),
+      ...(record.direction !== undefined ? { direction: record.direction } : {}),
+      ...(record.amount !== undefined ? { amount: record.amount } : {}),
+    };
+    const missingPrelude: (readonly [LifecycleEventType, Readonly<Record<string, unknown>>])[] = [];
+    if (!computerEvents().some((event) => event.type === "ComputerPrepared")) {
+      missingPrelude.push(["ComputerPrepared", { ...basePayload, recovered: true }]);
+    }
+    if (!computerEvents().some((event) => event.type === "ComputerApprovalDecided")) {
+      missingPrelude.push(["ComputerApprovalDecided", {
+        ...basePayload,
+        decision: record.decision ?? (record.status === "failed" ? "unavailable" : "allow-once"),
+        recovered: true,
+      }]);
+    }
+    if (record.startedAt !== undefined && !computerEvents().some((event) => event.type === "ComputerStarted")) {
+      missingPrelude.push(["ComputerStarted", { ...basePayload, startedAt: record.startedAt, recovered: true }]);
+    }
+    if (computerEvents().some((event) => event.type === "ComputerCompleted")) {
+      if (missingPrelude.length > 0) {
+        await this.repairActionPreludeBeforeTerminal("actionId", record.actionId, ["ComputerCompleted"], missingPrelude);
+      }
+      return;
+    }
+    for (const [type, payload] of missingPrelude) {
+      await this.appendRecoveredEvent(type, payload);
+      events = await this.readEvents();
+    }
+    await this.appendRecoveredEvent("ComputerCompleted", {
+      ...basePayload,
+      status: record.status,
+      decision: record.decision ?? null,
+      errorCode: record.errorCode ?? null,
+      summary: record.summary ?? null,
+      errorMessage: record.errorMessage ?? null,
       recovered: true,
     });
   }

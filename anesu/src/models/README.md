@@ -41,6 +41,13 @@ bounded error outcomes. A disconnect before output may be retried by the runtime
 disconnect after output is not retried because the provider may already have accepted
 and partially executed the request.
 
+For tool-call responses, the adapter may receive several streamed fragments before it
+has a complete executable call. It emits a non-executable `stream_started` event as
+soon as the first valid SSE frame arrives, so the runtime's first-event watchdog does
+not mistake an active provider stream for a stalled request. Complete tool calls remain
+buffered until the stream terminates and are emitted only after their name and arguments
+have been assembled.
+
 Provider-reported token usage is normalized to `inputTokens`, `outputTokens`, and
 `totalTokens` when present and is copied into the turn metrics and bounded lifecycle
 evidence. Providers that omit usage remain valid; the harness does not infer token

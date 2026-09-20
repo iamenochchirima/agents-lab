@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Anesu native computer fixture</title>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, sans-serif; }
+      body { margin: 3rem; max-width: 48rem; color: #172033; }
+      main { border: 2px solid #6d28d9; border-radius: 1rem; padding: 2rem; }
+      button, input { font: inherit; padding: .7rem .9rem; margin: .4rem .2rem .4rem 0; }
+      button { background: #6d28d9; color: white; border: 0; border-radius: .5rem; cursor: pointer; }
+      input { border: 1px solid #9ca3af; border-radius: .5rem; }
+      #result { color: #087f23; font-weight: 700; min-height: 1.5rem; }
+      .note { color: #4b5563; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Safe native computer fixture</h1>
+      <p class="note">This local page is disposable. It does not make network requests or persist input.</p>
+      <label for="safe-text">Safe text field</label><br>
+      <input id="safe-text" aria-label="Safe text field" placeholder="Type non-secret text">
+      <button id="reveal" type="button">Reveal safe result</button>
+      <p id="result" aria-live="polite"></p>
+    </main>
+    <script>
+      document.getElementById("reveal").addEventListener("click", () => {
+        document.getElementById("result").textContent = "Computer success: safe result revealed.";
+      });
+    </script>
+  </body>
+</html>

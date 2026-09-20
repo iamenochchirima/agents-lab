@@ -627,6 +627,46 @@ Exit evidence:
 - Each supported profile documents its data access and isolation guarantee.
 - No browser test relies on a developer's personal profile or undeclared credentials.
 
+### 6a. Native computer use
+
+Current state: a first-iteration Ubuntu/X11 CUA Driver adapter is implemented as an
+opt-in Anesu environment. It uses the pinned in-process TypeScript SDK, disposable
+Xvfb/Xephyr launchers, an agent cursor, bounded desktop/window observations, native
+accessibility-backed Jev selection, screenshot-based traditional selection, explicit
+approval, stale-observation checks, one-action dispatch, fresh observation, and
+bounded run evidence. This is a working development slice, not a production desktop
+sandbox.
+
+Remaining work:
+
+- Add the declared OCR/visual perception sources for native Jev and define how OCR,
+  accessibility, and future local UI segmentation are merged without trusting labels
+  as instructions. The current native semantic path abstains when accessibility data
+  is absent.
+- Complete provider/driver error taxonomy, bounded pre-dispatch decision retries,
+  display/session crash recovery, and failure-injection coverage for the supported
+  host profile. An ambiguous native input must remain `outcome-unknown` and must never
+  be replayed automatically.
+- Define a supported production isolation profile, including OS permissions, display
+  ownership, Wayland/libei support if required, network policy, credential boundaries,
+  and resource limits. Xvfb/Xephyr launchers are development helpers and do not claim
+  to sandbox arbitrary applications.
+- Add application-specific verification contracts beyond the local fixture, plus real
+  manual acceptance for both selectable strategies and compare mode. A fresh
+  observation alone is not proof that an arbitrary user goal succeeded.
+- Decide whether richer cursor recording, artifact retention, remote hosts, and
+  platform backends belong in the product contract; if so, give each an explicit
+  threat model, lifecycle, recovery, and operator procedure.
+
+Exit evidence:
+
+- A named host profile has documented permission/isolation guarantees, real acceptance
+  tasks for each supported strategy, driver/provider failure-injection results, and
+  evidence that stale or ambiguous actions are never duplicated.
+- The product does not call native computer use production-ready while OCR/visual
+  coverage, arbitrary-application verification, host isolation, and operations remain
+  development-only.
+
 ### 7. Memory and context lifecycle
 
 Current state: bounded Markdown stores, a rebuildable local lexical index, explicit

@@ -1,11 +1,13 @@
 import readline from "node:readline";
 import type { Writable } from "node:stream";
-import type { ChatApplication } from "../runtime/application.js";
+import type { ChatApplication, ComputerUiStatus } from "../runtime/application.js";
 import type { TurnEvent, TurnResult, TranscriptMessage } from "../runtime/contracts.js";
 import type { MutationApproval, MutationApprovalRequest, MutationApprovalDecision, MutationEvent } from "../workspace/mutation.js";
 import type { ProcessApprovalDecision, ProcessApprovalRequest } from "../process/process.js";
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
+import type { ComputerEvent } from "../computer/runner.js";
+import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest, ComputerEnvironmentReadiness } from "../computer/contracts.js";
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import type { SkillCatalog } from "../skills/index.js";
 import type { ContextSnapshot } from "../context/context.js";
@@ -14,7 +16,7 @@ import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 import type { ModelProviderSummary } from "../models/registry.js";
 import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
 
-const COMMANDS = ["/help", "/status", "/context", "/models", "/history", "/skills", "/memory", "/evidence", "/clear", "/quit"] as const;
+const COMMANDS = ["/help", "/status", "/context", "/models", "/history", "/skills", "/memory", "/computer", "/evidence", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
 const MIN_PANEL_WIDTH = 24;
 const MAX_PANEL_WIDTH = 100;
@@ -30,6 +32,7 @@ export type TuiCommand =
   | { readonly kind: "history" }
   | { readonly kind: "skills" }
   | { readonly kind: "memory" }
+  | { readonly kind: "computer" }
   | { readonly kind: "evidence" }
   | { readonly kind: "clear" }
   | { readonly kind: "quit" }
@@ -54,6 +57,8 @@ export function parseTuiCommand(input: string): TuiCommand | undefined {
       return { kind: "skills" };
     case "/memory":
       return { kind: "memory" };
+    case "/computer":
+      return { kind: "computer" };
     case "/evidence":
       return { kind: "evidence" };
     case "/clear":
@@ -76,6 +81,16 @@ function shorten(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
+export function formatComputerApprovalTarget(request: ComputerApprovalRequest): string {
+  if (request.targetLabel) {
+    const role = request.targetRole ? ` (${request.targetRole})` : "";
+    return `${request.displayId} · ${request.targetLabel}${role}`;
+  }
+  if (request.x === undefined || request.y === undefined) return `${request.displayId} · current foreground target`;
+  if (request.endX === undefined || request.endY === undefined) return `${request.displayId} · (${request.x}, ${request.y})`;
+  return `${request.displayId} · (${request.x}, ${request.y}) → (${request.endX}, ${request.endY})`;
+}
+
 function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): string {
   const supported = [
     capabilities.streaming ? "streaming" : undefined,
@@ -86,6 +101,15 @@ function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): 
     capabilities.usageReporting ? "usage" : undefined,
   ].filter((value): value is string => value !== undefined);
   return `${supported.join(", ") || "no declared capabilities"} · context ${capabilities.contextWindow}`;
+}
+
+function computerSummary(computer: ComputerUiStatus | undefined): string {
+  if (!computer?.enabled) return "disabled · enable explicitly";
+  const environment = computer.environment === "ubuntu-x11-cua" ? "ubuntu-x11-cua" : computer.environment ?? "unselected";
+  const isolation = computer.environment === "ubuntu-x11-cua"
+    ? computer.isolated === true ? "isolated" : "not isolated"
+    : computer.visible === true ? "visible browser" : "managed browser";
+  return `${computer.strategy ?? "unselected"} · ${environment} · ${isolation}${computer.model ? ` · ${computer.model}` : ""}`;
 }
 
 function panelRule(title: string, width: number): string {
@@ -124,6 +148,7 @@ export class TerminalUi {
   private approvalQuestion: MutationApproval | undefined;
   private processApprovalQuestion: ((request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>) | undefined;
   private browserApprovalQuestion: ((request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>) | undefined;
+  private computerApprovalQuestion: ((request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>) | undefined;
   private memoryApprovalQuestion: MemoryApproval | undefined;
   private approvalInput: NodeJS.ReadableStream | undefined;
   private pauseApprovalInput: (() => void) | undefined;
@@ -216,6 +241,7 @@ export class TerminalUi {
       ["model", this.application.providerLabel],
       ["session", this.application.sessionId],
       ["workspace", this.application.workspaceRoot],
+      ["computer", computerSummary(this.application.computer)],
       ["tools", this.application.toolNames.join(" · ") || "none registered"],
       ["evidence", this.application.evidenceDirectory],
     ]);
@@ -233,6 +259,7 @@ export class TerminalUi {
     this.write(`  ${this.style("33", "/history")}    Show recent transcript messages\n`);
     this.write(`  ${this.style("33", "/skills")}     Show workspace skill packages\n`);
     this.write(`  ${this.style("33", "/memory")}     Show bounded durable-memory status\n`);
+    this.write(`  ${this.style("33", "/computer")}   Inspect computer environment, strategy, and readiness\n`);
     this.write(`  ${this.style("33", "/evidence")}   Show the durable evidence directory\n`);
     this.write(`  ${this.style("33", "/clear")}      Redraw the console\n`);
     this.write(`  ${this.style("33", "/quit")}       Close the session\n\n`);
@@ -242,6 +269,43 @@ export class TerminalUi {
     this.write(`  ${this.style("2", "Ctrl+C")}       Cancel the active turn\n`);
     this.write(`  ${this.style("2", "Ctrl+D")}       Exit the session\n\n`);
     this.write(`${this.style("2", "Commands are intentionally limited to capabilities that exist.")}\n\n`);
+  }
+
+  private async printComputer(): Promise<void> {
+    const computer = this.application.computer;
+    const readiness: ComputerEnvironmentReadiness | undefined = computer.readiness;
+    const readinessValue = readiness === undefined
+      ? "not probed"
+      : readiness.available
+        ? "ready"
+        : `unavailable · ${readiness.reason ?? "host requirements not met"}`;
+    this.write("\n");
+    const runs = this.application.readComputerRuns ? await this.application.readComputerRuns() : [];
+    const latestRun = runs[0];
+    const latestArtifact = latestRun?.lastEvent?.artifactPath
+      ? sanitizeTerminalSingleLine(shorten(latestRun.lastEvent.artifactPath, 56))
+      : "not captured";
+    this.printPanel("Computer use", [
+      ["state", computer.enabled ? "enabled" : "disabled · opt-in required"],
+      ["environment", computer.environment ?? "not selected"],
+      ["strategy", computer.strategy ?? "not selected"],
+      ["model", computer.model ?? "not selected"],
+      ["readiness", readinessValue],
+      ["display", readiness?.display ?? "not reported"],
+      ["isolation", computer.isolated === undefined ? "not applicable" : computer.isolated ? "isolated" : "not isolated"],
+      ["visibility", computer.visible === undefined ? "not reported" : computer.visible ? "visible" : "headless"],
+      ["last run", latestRun ? `${latestRun.run.status} · ${latestRun.eventCount} events` : "none recorded"],
+      ["artifact", latestArtifact],
+    ]);
+    if (runs.length > 0) {
+      this.write(`${this.style("36;1", "Recent computer runs") }\n`);
+      for (const summary of runs.slice(0, 5)) {
+        const latest = summary.lastEvent ? ` · latest ${summary.lastEvent.kind}${summary.lastEvent.artifactPath ? ` · artifact ${shorten(sanitizeTerminalSingleLine(summary.lastEvent.artifactPath), 40)}` : ""}` : "";
+        this.write(`  ${this.style("33", shorten(summary.run.runId, 36))} ${this.style("2", `${summary.run.status} · ${summary.run.strategy} · ${summary.eventCount} events${latest}`)}\n`);
+      }
+      this.write("\n");
+    }
+    this.write(`${this.style("2", "Read-only inspection; enabling or changing computer use is done through configuration.")}\n\n`);
   }
 
   private printModels(): void {
@@ -273,6 +337,7 @@ export class TerminalUi {
       ["state", `${this.status}${this.statusRound > 0 ? ` · round ${this.statusRound}` : ""}${elapsed}`],
       ["model", this.application.providerLabel],
       ["context", contextSummary],
+      ["computer", computerSummary(this.application.computer)],
       ["session", this.application.sessionId],
       ["workspace", this.application.workspaceRoot],
       ["tools", this.application.toolNames.join(" · ") || "none registered"],
@@ -387,6 +452,9 @@ export class TerminalUi {
         } else {
           this.write(`\n${this.style("2", "Durable memory is not enabled for this session.")}\n\n`);
         }
+        return true;
+      case "computer":
+        await this.printComputer();
         return true;
       case "evidence":
         this.printEvidence();
@@ -575,6 +643,57 @@ export class TerminalUi {
         this.printActivity(outcomeUnknown ? "?" : event.ok ? "✓" : "×", `browser · ${event.request.action} · ${outcomeUnknown ? "outcome unknown" : event.summary}${dialogText}${event.cancellationConfirmed === true ? " · cancellation confirmed" : event.cancellationConfirmed === false ? " · cancellation unconfirmed" : ""}`, outcomeUnknown ? "33;1" : event.ok ? "32;1" : "31;1");
         break;
     }
+  }
+
+  private handleComputer(event: ComputerEvent): void {
+    switch (event.type) {
+      case "started":
+        this.status = `computer · ${event.strategy} · starting`;
+        this.printActivity("◌", `computer · ${event.strategy} · observe`, "36;1");
+        break;
+      case "observed":
+        this.status = `computer · ${event.strategy} · ${event.candidateCount} candidate${event.candidateCount === 1 ? "" : "s"}`;
+        this.printActivity("⌕", `computer · observed · ${event.candidateCount} candidate${event.candidateCount === 1 ? "" : "s"}`, "36;1");
+        break;
+      case "decision_attempt":
+        this.status = event.retrying
+          ? `computer · ${event.strategy} · retrying decision`
+          : `computer · ${event.strategy} · decision failed`;
+        this.printActivity(event.retrying ? "↻" : "×", `computer · ${event.strategy} · decision attempt ${event.attempt}/${event.maxAttempts} failed${event.retrying ? " · retrying" : ""} · ${event.reason}`, event.retrying ? "33;1" : "31;1");
+        break;
+      case "proposed":
+        this.status = `computer · ${event.strategy} · proposal`;
+        this.printActivity("◇", `computer · ${event.strategy} · proposed ${event.operation} ${event.targetLabel ? `“${event.targetLabel}” ` : ""}${event.candidateId}${event.confidence === undefined ? "" : ` · confidence ${(event.confidence * 100).toFixed(0)}%`}`, "33;1");
+        break;
+      case "abstained":
+        this.status = `computer · ${event.strategy} · stopped`;
+        this.printActivity("!", `computer · ${event.strategy} · stopped${event.errorCode ? ` · ${event.errorCode}` : ""} · ${event.reason}`, "33;1");
+        break;
+      case "act_requested":
+        this.status = `computer · ${event.strategy} · approval`;
+        this.printActivity("↳", `computer · ${event.strategy} · ${event.operation} requested ${event.candidateId}`, "33;1");
+        break;
+      case "verified":
+        this.status = event.success ? "computer · verified" : "computer · verification failed";
+        this.printActivity(event.success ? "✓" : "×", `computer · verify · ${event.success ? "success" : "failed"}`, event.success ? "32;1" : "31;1");
+        break;
+      case "failed":
+        this.status = `computer · ${event.strategy} · failed`;
+        this.printActivity("×", `computer · ${event.strategy} · failed${event.errorCode ? ` · ${event.errorCode}` : ""} · ${event.reason}`, "31;1");
+        break;
+    }
+  }
+
+  private handleComputerApproval(event: ComputerApprovalEvent): void {
+    const request = event.request;
+    const target = formatComputerApprovalTarget(request);
+    if (event.type === "prepared") {
+      this.status = "computer approval requested";
+      this.printActivity("◇", `computer · approval requested · ${request.operation} · ${target}`, "33;1");
+      return;
+    }
+    this.status = event.decision.decision === "allow-once" ? "computer approved" : "computer not approved";
+    this.printActivity(event.decision.decision === "allow-once" ? "✓" : "×", `computer · ${event.decision.decision} · ${request.operation} · ${target}`, event.decision.decision === "allow-once" ? "32;1" : "31;1");
   }
 
   private handleMemory(event: MemoryEvent): void {
@@ -797,6 +916,9 @@ export class TerminalUi {
     const preview = [
       request.text === undefined ? undefined : `text: ${request.text}`,
       request.key === undefined ? undefined : `key: ${request.key}`,
+      request.value === undefined ? undefined : `value: ${request.value}`,
+      request.direction === undefined ? undefined : `direction: ${request.direction}`,
+      request.amount === undefined ? undefined : `amount: ${request.amount}px`,
       request.path === undefined ? undefined : `path: ${request.path}`,
       request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
       request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
@@ -814,6 +936,9 @@ export class TerminalUi {
         ["document", request.documentId],
         ...(request.text === undefined ? [] : [["text", request.text] as const]),
         ...(request.key === undefined ? [] : [["key", request.key] as const]),
+        ...(request.value === undefined ? [] : [["value", request.value] as const]),
+        ...(request.direction === undefined ? [] : [["direction", request.direction] as const]),
+        ...(request.amount === undefined ? [] : [["amount", `${request.amount}px`] as const]),
         ...(request.path === undefined ? [] : [["path", request.path] as const]),
         ...(request.maxBytes === undefined ? [] : [["max bytes", String(request.maxBytes)] as const]),
         ...(request.dialog === undefined ? [] : [["dialog", `${request.dialog.type}: ${request.dialog.message}`] as const]),
@@ -826,6 +951,9 @@ export class TerminalUi {
         `reference: ${request.reference}`,
         request.text === undefined ? undefined : `text: ${request.text}`,
         request.key === undefined ? undefined : `key: ${request.key}`,
+        request.value === undefined ? undefined : `value: ${request.value}`,
+        request.direction === undefined ? undefined : `direction: ${request.direction}`,
+        request.amount === undefined ? undefined : `amount: ${request.amount}px`,
         request.path === undefined ? undefined : `path: ${request.path}`,
         request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
         request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
@@ -865,6 +993,68 @@ export class TerminalUi {
     }
     this.write(`${this.style("2", "Browser action denied; no interaction was performed.")}\n`);
     return { decision: "deny", reason: "The user did not approve the browser action." };
+  }
+
+  private async askForComputerApproval(
+    request: ComputerApprovalRequest,
+    question: (prompt: string, callback: (answer: string) => void) => void,
+    signal?: AbortSignal,
+    cancelQuestion?: () => void,
+  ): Promise<ComputerApprovalDecision> {
+    const target = formatComputerApprovalTarget(request);
+    const semanticTarget = request.targetLabel !== undefined;
+    const payload = request.operation === "type"
+      ? `${request.textLength ?? 0} chars${request.textPreview ? ` · ${request.textPreview}` : ""}`
+      : request.operation === "press"
+        ? `${request.key ?? "key"}${request.modifiers?.length ? ` · ${request.modifiers.join("+")}` : ""}`
+        : request.operation === "scroll"
+          ? `${request.direction ?? "?"} · ${request.amount ?? 1}`
+          : undefined;
+    const panel: ApprovalPanel = {
+      title: "Proposed computer interaction",
+      risk: "native-computer-use",
+      action: request.operation,
+      target,
+      scope: `${request.environment} · session ${request.sessionId}`,
+      identity: `action ${request.actionId} · observation ${request.observationId} · generation ${request.generation}`,
+      expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
+      extra: [
+        ...(request.targetLabel ? [["target", `${request.targetLabel}${request.targetRole ? ` (${request.targetRole})` : ""}`] as const] : []),
+        ...(request.targetSource ? [["source", request.targetSource] as const] : []),
+        ...(request.x === undefined || request.y === undefined ? [] : [["coordinates", `${request.x}, ${request.y}`] as const]),
+        ...(request.endX === undefined || request.endY === undefined ? [] : [["end", `${request.endX}, ${request.endY}`] as const]),
+        ...(payload ? [["payload", payload] as const] : []),
+        ["warning", request.warning],
+      ],
+      preview: semanticTarget
+        ? `One semantic ${request.operation} of the observed target on the isolated display.`
+        : `One visible foreground ${request.operation} on the isolated display.`,
+      details: [
+        `operation: ${request.operation}`,
+        `display: ${request.displayId}`,
+        ...(request.targetLabel ? [`target: ${request.targetLabel}${request.targetRole ? ` (${request.targetRole})` : ""}`] : []),
+        ...(request.targetSource ? [`target source: ${request.targetSource}`] : []),
+        ...(request.x === undefined || request.y === undefined ? [] : [`coordinates: ${request.x}, ${request.y}`]),
+        ...(request.endX === undefined || request.endY === undefined ? [] : [`end coordinates: ${request.endX}, ${request.endY}`]),
+        ...(payload ? [`payload: ${payload}`] : []),
+        `session: ${request.sessionId}`,
+        `observation: ${request.observationId}`,
+        `generation: ${request.generation}`,
+        `warning: ${request.warning}`,
+      ].join("\n"),
+      redactionSecrets: this.redactionSecrets,
+    };
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
+    if (answer.decision === "allow-once") {
+      this.write(`${this.style("32;1", "✓ approved once")}\n`);
+      return answer;
+    }
+    if (answer.decision === "unavailable") {
+      this.write(`${this.style("33;1", "Approval cancelled; the native computer action was not started.")}\n`);
+      return answer;
+    }
+    this.write(`${this.style("2", "Computer action denied; no native input was sent.")}\n`);
+    return answer;
   }
 
   private async askForMemoryApproval(
@@ -929,6 +1119,9 @@ export class TerminalUi {
         this.memoryApprovalQuestion,
         (event) => this.handleMemory(event),
         (evidence) => this.handleMemorySearch(evidence),
+        (event) => this.handleComputer(event),
+        this.computerApprovalQuestion,
+        (event) => this.handleComputerApproval(event),
       );
       this.finishTurn(result);
       return result;
@@ -994,6 +1187,14 @@ export class TerminalUi {
       : undefined;
     this.browserApprovalQuestion = this.interactive
       ? (request, signal) => this.askForBrowserApproval(
+        request,
+        (prompt, callback) => readlineInterface.question(prompt, callback),
+        signal,
+        () => readlineInterface.write("\n"),
+      )
+      : undefined;
+    this.computerApprovalQuestion = this.interactive
+      ? (request, signal) => this.askForComputerApproval(
         request,
         (prompt, callback) => readlineInterface.question(prompt, callback),
         signal,
@@ -1093,6 +1294,7 @@ export class TerminalUi {
       this.approvalQuestion = undefined;
       this.processApprovalQuestion = undefined;
       this.browserApprovalQuestion = undefined;
+      this.computerApprovalQuestion = undefined;
       this.memoryApprovalQuestion = undefined;
       this.approvalInput = undefined;
       this.pauseApprovalInput = undefined;

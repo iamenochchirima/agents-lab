@@ -1,7 +1,7 @@
 # Browser
 
 This module owns Anesu browser sessions, tabs, navigation policy, browser
-adapters, snapshots, bounded waits/screenshots, and browser action lifecycle. Browser automation is a tool
+adapters, snapshots, bounded waits/scrolls/screenshots, and browser action lifecycle. Browser automation is a tool
 capability, not a computer environment.
 
 The model-facing tools must use this module rather than importing Playwright directly.
@@ -23,8 +23,9 @@ atomically, and removes an oversized or failed capture. The default screenshot b
 4 MiB and 1920x1080 pixels; `ANESU_BROWSER_SCREENSHOT_MAX_BYTES`,
 `ANESU_BROWSER_SCREENSHOT_MAX_WIDTH`, and
 `ANESU_BROWSER_SCREENSHOT_MAX_HEIGHT` configure it. `browser_wait` accepts
-only a bounded integer duration and is cancellable; neither read-only operation requires
-approval. The effective approval timeout is included in the hashed request and durable
+only a bounded integer duration and is cancellable; `browser_scroll` accepts an explicit
+direction and an amount from 1 to 2,000 pixels and uses the normal approval path. Wait
+requires no approval. The effective approval timeout is included in the hashed request and durable
 action record so a recovered action cannot silently inherit a different review window.
 Screenshot and download targets also hold a per-artifact session lease while the adapter
 writes them. Cleanup retains a live lease, and only removes an old incomplete artifact
@@ -76,10 +77,12 @@ use a preallocated managed artifact target and Playwright's download event; the 
 cannot provide an arbitrary destination.
 
 The managed Playwright adapter also fingerprints the bounded element markup when a
-snapshot assigns a reference. Immediately before click, type, press, upload, or
+snapshot assigns a reference. Immediately before click, type, press, select, upload, or
 download, it checks that fingerprint again; a same-document DOM replacement is reported
 as `stale-reference` instead of allowing an ordinal locator to act on a different
 element. The digest stays in adapter state and is not exposed as page content.
+Scroll actions invalidate the model-facing element references after dispatch, so the next
+action must observe the new viewport before using a target.
 
 Adapter failures are typed at the browser boundary. A bounded operation that exceeds its
 timeout returns `browser-timeout`; a wait or preflight cancelled through an `AbortSignal`

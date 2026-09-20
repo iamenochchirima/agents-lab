@@ -101,11 +101,13 @@ export interface TurnMetrics {
 }
 
 export type ModelStreamEvent =
+  /** The provider has produced a valid stream event; no model output is executable yet. */
+  | { readonly type: "stream_started" }
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "tool_call"; readonly call: ModelToolCall }
   | { readonly type: "completed"; readonly usage?: ModelUsage; readonly providerRequestId?: string; readonly latencyMs?: number };
 
-export type RuntimeActionKind = "workspace" | "process" | "browser" | "memory";
+export type RuntimeActionKind = "workspace" | "process" | "browser" | "computer" | "memory";
 
 export type RuntimeCheckpoint =
   | { readonly type: "before-model-send"; readonly round: number; readonly attempt: number; readonly attemptId: string }
@@ -189,6 +191,10 @@ export type LifecycleEventType =
   | "BrowserStarted"
   | "BrowserCompleted"
   | "BrowserArtifactCreated"
+  | "ComputerPrepared"
+  | "ComputerApprovalDecided"
+  | "ComputerStarted"
+  | "ComputerCompleted"
   | "MemoryBootstrapLoaded"
   | "MemorySearched"
   | "MemoryPrepared"

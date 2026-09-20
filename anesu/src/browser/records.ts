@@ -1,4 +1,4 @@
-import type { BrowserApprovalAction, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserSessionId, BrowserTabId } from "./contracts.js";
+import type { BrowserApprovalAction, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserScrollDirection, BrowserSessionId, BrowserTabId } from "./contracts.js";
 import type { BrowserDiagnostic, BrowserErrorCode } from "./errors.js";
 import type { CorrelationId } from "../runtime/contracts.js";
 import { assertLifecycleTransition } from "../runtime/lifecycle.js";
@@ -27,6 +27,9 @@ export interface BrowserActionRecord {
   readonly documentId: BrowserDocumentId;
   readonly text?: string;
   readonly key?: string;
+  readonly value?: string;
+  readonly direction?: BrowserScrollDirection;
+  readonly amount?: number;
   readonly path?: string;
   readonly maxBytes?: number;
   readonly actionHash: string;
@@ -74,6 +77,9 @@ export function assertBrowserActionTransition(previous: BrowserActionRecord, nex
     previous.documentId !== next.documentId ? "documentId" : undefined,
     previous.text !== next.text ? "text" : undefined,
     previous.key !== next.key ? "key" : undefined,
+    previous.value !== next.value ? "value" : undefined,
+    previous.direction !== next.direction ? "direction" : undefined,
+    previous.amount !== next.amount ? "amount" : undefined,
     previous.path !== next.path ? "path" : undefined,
     previous.maxBytes !== next.maxBytes ? "maxBytes" : undefined,
     previous.actionHash !== next.actionHash ? "actionHash" : undefined,

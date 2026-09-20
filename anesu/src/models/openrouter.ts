@@ -4,6 +4,7 @@ import { OPENROUTER_CAPABILITIES, type ModelProvider } from "./provider.js";
 
 interface OpenRouterChunk {
   readonly choices?: readonly [{ readonly delta?: { readonly content?: unknown; readonly refusal?: unknown; readonly tool_calls?: readonly OpenRouterToolCallDelta[] } }?];
+  readonly error?: { readonly code?: unknown; readonly message?: unknown };
   readonly usage?: { readonly prompt_tokens?: unknown; readonly completion_tokens?: unknown; readonly total_tokens?: unknown };
 }
 
@@ -60,7 +61,7 @@ function providerHttpFailure(status: number, body: string): { readonly code: "pr
   return { code: "provider", retryable: retryableHttpStatus(status) };
 }
 
-function parseChunk(data: string): { readonly text?: string; readonly refusal?: string; readonly usage?: ModelUsage; readonly toolCalls: readonly OpenRouterToolCallDelta[]; readonly done: boolean } | undefined {
+function parseChunk(data: string, redactionSecrets: readonly string[] = []): { readonly text?: string; readonly refusal?: string; readonly usage?: ModelUsage; readonly toolCalls: readonly OpenRouterToolCallDelta[]; readonly done: boolean } | undefined {
   if (data.length === 0) return undefined;
   if (data === "[DONE]") return { toolCalls: [], done: true };
   let parsed: OpenRouterChunk;
@@ -70,6 +71,20 @@ function parseChunk(data: string): { readonly text?: string; readonly refusal?: 
     parsed = candidate as OpenRouterChunk;
   } catch {
     throw new ModelProviderError("OpenRouter returned an invalid streaming event.", { code: "provider-incomplete", retryable: false });
+  }
+  if (parsed.error !== undefined) {
+    if (!parsed.error || typeof parsed.error !== "object" || Array.isArray(parsed.error) || typeof parsed.error.message !== "string") {
+      throw new ModelProviderError("OpenRouter returned an invalid streaming error.", { code: "provider-incomplete", retryable: false });
+    }
+    const message = redactSecrets(parsed.error.message.slice(0, 500), redactionSecrets);
+    const numericCode = typeof parsed.error.code === "number" && Number.isSafeInteger(parsed.error.code) ? parsed.error.code : undefined;
+    if (numericCode === 401 || numericCode === 403) {
+      throw new ModelProviderError(`OpenRouter stream error: ${message}`, { code: "provider-auth", retryable: false });
+    }
+    if (numericCode === 429) {
+      throw new ModelProviderError(`OpenRouter stream error: ${message}`, { code: "rate-limit", retryable: true });
+    }
+    throw new ModelProviderError(`OpenRouter stream error: ${message}`, { code: "provider", retryable: true });
   }
   if (parsed.choices !== undefined && !Array.isArray(parsed.choices)) {
     throw new ModelProviderError("OpenRouter returned an invalid choices field.", { code: "provider-incomplete", retryable: false });
@@ -199,6 +214,7 @@ export class OpenRouterModelProvider implements ModelProvider {
     let lastUsage: ModelUsage | undefined;
     let sawDone = false;
     let sawOutputEvent = false;
+    let emittedStreamStarted = false;
     let responseBytes = 0;
     const toolCalls = new Map<number, { id?: string; name: string; argumentsJson: string }>();
     const countResponseBytes = (value: string): void => {
@@ -216,8 +232,12 @@ export class OpenRouterModelProvider implements ModelProvider {
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           if (!line.startsWith("data:")) continue;
-          const event = parseChunk(line.slice(5).trim());
+          const event = parseChunk(line.slice(5).trim(), [this.apiKey]);
           if (!event) continue;
+          if (!emittedStreamStarted) {
+            emittedStreamStarted = true;
+            yield { type: "stream_started" };
+          }
           if (event.done) sawDone = true;
           if (event.refusal) throw new ModelProviderError("OpenRouter refused the request.", { code: "provider-refusal", retryable: false });
           if (event.text) {
@@ -242,7 +262,11 @@ export class OpenRouterModelProvider implements ModelProvider {
       }
       const trailing = buffer.trim();
       if (trailing.startsWith("data:")) {
-        const event = parseChunk(trailing.slice(5).trim());
+        const event = parseChunk(trailing.slice(5).trim(), [this.apiKey]);
+        if (event && !emittedStreamStarted) {
+          emittedStreamStarted = true;
+          yield { type: "stream_started" };
+        }
         if (event?.done) sawDone = true;
         if (event?.refusal) throw new ModelProviderError("OpenRouter refused the request.", { code: "provider-refusal", retryable: false });
         if (event?.text) {

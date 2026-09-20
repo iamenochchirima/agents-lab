@@ -61,6 +61,18 @@ test("browser action records preserve identity and only allow forward transition
     () => assertBrowserActionTransition({ ...prepared, status: "completed" }, { ...prepared, status: "running" }),
     /cannot transition/u,
   );
+  const selected = { ...prepared, action: "select" as const, value: "South Africa" };
+  assert.doesNotThrow(() => assertBrowserActionTransition(selected, { ...selected, status: "approved" }));
+  assert.throws(
+    () => assertBrowserActionTransition(selected, { ...selected, value: "Kenya", status: "approved" }),
+    /identity cannot change.*value/u,
+  );
+  const scrolled = { ...prepared, action: "scroll" as const, reference: "document", direction: "down" as const, amount: 600 };
+  assert.doesNotThrow(() => assertBrowserActionTransition(scrolled, { ...scrolled, status: "approved" }));
+  assert.throws(
+    () => assertBrowserActionTransition(scrolled, { ...scrolled, amount: 800, status: "approved" }),
+    /identity cannot change.*amount/u,
+  );
 });
 
 test("restart marks a running browser action ambiguous without replaying it", async () => {

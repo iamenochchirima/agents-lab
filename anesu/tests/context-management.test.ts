@@ -284,7 +284,8 @@ test("deterministic and hosted adapters receive the same prepared context contra
     const events: ModelStreamEvent[] = [];
     for await (const event of provider.stream(hosted.request, new AbortController().signal)) events.push(event);
 
-    assert.equal(events[0]?.type, "text");
+    assert.equal(events[0]?.type, "stream_started");
+    assert.equal(events[1]?.type, "text");
     assert.equal(wire?.model, "openrouter/free");
     assert.deepEqual(wire?.messages, hosted.request.messages.map((message) => ({
       role: message.role,

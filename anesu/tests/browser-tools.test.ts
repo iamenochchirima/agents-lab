@@ -25,6 +25,8 @@ import { pngFixture } from "./browser-fixtures.js";
 
 class ToolTestAdapter implements BrowserAdapter {
   actionCount = 0;
+  lastAction: BrowserActionRequest | undefined;
+  scrolls: Array<{ readonly direction?: string; readonly amount?: number }> = [];
   private readonly tabs = new Map<string, BrowserTabInfo>();
 
   async startSession(request: { readonly signal?: AbortSignal }): Promise<void> {
@@ -50,13 +52,19 @@ class ToolTestAdapter implements BrowserAdapter {
     const tab = this.tabs.get(sessionId);
     assert.ok(tab);
     assert.equal(tab.tabId, tabId);
-    return { ...tab, content: "[@e1] button Continue", references: [{ value: "@e1", documentId: tab.documentId }] };
+    return { ...tab, content: "[@e1] button Continue...", references: [{ value: "@e1", documentId: tab.documentId }] };
   }
   async act(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, request: BrowserActionRequest): Promise<BrowserActionResult> {
     const tab = this.tabs.get(sessionId);
     assert.ok(tab);
     assert.equal(tab.tabId, tabId);
-    assert.equal(request.reference?.value, "@e1");
+    if (request.kind === "scroll") {
+      assert.equal(request.reference, undefined);
+      this.scrolls.push({ direction: request.direction, amount: request.amount });
+    } else {
+      assert.equal(request.reference?.value, "@e1");
+    }
+    this.lastAction = request;
     this.actionCount += 1;
     return { sessionId, tab, summary: `${request.kind} completed` };
   }
@@ -163,17 +171,58 @@ test("browser tools expose only the implemented model-facing surface", () => {
   assert.deepEqual(tools.definitions.map((definition) => definition.name), [
     "browser_start",
     "browser_open",
+    "browser_open_and_click",
     "browser_tabs",
     "browser_snapshot",
     "browser_click",
     "browser_type",
     "browser_press",
+    "browser_select",
+    "browser_scroll",
     "browser_wait",
     "browser_screenshot",
     "browser_upload",
     "browser_download",
     "browser_close",
   ]);
+});
+
+test("browser select binds the exact option value to approval and the adapter", async () => {
+  const adapter = new ToolTestAdapter();
+  const tools = createTools(adapter);
+  await tools.execute("browser_start", "call_select_start", {}, {});
+  await tools.execute("browser_open", "call_select_open", { url: "http://127.0.0.1:4173/select" }, {});
+  await tools.execute("browser_snapshot", "call_select_snapshot", {}, {});
+  const selected = await tools.execute("browser_select", "call_select", { ref: "@e1", value: "South Africa" }, {
+    approveBrowser: async (request) => {
+      assert.equal(request.action, "select");
+      assert.equal(request.value, "South Africa");
+      return { decision: "allow-once" };
+    },
+  });
+  assert.equal(selected.ok, true);
+  assert.equal(adapter.lastAction?.kind, "select");
+  assert.equal(adapter.lastAction?.value, "South Africa");
+});
+
+test("browser scroll binds the exact bounded direction and amount to approval and the adapter", async () => {
+  const adapter = new ToolTestAdapter();
+  const tools = createTools(adapter);
+  await tools.execute("browser_start", "call_scroll_start", {}, {});
+  await tools.execute("browser_open", "call_scroll_open", { url: "http://127.0.0.1:4173/scroll" }, {});
+  await tools.execute("browser_snapshot", "call_scroll_snapshot", {}, {});
+  const scrolled = await tools.execute("browser_scroll", "call_scroll", { direction: "down", amount: 600 }, {
+    approveBrowser: async (request) => {
+      assert.equal(request.action, "scroll");
+      assert.equal(request.reference, "document");
+      assert.equal(request.direction, "down");
+      assert.equal(request.amount, 600);
+      return { decision: "allow-once" };
+    },
+  });
+  assert.equal(scrolled.ok, true);
+  assert.deepEqual(adapter.scrolls, [{ direction: "down", amount: 600 }]);
+  assert.equal(adapter.lastAction?.kind, "scroll");
 });
 
 test("browser tools reject unknown and malformed arguments before execution", async () => {
@@ -220,6 +269,28 @@ test("browser lifecycle operations honor cancellation before reaching the adapte
     tools.execute("browser_close", "call_cancelled_close", {}, { signal: cancelled.signal }),
     (error: unknown) => error instanceof BrowserError && error.browserCode === "browser-cancelled",
   );
+});
+
+test("browser_open_and_click performs one exact-label action through approval", async () => {
+  const adapter = new ToolTestAdapter();
+  const tools = createTools(adapter);
+  const events: string[] = [];
+  const result = await tools.execute("browser_open_and_click", "call_open_and_click", {
+    url: "http://127.0.0.1:4173/fixture",
+    target: "continue",
+  }, {
+    approveBrowser: async (request) => {
+      assert.equal(request.action, "click");
+      assert.equal(request.reference, "@e1");
+      events.push("approved");
+      return { decision: "allow-once" };
+    },
+    onBrowser: (event) => { events.push(event.type); },
+  });
+  assert.equal(result.ok, true, result.content);
+  assert.equal(adapter.actionCount, 1);
+  assert.match(result.content, /"target":"continue"/u);
+  assert.deepEqual(events, ["prepared", "approved", "approval_decided", "started", "completed"]);
 });
 
 test("browser results redact sensitive URL query values and fragments", async () => {

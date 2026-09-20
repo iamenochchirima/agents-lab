@@ -14,6 +14,10 @@ import { BrowserError, BrowserTools, type BrowserApprovalDecision, type BrowserA
 import { type MemoryApproval, type MemoryApprovalDecision, type MemoryApprovalRequest, type MemoryEvent, type MemoryOperation, type MemoryScope, type MemoryRecord, type MemorySearchEvidence } from "../memory/contracts.js";
 import { hashMemoryContent, MemoryPolicyError, MemoryStore, type MemoryBatchMutation } from "../memory/store.js";
 import { SkillRegistry } from "../skills/index.js";
+import { COMPUTER_TOOL_DEFINITION, ComputerRunner, type ComputerContext, type ComputerEvent, type ComputerOutcome, type ComputerStrategy } from "../computer/runner.js";
+import type { ComputerErrorCode } from "../computer/failures.js";
+import { NativeComputerRunner, type NativeComputerRunnerOptions } from "../computer/native-runner.js";
+import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest } from "../computer/contracts.js";
 
 export interface ToolExecutionResult {
   readonly callId: string;
@@ -21,8 +25,10 @@ export interface ToolExecutionResult {
   readonly ok: boolean;
   readonly content: string;
   readonly summary: string;
+  /** The tool has completed the user-requested workflow; do not dispatch another model round. */
+  readonly terminal?: boolean;
   readonly mutationId?: string;
-  readonly errorCode?: MutationErrorCode | ProcessErrorCode | BrowserToolErrorCode | "memory-approval-denied" | "memory-approval-unavailable";
+  readonly errorCode?: MutationErrorCode | ProcessErrorCode | BrowserToolErrorCode | "memory-approval-denied" | "memory-approval-unavailable" | ComputerErrorCode;
 }
 
 export interface ProcessToolOptions {
@@ -41,6 +47,20 @@ export interface SkillToolOptions {
   readonly registry: SkillRegistry;
 }
 
+export interface ComputerToolOptions {
+  readonly environment?: "browser" | "ubuntu-x11-cua";
+  readonly browser?: BrowserToolOptions;
+  readonly native?: NativeComputerRunnerOptions;
+  readonly strategy: ComputerStrategy;
+  readonly openRouterApiKey?: string;
+  readonly traditionalModel?: string;
+  readonly traditionalVision?: boolean;
+  readonly typeSafeApiKey?: string;
+  readonly typeSafeModel?: string;
+  readonly maxActions?: number;
+  readonly fetchImpl?: typeof fetch;
+}
+
 export type { BrowserToolEvent } from "../browser/tools.js";
 
 export interface ToolExecutionContext {
@@ -56,6 +76,9 @@ export interface ToolExecutionContext {
   readonly onProcess?: (event: ProcessToolEvent) => Promise<void> | void;
   readonly approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>;
   readonly onBrowser?: (event: BrowserToolEvent) => Promise<void> | void;
+  readonly approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>;
+  readonly onComputerApproval?: (event: ComputerApprovalEvent) => Promise<void> | void;
+  readonly onComputer?: (event: ComputerEvent) => Promise<void> | void;
   readonly approveMemory?: MemoryApproval;
   readonly onMemory?: (event: MemoryEvent) => Promise<void> | void;
   readonly onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => Promise<void> | void;
@@ -555,6 +578,7 @@ export class ToolRegistry {
   private readonly baseDefinitions: readonly ModelToolDefinition[] = [LIST_DIRECTORY, READ_FILE, STAT, SEARCH_FILES, LIST_QUARANTINE, WRITE_FILE, MKDIR, DELETE_DIRECTORY, DELETE_DIRECTORY_TREE, DELETE_FILE, RESTORE_FILE, RESTORE_DIRECTORY, PURGE_QUARANTINE, COPY_FILE, MOVE_FILE, RENAME, APPLY_PATCH, APPLY_PATCH_SET];
   readonly definitions: readonly ModelToolDefinition[];
   private readonly browserTools?: BrowserTools;
+  private readonly computer?: { run(callId: string, rawGoal: unknown, context: ComputerContext): Promise<ComputerOutcome> };
 
   constructor(
     readonly workspace: Workspace,
@@ -563,13 +587,32 @@ export class ToolRegistry {
     browser?: BrowserToolOptions,
     private readonly memory?: MemoryToolOptions,
     private readonly skills?: SkillToolOptions,
+    computer?: ComputerToolOptions,
   ) {
     this.browserTools = browser ? new BrowserTools(browser) : undefined;
+    this.computer = computer
+      ? computer.environment === "ubuntu-x11-cua"
+        ? computer.native ? new NativeComputerRunner({ ...computer.native, maxOutputBytes }) : undefined
+        : computer.browser ? new ComputerRunner({
+            browser: new BrowserTools(computer.browser),
+            strategy: computer.strategy,
+            openRouterApiKey: computer.openRouterApiKey,
+            traditionalModel: computer.traditionalModel,
+            traditionalVision: computer.traditionalVision,
+            typeSafeApiKey: computer.typeSafeApiKey,
+            typeSafeModel: computer.typeSafeModel,
+            maxActions: computer.maxActions,
+            maxOutputBytes,
+            fetchImpl: computer.fetchImpl,
+          })
+        : undefined
+      : undefined;
     this.definitions = [
       ...(process ? [...this.baseDefinitions, RUN_COMMAND] : this.baseDefinitions),
       ...(this.browserTools?.definitions ?? []),
       ...(memory ? [MEMORY_SEARCH, MEMORY_GET, MEMORY, MEMORY_FORGET] : []),
       ...(skills ? [LIST_SKILLS, READ_SKILL] : []),
+      ...(this.computer ? [COMPUTER_TOOL_DEFINITION] : []),
     ];
   }
 
@@ -622,6 +665,8 @@ export class ToolRegistry {
                             ? await this.executeMemory(call, args, context)
                           : this.skills && (call.name === LIST_SKILLS.name || call.name === READ_SKILL.name)
                             ? await this.executeSkill(call, args, context.signal)
+                          : this.computer && call.name === COMPUTER_TOOL_DEFINITION.name
+                            ? await this.executeComputer(call, args, context)
                           : this.browserTools && this.browserTools.definitions.some((definition) => definition.name === call.name)
                             ? await this.executeBrowser(call, args, context)
                             : this.unknown(call);
@@ -946,7 +991,26 @@ export class ToolRegistry {
       approveBrowser: context.approveBrowser,
       onBrowser: context.onBrowser,
     });
-    return { callId: call.callId, name: call.name, ...outcome };
+    return { callId: call.callId, name: call.name, ...outcome, ...(call.name === "browser_open_and_click" ? { terminal: true } : {}) };
+  }
+
+  private async executeComputer(call: ModelToolCall, args: ToolArguments, context: ToolExecutionContext): Promise<ToolExecutionResult> {
+    if (!this.computer) throw new ToolExecutionError("Computer use is disabled by configuration.");
+    const goal = args.goal;
+    const outcome = await this.computer.run(call.callId, goal, {
+      signal: context.signal,
+      approvalTimeoutMs: context.approvalTimeoutMs,
+      pauseDeadline: context.pauseDeadline,
+      resumeDeadline: context.resumeDeadline,
+      pauseTurnDeadline: context.pauseTurnDeadline,
+      resumeTurnDeadline: context.resumeTurnDeadline,
+      approveBrowser: context.approveBrowser,
+      onBrowser: context.onBrowser,
+      approveComputer: context.approveComputer,
+      onComputerApproval: context.onComputerApproval,
+      onComputer: context.onComputer,
+    } satisfies ComputerContext);
+    return { callId: call.callId, name: call.name, ...outcome, terminal: true };
   }
 
   private async runCommand(call: ModelToolCall, args: ToolArguments, context: ToolExecutionContext): Promise<ToolExecutionResult> {
