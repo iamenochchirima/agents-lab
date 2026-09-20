@@ -1057,7 +1057,7 @@ Do not move this plan to `platforms/completed/` until all applicable items are c
 
 **Completed:** `2026-09-20T03:12:04+02:00`
 **Commits:** `5651f3f`, `8376bb9`, `d3afbc6`, `a25943b`, `b05f41c`, `4c88701`,
-`4695bea`, `3d8a079`, `0c754cb`, `635841c`, `de293e2`
+`4695bea`, `3d8a079`, `0c754cb`, `635841c`, `de293e2`, `fa30b33`, `984836a`
 
 ### Validation
 
