@@ -200,6 +200,15 @@ sent. This confirms the approval and no-side-effect boundary, but it is not trad
 acceptance evidence; the Dots route remains unsuitable for the completion gate until its
 coordinate grounding is reliable.
 
+The traditional request boundary now presents the model with a bounded, human-readable
+goal/state block and explicit full-screenshot coordinate-frame and visible-bounding-box
+instructions. The focused regression test covers that request shape (`cc7f42`). Repeated
+static probes against the same captured fixture image still produced materially different
+coordinates across otherwise identical free-provider requests, including points outside
+the visible button. The change improves the request contract but does not convert an
+unstable provider into acceptance evidence; Anesu must continue to abstain or deny rather
+than snap or silently reinterpret those coordinates.
+
 The CUA adapter now also translates the bounded native move, type, keypress, scroll,
 and drag operations through the pinned SDK, with the same one-observation consumption
 and no-retry rule. The traditional native runner now selects one of those operations
@@ -963,15 +972,17 @@ Before moving this plan to `completed/`, verify:
 
 - **Implementation commits:** `d08ada8` adds the dual-path computer-use slice,
   `837f0a7` adds provider-response compatibility for bounded rationales, explicit
-  `x_abs`/`y_abs` aliases, and normalized coordinates, and `2382ddd` accepts equivalent
-  canonical/alias coordinates while rejecting conflicting duplicates.
+  `x_abs`/`y_abs` aliases, and normalized coordinates, `2382ddd` accepts equivalent
+  canonical/alias coordinates while rejecting conflicting duplicates, and `cc7f42`
+  clarifies the traditional vision coordinate context and bounded observation payload.
 - **Changed implementation surface:** `anesu/src/computer/`, the Anesu runtime/config,
   TUI and tool wiring, disposable Xvfb/Xephyr launchers, focused computer tests, the
   computer-use playground, research notes, and the active plan/gap register. The
   follow-up commit touched only the native runner, its focused tests, its README, and
   this plan.
 - **Validation:** `pnpm --filter @agent-harness-lab/anesu typecheck` passed;
-  `pnpm --filter @agent-harness-lab/anesu test` passed all 499 tests;
+  `pnpm --filter @agent-harness-lab/anesu test` passed all 499 tests after the latest
+  traditional request-boundary change;
   `pnpm --filter @agent-harness-lab/anesu coverage` passed with 89.56% line,
   76.58% branch, and 85.99% function coverage; scoped `git diff --check` passed.
 - **Real-backend prerequisites:** Linux/X11, an isolated `DISPLAY`, Xvfb or Xephyr,
