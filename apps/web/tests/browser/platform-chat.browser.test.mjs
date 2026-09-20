@@ -172,6 +172,33 @@ test("Mastra Chat shows native agent evidence and safe Mastra evidence", async (
   }
 });
 
+test("Mastra Chat selects the workflow variant and shows native workflow details", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/mastra/chat");
+    await waitForText(browser.cdp, "Mastra");
+    await clickSummary(browser.cdp, "Run options");
+    await chooseVariant(browser.cdp, "workflow");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Inspect the Mastra workflow runtime.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Mastra fixture completed.");
+
+    assert.equal(fixture.state.requests[0]?.variant, "workflow");
+    await clickSummary(browser.cdp, "Run details");
+    await clickSummary(browser.cdp, "Native execution");
+    const native = await browser.cdp.evaluate(`document.querySelector('.chat-activity[open]')?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(native, /Native executionMastra/);
+    assert.match(native, /Workflowagent/);
+    assert.match(native, /completed/);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Restate Chat continues a session across workflow turns and requires a model", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -870,7 +897,7 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
       : langGraph
         ? { serviceOrigin: "http://127.0.0.1:8090", executionId: `langgraph:${runId}`, labRunId: runId, eventSource: "langgraph-service", threadId: `langgraph:baseline:${sessionId}`, graph: "baseline", protocolVersion: 1 }
         : mastra
-          ? { schemaVersion: 2, evidenceSchema: "mastra.native.v2", mastraVersion: "1.66.0", operation: "agent.generate", processScoped: true, storage: "none", nativeStatus: "completed", modelProvider: "openrouter", model: request.model?.model ?? "cohere/north-mini-code:free", eventCount: events.length, modelStepCount: 1, toolCallCount: 0, toolAttemptCount: 0, contextPrepared: true }
+          ? { schemaVersion: 2, evidenceSchema: "mastra.native.v2", mastraVersion: "1.66.0", operation: request.variant === "workflow" ? "workflow.run" : "agent.generate", workflowId: request.variant === "workflow" ? "agent" : undefined, processScoped: request.variant !== "workflow", storage: request.variant === "workflow" ? "libsql-file" : "none", localSingleProcess: request.variant === "workflow" ? true : undefined, nativeStatus: "completed", modelProvider: "openrouter", model: request.model?.model ?? "cohere/north-mini-code:free", eventCount: events.length, modelStepCount: 1, modelRequestCount: 1, toolCallCount: 0, toolAttemptCount: 0, contextPrepared: true }
         : { fixture: true } },
     result,
     trajectory: terminal && (platform === "temporal" || langGraph) ? { schemaVersion: 1, runId, phases: [] } : null,
@@ -974,6 +1001,18 @@ async function chooseModel(cdp) {
   await click(cdp, ".model-picker-trigger");
   await waitForText(cdp, "Select a model");
   await clickModel(cdp, "cohere/north-mini-code:free");
+}
+
+async function chooseVariant(cdp, variant) {
+  await cdp.evaluate(`(() => {
+    const select = Array.from(document.querySelectorAll("select"))
+      .find((candidate) => candidate.closest("label")?.querySelector("span")?.textContent?.trim() === "Variant");
+    if (!select) throw new Error("Variant select not found");
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (!setter) throw new Error("Select value setter not found");
+    setter.call(select, ${JSON.stringify(variant)});
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
 }
 
 async function clickModel(cdp, modelId) {
