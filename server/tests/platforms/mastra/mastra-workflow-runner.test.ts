@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,6 +25,23 @@ test("Mastra workflow completes a native stored run", async () => {
     assert.equal(inspection.reference.native.eventCount, inspection.eventIntents.length);
     assert.equal(inspection.reference.native.toolCallCount, 0);
     assert.ok(inspection.eventIntents.some((event) => event.kind === "WorkflowCompleted"));
+  } finally {
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Mastra workflow reports an invalid storage path as unavailable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-storage-error-"));
+  const storageDirectory = join(root, "workflow-storage-directory");
+  await mkdir(storageDirectory);
+
+  const runner = new MastraWorkflowRunner({ storagePath: storageDirectory });
+  try {
+    const connectivity = await runner.checkConnection();
+    assert.equal(connectivity.reachable, false);
+    assert.match(connectivity.message, /storage|database|connection/i);
+    await assert.rejects(runner.start(manifestFor(runner, "Say hello.", "mastra-invalid-storage")), /storage|database|connection/i);
   } finally {
     await runner.close();
     await rm(root, { recursive: true, force: true });

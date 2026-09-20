@@ -74,10 +74,11 @@ export class MastraWorkflowRunner implements PlatformRunner {
   private readonly modelFactory: MastraModelFactory;
   private readonly now: () => Date;
   private readonly executions = new Map<string, MastraWorkflowExecutionRecord>();
-  private readonly storage: LibSQLStore;
+  private readonly storage: LibSQLStore | null;
   private readonly mastra: Mastra;
   private readonly workflow;
   private readonly ready: Promise<void>;
+  private storageError: string | null;
 
   constructor(options: MastraWorkflowRunnerOptions = {}) {
     this.environment = options.environment ?? safeEnvironment();
@@ -85,13 +86,26 @@ export class MastraWorkflowRunner implements PlatformRunner {
     this.contextRoot = resolve(options.contextRoot ?? process.env.AGENTLAB_CONTEXT_ROOT ?? "lab/sessions");
     this.modelFactory = options.modelFactory ?? defaultMastraModelFactory;
     this.now = options.now ?? (() => new Date());
-    this.storage = new LibSQLStore({ id: "agentlab-mastra-workflows", url: `file:${this.storagePath}` });
+    this.storageError = null;
+    let storage: LibSQLStore | null = null;
+    try {
+      storage = new LibSQLStore({ id: "agentlab-mastra-workflows", url: `file:${this.storagePath}` });
+    } catch (error) {
+      this.storageError = errorMessage(error, "Mastra workflow storage could not be opened.");
+    }
+    this.storage = storage;
     this.workflow = createMastraWorkflow({
       modelFactory: this.modelFactory,
       eventSink: this.workflowEventSink(),
     });
-    this.mastra = new Mastra({ storage: this.storage, workflows: { agent: this.workflow }, logger: false });
-    this.ready = this.storage.init();
+    this.mastra = storage
+      ? new Mastra({ storage, workflows: { agent: this.workflow }, logger: false })
+      : new Mastra({ workflows: { agent: this.workflow }, logger: false });
+    this.ready = storage
+      ? storage.init().catch((error: unknown) => {
+        this.storageError = errorMessage(error, "Mastra workflow storage is unavailable.");
+      })
+      : Promise.resolve();
   }
 
   manifestConfiguration(): Readonly<Record<string, unknown>> {
@@ -121,12 +135,10 @@ export class MastraWorkflowRunner implements PlatformRunner {
   }
 
   async checkConnection(): Promise<RunnerConnectivity> {
-    try {
-      await this.ready;
-      return { reachable: true, message: "Mastra workflow runtime is ready with local LibSQL storage." };
-    } catch (error) {
-      return { reachable: false, message: errorMessage(error, "Mastra workflow storage is unavailable.") };
-    }
+    await this.ready;
+    return this.storageError
+      ? { reachable: false, message: `Mastra workflow storage is unavailable: ${this.storageError}` }
+      : { reachable: true, message: "Mastra workflow runtime is ready with local LibSQL storage." };
   }
 
   async start(manifest: RunManifest): Promise<PlatformExecutionReference> {
@@ -135,7 +147,7 @@ export class MastraWorkflowRunner implements PlatformRunner {
     const existing = this.executions.get(manifest.runId);
     if (existing) return existing.reference;
 
-    await this.ready;
+    await this.ensureStorageReady();
     const reference = referenceFor(manifest, this.storagePath);
     // The in-memory map prevents duplicate starts within one process. The
     // native lookup closes the restart window: a retried admission must reuse
@@ -216,8 +228,14 @@ export class MastraWorkflowRunner implements PlatformRunner {
   }
 
   async close(): Promise<void> {
-    await this.ready.catch(() => undefined);
-    await this.storage.close();
+    await this.ready;
+    await this.storage?.close();
+  }
+
+  private async ensureStorageReady(): Promise<void> {
+    await this.ready;
+    if (this.storageError) throw new Error(`Mastra workflow storage is unavailable: ${this.storageError}`);
+    if (!this.storage) throw new Error("Mastra workflow storage is unavailable.");
   }
 
   private async execute(record: MastraWorkflowExecutionRecord, run: Awaited<ReturnType<typeof this.workflow.createRun>>, resume: boolean, resumeData?: { approved: boolean }): Promise<void> {
@@ -271,7 +289,7 @@ export class MastraWorkflowRunner implements PlatformRunner {
   }
 
   private async nativeState(runId: string): Promise<WorkflowState | null> {
-    await this.ready;
+    await this.ensureStorageReady();
     return this.mastra.getWorkflowById(MASTRA_WORKFLOW_ID).getWorkflowRunById(runId, {
       withNestedWorkflows: false,
       fields: ["result", "error", "steps", "suspendedPaths", "resumeLabels"],
