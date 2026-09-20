@@ -1,4 +1,7 @@
-# Mastra baseline execution semantics
+# Mastra execution semantics
+
+The Lab exposes two Mastra variants. They share model selection, typed tools, and the
+Lab-owned context contract, but they do not make the same durability claims.
 
 ## What this variant is
 
@@ -22,6 +25,21 @@ this direct call, so the adapter exposes a safe process-scoped reference:
 
 This is not a Mastra workflow run, snapshot, memory thread, or crash-durable
 execution.
+
+## Workflow variant
+
+`mastra/workflow` uses the native Mastra workflow engine with a typed approval step and
+model step. The workflow run ID is the Lab run ID in the local profile, while the
+opaque execution reference retains the workflow ID and storage profile. A prompt that
+starts with `[approval]` suspends before the model step; the browser's approval action
+calls `POST /api/runs/:runId/resume` with `{ "approved": true }` and continues the same
+native run.
+
+Workflow snapshots are persisted by Mastra's `LibSQLStore` at the configured local
+file path. A replacement runner can inspect a suspended or completed native run from
+that file. The Lab evidence store still owns normalized evidence and context
+projection. A local file does not provide safe concurrent multi-process ownership, so
+the profile is explicitly single-process.
 
 ## Lifecycle and evidence
 
@@ -69,16 +87,15 @@ runner process. Replacing the runner loses in-flight execution state. Inspection
 retained reference then returns not-found to the common server, which projects
 `reconciliation_required` without inventing completion.
 
-There is no orphan adoption, replay, or automatic restart in this variant. Mastra
-workflow snapshots and storage-backed suspension/resumption are deferred to a later
-variant.
+There is no orphan adoption, replay, or automatic restart in the baseline. The workflow
+variant is the separate storage-backed suspension/resumption profile described above.
 
 ## Deliberately excluded features
 
-- Mastra workflows and snapshots
+- automatic workflow replay or orphan adoption
 - Mastra memory and storage
 - MCP, skills, plugins, OAuth, channels, and external side effects
-- Mastra workflow durability, suspension, and durable resume
+- distributed workflow storage and multi-process ownership
 - compaction recovery in this direct baseline when a summary is required; the shared
   context service reports that limitation instead of silently dropping history
 - exactly-once provider-call claims

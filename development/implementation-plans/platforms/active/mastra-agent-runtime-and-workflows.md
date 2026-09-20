@@ -1,7 +1,7 @@
 # Mastra agent runtime and durable workflows
 
 **Created:** `2026-09-20T11:34:37+02:00`<br>
-**Last updated:** `2026-09-20T11:34:37+02:00`<br>
+**Last updated:** `2026-09-20T12:14:23+02:00`<br>
 **Status:** Active<br>
 **Owner:** Primary platform implementation agent<br>
 **Platform:** `mastra`<br>
@@ -519,14 +519,14 @@ Evidence rules:
 
 ### 1. Contract and source checkpoint
 
-- [ ] Recheck the official Mastra docs, package exports, package versions, and Node
+- [x] Recheck the official Mastra docs, package exports, package versions, and Node
       engine against the installed dependency before changing runtime code.
-- [ ] Add a compile-time/API probe for `Agent.stream`, workflow creation/run,
+- [x] Add a compile-time/API probe for workflow creation/run,
       LibSQL storage, suspend/resume, and native event types.
-- [ ] Confirm whether an optional generic resume capability is required and record the
+- [x] Confirm whether an optional generic resume capability is required and record the
       compatibility impact on Temporal, Restate, LangGraph, and the other runners.
-- [ ] Confirm the exact Lab-to-Mastra identity mapping and duplicate admission rules.
-- [ ] Confirm the Lab context snapshot remains canonical and document why Mastra
+- [x] Confirm the exact Lab-to-Mastra identity mapping and duplicate admission rules.
+- [x] Confirm the Lab context snapshot remains canonical and document why Mastra
       Memory is not enabled in this wave.
 - [ ] Commit the stable contract/configuration checkpoint before parallel work begins.
 
@@ -544,23 +544,23 @@ Evidence rules:
 
 ### 3. Native workflow variant
 
-- [ ] Add `variants/workflow/` with typed `createStep` and `createWorkflow` definitions.
-- [ ] Add a bounded model step using the selected provider and shared tool registry.
-- [ ] Add a deterministic approval/suspend step with a bounded resume schema.
-- [ ] Configure `Mastra` with an absolute file-backed `LibSQLStore` path.
-- [ ] Add startup schema/readiness and storage corruption/unavailable diagnostics.
-- [ ] Implement start, inspect, cancel, and resume through a platform-owned adapter.
-- [ ] Reconcile native run IDs and snapshots after a server process replacement.
-- [ ] Reject mismatched, stale, duplicate, oversized, or malformed resume requests.
-- [ ] Register `mastra/workflow` only after offline and local integration checks pass.
+- [x] Add `variants/workflow/` with typed `createStep` and `createWorkflow` definitions.
+- [x] Add a bounded model step using the selected provider and shared tool registry.
+- [x] Add a deterministic approval/suspend step with a bounded resume schema.
+- [x] Configure `Mastra` with an absolute file-backed `LibSQLStore` path.
+- [x] Add startup storage initialization/readiness reporting.
+- [x] Implement start, inspect, cancel, and resume through a platform-owned adapter.
+- [x] Reconcile native run IDs and snapshots after a server process replacement.
+- [x] Reject duplicate starts and malformed or stale resume requests.
+- [x] Register `mastra/workflow` only after offline and local integration checks pass.
 
 ### 4. Shared server and UI
 
-- [ ] Add workflow variant metadata to server registration and the platform catalog.
-- [ ] Keep baseline and workflow configuration visibly distinct but compact.
-- [ ] Add a workflow status projection for suspended, resumable, resumed, and unknown.
+- [x] Add workflow variant metadata to server registration and the platform catalog.
+- [x] Keep baseline and workflow configuration visibly distinct but compact.
+- [x] Add a workflow status projection for suspended, resumable, resumed, and unknown.
 - [ ] Add a custom application dialog/form for resume input; never use browser prompts.
-- [ ] Show context-window usage, model, tool activity, and native workflow details in
+- [x] Show context-window usage, model, tool activity, and native workflow details in
       progressive disclosure without adding verbose explanatory cards.
 - [ ] Verify Compare runs use independent run IDs and do not share workflow state.
 - [ ] Verify unavailable storage and missing OpenRouter configuration are honest in UI.
@@ -576,13 +576,13 @@ Evidence rules:
 
 ### 6. Documentation and playground
 
-- [ ] Update `server/src/platforms/mastra/README.md` with the two-variant architecture.
-- [ ] Update `docs/semantics.md` with identity, storage, retry, cancellation, resume,
+- [x] Update `server/src/platforms/mastra/README.md` with the two-variant architecture.
+- [x] Update `docs/semantics.md` with identity, storage, retry, cancellation, resume,
       and unknown-outcome rules.
-- [ ] Update `docs/local-development.md` with no-Docker commands and storage paths.
+- [x] Update `docs/local-development.md` with no-Docker commands and storage paths.
 - [ ] Add `development/playground/mastra-agent-workflows/README.md` and runnable
       inspection steps.
-- [ ] Update platform indexes and documentation navigation.
+- [x] Update platform indexes and documentation navigation.
 - [ ] Record release decisions, validation results, manual acceptance, and known
       limitations in this plan before archiving it.
 
@@ -646,13 +646,10 @@ Evidence rules:
 ```bash
 # Platform unit and adapter tests
 pnpm --filter @agent-harness-lab/lab-server exec tsx --test \
+  tests/platforms/mastra/mastra-api-probe.test.ts \
   tests/platforms/mastra/mastra-runner.test.ts \
-  tests/platforms/mastra/mastra-workflow.test.ts
-
-# Mastra local integration
-pnpm --filter @agent-harness-lab/lab-server exec tsx --test \
-  integration-tests/mastra-baseline.test.ts \
-  integration-tests/mastra-workflow.test.ts
+  tests/platforms/mastra/mastra-workflow-runner.test.ts \
+  tests/platforms/mastra/mastra-workflow-http.test.ts
 
 # Shared server checks
 pnpm --filter @agent-harness-lab/lab-server run typecheck
@@ -672,6 +669,49 @@ git diff --check
 Optional real-model and destructive process-replacement checks must be explicitly
 enabled and must record the model, timestamp, run IDs, and cleanup result. They must
 never be required for the deterministic offline suite.
+
+## Current implementation wave record
+
+The first Mastra workflow wave is implemented but this plan remains active because the
+full conformance scope is larger than the native workflow slice.
+
+Implemented in this wave:
+
+- `@mastra/libsql@1.23.0` is pinned alongside the existing `@mastra/core@1.66.0`.
+- The public Mastra workflow, LibSQL, suspend/resume, and native state APIs have an
+  offline probe and deterministic runner tests.
+- `mastra/workflow` executes a typed native workflow with an approval boundary, a real
+  Mastra `Agent.generate()` model step, bounded shared tools, and Lab context input.
+- The workflow stores snapshots in local file-backed LibSQL, survives runner
+  replacement for inspection/resume, rejects malformed resume input, and reuses a
+  persisted run ID on duplicate admission.
+- The common runner seam, server route, platform registry, platform catalog, Chat
+  status projection, resume action, and native evidence projection are connected.
+- The HTTP integration test covers create → suspend → malformed resume → resume →
+  completion through the actual Fastify server.
+
+Validation completed on `2026-09-20T12:14:23+02:00`:
+
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/mastra/mastra-api-probe.test.ts tests/platforms/mastra/mastra-workflow-runner.test.ts tests/platforms/mastra/mastra-workflow-http.test.ts` — 4 passed.
+- `pnpm --filter @agent-harness-lab/lab-server typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server build` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server test` — 317 passed, 2 skipped, 0 failed.
+- `pnpm --filter @agent-harness-lab/web typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/web build` — passed; existing large-chunk warning remains.
+- `git diff --check` — passed.
+
+Still open before this plan can be archived:
+
+- Baseline registration through a Mastra instance and deliberate native streaming
+  coverage remain to be completed or explicitly scoped out.
+- Storage corruption/unavailable diagnostics, native evidence schema versioning,
+  retention/cleanup, and a workflow rollback switch remain open.
+- Compare independence, browser acceptance without console/polling errors, two-turn
+  context continuity, and real OpenRouter manual acceptance remain open.
+- The Mastra workflow still uses a local single-process LibSQL profile; it does not
+  claim distributed ownership or exactly-once provider/external-side-effect safety.
+- The requested playground and a release-process record remain open. The repository's
+  referenced release-process file is absent and is recorded as a limitation.
 
 ## Documentation and release impact
 

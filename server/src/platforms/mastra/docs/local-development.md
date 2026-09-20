@@ -66,3 +66,39 @@ the prompt, provider headers, API keys, or raw provider responses.
 - [Mastra project structure](https://mastra.ai/reference/project-structure)
 - [Mastra agents and `generate()`](https://mastra.ai/docs/agents/overview)
 - [Mastra OpenRouter gateway](https://mastra.ai/models/gateways/openrouter)
+# Workflow variant local development
+
+The Mastra platform runs without Docker. The direct baseline uses process-local
+execution. The workflow variant additionally opens a file-backed LibSQL database for
+native workflow snapshots.
+
+```bash
+./scripts/run_local_stack.sh
+```
+
+The workflow store defaults to `lab/mastra/mastra-workflows.db`. Override it with an
+absolute `AGENTLAB_MASTRA_WORKFLOW_STORAGE` path when running restart exercises. The
+file is local runtime state and must not be committed.
+
+To exercise the native approval boundary, select `Mastra workflow` in Chat and send a
+prompt beginning with `[approval]`, for example:
+
+```text
+[approval] Prepare a short launch announcement.
+```
+
+The run enters `suspended`. Select **Approve and resume** in the run details. The
+server resumes the same native workflow run; it does not submit a second Lab run.
+
+For a replacement-runner exercise, stop the server while the workflow is suspended,
+start the local stack again with the same storage path, reload the run URL, and resume
+it. This validates local snapshot inspection. It does not simulate a distributed
+production database or claim multi-process safety.
+
+Required checks:
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server typecheck
+pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/platforms/mastra/mastra-api-probe.test.ts tests/platforms/mastra/mastra-workflow-runner.test.ts
+pnpm --filter @agent-harness-lab/web typecheck
+```
