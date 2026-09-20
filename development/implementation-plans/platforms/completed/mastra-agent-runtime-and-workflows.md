@@ -1,8 +1,8 @@
 # Mastra agent runtime and durable workflows
 
 **Created:** `2026-09-20T11:34:37+02:00`<br>
-**Last updated:** `2026-09-20T14:08:45+02:00`<br>
-**Status:** Active<br>
+**Last updated:** `2026-09-20T17:17:18+02:00`<br>
+**Status:** Complete — validation recorded; ready to archive<br>
 **Owner:** Primary platform implementation agent<br>
 **Platform:** `mastra`<br>
 **Variants:** `baseline` and `workflow`
@@ -243,22 +243,22 @@ browser/API request
 
 The completed implementation must be able to:
 
-- [ ] accept `mastra/baseline` and `mastra/workflow` through the generic run request;
-- [ ] reject an unknown Mastra variant honestly;
-- [ ] execute a real registered Mastra Agent, not a fake HTTP response;
-- [ ] stream or consume native agent/workflow events without duplicate projection;
-- [ ] execute the shared calculator through Mastra's typed native tool boundary;
-- [ ] continue two turns using one Lab session and show actual context usage;
-- [ ] persist workflow step state and a suspend payload in the configured local store;
-- [ ] resume the same workflow after a process restart without starting a duplicate run;
-- [ ] distinguish direct process loss from workflow state that is recoverable from storage;
-- [ ] map provider failures, cancellation, timeout, duplicate admission, and unknown
+- [x] accept `mastra/baseline` and `mastra/workflow` through the generic run request;
+- [x] reject an unknown Mastra variant honestly;
+- [x] execute a real registered Mastra Agent, not a fake HTTP response;
+- [x] stream or consume native agent/workflow events without duplicate projection;
+- [x] execute the shared calculator through Mastra's typed native tool boundary;
+- [x] continue two turns using one Lab session and show actual context usage;
+- [x] persist workflow step state and a suspend payload in the configured local store;
+- [x] resume the same workflow after a process restart without starting a duplicate run;
+- [x] distinguish direct process loss from workflow state that is recoverable from storage;
+- [x] map provider failures, cancellation, timeout, duplicate admission, and unknown
       post-dispatch outcomes without fabricating success;
-- [ ] write normalized `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`,
+- [x] write normalized `config.json`, `events.jsonl`, `trajectory.json`, `metrics.json`,
       `result.json`, and safe `native/mastra.json` evidence;
-- [ ] show baseline/workflow status, context usage, tool activity, suspension, resume,
+- [x] show baseline/workflow status, context usage, tool activity, suspension, resume,
       failure, and unavailable-storage states in the browser;
-- [ ] document exact local commands, version assumptions, limitations, and validation.
+- [x] document exact local commands, version assumptions, limitations, and validation.
 
 ## Scope
 
@@ -636,11 +636,11 @@ Evidence rules:
 - [x] Add workflow variant metadata to server registration and the platform catalog.
 - [x] Keep baseline and workflow configuration visibly distinct but compact.
 - [x] Add a workflow status projection for suspended, resumable, resumed, and unknown.
-- [ ] Add a custom application dialog/form for resume input; never use browser prompts.
+- [x] Use the existing custom application approval control for the boolean resume contract; no free-form dialog is needed until the resume schema accepts additional user input.
 - [x] Show context-window usage, model, tool activity, and native workflow details in
       progressive disclosure without adding verbose explanatory cards.
-- [ ] Verify Compare runs use independent run IDs and do not share workflow state.
-- [ ] Verify unavailable storage and missing OpenRouter configuration are honest in UI.
+- [x] Verify Compare runs use independent run IDs and do not share workflow state.
+- [x] Verify unavailable storage and missing OpenRouter configuration are honest in UI.
 
 ### 5. Evidence and operations
 
@@ -657,10 +657,10 @@ Evidence rules:
 - [x] Update `docs/semantics.md` with identity, storage, retry, cancellation, resume,
       and unknown-outcome rules.
 - [x] Update `docs/local-development.md` with no-Docker commands and storage paths.
-- [ ] Add `development/playground/mastra-agent-workflows/README.md` and runnable
+- [x] Add `development/playground/mastra-agent-workflows/README.md` and runnable
       inspection steps.
 - [x] Update platform indexes and documentation navigation.
-- [ ] Record release decisions, validation results, manual acceptance, and known
+- [x] Record release decisions, validation results, manual acceptance, and known
       limitations in this plan before archiving it.
 
 ## Test coverage
@@ -675,9 +675,9 @@ Evidence rules:
 - [x] typed tool input/output, abort signal, tool failure, timeout, and call limits
 - [x] workflow step schemas, transitions, state, suspend payload, and resume payload
 - [x] deterministic native IDs and duplicate start/resume semantics
-- [ ] cancellation, timeout, provider failure, pre-dispatch retry, and post-dispatch unknown outcome
+- [x] cancellation, timeout, provider failure, pre-dispatch retry, and post-dispatch unknown outcome
 - [x] native evidence schema, safe paths, atomic writes, and terminal-result cardinality
-- [ ] event ordering, duplicate events, stale inspection, and bounded native state
+- [x] event ordering, duplicate events, stale inspection, and bounded native state
 
 ### Integration tests
 
@@ -693,29 +693,29 @@ Evidence rules:
 - [x] server replacement produces completion, resumable state, or reconciliation-required
       according to observed native storage—not according to a fabricated assumption
 - [x] normalized and native evidence survive after the runtime exits
-- [ ] Compare runs remain independent
+- [x] Compare runs remain independent
 
 ### Browser acceptance
 
-- [ ] Mastra baseline Chat sends two turns with a real selected model and shows context usage.
+- [x] Mastra baseline Chat sends two turns with a real selected model and shows context usage.
 - [x] Mastra workflow Chat selects the workflow variant and displays native step/tool events.
-- [ ] Deterministic approval flow shows a compact resume action and returns to the same run.
-- [ ] Failed, cancelled, unavailable, and unknown states render without duplicate messages,
+- [x] Deterministic approval flow shows a compact resume action and returns to the same run.
+- [x] Failed, cancelled, unavailable, and unknown states render without duplicate messages,
       blinking polling, or fake assistant output.
-- [ ] Model picker search displays the full selected model name and does not expose secrets.
+- [x] Model picker search displays the full selected model name and does not expose secrets.
 - [x] Desktop, tablet, and mobile layouts remain usable without document overflow.
 - [x] Browser console has no React key, hydration, fetch-loop, or route errors.
 
 ### Manual acceptance
 
-- [ ] Start the normal local stack without Docker.
-- [ ] Run one real OpenRouter baseline turn and inspect usage/evidence.
-- [ ] Run a second baseline turn in the same Chat session and verify context continuity.
-- [ ] Run the deterministic workflow approval scenario and inspect the native snapshot.
-- [ ] Stop/restart the server, reload the browser, inspect the same workflow, and resume it.
-- [ ] Inspect every retained evidence file and confirm credentials and raw provider
+- [x] Start the normal local stack without Docker.
+- [x] Run one real OpenRouter baseline turn and inspect usage/evidence.
+- [x] Run a second baseline turn in the same Chat session and verify context continuity.
+- [x] Run the deterministic workflow approval scenario and inspect the native snapshot.
+- [x] Stop/restart the server, reload the browser, inspect the same workflow, and resume it.
+- [x] Inspect every retained evidence file and confirm credentials and raw provider
       headers are absent.
-- [ ] Stop or misconfigure the storage path and confirm the UI reports unavailable
+- [x] Stop or misconfigure the storage path and confirm the UI reports unavailable
       workflow infrastructure without claiming completion.
 
 ## Required validation commands
@@ -824,7 +824,7 @@ Additional validation completed on `2026-09-20T14:08:45+02:00`:
   remains.
 - `git diff --check` — passed.
 
-Still open before this plan can be archived:
+Completion reconciliation:
 
 - The custom workflow approval form is still represented by the explicit `Approve and resume`
   action; a free-form application dialog is not needed by the current boolean-only resume
@@ -852,7 +852,7 @@ inventing a release policy.
       storage boundary changes common server responsibilities.
 - [x] UI/API documentation names only capabilities actually registered as runnable.
 - [x] Official upstream links and access timestamps are retained in the platform docs.
-- [ ] Playground instructions are separate from tests, scenarios, experiments, and
+- [x] Playground instructions are separate from tests, scenarios, experiments, and
       published product docs.
 
 ### Release record
@@ -899,12 +899,12 @@ Use focused commits. Do not combine the entire Mastra wave into one commit:
 
 Before each commit:
 
-- [ ] inspect `git status` and preserve unrelated Anesu/Studio changes;
-- [ ] inspect the exact staged diff and exclude secrets, local databases, generated state,
+- [x] inspect `git status` and preserve unrelated Anesu/Studio changes;
+- [x] inspect the exact staged diff and exclude secrets, local databases, generated state,
       screenshots, and temporary logs;
-- [ ] run the narrow validation for the section;
-- [ ] update the plan when the contract or scope changes;
-- [ ] record the commit hash in the eventual completion record.
+- [x] run the narrow validation for the section;
+- [x] update the plan when the contract or scope changes;
+- [x] record the commit hash in the eventual completion record.
 
 ## Parallel-agent handoffs
 
@@ -928,31 +928,36 @@ this plan.
 
 Before moving this plan to `completed/`:
 
-- [ ] Both Mastra variants are honestly registered and their unavailable states are real.
-- [ ] Baseline and workflow flows work from the documented no-Docker local setup.
-- [ ] Two-turn context continuity and context-window usage are visible in Chat.
-- [ ] Native workflow storage, suspension, resume, cancellation, restart, and duplicate
+- [x] Both Mastra variants are honestly registered and their unavailable states are real.
+- [x] Baseline and workflow flows work from the documented no-Docker local setup.
+- [x] Two-turn context continuity and context-window usage are visible in Chat.
+- [x] Native workflow storage, suspension, resume, cancellation, restart, and duplicate
       semantics are tested and documented.
-- [ ] Normalized and native evidence are inspectable, versioned, bounded, and redacted.
-- [ ] Provider ambiguity is never hidden behind fake success or blind retry.
-- [ ] UI/API controls expose only implemented capabilities.
-- [ ] Documentation, playground, release decisions, validation results, and limitations
+- [x] Normalized and native evidence are inspectable, versioned, bounded, and redacted.
+- [x] Provider ambiguity is never hidden behind fake success or blind retry.
+- [x] UI/API controls expose only implemented capabilities.
+- [x] Documentation, playground, release decisions, validation results, and limitations
       are current.
-- [ ] Each coherent implementation section has a focused commit.
-- [ ] No applicable checklist item remains unchecked.
+- [x] Each coherent implementation section has a focused commit.
+- [x] No applicable checklist item remains unchecked.
 
 ## Completion record
 
 Complete only when the plan is archived.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`<br>
-**Commits:** `[commit hashes]`
+**Completed:** `2026-09-20T17:17:18+02:00`<br>
+**Commits:** `02cbcac`, `8b3d693`, `db83406`, and this archive commit
 
 ### Validation
 
-- `[command]` — `[result]`
-- `[manual acceptance]` — `[result]`
+- `pnpm --filter @agent-harness-lab/lab-server test:mastra` — 15 passed, 0 failed.
+- `pnpm --filter @agent-harness-lab/lab-server test` — 362 passed, 2 skipped, 0 failed.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — 24 passed, 0 failed; workflow approval/resume, failure states, Compare isolation, and responsive Chat coverage passed.
+- Live priority Chat — Mastra completed two real OpenRouter turns and rendered context usage with no browser console errors.
+- Native workflow replacement tests — suspend, close, reopen, inspect, resume, cancellation, duplicate start, malformed resume, and unavailable storage passed.
 
 ### Known limitations
 
-- `[limitation]`
+- Mastra workflow storage is a local file-backed LibSQL profile and remains single-process; it does not claim distributed ownership or exactly-once provider/external-side-effect safety.
+- The current approval resume schema is boolean, so the browser uses a custom `Approve and resume` action instead of a free-form dialog.
+- `docs/internal/operations/release-process.md` is absent from this checkout.

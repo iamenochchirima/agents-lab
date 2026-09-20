@@ -1,8 +1,8 @@
 # Cross-platform production acceptance and comparison
 
 **Created:** `2026-09-20T13:11:14+02:00`<br>
-**Last updated:** `2026-09-20T16:05:12+02:00`<br>
-**Status:** Active — Phase 0 and the shared server contract are underway; final matrix remains gated by Mastra completion<br>
+**Last updated:** `2026-09-20T17:17:18+02:00`<br>
+**Status:** Complete — four-platform acceptance, browser comparison, and validation are recorded; ready to archive<br>
 **Owner:** Primary platform integration owner<br>
 **Platforms:** Temporal, Restate, LangGraph, Mastra<br>
 **Priority:** Next platform phase after `mastra-agent-runtime-and-workflows.md`
@@ -23,7 +23,7 @@ Read these before changing code:
 - [server ownership](../../../../server/README.md)
 - [runner interface](../../../../server/src/control-plane/ports/README.md)
 - [run evidence layout](../../../../lab/runs/README.md)
-- [Mastra completion plan](./mastra-agent-runtime-and-workflows.md)
+- [Mastra completion plan](../completed/mastra-agent-runtime-and-workflows.md)
 - [completed cross-platform conformance plan](../completed/platform-agent-conformance.md)
 - [completed platform completion wave](../completed/platform-completion-wave.md)
 - [OpenRouter model selection](../completed/openrouter-model-selection.md)
@@ -148,7 +148,7 @@ exactly-once delivery to a model provider or external tool.
 
 ### 1. Shared comparison contract
 
-- [ ] Verify the four baseline registrations and their real connectivity responses.
+- [x] Verify the four baseline registrations and their real connectivity responses.
 - [x] Define and validate the optional `comparisonId` correlation field, or record
       evidence that the existing request is sufficient without adding it.
 - [x] Ensure the immutable manifest records the same task, model, tool limits, scenario,
@@ -159,55 +159,55 @@ exactly-once delivery to a model provider or external tool.
 
 ### 2. Server and evidence integration
 
-- [ ] Keep `RunEvidenceStore` as the sole writer for normalized `lab/runs/<run-id>/`
+- [x] Keep `RunEvidenceStore` as the sole writer for normalized `lab/runs/<run-id>/`
       records.
 - [x] Persist comparison correlation only as safe manifest metadata; do not create a
       second mutable evidence writer or merge event streams into one run.
-- [ ] Ensure each member writes `config.json`, `events.jsonl`, `context.json`,
+- [x] Ensure each member writes `config.json`, `events.jsonl`, `context.json`,
       `trajectory.json`, `metrics.json`, and `result.json` when applicable.
-- [ ] Retain `native/temporal.json`, `native/restate.json`, `native/langgraph.json`,
+- [x] Retain `native/temporal.json`, `native/restate.json`, `native/langgraph.json`,
       or `native/mastra.json` without flattening platform-specific details.
-- [ ] Verify event ordering and terminal-result cardinality independently per run.
+- [x] Verify event ordering and terminal-result cardinality independently per run.
 - [x] Add a server-side comparison acceptance test that checks partial success,
       independent failures, duplicate admission, and stale inspection.
 
 ### 3. Platform acceptance
 
-- [ ] Run the prompt case through Temporal, Restate, LangGraph, and Mastra.
-- [ ] Run the calculator case through all four platform adapters.
-- [ ] Run the two-turn context case through all four platforms with separate sessions.
-- [ ] Verify each platform's native identity and native evidence shape.
-- [ ] Verify cancellation and unavailable dependency behaviour using each platform's
+- [x] Run the prompt case through Temporal, Restate, LangGraph, and Mastra.
+- [x] Run the calculator case through all four platform adapters.
+- [x] Run the two-turn context case through all four platforms with separate sessions.
+- [x] Verify each platform's native identity and native evidence shape.
+- [x] Verify cancellation and unavailable dependency behaviour using each platform's
       documented local profile.
-- [ ] Fix only platform-local defects found by the acceptance matrix without moving SDK
+- [x] Fix only platform-local defects found by the acceptance matrix without moving SDK
       types or platform retry rules into common server code.
-- [ ] Record known differences instead of making them disappear in normalization.
+- [x] Record known differences instead of making them disappear in normalization.
 
 ### 4. Browser Compare and Chat
 
 - [x] Make Compare submit the same workload and model to selected platforms.
 - [x] Show one result row per platform with independent status, output, error, and a link to its run ID/details.
 - [x] Show partial completion when one platform fails or is unavailable.
-- [ ] Keep model selection, task, scenario, experiment, and tool settings consistent.
-- [ ] Show context usage and tool activity for each Chat run.
+- [x] Keep model selection, task, scenario, experiment, and tool settings consistent.
+- [x] Show context usage and tool activity for each Chat run.
 - [x] Link each result to its own Platform Chat run details and evidence files.
-- [ ] Prevent polling races, duplicate assistant messages, duplicate React keys, and
+- [x] Prevent polling races, duplicate assistant messages, duplicate React keys, and
       stale comparison rows after closing and reopening the modal.
-- [ ] Verify desktop, tablet, and mobile layouts without overflow or hidden results.
-- [ ] Keep platform-native details behind expandable run details rather than adding a
+- [x] Verify desktop, tablet, and mobile layouts without overflow or hidden results.
+- [x] Keep platform-native details behind expandable run details rather than adding a
       comparison dashboard full of explanatory text.
 
 ### 5. Documentation and experiment record
 
-- [ ] Update the platform index with this plan and its completion status.
-- [ ] Update the Compare and Platform Chat documentation with the identity and failure
+- [x] Update the platform index with this plan and its completion status.
+- [x] Update the Compare and Platform Chat documentation with the identity and failure
       rules that users can actually observe.
-- [ ] Add or update a reproducible experiment under `lab/experiments/` describing the
+- [x] Add or update a reproducible experiment under `lab/experiments/` describing the
       comparison hypothesis, workload, variables, controls, and evidence.
-- [ ] Add a development playground walkthrough for running one comparison locally.
-- [ ] Record exact local service commands, model configuration, observed results, and
+- [x] Add a development playground walkthrough for running one comparison locally.
+- [x] Record exact local service commands, model configuration, observed results, and
       limitations.
-- [ ] Record release decisions. The referenced canonical release-process file is absent
+- [x] Record release decisions. The referenced canonical release-process file is absent
       in this checkout and must remain an explicit limitation.
 
 ## Explicitly out of scope
@@ -280,54 +280,54 @@ lab/runs/<run-id>/
   native/<platform>.json      # bounded platform-specific reference and native summary
 ```
 
-- [ ] `comparisonId` is opaque, bounded, and safe for filenames or JSON metadata.
-- [ ] Each run has one immutable manifest and one terminal result at most.
-- [ ] The server writes normalized evidence atomically and idempotently.
-- [ ] Native evidence is redacted, bounded, versioned, and platform-specific.
-- [ ] A suspended or unknown run does not receive a fabricated `result.json`.
-- [ ] A comparison does not overwrite another member's context or result.
-- [ ] Retention and cleanup instructions identify platform state separately from Lab runs.
+- [x] `comparisonId` is opaque, bounded, and safe for filenames or JSON metadata.
+- [x] Each run has one immutable manifest and one terminal result at most.
+- [x] The server writes normalized evidence atomically and idempotently.
+- [x] Native evidence is redacted, bounded, versioned, and platform-specific.
+- [x] A suspended or unknown run does not receive a fabricated `result.json`.
+- [x] A comparison does not overwrite another member's context or result.
+- [x] Retention and cleanup instructions identify platform state separately from Lab runs.
 
 ## Failure, retry, and recovery semantics
 
-- [ ] A failed connectivity preflight produces an unavailable comparison row and no
+- [x] A failed connectivity preflight produces an unavailable comparison row and no
       fabricated run. If a run was already admitted, its evidence remains inspectable.
-- [ ] Each platform retains its own retry policy and native status. The server does not
+- [x] Each platform retains its own retry policy and native status. The server does not
       retry a model request merely because a comparison member is slow.
-- [ ] A lost dispatch acknowledgement is reconciled per member. It never becomes a
+- [x] A lost dispatch acknowledgement is reconciled per member. It never becomes a
       successful result based only on the browser request returning.
-- [ ] Cancellation is issued per run. One member's cancellation does not cancel peers.
-- [ ] Server replacement reloads evidence per run and asks the native adapter for the
+- [x] Cancellation is issued per run. One member's cancellation does not cancel peers.
+- [x] Server replacement reloads evidence per run and asks the native adapter for the
       current state. It does not adopt an in-memory run without native evidence.
-- [ ] Duplicate Compare submission uses stable client turn IDs per member and does not
+- [x] Duplicate Compare submission uses stable client turn IDs per member and does not
       create duplicate native executions.
-- [ ] Duplicate and out-of-order events are deduplicated per run, never across runs.
-- [ ] A partial comparison remains partial. The UI never converts it into an all-pass
+- [x] Duplicate and out-of-order events are deduplicated per run, never across runs.
+- [x] A partial comparison remains partial. The UI never converts it into an all-pass
       or all-fail result.
-- [ ] Unknown external outcomes remain `reconciliation_required` or the platform's
+- [x] Unknown external outcomes remain `reconciliation_required` or the platform's
       documented unknown state until observed.
 
 ## Security and configuration
 
-- [ ] The OpenRouter key remains process environment-only and never enters comparison
+- [x] The OpenRouter key remains process environment-only and never enters comparison
       manifests, logs, browser payloads, native evidence, or result files.
-- [ ] Comparison IDs, prompts, model IDs, and selection fields are bounded and validated.
-- [ ] Tool capabilities remain deny-by-default and only enable the shared calculator.
-- [ ] Local platform state paths remain explicit and outside committed evidence.
-- [ ] Missing services and missing model configuration return actionable unavailable
+- [x] Comparison IDs, prompts, model IDs, and selection fields are bounded and validated.
+- [x] Tool capabilities remain deny-by-default and only enable the shared calculator.
+- [x] Local platform state paths remain explicit and outside committed evidence.
+- [x] Missing services and missing model configuration return actionable unavailable
       states without probing a paid provider call.
-- [ ] Real-model manual runs use non-sensitive prompts and a reviewed model selection.
+- [x] Real-model manual runs use non-sensitive prompts and a reviewed model selection.
 
 ## Implementation checklist
 
 ### Phase 0: contract checkpoint
 
-- [ ] Re-read the Mastra completion record and confirm all four baseline variants are
+- [x] Re-read the Mastra completion record and confirm all four baseline variants are
       runnable before starting this plan.
-- [ ] Recheck installed platform package/runtime versions and local service commands.
+- [x] Recheck installed platform package/runtime versions and local service commands.
 - [x] Decide whether `comparisonId` is required, then commit the contract decision and
       tests before changing the Compare UI.
-- [ ] Freeze the workload, model settings, tool limits, and context policy for the first
+- [x] Freeze the workload, model settings, tool limits, and context policy for the first
       acceptance matrix.
 
 ### Phase 1: server comparison support
@@ -340,27 +340,27 @@ lab/runs/<run-id>/
 
 ### Phase 2: platform matrix
 
-- [ ] Execute prompt, calculator, continuation, unavailable, cancellation, and restart
+- [x] Execute prompt, calculator, continuation, unavailable, cancellation, and restart
       checks through each of the four platform adapters.
-- [ ] Fix only platform-local defects exposed by the matrix.
-- [ ] Add missing native evidence or status mapping without removing useful native data.
-- [ ] Record platform-specific observations and limitations in the relevant docs.
+- [x] Fix only platform-local defects exposed by the matrix.
+- [x] Add missing native evidence or status mapping without removing useful native data.
+- [x] Record platform-specific observations and limitations in the relevant docs.
 
 ### Phase 3: browser surface
 
-- [ ] Update Compare to carry the shared workload and comparison identity.
-- [ ] Render independent result rows, run IDs, status, output, errors, and evidence links.
-- [ ] Add deterministic browser tests for all-success, partial failure, unavailable
+- [x] Update Compare to carry the shared workload and comparison identity.
+- [x] Render independent result rows, run IDs, status, output, errors, and evidence links.
+- [x] Add deterministic browser tests for all-success, partial failure, unavailable
       platform, close/reopen, duplicate submission, and row isolation.
-- [ ] Add live browser acceptance for the four platforms with a real OpenRouter model.
-- [ ] Fix console, polling, duplicate-key, hydration, and layout issues found by tests.
+- [x] Add live browser acceptance for the four platforms with a real OpenRouter model.
+- [x] Fix console, polling, duplicate-key, hydration, and layout issues found by tests.
 
 ### Phase 4: documentation and handoff
 
-- [ ] Add the comparison experiment and local playground.
-- [ ] Update platform and UI documentation with exact commands and observed behaviour.
-- [ ] Record validation counts, manual results, known limitations, and release decisions.
-- [ ] Move this plan to `completed/` only after every applicable item is checked.
+- [x] Add the comparison experiment and local playground.
+- [x] Update platform and UI documentation with exact commands and observed behaviour.
+- [x] Record validation counts, manual results, known limitations, and release decisions.
+- [x] Move this plan to `completed/` only after every applicable item is checked.
 
 ## Parallel work and ownership
 
@@ -384,45 +384,45 @@ semantics. Shared-file changes are integrated sequentially by the primary agent.
 
 ### Unit and contract tests
 
-- [ ] comparison ID validation and manifest propagation;
-- [ ] identical workload with independent run/session/client-turn identities;
+- [x] comparison ID validation and manifest propagation;
+- [x] identical workload with independent run/session/client-turn identities;
 - [x] comparison row status and partial-result projection;
-- [ ] event and terminal-result isolation across runs;
-- [ ] context projection and unknown-token handling;
-- [ ] tool capability and calculator evidence consistency;
-- [ ] redaction of keys, headers, prompts, and raw provider responses;
-- [ ] duplicate admission, stale state, cancellation, and unknown outcomes.
+- [x] event and terminal-result isolation across runs;
+- [x] context projection and unknown-token handling;
+- [x] tool capability and calculator evidence consistency;
+- [x] redaction of keys, headers, prompts, and raw provider responses;
+- [x] duplicate admission, stale state, cancellation, and unknown outcomes.
 
 ### Platform integration tests
 
-- [ ] Temporal prompt, calculator, continuation, cancellation, restart, and evidence;
-- [ ] Restate prompt, calculator, continuation, cancellation, restart, and evidence;
-- [ ] LangGraph prompt, calculator, continuation, service restart, and evidence;
-- [ ] Mastra prompt, calculator, continuation, process-local recovery, and evidence;
-- [ ] per-platform unavailable dependency and invalid configuration behaviour;
-- [ ] no-Docker deterministic local profile for every platform that supports one.
+- [x] Temporal prompt, calculator, continuation, cancellation, restart, and evidence;
+- [x] Restate prompt, calculator, continuation, cancellation, restart, and evidence;
+- [x] LangGraph prompt, calculator, continuation, service restart, and evidence;
+- [x] Mastra prompt, calculator, continuation, process-local recovery, and evidence;
+- [x] per-platform unavailable dependency and invalid configuration behaviour;
+- [x] no-Docker deterministic local profile for every platform that supports one.
 
 ### Browser acceptance tests
 
-- [ ] each platform Chat runs a prompt and displays the actual output;
-- [ ] each platform Chat shows model, tool activity, context usage, and evidence links;
+- [x] each platform Chat runs a prompt and displays the actual output;
+- [x] each platform Chat shows model, tool activity, context usage, and evidence links;
 - [x] Compare submits the same task to at least two platforms;
 - [x] Compare keeps runs and context sessions independent;
 - [x] Compare renders partial success and unavailable states honestly;
-- [ ] reopening or polling a comparison does not duplicate messages or rows;
-- [ ] desktop, tablet, and mobile layouts remain usable;
-- [ ] browser console has no React key, hydration, route, or polling-loop errors.
+- [x] reopening or polling a comparison does not duplicate messages or rows;
+- [x] desktop, tablet, and mobile layouts remain usable;
+- [x] browser console has no React key, hydration, route, or polling-loop errors.
 
 ### Manual acceptance
 
-- [ ] Start the local stack without Docker and verify service readiness.
-- [ ] Select the same OpenRouter model on Temporal, Restate, LangGraph, and Mastra.
-- [ ] Run the prompt and calculator cases from Chat.
-- [ ] Run a second turn in each Chat session and inspect context continuity.
-- [ ] Run a comparison with at least Temporal, Restate, LangGraph, and Mastra.
-- [ ] Stop or misconfigure one platform service and verify only that member is unavailable.
-- [ ] Inspect every comparison member's evidence and native reference.
-- [ ] Confirm no key, authorization header, raw provider response, or unsafe prompt data
+- [x] Start the local stack without Docker and verify service readiness.
+- [x] Select the same OpenRouter model on Temporal, Restate, LangGraph, and Mastra.
+- [x] Run the prompt and calculator cases from Chat.
+- [x] Run a second turn in each Chat session and inspect context continuity.
+- [x] Run a comparison with at least Temporal, Restate, LangGraph, and Mastra.
+- [x] Stop or misconfigure one platform service and verify only that member is unavailable.
+- [x] Inspect every comparison member's evidence and native reference.
+- [x] Confirm no key, authorization header, raw provider response, or unsafe prompt data
       was retained beyond the documented evidence policy.
 
 ## Required validation commands
@@ -496,17 +496,17 @@ narrow checks, and preserve unrelated Anesu, Studio, lockfile, and playground ch
 
 Before archiving this plan:
 
-- [ ] Mastra completion plan is archived and all four baseline variants are runnable.
-- [ ] The same deterministic workload passes through all four platforms.
-- [ ] The same real model and task can be submitted through Chat and Compare.
-- [ ] Comparison members have independent run IDs, sessions, native identities, and evidence.
-- [ ] Partial success, unavailable services, cancellation, restart, and unknown outcomes
+- [x] Mastra completion plan is archived and all four baseline variants are runnable.
+- [x] The same deterministic workload passes through all four platforms.
+- [x] The same real model and task can be submitted through Chat and Compare.
+- [x] Comparison members have independent run IDs, sessions, native identities, and evidence.
+- [x] Partial success, unavailable services, cancellation, restart, and unknown outcomes
       are represented honestly.
-- [ ] Context, tools, normalized events, and native details are inspectable.
-- [ ] Browser tests pass without duplicate rows, duplicate messages, or console errors.
-- [ ] Documentation, experiment, playground, validation results, and limitations are current.
-- [ ] Each coherent section has a focused commit.
-- [ ] No applicable checklist item remains unchecked.
+- [x] Context, tools, normalized events, and native details are inspectable.
+- [x] Browser tests pass without duplicate rows, duplicate messages, or console errors.
+- [x] Documentation, experiment, playground, validation results, and limitations are current.
+- [x] Each coherent section has a focused commit.
+- [x] No applicable checklist item remains unchecked.
 
 ## Completion record
 
@@ -524,17 +524,22 @@ Complete only when the plan is moved to `completed/`.
 - `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — all 21 deterministic browser cases passed, including all-success and partial Compare; no browser console errors were reported.
 - Local `/health` — Temporal, Restate, and Mastra baseline reachable; LangGraph baseline registered but unavailable because its local Python service was not running. Mastra workflow storage, Inngest, Trigger.dev, DBOS, and Hatchet also reported their documented local availability failures. This is a connectivity observation, not a completion claim.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`<br>
-**Commits:** `[commit hashes]`
+**Completed:** `2026-09-20T17:17:18+02:00`<br>
+**Commits:** `02cbcac`, `8b3d693`, `db83406`, and this archive commit
 
 ### Validation
 
-- `[command]` — `[result]`
-- `[manual comparison]` — `[observed result]`
+- `pnpm --filter @agent-harness-lab/lab-server test` — 362 passed, 2 skipped, 0 failed.
+- `pnpm --filter @agent-harness-lab/web run typecheck` and `pnpm --filter @agent-harness-lab/web run build` — passed; existing large-chunk warning only.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — 24 passed, 0 failed; no browser console errors.
+- Live priority Chat — Temporal, Restate, LangGraph, and Mastra each completed two real OpenRouter turns and rendered context usage.
+- Live priority Compare — four independent real runs completed: Temporal `71f4eb98-46ff-42e0-8240-8c045e4bc1f9`, Restate `f26a07ff-f10a-45dd-aad6-f0bcaefee675`, LangGraph `bd33b839-7204-42f1-8081-3a5f740f9a02`, and Mastra `49e462b8-81c2-4f18-8ed2-eb0b52bc4b26`; four distinct run links and no browser console errors.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- The local workflow and platform services are no-Docker development profiles; hosted deployment and managed multi-process storage are outside this phase.
+- Live model output, usage, and pricing are provider/model dependent and are not a quality benchmark.
+- `docs/internal/operations/release-process.md` is absent from this checkout, so its canonical policy could not be verified.
 
 ### Historical-scope note
 

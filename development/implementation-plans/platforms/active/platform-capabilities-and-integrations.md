@@ -38,7 +38,7 @@ Read these before changing code:
 - completed tool-enabled turn loop: ../completed/tool-enabled-turn-loop.md
 - completed context and compaction: ../completed/context-management.md
 - completed OpenRouter model selection: ../completed/openrouter-model-selection.md
-- cross-platform acceptance plan: ./platform-cross-comparison-acceptance.md
+- cross-platform acceptance plan: ../completed/platform-cross-comparison-acceptance.md
 - OpenClaw code map: ../../../../docs/research/harness-code-maps/openclaw.md
 - Hermes code map: ../../../../docs/research/harness-code-maps/hermes.md
 - Waku code map: ../../../../docs/research/harness-code-maps/waku.md

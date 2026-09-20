@@ -9,8 +9,6 @@ It does not contain Anesu or Studio work. Those have their own plan directories.
 
 ## Active plans
 
-- [Mastra agent runtime and durable workflows](active/mastra-agent-runtime-and-workflows.md) — expands the direct Mastra baseline and adds a native workflow profile with local persisted state.
-- [Cross-platform production acceptance and comparison](active/platform-cross-comparison-acceptance.md) — validates Temporal, Restate, LangGraph, and Mastra through one shared workload and the browser Compare flow after Mastra completion.
 - [Platform capabilities, tools, skills, and connections](active/platform-capabilities-and-integrations.md) — adds the shared capability boundary and native platform bindings after cross-platform acceptance.
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
@@ -34,6 +32,8 @@ Functions remains parked.
 - [Tool-enabled turn loop](completed/tool-enabled-turn-loop.md)
 - [Browser Chat surface](completed/browser-chat-surface.md)
 - [Cross-platform agent conformance](completed/platform-agent-conformance.md)
+- [Mastra agent runtime and durable workflows](completed/mastra-agent-runtime-and-workflows.md)
+- [Cross-platform production acceptance and comparison](completed/platform-cross-comparison-acceptance.md)
 
 ### Platform baselines
 
