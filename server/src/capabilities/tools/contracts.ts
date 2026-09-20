@@ -1,3 +1,7 @@
+import type { ConnectionResult } from "../integrations/contracts.js";
+import type { ConnectionBinding } from "../integrations/contracts.js";
+import type { ConnectionEvidence, ConnectionRuntime } from "../integrations/runtime.js";
+
 /** Provider-neutral tool contracts.
  *
  * These types describe what a tool call means. They deliberately contain no
@@ -8,7 +12,7 @@
 export const TOOL_SCHEMA_VERSION = 1 as const;
 
 export type ToolRiskClass = "pure" | "read" | "write" | "external";
-export type ToolExecutionKind = "in_process";
+export type ToolExecutionKind = "in_process" | "connection";
 export type ToolExecutionStatus = "completed" | "failed" | "cancelled" | "timed_out";
 
 export interface ToolLimits {
@@ -38,7 +42,11 @@ export interface ToolCall {
 export interface ToolExecutionContext {
   readonly runId: string;
   readonly turnId: string;
+  readonly toolCallId?: string;
   readonly signal: AbortSignal;
+  readonly connectionRuntime?: ConnectionRuntime;
+  readonly connectionBindings?: readonly ConnectionBinding[];
+  readonly onConnectionResult?: (result: ConnectionResult) => void;
 }
 
 export interface ToolImplementation {
@@ -90,6 +98,7 @@ export interface ToolExecutionResult {
   readonly error: ToolExecutionError | null;
   readonly durationMs: number;
   readonly attemptCount: number;
+  readonly connection?: ConnectionEvidence;
 }
 
 export type ToolLifecycleKind =
@@ -113,4 +122,5 @@ export interface ToolLifecyclePayload {
   readonly status?: ToolExecutionStatus;
   readonly code?: string;
   readonly message?: string;
+  readonly connection?: ConnectionEvidence;
 }

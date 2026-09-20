@@ -40,6 +40,7 @@ export function buildRunManifest(request: RunRequest, options: ManifestOptions =
     task: { kind: "prompt", prompt: request.task.prompt.trim() },
     context: {
       systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+      ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
       ...(request.clientTurnId === undefined ? {} : { clientTurnId: request.clientTurnId }),
       ...options.context,
     },
@@ -143,6 +144,19 @@ function validateCapabilities(capabilities: RunRequest["capabilities"]): void {
   }
   if (!Number.isInteger(tools.maxCalls) || tools.maxCalls < 1 || tools.maxCalls > 64) {
     throw new InvalidRunRequestError("capabilities.tools.maxCalls must be an integer between 1 and 64.");
+  }
+  if (capabilities.connections !== undefined) {
+    if (!Array.isArray(capabilities.connections) || capabilities.connections.length > 32) {
+      throw new InvalidRunRequestError("capabilities.connections must contain at most 32 bindings.");
+    }
+    const bindings = new Set<string>();
+    for (const binding of capabilities.connections) {
+      if (!binding || typeof binding !== "object" || !/^[a-z][a-z0-9_-]{0,63}$/.test(binding.toolName) || !/^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$/.test(binding.connectionRef) || !Array.isArray(binding.operations) || binding.operations.length > 32 || binding.operations.some((operation: unknown) => typeof operation !== "string" || !/^[a-z][a-z0-9_.:-]{0,127}$/.test(operation))) {
+        throw new InvalidRunRequestError("capabilities.connections contains an invalid binding.");
+      }
+      if (bindings.has(binding.toolName)) throw new InvalidRunRequestError(`Duplicate connection binding: ${binding.toolName}.`);
+      bindings.add(binding.toolName);
+    }
   }
 }
 

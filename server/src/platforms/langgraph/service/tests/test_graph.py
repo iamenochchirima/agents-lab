@@ -1,5 +1,7 @@
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from unittest.mock import patch
 
 import pytest
@@ -169,6 +171,64 @@ def test_connected_tool_turn_uses_the_selected_fixture_tool_node() -> None:
     assert snapshot["output"] == 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.'
     assert [kind for kind, _ in events if kind == "ModelRequested"] == ["ModelRequested", "ModelRequested"]
     assert [payload["toolName"] for kind, payload in events if kind == "ToolExecutionCompleted"] == ["fixture_lookup"]
+
+
+def test_connected_tool_turn_crosses_the_local_http_boundary() -> None:
+    requests: list[dict] = []
+
+    class FixtureHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            requests.append(body)
+            response = {
+                "providerRequestId": f"python-fixture:{body['requestId']}",
+                "statusCode": 200,
+                "body": {"key": "alpha", "value": "local fixture alpha"},
+            }
+            encoded = json.dumps(response).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        events: list[tuple[str, dict]] = []
+        with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+            graph = build_baseline_graph(
+                ModelConfig(provider="fake", model="fake-connected-tool", api_key=None, timeout_ms=5_000),
+                lambda kind, payload: events.append((kind, payload)),
+                lambda: False,
+                "run-connected-http",
+                2,
+                checkpointer,
+                tool_names=["fixture_lookup"],
+                connection_bindings=[{"toolName": "fixture_lookup", "connectionRef": "conn_local_fixture", "operations": ["lookup"]}],
+                connection_url=f"http://127.0.0.1:{server.server_port}",
+                turn_id="turn-connected-http",
+                max_rounds=3,
+                max_calls=2,
+            )
+            snapshot = graph.invoke(
+                {"prompt": "Read the alpha fixture.", "system_instruction": "Use the selected connection.", "output": "", "attempt_count": 0},
+                {"configurable": {"thread_id": "thread-connected-http"}, "run_id": "run-connected-http"},
+            )
+
+        assert snapshot["output"] == 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.'
+        assert requests[0]["operation"] == "fixture.lookup"
+        completed = next(payload for kind, payload in events if kind == "ToolExecutionCompleted")
+        assert completed["connection"]["status"] == "completed"
+        assert completed["connection"]["providerRequestIds"] == ["python-fixture:run-connected-http:turn-connected-http:call-fixture-lookup-1"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_write_fixture_requires_approval_and_executes_after_approval() -> None:

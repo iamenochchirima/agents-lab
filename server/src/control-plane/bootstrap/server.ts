@@ -82,7 +82,9 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     resultLimit: config.openRouter.catalogLimit,
     defaultModel: config.openRouter.defaultModel,
   });
-  const capabilities = createDefaultCapabilityCatalog();
+  const capabilities = createDefaultCapabilityCatalog(undefined, {
+    connectedEnabled: config.connectedCapabilitiesEnabled,
+  });
   const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities });
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
   const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });

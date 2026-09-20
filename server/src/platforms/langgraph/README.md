@@ -31,6 +31,15 @@ approval. The browser can select a profile but cannot add capabilities, widen
 the allowlist, or provide credentials. LangGraph receives the resulting
 `enabledNames` and `approvedNames` as part of the platform-local request.
 
+Connection-backed tools use the shared opaque reference `conn_local_fixture`. In the full
+local stack, `AGENTLAB_LOCAL_FIXTURE_URL` points the Python service at the separate local
+fixture process (normally `http://127.0.0.1:9191`). The service sends bounded lookup and
+write requests across that HTTP boundary, preserves the stable request/idempotency key,
+and records only redacted connection evidence. If the fixture is unavailable, the graph
+reports a failed read or an unknown write outcome; it does not silently use a different
+provider. Direct graph unit tests may use the explicit in-process compatibility fixture,
+which is not the production-shaped service path.
+
 The platform-local protocol is defined in [`protocol/`](protocol/) and is validated independently by Pydantic and TypeScript. `runId` remains the stable Lab identity for one turn, while a Lab `sessionId` maps to one bounded hashed LangGraph `thread_id` for the conversation. `clientTurnId` makes one session turn retryable without starting a second graph execution. A checkpoint ID, graph run ID, and node task ID remain separate native details.
 
 The TypeScript server defaults to `http://127.0.0.1:2024`; override it with

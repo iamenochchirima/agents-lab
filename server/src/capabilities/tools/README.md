@@ -12,11 +12,18 @@ the execution boundary because a TypeScript union is not a runtime security
 boundary. Tool error content and error messages are bounded before they can be
 returned to a model or included in normalized lifecycle evidence.
 
-The first implementation exposes only the pure, deterministic `calculator` tool.
-It accepts a structured operation (`add`, `subtract`, `multiply`, or `divide`)
-and rejects extra properties, non-finite values, division by zero, oversized
-arguments, and oversized results. It has no shell, subprocess, filesystem,
-network, dynamic import, or external side effect.
+The built-in tools currently include the pure, deterministic `calculator` and two
+provider-shaped local connection tools: `fixture_lookup` (read-only) and
+`fixture_write` (approval-gated). The fixture tools use the opaque
+`conn_local_fixture` binding and a bounded connection runtime. The local stack runs the
+fixture over HTTP; unit tests may inject the explicit in-process runtime.
+
+`calculator` accepts a structured operation (`add`, `subtract`, `multiply`, or
+`divide`) and rejects extra properties, non-finite values, division by zero, oversized
+arguments, and oversized results. The fixture tools validate bounded key/value input,
+derive stable request IDs from run/turn/tool identity, retain only redacted connection
+evidence, and use an idempotency key for writes. A lost write acknowledgement is
+reported as unknown rather than retried.
 
 Risk classes are vocabulary for later platform policy, not permission by
 themselves:

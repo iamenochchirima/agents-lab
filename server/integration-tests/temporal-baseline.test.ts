@@ -9,6 +9,8 @@ import { RunEvidenceStore } from "../src/control-plane/application/evidence-stor
 import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
 import { RunService, type RunView } from "../src/control-plane/application/run-service.js";
 import type { PlatformExecutionReference } from "../src/control-plane/domain/types.js";
+import { createDefaultCapabilityCatalog } from "../src/capabilities/catalog.js";
+import { createLocalFixtureServer } from "../src/capabilities/integrations/local-fixture/service.js";
 import { TemporalBaselineRunner } from "../src/platforms/temporal/runner-adapter/temporal-runner.js";
 import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../src/capabilities/context/index.js";
 
@@ -27,6 +29,9 @@ const BASE_REQUEST = {
  */
 test("local Temporal baseline covers success, retry, ambiguity, timeout, cancellation, and reconciliation", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-temporal-integration-"));
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0 });
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  process.env.AGENTLAB_LOCAL_FIXTURE_URL = `http://127.0.0.1:${fixture.port}`;
   const config = loadServerConfig(
     {
       AGENTLAB_RUN_ROOT: root,
@@ -84,6 +89,23 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
       "ToolExecutionCompleted",
     ]);
     assert.equal(calculatorResult.metrics?.modelCallCount, 2);
+
+    const connected = await service.createRun({
+      ...BASE_REQUEST,
+      task: { kind: "prompt", prompt: "Read the alpha fixture." },
+      model: { provider: "fake", model: "fake-connected-tool", contextWindowTokens: 128_000 },
+      capabilities: {
+        profileId: "local-safe",
+        tools: { enabledNames: [], maxRounds: 6, maxCalls: 8 },
+      },
+    });
+    const connectedResult = await waitForTerminal(service, connected.runId);
+    assert.equal(connectedResult.status, "completed");
+    assert.equal(connectedResult.result?.output, 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.');
+    const connectionEvent = connectedResult.events.find((event) => event.kind === "ToolExecutionCompleted");
+    assert.equal(connectionEvent?.payload.toolName, "fixture_lookup");
+    assert.equal((connectionEvent?.payload.connection as { status?: string } | undefined)?.status, "completed");
+    assert.equal(connectedResult.metrics?.connectionCallCount, 1);
 
     const retry = await service.createRun({
       ...BASE_REQUEST,
@@ -178,6 +200,9 @@ test("local Temporal baseline covers success, retry, ambiguity, timeout, cancell
     assert.equal((await restartedService.getRun(outageRun.runId)).events.length, reconciled.events.length);
   } finally {
     await Promise.all(runners.map((runner) => runner.close()));
+    if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
+    await fixture.close();
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -201,6 +226,7 @@ function createService(
     context: new ContextService(new ContextSessionStore(config.contextRoot), new CharacterTokenEstimator()),
     evidence: store,
     registry: new PlatformRegistry([runner]),
+    capabilities: createDefaultCapabilityCatalog(),
   });
 }
 

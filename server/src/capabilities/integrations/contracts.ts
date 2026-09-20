@@ -5,6 +5,12 @@ export const CONNECTION_SCHEMA_VERSION = 1 as const;
 export type ConnectionKind = "mcp" | "direct_api" | "oauth";
 export type ConnectionStatus = "available" | "unavailable" | "denied" | "expired" | "revoked";
 
+export interface ConnectionBinding {
+  readonly toolName: string;
+  readonly connectionRef: string;
+  readonly operations: readonly string[];
+}
+
 export interface ConnectionReference {
   readonly schemaVersion: typeof CONNECTION_SCHEMA_VERSION;
   readonly ref: string;
@@ -60,7 +66,7 @@ export interface ConnectionResult {
 }
 
 export function isSafeConnectionRef(ref: string): boolean {
-  return /^[a-z][a-z0-9_-]{0,63}$/.test(ref);
+  return /^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$/.test(ref);
 }
 
 export function isSafeRequestId(requestId: string): boolean {

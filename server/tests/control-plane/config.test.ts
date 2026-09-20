@@ -13,6 +13,7 @@ test("configuration has safe local defaults and resolves the run root", () => {
   assert.equal(config.temporal.taskQueue, "agentlab-temporal-baseline");
   assert.equal(config.temporal.queryTimeoutMs, 1000);
   assert.deepEqual(config.allowedModelProviders, ["fake"]);
+  assert.equal(config.connectedCapabilitiesEnabled, true);
   assert.equal(config.openRouter.apiKey, null);
   assert.equal(config.openRouter.baseUrl, "https://openrouter.ai/api/v1");
   assert.equal(config.openRouter.catalogLimit, 40);
@@ -36,6 +37,7 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
       AGENTLAB_STUDIO_RUN_ROOT: "var/studio-runs",
       AGENTLAB_TEMPORAL_ENDPOINT: "127.0.0.1:7233",
       AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake, openrouter, fake",
+      AGENTLAB_CONNECTED_CAPABILITIES_ENABLED: "false",
       OPENROUTER_API_KEY: "test-secret",
       AGENTLAB_OPENROUTER_DEFAULT_MODEL: "openai/gpt-4o-mini",
       AGENTLAB_OPENROUTER_CATALOG_LIMIT: "25",
@@ -54,6 +56,7 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   assert.equal(config.context.maxTranscriptBytes, 100000);
   assert.equal(config.studioRunsRoot, "/repo/var/studio-runs");
   assert.deepEqual(config.allowedModelProviders, ["fake", "openrouter"]);
+  assert.equal(config.connectedCapabilitiesEnabled, false);
   assert.equal(config.openRouter.apiKey, "test-secret");
   assert.equal(config.openRouter.defaultModel, "openai/gpt-4o-mini");
   assert.equal(config.openRouter.catalogLimit, 25);
@@ -82,6 +85,10 @@ test("invalid or missing explicit configuration fails before startup", () => {
   );
   assert.throws(
     () => loadServerConfig({ AGENTLAB_MASTRA_WORKFLOW_ENABLED: "sometimes" }),
+    (error: unknown) => error instanceof InvalidServerConfigError,
+  );
+  assert.throws(
+    () => loadServerConfig({ AGENTLAB_CONNECTED_CAPABILITIES_ENABLED: "sometimes" }),
     (error: unknown) => error instanceof InvalidServerConfigError,
   );
 });

@@ -415,7 +415,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               retry: { maximumAttempts: 1 },
               cancellationType: "WAIT_CANCELLATION_COMPLETED",
             },
-            [{ runId: input.runId, turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames, call: validation.call }],
+            [{ runId: input.runId, turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames, connectionBindings: input.connections, call: validation.call }],
           ));
         } catch (activityError) {
           finishPhase(toolPhase);
@@ -427,7 +427,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           currentActivityScope = null;
         }
         finishPhase(toolPhase);
-        record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
+        record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...(toolResult.connection ? { connection: toolResult.connection } : {}), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
         continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];
         if (toolResult.status !== "completed") {
           const failure = temporalFailure(toolResult.error?.code ?? "TOOL_EXECUTION_FAILED", "A tool execution did not complete, so the run was stopped.", toolResult.status === "cancelled" ? "cancelled" : "provider");

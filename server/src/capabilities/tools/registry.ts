@@ -8,6 +8,7 @@ import type {
   ToolValidationResult,
 } from "./contracts.js";
 import { TOOL_SCHEMA_VERSION } from "./contracts.js";
+import { summarizeConnectionResult } from "../integrations/runtime.js";
 
 const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 const TOOL_CALL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -140,6 +141,11 @@ export class ToolRegistry {
     const timeoutController = new AbortController();
     const signal = combineSignals(context.signal, timeoutController.signal);
     const timer = setTimeout(() => timeoutController.abort(), implementation.definition.limits.timeoutMs);
+    let connection: ToolExecutionResult["connection"];
+    const onConnectionResult: NonNullable<ToolExecutionContext["onConnectionResult"]> = (result) => {
+      connection = summarizeConnectionResult(result);
+      context.onConnectionResult?.(result);
+    };
 
     try {
       if (context.signal.aborted) {
@@ -149,7 +155,12 @@ export class ToolRegistry {
       // registry revalidates at the execution boundary so callers cannot
       // forge an accepted value by constructing the union themselves.
       const normalizedArguments = implementation.validateArguments(validated.call.arguments);
-      const content = await implementation.execute(normalizedArguments, { ...context, signal });
+      const content = await implementation.execute(normalizedArguments, {
+        ...context,
+        signal,
+        toolCallId: validated.call.toolCallId,
+        onConnectionResult,
+      });
       const resultBytes = utf8ByteLength(content);
       if (resultBytes > implementation.definition.limits.maxResultBytes) {
         return failure(
@@ -158,6 +169,7 @@ export class ToolRegistry {
           elapsed(startedAt),
           "failed",
           implementation.definition.limits.maxResultBytes,
+          connection,
         );
       }
       return {
@@ -166,6 +178,7 @@ export class ToolRegistry {
         error: null,
         durationMs: elapsed(startedAt),
         attemptCount: 1,
+        ...(connection ? { connection } : {}),
       };
     } catch (error) {
       const durationMs = elapsed(startedAt);
@@ -176,6 +189,7 @@ export class ToolRegistry {
           durationMs,
           timeoutController.signal.aborted && !context.signal.aborted ? "timed_out" : "cancelled",
           implementation.definition.limits.maxResultBytes,
+          connection,
         );
       }
       return failure(
@@ -184,6 +198,7 @@ export class ToolRegistry {
         durationMs,
         "failed",
         implementation.definition.limits.maxResultBytes,
+        connection,
       );
     } finally {
       clearTimeout(timer);
@@ -220,6 +235,7 @@ function failure(
   durationMs: number,
   status: ToolExecutionResult["status"] = "failed",
   maxResultBytes = 512,
+  connection?: ToolExecutionResult["connection"],
 ): ToolExecutionResult {
   const safeMessage = boundedText(message, MAX_ERROR_MESSAGE_BYTES);
   return {
@@ -228,6 +244,7 @@ function failure(
     error: { code, message: safeMessage },
     durationMs,
     attemptCount: 1,
+    ...(connection ? { connection } : {}),
   };
 }
 

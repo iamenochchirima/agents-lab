@@ -4,9 +4,11 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 
 import type { RunManifest } from "../../../../control-plane/domain/types.js";
-import type { ToolCall, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
+import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
+import { getDefaultConnectionRuntime, type ConnectionRuntime } from "../../../../capabilities/integrations/runtime.js";
+import type { ToolCall, ToolImplementation, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
-import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
+import { createFixtureTools } from "../../../../capabilities/tools/fixtures.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
@@ -19,6 +21,8 @@ export interface BaselineAgentOptions {
   readonly turnId: string;
   readonly signal: AbortSignal;
   readonly maxToolCalls: number;
+  readonly connectionRuntime?: ConnectionRuntime;
+  readonly connectionBindings?: readonly ConnectionBinding[];
   readonly onToolEvent?: (kind: ToolLifecycleKind, payload: ToolLifecyclePayload) => void;
 }
 
@@ -52,6 +56,9 @@ export function createBaselineAgent(
   options?: BaselineAgentOptions,
 ): Agent {
   const enabledNames = manifest.capabilities?.tools.enabledNames ?? [calculatorTool.definition.name];
+  const fixtureTools = createFixtureTools(options?.connectionRuntime ?? getDefaultConnectionRuntime());
+  const fixtureLookupTool = fixtureTools.fixtureLookupTool;
+  const fixtureWriteTool = fixtureTools.fixtureWriteTool;
   const registry = new ToolRegistry({ enabledNames, approvedNames: manifest.capabilities?.tools.approvedNames });
   registry.register(calculatorTool);
   registry.register(fixtureLookupTool);
@@ -65,8 +72,8 @@ export function createBaselineAgent(
     ...(options ? {
       tools: {
         ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options) } : {}),
-        ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(registry, options) } : {}),
-        ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(registry, options) } : {}),
+        ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(fixtureLookupTool, registry, options) } : {}),
+        ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(fixtureWriteTool, registry, options) } : {}),
       },
     } : {}),
     maxRetries: 0,
@@ -141,17 +148,17 @@ function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptio
   });
 }
 
-function fixtureLookupAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
-  return connectedAgentTool(registry, fixtureLookupTool, fixtureLookupInputSchema, options);
+function fixtureLookupAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions) {
+  return connectedAgentTool(registry, implementation, fixtureLookupInputSchema, options);
 }
 
-function fixtureWriteAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
-  return connectedAgentTool(registry, fixtureWriteTool, fixtureWriteInputSchema, options);
+function fixtureWriteAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions) {
+  return connectedAgentTool(registry, implementation, fixtureWriteInputSchema, options);
 }
 
 function connectedAgentTool<TSchema extends z.ZodTypeAny>(
   registry: ToolRegistry,
-  implementation: typeof fixtureLookupTool | typeof fixtureWriteTool,
+  implementation: ToolImplementation,
   inputSchema: TSchema,
   options: BaselineAgentOptions,
 ) {
@@ -178,8 +185,20 @@ function connectedAgentTool<TSchema extends z.ZodTypeAny>(
         return JSON.stringify({ error: policy.message, code: policy.code });
       }
       options.onToolEvent?.("ToolExecutionStarted", payload);
-      const result = await registry.execute(validation, { runId: options.runId, turnId: options.turnId, signal: context.abortSignal ?? options.signal });
-      options.onToolEvent?.(toolEventKind(result.status), { ...payload, status: result.status, durationMs: result.durationMs, resultBytes: new TextEncoder().encode(result.content).byteLength });
+      const result = await registry.execute(validation, {
+        runId: options.runId,
+        turnId: options.turnId,
+        signal: context.abortSignal ?? options.signal,
+        connectionRuntime: options.connectionRuntime ?? getDefaultConnectionRuntime(),
+        connectionBindings: options.connectionBindings,
+      });
+      options.onToolEvent?.(toolEventKind(result.status), {
+        ...payload,
+        status: result.status,
+        durationMs: result.durationMs,
+        resultBytes: new TextEncoder().encode(result.content).byteLength,
+        ...(result.connection ? { connection: result.connection } : {}),
+      });
       return result.content;
     },
   });

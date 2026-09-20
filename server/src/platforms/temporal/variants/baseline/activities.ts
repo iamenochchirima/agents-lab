@@ -90,6 +90,8 @@ export async function executeTool(input: TemporalToolExecutionInput): Promise<To
   return registry.execute(validation, {
     runId: input.runId,
     turnId: input.turnId,
+    toolCallId: input.call.toolCallId,
+    connectionBindings: input.connectionBindings,
     signal: cancellationSignal(),
   });
 }

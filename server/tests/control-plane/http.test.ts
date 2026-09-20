@@ -302,6 +302,23 @@ test("a selected capability profile is resolved before dispatch and retained as 
     const evidence = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/capabilities.json` });
     assert.equal(evidence.statusCode, 200);
     assert.equal(evidence.body.includes("accessToken"), false);
+
+    const events = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/events?after=0&limit=20` });
+    assert.equal(events.statusCode, 200);
+    const resolution = events.json().events.find((event: { kind: string }) => event.kind === "CapabilityResolutionRecorded");
+    assert.deepEqual(resolution?.payload.grants.map((grant: { capabilityId: string; connectionRef: string | null }) => [grant.capabilityId, grant.connectionRef]), [
+      ["calculator", null],
+      ["fixture_lookup", "conn_local_fixture"],
+    ]);
+    assert.equal(resolution?.payload.decisions.length, 2);
+
+    const logs = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/logs/operations.jsonl` });
+    assert.equal(logs.statusCode, 200);
+    assert.match(logs.body, /capability\.resolve/);
+
+    const metrics = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/metrics.json` });
+    assert.equal(metrics.statusCode, 200);
+    assert.equal(metrics.json().approvalDecisionCount, 2);
   });
 });
 
@@ -324,6 +341,7 @@ test("HTTP retains an explicit write approval in the immutable run manifest", as
             capabilityId: "fixture_write",
             version: "1.0.0",
             allowedOperations: ["write"],
+            connectionRef: "conn_local_fixture",
             decision: "approved",
             decidedAt: "2026-09-20T00:00:00.000Z",
             expiresAt: "2099-01-01T00:00:00.000Z",

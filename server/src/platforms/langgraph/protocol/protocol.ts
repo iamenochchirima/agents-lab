@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ConnectionBinding } from "../../../capabilities/integrations/contracts.js";
 
 export const LANGGRAPH_PROTOCOL_VERSION = 1 as const;
 
@@ -34,6 +35,7 @@ export interface LangGraphStartRequest {
     readonly contextWindowTokens?: number;
   };
   readonly tools?: { readonly enabledNames: readonly string[]; readonly approvedNames?: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
+  readonly connections?: readonly ConnectionBinding[];
 }
 
 export function langGraphThreadId(sessionId: string): string {

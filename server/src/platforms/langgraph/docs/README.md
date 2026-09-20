@@ -91,6 +91,14 @@ The platform does not define a second tool catalog. The common capability catalo
 the source of profile and grant identity; the Python graph owns only the native
 translation, argument validation, execution boundary, and native tool events.
 
+For local provider-boundary acceptance, start the fixture with
+`./scripts/run_local_stack.sh local-fixture` or start the complete stack. The LangGraph
+service receives `AGENTLAB_LOCAL_FIXTURE_URL` and sends `fixture.lookup` and
+`fixture.write` over HTTP using the `conn_local_fixture` binding. The fixture stores
+writes by idempotency key and returns a provider request ID. A disconnected read is a
+bounded failure; a disconnected write is `unknown` because the provider may have
+committed it before the acknowledgement was lost.
+
 SQLite is used because it makes checkpoint creation and restart inspection observable
 locally; it is not presented as the production persistence profile. The service enables
 WAL journaling, `synchronous=FULL`, foreign-key checks, and a five-second busy timeout

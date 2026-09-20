@@ -22,6 +22,7 @@ class ServiceConfig:
     protocol_version: int = 1
     default_max_attempts: int = 2
     default_timeout_ms: int = 30_000
+    local_fixture_url: str = "http://127.0.0.1:9191"
 
     @property
     def database_path(self) -> Path:
@@ -43,6 +44,7 @@ class ServiceConfig:
             default_timeout_ms=_bounded_int(
                 values.get("AGENTLAB_LANGGRAPH_TIMEOUT_MS"), 30_000, 100, 300_000, "AGENTLAB_LANGGRAPH_TIMEOUT_MS"
             ),
+            local_fixture_url=values.get("AGENTLAB_LOCAL_FIXTURE_URL", "http://127.0.0.1:9191").rstrip("/"),
         )
 
 

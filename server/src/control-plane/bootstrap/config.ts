@@ -21,6 +21,7 @@ export const DEFAULTS = {
   preDispatchRetryLimit: 2,
   preDispatchRetryBackoffMs: 100,
   allowedModelProviders: ["fake"] as const,
+  connectedCapabilitiesEnabled: true,
   openRouter: {
     baseUrl: OPENROUTER_DEFAULT_BASE_URL,
     catalogTimeoutMs: OPENROUTER_DEFAULT_CATALOG_TIMEOUT_MS,
@@ -58,6 +59,7 @@ export interface ServerConfig {
     readonly preDispatchRetryBackoffMs: number;
   };
   readonly allowedModelProviders: readonly ("fake" | "openrouter")[];
+  readonly connectedCapabilitiesEnabled: boolean;
   readonly openRouter: {
     readonly apiKey: string | null;
     readonly baseUrl: string;
@@ -168,6 +170,11 @@ export function loadServerConfig(
       ),
     },
     allowedModelProviders: parseModelProviders(environment.AGENTLAB_ALLOWED_MODEL_PROVIDERS),
+    connectedCapabilitiesEnabled: parseBoolean(
+      "AGENTLAB_CONNECTED_CAPABILITIES_ENABLED",
+      environment.AGENTLAB_CONNECTED_CAPABILITIES_ENABLED,
+      DEFAULTS.connectedCapabilitiesEnabled,
+    ),
     openRouter: {
       apiKey: environment.OPENROUTER_API_KEY?.trim() || null,
       baseUrl: parseHttpUrl(environment.AGENTLAB_OPENROUTER_BASE_URL, DEFAULTS.openRouter.baseUrl, "AGENTLAB_OPENROUTER_BASE_URL"),

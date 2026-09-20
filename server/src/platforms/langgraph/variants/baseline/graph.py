@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable, TypedDict
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -124,6 +125,15 @@ class ModelResponse:
     usage: dict[str, int | None]
 
 
+@dataclass(frozen=True)
+class ToolExecution:
+    content: str
+    connection: dict[str, Any] | None = None
+    status: str = "completed"
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 CALCULATOR_DEFINITION: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -180,11 +190,18 @@ def build_baseline_graph(
     checkpointer: Any,
     tool_names: list[str] | None = None,
     approved_tool_names: list[str] | None = None,
+    connection_bindings: list[dict[str, Any]] | None = None,
+    connection_url: str = "in-process://conn_local_fixture",
+    turn_id: str | None = None,
     max_rounds: int = 6,
     max_calls: int = 8,
 ):
     enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name in {"calculator", "fixture_lookup", "fixture_write"}]
     approved_tools = [name for name in (approved_tool_names or []) if name in enabled_tools]
+    effective_connection_bindings = connection_bindings if connection_bindings is not None else [
+        {"toolName": "fixture_lookup", "connectionRef": "conn_local_fixture", "operations": ["lookup"]},
+        {"toolName": "fixture_write", "connectionRef": "conn_local_fixture", "operations": ["write"]},
+    ]
 
     def call_model(state: GraphState, runtime: Runtime[Any]) -> GraphState:
         execution_info = runtime.execution_info
@@ -278,13 +295,42 @@ def build_baseline_graph(
             emit("ToolCallValidated", payload)
             emit("ToolExecutionStarted", payload)
             try:
-                result = execute_tool(call.name, call.arguments)
+                result = execute_tool(
+                    call.name,
+                    call.arguments,
+                    connection_url=connection_url,
+                    connection_bindings=effective_connection_bindings,
+                    run_id=run_id,
+                    turn_id=turn_id or f"{run_id}:turn:1",
+                    tool_call_id=call.tool_call_id,
+                    is_cancelled=is_cancelled,
+                    timeout_ms=model.timeout_ms,
+                )
+            except OutcomeUnknownError:
+                raise
             except Exception as exc:
                 message = _bounded_text(str(exc), 512)
                 emit("ToolExecutionFailed", {**payload, "code": "TOOL_EXECUTION_FAILED", "message": message})
-                raise ProviderError("The calculator tool failed.") from exc
-            emit("ToolExecutionCompleted", {**payload, "status": "completed", "resultBytes": _utf8_bytes(result)})
-            messages.append(tool_message(call, result))
+                raise ProviderError("The selected tool failed.") from exc
+            if result.status != "completed":
+                event_kind = "ToolExecutionUnknown" if result.status == "unknown" else "ToolExecutionFailed"
+                emit(event_kind, {
+                    **payload,
+                    "status": result.status,
+                    "code": result.error_code or "TOOL_EXECUTION_FAILED",
+                    "message": result.error_message or "The selected tool did not complete.",
+                    **({"connection": result.connection} if result.connection else {}),
+                })
+                if result.status == "unknown":
+                    raise OutcomeUnknownError("The selected connection write outcome is unknown.")
+                raise ProviderError("The selected tool failed.")
+            emit("ToolExecutionCompleted", {
+                **payload,
+                "status": "completed",
+                "resultBytes": _utf8_bytes(result.content),
+                **({"connection": result.connection} if result.connection else {}),
+            })
+            messages.append(tool_message(call, result.content))
         return {"messages": messages, "pending_tool_calls": [], "tool_call_count": call_count}
 
     def retry_on(exception: BaseException) -> bool:
@@ -623,16 +669,138 @@ def execute_calculator(arguments: Any) -> str:
     return result
 
 
-def execute_tool(name: str, arguments: Any) -> str:
+def execute_tool(
+    name: str,
+    arguments: Any,
+    *,
+    connection_url: str = "in-process://conn_local_fixture",
+    connection_bindings: list[dict[str, Any]] | None = None,
+    run_id: str = "run",
+    turn_id: str = "turn",
+    tool_call_id: str = "tool",
+    is_cancelled: Callable[[], bool] | None = None,
+    timeout_ms: int = 5_000,
+) -> ToolExecution:
     if name == "calculator":
-        return execute_calculator(arguments)
+        return ToolExecution(execute_calculator(arguments))
     if name == "fixture_lookup":
-        values = {"alpha": "local fixture alpha", "project": "Agent Harness Lab"}
-        key = arguments["key"]
-        return json.dumps({"key": key, "value": values.get(key)}, separators=(",", ":"))
+        return execute_connection_tool(
+            name,
+            "fixture.lookup",
+            arguments,
+            read_only=True,
+            connection_url=connection_url,
+            connection_bindings=connection_bindings or [],
+            run_id=run_id,
+            turn_id=turn_id,
+            tool_call_id=tool_call_id,
+            is_cancelled=is_cancelled,
+            timeout_ms=timeout_ms,
+        )
     if name == "fixture_write":
-        return json.dumps({"key": arguments["key"], "written": True}, separators=(",", ":"))
+        return execute_connection_tool(
+            name,
+            "fixture.write",
+            arguments,
+            read_only=False,
+            connection_url=connection_url,
+            connection_bindings=connection_bindings or [],
+            run_id=run_id,
+            turn_id=turn_id,
+            tool_call_id=tool_call_id,
+            is_cancelled=is_cancelled,
+            timeout_ms=timeout_ms,
+        )
     raise ValueError(f"Unknown fixture tool: {name}")
+
+
+def execute_connection_tool(
+    tool_name: str,
+    operation: str,
+    arguments: Any,
+    *,
+    read_only: bool,
+    connection_url: str,
+    connection_bindings: list[dict[str, Any]],
+    run_id: str,
+    turn_id: str,
+    tool_call_id: str,
+    is_cancelled: Callable[[], bool] | None,
+    timeout_ms: int,
+) -> ToolExecution:
+    binding = next((candidate for candidate in connection_bindings if candidate.get("toolName", candidate.get("tool_name")) == tool_name), None)
+    if binding is None or binding.get("connectionRef", binding.get("connection_ref")) != "conn_local_fixture" or operation.removeprefix("fixture.") not in binding.get("operations", []):
+        return ToolExecution(_tool_error("CONNECTION_NOT_CONFIGURED", f"The connection binding is not available for {tool_name}."), status="failed", error_code="CONNECTION_NOT_CONFIGURED", error_message="The connection binding is not available.")
+
+    request_id = ":".join(_safe_id_part(part) for part in (run_id, turn_id, tool_call_id))
+    if connection_url == "in-process://conn_local_fixture":
+        if operation == "fixture.lookup":
+            key = arguments["key"]
+            output = {"key": key, "value": {"alpha": "local fixture alpha", "project": "Agent Harness Lab"}.get(key)}
+        else:
+            output = {"key": arguments["key"], "written": True}
+        return ToolExecution(json.dumps(output, separators=(",", ":")), connection={
+            "requestId": request_id,
+            "status": "completed",
+            "attemptCount": 1,
+            "providerRequestIds": [f"local-inprocess:{request_id}"],
+            "errorCode": None,
+        })
+    idempotency_key = None if read_only else request_id
+    max_attempts = 3 if read_only else 1
+    envelope = {
+        "requestId": request_id,
+        "operation": operation,
+        "input": arguments,
+        "idempotencyKey": idempotency_key,
+    }
+    request_body = json.dumps(envelope, separators=(",", ":")).encode("utf-8")
+    attempts: list[dict[str, Any]] = []
+    provider_request_ids: list[str] = []
+    for attempt in range(1, max_attempts + 1):
+        if is_cancelled and is_cancelled():
+            raise CancellationError("Cancellation was requested before the connection call.")
+        started = datetime.now(timezone.utc).isoformat()
+        request = urllib_request.Request(
+            f"{connection_url.rstrip('/')}/v1/connection",
+            data=request_body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib_request.urlopen(request, timeout=max(0.1, timeout_ms / 1000)) as response:
+                body = json.loads(read_bounded_response(response).decode("utf-8"))
+            if not isinstance(body, dict) or not isinstance(body.get("providerRequestId"), str) or not isinstance(body.get("statusCode"), int) or not isinstance(body.get("body"), dict):
+                raise ProviderError("The local connection returned an invalid response envelope.")
+            provider_request_id = body["providerRequestId"]
+            provider_request_ids.append(provider_request_id)
+            status_code = body["statusCode"]
+            successful = 200 <= status_code < 300
+            retryable = read_only and status_code in {408, 425, 429, 500, 502, 503, 504}
+            attempts.append({"requestId": request_id, "attempt": attempt, "status": "completed" if successful else "failed", "retryable": retryable, "providerRequestId": provider_request_id, "errorCode": None if successful else f"HTTP_{status_code}", "startedAt": started, "finishedAt": datetime.now(timezone.utc).isoformat()})
+            if successful:
+                connection = {"requestId": request_id, "status": "completed", "attemptCount": len(attempts), "providerRequestIds": provider_request_ids, "errorCode": None}
+                return ToolExecution(json.dumps(body["body"], separators=(",", ":")), connection=connection)
+            if not retryable or attempt == max_attempts:
+                message = f"The local connection failed with HTTP {status_code}."
+                connection = {"requestId": request_id, "status": "failed", "attemptCount": len(attempts), "providerRequestIds": provider_request_ids, "errorCode": f"HTTP_{status_code}"}
+                return ToolExecution(_tool_error(f"HTTP_{status_code}", message), connection=connection, status="failed", error_code=f"HTTP_{status_code}", error_message=message)
+        except OutcomeUnknownError:
+            raise
+        except Exception as exc:
+            if not read_only:
+                connection = {"requestId": request_id, "status": "unknown", "attemptCount": len(attempts) + 1, "providerRequestIds": provider_request_ids, "errorCode": "CONNECTION_OUTCOME_UNKNOWN"}
+                return ToolExecution(_tool_error("CONNECTION_OUTCOME_UNKNOWN", "The connection write acknowledgement was lost."), connection=connection, status="unknown", error_code="CONNECTION_OUTCOME_UNKNOWN", error_message="The connection write acknowledgement was lost.")
+            if attempt == max_attempts:
+                message = _bounded_text(str(exc), 512)
+                connection = {"requestId": request_id, "status": "failed", "attemptCount": len(attempts) + 1, "providerRequestIds": provider_request_ids, "errorCode": "CONNECTION_FAILED"}
+                return ToolExecution(_tool_error("CONNECTION_FAILED", message), connection=connection, status="failed", error_code="CONNECTION_FAILED", error_message=message)
+    raise ProviderError("The local connection did not return a result.")
+
+
+def _safe_id_part(value: str) -> str:
+    normalized = "".join(character if character.isalnum() or character in "._-" else "_" for character in value)
+    return normalized[:64] or "unknown"
 
 
 def tool_message(call: ToolCall, content: str) -> dict[str, Any]:

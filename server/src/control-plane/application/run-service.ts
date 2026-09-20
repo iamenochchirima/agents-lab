@@ -132,6 +132,7 @@ export class RunService {
     try {
       await this.dependencies.evidence.createRun(manifest);
       await this.appendControlEvent(manifest.runId, "RunCreated", { platform: manifest.platform, variant: manifest.variant });
+      await this.recordCapabilityResolution(manifest);
     } catch (error) {
       await this.settleContextTurn(manifest, dispatchFailureResult(manifest.runId)).catch(() => undefined);
       throw error;
@@ -214,6 +215,13 @@ export class RunService {
           maxRounds: request.capabilities.tools.maxRounds,
           maxCalls: request.capabilities.tools.maxCalls,
         },
+        connections: resolved.resolution.grants
+          .filter(({ manifest, grant }) => manifest.source.kind === "connection" && grant.connectionRef !== undefined)
+          .map(({ manifest, grant }) => ({
+            toolName: manifest.id,
+            connectionRef: grant.connectionRef!,
+            operations: [...grant.allowedOperations],
+          })),
         resolution: resolved.resolution,
         skills: resolved.skills.map((skill) => ({
           id: skill.manifest.id,
@@ -381,6 +389,7 @@ export class RunService {
     for (const intent of inspection.eventIntents) {
       await this.dependencies.evidence.appendEvent(intent);
     }
+    const persistedEvents = await this.dependencies.evidence.readEvents(runId);
     await this.projectContextSnapshot(runId, await this.dependencies.evidence.readManifest(runId), inspection.eventIntents);
 
     if (inspection.result?.error?.code === "LANGGRAPH_CONTEXT_OVERFLOW") {
@@ -399,7 +408,7 @@ export class RunService {
         if (inspection.trajectory) {
           await this.dependencies.evidence.writeTrajectory(inspection.trajectory);
         }
-        await this.dependencies.evidence.writeMetrics(inspection.metrics ?? calculateMetrics(inspection.result, inspection.eventIntents));
+        await this.dependencies.evidence.writeMetrics(withCapabilityMetrics(inspection.metrics ?? calculateMetrics(inspection.result, persistedEvents), persistedEvents));
         await this.settleContextTurn(await this.dependencies.evidence.readManifest(runId), inspection.result);
       }
     }
@@ -541,6 +550,40 @@ export class RunService {
     });
   }
 
+  private async recordCapabilityResolution(manifest: RunManifest): Promise<void> {
+    const resolution = manifest.capabilities?.resolution;
+    if (!resolution) return;
+    await this.appendControlEvent(manifest.runId, "CapabilityResolutionRecorded", {
+      profileId: manifest.capabilities?.profileId ?? null,
+      policyId: resolution.policy.policyId,
+      decisions: resolution.decisions.map((decision) => ({
+        capabilityId: decision.capabilityId,
+        version: decision.version,
+        status: decision.status,
+        code: decision.code,
+      })),
+      grants: resolution.grants.map(({ manifest: capability, grant, approval }) => ({
+        capabilityId: capability.id,
+        version: capability.version,
+        approval,
+        allowedOperations: [...grant.allowedOperations],
+        connectionRef: grant.connectionRef ?? null,
+      })),
+    });
+    await this.dependencies.evidence.appendOperationalLog({
+      runId: manifest.runId,
+      occurredAt: manifest.createdAt,
+      level: resolution.decisions.some((decision) => decision.status === "denied") ? "warn" : "info",
+      operation: "capability.resolve",
+      requestId: manifest.capabilities?.profileId ?? "inline",
+      platform: manifest.platform,
+      variant: manifest.variant,
+      status: resolution.decisions.some((decision) => decision.status === "denied") ? "denied" : "granted",
+      outcome: `${resolution.grants.length} grants/${resolution.decisions.length} decisions`,
+      retryCount: 0,
+    }).catch(() => undefined);
+  }
+
   private async recordDispatchFailure(manifest: RunManifest, error: unknown): Promise<void> {
     void error;
     await this.appendControlEvent(manifest.runId, "RunFailed", { failureKind: "internal", code: "DISPATCH_FAILED" });
@@ -676,6 +719,25 @@ function calculateMetrics(result: RunResult, events: readonly RunEventIntent[]):
     outputTokens: result.usage.outputTokens,
     totalTokens: result.usage.totalTokens,
     costUsd: null,
+    ...capabilityMetricCounts(events),
+  };
+}
+
+function withCapabilityMetrics(metrics: RunMetrics, events: readonly RunEventIntent[]): RunMetrics {
+  return { ...metrics, ...capabilityMetricCounts(events) };
+}
+
+function capabilityMetricCounts(events: readonly RunEventIntent[]): Pick<RunMetrics, "toolCallCount" | "toolAttemptCount" | "connectionCallCount" | "connectionUnknownCount" | "approvalDecisionCount"> {
+  const resolutionDecisionCount = events.reduce((count, event) => {
+    if (event.kind !== "CapabilityResolutionRecorded" || !isRecord(event.payload) || !Array.isArray(event.payload.decisions)) return count;
+    return count + event.payload.decisions.length;
+  }, 0);
+  return {
+    toolCallCount: events.filter((event) => event.kind === "ToolCallRequested").length,
+    toolAttemptCount: events.filter((event) => event.kind === "ToolExecutionStarted").length,
+    connectionCallCount: events.filter((event) => event.kind === "ToolExecutionCompleted" || event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionUnknown").filter((event) => isRecord(event.payload.connection)).length,
+    connectionUnknownCount: events.filter((event) => event.kind === "ToolExecutionUnknown" || event.payload.connection && isRecord(event.payload.connection) && event.payload.connection.status === "unknown").length,
+    approvalDecisionCount: resolutionDecisionCount + events.filter((event) => event.kind === "ToolPolicyDenied" || event.kind === "WorkflowSuspended" || event.kind === "WorkflowResumed").length,
   };
 }
 

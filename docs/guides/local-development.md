@@ -49,6 +49,35 @@ checks pass. Running it again replaces an existing Agent Harness Lab stack on th
 configured ports and replaces stale Lab Temporal workers. Press Ctrl-C to stop the
 current stack; an existing Temporal process is not stopped.
 
+The launcher also starts the no-Docker local connection fixture at
+`http://127.0.0.1:9191`. Platform capability runs use it through the opaque
+`conn_local_fixture` reference. To run only the fixture while developing a connection
+adapter:
+
+```bash
+./scripts/run_local_stack.sh local-fixture
+curl http://127.0.0.1:9191/health
+```
+
+The fixture is provider-shaped test infrastructure, not a real external account. It
+supports bounded lookup and idempotent write requests so platform adapters can be tested
+over HTTP without Docker. A lost write acknowledgement remains `unknown`; the client
+must not retry it automatically.
+
+To roll back connected or side-effecting capability profiles while retaining pure local tools:
+
+```bash
+AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=false ./scripts/run_local_stack.sh
+```
+
+The server reports affected profiles as unavailable and rejects their selection before
+dispatch. Restore `true` only after the connection boundary is ready to accept traffic.
+
+The fixture keeps state in its process and has no credential directory. Stop the local stack
+to discard it. Real connection cleanup and credential rotation must happen in the configured
+secret store; rotate the secret and reauthorize the opaque connection reference without
+rewriting existing run evidence.
+
 The aggregate server health can still be `degraded` when optional profiles such as
 Inngest, DBOS, or Trigger.dev are not running. Check the individual platform health
 endpoints or the platform status in the UI for the profiles included in the local stack.

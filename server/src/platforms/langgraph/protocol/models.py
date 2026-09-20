@@ -88,6 +88,20 @@ class ToolConfiguration(ProtocolModel):
         return self
 
 
+class ConnectionBinding(ProtocolModel):
+    tool_name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    connection_ref: str = Field(min_length=1, max_length=128, pattern=r"^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$")
+    operations: list[str] = Field(min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_operations(self) -> "ConnectionBinding":
+        if any(not operation.isascii() or not operation or not operation[0].islower() or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789_.:-" for character in operation) for operation in self.operations):
+            raise ValueError("Connection operations must use lowercase letters, numbers, dots, underscores, hyphens, or colons.")
+        if len(set(self.operations)) != len(self.operations):
+            raise ValueError("Connection operations must not contain duplicates.")
+        return self
+
+
 class StartRunRequest(ProtocolModel):
     protocol_version: Literal[PROTOCOL_VERSION] = Field(default=PROTOCOL_VERSION)
     run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -103,6 +117,14 @@ class StartRunRequest(ProtocolModel):
     timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
     context: ContextSelection | None = None
     tools: ToolConfiguration | None = None
+    connections: list[ConnectionBinding] = Field(default_factory=list, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_connections(self) -> "StartRunRequest":
+        tool_names = [binding.tool_name for binding in self.connections]
+        if len(set(tool_names)) != len(tool_names):
+            raise ValueError("Connection bindings must not contain duplicate tool names.")
+        return self
 
     @model_validator(mode="after")
     def thread_matches_identity(self) -> "StartRunRequest":

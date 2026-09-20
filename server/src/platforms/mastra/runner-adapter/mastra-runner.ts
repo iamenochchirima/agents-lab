@@ -202,6 +202,7 @@ export class MastraBaselineRunner implements PlatformRunner {
         turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
         signal: record.controller.signal,
         maxToolCalls: configuration.maxToolCalls,
+        connectionBindings: record.manifest.capabilities?.connections,
         onToolEvent: (kind, payload) => this.addEvent(record, kind, payload),
       });
       const output = await runtime.agent.generate(record.manifest.task.prompt, {

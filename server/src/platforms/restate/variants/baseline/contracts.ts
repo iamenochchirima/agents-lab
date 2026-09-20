@@ -9,6 +9,7 @@ import type {
   RunUsage,
 } from "../../../../control-plane/domain/types.js";
 import type { ToolCall, ToolDefinition, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
+import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
 
 export const RESTATE_WORKFLOW_NAME = "AgentLabRestateBaseline";
 export const RESTATE_WORKFLOW_SOURCE = "restate-workflow";
@@ -31,6 +32,7 @@ export interface RestateWorkflowInput {
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  readonly connections?: readonly ConnectionBinding[];
   readonly context?: {
     readonly rootDirectory: string;
     readonly sessionId: string;
@@ -110,6 +112,7 @@ export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflo
     model: manifest.model,
     modelRetryAttempts: positiveIntegerFromConfig(manifest.platformConfig, "runMaxRetryAttempts", 3),
     tools,
+    ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     ...(manifest.context.sessionId && manifest.context.turnId ? {
       context: {
         rootDirectory: contextRoot,

@@ -26,6 +26,9 @@ RESTATE_DATA_DIR="${AGENTLAB_RESTATE_DATA_DIR:-$ROOT_DIR/lab/restate-native-data
 LANGGRAPH_HOST="${AGENTLAB_LANGGRAPH_HOST:-127.0.0.1}"
 LANGGRAPH_PORT="${AGENTLAB_LANGGRAPH_PORT:-2024}"
 LANGGRAPH_SERVICE_URL="${AGENTLAB_LANGGRAPH_SERVICE_URL:-http://${LANGGRAPH_HOST}:${LANGGRAPH_PORT}}"
+LOCAL_FIXTURE_HOST="${AGENTLAB_LOCAL_FIXTURE_HOST:-127.0.0.1}"
+LOCAL_FIXTURE_PORT="${AGENTLAB_LOCAL_FIXTURE_PORT:-9191}"
+LOCAL_FIXTURE_URL="${AGENTLAB_LOCAL_FIXTURE_URL:-http://${LOCAL_FIXTURE_HOST}:${LOCAL_FIXTURE_PORT}}"
 VERCEL_WORKFLOWS_HOST="${AGENTLAB_VERCEL_WORKFLOWS_HOST:-127.0.0.1}"
 VERCEL_WORKFLOWS_PORT="${AGENTLAB_VERCEL_WORKFLOWS_PORT:-9094}"
 VERCEL_WORKFLOWS_SERVICE_URL="${AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL:-http://${VERCEL_WORKFLOWS_HOST}:${VERCEL_WORKFLOWS_PORT}}"
@@ -332,6 +335,7 @@ Available services:
   inngest-dev          Start the Inngest Dev Server directly with pnpm dlx
   trigger-dev          Start the Trigger.dev local task worker
   langgraph            Start the LangGraph Python service
+  local-fixture        Start the local connection fixture service
   aws-step-functions   Start the AWS Step Functions platform service
   hatchet              Start the Hatchet platform worker (embedded by default)
   vercel-workflows     Start the Vercel Workflows platform service
@@ -348,6 +352,7 @@ Environment variables:
   AGENTLAB_RESTATE_DATA_DIR
   AGENTLAB_LANGGRAPH_PYTHON, AGENTLAB_LANGGRAPH_VENV
   AGENTLAB_LANGGRAPH_HOST, AGENTLAB_LANGGRAPH_PORT, AGENTLAB_LANGGRAPH_SERVICE_URL
+  AGENTLAB_LOCAL_FIXTURE_HOST, AGENTLAB_LOCAL_FIXTURE_PORT, AGENTLAB_LOCAL_FIXTURE_URL
   AGENTLAB_VERCEL_WORKFLOWS_HOST, AGENTLAB_VERCEL_WORKFLOWS_PORT
   AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL
   AGENTLAB_INNGEST_DEV_SERVER_URL, AGENTLAB_INNGEST_SERVICE_URL
@@ -390,6 +395,7 @@ run_server() {
     AGENTLAB_API_ORIGIN="$API_ORIGIN" \
     AGENTLAB_RUN_ROOT="$RUN_ROOT" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
+    AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     AGENTLAB_TEMPORAL_ENDPOINT="$TEMPORAL_ENDPOINT" \
     AGENTLAB_TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
     AGENTLAB_TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
@@ -405,6 +411,7 @@ run_worker() {
   echo "Starting Temporal worker on task queue $TEMPORAL_TASK_QUEUE"
   AGENTLAB_RUN_ROOT="$RUN_ROOT" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
+    AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     AGENTLAB_TEMPORAL_ENDPOINT="$TEMPORAL_ENDPOINT" \
     AGENTLAB_TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
     AGENTLAB_TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
@@ -426,6 +433,7 @@ run_restate() {
 
   echo "Starting Restate baseline service."
   AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
+  AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
   exec pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:restate
 }
 
@@ -478,9 +486,20 @@ run_langgraph() {
   cd "$platform_directory"
   PYTHONPATH="$platform_directory" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
+    AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     "$python_command" -m uvicorn service.app:app \
       --host "$LANGGRAPH_HOST" \
       --port "$LANGGRAPH_PORT"
+}
+
+run_local_fixture() {
+  require_command pnpm
+  require_package "$SERVER_DIR"
+  ensure_port_available "Local fixture" "$LOCAL_FIXTURE_HOST" "$LOCAL_FIXTURE_PORT"
+  echo "Starting local connection fixture at $LOCAL_FIXTURE_URL."
+  AGENTLAB_LOCAL_FIXTURE_HOST="$LOCAL_FIXTURE_HOST" \
+    AGENTLAB_LOCAL_FIXTURE_PORT="$LOCAL_FIXTURE_PORT" \
+    exec pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:local-fixture
 }
 
 run_aws_step_functions() {
@@ -575,6 +594,7 @@ start_all() {
   ensure_port_available "Restate admin" "$restate_admin_host" "$restate_admin_port"
   ensure_port_available "Restate service" "$restate_service_host" "$RESTATE_SERVICE_PORT"
   ensure_port_available "LangGraph service" "$LANGGRAPH_HOST" "$LANGGRAPH_PORT"
+  ensure_port_available "Local fixture" "$LOCAL_FIXTURE_HOST" "$LOCAL_FIXTURE_PORT"
   ensure_port_available "Vercel Workflows service" "$VERCEL_WORKFLOWS_HOST" "$VERCEL_WORKFLOWS_PORT"
   stop_existing_lab_workers
 
@@ -669,11 +689,16 @@ start_all() {
     return 1
   fi
 
-  echo "Starting LangGraph and Vercel Workflows services."
+  echo "Starting local fixture, LangGraph, and Vercel Workflows services."
+  start_background "local-fixture" env \
+    AGENTLAB_LOCAL_FIXTURE_HOST="$LOCAL_FIXTURE_HOST" \
+    AGENTLAB_LOCAL_FIXTURE_PORT="$LOCAL_FIXTURE_PORT" \
+    pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:local-fixture
   start_background "langgraph" env \
     AGENTLAB_LANGGRAPH_HOST="$LANGGRAPH_HOST" \
     AGENTLAB_LANGGRAPH_PORT="$LANGGRAPH_PORT" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
+    AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     PYTHONPATH="$SERVER_DIR/src/platforms/langgraph" \
     "$langgraph_python" -m uvicorn service.app:app --host "$LANGGRAPH_HOST" --port "$LANGGRAPH_PORT"
   start_background "vercel-workflows" env \
@@ -682,6 +707,7 @@ start_all() {
     AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL="$VERCEL_WORKFLOWS_SERVICE_URL" \
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:vercel-workflows
   wait_for_http "LangGraph service" "$LANGGRAPH_SERVICE_URL/health"
+  wait_for_http "Local fixture" "$LOCAL_FIXTURE_URL/health"
   stack_processes_alive
   wait_for_http "Vercel Workflows service" "$VERCEL_WORKFLOWS_SERVICE_URL/ready"
   stack_processes_alive
@@ -701,6 +727,7 @@ start_all() {
     AGENTLAB_RESTATE_SERVICE_URL="$RESTATE_SERVICE_URL" \
     AGENTLAB_RESTATE_SERVICE_PORT="$RESTATE_SERVICE_PORT" \
     AGENTLAB_LANGGRAPH_SERVICE_URL="$LANGGRAPH_SERVICE_URL" \
+    AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL="$VERCEL_WORKFLOWS_SERVICE_URL" \
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev
   start_background "worker" env \
@@ -709,6 +736,7 @@ start_all() {
     AGENTLAB_TEMPORAL_ENDPOINT="$TEMPORAL_ENDPOINT" \
     AGENTLAB_TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
     AGENTLAB_TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
+    AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:worker
   start_background "web" env \
     VITE_AGENTLAB_API_URL="${VITE_AGENTLAB_API_URL:-http://${API_HOST}:${API_PORT}}" \
@@ -726,6 +754,7 @@ start_all() {
   echo "  Temporal:   $TEMPORAL_ENDPOINT"
   echo "  Restate:    $RESTATE_INGRESS_URL"
   echo "  LangGraph:  $LANGGRAPH_SERVICE_URL"
+  echo "  Fixture:    $LOCAL_FIXTURE_URL"
   echo "  Vercel:     $VERCEL_WORKFLOWS_SERVICE_URL"
   echo "  Logs:       $log_directory"
   echo "Press Ctrl-C to stop the Lab processes. An existing Temporal server is left running."
@@ -772,6 +801,9 @@ case "${1:-}" in
     ;;
   langgraph)
     run_langgraph
+    ;;
+  local-fixture|fixture)
+    run_local_fixture
     ;;
   aws-step-functions|aws)
     run_aws_step_functions

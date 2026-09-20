@@ -463,6 +463,7 @@ function inputForManifest(manifest: RunManifest, contextMessages: MastraWorkflow
           ...(manifest.capabilities.tools.approvedNames ? { approvedNames: [...manifest.capabilities.tools.approvedNames] } : {}),
           maxRounds: manifest.capabilities.tools.maxRounds,
           maxCalls: manifest.capabilities.tools.maxCalls,
+          ...(manifest.capabilities.connections ? { connections: [...manifest.capabilities.connections] } : {}),
         } }
       : { tools: { enabledNames: ["calculator"], maxRounds: DEFAULT_MAX_TOOL_ROUNDS, maxCalls: DEFAULT_MAX_TOOL_CALLS } },
     contextMessages,

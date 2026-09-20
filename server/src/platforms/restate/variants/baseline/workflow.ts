@@ -414,6 +414,8 @@ export const baselineWorkflow = restate.workflow({
               () => registry.execute(validation, {
                 runId: input.runId,
                 turnId,
+                toolCallId: call.toolCallId,
+                connectionBindings: input.connections,
                 signal: ctx.request().attemptCompletedSignal,
               }),
               { maxRetryAttempts: 1 },
@@ -619,6 +621,7 @@ function toolPayload(result: ToolExecutionResult, round: number): ToolEventDetai
     status: result.status,
     durationMs: result.durationMs,
     resultBytes: Buffer.byteLength(result.content, "utf8"),
+    ...(result.connection ? { connection: result.connection } : {}),
     ...(result.error ? { code: result.error.code, message: result.error.message } : {}),
   };
 }

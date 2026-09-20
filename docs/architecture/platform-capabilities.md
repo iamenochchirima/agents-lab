@@ -9,7 +9,7 @@ results; it does not import a platform SDK or call a provider.
 Chat / Compare
   -> profile ID and optional approval reference
 server admission
-  -> immutable manifest + capabilities.json
+  -> immutable manifest + capabilities.json + CapabilityResolutionRecorded
 capability catalog
   -> resolved grants + context-only skill projections
 platform adapter
@@ -37,8 +37,22 @@ Connection seams are deliberately independent:
 The platform owns durability and native evidence. Temporal keeps activity history and
 retries, Restate keeps journaled named actions, LangGraph keeps SQLite checkpoints, and
 Mastra keeps its native agent/workflow lifecycle. The local fixtures prove these seams
-without claiming that every external provider has been integrated.
+without claiming that every external provider has been integrated. In a full local
+stack, the provider-shaped fixture is a separate HTTP process. `conn_local_fixture` is
+an opaque allowlisted binding; its endpoint is configured by the server and never comes
+from model output. Read calls may use bounded retries, while a dispatched write that
+loses its acknowledgement is recorded as unknown and requires reconciliation.
 
 See the [capability module](../../server/src/capabilities/README.md), the
 [platform implementation plan](../../development/implementation-plans/platforms/active/platform-capabilities-and-integrations.md),
 and the [development playground](../../development/playground/platform-capabilities/README.md).
+
+Capability resolution is recorded before platform dispatch. The ordered event contains only
+profile/policy identifiers, bounded decision codes, grant operations, approval state, and
+opaque connection references. `metrics.json` derives capability counts from the persisted
+event stream so a platform inspection that omits earlier server events cannot erase approval
+or connection measurements.
+
+For rollback, set `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=false` before starting the server.
+The API keeps affected profiles visible with an unavailable reason, resolution fails closed,
+and pure inline tools remain usable.

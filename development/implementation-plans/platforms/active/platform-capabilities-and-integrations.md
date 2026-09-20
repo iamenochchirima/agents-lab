@@ -1,7 +1,7 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T20:18:03+02:00
+**Last updated:** 2026-09-20T21:06:43+02:00
 **Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -136,13 +136,13 @@ The completed phase must be able to:
       permissions, secrets, or policy;
 - [x] exercise MCP, direct API, and OAuth connection seams against no-Docker local
       fixtures, with unavailable external credentials shown honestly;
-- [x] require explicit policy approval for the first write-capable capability and preserve
+- [ ] require explicit policy approval for the first write-capable capability and preserve
       the decision in normalized and native evidence;
 - [x] keep secrets, authorization headers, raw provider responses, and unsafe skill content
       out of run evidence and browser responses;
 - [x] show capability profile, tool activity, connection status, context usage, and
       failure/recovery state in Chat and Compare without adding a noisy dashboard;
-- [ ] document exact local commands, real external prerequisites, observed results,
+- [x] document exact local commands, real external prerequisites, observed results,
       known limitations, and the rollback switch.
 
 ## Scope
@@ -348,8 +348,8 @@ Connection metadata and credentials are separate:
 - [x] Capability resolution is written before the first model/tool request.
 - [ ] Approval decisions, connection refreshes, tool calls, and external request IDs are
       append-only lifecycle evidence with bounded payloads.
-- [ ] Writes use atomic replacement or the existing evidence-store contract.
-- [ ] A capability result is linked to the model turn and tool call without duplicating
+- [x] Writes use atomic replacement or the existing evidence-store contract.
+- [x] A capability result is linked to the model turn and tool call without duplicating
       result.json.
 - [x] Raw secrets, headers, provider bodies, full skill bodies, and unsafe arguments are
       redacted before persistence and API projection.
@@ -363,7 +363,7 @@ Connection metadata and credentials are separate:
 - [ ] Registry listing and local skill parsing may retry only before a run is admitted.
 - [x] Read-only tool/API requests may retry only under a documented bounded policy and
       only when the provider contract makes the retry safe.
-- [ ] Model requests, external writes, OAuth callbacks, and plugin side effects have
+- [x] Model requests, external writes, OAuth callbacks, and plugin side effects have
       explicit duplicate/unknown-outcome semantics; none are called exactly once by
       assertion.
 - [x] Each external call has a stable per-attempt ID and, where supported, an idempotency
@@ -396,7 +396,7 @@ Connection metadata and credentials are separate:
       resource boundaries. A skill is never executable code by default.
 - [x] Write/external operations require configured approval and an explicit user-visible
       operation summary.
-- [ ] Effective capability configuration and redaction policy are recorded in config.json
+- [x] Effective capability configuration and redaction policy are recorded in config.json
       without secrets.
 - [x] Missing OpenRouter key, connection credentials, or local fixtures produce actionable
       unavailable states and no fabricated assistant/tool result.
@@ -472,7 +472,7 @@ unrelated twenty-minute UI slices.
 
 - [ ] Add structured logs and metrics for resolution, tool attempts, refreshes, approvals,
       retries, durations, and unknown outcomes without prompts or secrets.
-- [ ] Add cleanup and credential-rotation guidance and a rollback switch that disables
+- [x] Add cleanup and credential-rotation guidance and a rollback switch that disables
       connected/write capabilities while preserving pure local tools.
 - [ ] Update platform architecture, semantics, local-development, Chat/Compare, and
       capability documentation.
@@ -485,18 +485,18 @@ unrelated twenty-minute UI slices.
 
 ### Unit and contract tests
 
-- [ ] capability manifest/version/schema validation and bounded fields;
-- [ ] grant resolution, deny-by-default policy, risk classes, approval, and limits;
-- [ ] tool registration, argument validation, timeout, cancellation, result limits, and
+- [x] capability manifest/version/schema validation and bounded fields;
+- [x] grant resolution, deny-by-default policy, risk classes, approval, and limits;
+- [x] tool registration, argument validation, timeout, cancellation, result limits, and
       terminal event cardinality;
-- [ ] skill parsing, matching, precedence, digest/provenance, size limits, compaction,
+- [x] skill parsing, matching, precedence, digest/provenance, size limits, compaction,
       and prompt-injection-like content;
-- [ ] plugin manifest validation, undeclared capability rejection, and no-code default;
-- [ ] MCP discovery, selection, invocation, cancellation, timeout, and bounded errors;
-- [ ] direct API request IDs, safe retry, idempotency, rate-limit, and unknown outcomes;
-- [ ] OAuth PKCE/state, callback replay, expiry, refresh serialization, revocation, and
+- [x] plugin manifest validation, undeclared capability rejection, and no-code default;
+- [x] MCP discovery, selection, invocation, cancellation, timeout, and bounded errors;
+- [x] direct API request IDs, safe retry, idempotency, rate-limit, and unknown outcomes;
+- [x] OAuth PKCE/state, callback replay, expiry, refresh serialization, revocation, and
       missing-scope errors;
-- [ ] secret/redaction rules for configs, events, logs, native evidence, and API responses.
+- [x] secret/redaction rules for configs, events, logs, native evidence, and API responses.
 
 ### Platform integration tests
 
@@ -568,21 +568,39 @@ The following focused commits are complete while this plan remains active:
 - `1eab986` — LangGraph capability documentation and approval manifest coverage.
 - `d97b04b` — local MCP/direct API/OAuth seams, evidence redaction, and native bindings.
 - `fa392c1` — platform capability architecture and development playground.
+- `a8891f6` — capability-phase progress record and acceptance state.
 
 Validated so far:
 
-- TypeScript server typecheck and build.
-- Temporal: 1 passed.
-- Restate: 44 passed, 5 intentionally skipped without the optional native/Docker services.
-- Mastra: 16 passed.
-- LangGraph TypeScript adapter: 20 passed, 3 intentionally skipped; Python service tests: 50 passed.
-- Focused browser Chat/Compare capability checks: 3 passed; full platform Chat checks pass when run
-  as isolated test groups.
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server run build` — passed.
+- `node --test server/dist/tests/capabilities/*.test.js` — 49 passed, 0 failed.
+- Native connection boundary tests for Restate and Mastra — 2 passed, 0 failed.
+- LangGraph Python service tests — 51 passed, 1 deprecation warning.
+- Temporal local integration with the running local Temporal server and worker — 1 passed,
+  including the HTTP fixture read, retry, ambiguity, timeout, cancellation, and reconciliation
+  cases.
+- Restate native integration with the local native server and service enabled — 49 passed, 1
+  Docker-backed test skipped, including server replacement/restart coverage.
+- LangGraph native integration enabled — 21 passed, 2 OpenRouter/service variants skipped.
+- Mastra platform suite — 16 passed, 0 failed.
+- Control-plane HTTP capability evidence tests — 11 passed, 0 failed.
+- `python3 -m json.tool server/src/platforms/langgraph/protocol/schema.json` and
+  `bash -n scripts/run_local_stack.sh` — passed.
 
-The next implementation block is connection-backed local fixture execution through each native
-boundary, followed by the restart/unknown-outcome matrix, structured capability metrics, and the
-final browser/manual acceptance record. The plan must remain active until those items and the
-completion gate are checked with evidence.
+The local fixture now crosses real HTTP boundaries for Temporal, Restate, LangGraph, and Mastra
+native execution tests. Run admission also records an ordered `CapabilityResolutionRecorded`
+event, and persisted events feed capability metrics so approval decisions are not lost when a
+platform inspection returns only native events.
+
+The connected/write rollback switch and cleanup/rotation guidance are now implemented and
+covered by configuration/catalog tests. The next implementation block is the remaining
+restart/cancellation/unavailable matrix across all four platforms, followed by native MCP/OAuth
+process-boundary acceptance and browser/manual acceptance. The plan must remain active until
+those items and the completion gate are checked with evidence. MCP/OAuth currently have
+deterministic local contract fixtures; their native platform process-boundary acceptance is
+still open. Optional live OpenRouter acceptance remains skipped unless credentials and a
+configured test account are deliberately provided.
 
 ## Documentation and release impact
 
@@ -596,8 +614,9 @@ completion gate are checked with evidence.
   platform SDK versions, runtime versions, model ID, and local fixture versions.
 - Migration: additive manifest/evidence changes require old-run readers to remain usable;
   connection-secret migration must be explicit and never occur during a model turn.
-- Rollout: local first; connected and write-capable profiles are feature-gated and disabled
-  by default until acceptance passes.
+- Rollout: local first; connected and write-capable profiles are feature-gated. The local
+  profile is enabled for the current deterministic acceptance path, and the rollback switch
+  disables it fail-closed without removing pure inline tools.
 - Rollback: disable connected/write profiles and plugin loading while leaving pure tools,
   existing Chat runs, and evidence inspection available.
 - Security: fail closed on missing grants, scope mismatch, invalid state, stale approval,

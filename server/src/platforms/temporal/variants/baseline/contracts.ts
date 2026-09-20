@@ -1,4 +1,5 @@
 import type { ToolCall, ToolDefinition, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
+import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
 
 export const BASELINE_WORKFLOW_TYPE = "temporalBaselineWorkflow";
 export const BASELINE_QUERY_NAME = "baselineSnapshot";
@@ -31,6 +32,7 @@ export interface TemporalWorkflowInput {
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  readonly connections?: readonly ConnectionBinding[];
   readonly context?: {
     readonly rootDirectory: string;
     readonly sessionId: string;
@@ -160,6 +162,7 @@ export interface TemporalToolExecutionInput {
   readonly turnId: string;
   readonly enabledNames: readonly string[];
   readonly approvedNames?: readonly string[];
+  readonly connectionBindings?: readonly ConnectionBinding[];
   readonly call: ToolCall;
 }
 

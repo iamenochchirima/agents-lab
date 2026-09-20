@@ -192,6 +192,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       timeoutMs: configuration.timeoutMs,
       ...(identity.context ? { context: identity.context } : {}),
       tools: manifest.capabilities?.tools ?? configuration.tools,
+      ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     });
     try {
       const response = parseStartResponse(await this.request("/v1/runs", {

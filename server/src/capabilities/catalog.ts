@@ -19,8 +19,15 @@ export interface CapabilityProfile {
 }
 
 export interface CapabilityProfileView extends Omit<CapabilityProfile, "policy" | "grants" | "skillIds"> {
+  readonly available: boolean;
+  readonly unavailableReason: string | null;
   readonly capabilities: readonly Pick<CapabilityManifest, "id" | "version" | "kind" | "displayName" | "description" | "risk" | "operations">[];
   readonly skills: readonly SkillSummary[];
+}
+
+export interface CapabilityCatalogOptions {
+  /** Rollback switch for connected and side-effecting capability profiles. */
+  readonly connectedEnabled?: boolean;
 }
 
 export interface CapabilityProfileResolution {
@@ -37,15 +44,18 @@ export class CapabilityCatalog {
   private readonly profiles: ReadonlyMap<string, CapabilityProfile>;
   private readonly registry: CapabilityRegistry;
   private readonly resolver: CapabilityResolver;
+  private readonly connectedEnabled: boolean;
 
   constructor(
     manifests: readonly CapabilityManifest[],
     profiles: readonly CapabilityProfile[],
     now?: () => string,
     private readonly skills: SkillCatalog = createDefaultSkillCatalog(),
+    options: CapabilityCatalogOptions = {},
   ) {
     this.registry = new CapabilityRegistry(manifests);
     this.resolver = new CapabilityResolver(this.registry, now);
+    this.connectedEnabled = options.connectedEnabled ?? true;
     const values = new Map<string, CapabilityProfile>();
     for (const profile of profiles) {
       if (values.has(profile.id)) throw new Error(`Capability profile is duplicated: ${profile.id}`);
@@ -55,11 +65,36 @@ export class CapabilityCatalog {
   }
 
   list(): readonly CapabilityProfileView[] {
-    return [...this.profiles.values()].map((profile) => ({
+    return [...this.profiles.values()].map((profile) => this.profileView(profile));
+  }
+
+  get(profileId: string): CapabilityProfile | undefined {
+    return this.profiles.get(profileId);
+  }
+
+  resolve(profileId: string, approvals: readonly CapabilityApproval[] = []): CapabilityProfileResolution {
+    const profile = this.profiles.get(profileId);
+    if (!profile) throw new Error(`Capability profile is not available: ${profileId}`);
+    const availability = this.profileAvailability(profile);
+    if (!availability.available) throw new Error(availability.reason);
+    const resolution = this.resolver.resolve({ policy: profile.policy, grants: profile.grants, approvals });
+    const skills = this.skills.resolve(profile.skillIds ?? []);
+    return { profile, resolution, skills };
+  }
+
+  definitions(): readonly CapabilityManifest[] {
+    return this.registry.definitions();
+  }
+
+  private profileView(profile: CapabilityProfile): CapabilityProfileView {
+    const availability = this.profileAvailability(profile);
+    return {
       id: profile.id,
       version: profile.version,
       displayName: profile.displayName,
       description: profile.description,
+      available: availability.available,
+      unavailableReason: availability.available ? null : availability.reason,
       skills: this.skills.resolve(profile.skillIds ?? []).map((skill) => ({
         id: skill.manifest.id,
         version: skill.manifest.version,
@@ -79,23 +114,18 @@ export class CapabilityCatalog {
           operations: manifest.operations,
         }] : [];
       }),
-    }));
+    };
   }
 
-  get(profileId: string): CapabilityProfile | undefined {
-    return this.profiles.get(profileId);
-  }
-
-  resolve(profileId: string, approvals: readonly CapabilityApproval[] = []): CapabilityProfileResolution {
-    const profile = this.profiles.get(profileId);
-    if (!profile) throw new Error(`Capability profile is not available: ${profileId}`);
-    const resolution = this.resolver.resolve({ policy: profile.policy, grants: profile.grants, approvals });
-    const skills = this.skills.resolve(profile.skillIds ?? []);
-    return { profile, resolution, skills };
-  }
-
-  definitions(): readonly CapabilityManifest[] {
-    return this.registry.definitions();
+  private profileAvailability(profile: CapabilityProfile): { readonly available: boolean; readonly reason: string } {
+    if (this.connectedEnabled) return { available: true, reason: "" };
+    const connected = profile.grants.some((grant) => {
+      const manifest = this.registry.get(grant.capabilityId, grant.version);
+      return manifest?.kind === "connection" || manifest?.risk === "write" || manifest?.risk === "external";
+    });
+    return connected
+      ? { available: false, reason: "Connected and side-effecting capabilities are disabled by the server rollback switch." }
+      : { available: true, reason: "" };
   }
 }
 
@@ -147,10 +177,10 @@ export const DEFAULT_CAPABILITY_PROFILES: readonly CapabilityProfile[] = Object.
     version: "1.0.0",
     displayName: "Local safe",
     description: "Pure tools and read-only local fixture access.",
-    policy: defaultPolicy("local-safe", ["calculator", "fixture_lookup"], ["pure", "read"]),
+    policy: defaultPolicy("local-safe", ["calculator", "fixture_lookup"], ["pure", "read"], [], ["conn_local_fixture"]),
     grants: [
       grant("calculator", "calculate", "none"),
-      grant("fixture_lookup", "lookup", "none"),
+      grant("fixture_lookup", "lookup", "none", "conn_local_fixture"),
     ],
     skillIds: ["research-summary"],
   },
@@ -159,20 +189,20 @@ export const DEFAULT_CAPABILITY_PROFILES: readonly CapabilityProfile[] = Object.
     version: "1.0.0",
     displayName: "Local write test",
     description: "Local write fixture; requires an explicit approval decision.",
-    policy: defaultPolicy("local-write-approved", ["calculator", "fixture_lookup", "fixture_write"], ["pure", "read", "write"], ["write"]),
+    policy: defaultPolicy("local-write-approved", ["calculator", "fixture_lookup", "fixture_write"], ["pure", "read", "write"], ["write"], ["conn_local_fixture"]),
     grants: [
       grant("calculator", "calculate", "none"),
-      grant("fixture_lookup", "lookup", "none"),
-      grant("fixture_write", "write", "required"),
+      grant("fixture_lookup", "lookup", "none", "conn_local_fixture"),
+      grant("fixture_write", "write", "required", "conn_local_fixture"),
     ],
   },
 ]);
 
-export function createDefaultCapabilityCatalog(now?: () => string): CapabilityCatalog {
-  return new CapabilityCatalog(DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES, now);
+export function createDefaultCapabilityCatalog(now?: () => string, options?: CapabilityCatalogOptions): CapabilityCatalog {
+  return new CapabilityCatalog(DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES, now, undefined, options);
 }
 
-function grant(capabilityId: string, operation: string, approvalMode: CapabilityGrant["approvalMode"]): CapabilityGrant {
+function grant(capabilityId: string, operation: string, approvalMode: CapabilityGrant["approvalMode"], connectionRef?: string): CapabilityGrant {
   return {
     schemaVersion: 1,
     capabilityId,
@@ -180,6 +210,7 @@ function grant(capabilityId: string, operation: string, approvalMode: Capability
     enabled: true,
     allowedOperations: [operation],
     approvalMode,
+    ...(connectionRef ? { connectionRef } : {}),
     timeoutMs: 10_000,
     maxInputBytes: 8_192,
     maxOutputBytes: 32_768,
@@ -191,6 +222,7 @@ function defaultPolicy(
   allowedCapabilityIds: readonly string[],
   allowedRiskClasses: CapabilityPolicy["allowedRiskClasses"],
   requiredApprovalRiskClasses: CapabilityPolicy["requiredApprovalRiskClasses"] = [],
+  allowedConnectionRefs: readonly string[] = [],
 ): CapabilityPolicy {
   return {
     schemaVersion: 1,
@@ -199,7 +231,7 @@ function defaultPolicy(
     allowedCapabilityIds,
     allowedRiskClasses,
     requiredApprovalRiskClasses,
-    allowedConnectionRefs: [],
+    allowedConnectionRefs,
     maxTimeoutMs: 30_000,
     maxInputBytes: 64 * 1024,
     maxOutputBytes: 256 * 1024,

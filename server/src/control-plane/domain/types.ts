@@ -13,6 +13,7 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 export type TerminalRunStatus = "completed" | "failed" | "cancelled" | "reconciliation_required";
 export type ModelProvider = "fake" | "openrouter";
 import type { CapabilityApproval, CapabilityResolution } from "../../capabilities/contracts.js";
+import type { ConnectionBinding } from "../../capabilities/integrations/contracts.js";
 import type { SkillSummary } from "../../capabilities/skills/index.js";
 export type FailureKind =
   | "validation"
@@ -45,6 +46,8 @@ export interface RunCapabilities {
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  /** Safe connection bindings derived from the immutable capability resolution. */
+  readonly connections?: readonly ConnectionBinding[];
   /** Server-owned profile selected by Chat or Compare. */
   readonly profileId?: string;
   /** Approval decisions are references, never credentials. */
@@ -224,4 +227,10 @@ export interface RunMetrics {
   readonly costUsd: number | null;
   readonly toolCallCount?: number;
   readonly toolAttemptCount?: number;
+  /** Count of connection-backed tool calls observed in normalized events. */
+  readonly connectionCallCount?: number;
+  /** Connection calls whose provider outcome remained unknown. */
+  readonly connectionUnknownCount?: number;
+  /** Approval decisions observed during the run. */
+  readonly approvalDecisionCount?: number;
 }

@@ -17,6 +17,11 @@ const workflowCapabilities = z.object({
     maxRounds: z.number().int().min(1).max(32),
     maxCalls: z.number().int().min(1).max(64),
   }),
+  connections: z.array(z.object({
+    toolName: z.string().min(1).max(64),
+    connectionRef: z.string().regex(/^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$/),
+    operations: z.array(z.string().min(1).max(128)),
+  })).optional(),
 });
 
 export const mastraWorkflowInputSchema = z.object({
@@ -107,6 +112,7 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         turnId: input.turnId,
         signal: abortSignal,
         maxToolCalls: input.capabilities.tools.maxCalls,
+        connectionBindings: input.capabilities.connections,
         onToolEvent: (kind, payload) => options.eventSink?.(runId, kind, payload),
       });
       const output = await agent.generate(inputData.prompt, {
