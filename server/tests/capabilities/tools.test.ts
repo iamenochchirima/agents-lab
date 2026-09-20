@@ -39,7 +39,25 @@ test("the registry denies enabled tools whose risk class is not allowed by this 
   assert.deepEqual(value.authorize(call({}, "write-tool")), {
     allowed: false,
     code: "TOOL_RISK_NOT_ALLOWED",
-    message: "Tool risk class is not allowed in this slice: write-tool",
+    message: "Tool requires an explicit approval: write-tool",
+  });
+});
+
+test("a write tool is executable only when its name is explicitly approved", async () => {
+  const implementation = {
+    ...calculatorTool,
+    definition: { ...calculatorTool.definition, name: "write-tool", riskClass: "write" as const },
+  };
+  const denied = new ToolRegistry({ enabledNames: ["write-tool"] });
+  denied.register(implementation);
+  assert.equal(denied.authorize(call({}, "write-tool")).allowed, false);
+
+  const approved = new ToolRegistry({ enabledNames: ["write-tool"], approvedNames: ["write-tool"] });
+  approved.register(implementation);
+  assert.deepEqual(approved.authorize(call({}, "write-tool")), {
+    allowed: true,
+    code: "TOOL_ALLOWED",
+    message: "Tool is enabled for this run.",
   });
 });
 

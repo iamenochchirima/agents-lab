@@ -54,6 +54,15 @@ The browser receives only `ContextProjection`. It sees the latest server-owned b
 pressure, compaction revision, and token-count quality; it does not read transcript
 files or calculate the authoritative percentage.
 
+## Skill context
+
+Profile-selected skills are persisted in the session as validated, context-only
+projections. They become `developer` messages with `source: "skills"`, explicit
+`trust: "untrusted"` and `authority: "none"` metadata, and are never copied into the
+canonical transcript. Compaction excludes those instruction messages from its history
+candidate set so a summary cannot accidentally grant a skill authority. Run evidence
+replaces skill bodies with a redaction marker while retaining safe provenance metadata.
+
 ## Turn retries
 
 Clients may send `clientTurnId` with an explicit `sessionId` on a run request. The key

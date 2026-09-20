@@ -13,6 +13,7 @@ const workflowModelProvider = z.enum(["fake", "openrouter"]);
 const workflowCapabilities = z.object({
   tools: z.object({
     enabledNames: z.array(z.string()),
+    approvedNames: z.array(z.string()).optional(),
     maxRounds: z.number().int().min(1).max(32),
     maxCalls: z.number().int().min(1).max(64),
   }),

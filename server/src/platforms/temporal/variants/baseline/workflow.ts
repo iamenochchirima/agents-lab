@@ -13,6 +13,7 @@ import {
 
 import type { baselineActivities } from "./activities.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
+import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type { ToolCall, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
 import {
@@ -68,8 +69,10 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   let contextRecoveryUsed = false;
   let continuationMessages: TemporalModelMessage[] = [];
   const toolConfiguration = normalizeToolConfiguration(input.tools);
-  const toolRegistry = new ToolRegistry({ enabledNames: toolConfiguration.enabledNames });
+      const toolRegistry = new ToolRegistry({ enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames });
   toolRegistry.register(calculatorTool);
+  toolRegistry.register(fixtureLookupTool);
+  toolRegistry.register(fixtureWriteTool);
   const toolDefinitions = toolRegistry.definitions();
 
   const snapshot = (): TemporalWorkflowSnapshot => ({
@@ -412,7 +415,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               retry: { maximumAttempts: 1 },
               cancellationType: "WAIT_CANCELLATION_COMPLETED",
             },
-            [{ runId: input.runId, turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames, call: validation.call }],
+            [{ runId: input.runId, turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames, call: validation.call }],
           ));
         } catch (activityError) {
           finishPhase(toolPhase);
@@ -490,6 +493,7 @@ function normalizeToolConfiguration(input: TemporalWorkflowInput["tools"]): NonN
   if (!input) return DEFAULT_TOOL_CONFIGURATION;
   return {
     enabledNames: input.enabledNames.filter((name) => typeof name === "string"),
+    ...(input.approvedNames ? { approvedNames: input.approvedNames.filter((name) => typeof name === "string") } : {}),
     maxRounds: positiveInteger(input.maxRounds, DEFAULT_TOOL_CONFIGURATION.maxRounds),
     maxCalls: positiveInteger(input.maxCalls, DEFAULT_TOOL_CONFIGURATION.maxCalls),
   };

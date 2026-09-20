@@ -142,6 +142,34 @@ CALCULATOR_DEFINITION: dict[str, Any] = {
     },
 }
 
+FIXTURE_LOOKUP_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "fixture_lookup",
+        "description": "Read one value from the bounded local provider fixture.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["key"],
+            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 64}},
+        },
+    },
+}
+
+FIXTURE_WRITE_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "fixture_write",
+        "description": "Write one value to the bounded local provider fixture after approval.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["key", "value"],
+            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 64}, "value": {"type": "string", "maxLength": 512}},
+        },
+    },
+}
+
 
 def build_baseline_graph(
     model: ModelConfig,
@@ -151,10 +179,12 @@ def build_baseline_graph(
     max_attempts: int,
     checkpointer: Any,
     tool_names: list[str] | None = None,
+    approved_tool_names: list[str] | None = None,
     max_rounds: int = 6,
     max_calls: int = 8,
 ):
-    enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name == "calculator"]
+    enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name in {"calculator", "fixture_lookup", "fixture_write"}]
+    approved_tools = [name for name in (approved_tool_names or []) if name in enabled_tools]
 
     def call_model(state: GraphState, runtime: Runtime[Any]) -> GraphState:
         execution_info = runtime.execution_info
@@ -179,7 +209,7 @@ def build_baseline_graph(
                 "requestSent": model.provider == "openrouter" or not model.model.startswith("fake-pre-dispatch"),
             },
         )
-        response = complete_model(model, {**state, "messages": messages}, attempt, is_cancelled, enabled_tools)
+        response = complete_model(model, {**state, "messages": messages}, attempt, is_cancelled, enabled_tools, approved_tools)
         assistant: dict[str, Any] = {"role": "assistant", "content": response.output}
         if response.tool_calls:
             assistant["tool_calls"] = [
@@ -240,7 +270,7 @@ def build_baseline_graph(
                 message = "The LangGraph baseline reached its tool-call limit."
                 emit("ToolCallRejected", {**payload, "code": "TOOL_CALL_LIMIT_EXCEEDED", "message": message})
                 raise ProviderError(message)
-            validation_error = validate_calculator_call(call, enabled_tools, state.get("round_count", 0))
+            validation_error = validate_tool_call(call, enabled_tools, approved_tools, state.get("round_count", 0))
             if validation_error:
                 emit("ToolCallRejected", {**payload, "code": validation_error[0], "message": validation_error[1]})
                 messages.append(tool_message(call, _tool_error(validation_error[0], validation_error[1])))
@@ -248,7 +278,7 @@ def build_baseline_graph(
             emit("ToolCallValidated", payload)
             emit("ToolExecutionStarted", payload)
             try:
-                result = execute_calculator(call.arguments)
+                result = execute_tool(call.name, call.arguments)
             except Exception as exc:
                 message = _bounded_text(str(exc), 512)
                 emit("ToolExecutionFailed", {**payload, "code": "TOOL_EXECUTION_FAILED", "message": message})
@@ -282,6 +312,7 @@ def complete_model(
     attempt: int,
     is_cancelled: Callable[[], bool],
     tool_names: list[str] | None = None,
+    approved_tool_names: list[str] | None = None,
 ) -> ModelResponse:
     if model.provider == "fake":
         return complete_fake(model.model, state, attempt, is_cancelled, model.timeout_ms)
@@ -348,6 +379,16 @@ def complete_fake(
                 {"inputTokens": 12, "outputTokens": 8, "totalTokens": 20},
             )
         return ModelResponse(f"The calculator returned {tool_result.get('content', '')}.", [], empty_usage())
+    if model == "fake-connected-tool":
+        tool_result = next((message for message in messages if message.get("role") == "tool"), None)
+        if tool_result is None:
+            return ModelResponse(None, [ToolCall("call-fixture-lookup-1", "fixture_lookup", {"key": "alpha"})], empty_usage())
+        return ModelResponse(f"The local fixture returned {tool_result.get('content', '')}.", [], empty_usage())
+    if model == "fake-connected-write":
+        tool_result = next((message for message in messages if message.get("role") == "tool"), None)
+        if tool_result is None:
+            return ModelResponse(None, [ToolCall("call-fixture-write-1", "fixture_write", {"key": "alpha", "value": "updated"})], empty_usage())
+        return ModelResponse(f"The local fixture write returned {tool_result.get('content', '')}.", [], empty_usage())
     raise ConfigurationError(f"Unknown fake model: {model}")
 
 
@@ -375,7 +416,13 @@ def complete_openrouter_response(
 
     messages = state.get("messages") or initial_messages(state)
     payload_data: dict[str, Any] = {"model": model.model, "messages": [to_openrouter_message(message) for message in messages]}
-    definitions = [CALCULATOR_DEFINITION] if "calculator" in tool_names else []
+    definitions = []
+    if "calculator" in tool_names:
+        definitions.append(CALCULATOR_DEFINITION)
+    if "fixture_lookup" in tool_names:
+        definitions.append(FIXTURE_LOOKUP_DEFINITION)
+    if "fixture_write" in tool_names:
+        definitions.append(FIXTURE_WRITE_DEFINITION)
     if definitions:
         payload_data["tools"] = definitions
         payload_data["tool_choice"] = "auto"
@@ -528,17 +575,27 @@ def to_openrouter_message(message: dict[str, Any]) -> dict[str, Any]:
     return {"role": "system" if role == "developer" else role, "content": content}
 
 
-def validate_calculator_call(call: ToolCall, enabled_tools: list[str], round_number: int) -> tuple[str, str] | None:
+def validate_tool_call(call: ToolCall, enabled_tools: list[str], approved_tools: list[str], round_number: int) -> tuple[str, str] | None:
     if call.tool_call_id == "" or len(call.tool_call_id) > MAX_TOOL_CALL_ID_CHARS:
         return "INVALID_CALL_ID", "Tool call ID is missing or unsafe."
     if call.name not in enabled_tools:
         return "UNKNOWN_TOOL", f"Tool is not enabled: {call.name}"
-    if call.name != "calculator":
+    if call.name not in {"calculator", "fixture_lookup", "fixture_write"}:
         return "UNKNOWN_TOOL", f"Tool is not registered: {call.name}"
+    if call.name == "fixture_write" and call.name not in approved_tools:
+        return "APPROVAL_REQUIRED", "Tool requires an explicit approval: fixture_write"
     if round_number < 1:
         return "INVALID_ROUND", "Tool call round must be positive."
     if _json_bytes(call.arguments) > MAX_TOOL_ARGUMENT_BYTES:
         return "ARGUMENTS_TOO_LARGE", "Arguments exceed the calculator input limit."
+    if call.name == "fixture_lookup":
+        if not isinstance(call.arguments, dict) or set(call.arguments) != {"key"} or not isinstance(call.arguments["key"], str) or not 1 <= len(call.arguments["key"]) <= 64:
+            return "INVALID_ARGUMENTS", "Fixture lookup arguments must contain only a bounded key."
+        return None
+    if call.name == "fixture_write":
+        if not isinstance(call.arguments, dict) or set(call.arguments) != {"key", "value"} or not isinstance(call.arguments["key"], str) or not isinstance(call.arguments["value"], str) or not 1 <= len(call.arguments["key"]) <= 64 or len(call.arguments["value"]) > 512:
+            return "INVALID_ARGUMENTS", "Fixture write arguments must contain only bounded key and value strings."
+        return None
     if not isinstance(call.arguments, dict) or set(call.arguments) != {"operation", "left", "right"}:
         return "INVALID_ARGUMENTS", "Calculator arguments must contain only operation, left, and right."
     operation = call.arguments["operation"]
@@ -564,6 +621,18 @@ def execute_calculator(arguments: Any) -> str:
     if _utf8_bytes(result) > MAX_TOOL_RESULT_BYTES:
         raise ValueError("Calculator result exceeds the output limit.")
     return result
+
+
+def execute_tool(name: str, arguments: Any) -> str:
+    if name == "calculator":
+        return execute_calculator(arguments)
+    if name == "fixture_lookup":
+        values = {"alpha": "local fixture alpha", "project": "Agent Harness Lab"}
+        key = arguments["key"]
+        return json.dumps({"key": key, "value": values.get(key)}, separators=(",", ":"))
+    if name == "fixture_write":
+        return json.dumps({"key": arguments["key"], "written": True}, separators=(",", ":"))
+    raise ValueError(f"Unknown fixture tool: {name}")
 
 
 def tool_message(call: ToolCall, content: str) -> dict[str, Any]:

@@ -28,6 +28,10 @@ function fakeModelFromName(modelName: string): MastraModelConfig {
       return createDeterministicFakeModel({ modelId: modelName, failure: "ambiguous" });
     case "fake-tool-call":
       return createDeterministicFakeModel({ modelId: modelName, toolCall: true });
+    case "fake-connected-tool":
+      return createDeterministicFakeModel({ modelId: modelName, toolCall: true, toolName: "fixture_lookup" });
+    case "fake-connected-write":
+      return createDeterministicFakeModel({ modelId: modelName, toolCall: true, toolName: "fixture_write" });
     case "fake-context":
       return createDeterministicFakeModel({ modelId: modelName, contextAware: true });
     default:

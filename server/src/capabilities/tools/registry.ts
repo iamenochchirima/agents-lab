@@ -23,9 +23,11 @@ export class ToolRegistrationError extends Error {
 export class ToolRegistry {
   private readonly implementations = new Map<string, ToolImplementation>();
   private readonly enabledNames: ReadonlySet<string>;
+  private readonly approvedNames: ReadonlySet<string>;
 
-  constructor(options: { readonly enabledNames: readonly string[] }) {
+  constructor(options: { readonly enabledNames: readonly string[]; readonly approvedNames?: readonly string[] }) {
     this.enabledNames = new Set(options.enabledNames);
+    this.approvedNames = new Set(options.approvedNames ?? []);
     if (this.enabledNames.size !== options.enabledNames.length) {
       throw new ToolRegistrationError("The enabled tool list contains duplicate names.");
     }
@@ -33,6 +35,10 @@ export class ToolRegistry {
       if (!TOOL_NAME_PATTERN.test(name)) {
         throw new ToolRegistrationError(`Invalid enabled tool name: ${name}`);
       }
+    }
+    for (const name of this.approvedNames) {
+      if (!TOOL_NAME_PATTERN.test(name)) throw new ToolRegistrationError(`Invalid approved tool name: ${name}`);
+      if (!this.enabledNames.has(name)) throw new ToolRegistrationError(`Approved tool is not enabled: ${name}`);
     }
   }
 
@@ -109,11 +115,13 @@ export class ToolRegistry {
     if (!implementation) {
       return { allowed: false, code: "UNKNOWN_TOOL", message: `Tool is not enabled: ${call.name}` };
     }
-    if (implementation.definition.riskClass !== "pure") {
+    if (implementation.definition.riskClass === "external" || (implementation.definition.riskClass === "write" && !this.approvedNames.has(call.name))) {
       return {
         allowed: false,
         code: "TOOL_RISK_NOT_ALLOWED",
-        message: `Tool risk class is not allowed in this slice: ${call.name}`,
+        message: implementation.definition.riskClass === "external"
+          ? `Tool risk class is not allowed in this slice: ${call.name}`
+          : `Tool requires an explicit approval: ${call.name}`,
       };
     }
     return { allowed: true, code: "TOOL_ALLOWED", message: "Tool is enabled for this run." };

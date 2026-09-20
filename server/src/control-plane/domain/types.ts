@@ -12,6 +12,8 @@ export const RUN_STATUSES = [
 export type RunStatus = (typeof RUN_STATUSES)[number];
 export type TerminalRunStatus = "completed" | "failed" | "cancelled" | "reconciliation_required";
 export type ModelProvider = "fake" | "openrouter";
+import type { CapabilityApproval, CapabilityResolution } from "../../capabilities/contracts.js";
+import type { SkillSummary } from "../../capabilities/skills/index.js";
 export type FailureKind =
   | "validation"
   | "configuration"
@@ -39,9 +41,18 @@ export interface RunSelection {
 export interface RunCapabilities {
   readonly tools: {
     readonly enabledNames: readonly string[];
+    readonly approvedNames?: readonly string[];
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  /** Server-owned profile selected by Chat or Compare. */
+  readonly profileId?: string;
+  /** Approval decisions are references, never credentials. */
+  readonly approvals?: readonly CapabilityApproval[];
+  /** Immutable resolution retained in the manifest after admission. */
+  readonly resolution?: CapabilityResolution;
+  /** Selected context-only skills; bodies stay in the context session, not the manifest. */
+  readonly skills?: readonly SkillSummary[];
 }
 
 export interface RunRequest {

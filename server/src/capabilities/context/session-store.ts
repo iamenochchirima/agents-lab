@@ -9,6 +9,7 @@ import {
   type ContextSessionLimits,
   type ContextSnapshot,
 } from "./contracts.js";
+import type { UntrustedSkillContextText } from "../skills/contracts.js";
 
 const SESSION_SCHEMA_VERSION = 1 as const;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -22,6 +23,8 @@ export interface ContextSession {
   readonly variant: string;
   readonly model: string;
   readonly systemInstruction: string;
+  /** Validated context-only skill projections selected before admission. */
+  readonly skillContexts: readonly UntrustedSkillContextText[];
   readonly contextWindowTokens: number | null;
   readonly reservedOutputTokens: number;
   readonly safetyMarginTokens: number;
@@ -41,6 +44,7 @@ export interface CreateContextSessionInput {
   readonly variant: string;
   readonly model: string;
   readonly systemInstruction: string;
+  readonly skillContexts?: readonly UntrustedSkillContextText[];
   readonly contextWindowTokens: number | null;
   readonly reservedOutputTokens: number;
   readonly safetyMarginTokens: number;
@@ -143,6 +147,7 @@ export class ContextSessionStore {
         variant: input.variant,
         model: input.model,
         systemInstruction: input.systemInstruction,
+        skillContexts: Object.freeze([...(input.skillContexts ?? [])]),
         contextWindowTokens: input.contextWindowTokens,
         reservedOutputTokens: input.reservedOutputTokens,
         safetyMarginTokens: input.safetyMarginTokens,
@@ -767,6 +772,25 @@ function validateSessionInput(input: CreateContextSessionInput): void {
     if (!Number.isInteger(value) || value < 0) throw new ContextSessionConflictError(`${name} must be a non-negative integer.`);
   }
   if (!Number.isInteger(input.compactionThresholdPercent) || input.compactionThresholdPercent < 0 || input.compactionThresholdPercent > 100) throw new ContextSessionConflictError("compactionThresholdPercent must be between 0 and 100.");
+  validateSkillContexts(input.skillContexts ?? []);
+}
+
+function validateSkillContexts(skills: readonly UntrustedSkillContextText[]): void {
+  if (!Array.isArray(skills) || skills.length > 64) throw new ContextSessionConflictError("A context session may contain at most 64 skills.");
+  const ids = new Set<string>();
+  for (const skill of skills) {
+    if (!skill || skill.kind !== "skill-context" || skill.trust !== "untrusted" || skill.authority !== "none" || skill.grants.length !== 0) {
+      throw new ContextSessionConflictError("Skill context must be untrusted and authority-free.");
+    }
+    if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(skill.skillId) || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(skill.skillVersion) || !/^[a-f0-9]{64}$/.test(skill.digest)) {
+      throw new ContextSessionConflictError("Skill context identity is invalid.");
+    }
+    if (skill.content.length === 0 || Buffer.byteLength(skill.content, "utf8") > 64 * 1024) {
+      throw new ContextSessionConflictError("Skill context exceeds the session limit.");
+    }
+    if (ids.has(skill.skillId)) throw new ContextSessionConflictError(`Duplicate skill context: ${skill.skillId}`);
+    ids.add(skill.skillId);
+  }
 }
 
 function sameSessionConfiguration(session: ContextSession, input: CreateContextSessionInput, limits: ContextSessionLimits): boolean {
@@ -774,6 +798,7 @@ function sameSessionConfiguration(session: ContextSession, input: CreateContextS
     && session.variant === input.variant
     && session.model === input.model
     && session.systemInstruction === input.systemInstruction
+    && JSON.stringify(session.skillContexts ?? []) === JSON.stringify(input.skillContexts ?? [])
     && session.contextWindowTokens === input.contextWindowTokens
     && session.reservedOutputTokens === input.reservedOutputTokens
     && session.safetyMarginTokens === input.safetyMarginTokens
@@ -786,6 +811,7 @@ function sameSessionConfiguration(session: ContextSession, input: CreateContextS
 function normalizeSession(session: ContextSession, limits: ContextSessionLimits): ContextSession {
   const normalized = {
     ...session,
+    skillContexts: Object.freeze([...(session.skillContexts ?? [])]),
     maxSessionBytes: session.maxSessionBytes ?? limits.maxSessionBytes,
     maxTranscriptBytes: session.maxTranscriptBytes ?? limits.maxTranscriptBytes,
   };

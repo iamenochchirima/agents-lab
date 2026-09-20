@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { calculatorTool } from "../../../src/capabilities/tools/calculator.js";
+import { fixtureLookupTool } from "../../../src/capabilities/tools/fixtures.js";
 import { FakeModelAdapter } from "../../../src/platforms/temporal/variants/baseline/models/fake.js";
 import { OpenRouterModelAdapter } from "../../../src/platforms/temporal/variants/baseline/models/openrouter.js";
 import type { ModelRequestInput } from "../../../src/platforms/temporal/variants/baseline/contracts.js";
@@ -91,6 +92,39 @@ test("fake adapter exposes the bounded calculator tool-turn fixture", async () =
   }, new AbortController().signal);
   assert.equal(second.kind, "success");
   assert.equal(second.kind === "success" ? second.output : null, 'The calculator returned {"value":42}.');
+});
+
+test("fake adapter exposes the selected read connection as a bounded tool turn", async () => {
+  const adapter = new FakeModelAdapter();
+  const first = await adapter.complete({
+    ...input,
+    model: "fake-connected-tool",
+    messages: [{ role: "system", content: "Use the selected connection." }, { role: "user", content: "Read alpha." }],
+    tools: [fixtureLookupTool.definition],
+  }, new AbortController().signal);
+
+  assert.equal(first.kind, "success");
+  if (first.kind !== "success") return;
+  assert.deepEqual(first.toolCalls, [{
+    toolCallId: "call-fixture-lookup-1",
+    name: "fixture_lookup",
+    arguments: { key: "alpha" },
+  }]);
+
+  const second = await adapter.complete({
+    ...input,
+    model: "fake-connected-tool",
+    messages: [
+      { role: "system", content: "Use the selected connection." },
+      { role: "user", content: "Read alpha." },
+      { role: "assistant", content: null, toolCalls: first.toolCalls },
+      { role: "tool", toolCallId: "call-fixture-lookup-1", name: "fixture_lookup", content: '{"key":"alpha","value":"local fixture alpha"}' },
+    ],
+    tools: [fixtureLookupTool.definition],
+  }, new AbortController().signal);
+
+  assert.equal(second.kind, "success");
+  assert.equal(second.kind === "success" ? second.output : null, 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.');
 });
 
 test("OpenRouter configuration failure does not expose or send a missing key", async () => {

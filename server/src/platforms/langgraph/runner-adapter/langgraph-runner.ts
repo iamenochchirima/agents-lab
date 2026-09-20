@@ -304,7 +304,7 @@ interface LangGraphConfiguration {
   readonly maxAttempts: number;
   readonly timeoutMs: number;
   readonly contextRoot: string;
-  readonly tools: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
+  readonly tools: { readonly enabledNames: readonly string[]; readonly approvedNames?: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
 }
 
 function readToolConfiguration(value: Readonly<Record<string, unknown>>): LangGraphConfiguration["tools"] {
@@ -318,6 +318,7 @@ function readToolConfiguration(value: Readonly<Record<string, unknown>>): LangGr
     enabledNames: Array.isArray(enabledNames)
       ? enabledNames.filter((name): name is string => typeof name === "string")
       : ["calculator"],
+    ...(Array.isArray(tools.approvedNames) ? { approvedNames: tools.approvedNames.filter((name): name is string => typeof name === "string") } : {}),
     maxRounds: readPositiveInteger(tools, "maxRounds"),
     maxCalls: readPositiveInteger(tools, "maxCalls"),
   };

@@ -1,3 +1,6 @@
 # Direct API integrations
 
-Connection definitions for supported provider APIs outside MCP.
+`DirectApiClient` is the provider-neutral boundary for a first-party HTTP adapter. Every
+request has a stable request ID and may carry an idempotency key. Bounded retries are
+limited to documented retryable responses. A timeout after a non-read operation has been
+dispatched is reported as an unknown outcome and is never silently repeated.

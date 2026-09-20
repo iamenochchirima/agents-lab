@@ -27,6 +27,7 @@ export interface TemporalWorkflowInput {
   readonly preDispatchRetryBackoffMs: number;
   readonly tools?: {
     readonly enabledNames: readonly string[];
+    readonly approvedNames?: readonly string[];
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
@@ -158,6 +159,7 @@ export interface TemporalToolExecutionInput {
   readonly runId: string;
   readonly turnId: string;
   readonly enabledNames: readonly string[];
+  readonly approvedNames?: readonly string[];
   readonly call: ToolCall;
 }
 

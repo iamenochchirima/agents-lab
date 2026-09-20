@@ -21,6 +21,7 @@ import type { ServerConfig } from "../bootstrap/config.js";
 import type { ContextProjection } from "../../capabilities/context/contracts.js";
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
 import { ContextService } from "../../capabilities/context/context-service.js";
+import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 
 const CONTEXT_CAPABLE_VARIANTS: ReadonlySet<string> = new Set([
   "temporal/baseline",
@@ -70,6 +71,7 @@ export interface RunServiceDependencies {
   readonly registry: PlatformRegistry;
   readonly context?: ContextService;
   readonly modelMetadata?: ModelMetadataResolver;
+  readonly capabilities?: CapabilityCatalog;
 }
 
 /**
@@ -84,7 +86,7 @@ export class RunService {
 
   async createRun(request: RunRequest): Promise<RunView> {
     validateRunRequest(request);
-    const effectiveRequest = await this.resolveModelMetadata(request);
+    const effectiveRequest = await this.resolveCapabilities(await this.resolveModelMetadata(request));
     const registration = this.dependencies.registry.find(effectiveRequest.platform, effectiveRequest.variant);
     const runner = registration?.status === "runnable" ? registration.runner : null;
     if (!runner) {
@@ -188,6 +190,40 @@ export class RunService {
       // return that last known projection and let normal polling reconcile it.
       return this.getRun(manifest.runId);
     }
+  }
+
+  private async resolveCapabilities(request: RunRequest): Promise<RunRequest> {
+    const profileId = request.capabilities?.profileId;
+    if (!profileId) return request;
+    if (!this.dependencies.capabilities) {
+      throw new Error("Capability profiles are not configured for this server.");
+    }
+    const resolved = this.dependencies.capabilities.resolve(profileId, request.capabilities.approvals ?? []);
+    const toolNames = resolved.resolution.grants
+      .filter(({ manifest }) => manifest.kind === "tool" || manifest.source.kind === "connection")
+      .map(({ manifest }) => manifest.id);
+    return {
+      ...request,
+      capabilities: {
+        ...request.capabilities,
+        tools: {
+          enabledNames: toolNames,
+          approvedNames: resolved.resolution.grants
+            .filter(({ approval }) => approval === "approved")
+            .map(({ manifest }) => manifest.id),
+          maxRounds: request.capabilities.tools.maxRounds,
+          maxCalls: request.capabilities.tools.maxCalls,
+        },
+        resolution: resolved.resolution,
+        skills: resolved.skills.map((skill) => ({
+          id: skill.manifest.id,
+          version: skill.manifest.version,
+          name: skill.manifest.name,
+          description: skill.manifest.description,
+          digest: skill.manifest.provenance.digest,
+        })),
+      },
+    };
   }
 
   private async staleRunView(runId: string, reason: string): Promise<RunView> {
@@ -390,6 +426,9 @@ export class RunService {
       variant: request.variant,
       model: `${request.model.provider}/${request.model.model}`,
       systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+      skillContexts: request.capabilities?.profileId && this.dependencies.capabilities
+        ? this.dependencies.capabilities.resolve(request.capabilities.profileId, request.capabilities.approvals ?? []).skills.map((skill) => skill.context)
+        : [],
       contextWindowTokens: request.model.contextWindowTokens ?? null,
       reservedOutputTokens: 4_096,
       safetyMarginTokens: 1_024,

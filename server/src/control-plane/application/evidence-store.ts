@@ -23,6 +23,7 @@ const MAX_RESULT_BYTES = 512 * 1024;
 const MAX_TRAJECTORY_BYTES = 512 * 1024;
 const MAX_METRICS_BYTES = 128 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;
+const MAX_CAPABILITIES_BYTES = 256 * 1024;
 const MAX_OPERATIONAL_LOG_LINE_BYTES = 32 * 1024;
 const MAX_OPERATIONAL_LOG_BYTES = 8 * 1024 * 1024;
 const OPERATIONAL_LOG_FILE = "logs/operations.jsonl" as const;
@@ -132,6 +133,15 @@ export class RunEvidenceStore {
 
       await writeFile(eventsPath, "", { encoding: "utf8", flag: "wx" });
     }
+
+    const capabilities = safeManifest.capabilities?.resolution ?? {
+      profileId: safeManifest.capabilities?.profileId ?? null,
+      grants: [],
+      decisions: [],
+    };
+    const capabilitiesPath = join(runDirectory, "capabilities.json");
+    assertEvidenceSize(capabilities, capabilitiesPath, MAX_CAPABILITIES_BYTES);
+    await this.writeIdempotent(capabilitiesPath, capabilities);
   }
 
   async appendEvent<TPayload extends Record<string, unknown>>(
@@ -276,7 +286,7 @@ export class RunEvidenceStore {
   }
 
   async writeContextSnapshot(runId: string, snapshot: ContextSnapshot): Promise<void> {
-    const safeSnapshot = sanitizeEvidenceValue(snapshot) as ContextSnapshot;
+    const safeSnapshot = redactContextSnapshot(sanitizeEvidenceValue(snapshot) as ContextSnapshot);
     const manifest = await this.readManifest(runId);
     if (manifest.context.sessionId !== safeSnapshot.sessionId) {
       throw new EvidenceConflictError(`Context snapshot belongs to a different session: ${runId}`);
@@ -418,8 +428,21 @@ export class RunEvidenceStore {
   }
 }
 
+function redactContextSnapshot(snapshot: ContextSnapshot): ContextSnapshot {
+  return {
+    ...snapshot,
+    messages: snapshot.messages.map((message) => message.source === "skills"
+      ? {
+          ...message,
+          content: "[skill context redacted from run evidence]",
+        }
+      : message),
+  };
+}
+
 export type EvidenceFileName =
   | "config.json"
+  | "capabilities.json"
   | "events.jsonl"
   | "trajectory.json"
   | "metrics.json"
@@ -430,6 +453,7 @@ export type EvidenceFileName =
 
 export function isAllowlistedEvidenceFile(fileName: string, platform: string): fileName is EvidenceFileName {
   return fileName === "config.json" ||
+    fileName === "capabilities.json" ||
     fileName === "events.jsonl" ||
     fileName === "trajectory.json" ||
     fileName === "metrics.json" ||

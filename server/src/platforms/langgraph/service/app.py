@@ -144,6 +144,7 @@ class LangGraphService:
                     max_attempts=request.max_attempts,
                     checkpointer=checkpointer,
                     tool_names=list(tool_configuration.enabled_names) if tool_configuration else None,
+                    approved_tool_names=list(tool_configuration.approved_names) if tool_configuration else None,
                     max_rounds=tool_configuration.max_rounds if tool_configuration else 6,
                     max_calls=tool_configuration.max_calls if tool_configuration else 8,
                 )

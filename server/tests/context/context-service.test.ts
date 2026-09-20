@@ -90,3 +90,54 @@ test("fails closed when context safety cannot be measured", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("inserts selected skills as untrusted developer context and preserves them through compaction", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-context-skills-"));
+  try {
+    const store = new ContextSessionStore(root);
+    const session = await store.create({
+      sessionId: "session-service-skills",
+      platform: "temporal",
+      variant: "baseline",
+      model: "fake/fake-success",
+      systemInstruction: "Answer directly.",
+      skillContexts: [{
+        kind: "skill-context",
+        trust: "untrusted",
+        authority: "none",
+        skillId: "research-summary",
+        skillVersion: "1.0.0",
+        digest: "a".repeat(64),
+        content: "Separate evidence from interpretation.",
+        grants: [],
+      }],
+      contextWindowTokens: 10_000,
+      reservedOutputTokens: 100,
+      safetyMarginTokens: 50,
+      compactionThresholdPercent: 20,
+    });
+    const seed = await store.admitTurn(session.sessionId, "run-service-skills-seed", "Earlier research.");
+    await store.settleTurn(session.sessionId, seed.turn.turnId, { status: "completed", output: "Earlier evidence." });
+    const turn = await store.admitTurn(session.sessionId, "run-service-skills", "Summarize research.");
+    const service = new ContextService(store, {
+      count: (messages) => ({ tokens: messages.reduce((sum, message) => sum + message.content.length, 0), quality: "estimated", basis: "test" }),
+    });
+
+    const prepared = await service.prepareTurn(
+      turn.session.sessionId,
+      turn.turn.turnId,
+      { summarize: async () => "Earlier evidence summary." },
+      { forceCompaction: true },
+    );
+    const skill = prepared.snapshot.messages.find((message) => message.source === "skills");
+    assert.equal(skill?.role, "developer");
+    assert.equal(skill?.content, "Separate evidence from interpretation.");
+    assert.equal(skill?.metadata?.authority, "none");
+    assert.deepEqual(prepared.snapshot.sources, ["system", "skills", "compaction-summary", "transcript"]);
+    assert.equal(prepared.snapshot.compaction?.trigger, "preflight");
+    assert.equal(prepared.snapshot.messages.some((message) => message.source === "compaction-summary"), true);
+    assert.deepEqual((await store.readTranscript(session.sessionId)).map((message) => message.source), ["transcript", "transcript", "transcript"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

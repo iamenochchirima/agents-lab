@@ -27,6 +27,7 @@ export interface RestateWorkflowInput {
   readonly modelRetryAttempts?: number;
   readonly tools: {
     readonly enabledNames: readonly string[];
+    readonly approvedNames?: readonly string[];
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
@@ -135,7 +136,10 @@ function readToolConfiguration(value: Readonly<Record<string, unknown>>): Restat
     : ["calculator"];
   const maxRounds = positiveInteger(record.maxRounds, 6);
   const maxCalls = positiveInteger(record.maxCalls, 8);
-  return { enabledNames, maxRounds, maxCalls };
+  const approvedNames = Array.isArray(record.approvedNames)
+    ? record.approvedNames.filter((name): name is string => typeof name === "string")
+    : undefined;
+  return { enabledNames, ...(approvedNames ? { approvedNames } : {}), maxRounds, maxCalls };
 }
 
 function positiveInteger(value: unknown, fallback: number): number {

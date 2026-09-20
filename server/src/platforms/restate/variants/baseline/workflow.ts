@@ -19,6 +19,7 @@ import {
   type ContextSummaryGenerator,
 } from "../../../../capabilities/context/index.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
+import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type {
   ToolCall,
@@ -50,8 +51,10 @@ export const baselineWorkflow = restate.workflow({
       const phases: Array<RunTrajectory["phases"][number]> = [];
       const startedAt = await ctx.date.toJSON();
       const toolConfiguration = normalizeToolConfiguration(input.tools);
-      const registry = new ToolRegistry({ enabledNames: toolConfiguration.enabledNames });
+      const registry = new ToolRegistry({ enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames });
       registry.register(calculatorTool);
+      registry.register(fixtureLookupTool);
+      registry.register(fixtureWriteTool);
       const toolDefinitions = registry.definitions();
       const turnId = input.turnId ?? `${input.runId}:turn:1`;
       let sequence = 0;
@@ -685,6 +688,7 @@ function normalizeToolConfiguration(input: RestateWorkflowInput["tools"] | undef
   const enabledNames = input.enabledNames.filter((name) => typeof name === "string");
   return {
     enabledNames,
+    ...(input.approvedNames ? { approvedNames: input.approvedNames.filter((name) => typeof name === "string") } : {}),
     maxRounds: positiveInteger(input.maxRounds, DEFAULT_TOOL_CONFIGURATION.maxRounds),
     maxCalls: positiveInteger(input.maxCalls, DEFAULT_TOOL_CONFIGURATION.maxCalls),
   };

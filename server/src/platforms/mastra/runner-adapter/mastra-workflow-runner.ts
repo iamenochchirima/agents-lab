@@ -458,7 +458,12 @@ function inputForManifest(manifest: RunManifest, contextMessages: MastraWorkflow
     turnId: manifest.context.turnId ?? `${manifest.runId}:turn:1`,
     requiresApproval: manifest.task.prompt.trimStart().startsWith("[approval]"),
     capabilities: manifest.capabilities
-      ? { tools: { ...manifest.capabilities.tools, enabledNames: [...manifest.capabilities.tools.enabledNames] } }
+      ? { tools: {
+          enabledNames: [...manifest.capabilities.tools.enabledNames],
+          ...(manifest.capabilities.tools.approvedNames ? { approvedNames: [...manifest.capabilities.tools.approvedNames] } : {}),
+          maxRounds: manifest.capabilities.tools.maxRounds,
+          maxCalls: manifest.capabilities.tools.maxCalls,
+        } }
       : { tools: { enabledNames: ["calculator"], maxRounds: DEFAULT_MAX_TOOL_ROUNDS, maxCalls: DEFAULT_MAX_TOOL_CALLS } },
     contextMessages,
   };

@@ -6,6 +6,7 @@ export interface DeterministicFakeModelOptions {
   readonly delayMs?: number;
   readonly failure?: "provider" | "ambiguous";
   readonly toolCall?: boolean;
+  readonly toolName?: "calculator" | "fixture_lookup" | "fixture_write";
   readonly contextAware?: boolean;
 }
 
@@ -42,9 +43,13 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
           return {
             content: [{
               type: "tool-call",
-              toolCallId: "mastra-calculator-1",
-              toolName: "calculator",
-              input: JSON.stringify({ operation: "add", left: 17, right: 25 }),
+              toolCallId: options.toolName === "fixture_lookup" ? "mastra-fixture-lookup-1" : options.toolName === "fixture_write" ? "mastra-fixture-write-1" : "mastra-calculator-1",
+              toolName: options.toolName ?? "calculator",
+              input: options.toolName === "fixture_lookup"
+                ? JSON.stringify({ key: "alpha" })
+                : options.toolName === "fixture_write"
+                  ? JSON.stringify({ key: "alpha", value: "updated" })
+                  : JSON.stringify({ operation: "add", left: 17, right: 25 }),
             }],
             finishReason: "tool-calls",
             usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
@@ -53,7 +58,14 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
         }
 
         return {
-          content: [{ type: "text", text: "The calculator returned {\"value\":42}." }],
+          content: [{
+            type: "text",
+            text: options.toolName === "fixture_lookup"
+              ? "The local fixture returned {\"key\":\"alpha\",\"value\":\"local fixture alpha\"}."
+              : options.toolName === "fixture_write"
+                ? "The local fixture write returned {\"key\":\"alpha\",\"written\":true}."
+              : "The calculator returned {\"value\":42}.",
+          }],
           finishReason: "stop",
           usage: { inputTokens: 18, outputTokens: 9, totalTokens: 27 },
           warnings: [],

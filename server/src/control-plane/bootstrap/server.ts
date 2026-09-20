@@ -23,6 +23,7 @@ import { VercelWorkflowsBaselineRunner } from "../../platforms/vercel-workflows/
 import { ContextService, ContextSessionStore, CharacterTokenEstimator } from "../../capabilities/context/index.js";
 import { OpenRouterModelCatalog } from "../../models/openrouter/catalog.js";
 import { createStudioModule } from "../../studio/index.js";
+import { createDefaultCapabilityCatalog } from "../../capabilities/catalog.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
@@ -81,9 +82,10 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     resultLimit: config.openRouter.catalogLimit,
     defaultModel: config.openRouter.defaultModel,
   });
-  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry });
-  const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry });
-  const studio = createStudioModule(config.studioRunsRoot);
+  const capabilities = createDefaultCapabilityCatalog();
+  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities });
+  const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
+  const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });
   studio.register(app);
 
   return {

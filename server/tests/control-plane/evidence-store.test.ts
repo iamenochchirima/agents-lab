@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
+import type { ContextSnapshot } from "../../src/capabilities/context/contracts.js";
 import type { PlatformExecutionReference, RunEventIntent, RunMetrics, RunResult, RunTrajectory } from "../../src/control-plane/domain/types.js";
 import {
   CorruptEvidenceError,
@@ -73,6 +74,64 @@ test("creates an immutable run record and appends source-ordered events idempote
     assert.equal(config.runId, manifest.runId);
     assert.equal("apiKey" in config, false);
   });
+});
+
+test("redacts skill bodies from context evidence while retaining safe provenance", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-evidence-skills-"));
+  const skillManifest = buildRunManifest(
+    {
+      platform: "temporal",
+      variant: "baseline",
+      sessionId: "session-evidence-skills",
+      task: { kind: "prompt", prompt: "Summarize research." },
+      model: { provider: "fake", model: "fake-success" },
+    },
+    { runId: "run-evidence-skills", now: "2026-09-15T08:00:00.000Z" },
+  );
+  try {
+    const store = new RunEvidenceStore(root);
+    await store.createRun(skillManifest);
+    const snapshot: ContextSnapshot = {
+      schemaVersion: 1,
+      snapshotId: "snapshot-evidence-skills",
+      sessionId: "session-evidence-skills",
+      sessionRevision: 1,
+      compactionRevision: 0,
+      model: "fake/fake-success",
+      messages: [{
+        schemaVersion: 1,
+        messageId: "skill-research-summary-1.0.0",
+        sessionId: "session-evidence-skills",
+        sequence: 1,
+        role: "developer",
+        content: "private skill instructions",
+        source: "skills",
+        createdAt: "2026-09-15T08:00:00.000Z",
+        metadata: { skillId: "research-summary", skillVersion: "1.0.0", skillDigest: "a".repeat(64), authority: "none" },
+      }],
+      sources: ["skills"],
+      budget: {
+        contextWindowTokens: 1000,
+        inputTokens: 10,
+        reservedOutputTokens: 10,
+        safetyMarginTokens: 5,
+        remainingTokens: 975,
+        remainingPercent: 97,
+        quality: "estimated",
+        tokenizerBasis: "test",
+        pressure: "normal",
+      },
+      compaction: null,
+      createdAt: "2026-09-15T08:00:00.000Z",
+    };
+    await store.writeContextSnapshot(skillManifest.runId, snapshot);
+    const stored = JSON.parse(await store.readAllowlistedFile(skillManifest.runId, "context.json")) as ContextSnapshot;
+    assert.equal(stored.messages[0]?.content, "[skill context redacted from run evidence]");
+    assert.equal(stored.messages[0]?.metadata?.skillDigest, "a".repeat(64));
+    assert.equal(JSON.stringify(stored).includes("private skill instructions"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("rejects gaps and conflicting duplicate event identities", async () => {

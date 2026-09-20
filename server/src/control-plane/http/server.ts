@@ -12,6 +12,8 @@ import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunCapabilities, RunRequest, RunSelection } from "../domain/types.js";
 import type { RunView } from "../application/run-service.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
+import type { CapabilityCatalog } from "../../capabilities/catalog.js";
+import { validateCapabilityApproval } from "../../capabilities/validation.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
@@ -19,6 +21,7 @@ export interface ControlPlaneServerDependencies {
   readonly evidence: RunEvidenceStore;
   readonly registry: PlatformRegistry;
   readonly modelCatalog?: OpenRouterCatalogClient;
+  readonly capabilities?: CapabilityCatalog;
 }
 
 export class InvalidApiRequestError extends Error {
@@ -96,6 +99,10 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  app.get("/api/capabilities", async (_request, reply) => {
+    return reply.send({ profiles: dependencies.capabilities?.list() ?? [] });
   });
 
   app.post("/api/runs", async (request, reply) => {
@@ -271,13 +278,15 @@ function nativeStatus(run: RunView): string | undefined {
 
 function parseRunCapabilities(value: unknown): RunCapabilities | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value) || !isRecord(value.tools)) {
-    throw new InvalidApiRequestError("capabilities.tools must be an object when capabilities is provided.");
+  if (!isRecord(value)) {
+    throw new InvalidApiRequestError("capabilities must be an object when provided.");
   }
-  const { tools } = value;
-  if (!Array.isArray(tools.enabledNames)) {
-    throw new InvalidApiRequestError("capabilities.tools.enabledNames must be an array.");
+  let tools: Record<string, unknown> = { enabledNames: ["calculator"], maxRounds: 6, maxCalls: 8 };
+  if (value.tools !== undefined) {
+    if (!isRecord(value.tools)) throw new InvalidApiRequestError("capabilities.tools must be an object when provided.");
+    tools = value.tools;
   }
+  if (!Array.isArray(tools.enabledNames)) throw new InvalidApiRequestError("capabilities.tools.enabledNames must be an array.");
   const enabledNames = tools.enabledNames.map((name) => {
     if (typeof name !== "string") {
       throw new InvalidApiRequestError("capabilities.tools.enabledNames must contain strings.");
@@ -287,12 +296,27 @@ function parseRunCapabilities(value: unknown): RunCapabilities | undefined {
   if (!isInteger(tools.maxRounds) || !isInteger(tools.maxCalls)) {
     throw new InvalidApiRequestError("capabilities.tools.maxRounds and maxCalls must be integers.");
   }
+  const profileId = value.profileId;
+  if (profileId !== undefined && (typeof profileId !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(profileId))) {
+    throw new InvalidApiRequestError("capabilities.profileId must be a safe profile identifier.");
+  }
+  const rawApprovals = value.approvals;
+  if (rawApprovals !== undefined && !Array.isArray(rawApprovals)) {
+    throw new InvalidApiRequestError("capabilities.approvals must be an array when provided.");
+  }
+  const approvals = rawApprovals?.map((approval: unknown) => {
+    try { return validateCapabilityApproval(approval); } catch (error) {
+      throw new InvalidApiRequestError(error instanceof Error ? error.message : "Invalid capability approval.");
+    }
+  });
   return {
     tools: {
       enabledNames,
       maxRounds: tools.maxRounds,
       maxCalls: tools.maxCalls,
     },
+    ...(profileId === undefined ? {} : { profileId }),
+    ...(approvals === undefined ? {} : { approvals }),
   };
 }
 

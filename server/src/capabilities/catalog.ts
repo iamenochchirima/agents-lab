@@ -1,0 +1,214 @@
+import type {
+  CapabilityApproval,
+  CapabilityGrant,
+  CapabilityManifest,
+  CapabilityPolicy,
+  CapabilityResolution,
+} from "./contracts.js";
+import { CapabilityRegistry, CapabilityResolver } from "./policies/index.js";
+import { createDefaultSkillCatalog, type LoadedSkill, type SkillCatalog, type SkillSummary } from "./skills/index.js";
+
+export interface CapabilityProfile {
+  readonly id: string;
+  readonly version: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly policy: CapabilityPolicy;
+  readonly grants: readonly CapabilityGrant[];
+  readonly skillIds?: readonly string[];
+}
+
+export interface CapabilityProfileView extends Omit<CapabilityProfile, "policy" | "grants" | "skillIds"> {
+  readonly capabilities: readonly Pick<CapabilityManifest, "id" | "version" | "kind" | "displayName" | "description" | "risk" | "operations">[];
+  readonly skills: readonly SkillSummary[];
+}
+
+export interface CapabilityProfileResolution {
+  readonly profile: CapabilityProfile;
+  readonly resolution: CapabilityResolution;
+  readonly skills: readonly LoadedSkill[];
+}
+
+/**
+ * Server-owned capability profiles. The browser may select a profile, but it
+ * cannot add a grant or widen its policy.
+ */
+export class CapabilityCatalog {
+  private readonly profiles: ReadonlyMap<string, CapabilityProfile>;
+  private readonly registry: CapabilityRegistry;
+  private readonly resolver: CapabilityResolver;
+
+  constructor(
+    manifests: readonly CapabilityManifest[],
+    profiles: readonly CapabilityProfile[],
+    now?: () => string,
+    private readonly skills: SkillCatalog = createDefaultSkillCatalog(),
+  ) {
+    this.registry = new CapabilityRegistry(manifests);
+    this.resolver = new CapabilityResolver(this.registry, now);
+    const values = new Map<string, CapabilityProfile>();
+    for (const profile of profiles) {
+      if (values.has(profile.id)) throw new Error(`Capability profile is duplicated: ${profile.id}`);
+      values.set(profile.id, deepFreeze(profile));
+    }
+    this.profiles = values;
+  }
+
+  list(): readonly CapabilityProfileView[] {
+    return [...this.profiles.values()].map((profile) => ({
+      id: profile.id,
+      version: profile.version,
+      displayName: profile.displayName,
+      description: profile.description,
+      skills: this.skills.resolve(profile.skillIds ?? []).map((skill) => ({
+        id: skill.manifest.id,
+        version: skill.manifest.version,
+        name: skill.manifest.name,
+        description: skill.manifest.description,
+        digest: skill.manifest.provenance.digest,
+      })),
+      capabilities: profile.grants.flatMap((grant) => {
+        const manifest = this.registry.get(grant.capabilityId, grant.version);
+        return manifest ? [{
+          id: manifest.id,
+          version: manifest.version,
+          kind: manifest.kind,
+          displayName: manifest.displayName,
+          description: manifest.description,
+          risk: manifest.risk,
+          operations: manifest.operations,
+        }] : [];
+      }),
+    }));
+  }
+
+  get(profileId: string): CapabilityProfile | undefined {
+    return this.profiles.get(profileId);
+  }
+
+  resolve(profileId: string, approvals: readonly CapabilityApproval[] = []): CapabilityProfileResolution {
+    const profile = this.profiles.get(profileId);
+    if (!profile) throw new Error(`Capability profile is not available: ${profileId}`);
+    const resolution = this.resolver.resolve({ policy: profile.policy, grants: profile.grants, approvals });
+    const skills = this.skills.resolve(profile.skillIds ?? []);
+    return { profile, resolution, skills };
+  }
+
+  definitions(): readonly CapabilityManifest[] {
+    return this.registry.definitions();
+  }
+}
+
+export const DEFAULT_CAPABILITY_MANIFESTS: readonly CapabilityManifest[] = Object.freeze([
+  {
+    schemaVersion: 1,
+    id: "calculator",
+    version: "1.0.0",
+    kind: "tool",
+    displayName: "Calculator",
+    description: "Bounded deterministic arithmetic.",
+    risk: "pure",
+    operations: ["calculate"],
+    inputSchema: { type: "object" },
+    requiredScopes: [],
+    source: { kind: "builtin", ref: "server/src/capabilities/tools/calculator.ts" },
+  },
+  {
+    schemaVersion: 1,
+    id: "fixture_lookup",
+    version: "1.0.0",
+    kind: "connection",
+    displayName: "Local read fixture",
+    description: "Read-only provider-shaped local data.",
+    risk: "read",
+    operations: ["lookup"],
+    inputSchema: { type: "object" },
+    requiredScopes: [],
+    source: { kind: "connection", ref: "local-fixture" },
+  },
+  {
+    schemaVersion: 1,
+    id: "fixture_write",
+    version: "1.0.0",
+    kind: "connection",
+    displayName: "Approval write fixture",
+    description: "A deterministic write used to verify approval and unknown-outcome handling.",
+    risk: "write",
+    operations: ["write"],
+    inputSchema: { type: "object" },
+    requiredScopes: [],
+    source: { kind: "connection", ref: "local-fixture" },
+  },
+]);
+
+export const DEFAULT_CAPABILITY_PROFILES: readonly CapabilityProfile[] = Object.freeze([
+  {
+    id: "local-safe",
+    version: "1.0.0",
+    displayName: "Local safe",
+    description: "Pure tools and read-only local fixture access.",
+    policy: defaultPolicy("local-safe", ["calculator", "fixture_lookup"], ["pure", "read"]),
+    grants: [
+      grant("calculator", "calculate", "none"),
+      grant("fixture_lookup", "lookup", "none"),
+    ],
+    skillIds: ["research-summary"],
+  },
+  {
+    id: "local-write-approved",
+    version: "1.0.0",
+    displayName: "Local write test",
+    description: "Local write fixture; requires an explicit approval decision.",
+    policy: defaultPolicy("local-write-approved", ["calculator", "fixture_lookup", "fixture_write"], ["pure", "read", "write"], ["write"]),
+    grants: [
+      grant("calculator", "calculate", "none"),
+      grant("fixture_lookup", "lookup", "none"),
+      grant("fixture_write", "write", "required"),
+    ],
+  },
+]);
+
+export function createDefaultCapabilityCatalog(now?: () => string): CapabilityCatalog {
+  return new CapabilityCatalog(DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES, now);
+}
+
+function grant(capabilityId: string, operation: string, approvalMode: CapabilityGrant["approvalMode"]): CapabilityGrant {
+  return {
+    schemaVersion: 1,
+    capabilityId,
+    version: "1.0.0",
+    enabled: true,
+    allowedOperations: [operation],
+    approvalMode,
+    timeoutMs: 10_000,
+    maxInputBytes: 8_192,
+    maxOutputBytes: 32_768,
+  };
+}
+
+function defaultPolicy(
+  policyId: string,
+  allowedCapabilityIds: readonly string[],
+  allowedRiskClasses: CapabilityPolicy["allowedRiskClasses"],
+  requiredApprovalRiskClasses: CapabilityPolicy["requiredApprovalRiskClasses"] = [],
+): CapabilityPolicy {
+  return {
+    schemaVersion: 1,
+    policyId,
+    version: "1.0.0",
+    allowedCapabilityIds,
+    allowedRiskClasses,
+    requiredApprovalRiskClasses,
+    allowedConnectionRefs: [],
+    maxTimeoutMs: 30_000,
+    maxInputBytes: 64 * 1024,
+    maxOutputBytes: 256 * 1024,
+  };
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
+  return value;
+}

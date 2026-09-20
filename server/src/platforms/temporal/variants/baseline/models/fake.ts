@@ -69,6 +69,32 @@ export class FakeModelAdapter implements ModelAdapter {
         }
         return success(input, `The calculator returned ${toolResult.content}.`);
       }
+      case "fake-connected-tool": {
+        const toolResult = input.messages?.find((message) => message.role === "tool");
+        if (!toolResult || toolResult.role !== "tool") {
+          return {
+            kind: "success",
+            output: null,
+            toolCalls: [{ toolCallId: "call-fixture-lookup-1", name: "fixture_lookup", arguments: { key: "alpha" } }],
+            providerRequestId: `fake-${input.attemptId}`,
+            usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+          };
+        }
+        return success(input, `The local fixture returned ${toolResult.content}.`);
+      }
+      case "fake-connected-write": {
+        const toolResult = input.messages?.find((message) => message.role === "tool");
+        if (!toolResult || toolResult.role !== "tool") {
+          return {
+            kind: "success",
+            output: null,
+            toolCalls: [{ toolCallId: "call-fixture-write-1", name: "fixture_write", arguments: { key: "alpha", value: "updated" } }],
+            providerRequestId: `fake-${input.attemptId}`,
+            usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+          };
+        }
+        return success(input, `The local fixture write returned ${toolResult.content}.`);
+      }
       case "fake-timeout":
       case "fake-cancel":
         await cancellableDelay(FIXTURE_DELAY_MS, signal);

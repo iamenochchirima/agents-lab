@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { RunManifest } from "../../../../control-plane/domain/types.js";
 import type { ToolCall, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
+import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
@@ -51,15 +52,23 @@ export function createBaselineAgent(
   options?: BaselineAgentOptions,
 ): Agent {
   const enabledNames = manifest.capabilities?.tools.enabledNames ?? [calculatorTool.definition.name];
-  const registry = new ToolRegistry({ enabledNames });
+  const registry = new ToolRegistry({ enabledNames, approvedNames: manifest.capabilities?.tools.approvedNames });
   registry.register(calculatorTool);
+  registry.register(fixtureLookupTool);
+  registry.register(fixtureWriteTool);
 
   return new Agent({
     id: MASTRA_AGENT_ID,
     name: "Mastra baseline agent",
     instructions: BASELINE_AGENT_INSTRUCTIONS,
     model: modelFactory(manifest),
-    ...(options ? { tools: enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options) } : {} } : {}),
+    ...(options ? {
+      tools: {
+        ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options) } : {}),
+        ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(registry, options) } : {}),
+        ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(registry, options) } : {}),
+      },
+    } : {}),
     maxRetries: 0,
   });
 }
@@ -69,6 +78,8 @@ const calculatorInputSchema = z.object({
   left: z.number(),
   right: z.number(),
 }).strict();
+const fixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).strict();
+const fixtureWriteInputSchema = z.object({ key: z.string().min(1).max(64), value: z.string().max(512) }).strict();
 
 function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
   let toolCallCount = 0;
@@ -125,6 +136,50 @@ function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptio
         if (result.status === "cancelled" || result.status === "timed_out") throw abortError();
         throw mastraToolError(result.error?.code ?? "TOOL_EXECUTION_FAILED", "The Mastra calculator tool failed.");
       }
+      return result.content;
+    },
+  });
+}
+
+function fixtureLookupAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
+  return connectedAgentTool(registry, fixtureLookupTool, fixtureLookupInputSchema, options);
+}
+
+function fixtureWriteAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
+  return connectedAgentTool(registry, fixtureWriteTool, fixtureWriteInputSchema, options);
+}
+
+function connectedAgentTool<TSchema extends z.ZodTypeAny>(
+  registry: ToolRegistry,
+  implementation: typeof fixtureLookupTool | typeof fixtureWriteTool,
+  inputSchema: TSchema,
+  options: BaselineAgentOptions,
+) {
+  let toolCallCount = 0;
+  return createTool({
+    id: implementation.definition.name,
+    description: implementation.definition.description,
+    inputSchema,
+    execute: async (input, context) => {
+      toolCallCount += 1;
+      const call: ToolCall = { toolCallId: context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`, name: implementation.definition.name, arguments: input, round: toolCallCount };
+      const payload = toolPayload(call);
+      options.onToolEvent?.("ToolCallRequested", payload);
+      if (toolCallCount > options.maxToolCalls) throw mastraToolError("MASTRA_TOOL_CALL_LIMIT_EXCEEDED", "The Mastra baseline reached its tool-call limit.");
+      const validation = registry.validateCall(call);
+      if (!validation.accepted) {
+        options.onToolEvent?.("ToolCallRejected", { ...payload, code: validation.code, message: validation.message });
+        return JSON.stringify({ error: validation.message, code: validation.code });
+      }
+      options.onToolEvent?.("ToolCallValidated", toolPayload(validation.call));
+      const policy = registry.authorize(validation.call);
+      if (!policy.allowed) {
+        options.onToolEvent?.("ToolPolicyDenied", { ...payload, code: policy.code, message: policy.message });
+        return JSON.stringify({ error: policy.message, code: policy.code });
+      }
+      options.onToolEvent?.("ToolExecutionStarted", payload);
+      const result = await registry.execute(validation, { runId: options.runId, turnId: options.turnId, signal: context.abortSignal ?? options.signal });
+      options.onToolEvent?.(toolEventKind(result.status), { ...payload, status: result.status, durationMs: result.durationMs, resultBytes: new TextEncoder().encode(result.content).byteLength });
       return result.content;
     },
   });

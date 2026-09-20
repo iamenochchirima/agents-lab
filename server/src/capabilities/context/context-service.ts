@@ -11,6 +11,7 @@ import type {
   ContextTokenCounter,
 } from "./contracts.js";
 import { ContextSessionStore, type ContextSession, type ContextTurn } from "./session-store.js";
+import type { UntrustedSkillContextText } from "../skills/contracts.js";
 
 export interface PreparedContextTurn {
   readonly session: ContextSession;
@@ -60,7 +61,7 @@ export class ContextService {
 
     const currentMessage = transcript.find((message) => message.messageId === turns.userMessageId);
     if (!currentMessage) throw new Error(`Context turn has no user message: ${turnId}`);
-    const messages = [systemMessage(session), ...transcript];
+    const messages = contextMessagesForSession(session, transcript);
     const policy = policyFromSession(session);
     const initialBudget = calculateContextBudget(session.contextWindowTokens, this.tokenCounter.count(messages), policy);
     if (initialBudget.pressure === "unknown") {
@@ -134,7 +135,7 @@ export class ContextService {
     }
     const budget = calculateContextBudget(
       session.contextWindowTokens,
-      this.tokenCounter.count([systemMessage(session), ...transcript]),
+      this.tokenCounter.count(contextMessagesForSession(session, transcript)),
       policyFromSession(session),
     );
     const pressure = activeTurn && (budget.pressure === "compaction_due" || budget.pressure === "exhausted")
@@ -158,6 +159,39 @@ function systemMessage(session: ContextSession): ContextMessage {
     content: session.systemInstruction,
     source: "system",
     createdAt: session.createdAt,
+  };
+}
+
+function contextMessagesForSession(session: ContextSession, transcript: readonly ContextMessage[]): readonly ContextMessage[] {
+  const skills = session.skillContexts ?? [];
+  if (skills.length === 0) return [systemMessage(session), ...transcript];
+
+  const skillMessages: ContextMessage[] = skills.map((skill, index) => skillMessage(session, skill, index + 1));
+  const offset = skillMessages.length;
+  return [
+    systemMessage(session),
+    ...skillMessages,
+    ...transcript.map((message) => ({ ...message, sequence: message.sequence + offset })),
+  ];
+}
+
+function skillMessage(session: ContextSession, skill: UntrustedSkillContextText, sequence: number): ContextMessage {
+  return {
+    schemaVersion: 1,
+    messageId: `skill-${skill.skillId}-${skill.skillVersion}`,
+    sessionId: session.sessionId,
+    sequence,
+    role: "developer",
+    content: skill.content,
+    source: "skills",
+    createdAt: session.createdAt,
+    metadata: {
+      skillId: skill.skillId,
+      skillVersion: skill.skillVersion,
+      skillDigest: skill.digest,
+      trust: skill.trust,
+      authority: skill.authority,
+    },
   };
 }
 

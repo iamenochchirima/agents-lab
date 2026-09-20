@@ -13,6 +13,8 @@ export const DETERMINISTIC_FAKE_MODELS = [
   "fake-provider-failure",
   "fake-ambiguous",
   "fake-tool-call",
+  "fake-connected-tool",
+  "fake-connected-write",
   "fake-context",
 ] as const;
 

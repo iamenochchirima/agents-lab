@@ -67,6 +67,7 @@ def thread_id_for_session(session_id: str) -> str:
 
 class ToolConfiguration(ProtocolModel):
     enabled_names: list[str] = Field(default_factory=list, max_length=32)
+    approved_names: list[str] = Field(default_factory=list, max_length=32)
     max_rounds: int = Field(default=6, ge=1, le=32)
     max_calls: int = Field(default=8, ge=1, le=64)
 
@@ -77,6 +78,13 @@ class ToolConfiguration(ProtocolModel):
         for name in self.enabled_names:
             if not name or not name.isascii() or not name[0].islower() or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for character in name):
                 raise ValueError("Tool names must use lowercase letters, numbers, hyphens, or underscores.")
+        if not set(self.approved_names).issubset(set(self.enabled_names)):
+            raise ValueError("approvedNames must be a subset of enabledNames.")
+        if len(set(self.approved_names)) != len(self.approved_names):
+            raise ValueError("approvedNames must not contain duplicates.")
+        for name in self.approved_names:
+            if not name or not name.isascii() or not name[0].islower() or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for character in name):
+                raise ValueError("Approved tool names must use lowercase letters, numbers, hyphens, or underscores.")
         return self
 
 

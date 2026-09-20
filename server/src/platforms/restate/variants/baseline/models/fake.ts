@@ -131,6 +131,34 @@ export class FakeRestateModel implements ModelAdapter {
       };
     }
 
+    if (input.model === "fake-connected-tool") {
+      const toolResult = input.messages.find((message) => message.role === "tool");
+      if (!toolResult || toolResult.role !== "tool") {
+        return toolFixtureCall("call-fixture-lookup-1", "fixture_lookup", { key: "alpha" });
+      }
+      return {
+        kind: "success",
+        output: `The local fixture returned ${toolResult.content}.`,
+        toolCalls: [],
+        providerRequestId: null,
+        usage: { inputTokens: 20, outputTokens: 9, totalTokens: 29 },
+      };
+    }
+
+    if (input.model === "fake-connected-write") {
+      const toolResult = input.messages.find((message) => message.role === "tool");
+      if (!toolResult || toolResult.role !== "tool") {
+        return toolFixtureCall("call-fixture-write-1", "fixture_write", { key: "alpha", value: "updated" });
+      }
+      return {
+        kind: "success",
+        output: `The local fixture write returned ${toolResult.content}.`,
+        toolCalls: [],
+        providerRequestId: null,
+        usage: { inputTokens: 20, outputTokens: 9, totalTokens: 29 },
+      };
+    }
+
     if (input.model === "fake-tool-malformed") {
       return toolFixtureCall("call-malformed-1", "calculator", { operation: "add", left: 20 });
     }

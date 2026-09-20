@@ -33,7 +33,7 @@ export interface LangGraphStartRequest {
     readonly compactionRevision?: number;
     readonly contextWindowTokens?: number;
   };
-  readonly tools?: { readonly enabledNames: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
+  readonly tools?: { readonly enabledNames: readonly string[]; readonly approvedNames?: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
 }
 
 export function langGraphThreadId(sessionId: string): string {

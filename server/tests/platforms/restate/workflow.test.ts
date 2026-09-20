@@ -145,6 +145,25 @@ test("the workflow executes a calculator call durably before requesting the fina
   ]);
 });
 
+test("the workflow executes the selected read connection through a durable named action", async () => {
+  const executionNames: string[] = [];
+  const result = await runWorkflow("fake-connected-tool", {
+    executionNames,
+    tools: { enabledNames: ["fixture_lookup"], maxRounds: 4, maxCalls: 2 },
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.output, 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.');
+  assert.equal(result.metrics.modelCallCount, 2);
+  assert.equal(result.metrics.toolCallCount, 1);
+  assert.deepEqual(executionNames, [
+    "model.request.1.attempt.1",
+    "tool.execute.1.1.call-fixture-lookup-1",
+    "model.request.2.attempt.1",
+  ]);
+  assert.equal(result.eventIntents.find((event) => event.kind === "ToolExecutionCompleted")?.payload.toolName, "fixture_lookup");
+});
+
 test("the workflow prepares the canonical context snapshot before its model request", async () => {
   const rootDirectory = await mkdtemp(join(tmpdir(), "agentlab-restate-context-"));
   const sessionId = "restate-context-workflow";

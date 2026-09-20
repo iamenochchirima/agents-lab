@@ -193,6 +193,32 @@ test("Mastra executes the shared calculator through a native Agent.generate tool
   );
 });
 
+test("Mastra executes the selected read connection through a native Agent tool", async () => {
+  const runner = new MastraBaselineRunner();
+  const manifest = buildRunManifest(
+    {
+      platform: "mastra",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Read the alpha fixture." },
+      model: { provider: "fake", model: "fake-connected-tool" },
+      capabilities: { tools: { enabledNames: ["fixture_lookup"], maxRounds: 4, maxCalls: 2 } },
+    },
+    { runId: "mastra-connected-tool", platformConfig: runner.manifestConfiguration() },
+  );
+
+  const inspection = await waitForTerminal(runner, await runner.start(manifest));
+  assert.equal(inspection.status, "completed");
+  assert.equal(inspection.result?.output, 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.');
+  assert.equal(inspection.metrics?.modelCallCount, 2);
+  assert.equal(inspection.metrics?.toolCallCount, 1);
+  assert.deepEqual(
+    inspection.eventIntents.filter((event) => event.kind.startsWith("Tool"))
+      .map((event) => event.kind),
+    ["ToolCallRequested", "ToolCallValidated", "ToolExecutionStarted", "ToolExecutionCompleted"],
+  );
+  assert.equal(inspection.eventIntents.find((event) => event.kind === "ToolExecutionCompleted")?.payload.toolName, "fixture_lookup");
+});
+
 test("Mastra maps provider failure and ambiguous provider outcomes safely", async () => {
   const failedRunner = new MastraBaselineRunner();
   const failed = await waitForTerminal(failedRunner, await failedRunner.start(manifestFor(failedRunner, "fake-provider-failure")));

@@ -147,6 +147,69 @@ def test_tool_turn_uses_a_real_tool_node_and_returns_the_tool_result() -> None:
     assert completed["resultBytes"] == len('{"value":42}'.encode("utf-8"))
 
 
+def test_connected_tool_turn_uses_the_selected_fixture_tool_node() -> None:
+    events: list[tuple[str, dict]] = []
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-connected-tool", api_key=None, timeout_ms=5_000),
+            lambda kind, payload: events.append((kind, payload)),
+            lambda: False,
+            "run-connected-tool-test",
+            2,
+            checkpointer,
+            tool_names=["fixture_lookup"],
+            max_rounds=3,
+            max_calls=2,
+        )
+        snapshot = graph.invoke(
+            {"prompt": "Read the alpha fixture.", "system_instruction": "Use the selected connection.", "output": "", "attempt_count": 0},
+            {"configurable": {"thread_id": "thread-connected-tool-test"}, "run_id": "run-connected-tool-test"},
+        )
+
+    assert snapshot["output"] == 'The local fixture returned {"key":"alpha","value":"local fixture alpha"}.'
+    assert [kind for kind, _ in events if kind == "ModelRequested"] == ["ModelRequested", "ModelRequested"]
+    assert [payload["toolName"] for kind, payload in events if kind == "ToolExecutionCompleted"] == ["fixture_lookup"]
+
+
+def test_write_fixture_requires_approval_and_executes_after_approval() -> None:
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        denied_graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-connected-write", api_key=None, timeout_ms=5_000),
+            lambda _kind, _payload: None,
+            lambda: False,
+            "run-write-denied",
+            2,
+            checkpointer,
+            tool_names=["fixture_write"],
+            max_rounds=2,
+            max_calls=1,
+        )
+        denied = denied_graph.invoke(
+            {"prompt": "Write the fixture.", "system_instruction": "Use the selected connection.", "output": "", "attempt_count": 0},
+            {"configurable": {"thread_id": "thread-write-denied"}, "run_id": "run-write-denied"},
+        )
+        assert denied["output"] == "The local fixture write returned {\"code\":\"APPROVAL_REQUIRED\",\"error\":\"Tool requires an explicit approval: fixture_write\"}."
+
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        approved_graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-connected-write", api_key=None, timeout_ms=5_000),
+            lambda _kind, _payload: None,
+            lambda: False,
+            "run-write-approved",
+            2,
+            checkpointer,
+            tool_names=["fixture_write"],
+            approved_tool_names=["fixture_write"],
+            max_rounds=2,
+            max_calls=1,
+        )
+        approved = approved_graph.invoke(
+            {"prompt": "Write the fixture.", "system_instruction": "Use the selected connection.", "output": "", "attempt_count": 0},
+            {"configurable": {"thread_id": "thread-write-approved"}, "run_id": "run-write-approved"},
+        )
+        assert approved["output"] == "The local fixture write returned {\"key\":\"alpha\",\"written\":true}."
+
+
 def test_tool_call_is_rejected_when_the_tool_is_not_enabled() -> None:
     with pytest.raises(ProviderError, match="not enabled"):
         parse_openrouter_response(
