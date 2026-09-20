@@ -237,7 +237,7 @@ test("Mastra workflow compacts an oversized shared context before dispatch", asy
     const createdRun = created.json<{ runId: string }>();
     const completed = await waitForCompletion(app, createdRun.runId);
     assert.equal(completed.status, "completed");
-    assert.ok(completed.events.some((event) => event.kind === "ContextPrepared" && event.payload.compacted === true));
+    assert.ok(completed.events.some((event) => event.kind === "ContextPrepared" && event.payload?.compacted === true));
 
     const run = await app.inject({ method: "GET", url: `/api/runs/${createdRun.runId}` });
     assert.equal(run.statusCode, 200);
@@ -255,7 +255,7 @@ test("Mastra workflow compacts an oversized shared context before dispatch", asy
 interface HttpRunView {
   readonly status: string;
   readonly result: { readonly output: string | null } | null;
-  readonly events: readonly { readonly kind: string }[];
+  readonly events: readonly { readonly kind: string; readonly payload?: Readonly<Record<string, unknown>> }[];
 }
 
 async function waitForCompletion(app: ReturnType<typeof buildControlPlaneServer>, runId: string): Promise<HttpRunView & { readonly result: { readonly output: string | null } }> {
