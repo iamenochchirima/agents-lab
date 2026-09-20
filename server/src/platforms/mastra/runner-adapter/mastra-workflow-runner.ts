@@ -375,7 +375,8 @@ function referenceFor(manifest: RunManifest, storagePath: string): PlatformExecu
     variant: "workflow",
     executionId: `${EXECUTION_ID_PREFIX}${manifest.runId}`,
     native: {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      evidenceSchema: "mastra.native.v2",
       workflowId: MASTRA_WORKFLOW_ID,
       workflowRunId: manifest.runId,
       storage: "libsql-file",
@@ -453,12 +454,25 @@ function inspectionFromRecord(record: MastraWorkflowExecutionRecord): RunnerInsp
     status: record.status,
     reference: {
       ...record.reference,
-      native: { ...record.reference.native, nativeStatus: record.nativeStatus },
+      native: { ...record.reference.native, ...nativeSummaryFor(record) },
     },
     eventIntents: record.events,
     result: record.result,
     trajectory: record.trajectory,
     metrics: record.metrics,
+  };
+}
+
+function nativeSummaryFor(record: MastraWorkflowExecutionRecord): Readonly<Record<string, unknown>> {
+  return {
+    evidenceSchema: "mastra.native.v2",
+    nativeStatus: record.nativeStatus,
+    eventCount: record.events.length,
+    modelRequestCount: record.events.filter((event) => event.kind === "ModelRequested").length,
+    toolCallCount: record.events.filter((event) => event.kind === "ToolCallRequested").length,
+    toolAttemptCount: record.events.filter((event) => event.kind === "ToolExecutionStarted").length,
+    contextPrepared: record.events.some((event) => event.kind === "ContextPrepared"),
+    suspended: record.status === "suspended",
   };
 }
 

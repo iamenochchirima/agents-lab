@@ -1,4 +1,5 @@
 import { Agent } from "@mastra/core/agent";
+import { Mastra } from "@mastra/core/mastra";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 
@@ -18,6 +19,30 @@ export interface BaselineAgentOptions {
   readonly signal: AbortSignal;
   readonly maxToolCalls: number;
   readonly onToolEvent?: (kind: ToolLifecycleKind, payload: ToolLifecyclePayload) => void;
+}
+
+export interface BaselineAgentRuntime {
+  readonly agent: Agent;
+  readonly mastra: Mastra;
+}
+
+/**
+ * Registers the baseline agent through Mastra's application container. The
+ * runner keeps this object platform-local so common server code only sees the
+ * PlatformRunner contract.
+ */
+export function createBaselineAgentRuntime(
+  manifest: RunManifest,
+  modelFactory: MastraModelFactory = defaultMastraModelFactory,
+  options?: BaselineAgentOptions,
+): BaselineAgentRuntime {
+  const agent = createBaselineAgent(manifest, modelFactory, options);
+  const mastra = new Mastra({
+    agents: { [MASTRA_AGENT_ID]: agent },
+    logger: false,
+  });
+
+  return { mastra, agent: mastra.getAgent(MASTRA_AGENT_ID) };
 }
 
 export function createBaselineAgent(

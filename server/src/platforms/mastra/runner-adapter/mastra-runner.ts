@@ -36,7 +36,7 @@ import {
   validateConfiguration,
   type MastraEnvironment,
 } from "../variants/baseline/config/configuration.js";
-import { createBaselineAgent } from "../variants/baseline/agent.js";
+import { createBaselineAgentRuntime } from "../variants/baseline/agent.js";
 import type { MastraModelFactory } from "../variants/baseline/models/factory.js";
 import { MASTRA_EVENT_SOURCE, type MastraExecutionRecord } from "../variants/baseline/contracts.js";
 
@@ -167,7 +167,10 @@ export class MastraBaselineRunner implements PlatformRunner {
     const record = this.requireExecution(reference);
     return {
       status: record.status,
-      reference: record.reference,
+      reference: {
+        ...record.reference,
+        native: { ...record.reference.native, ...nativeSummaryFor(record) },
+      },
       eventIntents: record.events,
       result: record.result,
       trajectory: record.trajectory,
@@ -191,14 +194,14 @@ export class MastraBaselineRunner implements PlatformRunner {
 
     try {
       const context = await this.prepareContext(record, configuration.contextRoot);
-      const agent = createBaselineAgent(record.manifest, this.modelFactory, {
+      const runtime = createBaselineAgentRuntime(record.manifest, this.modelFactory, {
         runId: record.manifest.runId,
         turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
         signal: record.controller.signal,
         maxToolCalls: configuration.maxToolCalls,
         onToolEvent: (kind, payload) => this.addEvent(record, kind, payload),
       });
-      const output = await agent.generate(record.manifest.task.prompt, {
+      const output = await runtime.agent.generate(record.manifest.task.prompt, {
         runId: record.manifest.runId,
         abortSignal: record.controller.signal,
         ...(context ? {
@@ -311,7 +314,8 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
     variant: manifest.variant,
     executionId: `${EXECUTION_ID_PREFIX}${manifest.runId}`,
     native: {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      evidenceSchema: "mastra.native.v2",
       mastraVersion: MASTRA_CORE_VERSION,
       agentId: MASTRA_AGENT_ID,
       operation: MASTRA_OPERATION,
@@ -320,6 +324,18 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
       modelProvider: manifest.model.provider,
       model: manifest.model.model,
     },
+  };
+}
+
+function nativeSummaryFor(record: MastraExecutionRecord): Readonly<Record<string, unknown>> {
+  return {
+    evidenceSchema: "mastra.native.v2",
+    nativeStatus: record.status,
+    eventCount: record.events.length,
+    modelStepCount: record.events.filter((event) => event.kind === "AgentStepCompleted").length,
+    toolCallCount: record.events.filter((event) => event.kind === "ToolCallRequested").length,
+    toolAttemptCount: record.events.filter((event) => event.kind === "ToolExecutionStarted").length,
+    contextPrepared: record.events.some((event) => event.kind === "ContextPrepared"),
   };
 }
 

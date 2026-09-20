@@ -4,8 +4,10 @@ import test from "node:test";
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { MastraBaselineRunner } from "../../../src/platforms/mastra/runner-adapter/mastra-runner.js";
+import { createBaselineAgentRuntime } from "../../../src/platforms/mastra/variants/baseline/agent.js";
 import { defaultMastraModelFactory } from "../../../src/platforms/mastra/variants/baseline/models/factory.js";
 import { createDeterministicFakeModel } from "../../../src/platforms/mastra/variants/baseline/models/fake.js";
+import { MASTRA_AGENT_ID } from "../../../src/platforms/mastra/variants/baseline/config/configuration.js";
 
 test("Mastra baseline validates fake and OpenRouter profiles without exposing secrets", async () => {
   const fakeRunner = new MastraBaselineRunner({ environment: {} });
@@ -35,6 +37,24 @@ test("Mastra baseline validates fake and OpenRouter profiles without exposing se
   assert.equal(fakeRunner.validate(manifestFor(fakeRunner, "fake-not-supported")).valid, false);
 });
 
+test("Mastra registers the baseline agent on a Mastra instance", () => {
+  const runner = new MastraBaselineRunner();
+  const manifest = manifestFor(runner, "fake-success");
+
+  const runtime = createBaselineAgentRuntime(manifest, (selectedManifest) => createDeterministicFakeModel({
+    modelId: selectedManifest.model.model,
+    responseText: "Registered Mastra response.",
+  }), {
+    runId: manifest.runId,
+    turnId: `${manifest.runId}:turn:1`,
+    signal: new AbortController().signal,
+    maxToolCalls: 8,
+  });
+
+  assert.equal(runtime.agent, runtime.mastra.getAgent(MASTRA_AGENT_ID));
+  assert.equal(runtime.agent.id, MASTRA_AGENT_ID);
+});
+
 test("Mastra runs a real Agent.generate call and duplicate start is idempotent", async () => {
   let modelFactoryCalls = 0;
   const runner = new MastraBaselineRunner({
@@ -56,6 +76,10 @@ test("Mastra runs a real Agent.generate call and duplicate start is idempotent",
   assert.equal(inspection.result?.attemptCount, 1);
   assert.equal(inspection.metrics?.modelCallCount, 1);
   assert.equal(inspection.eventIntents.filter((event) => event.kind === "ModelRequested").length, 1);
+  assert.equal(inspection.reference.native.evidenceSchema, "mastra.native.v2");
+  assert.equal(inspection.reference.native.nativeStatus, "completed");
+  assert.equal(inspection.reference.native.eventCount, inspection.eventIntents.length);
+  assert.equal(inspection.reference.native.toolCallCount, 0);
 });
 
 test("Mastra Agent.generate sends the selected OpenRouter model and preserves normalized evidence", async () => {
@@ -96,6 +120,9 @@ test("Mastra Agent.generate sends the selected OpenRouter model and preserves no
     assert.equal(inspection.result?.output, "OpenRouter response through Mastra.");
     assert.deepEqual(inspection.result?.usage, { inputTokens: 7, outputTokens: 5, totalTokens: 12 });
     assert.equal(inspection.metrics?.modelCallCount, 1);
+    assert.equal(inspection.reference.native.evidenceSchema, "mastra.native.v2");
+    assert.equal(inspection.reference.native.nativeStatus, "completed");
+    assert.equal(inspection.reference.native.eventCount, inspection.eventIntents.length);
     assert.equal(reference.native.model, selectedModel);
     assert.equal(requests.length, 1);
     assert.equal(requests[0]?.url.endsWith("/chat/completions"), true);

@@ -21,6 +21,9 @@ test("Mastra workflow completes a native stored run", async () => {
     assert.equal(inspection.result?.status, "completed");
     assert.equal(inspection.result?.output, "Deterministic Mastra response.");
     assert.equal(inspection.reference.native.nativeStatus, "success");
+    assert.equal(inspection.reference.native.evidenceSchema, "mastra.native.v2");
+    assert.equal(inspection.reference.native.eventCount, inspection.eventIntents.length);
+    assert.equal(inspection.reference.native.toolCallCount, 0);
     assert.ok(inspection.eventIntents.some((event) => event.kind === "WorkflowCompleted"));
   } finally {
     await runner.close();
@@ -37,6 +40,8 @@ test("Mastra workflow suspends, resumes, and can be inspected by a replacement r
   const suspended = await waitForStatus(original, reference, "suspended");
   assert.equal(suspended.result, null);
   assert.equal(suspended.reference.native.nativeStatus, "suspended");
+  assert.equal(suspended.reference.native.evidenceSchema, "mastra.native.v2");
+  assert.equal(suspended.reference.native.eventCount, suspended.eventIntents.length);
   await original.close();
 
   const replacement = new MastraWorkflowRunner({ storagePath });
