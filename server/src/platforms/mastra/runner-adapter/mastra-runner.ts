@@ -20,7 +20,6 @@ import {
   ContextService,
   ContextSessionStore,
   type ContextMessage,
-  type ContextSummaryGenerator,
 } from "../../../capabilities/context/index.js";
 import type { ToolLifecyclePayload } from "../../../capabilities/tools/contracts.js";
 import {
@@ -37,8 +36,9 @@ import {
   type MastraEnvironment,
 } from "../variants/baseline/config/configuration.js";
 import { createBaselineAgentRuntime } from "../variants/baseline/agent.js";
-import type { MastraModelFactory } from "../variants/baseline/models/factory.js";
+import { defaultMastraModelFactory, type MastraModelFactory } from "../variants/baseline/models/factory.js";
 import { MASTRA_EVENT_SOURCE, type MastraExecutionRecord } from "../variants/baseline/contracts.js";
+import { createMastraContextSummaryGenerator } from "./context-summary.js";
 
 const EXECUTION_ID_PREFIX = "mastra:";
 
@@ -261,11 +261,11 @@ export class MastraBaselineRunner implements PlatformRunner {
       new ContextSessionStore(contextRoot),
       new CharacterTokenEstimator(),
     );
-    const summarizer: ContextSummaryGenerator = {
-      summarize: async () => {
-        throw new Error("Mastra context compaction is not enabled in the direct baseline.");
-      },
-    };
+    const summarizer = createMastraContextSummaryGenerator({
+      manifest: record.manifest,
+      modelFactory: this.modelFactory ?? defaultMastraModelFactory,
+      signal: record.controller.signal,
+    });
     const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
     this.addEvent(record, "ContextPrepared", {
       sessionId,

@@ -30,6 +30,7 @@ import {
 } from "../variants/baseline/config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "../variants/baseline/models/factory.js";
 import { createMastraWorkflow, MASTRA_WORKFLOW_ID, type MastraWorkflowEventSink, type MastraWorkflowInput } from "../variants/workflow/workflow.js";
+import { createMastraContextSummaryGenerator } from "./context-summary.js";
 
 const EXECUTION_ID_PREFIX = "mastra-workflow:";
 const WORKFLOW_STORAGE_ENV = "AGENTLAB_MASTRA_WORKFLOW_STORAGE";
@@ -347,11 +348,12 @@ export class MastraWorkflowRunner implements PlatformRunner {
       new ContextSessionStore(this.contextRoot),
       new CharacterTokenEstimator(),
     );
-    const prepared = await context.prepareTurn(sessionId, turnId, {
-      summarize: async () => {
-        throw new Error("Mastra workflow context compaction is not enabled for this slice.");
-      },
+    const summarizer = createMastraContextSummaryGenerator({
+      manifest: record.manifest,
+      modelFactory: this.modelFactory,
+      signal: new AbortController().signal,
     });
+    const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
     this.addEvent(record, "ContextPrepared", {
       sessionId,
       turnId,

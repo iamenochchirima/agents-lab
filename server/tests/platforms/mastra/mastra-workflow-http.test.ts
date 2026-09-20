@@ -176,6 +176,82 @@ test("Mastra workflow continues two turns from the shared Lab context session", 
   }
 });
 
+test("Mastra workflow compacts an oversized shared context before dispatch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-compaction-"));
+  const config = loadServerConfig({
+    AGENTLAB_RUN_ROOT: join(root, "runs"),
+    AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+    AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+  }, root);
+  const contextStore = new ContextSessionStore(config.contextRoot, config.context);
+  await contextStore.create({
+    sessionId: "mastra-workflow-compaction-session",
+    platform: "mastra",
+    variant: "workflow",
+    model: "fake/fake-context",
+    systemInstruction: "You are the Agent Harness Lab baseline agent. Answer the user's prompt directly and concisely.",
+    contextWindowTokens: 7_000,
+    reservedOutputTokens: 4_096,
+    safetyMarginTokens: 1_024,
+    compactionThresholdPercent: 20,
+    recentMessageGroups: 2,
+  });
+  const seeded = await contextStore.admitTurn(
+    "mastra-workflow-compaction-session",
+    "mastra-workflow-compaction-seed",
+    `Historical request ${"x".repeat(9_000)}`,
+  );
+  await contextStore.settleTurn("mastra-workflow-compaction-session", seeded.turn.turnId, {
+    status: "completed",
+    output: `Historical response ${"y".repeat(9_000)}`,
+  });
+
+  const runner = new MastraWorkflowRunner({
+    storagePath: join(root, "workflow.db"),
+    contextRoot: config.contextRoot,
+  });
+  const evidence = new RunEvidenceStore(config.runsRoot);
+  const registry = new PlatformRegistry([runner]);
+  const service = new RunService({
+    config,
+    context: new ContextService(contextStore, new CharacterTokenEstimator()),
+    evidence,
+    registry,
+  });
+  const app = buildControlPlaneServer({ config, service, evidence, registry });
+
+  try {
+    await app.ready();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "mastra",
+        variant: "workflow",
+        sessionId: "mastra-workflow-compaction-session",
+        task: { kind: "prompt", prompt: "Answer after context compaction." },
+        model: { provider: "fake", model: "fake-context", contextWindowTokens: 7_000 },
+      },
+    });
+    assert.equal(created.statusCode, 202, created.body);
+    const createdRun = created.json<{ runId: string }>();
+    const completed = await waitForCompletion(app, createdRun.runId);
+    assert.equal(completed.status, "completed");
+    assert.ok(completed.events.some((event) => event.kind === "ContextPrepared" && event.payload.compacted === true));
+
+    const run = await app.inject({ method: "GET", url: `/api/runs/${createdRun.runId}` });
+    assert.equal(run.statusCode, 200);
+    const snapshot = await contextStore.latestSnapshot("mastra-workflow-compaction-session");
+    assert.ok(snapshot);
+    assert.notEqual(snapshot.budget.pressure, "exhausted");
+    assert.ok(snapshot.budget.remainingPercent !== null);
+  } finally {
+    await app.close();
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 interface HttpRunView {
   readonly status: string;
   readonly result: { readonly output: string | null } | null;

@@ -8,7 +8,7 @@ import { RunEvidenceStore } from "../src/control-plane/application/evidence-stor
 import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
 import { RunService } from "../src/control-plane/application/run-service.js";
 import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
-import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
+import { buildRunManifest, DEFAULT_SYSTEM_INSTRUCTION } from "../src/control-plane/domain/manifest.js";
 import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import { ContextService } from "../src/capabilities/context/context-service.js";
 import { ContextSessionStore } from "../src/capabilities/context/session-store.js";
@@ -120,6 +120,64 @@ test("Mastra continues a session from the shared context snapshot and reports it
     assert.notEqual(second.context?.budget.remainingPercent, null);
     assert.equal(second.events.some((event) => event.kind === "ContextPrepared" && typeof event.payload.snapshotId === "string"), true);
     await access(join(runRoot, second.runId, "context.json"));
+  } finally {
+    await rm(runRoot, { recursive: true, force: true });
+    await rm(contextRoot, { recursive: true, force: true });
+  }
+});
+
+test("Mastra baseline compacts an oversized shared context before dispatch", async () => {
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-mastra-compaction-runs-"));
+  const contextRoot = await mkdtemp(join(tmpdir(), "agentlab-mastra-compaction-context-"));
+  try {
+    const contextStore = new ContextSessionStore(contextRoot);
+    await contextStore.create({
+      sessionId: "mastra-compaction-session",
+      platform: "mastra",
+      variant: "baseline",
+      model: "fake/fake-context",
+      systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+      contextWindowTokens: 7_000,
+      reservedOutputTokens: 4_096,
+      safetyMarginTokens: 1_024,
+      compactionThresholdPercent: 20,
+      recentMessageGroups: 2,
+    });
+    const seeded = await contextStore.admitTurn(
+      "mastra-compaction-session",
+      "mastra-compaction-seed",
+      `Historical request ${"x".repeat(9_000)}`,
+    );
+    await contextStore.settleTurn("mastra-compaction-session", seeded.turn.turnId, {
+      status: "completed",
+      output: `Historical response ${"y".repeat(9_000)}`,
+    });
+
+    const runner = new MastraBaselineRunner({ contextRoot });
+    const evidence = new RunEvidenceStore(runRoot);
+    const config = loadServerConfig({
+      AGENTLAB_RUN_ROOT: runRoot,
+      AGENTLAB_CONTEXT_ROOT: contextRoot,
+      AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+    }, "/repo");
+    const context = new ContextService(contextStore, new CharacterTokenEstimator());
+    const service = new RunService({ config, evidence, registry: new PlatformRegistry([runner]), context });
+
+    const created = await service.createRun({
+      platform: "mastra",
+      variant: "baseline",
+      sessionId: "mastra-compaction-session",
+      task: { kind: "prompt", prompt: "Answer after context compaction." },
+      model: { provider: "fake", model: "fake-context", contextWindowTokens: 7_000 },
+    });
+    const completed = await waitForCompletion(service, created.runId);
+
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.events.some((event) => event.kind === "ContextPrepared" && event.payload.compacted === true), true);
+    const snapshot = await contextStore.latestSnapshot("mastra-compaction-session");
+    assert.ok(snapshot);
+    assert.notEqual(snapshot.budget.pressure, "exhausted");
+    assert.ok(snapshot.budget.remainingPercent !== null);
   } finally {
     await rm(runRoot, { recursive: true, force: true });
     await rm(contextRoot, { recursive: true, force: true });
