@@ -3,7 +3,8 @@ import type { RunStatus } from "./types.js";
 const transitions: Record<RunStatus, readonly RunStatus[]> = {
   created: ["queued", "failed"],
   queued: ["running", "cancelled", "failed", "reconciliation_required"],
-  running: ["completed", "failed", "cancelled", "reconciliation_required"],
+  running: ["suspended", "completed", "failed", "cancelled", "reconciliation_required"],
+  suspended: ["running", "completed", "failed", "cancelled", "reconciliation_required"],
   completed: [],
   failed: [],
   cancelled: [],

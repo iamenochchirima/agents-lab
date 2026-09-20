@@ -7,7 +7,7 @@ import type {
   RunTrajectory,
 } from "../domain/types.js";
 
-export type RunnerExecutionStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type RunnerExecutionStatus = "queued" | "running" | "suspended" | "completed" | "failed" | "cancelled";
 
 export interface RunnerValidationResult {
   readonly valid: boolean;
@@ -20,6 +20,12 @@ export interface RunnerConnectivity {
 }
 
 export interface RunnerCancellationResult {
+  readonly accepted: boolean;
+  readonly alreadyTerminal: boolean;
+  readonly message: string;
+}
+
+export interface RunnerResumeResult {
   readonly accepted: boolean;
   readonly alreadyTerminal: boolean;
   readonly message: string;
@@ -53,6 +59,8 @@ export interface PlatformRunner {
    */
   recoverContextOverflow?(manifest: RunManifest, reference: PlatformExecutionReference): Promise<PlatformExecutionReference>;
   cancel(reference: PlatformExecutionReference, reason: string): Promise<RunnerCancellationResult>;
+  /** Resumes a native suspended execution when the platform supports it. */
+  resume?(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult>;
   inspect(reference: PlatformExecutionReference): Promise<RunnerInspection>;
   /** Releases platform-local workers or client connections when the server stops. */
   close?(): Promise<void>;

@@ -19,6 +19,7 @@ const PLANNED_PLATFORM_VARIANTS = [
   ["restate", "baseline"],
   ["langgraph", "baseline"],
   ["mastra", "baseline"],
+  ["mastra", "workflow"],
   ["vercel-workflows", "baseline"],
   ["inngest", "baseline"],
   ["trigger-dev", "baseline"],

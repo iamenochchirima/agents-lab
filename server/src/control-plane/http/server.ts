@@ -153,6 +153,18 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     }
   });
 
+  app.post<{ Params: { runId: string }; Body: unknown }>("/api/runs/:runId/resume", async (request, reply) => {
+    const startedAt = Date.now();
+    try {
+      const input = parseResumeBody(request.body);
+      const run = await dependencies.service.resumeRun(request.params.runId, input);
+      await recordRunOperation(dependencies.evidence, run, "run.resume", request.id, startedAt);
+      return reply.send(run);
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
   app.get<{ Params: { runId: string; "*": string } }>("/api/runs/:runId/evidence/*", async (request, reply) => {
     try {
       const fileName = request.params["*"];
@@ -221,7 +233,7 @@ function parseRunRequest(body: unknown): RunRequest {
 async function recordRunOperation(
   evidence: RunEvidenceStore,
   run: RunView,
-  operation: "run.create" | "run.reconcile" | "run.cancel",
+  operation: "run.create" | "run.reconcile" | "run.cancel" | "run.resume",
   requestId: string,
   startedAt: number,
 ): Promise<void> {
@@ -318,6 +330,13 @@ function parseCancelBody(body: unknown): string {
     throw new InvalidApiRequestError("Cancellation reason must be 500 characters or fewer.");
   }
   return reason;
+}
+
+function parseResumeBody(body: unknown): { approved: boolean } {
+  if (!isRecord(body) || typeof body.approved !== "boolean") {
+    throw new InvalidApiRequestError("Resume body must contain an approved boolean.");
+  }
+  return { approved: body.approved };
 }
 
 function parseModelCatalogQuery(query: { provider?: string; q?: string; limit?: string }): { provider: string; q: string; limit: number } {

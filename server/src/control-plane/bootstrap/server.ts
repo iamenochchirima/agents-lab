@@ -11,6 +11,7 @@ import { buildControlPlaneServer } from "../http/server.js";
 import type { PlatformRunner } from "../ports/runner.js";
 import { LangGraphBaselineRunner } from "../../platforms/langgraph/runner-adapter/langgraph-runner.js";
 import { MastraBaselineRunner } from "../../platforms/mastra/runner-adapter/mastra-runner.js";
+import { MastraWorkflowRunner } from "../../platforms/mastra/runner-adapter/mastra-workflow-runner.js";
 import { loadRestateConfig } from "../../platforms/restate/config.js";
 import { RestateBaselineRunner } from "../../platforms/restate/runner-adapter/restate-runner.js";
 import { TemporalBaselineRunner } from "../../platforms/temporal/runner-adapter/temporal-runner.js";
@@ -49,6 +50,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     contextRoot: config.contextRoot,
   });
   const mastraRunner = new MastraBaselineRunner({ contextRoot: config.contextRoot });
+  const mastraWorkflowRunner = new MastraWorkflowRunner({ contextRoot: config.contextRoot });
   const inngestRunner = new InngestBaselineRunner();
   const triggerDevRunner = TriggerDevBaselineRunner.fromEnvironment();
   const dbosRunner = new DbosBaselineRunner();
@@ -59,6 +61,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     restateRunner,
     langgraphRunner,
     mastraRunner,
+    mastraWorkflowRunner,
     inngestRunner,
     triggerDevRunner,
     dbosRunner,

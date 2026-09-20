@@ -22,7 +22,13 @@ import type { ContextProjection } from "../../capabilities/context/contracts.js"
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
 import { ContextService } from "../../capabilities/context/context-service.js";
 
-const CONTEXT_CAPABLE_BASELINE_PLATFORMS: ReadonlySet<string> = new Set(["temporal", "restate", "langgraph", "mastra"]);
+const CONTEXT_CAPABLE_VARIANTS: ReadonlySet<string> = new Set([
+  "temporal/baseline",
+  "restate/baseline",
+  "langgraph/baseline",
+  "mastra/baseline",
+  "mastra/workflow",
+]);
 
 export class RunNotFoundError extends Error {
   constructor(readonly runId: string) {
@@ -301,6 +307,25 @@ export class RunService {
     return this.getRun(runId);
   }
 
+  async resumeRun(runId: string, input: unknown): Promise<RunView> {
+    const snapshot = await this.readSnapshotOrThrow(runId);
+    if (snapshot.result) return toRunView(snapshot, snapshot.result.status, await this.contextProjection(snapshot.manifest));
+    if (!snapshot.executionReference) {
+      await this.recordReconciliationRequired(snapshot.manifest, "Cannot resume without a retained platform execution reference.");
+      return this.getRun(runId);
+    }
+
+    const runner = this.dependencies.registry.runnable(snapshot.manifest);
+    if (!runner?.resume) {
+      throw new Error(`The selected platform variant does not support resume: ${snapshot.manifest.platform}/${snapshot.manifest.variant}.`);
+    }
+    const resumed = await runner.resume(snapshot.executionReference, input);
+    if (resumed.accepted) {
+      await this.appendControlEvent(runId, "RunResumeRequested", { message: resumed.message });
+    }
+    return this.getRun(runId);
+  }
+
   private async reconcile(
     runId: string,
     runner: PlatformRunner,
@@ -348,7 +373,7 @@ export class RunService {
   }
 
   private async admitContextTurn(request: RunRequest, runId: string) {
-    if (!this.dependencies.context || request.variant !== "baseline" || !CONTEXT_CAPABLE_BASELINE_PLATFORMS.has(request.platform)) {
+    if (!this.dependencies.context || !CONTEXT_CAPABLE_VARIANTS.has(`${request.platform}/${request.variant}`)) {
       if (request.sessionId) {
         throw new Error("Session context is not available for the selected platform variant.");
       }
@@ -588,6 +613,8 @@ function deriveStatus(events: readonly RunEvent[], result: RunResult | null): Ru
   if (result) {
     return result.status;
   }
+  const suspended = [...events].reverse().find((event) => event.kind === "WorkflowSuspended" || event.kind === "WorkflowResumed");
+  if (suspended?.kind === "WorkflowSuspended") return "suspended";
   if (events.some((event) => event.kind === "AgentStarted")) {
     return "running";
   }

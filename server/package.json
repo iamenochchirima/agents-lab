@@ -39,6 +39,7 @@
   "dependencies": {
     "@trigger.dev/sdk": "4.5.14",
     "@mastra/core": "1.66.0",
+    "@mastra/libsql": "1.23.0",
     "zod": "4.6.5",
     "@fastify/cors": "^11.3.0",
     "inngest": "4.20.0",

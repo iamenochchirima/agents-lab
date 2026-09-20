@@ -2,6 +2,7 @@ export const RUN_STATUSES = [
   "created",
   "queued",
   "running",
+  "suspended",
   "completed",
   "failed",
   "cancelled",
