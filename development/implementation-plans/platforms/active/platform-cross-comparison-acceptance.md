@@ -1,7 +1,7 @@
 # Cross-platform production acceptance and comparison
 
 **Created:** `2026-09-20T13:11:14+02:00`<br>
-**Last updated:** `2026-09-20T15:52:01+02:00`<br>
+**Last updated:** `2026-09-20T15:56:18+02:00`<br>
 **Status:** Active — Phase 0 and the shared server contract are underway; final matrix remains gated by Mastra completion<br>
 **Owner:** Primary platform integration owner<br>
 **Platforms:** Temporal, Restate, LangGraph, Mastra<br>
@@ -511,6 +511,14 @@ Before archiving this plan:
 ## Completion record
 
 Complete only when the plan is moved to `completed/`.
+
+## Progress validation
+
+- `pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/control-plane/http.test.ts` — 8 passed.
+- `pnpm --filter @agent-harness-lab/lab-server run typecheck` — passed.
+- `node --test dist/tests/platforms/temporal/*.test.js dist/tests/platforms/restate/*.test.js dist/tests/platforms/langgraph/*.test.js dist/tests/platforms/mastra/*.test.js` — 98 passed, 2 skipped provider/service tests.
+- `node --test apps/web/tests/browser/platform-chat.browser.test.mjs` — all 15 deterministic browser cases passed, including Compare; no browser console errors were reported.
+- Local `/health` — Temporal, Restate, and Mastra baseline reachable; LangGraph baseline registered but unavailable because its local Python service was not running. Mastra workflow storage, Inngest, Trigger.dev, DBOS, and Hatchet also reported their documented local availability failures. This is a connectivity observation, not a completion claim.
 
 **Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`<br>
 **Commits:** `[commit hashes]`
