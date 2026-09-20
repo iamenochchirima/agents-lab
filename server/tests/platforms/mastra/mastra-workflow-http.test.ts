@@ -112,6 +112,70 @@ test("Mastra workflow storage failure is visible through server readiness", asyn
   }
 });
 
+test("Mastra workflow continues two turns from the shared Lab context session", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-context-"));
+  const config = loadServerConfig({
+    AGENTLAB_RUN_ROOT: join(root, "runs"),
+    AGENTLAB_CONTEXT_ROOT: join(root, "sessions"),
+    AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake",
+  }, root);
+  const runner = new MastraWorkflowRunner({
+    storagePath: join(root, "workflow.db"),
+    contextRoot: config.contextRoot,
+  });
+  const evidence = new RunEvidenceStore(config.runsRoot);
+  const registry = new PlatformRegistry([runner]);
+  const service = new RunService({
+    config,
+    context: new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator()),
+    evidence,
+    registry,
+  });
+  const app = buildControlPlaneServer({ config, service, evidence, registry });
+
+  try {
+    await app.ready();
+    const firstCreated = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "mastra",
+        variant: "workflow",
+        sessionId: "mastra-workflow-context-session",
+        clientTurnId: "turn-1",
+        task: { kind: "prompt", prompt: "Remember conformance-4318." },
+        model: { provider: "fake", model: "fake-context", contextWindowTokens: 16_384 },
+      },
+    });
+    assert.equal(firstCreated.statusCode, 202, firstCreated.body);
+    const firstRun = firstCreated.json<{ runId: string }>();
+    const first = await waitForCompletion(app, firstRun.runId);
+    assert.equal(first.result?.output, "Stored the test value.");
+
+    const secondCreated = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "mastra",
+        variant: "workflow",
+        sessionId: "mastra-workflow-context-session",
+        clientTurnId: "turn-2",
+        task: { kind: "prompt", prompt: "What value did I ask you to remember?" },
+        model: { provider: "fake", model: "fake-context", contextWindowTokens: 16_384 },
+      },
+    });
+    assert.equal(secondCreated.statusCode, 202, secondCreated.body);
+    const secondRun = secondCreated.json<{ runId: string }>();
+    const second = await waitForCompletion(app, secondRun.runId);
+    assert.equal(second.result?.output, "conformance-4318");
+    assert.equal(second.events.some((event) => event.kind === "ContextPrepared"), true);
+  } finally {
+    await app.close();
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 interface HttpRunView {
   readonly status: string;
   readonly result: { readonly output: string | null } | null;
