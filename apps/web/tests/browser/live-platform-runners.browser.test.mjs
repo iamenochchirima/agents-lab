@@ -93,6 +93,149 @@ test("live platform runners use the selected OpenRouter model", { skip: !process
   }
 });
 
+test("live priority platform Chat keeps two real turns and context usage", { skip: !process.env.AGENTLAB_RUN_LIVE_PRIORITY_CHAT_UI }, async (t) => {
+  const priorityPlatforms = ["temporal", "restate", "langgraph", "mastra"];
+  const availability = await Promise.all(priorityPlatforms.map(checkPlatform));
+  const reachable = availability.filter((platform) => platform.reachable);
+  for (const platform of availability.filter((candidate) => !candidate.reachable)) {
+    t.diagnostic(`${platform.id}: not validated because ${platform.message}`);
+  }
+  assert.ok(reachable.length > 0, "No priority platform is reachable for the live Chat check.");
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-priority-chat-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  const errors = [];
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    cdp.on("Runtime.consoleAPICalled", (params) => {
+      if (params.type === "error") errors.push(params.args?.map((argument) => argument.value ?? argument.description ?? "").join(" ") ?? "console error");
+    });
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+
+    for (const platform of reachable) {
+      const errorStart = errors.length;
+      await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/${platform.id}/chat` });
+      await waitForElement(cdp, ".chat-page");
+      await waitForText(cdp, "Ready");
+      await click(cdp, ".model-picker-trigger");
+      await waitForElement(cdp, '[aria-label="Search OpenRouter models"]');
+      await setInput(cdp, '[aria-label="Search OpenRouter models"]', MODEL_ID);
+      await waitForText(cdp, MODEL_ID);
+      await clickModel(cdp, MODEL_ID);
+
+      await setInput(cdp, 'textarea[aria-label="Message"]', `Give one short sentence about a first ${platform.id} turn.`);
+      await clickButton(cdp, "Send");
+      await waitForChatTurn(cdp, 1);
+      await setInput(cdp, 'textarea[aria-label="Message"]', `Give one short sentence continuing the ${platform.id} conversation.`);
+      await clickButton(cdp, "Send");
+      await waitForChatTurn(cdp, 2);
+
+      const result = JSON.parse(await cdp.evaluate(`JSON.stringify({
+        userMessages: document.querySelectorAll(".chat-message-user").length,
+        assistantMessages: document.querySelectorAll(".chat-message-assistant.chat-message-status-completed").length,
+        context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+        model: document.querySelector(".model-picker-trigger")?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
+      })`));
+      assert.equal(result.userMessages, 2, `${platform.id} did not retain both user turns`);
+      assert.equal(result.assistantMessages, 2, `${platform.id} did not complete both assistant turns`);
+      assert.match(result.context ?? "", /tokens/);
+      assert.match(result.context ?? "", /% left/);
+      assert.deepEqual(errors.slice(errorStart), [], `${platform.id} browser console errors: ${errors.slice(errorStart).join(" | ")}`);
+      t.diagnostic(`${platform.id}: completed two real Chat turns with ${result.context}`);
+    }
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
+test("live priority Compare keeps four real platform runs independent", { skip: !process.env.AGENTLAB_RUN_LIVE_PRIORITY_COMPARE_UI }, async (t) => {
+  const priorityPlatforms = ["temporal", "restate", "langgraph", "mastra"];
+  const availability = await Promise.all(priorityPlatforms.map(checkPlatform));
+  const unavailable = availability.filter((platform) => !platform.reachable);
+  for (const platform of unavailable) t.diagnostic(`${platform.id}: not validated because ${platform.message}`);
+  assert.equal(unavailable.length, 0, `all priority platforms are required for live Compare: ${unavailable.map((platform) => platform.id).join(", ")}`);
+
+  const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-live-priority-compare-"));
+  const debugPort = await unusedPort();
+  const chrome = spawn(CHROME_BIN, [
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${profileDirectory}`,
+    "about:blank",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+
+  let cdp;
+  const errors = [];
+  try {
+    const target = await waitForPageTarget(debugPort);
+    cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+    cdp.on("Runtime.consoleAPICalled", (params) => {
+      if (params.type === "error") errors.push(params.args?.map((argument) => argument.value ?? argument.description ?? "").join(" ") ?? "console error");
+    });
+    await cdp.send("Page.enable");
+    await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/temporal` });
+    await waitForElement(cdp, 'textarea[aria-label="Task prompt"]');
+    await click(cdp, ".model-picker-trigger");
+    await waitForElement(cdp, '[aria-label="Search OpenRouter models"]');
+    await setInput(cdp, '[aria-label="Search OpenRouter models"]', MODEL_ID);
+    await waitForText(cdp, MODEL_ID);
+    await clickModel(cdp, MODEL_ID);
+    await clickButton(cdp, "Compare");
+    await waitForText(cdp, "One task, multiple platforms");
+    for (const platform of priorityPlatforms.slice(1)) {
+      await cdp.evaluate(`(() => {
+        const label = Array.from(document.querySelectorAll(".comparison-platform-picker label"))
+          .find((candidate) => candidate.textContent?.trim().toLowerCase().includes(${JSON.stringify(platform)}));
+        if (!label) throw new Error("Comparison platform not found: " + ${JSON.stringify(platform)});
+        const input = label.querySelector("input");
+        if (input && !input.checked) input.click();
+      })()`);
+    }
+    await waitForExpression(cdp, 'document.querySelectorAll(".comparison-platform-picker input:checked").length === 4');
+    await setInput(cdp, ".compare-task-field textarea", "Return one short sentence identifying this live comparison run.");
+    await clickButton(cdp, "Run comparison");
+    await waitForExpression(cdp, 'document.querySelectorAll(".comparison-result-completed").length === 4', 180_000);
+
+    const result = JSON.parse(await cdp.evaluate(`JSON.stringify({
+      rows: document.querySelectorAll(".comparison-result").length,
+      completed: document.querySelectorAll(".comparison-result-completed").length,
+      outputs: document.querySelectorAll(".comparison-result-output").length,
+      links: Array.from(document.querySelectorAll(".comparison-result-link")).map((link) => link.getAttribute("href")),
+    })`));
+    assert.equal(result.rows, 4);
+    assert.equal(result.completed, 4);
+    assert.equal(result.outputs, 4);
+    assert.equal(new Set(result.links).size, 4, "Compare members must link to independent runs");
+    assert.deepEqual(errors, [], `live Compare browser console errors: ${errors.join(" | ")}`);
+    t.diagnostic(`Compare completed four real runs: ${result.links.join(", ")}`);
+  } finally {
+    await cdp?.close();
+    chrome.kill("SIGTERM");
+    await waitForExit(chrome);
+    await rm(profileDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+});
+
 test("live Restate Chat continues a real session and renders context usage", { skip: !process.env.AGENTLAB_RUN_LIVE_RESTATE_CHAT_UI }, async (t) => {
   const availability = await checkPlatform("restate");
   assert.equal(availability.reachable, true, availability.message);

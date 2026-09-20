@@ -199,6 +199,36 @@ test("Mastra Chat selects the workflow variant and shows native workflow details
   }
 });
 
+test("Mastra workflow Chat resumes an approval without creating a second run", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/mastra/chat");
+    await waitForText(browser.cdp, "Mastra");
+    await clickSummary(browser.cdp, "Run options");
+    await chooseVariant(browser.cdp, "workflow");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "[approval] Publish the prepared post.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Waiting for approval");
+    const suspendedRunId = await browser.cdp.evaluate('document.querySelector(".chat-run-meta dd")?.textContent?.trim()');
+    assert.ok(suspendedRunId);
+    assert.equal(fixture.state.createRequests, 1);
+
+    await clickButton(browser.cdp, "Approve and resume");
+    await waitForText(browser.cdp, "Mastra fixture completed.");
+    const resumedRunId = await browser.cdp.evaluate('document.querySelector(".chat-run-meta dd")?.textContent?.trim()');
+    assert.equal(resumedRunId, suspendedRunId);
+    assert.equal(fixture.state.createRequests, 1, "resume must address the existing run");
+    assert.equal(fixture.state.resumeRequests, 1);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+    assert.equal(browser.dialogs.length, 0, "approval must use application UI, not a browser dialog");
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Compare starts independent platform runs with one comparison identity", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -212,12 +242,19 @@ test("Compare starts independent platform runs with one comparison identity", as
     await toggleComparisonPlatform(browser.cdp, "Mastra");
     await waitForExpression(browser.cdp, 'Array.from(document.querySelectorAll(".comparison-platform-picker input")).filter((input) => input.checked).length === 2');
     await setInput(browser.cdp, '.compare-task-field textarea', "Compare the same task.");
-    await clickButton(browser.cdp, "Run comparison");
+    await browser.cdp.evaluate(`(() => {
+      const button = Array.from(document.querySelectorAll("button")).find((candidate) => candidate.textContent?.includes("Run comparison"));
+      if (!button) throw new Error("Comparison submit button not found.");
+      button.click();
+      button.click();
+    })()`);
     await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-result-completed").length === 2');
     assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-output").length'), 2);
 
     assert.equal(fixture.state.requests.length, 2);
     assert.equal(new Set(fixture.state.requests.map((request) => request.comparisonId)).size, 1);
+    assert.equal(new Set(fixture.state.requests.map((request) => request.sessionId)).size, 2);
+    assert.equal(new Set(fixture.state.requests.map((request) => request.clientTurnId)).size, 2);
     assert.match(fixture.state.requests[0]?.comparisonId ?? "", /^comparison-[A-Za-z0-9-]+$/);
     assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1]);
     const runLinks = await browser.cdp.evaluate('Array.from(document.querySelectorAll(".comparison-result-link")).map((link) => link.getAttribute("href"))');
@@ -251,6 +288,60 @@ test("Compare keeps a completed member when another platform fails", async () =>
     assert.equal(new Set(fixture.state.requests.map((request) => request.comparisonId)).size, 1);
     assert.notEqual(fixture.state.runIds[0], fixture.state.runIds[1]);
     assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-link").length'), 2);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Compare reports an unavailable member without fabricating a run", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await clickButton(browser.cdp, "Compare");
+    await waitForText(browser.cdp, "One task, multiple platforms");
+    await toggleComparisonPlatform(browser.cdp, "Restate");
+    await setInput(browser.cdp, ".compare-task-field textarea", "Keep unavailable members honest.");
+    await clickButton(browser.cdp, "Run comparison");
+    await waitForElement(browser.cdp, ".comparison-results");
+    await waitForExpression(browser.cdp, 'document.querySelector(".comparison-results")?.textContent?.includes("unavailable") === true');
+    assert.equal(fixture.state.requests.length, 1, "the unavailable member must not be dispatched");
+    assert.equal(fixture.state.requests[0]?.platform, "temporal");
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-error").length'), 1);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Compare resets rows after close and remains usable at narrow widths", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+  fixture.setRestateAvailable(true);
+
+  try {
+    for (const width of [1280, 768, 390]) {
+      await browser.cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      await navigate(browser.cdp, "/platforms/temporal");
+      await waitForText(browser.cdp, "Temporal");
+      await chooseModel(browser.cdp);
+      await clickButton(browser.cdp, "Compare");
+      await waitForText(browser.cdp, "One task, multiple platforms");
+      const layout = await browser.cdp.evaluate('JSON.stringify({ overflow: document.documentElement.scrollWidth > window.innerWidth, modal: Boolean(document.querySelector(".compare-modal")) })').then(JSON.parse);
+      assert.equal(layout.modal, true);
+      assert.equal(layout.overflow, false, `comparison modal overflows at ${width}px`);
+      await click(browser.cdp, 'button[aria-label="Close comparison"]');
+      assert.equal(await browser.cdp.evaluate('document.querySelector(".compare-modal") === null'), true);
+      await clickButton(browser.cdp, "Compare");
+      await waitForText(browser.cdp, "One task, multiple platforms");
+      assert.equal(await browser.cdp.evaluate('document.querySelector(".comparison-results") === null'), true, "closed comparison rows must not reappear");
+      await click(browser.cdp, 'button[aria-label="Close comparison"]');
+    }
+    assert.equal(fixture.state.createRequests, 0);
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -739,6 +830,8 @@ async function installFixture(cdp) {
     restateAvailable: false,
     langGraphAvailable: true,
     failedPlatforms: new Set(),
+    resumedRunIds: new Set(),
+    resumeRequests: 0,
   };
 
   cdp.on("Fetch.requestPaused", (event) => {
@@ -812,7 +905,7 @@ async function installFixture(cdp) {
       state.runReads += 1;
       const runReads = (state.runReadsById.get(runId) ?? 0) + 1;
       state.runReadsById.set(runId, runReads);
-      const status = fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms);
+      const status = fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms, state.resumedRunIds, runId);
       await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode) });
       return;
     }
@@ -826,8 +919,22 @@ async function installFixture(cdp) {
         return;
       }
       const runReads = state.runReadsById.get(runId) ?? 0;
-      const run = makeRun(request, fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms), runId, state.mode);
+      const run = makeRun(request, fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms, state.resumedRunIds, runId), runId, state.mode);
       await fulfill(cdp, event.requestId, { status: 200, body: { runId: run.runId, events: run.events, nextSequence: run.events.at(-1)?.recordedSequence ?? 0, hasMore: false, done: run.result !== null } });
+      return;
+    }
+
+    const resumeMatch = url.pathname.match(/^\/api\/runs\/(run-(?:mastra)-\d+)\/resume$/);
+    if (resumeMatch && event.request.method === "POST") {
+      const runId = resumeMatch[1];
+      const request = state.runRequests.get(runId);
+      if (!request || request.variant !== "workflow") {
+        await fulfill(cdp, event.requestId, { status: 409, body: { error: { code: "NOT_RESUMABLE", message: "Fixture run is not resumable." } } });
+        return;
+      }
+      state.resumeRequests += 1;
+      state.resumedRunIds.add(runId);
+      await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, "completed", runId, state.mode, state.resumedRunIds) });
       return;
     }
 
@@ -852,7 +959,8 @@ async function installFixture(cdp) {
   };
 }
 
-function fixtureStatus(request, mode, runReads, cancelled, failedPlatforms = new Set()) {
+function fixtureStatus(request, mode, runReads, cancelled, failedPlatforms = new Set(), resumedRunIds = new Set(), runId = "") {
+  if (request.platform === "mastra" && request.variant === "workflow" && request.task?.prompt?.trimStart().startsWith("[approval]") && !resumedRunIds.has(runId)) return "suspended";
   if (mode === "recovery") return "reconciliation_required";
   if (failedPlatforms.has(request.platform)) return runReads <= 1 ? "running" : "failed";
   if (mode === "failed") return runReads <= 1 ? "running" : "failed";
@@ -863,14 +971,19 @@ function fixtureStatus(request, mode, runReads, cancelled, failedPlatforms = new
   return runReads > 1 ? "completed" : "running";
 }
 
-function makeRun(request, status, runIdOverride, mode = "complete") {
+function makeRun(request, status, runIdOverride, mode = "complete", resumedRunIds = new Set()) {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
   const langGraph = platform === "langgraph";
   const mastra = platform === "mastra";
   const compaction = (platform === "restate" || platform === "langgraph") && mode === "compaction";
   const retrying = (platform === "restate" || platform === "langgraph") && mode === "retrying";
-  const events = platform === "restate"
+  const approvalWorkflow = mastra && request.variant === "workflow";
+  const events = approvalWorkflow
+    ? status === "suspended"
+      ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "WorkflowStarted", platform), event(runId, 3, "WorkflowSuspended", platform, { approved: false })]
+      : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "WorkflowStarted", platform), ...(resumedRunIds.has(runId) ? [event(runId, 3, "WorkflowResumed", platform, { approved: true })] : []), event(runId, 4, "WorkflowCompleted", platform), event(runId, 5, "RunCompleted", platform)]
+    : platform === "restate"
     ? status === "reconciliation_required"
       ? [event(runId, 1, "RunSubmissionOutcomeUnknown", platform), event(runId, 2, "RunReconciliationRequired", platform)]
       : compaction
@@ -959,7 +1072,7 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
       : langGraph
         ? { serviceOrigin: "http://127.0.0.1:8090", executionId: `langgraph:${runId}`, labRunId: runId, eventSource: "langgraph-service", threadId: `langgraph:baseline:${sessionId}`, graph: "baseline", protocolVersion: 1 }
         : mastra
-          ? { schemaVersion: 2, evidenceSchema: "mastra.native.v2", mastraVersion: "1.66.0", operation: request.variant === "workflow" ? "workflow.run" : "agent.generate", workflowId: request.variant === "workflow" ? "agent" : undefined, processScoped: request.variant !== "workflow", storage: request.variant === "workflow" ? "libsql-file" : "none", localSingleProcess: request.variant === "workflow" ? true : undefined, nativeStatus: "completed", modelProvider: "openrouter", model: request.model?.model ?? "cohere/north-mini-code:free", eventCount: events.length, modelStepCount: 1, modelRequestCount: 1, toolCallCount: 0, toolAttemptCount: 0, contextPrepared: true }
+          ? { schemaVersion: 2, evidenceSchema: "mastra.native.v2", mastraVersion: "1.66.0", operation: request.variant === "workflow" ? "workflow.run" : "agent.generate", workflowId: request.variant === "workflow" ? "agent" : undefined, processScoped: request.variant !== "workflow", storage: request.variant === "workflow" ? "libsql-file" : "none", localSingleProcess: request.variant === "workflow" ? true : undefined, nativeStatus: status === "suspended" ? "suspended" : status === "completed" ? "completed" : "running", modelProvider: "openrouter", model: request.model?.model ?? "cohere/north-mini-code:free", eventCount: events.length, modelStepCount: 1, modelRequestCount: 1, toolCallCount: 0, toolAttemptCount: 0, contextPrepared: true }
         : { fixture: true } },
     result,
     trajectory: terminal && (platform === "temporal" || langGraph) ? { schemaVersion: 1, runId, phases: [] } : null,
