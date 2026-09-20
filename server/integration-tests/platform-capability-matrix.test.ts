@@ -117,6 +117,23 @@ test(
           event.sourceSequence,
         ].join(":"));
         assert.equal(new Set(eventKeys).size, completed.events.length);
+
+        const writeCreated = await service.createRun({
+          platform: runner.platform,
+          variant: runner.variant,
+          task: { kind: "prompt", prompt: "Write the approved value to the local fixture." },
+          model: { provider: "fake", model: "fake-write-tool", contextWindowTokens: 16_384 },
+          capabilities: {
+            profileId: "local-write-approved",
+            tools: { enabledNames: [], maxRounds: 4, maxCalls: 4 },
+            approvals: [writeApproval(runner.platform)],
+          },
+        });
+        const writeCompleted = await waitForTerminal(service, writeCreated.runId);
+        assert.equal(writeCompleted.status, "completed", `${runner.platform} write did not complete: ${JSON.stringify(writeCompleted.result)}`);
+        assert.equal(writeCompleted.manifest.capabilities?.resolution?.decisions.some((decision) => decision.status === "granted" && decision.capabilityId === "fixture_write"), true);
+        const writeEvent = writeCompleted.events.find((event) => event.kind === "ToolExecutionCompleted" && event.payload.toolName === "fixture_write");
+        assert.equal((writeEvent?.payload.connection as { status?: string } | undefined)?.status, "completed");
       }
     } finally {
       await Promise.all(runners.map((runner) => runner.close?.()));
@@ -133,6 +150,20 @@ async function assertFixtureReady(url: string): Promise<void> {
     throw new Error(`The local connection fixture is unavailable at ${url}. Start the local stack first. ${error instanceof Error ? error.message : String(error)}`);
   }
   if (!response.ok) throw new Error(`The local connection fixture returned HTTP ${response.status} at ${url}/health.`);
+}
+
+function writeApproval(platform: string) {
+  return {
+    schemaVersion: 1 as const,
+    decisionId: `matrix-${platform}-fixture-write`,
+    capabilityId: "fixture_write",
+    version: "1.0.0",
+    allowedOperations: ["write"],
+    connectionRef: "conn_local_fixture",
+    decision: "approved" as const,
+    decidedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+  };
 }
 
 async function waitForTerminal(service: RunService, runId: string): Promise<RunView> {
