@@ -122,10 +122,27 @@ export interface PlatformExecutionReference {
   readonly native: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * The identity used to deduplicate and order one normalized event stream.
+ * `attemptId` is the stable identity of a platform execution attempt, not a
+ * retry count or a human-readable event name.
+ */
+export interface RunEventIdentity {
+  readonly platform: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly source: string;
+  readonly sourceSequence: number;
+}
+
 export interface RunEvent<TPayload = Record<string, unknown>> {
   readonly schemaVersion: 1;
   readonly eventId: string;
   readonly recordedSequence: number;
+  /** Present on newly written scoped events; omitted by legacy schema-v1 events. */
+  readonly platform?: string;
+  /** Present on newly written scoped events; omitted by legacy schema-v1 events. */
+  readonly attemptId?: string;
   readonly source: string;
   readonly sourceSequence: number;
   readonly kind: string;
@@ -135,6 +152,10 @@ export interface RunEvent<TPayload = Record<string, unknown>> {
 }
 
 export interface RunEventIntent<TPayload = Record<string, unknown>> {
+  /** Defaults to the run manifest platform when omitted. */
+  readonly platform?: string;
+  /** Required for attempt-scoped identity; omitted only for legacy event producers. */
+  readonly attemptId?: string;
   readonly source: string;
   readonly sourceSequence: number;
   readonly kind: string;

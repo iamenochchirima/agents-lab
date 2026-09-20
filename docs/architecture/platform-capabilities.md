@@ -53,6 +53,15 @@ opaque connection references. `metrics.json` derives capability counts from the 
 event stream so a platform inspection that omits earlier server events cannot erase approval
 or connection measurements.
 
+Normalized event identity is scoped to the platform, run, attempt, source, and source
+sequence. New event producers may provide `platform` and a stable `attemptId`; source
+sequence ordering is then enforced independently for each scoped stream. An exact replay
+returns the retained event, while different content for the same identity is a conflict and
+a gap in one stream is an ordering error. Legacy schema-v1 events without these optional
+fields keep their existing `runId:source:sourceSequence` IDs and are read as one legacy
+attempt, so existing run evidence remains readable while new platform retries can be
+deduplicated independently.
+
 For rollback, set `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=false` before starting the server.
 The API keeps affected profiles visible with an unavailable reason, resolution fails closed,
 and pure inline tools remain usable.

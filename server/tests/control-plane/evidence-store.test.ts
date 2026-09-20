@@ -150,6 +150,72 @@ test("rejects gaps and conflicting duplicate event identities", async () => {
   });
 });
 
+test("scopes event identity and ordering by platform, run, and attempt", async () => {
+  await withStore(async (store) => {
+    const attemptTwoStarted = await store.appendEvent({
+      ...intent("temporal-workflow", 1, "AgentStarted"),
+      platform: "temporal",
+      attemptId: "attempt-2",
+      payload: { attemptId: "attempt-2", sourceSequence: 1 },
+    });
+    const attemptOneStarted = await store.appendEvent({
+      ...intent("temporal-workflow", 1, "AgentStarted"),
+      platform: "temporal",
+      attemptId: "attempt-1",
+      payload: { attemptId: "attempt-1", sourceSequence: 1 },
+    });
+
+    assert.notEqual(attemptTwoStarted.eventId, attemptOneStarted.eventId);
+    assert.equal(attemptTwoStarted.platform, "temporal");
+    assert.equal(attemptTwoStarted.attemptId, "attempt-2");
+    assert.deepEqual(
+      await store.appendEvent({
+        ...intent("temporal-workflow", 1, "AgentStarted"),
+        platform: "temporal",
+        attemptId: "attempt-2",
+        payload: { attemptId: "attempt-2", sourceSequence: 1 },
+      }),
+      attemptTwoStarted,
+    );
+
+    await assert.rejects(
+      store.appendEvent({
+        ...intent("temporal-workflow", 3, "ModelCompleted"),
+        platform: "temporal",
+        attemptId: "attempt-2",
+        payload: { attemptId: "attempt-2", sourceSequence: 3 },
+      }),
+      (error: unknown) => error instanceof EventOrderingError,
+    );
+    await store.appendEvent({
+      ...intent("temporal-workflow", 2, "ModelCompleted"),
+      platform: "temporal",
+      attemptId: "attempt-2",
+      payload: { attemptId: "attempt-2", sourceSequence: 2 },
+    });
+
+    await assert.rejects(
+      store.appendEvent({
+        ...intent("temporal-workflow", 1, "DifferentKind"),
+        platform: "temporal",
+        attemptId: "attempt-2",
+        payload: { attemptId: "attempt-2", sourceSequence: 1, changed: true },
+      }),
+      (error: unknown) => error instanceof EvidenceConflictError,
+    );
+
+    await assert.rejects(
+      store.appendEvent({
+        ...intent("temporal-workflow", 1, "AgentStarted"),
+        platform: "restate",
+        attemptId: "attempt-3",
+        payload: { attemptId: "attempt-3", sourceSequence: 1 },
+      }),
+      (error: unknown) => error instanceof EvidenceConflictError,
+    );
+  });
+});
+
 test("writes terminal evidence idempotently and preserves unknown measurements as null", async () => {
   await withStore(async (store) => {
     const result: RunResult = {

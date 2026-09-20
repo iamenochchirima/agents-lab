@@ -34,7 +34,11 @@ export class McpTransport {
   }
 
   async discover(signal: AbortSignal): Promise<readonly McpToolManifest[]> {
-    const tools = await withDeadline(() => this.options.server.listTools(signal), this.options.limits.timeoutMs, signal);
+    const tools = await withDeadline(
+      (attemptSignal) => this.options.server.listTools(attemptSignal),
+      this.options.limits.timeoutMs,
+      signal,
+    );
     if (tools.length > 64) throw new Error("MCP discovery returned too many tools.");
     for (const tool of tools) validateToolManifest(tool);
     return tools;
@@ -56,7 +60,7 @@ export class McpTransport {
     const startedAt = new Date().toISOString();
     try {
       const result = await withDeadline(
-        () => this.options.server.callTool(tool.name, argumentsValue, requestId, signal),
+        (attemptSignal) => this.options.server.callTool(tool.name, argumentsValue, requestId, attemptSignal),
         this.options.limits.timeoutMs,
         signal,
       );
@@ -97,19 +101,47 @@ export class McpTransport {
 
 class DeadlineError extends Error {}
 
-async function withDeadline<T>(operation: () => Promise<T>, timeoutMs: number, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+async function withDeadline<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  parentSignal: AbortSignal,
+): Promise<T> {
+  if (parentSignal.aborted) throw parentSignal.reason ?? new DOMException("Aborted", "AbortError");
+
+  const controller = new AbortController();
+  let timedOut = false;
+  let parentAborted = false;
+  let rejectParent: ((reason: unknown) => void) | undefined;
+  const parentAbort = new Promise<never>((_, reject) => {
+    rejectParent = reject;
+  });
+  const onParentAbort = () => {
+    parentAborted = true;
+    const reason = parentSignal.reason ?? new DOMException("Aborted", "AbortError");
+    controller.abort(reason);
+    rejectParent?.(reason);
+  };
+  parentSignal.addEventListener("abort", onParentAbort, { once: true });
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new DeadlineError("deadline exceeded")), timeoutMs);
-  });
-  const abort = new Promise<never>((_, reject) => {
-    signal.addEventListener("abort", () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")), { once: true });
+    timer = setTimeout(() => {
+      timedOut = true;
+      const error = new DeadlineError("deadline exceeded");
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
   });
   try {
-    return await Promise.race([operation(), deadline, abort]);
+    const operationPromise = operation(controller.signal);
+    return await Promise.race([operationPromise, deadline, parentAbort]);
+  } catch (error) {
+    if (timedOut) throw new DeadlineError("deadline exceeded");
+    if (parentAborted) throw parentSignal.reason ?? new DOMException("Aborted", "AbortError");
+    throw error;
   } finally {
     if (timer) clearTimeout(timer);
+    parentSignal.removeEventListener("abort", onParentAbort);
   }
 }
 

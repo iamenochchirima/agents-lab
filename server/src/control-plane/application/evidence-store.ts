@@ -6,6 +6,7 @@ import type {
   OperationalLogEntry,
   OperationalLogIntent,
   RunEvent,
+  RunEventIdentity,
   RunEventIntent,
   RunManifest,
   RunMetrics,
@@ -16,6 +17,14 @@ import type {
 import type { ContextSnapshot } from "../../capabilities/context/contracts.js";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const EVENT_PLATFORM_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const EVENT_ATTEMPT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const LEGACY_ATTEMPT_ID = "legacy";
+
+interface ResolvedEventIdentity extends RunEventIdentity {
+  /** Whether the event uses the post-legacy explicit identity fields. */
+  readonly scoped: boolean;
+}
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_EVENT_BYTES = 256 * 1024;
 const MAX_EXECUTION_REFERENCE_BYTES = 128 * 1024;
@@ -188,6 +197,7 @@ export class RunEvidenceStore {
 
   async readEvents(runId: string): Promise<readonly RunEvent[]> {
     const path = join(this.runDirectory(runId), "events.jsonl");
+    const manifest = await this.readManifest(runId);
     let contents: string;
     try {
       contents = await readFile(path, "utf8");
@@ -216,11 +226,11 @@ export class RunEvidenceStore {
       } catch {
         throw new CorruptEvidenceError(path, index + 1);
       }
-      validateStoredEvent(event, path, index + 1);
+      validateStoredEvent(event, path, index + 1, runId, manifest.platform);
       return [event];
     });
 
-    validateEventCollection(events, path);
+    validateEventCollection(events, path, manifest.platform);
     return events;
   }
 
@@ -332,23 +342,28 @@ export class RunEvidenceStore {
     intent: RunEventIntent<TPayload>,
   ): Promise<RunEvent<TPayload>> {
     const path = join(this.runDirectory(intent.runId), "events.jsonl");
+    const manifest = await this.readManifest(intent.runId);
+    const identity = resolveEventIdentity(intent, manifest.platform);
     const events = await this.readEvents(intent.runId);
-    const eventId = `${intent.runId}:${intent.source}:${intent.sourceSequence}`;
-    const existing = events.find((event) => event.eventId === eventId);
+    const existing = events.find((event) => sameEventIdentity(storedEventIdentity(event, manifest.platform), identity));
     if (existing) {
-      if (!sameEventIntent(existing, intent)) {
-        throw new EvidenceConflictError(`Event identity has different content: ${eventId}`);
+      if (!sameEventIntent(existing, intent, identity, manifest.platform)) {
+        throw new EvidenceConflictError(`Event identity has different content: ${eventIdentityId(identity)}`);
       }
       return existing as RunEvent<TPayload>;
     }
 
     const lastSourceSequence = events.reduce(
-      (maximum, event) => (event.source === intent.source ? Math.max(maximum, event.sourceSequence) : maximum),
+      (maximum, event) => (
+        sameEventStream(storedEventIdentity(event, manifest.platform), identity)
+          ? Math.max(maximum, event.sourceSequence)
+          : maximum
+      ),
       0,
     );
     if (intent.sourceSequence !== lastSourceSequence + 1) {
       throw new EventOrderingError(
-        `Expected ${intent.source} source sequence ${lastSourceSequence + 1}, received ${intent.sourceSequence}.`,
+        `Expected ${identity.platform}/${identity.runId}/${identity.attemptId}/${identity.source} source sequence ${lastSourceSequence + 1}, received ${intent.sourceSequence}.`,
       );
     }
 
@@ -359,8 +374,12 @@ export class RunEvidenceStore {
 
     const event: RunEvent<TPayload> = {
       schemaVersion: 1,
-      eventId,
+      eventId: eventIdentityId(identity),
       recordedSequence: lastRecordedSequence + 1,
+      ...(identity.attemptId === LEGACY_ATTEMPT_ID && !identity.scoped ? {} : {
+        platform: identity.platform,
+        attemptId: identity.attemptId,
+      }),
       source: intent.source,
       sourceSequence: intent.sourceSequence,
       kind: intent.kind,
@@ -598,11 +617,99 @@ function deepEqual(left: unknown, right: unknown): boolean {
   return stableJson(left) === stableJson(right);
 }
 
-function sameEventIntent(event: RunEvent, intent: RunEventIntent): boolean {
+function resolveEventIdentity(intent: RunEventIntent, manifestPlatform: string): ResolvedEventIdentity {
+  const platform = intent.platform ?? manifestPlatform;
+  if (!EVENT_PLATFORM_PATTERN.test(platform)) {
+    throw new EvidenceConflictError("Event platform is not a valid platform identifier.");
+  }
+  if (platform !== manifestPlatform) {
+    throw new EvidenceConflictError(`Event platform does not match the run manifest: ${platform}.`);
+  }
+
+  const scoped = intent.platform !== undefined || intent.attemptId !== undefined;
+  const attemptId = intent.attemptId ?? LEGACY_ATTEMPT_ID;
+  if (!EVENT_ATTEMPT_ID_PATTERN.test(attemptId)) {
+    throw new EvidenceConflictError("Event attempt identity is not safe.");
+  }
+  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(intent.source)) {
+    throw new EvidenceConflictError("Event source is not a valid source identifier.");
+  }
+  if (!Number.isInteger(intent.sourceSequence) || intent.sourceSequence < 1) {
+    throw new EventOrderingError("Event source sequence must be a positive integer.");
+  }
+
+  return {
+    platform,
+    runId: intent.runId,
+    attemptId,
+    source: intent.source,
+    sourceSequence: intent.sourceSequence,
+    scoped,
+  };
+}
+
+function storedEventIdentity(event: RunEvent, expectedPlatform: string): ResolvedEventIdentity {
+  const hasPlatform = event.platform !== undefined;
+  const hasAttemptId = event.attemptId !== undefined;
+  if (hasPlatform !== hasAttemptId) {
+    throw new Error("Stored event has a partial scoped identity.");
+  }
+
+  const platform = event.platform ?? expectedPlatform;
+  const attemptId = event.attemptId ?? LEGACY_ATTEMPT_ID;
+  if (!EVENT_PLATFORM_PATTERN.test(platform) || !EVENT_ATTEMPT_ID_PATTERN.test(attemptId)) {
+    throw new Error("Stored event has an unsafe scoped identity.");
+  }
+
+  return {
+    platform,
+    runId: event.runId,
+    attemptId,
+    source: event.source,
+    sourceSequence: event.sourceSequence,
+    scoped: hasPlatform,
+  };
+}
+
+function eventIdentityId(identity: ResolvedEventIdentity): string {
+  if (!identity.scoped) {
+    // Keep schema-v1 IDs stable for old producers and existing evidence files.
+    return `${identity.runId}:${identity.source}:${identity.sourceSequence}`;
+  }
+  return `${identity.platform}:${identity.runId}:${encodeURIComponent(identity.attemptId)}:${identity.source}:${identity.sourceSequence}`;
+}
+
+function eventStreamKey(identity: RunEventIdentity): string {
+  return `${identity.platform}\u0000${identity.runId}\u0000${identity.attemptId}\u0000${identity.source}`;
+}
+
+function sameEventIdentity(left: RunEventIdentity, right: RunEventIdentity): boolean {
   return (
-    event.runId === intent.runId &&
-    event.source === intent.source &&
-    event.sourceSequence === intent.sourceSequence &&
+    left.platform === right.platform &&
+    left.runId === right.runId &&
+    left.attemptId === right.attemptId &&
+    left.source === right.source &&
+    left.sourceSequence === right.sourceSequence
+  );
+}
+
+function sameEventStream(left: RunEventIdentity, right: RunEventIdentity): boolean {
+  return (
+    left.platform === right.platform &&
+    left.runId === right.runId &&
+    left.attemptId === right.attemptId &&
+    left.source === right.source
+  );
+}
+
+function sameEventIntent(
+  event: RunEvent,
+  intent: RunEventIntent,
+  identity: ResolvedEventIdentity,
+  expectedPlatform: string,
+): boolean {
+  return (
+    sameEventIdentity(storedEventIdentity(event, expectedPlatform), identity) &&
     event.kind === intent.kind &&
     event.occurredAt === intent.occurredAt &&
     deepEqual(event.payload, intent.payload)
@@ -638,7 +745,7 @@ function isSafeOperationalString(value: string): boolean {
   return typeof value === "string" && value.length > 0 && !/[\u0000-\u001f\u007f]/.test(value);
 }
 
-function validateStoredEvent(event: RunEvent, path: string, line: number): void {
+function validateStoredEvent(event: RunEvent, path: string, line: number, expectedRunId: string, expectedPlatform: string): void {
   if (
     event.schemaVersion !== 1 ||
     typeof event.eventId !== "string" ||
@@ -654,24 +761,31 @@ function validateStoredEvent(event: RunEvent, path: string, line: number): void 
     throw new CorruptEvidenceError(path, line);
   }
 
-  if (event.eventId !== `${event.runId}:${event.source}:${event.sourceSequence}`) {
+  let identity: ResolvedEventIdentity;
+  try {
+    identity = storedEventIdentity(event, expectedPlatform);
+  } catch {
+    throw new CorruptEvidenceError(path, line);
+  }
+  if (event.runId !== expectedRunId || identity.platform !== expectedPlatform || event.eventId !== eventIdentityId(identity)) {
     throw new CorruptEvidenceError(path, line);
   }
 }
 
-function validateEventCollection(events: readonly RunEvent[], path: string): void {
-  const sourceSequences = new Map<RunEvent["source"], number>();
+function validateEventCollection(events: readonly RunEvent[], path: string, expectedPlatform: string): void {
+  const sourceSequences = new Map<string, number>();
 
   for (const [index, event] of events.entries()) {
     if (event.recordedSequence !== index + 1) {
       throw new CorruptEvidenceError(path, index + 1);
     }
 
-    const expectedSourceSequence = (sourceSequences.get(event.source) ?? 0) + 1;
+    const streamKey = eventStreamKey(storedEventIdentity(event, expectedPlatform));
+    const expectedSourceSequence = (sourceSequences.get(streamKey) ?? 0) + 1;
     if (event.sourceSequence !== expectedSourceSequence) {
       throw new CorruptEvidenceError(path, index + 1);
     }
-    sourceSequences.set(event.source, event.sourceSequence);
+    sourceSequences.set(streamKey, event.sourceSequence);
   }
 }
 

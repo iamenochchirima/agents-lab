@@ -25,6 +25,10 @@ Connection references are opaque and use the `conn_` prefix. The local fixture r
 - MCP discovery is not authorization; selected tools are revalidated at invocation.
 - Read-only API failures may use bounded retries. A dispatched write that times out is
   `unknown`, not an automatic retry.
+- Every API and MCP attempt receives a child abort signal. A deadline aborts the
+  underlying operation as well as the caller's wait; caller cancellation propagates
+  to the provider boundary. A non-cooperative provider can still leave an external
+  outcome unknown, so the result remains classified rather than retried blindly.
 - OAuth authorization uses one-time state and S256 PKCE. The browser handles references
   and callback status, not tokens.
 - Raw request bodies, authorization headers, and token values are not safe evidence.

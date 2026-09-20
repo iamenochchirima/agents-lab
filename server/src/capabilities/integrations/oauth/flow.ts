@@ -17,10 +17,10 @@ export interface OAuthTokenSet {
 }
 
 export interface OAuthProvider {
-  authorize(request: OAuthAuthorizationRequest): Promise<{ readonly code: string; readonly state: string }>;
-  exchange(code: string, verifier: string, redirectUri: string): Promise<OAuthTokenSet>;
-  refresh(refreshToken: string): Promise<OAuthTokenSet>;
-  revoke(token: string): Promise<void>;
+  authorize(request: OAuthAuthorizationRequest, signal?: AbortSignal): Promise<{ readonly code: string; readonly state: string }>;
+  exchange(code: string, verifier: string, redirectUri: string, signal?: AbortSignal): Promise<OAuthTokenSet>;
+  refresh(refreshToken: string, signal?: AbortSignal): Promise<OAuthTokenSet>;
+  revoke(token: string, signal?: AbortSignal): Promise<void>;
 }
 
 export interface SecretStore {
@@ -38,7 +38,7 @@ export class MemorySecretStore implements SecretStore {
 
 export class OAuthFlow {
   private readonly pending = new Map<string, { readonly verifier: string; readonly redirectUri: string; readonly scopes: readonly string[] }>();
-  private readonly refreshes = new Map<string, Promise<OAuthTokenSet>>();
+  private readonly refreshes = new Map<string, RefreshEntry>();
 
   constructor(private readonly provider: OAuthProvider, private readonly secrets: SecretStore) {}
 
@@ -59,35 +59,86 @@ export class OAuthFlow {
     return { state, codeChallenge, codeChallengeMethod: "S256", redirectUri, scopes: [...scopes], authorizationUrl: url.toString() };
   }
 
-  async complete(ref: string, state: string, code: string): Promise<OAuthTokenSet> {
+  async complete(ref: string, state: string, code: string, signal?: AbortSignal): Promise<OAuthTokenSet> {
+    throwIfAborted(signal);
     const pending = this.pending.get(state);
     if (!pending) throw new Error("OAuth state is missing, expired, or already used.");
     this.pending.delete(state);
-    const tokens = await this.provider.exchange(code, pending.verifier, pending.redirectUri);
+    const tokens = await this.provider.exchange(code, pending.verifier, pending.redirectUri, signal);
+    throwIfAborted(signal);
     await this.secrets.write(ref, tokens);
     return tokens;
   }
 
-  async accessToken(ref: string): Promise<string> {
+  async accessToken(ref: string, signal?: AbortSignal): Promise<string> {
+    throwIfAborted(signal);
     const current = await this.secrets.read(ref);
     if (!current) throw new Error("OAuth connection is not configured.");
     if (Date.parse(current.expiresAt) > Date.now() + 30_000) return current.accessToken;
     if (!current.refreshToken) throw new Error("OAuth access token expired and no refresh token is available.");
-    const inFlight = this.refreshes.get(ref);
-    if (inFlight) return (await inFlight).accessToken;
-    const refresh = this.provider.refresh(current.refreshToken).then(async (tokens) => {
-      await this.secrets.write(ref, tokens);
-      return tokens;
-    }).finally(() => this.refreshes.delete(ref));
-    this.refreshes.set(ref, refresh);
-    return (await refresh).accessToken;
+    let entry = this.refreshes.get(ref);
+    if (!entry) {
+      const controller = new AbortController();
+      let created: RefreshEntry | undefined;
+      const refresh = this.provider.refresh(current.refreshToken, controller.signal).then(async (tokens) => {
+        await this.secrets.write(ref, tokens);
+        return tokens;
+      }).finally(() => {
+        if (created && this.refreshes.get(ref) === created) this.refreshes.delete(ref);
+      });
+      // A cancelled final waiter still leaves the shared provider promise to
+      // settle asynchronously. Attach a sink so that provider abort errors do
+      // not become process-level unhandled rejections; callers awaiting the
+      // entry still receive the original failure through `waitForAbort`.
+      void refresh.catch(() => undefined);
+      created = { controller, promise: refresh, waiters: 0 };
+      entry = created;
+      this.refreshes.set(ref, entry);
+    }
+
+    entry.waiters += 1;
+    try {
+      return (await waitForAbort(entry.promise, signal)).accessToken;
+    } finally {
+      entry.waiters -= 1;
+      if (signal?.aborted && entry.waiters === 0 && this.refreshes.get(ref) === entry) {
+        entry.controller.abort(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      }
+    }
   }
 
-  async revoke(ref: string): Promise<void> {
+  async revoke(ref: string, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     const current = await this.secrets.read(ref);
-    if (current) await this.provider.revoke(current.refreshToken ?? current.accessToken);
+    if (current) await this.provider.revoke(current.refreshToken ?? current.accessToken, signal);
     await this.secrets.delete(ref);
   }
+}
+
+interface RefreshEntry {
+  readonly controller: AbortController;
+  readonly promise: Promise<OAuthTokenSet>;
+  waiters: number;
+}
+
+async function waitForAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  throwIfAborted(signal);
+  let rejectAbort: ((reason: unknown) => void) | undefined;
+  const abort = new Promise<never>((_, reject) => {
+    rejectAbort = reject;
+  });
+  const onAbort = () => rejectAbort?.(signal.reason ?? new DOMException("Aborted", "AbortError"));
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    return await Promise.race([promise, abort]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
 }
 
 function isExactHttpUrl(value: string): boolean {

@@ -39,6 +39,46 @@ test("MCP discovery is allowlisted and invocation is bounded", async () => {
   assert.throws(() => new McpTransport({ server, endpoint: "https://untrusted.example", allowedEndpoints: ["local://fixture"], limits }));
 });
 
+test("MCP deadlines and cancellation abort the underlying call", async () => {
+  let callAborted = false;
+  const server = {
+    serverName: "local-cancellable",
+    protocolVersion: "2025-06-18",
+    async listTools() {
+      return [{ name: "fixture.lookup", version: "1.0.0", description: "Read fixture data", inputSchema: { type: "object" } }];
+    },
+    async callTool(_name: string, _input: Readonly<Record<string, unknown>>, _requestId: string, signal: AbortSignal) {
+      await new Promise<never>((_, reject) => {
+        signal.addEventListener("abort", () => {
+          callAborted = true;
+          reject(signal.reason ?? new Error("call cancelled"));
+        }, { once: true });
+      });
+      throw new Error("call should have been aborted");
+    },
+  };
+  const tool = { name: "fixture.lookup", version: "1.0.0", description: "Read fixture data", inputSchema: { type: "object" } };
+  const transport = new McpTransport({
+    server,
+    endpoint: "local://cancellable",
+    allowedEndpoints: ["local://cancellable"],
+    limits: { ...limits, timeoutMs: 5 },
+  });
+  const timedOut = await transport.invoke(tool, "mcp-timeout", { key: "alpha" }, new AbortController().signal);
+  assert.equal(timedOut.status, "timed_out");
+  assert.equal(timedOut.error?.code, "MCP_TIMEOUT");
+  assert.equal(callAborted, true);
+
+  callAborted = false;
+  const controller = new AbortController();
+  const pending = transport.invoke(tool, "mcp-cancel", { key: "alpha" }, controller.signal);
+  controller.abort(new Error("cancelled by test"));
+  const cancelled = await pending;
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(cancelled.error?.code, "MCP_CANCELLED");
+  assert.equal(callAborted, true);
+});
+
 test("direct API retries bounded read failures and keeps provider request IDs", async () => {
   let calls = 0;
   const client = new DirectApiClient({
@@ -58,19 +98,49 @@ test("direct API retries bounded read failures and keeps provider request IDs", 
 });
 
 test("direct API does not retry a dispatched write with unknown outcome", async () => {
+  let attemptAborted = false;
   const client = new DirectApiClient({
     limits: { ...limits, timeoutMs: 5 },
     adapter: {
-      async send() {
+      async send(_request, signal) {
+        signal.addEventListener("abort", () => { attemptAborted = true; }, { once: true });
         await new Promise((resolve) => setTimeout(resolve, 30));
         throw new DispatchUnknownError("ack lost");
       },
     },
   });
-  const result = await client.request({ ...request, operation: "fixture.write", idempotencyKey: "run-1:write-1" }, { readOnly: false, signal: new AbortController().signal });
+  const result = await client.request({
+    ...request,
+    operation: "fixture.write",
+    idempotencyKey: "run-1:write-1",
+    limits: { ...request.limits, timeoutMs: 5 },
+  }, { readOnly: false, signal: new AbortController().signal });
   assert.equal(result.status, "unknown");
   assert.equal(result.attempts.length, 1);
   assert.equal(result.error?.code, "API_OUTCOME_UNKNOWN");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(attemptAborted, true);
+});
+
+test("direct API cancellation aborts the in-flight attempt", async () => {
+  const controller = new AbortController();
+  let attemptAborted = false;
+  const client = new DirectApiClient({
+    limits,
+    adapter: {
+      async send(_request, signal) {
+        signal.addEventListener("abort", () => { attemptAborted = true; }, { once: true });
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return { providerRequestId: "late", statusCode: 200, body: { late: true } };
+      },
+    },
+  });
+  const pending = client.request(request, { readOnly: true, signal: controller.signal });
+  controller.abort(new Error("cancelled by test"));
+  const result = await pending;
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.error?.code, "API_CANCELLED");
+  assert.equal(attemptAborted, true);
 });
 
 test("direct API does not retry a write after a provider response either", async () => {
@@ -133,6 +203,38 @@ test("OAuth flow uses one-time S256 PKCE state and serializes refresh", async ()
   assert.equal(refreshCalls, 1);
   await flow.revoke("social-fixture");
   assert.equal(await secrets.read("social-fixture"), null);
+});
+
+test("OAuth refresh cancellation aborts the shared provider refresh", async () => {
+  let refreshAborted = false;
+  const provider: OAuthProvider = {
+    async authorize(request) { return { code: "fixture-code", state: request.state }; },
+    async exchange() { return { accessToken: "access", refreshToken: "refresh", expiresAt: new Date(Date.now() - 1_000).toISOString(), scopes: [] }; },
+    async refresh(_refreshToken, signal) {
+      await new Promise<never>((_, reject) => {
+        signal?.addEventListener("abort", () => {
+          refreshAborted = true;
+          reject(signal.reason ?? new Error("refresh cancelled"));
+        }, { once: true });
+      });
+      throw new Error("refresh should have been cancelled");
+    },
+    async revoke() {},
+  };
+  const secrets = new MemorySecretStore();
+  await secrets.write("cancelled-oauth", {
+    accessToken: "expired",
+    refreshToken: "refresh-token",
+    expiresAt: new Date(Date.now() - 1_000).toISOString(),
+    scopes: [],
+  });
+  const flow = new OAuthFlow(provider, secrets);
+  const controller = new AbortController();
+  const pending = flow.accessToken("cancelled-oauth", controller.signal);
+  controller.abort(new Error("cancelled by test"));
+  await assert.rejects(pending, /cancelled by test/);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(refreshAborted, true);
 });
 
 test("local fixtures exercise MCP, direct API, and OAuth through the same boundaries", async () => {

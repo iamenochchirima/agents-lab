@@ -1,7 +1,7 @@
 # Platform capabilities, tools, skills, and connections
 
 **Created:** 2026-09-20T13:25:29+02:00
-**Last updated:** 2026-09-20T21:06:43+02:00
+**Last updated:** 2026-09-20T21:31:14+02:00
 **Status:** Active — shared capability integration in progress
 **Owner:** Primary platform implementation owner
 **Platforms:** Temporal, Restate, LangGraph, Mastra
@@ -375,7 +375,7 @@ Connection metadata and credentials are separate:
       journal, LangGraph checkpoint/thread, or Mastra store/process state.
 - [ ] A server restart reloads the immutable grant set and reconciles in-flight calls; it
       does not silently create another external side effect.
-- [ ] Duplicate and out-of-order events deduplicate by platform/run/attempt identity, not
+- [x] Duplicate and out-of-order events deduplicate by platform/run/attempt identity, not
       by a global event name.
 - [x] Missing credentials, revoked scopes, unavailable MCP servers, invalid plugin
       manifests, and policy denials become honest unavailable/failed states.
@@ -438,6 +438,9 @@ unrelated twenty-minute UI slices.
       verify callback and refresh races.
 - [x] Implement trusted local plugin manifest validation without arbitrary plugin execution.
 - [x] Add isolated tests before platform adapter wiring.
+- [x] Propagate caller cancellation and deadlines into direct-API and MCP provider
+      operations, and into coalesced OAuth refreshes; classify timeout, cancellation,
+      and write-unknown outcomes without retrying side effects.
 
 ### Phase 3 — platform-native binding across the four priority platforms
 
@@ -587,6 +590,10 @@ Validated so far:
 - Control-plane HTTP capability evidence tests — 11 passed, 0 failed.
 - `python3 -m json.tool server/src/platforms/langgraph/protocol/schema.json` and
   `bash -n scripts/run_local_stack.sh` — passed.
+- `pnpm --filter @agent-harness-lab/lab-server run build` and
+  `node --test server/dist/tests/control-plane/evidence-store.test.js` — passed; the
+  evidence-store suite reports 12 passed, 0 failed, including scoped attempt replay,
+  per-attempt ordering, and manifest-platform mismatch coverage.
 
 The local fixture now crosses real HTTP boundaries for Temporal, Restate, LangGraph, and Mastra
 native execution tests. Run admission also records an ordered `CapabilityResolutionRecorded`
