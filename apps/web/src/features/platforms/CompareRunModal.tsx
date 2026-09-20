@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { ModelPicker } from "../models/ModelPicker";
+import { CapabilityPicker } from "./CapabilityPicker";
 import { appPaths } from "../../routes/paths";
 import { isRunnableBaseline, platformCatalog } from "./platformCatalog";
 import {
@@ -14,6 +15,7 @@ import {
   getRun,
   PlatformApiError,
   type ModelSelection,
+  type CapabilityApproval,
   type RunSelection,
   type RunStatus,
   type RunView,
@@ -48,6 +50,8 @@ export function CompareRunModal(props: CompareRunModalProps) {
   const [scenarioId, setScenarioId] = useState(props.initialScenarioId);
   const [experimentId, setExperimentId] = useState(props.initialExperimentId);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(props.initialModel);
+  const [capabilityProfileId, setCapabilityProfileId] = useState("local-safe");
+  const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
   const [task, setTask] = useState(props.initialTask);
   const [entries, setEntries] = useState<ComparisonEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
@@ -97,6 +101,8 @@ export function CompareRunModal(props: CompareRunModalProps) {
     setScenarioId(props.initialScenarioId);
     setExperimentId(props.initialExperimentId);
     setSelectedModel(props.initialModel);
+    setCapabilityProfileId("local-safe");
+    setCapabilityApprovals([]);
     setTask(props.initialTask);
     setEntries([]);
     setIsRunning(false);
@@ -173,7 +179,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
           comparisonId,
           task: { kind: "prompt", prompt: task.trim() },
           model: selectedModel!,
-          capabilities: DEFAULT_PLATFORM_CAPABILITIES,
+          capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, ...(capabilityApprovals.length > 0 ? { approvals: capabilityApprovals } : {}) },
           sessionId: `comparison-${comparisonId}-${platform.id}`,
           clientTurnId: `comparison-turn-${comparisonId}-${platform.id}`,
           selection: {
@@ -217,6 +223,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
           <div className="modal-form-grid">
             <label className="compact-control"><span>Scenario</span><select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)}>{scenarioCatalog.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.name}</option>)}</select></label>
             <ModelPicker onChange={setSelectedModel} value={selectedModel} />
+            <CapabilityPicker onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
             <label className="compact-control"><span>Experiment</span><select value={experimentId} onChange={(event) => setExperimentId(event.target.value)}>{experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}</select></label>
             <label className="compact-control compare-task-field"><span>Task</span><textarea onChange={(event) => setTask(event.target.value)} placeholder="Describe a task" rows={3} value={task} /></label>
           </div>

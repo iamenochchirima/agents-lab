@@ -7,11 +7,12 @@ import { environmentCatalog } from "../environments/environmentCatalog";
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { ModelPicker } from "../models/ModelPicker";
+import { CapabilityPicker } from "./CapabilityPicker";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
 import { CompareRunModal } from "./CompareRunModal";
 import { isRunnableVariant } from "./platformCatalog";
 import { appPaths } from "../../routes/paths";
-import { cancelRun, createRun, DEFAULT_PLATFORM_CAPABILITIES, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, resumeRun, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
+import { cancelRun, createRun, DEFAULT_PLATFORM_CAPABILITIES, getPlatformConnectivity, getRun, getRunEvents, PlatformApiError, resumeRun, type CapabilityApproval, type ModelSelection, type PlatformConnectivity, type RunEvent, type RunView } from "./platformApi";
 import { RunStatusPanel } from "./RunStatusPanel";
 
 export function PlatformRunnerPage() {
@@ -25,6 +26,8 @@ export function PlatformRunnerPage() {
   const [infrastructureId, setInfrastructureId] = useState(platform.infrastructure[0]?.id ?? "none");
   const [experimentId, setExperimentId] = useState("none");
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
+  const [capabilityProfileId, setCapabilityProfileId] = useState("local-safe");
+  const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [run, setRun] = useState<RunView | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -159,7 +162,7 @@ export function PlatformRunnerPage() {
         variant: variantId,
         task: { kind: "prompt", prompt: task.trim() },
         model: selectedModel,
-        capabilities: DEFAULT_PLATFORM_CAPABILITIES,
+        capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, ...(capabilityApprovals.length > 0 ? { approvals: capabilityApprovals } : {}) },
         ...(preservesSession && sessionId ? { sessionId } : {}),
         selection: {
           scenarioId,
@@ -280,6 +283,7 @@ export function PlatformRunnerPage() {
             <CompactSelect label="Experiment" value={experimentId} onChange={setExperimentId}>
               {experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}
             </CompactSelect>
+            <CapabilityPicker onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
             <ModelPicker onChange={setSelectedModel} value={selectedModel} />
           </div>
         </section>

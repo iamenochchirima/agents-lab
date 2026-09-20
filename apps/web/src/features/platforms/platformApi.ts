@@ -154,15 +154,53 @@ export interface PlatformRunRequest {
 }
 
 export interface PlatformRunCapabilities {
+  readonly profileId?: string;
   readonly tools: {
     readonly enabledNames: readonly string[];
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  readonly approvals?: readonly CapabilityApproval[];
+}
+
+export interface CapabilityApproval {
+  readonly schemaVersion: 1;
+  readonly decisionId: string;
+  readonly capabilityId: string;
+  readonly version: string;
+  readonly allowedOperations: readonly string[];
+  readonly connectionRef?: string;
+  readonly decision: "approved" | "denied";
+  readonly decidedAt: string;
+  readonly expiresAt: string;
+}
+
+export interface CapabilityProfile {
+  readonly id: string;
+  readonly version: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly skills: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly name: string;
+    readonly description: string;
+    readonly digest: string;
+  }[];
+  readonly capabilities: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly kind: string;
+    readonly displayName: string;
+    readonly description: string;
+    readonly risk: string;
+    readonly operations: readonly string[];
+  }[];
 }
 
 /** The only capability exposed by the current browser workload. */
 export const DEFAULT_PLATFORM_CAPABILITIES: PlatformRunCapabilities = Object.freeze({
+  profileId: "local-safe",
   tools: Object.freeze({
     enabledNames: Object.freeze(["calculator"]),
     maxRounds: 6,
@@ -172,6 +210,7 @@ export const DEFAULT_PLATFORM_CAPABILITIES: PlatformRunCapabilities = Object.fre
 
 export const RUN_EVIDENCE_FILES = [
   "config.json",
+  "capabilities.json",
   "events.jsonl",
   "trajectory.json",
   "metrics.json",
@@ -240,6 +279,11 @@ export async function getModels(query = "", signal?: AbortSignal): Promise<Model
   const params = new URLSearchParams({ provider: "openrouter", limit: "40" });
   if (query.trim()) params.set("q", query.trim());
   return requestJson<ModelCatalog>(`/api/models?${params.toString()}`, { signal });
+}
+
+export async function getCapabilityProfiles(signal?: AbortSignal): Promise<readonly CapabilityProfile[]> {
+  const body = await requestJson<{ readonly profiles?: readonly CapabilityProfile[] }>("/api/capabilities", { signal });
+  return Array.isArray(body.profiles) ? body.profiles : [];
 }
 
 export async function createRun(request: PlatformRunRequest, signal?: AbortSignal): Promise<RunView> {

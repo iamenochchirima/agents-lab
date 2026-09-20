@@ -46,6 +46,7 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
       })(),
     })`).then(JSON.parse);
     assert.equal(fixture.state.createRequests, 1, "a second send must not create another run");
+    assert.ok(fixture.state.capabilityRequests >= 1, "Chat must load the server-owned capability profiles");
     assert.match(fixture.state.requests[0]?.sessionId ?? "", /^session-/);
     assert.match(fixture.state.clientTurnIds[0] ?? "", /^chat-turn-[A-Za-z0-9-]+$/);
     assert.equal(completed.userMessages, 1);
@@ -62,7 +63,7 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
       href: link.getAttribute("href"),
       target: link.getAttribute("target"),
     })))` ).then(JSON.parse);
-    assert.deepEqual(evidence.map((item) => item.name), ["config.json", "events.jsonl", "logs/operations.jsonl", "context.json", "trajectory.json", "metrics.json", "result.json"]);
+    assert.deepEqual(evidence.map((item) => item.name), ["config.json", "capabilities.json", "events.jsonl", "logs/operations.jsonl", "context.json", "trajectory.json", "metrics.json", "result.json"]);
     assert.ok(evidence.every((item) => item.href?.startsWith(`http://127.0.0.1:4318/api/runs/${fixture.state.runIds[0]}/evidence/`)));
     assert.ok(evidence.every((item) => item.target === "_blank"));
 
@@ -85,6 +86,86 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
     assert.equal(await browser.cdp.evaluate("document.querySelector('.chat-page') === null"), true);
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
     assert.equal(browser.dialogs.length, 0, "Chat must not open native browser dialogs");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Platform Chat displays and submits the selected capability profile", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal/chat");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 2');
+
+    const profileOptions = await browser.cdp.evaluate(`JSON.stringify({
+      selected: document.querySelector('select[aria-label="Capability profile"]')?.selectedOptions[0]?.textContent?.trim(),
+      options: Array.from(document.querySelectorAll('select[aria-label="Capability profile"] option')).map((option) => ({ value: option.value, text: option.textContent?.trim() })),
+    })`).then(JSON.parse);
+    assert.equal(profileOptions.selected, "Local safe · 1 skill");
+    assert.deepEqual(profileOptions.options, [
+      { value: "local-safe", text: "Local safe · 1 skill" },
+      { value: "local-write-approved", text: "Local write test · 1 skill" },
+    ]);
+
+    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
+      capabilities: document.querySelector('.capability-picker-summary span')?.textContent?.trim(),
+      skills: document.querySelector('.capability-picker-summary small')?.textContent?.trim(),
+    })`).then(JSON.parse), {
+      capabilities: "Calculator, Local read fixture",
+      skills: "Research summary",
+    });
+
+    await chooseCapabilityProfile(browser.cdp, "local-safe");
+    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
+      value: document.querySelector('select[aria-label="Capability profile"]')?.value,
+      label: document.querySelector('select[aria-label="Capability profile"]')?.selectedOptions[0]?.textContent?.trim(),
+    })`).then(JSON.parse), {
+      value: "local-safe",
+      label: "Local safe · 1 skill",
+    });
+
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Use the selected capability profile.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "local-safe");
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Platform Chat uses an application approval dialog for a write-capable profile", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal/chat");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 2');
+    await chooseCapabilityProfile(browser.cdp, "local-write-approved");
+    await waitForText(browser.cdp, "Allow write access?");
+    await waitForText(browser.cdp, "Approval write fixture");
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".capability-approval-dialog")?.getAttribute("role")'), "dialog");
+
+    await clickButton(browser.cdp, "Approve");
+    await waitForExpression(browser.cdp, 'document.querySelector(\'select[aria-label="Capability profile"]\')?.value === "local-write-approved"');
+    assert.equal(await browser.cdp.evaluate('document.querySelector(".capability-approval-dialog") === null'), true);
+
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Run with approved write capability.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+    const approval = fixture.state.requests[0]?.capabilities?.approvals?.[0];
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "local-write-approved");
+    assert.equal(approval?.capabilityId, "fixture_write");
+    assert.equal(approval?.decision, "approved");
+    assert.match(approval?.decisionId ?? "", /^approval_/);
+    assert.equal(browser.dialogs.length, 0, "capability approval must use application UI, not a browser dialog");
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
   }
@@ -260,6 +341,43 @@ test("Compare starts independent platform runs with one comparison identity", as
     const runLinks = await browser.cdp.evaluate('Array.from(document.querySelectorAll(".comparison-result-link")).map((link) => link.getAttribute("href"))');
     assert.equal(runLinks.length, 2);
     assert.equal(runLinks.every((href) => href?.match(/^\/platforms\/(?:temporal|mastra)\/chat\?run=run-/)), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Compare displays one capability profile and sends it to each platform run", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await clickButton(browser.cdp, "Compare");
+    await waitForText(browser.cdp, "One task, multiple platforms");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 2');
+
+    await chooseCapabilityProfile(browser.cdp, "local-safe", ".compare-modal");
+    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
+      label: document.querySelector('.compare-modal select[aria-label="Capability profile"]')?.selectedOptions[0]?.textContent?.trim(),
+      capabilities: document.querySelector('.compare-modal .capability-picker-summary span')?.textContent?.trim(),
+      skills: document.querySelector('.compare-modal .capability-picker-summary small')?.textContent?.trim(),
+    })`).then(JSON.parse), {
+      label: "Local safe · 1 skill",
+      capabilities: "Calculator, Local read fixture",
+      skills: "Research summary",
+    });
+    await toggleComparisonPlatform(browser.cdp, "Mastra");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-platform-picker input:checked").length === 2');
+    await setInput(browser.cdp, ".compare-task-field textarea", "Compare the selected capability profile.");
+    await clickButton(browser.cdp, "Run comparison");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-result-completed").length === 2');
+
+    assert.equal(fixture.state.requests.length, 2);
+    assert.deepEqual(fixture.state.requests.map((request) => request.capabilities?.profileId), ["local-safe", "local-safe"]);
+    assert.equal(new Set(fixture.state.requests.map((request) => request.sessionId)).size, 2);
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -817,6 +935,7 @@ test("Platform Chat remains usable at desktop, tablet, and narrow widths", async
 
 async function installFixture(cdp) {
   const state = {
+    capabilityRequests: 0,
     createRequests: 0,
     runReads: 0,
     runReadsById: new Map(),
@@ -857,6 +976,12 @@ async function installFixture(cdp) {
         defaultModel: "cohere/north-mini-code:free",
         models: [modelOption()],
       } });
+      return;
+    }
+
+    if (url.pathname === "/api/capabilities" && event.request.method === "GET") {
+      state.capabilityRequests += 1;
+      await fulfill(cdp, event.requestId, { status: 200, body: { profiles: capabilityProfiles() } });
       return;
     }
 
@@ -1129,6 +1254,34 @@ function modelOption() {
   };
 }
 
+function capabilityProfiles() {
+  return [
+    {
+      id: "local-safe",
+      version: "1.0.0",
+      displayName: "Local safe",
+      description: "Pure tools and read-only local fixture access.",
+      skills: [{ id: "research-summary", version: "1.0.0", name: "Research summary", description: "Keeps research summaries concise and evidence-aware.", digest: "sha256:fixture-research-summary" }],
+      capabilities: [
+        { id: "calculator", version: "1.0.0", kind: "tool", displayName: "Calculator", description: "Bounded deterministic arithmetic.", risk: "pure", operations: ["calculate"] },
+        { id: "fixture_lookup", version: "1.0.0", kind: "connection", displayName: "Local read fixture", description: "Read-only provider-shaped local data.", risk: "read", operations: ["lookup"] },
+      ],
+    },
+    {
+      id: "local-write-approved",
+      version: "1.0.0",
+      displayName: "Local write test",
+      description: "Local write fixture; requires an explicit approval decision.",
+      skills: [{ id: "research-summary", version: "1.0.0", name: "Research summary", description: "Keeps research summaries concise and evidence-aware.", digest: "sha256:fixture-research-summary" }],
+      capabilities: [
+        { id: "calculator", version: "1.0.0", kind: "tool", displayName: "Calculator", description: "Bounded deterministic arithmetic.", risk: "pure", operations: ["calculate"] },
+        { id: "fixture_lookup", version: "1.0.0", kind: "connection", displayName: "Local read fixture", description: "Read-only provider-shaped local data.", risk: "read", operations: ["lookup"] },
+        { id: "fixture_write", version: "1.0.0", kind: "connection", displayName: "Approval write fixture", description: "A deterministic write used to verify approval and unknown-outcome handling.", risk: "write", operations: ["write"] },
+      ],
+    },
+  ];
+}
+
 async function openBrowser() {
   const profileDirectory = await mkdtemp(join(tmpdir(), "agentlab-platform-chat-browser-"));
   const debugPort = await unusedPort();
@@ -1186,6 +1339,18 @@ async function chooseVariant(cdp, variant) {
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
     if (!setter) throw new Error("Select value setter not found");
     setter.call(select, ${JSON.stringify(variant)});
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  })()`);
+}
+
+async function chooseCapabilityProfile(cdp, profileId, scope = "") {
+  const selector = `${scope} select[aria-label="Capability profile"]`;
+  await cdp.evaluate(`(() => {
+    const select = document.querySelector(${JSON.stringify(selector)});
+    if (!select) throw new Error("Capability profile select not found");
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+    if (!setter) throw new Error("Select value setter not found");
+    setter.call(select, ${JSON.stringify(profileId)});
     select.dispatchEvent(new Event("change", { bubbles: true }));
   })()`);
 }

@@ -5,6 +5,7 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
+import { CapabilityPicker } from "./CapabilityPicker";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -20,6 +21,7 @@ import {
   PlatformApiError,
   resumeRun,
   type ModelSelection,
+  type CapabilityApproval,
   type PlatformConnectivity,
   type PlatformRunRequest,
   type RunEvidenceFile,
@@ -45,6 +47,8 @@ export function PlatformChatPage() {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
+  const [capabilityProfileId, setCapabilityProfileId] = useState("local-safe");
+  const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
   const [scenarioId, setScenarioId] = useState(scenarioCatalog[0].id);
   const [backendProfileId, setBackendProfileId] = useState(platform.backendProfiles[0]?.id ?? "");
   const [variantId, setVariantId] = useState(platform.variants[0]?.id ?? "baseline");
@@ -263,7 +267,7 @@ export function PlatformChatPage() {
       variant: variantId,
       task: { kind: "prompt", prompt: text },
       model: selectedModel,
-      capabilities: DEFAULT_PLATFORM_CAPABILITIES,
+      capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, ...(capabilityApprovals.length > 0 ? { approvals: capabilityApprovals } : {}) },
       ...(preservesSession && requestSessionId ? { sessionId: requestSessionId } : {}),
       ...(clientTurnId ? { clientTurnId } : {}),
       selection: {
@@ -454,6 +458,7 @@ export function PlatformChatPage() {
               <span className={isReady ? "chat-ready" : "chat-unavailable"}>{isReady ? "Ready" : "Unavailable"}</span>
             </div>
             <ModelPicker disabled={modelPickerDisabled} onChange={setSelectedModel} value={selectedModel} />
+            <CapabilityPicker disabled={modelPickerDisabled} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
             <details className="chat-options">
               <summary>Run options <ChevronDown aria-hidden="true" size={14} /></summary>
               <div className="chat-option-grid">
@@ -623,7 +628,7 @@ function NativeRunDetails({ native, platform, variant }: { native: Record<string
 
 function availableEvidenceFiles(run: RunView): readonly RunEvidenceFile[] {
   const files: RunEvidenceFile[] = [];
-  files.push("config.json", "events.jsonl");
+  files.push("config.json", "capabilities.json", "events.jsonl");
   files.push("logs/operations.jsonl");
   if (run.executionReference?.platform === "mastra") files.push("native/mastra.json");
   if (run.context) files.push("context.json");
