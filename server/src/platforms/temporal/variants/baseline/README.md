@@ -23,10 +23,11 @@ The first run is a prompt completion with a server-owned multi-turn context sess
 6. The server reconciles the workflow's ordered event intents and writes
    the normalized Lab evidence.
 
-The session context currently contains the declared instruction and text transcript.
-This slice exposes only the shared pure `calculator` tool. It does not include
-skills, MCP, OAuth,
-plugins, subagents, long-term memory, or external business side effects.
+The session context currently contains the declared instruction, text transcript, and any
+selected versioned skill as untrusted context. The shared profile can expose `calculator`,
+the local read fixture, and the approval-gated local write fixture through Temporal
+Activities. MCP and OAuth are exercised through their explicit local protocol boundaries;
+provider accounts and business integrations are not implied by the fixture.
 
 ## Ownership
 

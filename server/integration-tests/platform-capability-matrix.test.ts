@@ -101,6 +101,23 @@ test(
           capabilities: createDefaultCapabilityCatalog(),
           context: new ContextService(new ContextSessionStore(config.contextRoot), new CharacterTokenEstimator()),
         });
+        const deniedCreated = await service.createRun({
+            platform: runner.platform,
+            variant: runner.variant,
+            task: { kind: "prompt", prompt: "Attempt a write without approval." },
+            model: { provider: "fake", model: "fake-connected-write", contextWindowTokens: 16_384 },
+            capabilities: {
+              tools: { enabledNames: ["fixture_write"], maxRounds: 4, maxCalls: 4 },
+            },
+          });
+        const denied = await waitForTerminal(service, deniedCreated.runId);
+        assert.equal(denied.status, "completed", `${runner.platform} did not return the policy result honestly`);
+        const deniedEvent = denied.events.find((event) =>
+          (event.kind === "ToolPolicyDenied" || event.kind === "ToolCallRejected") &&
+          event.payload.toolName === "fixture_write",
+        );
+        assert.ok(deniedEvent, `${runner.platform} events: ${denied.events.map((event) => event.kind).join(",")}`);
+        assert.equal(denied.events.some((event) => event.kind === "ToolExecutionCompleted"), false);
         const created = await service.createRun({
           platform: runner.platform,
           variant: runner.variant,

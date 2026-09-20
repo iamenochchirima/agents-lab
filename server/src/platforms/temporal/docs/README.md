@@ -31,7 +31,9 @@ using either:
 - `fake`, which is deterministic and supports controlled failure fixtures; or
 - `openrouter`, which is disabled unless explicitly enabled in server configuration.
 
-Context is currently text transcript plus the declared system instruction. The baseline
-has no tool execution, skills, long-term memory, integrations, side effects, or
-multi-agent execution. Those capabilities belong to later variants and must not be
-inferred from this slice.
+Context is currently the shared text transcript plus the declared system instruction.
+The baseline can receive the server-owned capability profile, execute the pure calculator
+and local read/write fixture tools through a Temporal Activity, and include selected skills
+as untrusted context. MCP and OAuth remain shared protocol boundaries with explicit local
+fixture tests; they are not silently treated as connected production accounts. Long-term
+memory, channels, subagents, and external business integrations remain later variants.

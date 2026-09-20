@@ -64,6 +64,22 @@ supports bounded lookup and idempotent write requests so platform adapters can b
 over HTTP without Docker. A lost write acknowledgement remains `unknown`; the client
 must not retry it automatically.
 
+To run the same connected profile through the four priority platform boundaries, keep the
+stack running and use a shared context root:
+
+```bash
+AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191 \
+AGENTLAB_CONTEXT_ROOT="$PWD/lab/sessions" \
+pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix
+```
+
+The matrix checks the read-only fixture, an explicitly approved write, and cancellation
+through Temporal, Restate, LangGraph, and Mastra. Native platform suites separately cover
+restart, replacement, reconciliation, and unavailable-service behaviour. Inspect a run's
+`config.json`, `capabilities.json`, `events.jsonl`, `trajectory.json`, `metrics.json`,
+`result.json`, `logs/operations.jsonl`, and `native/<platform>.json`; no file should
+contain a token, authorization header, or raw provider body.
+
 To roll back connected or side-effecting capability profiles while retaining pure local tools:
 
 ```bash

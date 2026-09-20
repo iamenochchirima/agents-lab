@@ -54,9 +54,11 @@ default for backwards-compatible native tests and local exercises.
 
 ## What it does not prove
 
-This is not a complete professional agent. It has no side-effecting tools, skills,
-memory, MCP, OAuth, plugins, streaming, or business integrations. It does not
-claim exactly-once execution for an external model provider. A transport failure
+This is not a complete professional agent. It has no social channels, long-term memory,
+plugin marketplace, streaming, or business-specific integrations. The shared profile can
+bind the local read fixture and approval-gated write fixture, while MCP and OAuth remain
+explicit protocol boundaries rather than implicit accounts. It does not claim exactly-once
+execution for an external model provider. A transport failure
 after dispatch is represented as `outcome_unknown`. The current Restate workflow
 does not yet expose provider-overflow recovery or a platform-native context
 store. Context preparation uses the Lab's canonical store as a durable action;

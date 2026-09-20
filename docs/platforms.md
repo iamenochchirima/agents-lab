@@ -24,6 +24,12 @@ workload compares observed lifecycle and evidence; it does not claim equivalent
 durability or production hosting. The native local paths for these four baselines do
 not require Docker.
 
+The platform capability phase adds a server-owned profile containing pure tools, a
+read-only connection, skills, and an approval-gated write fixture. Chat and Compare show
+the selected profile, tool/connection activity, approvals, context usage, and honest
+failure or unknown states. The deterministic four-platform capability matrix uses local
+HTTP fixtures; real providers and hosted secret stores remain separate acceptance work.
+
 Anesu is not a platform implementation. It is an extraction-ready standalone
 project under `anesu/`, with its Lab-side integration documented under
 `server/src/integrations/anesu/`.

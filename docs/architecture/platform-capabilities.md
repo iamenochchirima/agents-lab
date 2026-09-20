@@ -62,6 +62,24 @@ fields keep their existing `runId:source:sourceSequence` IDs and are read as one
 attempt, so existing run evidence remains readable while new platform retries can be
 deduplicated independently.
 
+## Operational evidence and retention
+
+Normalized lifecycle events are the authoritative run record. The server derives
+`metrics.json` from those events and the platform result, including model usage, duration,
+tool attempts and duration, retries, approval outcomes, cancellations, timeouts, and
+unknown external outcomes when the source reports them. `logs/operations.jsonl` is a
+bounded diagnostic projection: it records classifications, safe operation/request IDs,
+durations, and retry counts without prompts, provider bodies, headers, or tokens. Losing a
+diagnostic log entry must not change the run result.
+
+Run evidence is retained for inspection and is never rewritten during credential rotation.
+The local fixture's process state may be discarded with the local stack. Connection
+metadata and encrypted secret records have a separate retention and deletion policy owned
+by the configured secret store. Rotate credentials there, reauthorize the opaque
+connection reference, and leave historical run evidence intact. Hosted secret stores and
+provider-specific retention remain deployment decisions rather than claims of this local
+profile.
+
 For rollback, set `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=false` before starting the server.
 The API keeps affected profiles visible with an unavailable reason, resolution fails closed,
 and pure inline tools remain usable.

@@ -96,9 +96,14 @@ variant is the separate storage-backed suspension/resumption profile described a
 
 - automatic workflow replay or orphan adoption
 - Mastra memory and storage
-- MCP, skills, plugins, OAuth, channels, and external side effects
+- social channels, plugin marketplace, and provider-specific business integrations
 - distributed workflow storage and multi-process ownership
 - exactly-once provider-call claims
+
+The shared Lab capability profile can still bind local tools, a read connection, an
+approval-gated write fixture, and selected skills to the native Mastra Agent or workflow
+boundary. MCP and OAuth are explicit protocol integrations with local fixtures; they are
+not implicit connected accounts for this baseline.
 
 These exclusions keep the direct-agent comparison honest. Mastra's official docs
 describe storage-backed memory and workflow snapshots separately from a bare direct

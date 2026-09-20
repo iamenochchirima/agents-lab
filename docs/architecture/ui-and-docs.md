@@ -55,6 +55,13 @@ other platform implementations. The runner can collect configuration before an
 execution API exists, but its start controls remain unavailable until they can create
 real evidence.
 
+Platform Chat and Compare consume server-owned capability profiles. Chat shows the
+selected model, capability names, tool/connection activity, approval state, context-window
+usage, and native run details through progressive disclosure. Compare sends the same task
+and profile to independent platform runs; each row keeps its own session, grant set,
+native execution identity, and evidence. Missing services, denied policy, cancellation,
+and unknown external outcomes remain explicit UI states.
+
 The frontend uses a browser-history route tree rather than a custom hash router. The
 route composition is kept in `apps/web/src/routes/router.tsx`; layout modules render
 shared chrome and nested outlets, while feature page modules own page-level behavior.
