@@ -115,8 +115,10 @@ also support an explicit `--window-manager openbox` (or another allow-listed
 lightweight WM) opt-in inside the disposable display; installing that OS prerequisite
 remains a host setup step, not an implicit system mutation.
 
-Native Jev now uses CUA's window capture scope for the semantic path; desktop scope is
-reserved for the traditional visual path. A live isolated Xvfb + GNOME/X11 + Chrome
+Both native strategies now use CUA's window capture scope so traditional visual
+coordinates and Jev element tokens are grounded in the exact foreground window that
+produced the observation; desktop scope remains an explicit adapter capability for
+future full-display tasks. A live isolated Xvfb + GNOME/X11 + Chrome
 check enumerated the real Chrome window and exposed the labelled `Reveal safe result`
 control through 15 bounded accessibility candidates. The stored TypeSafe credential
 selected that candidate, the structured TUI approval dispatched its exact token, and
@@ -217,6 +219,16 @@ coordinates across otherwise identical free-provider requests, including points 
 the visible button. The change improves the request contract but does not convert an
 unstable provider into acceptance evidence; Anesu must continue to abstain or deny rather
 than snap or silently reinterpret those coordinates.
+
+After both strategies moved to CUA's exact foreground-window capture scope, a live
+traditional run with `dots-studio/dots-3-note-preview:free` and the disposable
+Xvfb + GNOME + Chrome fixture produced the correct window-local coordinate `(411,300)`.
+The TUI rendered the structured approval panel, one `a` approval dispatched the click,
+and a fresh observation verified `Computer success: safe result revealed.` CUA reported
+the native effect as uncertain; Anesu did not retry it. The run required temporary
+90-second diagnostic deadlines because the free provider was slow. This closes the
+traditional host/coordinate acceptance for one live route; the stored NVIDIA route and
+other free routes remain provider-availability or model-capability risks.
 
 The CUA adapter now also translates the bounded native move, type, keypress, scroll,
 and drag operations through the pinned SDK, with the same one-observation consumption
@@ -905,23 +917,21 @@ slice indefinitely.
       observation verified success without retrying an uncertain CUA acknowledgement.
       The run used the stored credentials and the validated
       `cohere/north-mini-code:free` model, now saved as the local development default.
-- [ ] Repeat the same fixture with the other strategy and inspect the TUI's strategy,
-      target, approval, action, verification, and timing output. The current
+- [x] Repeat the same fixture with the other strategy and inspect the TUI's strategy,
+      target, approval, action, verification, and timing output. The earlier
       `inclusionai/ling-3.0-flash-vl:free` attempt reached approval but selected a
-      coordinate outside the fixture control; do not mark this complete from proposal
-      or approval alone. The catalog-confirmed `nex-agi/nex-n2.5-pro:free` route also
-      reached approval but selected an incorrect coordinate; NVIDIA returned an
-      upstream capacity error, Gemma returned HTTP 429, and Nex Mini returned HTTP
-      400 for the multimodal request. The provider parser now exposes the bounded
-      nested provider detail. Traditional acceptance therefore remains unproven,
-      while each failure stops safely. After the launcher and coordinate-target fixes,
-      a GNOME artifact showed the fixture button center near `(497,382)` but Ling still
-      proposed `(390,380)`; this is retained as provider grounding evidence, not a
-      successful acceptance. A direct same-artifact probe of the currently catalogued
-      free routes then found Gemma 4 31B rate-limited, Inkling restricted to agentic
-      harnesses, and Dots/Nex Pro returning `(389,530)`/`(389,531)` for the same
-      1280x720 fixture. No free route therefore provides acceptance evidence yet;
-      the CUA dispatch boundary remains independently tested and safe.
+      coordinate outside the fixture control; that remains evidence of safe failure,
+      not acceptance. After both strategies moved to the exact foreground-window
+      capture scope, the disposable Xvfb + GNOME + Chrome fixture completed with the
+      live `dots-studio/dots-3-note-preview:free` route: the TUI showed the strategy,
+      target, approval, action, and verification; one `a` approval dispatched the
+      click; and fresh observation verified success after CUA reported an uncertain
+      effect, without retry. The run used temporary diagnostic deadlines of 90 seconds
+      because the free provider was slow. NVIDIA's stored free route still returned
+      an upstream capacity error, and other catalogued routes remain rate-limited or
+      rejected; the provider parser exposes those bounded nested errors. Traditional
+      acceptance is therefore proven for one live provider route, while provider
+      availability and model-specific grounding remain operational limitations.
 - [ ] Run compare mode and verify only the primary strategy changes the fixture while
       both proposals are visible in evidence.
 - [x] Cancel with Ctrl+C and verify the run stops without claiming an unverified action.

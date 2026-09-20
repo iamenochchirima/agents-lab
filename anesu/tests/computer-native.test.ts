@@ -210,6 +210,13 @@ test("native traditional vision sends one bounded screenshot message per decisio
     if (typeof userText !== "string") throw new Error("Traditional vision request did not include a text part.");
     assert.match(userText, /^Goal:/u);
     assert.match(userText, /Screenshot size:/u);
+    const tools = fixture.requestBodies[0]?.tools;
+    const computerTool = Array.isArray(tools) && tools[0] && typeof tools[0] === "object" && !Array.isArray(tools[0])
+      ? tools[0] as { readonly function?: { readonly parameters?: { readonly properties?: Record<string, unknown> } } }
+      : undefined;
+    const properties = computerTool?.function?.parameters?.properties;
+    assert.equal(properties?.x_abs, undefined);
+    assert.equal(properties?.y_abs, undefined);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }

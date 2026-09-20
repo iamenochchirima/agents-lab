@@ -51,7 +51,7 @@ export class CuaEnvironmentError extends Error {
 export interface CuaEnvironmentOptions {
   readonly sessionId?: string;
   readonly displayId?: string;
-  /** Use desktop screenshots for the traditional path or exact window snapshots for Jev. */
+  /** Keep screenshot coordinates and native input in the same desktop or window frame. */
   readonly captureScope?: "desktop" | "window";
   readonly screenshotPath?: string;
   readonly maxObservationBytes?: number;
@@ -124,8 +124,8 @@ export function inspectCuaReadiness(input: {
   return { kind: "ubuntu-x11-cua", available: true, display, isolated };
 }
 
-function createFallbackTarget(displayId: string, observation?: ComputerEnvironmentObservation, positionKind?: "coordinates" | "element"): unknown {
-  if (positionKind !== "coordinates" && observation?.windowPid !== undefined && observation.windowId !== undefined) {
+function createFallbackTarget(displayId: string, observation?: ComputerEnvironmentObservation, positionKind?: "coordinates" | "element", captureScope: "desktop" | "window" = "desktop"): unknown {
+  if ((captureScope === "window" || positionKind !== "coordinates") && observation?.windowPid !== undefined && observation.windowId !== undefined) {
     return { tag: "Window", inner: { pid: observation.windowPid, windowId: BigInt(observation.windowId) } };
   }
   return { tag: "Desktop", inner: { displayId } };
@@ -136,9 +136,9 @@ function createFallbackPosition(position: NonNullable<ComputerEnvironmentAction[
   return { tag: "Element", inner: { elementToken: position.token } };
 }
 
-function createFallbackInput(action: ComputerEnvironmentAction, sessionId: string, displayId: string, observation?: ComputerEnvironmentObservation): unknown {
+function createFallbackInput(action: ComputerEnvironmentAction, sessionId: string, displayId: string, observation?: ComputerEnvironmentObservation, captureScope: "desktop" | "window" = "desktop"): unknown {
   return {
-    target: createFallbackTarget(displayId, observation, action.position?.kind),
+    target: createFallbackTarget(displayId, observation, action.position?.kind, captureScope),
     ...(action.position ? { position: createFallbackPosition(action.position) } : {}),
     deliveryMode: action.position?.kind === "element" ? "Background" : "Foreground",
     session: sessionId,
@@ -383,9 +383,9 @@ export class CuaEnvironment implements ComputerEnvironment {
       }
       await this.driver.startSession(this.input("StartSessionInput", {
         session: this.sessionId,
-        // The traditional path explicitly requests desktop scope for a full
-        // display screenshot. Jev uses window scope so its accessibility
-        // snapshot and token remain authorized by the same CUA session.
+        // Window scope keeps screenshot pixels and coordinate actions in the
+        // same local frame. Desktop scope remains available for callers that
+        // explicitly need absolute display coordinates.
         captureScope: this.options.captureScope === "window"
           ? this.sdk?.CaptureScope.Window ?? "Window"
           : this.sdk?.CaptureScope.Desktop ?? "Desktop",
@@ -779,12 +779,12 @@ export class CuaEnvironment implements ComputerEnvironment {
     const position = action.position!;
     if (!this.sdk) return createFallbackInput(action, this.sessionId, this.options.displayId, observation);
     return this.sdk.ClickInput.new({
-      // Desktop observations report absolute screen coordinates. Even when CUA
-      // also exposes the foreground window, sending those coordinates to a
-      // window target would reinterpret them as window-relative and can click a
-      // different control. Semantic element tokens are the only clicks that use
-      // the exact window target.
-      target: position.kind === "element" ? this.nativeTarget(observation) : this.desktopTarget(),
+      // Window observations report window-local screenshot coordinates. Keep
+      // those coordinates paired with the exact window target; desktop
+      // observations retain their absolute display target.
+      target: position.kind === "element" || this.options.captureScope === "window"
+        ? this.nativeTarget(observation)
+        : this.desktopTarget(),
       position: position.kind === "coordinates"
         ? this.sdk.ClickPosition.Coordinates.new({ x: position.x, y: position.y })
         : this.sdk.ClickPosition.Element.new({ elementToken: position.token }),
@@ -819,7 +819,7 @@ export class CuaEnvironment implements ComputerEnvironment {
 
   private async dispatch(action: ComputerEnvironmentAction, observation: ComputerEnvironmentObservation, options?: { readonly signal: AbortSignal }): Promise<unknown> {
     if (!this.sdk) {
-      const input = createFallbackInput(action, this.sessionId, this.options.displayId, observation) as Record<string, unknown>;
+      const input = createFallbackInput(action, this.sessionId, this.options.displayId, observation, this.options.captureScope) as Record<string, unknown>;
       switch (action.operation) {
         case "click": return this.driver!.click(input, options);
         case "move": return this.driver!.moveCursor(input, options);
@@ -835,20 +835,20 @@ export class CuaEnvironment implements ComputerEnvironment {
       case "move": {
         const position = action.position;
         if (!position || position.kind !== "coordinates") throw new CuaEnvironmentError("invalid-action", "Native cursor movement requires coordinates.");
-        return this.driver!.moveCursor(this.sdk!.MoveCursorInput.new({ x: position.x, y: position.y, target: this.desktopTarget(), session: this.sessionId }), options);
+        return this.driver!.moveCursor(this.sdk!.MoveCursorInput.new({ x: position.x, y: position.y, target: this.options.captureScope === "window" ? this.nativeTarget(observation) : this.desktopTarget(), session: this.sessionId }), options);
       }
       case "type": return this.driver!.typeText(this.sdk!.TypeTextInput.new({ text: action.text!, target: this.nativeTarget(observation), session: this.sessionId }), options);
       case "press": return this.driver!.pressKey(this.sdk!.PressKeyInput.new({ key: action.key!, target: this.nativeTarget(observation), session: this.sessionId, modifiers: action.modifiers ? [...action.modifiers] : undefined }), options);
       case "scroll": {
         const position = action.position;
         if (!position || position.kind !== "coordinates") throw new CuaEnvironmentError("invalid-action", "Native scrolling requires coordinates.");
-        return this.driver!.scroll(this.sdk!.ScrollInput.new({ x: position.x, y: position.y, direction: scrollDirection(this.sdk!, action.direction!), target: this.desktopTarget(), session: this.sessionId, by: this.sdk!.ScrollBy.Line, amount: BigInt(action.amount ?? 1) }), options);
+        return this.driver!.scroll(this.sdk!.ScrollInput.new({ x: position.x, y: position.y, direction: scrollDirection(this.sdk!, action.direction!), target: this.options.captureScope === "window" ? this.nativeTarget(observation) : this.desktopTarget(), session: this.sessionId, by: this.sdk!.ScrollBy.Line, amount: BigInt(action.amount ?? 1) }), options);
       }
       case "drag": {
         const from = action.position;
         const to = action.endPosition;
         if (!from || from.kind !== "coordinates" || !to || to.kind !== "coordinates") throw new CuaEnvironmentError("invalid-action", "Native drag requires coordinate start and end positions.");
-        return this.driver!.drag(this.sdk!.DragInput.new({ fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, target: this.desktopTarget(), session: this.sessionId, durationMs: 300n, steps: 10n, button: this.sdk!.ClickButton.Left }), options);
+        return this.driver!.drag(this.sdk!.DragInput.new({ fromX: from.x, fromY: from.y, toX: to.x, toY: to.y, target: this.options.captureScope === "window" ? this.nativeTarget(observation) : this.desktopTarget(), session: this.sessionId, durationMs: 300n, steps: 10n, button: this.sdk!.ClickButton.Left }), options);
       }
       case "wait": throw new CuaEnvironmentError("invalid-action", "Native wait is not dispatched.");
     }

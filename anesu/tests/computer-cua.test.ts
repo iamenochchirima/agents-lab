@@ -270,6 +270,32 @@ test("CUA coordinate clicks retain desktop coordinates when an accessible window
   });
 });
 
+test("CUA window coordinate clicks use the same window-local target as the screenshot", async () => {
+  const driver = new FakeCuaDriver();
+  const cua = environment(driver, "window");
+  await cua.start();
+  const observation = await cua.observe();
+
+  const result = await cua.execute({
+    actionId: "window-coordinate-click",
+    operation: "click",
+    observationId: observation.observationId,
+    generation: observation.generation,
+    position: { kind: "coordinates", x: 460, y: 320 },
+  });
+
+  assert.equal(result.ok, true);
+  const click = driver.calls.find((call) => call.name === "click");
+  assert.deepEqual(click?.input, {
+    target: { tag: "Window", inner: { pid: 9001, windowId: 42n } },
+    position: { tag: "Coordinates", inner: { x: 460, y: 320 } },
+    deliveryMode: "Foreground",
+    session: "test-computer-session",
+    button: "Left",
+    count: 1,
+  });
+});
+
 test("CUA consumes an observation before input and rejects stale or duplicate clicks", async () => {
   const driver = new FakeCuaDriver();
   const cua = environment(driver);

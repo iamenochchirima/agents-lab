@@ -319,7 +319,7 @@ async function traditionalNativeDecision(options: NativeComputerRunnerOptions, g
         type: "object",
         properties: {
           operation: { type: "string", enum: ["none", "click", "move", "type", "press", "scroll", "drag"] },
-          x: { type: "number" }, y: { type: "number" }, x_abs: { type: "number" }, y_abs: { type: "number" },
+          x: { type: "number" }, y: { type: "number" },
           reason: { type: "string", maxLength: MAX_NATIVE_TEXT_CHARS },
           text: { type: "string", maxLength: MAX_NATIVE_TEXT_CHARS },
           key: { type: "string", maxLength: MAX_NATIVE_KEY_CHARS },

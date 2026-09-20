@@ -205,7 +205,10 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
                 maxOutputBytes: config.maxToolOutputBytes,
                 createEnvironment: (screenshotPath: string) => new CuaEnvironment({
                   screenshotPath,
-                  captureScope: config.computerStrategy === "typesafe" ? "window" : "desktop",
+                  // Both native strategies receive the exact foreground-window frame
+                  // whose coordinates CUA will dispatch. Desktop capture remains an
+                  // explicit adapter capability, not an implicit coordinate transform.
+                  captureScope: "window",
                   displayId: config.computerCuaDisplayId,
                   environment: { ...process.env, ANESU_COMPUTER_CUA_ISOLATED_DISPLAY: config.computerCuaIsolatedDisplay ? "true" : "false" },
                 }),

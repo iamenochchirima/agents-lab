@@ -18,16 +18,19 @@ The adapter currently provides the first native vertical slice:
 - a named CUA session is started and the CUA agent cursor is enabled with the
   built-in `cua.default` theme;
 - observations are bounded and expose metadata rather than embedding screenshot
-  bytes in the model transcript; traditional mode captures the authorized desktop,
-  while native Jev captures the exact authorized window snapshot. When CUA exposes
-  it, the observation also carries the bounded agent-cursor position for inspection;
+  bytes in the model transcript; both native strategies capture the exact authorized
+  foreground-window snapshot so a visual coordinate is interpreted in the same frame
+  that produced it. Desktop capture remains available as an explicit adapter scope.
+  When CUA exposes it, the observation also carries the bounded agent-cursor position
+  for inspection;
 - when CUA exposes Linux window accessibility, Anesu selects one unambiguous
   foreground window, bounds its roles/labels/actions, and retains its PID, window
   ID, and accessibility snapshot ID. Native TypeSafe/Jev receives those candidates
   only and can return an existing element token, never a guessed coordinate;
 - one typed native action can be dispatched only against the exact unused
   observation that produced it, using CUA's exact window target for semantic
-  element clicks and its desktop target for absolute coordinate input. Accessibility-token
+  element clicks and for coordinates observed in window scope. Desktop-scope
+  observations use CUA's desktop target for absolute coordinates. Accessibility-token
   clicks request background semantic delivery; coordinate and keyboard input use
   explicit foreground delivery after approval. The adapter currently maps move,
   click, type, keypress, scroll, and drag. Native action payloads also carry the
@@ -211,16 +214,19 @@ state directories before starting D-Bus, so desktop services cannot resolve the
 contributor's normal Desktop or user indexes during this smoke.
 
 The traditional visual route has also been exercised against the live provider path.
-It captured the display, produced a valid bounded click proposal, and reached the
-same approval and CUA dispatch boundary. The tested free model selected a coordinate
-outside the fixture button, so fresh verification correctly returned `outcome-unknown`
-and the runner did not retry the click. Other catalog-confirmed free routes were
-rate-limited or rejected the multimodal request; OpenRouter can also return a successful
-HTTP status with an embedded upstream error. Anesu reports bounded upstream status and
-nested provider detail from `metadata.raw` without retaining the raw body, and performs
-only its bounded pre-approval retry. Treat traditional mode as connected but not yet
-accepted for reliable visual grounding; TypeSafe/Jev is the currently validated native
-strategy.
+An earlier desktop-scope attempt selected a coordinate outside the fixture button, so
+fresh verification correctly returned `outcome-unknown` and the runner did not retry
+the click. After both strategies moved to CUA's exact foreground-window frame, a
+longer-deadline run with the same disposable fixture produced a correct bounded click
+proposal, reached the same approval and CUA dispatch boundary, and verified the
+fixture success marker from a fresh observation. CUA reported the click as uncertain;
+Anesu did not retry it. Other catalog-confirmed free routes remain subject to rate
+limits, model capability restrictions, or upstream capacity errors. OpenRouter can
+also return a successful HTTP status with an embedded upstream error. Anesu reports
+bounded upstream status and nested provider detail from `metadata.raw` without
+retaining the raw body, and performs only its bounded pre-approval retry. Traditional
+and TypeSafe/Jev now both have a successful live fixture path; provider availability
+and visual grounding quality remain model-dependent.
 The launcher is intentionally separate from the ordinary `pnpm run chat` path and is
 not a production sandbox.
 
