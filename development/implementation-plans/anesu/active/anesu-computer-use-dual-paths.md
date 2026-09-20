@@ -168,6 +168,15 @@ preserves the caller's stdin and isolates HOME/XDG state before `dbus-run-sessio
 so desktop services stay within the disposable profile and the interactive TUI does
 not exit on startup.
 
+After replacing the retired local `*_POC_*` development settings with the current
+`ANESU_COMPUTER_*` names, the same TypeSafe task was repeated through the normal
+`pnpm run chat:cua-xvfb -- --fixture --window-manager gnome-shell` path (using a
+different disposable display only because the earlier `:99` session was still live).
+The TUI again showed the labelled target, accepted a single `a` approval, dispatched
+through CUA, and verified the safe result after an uncertain acknowledgement. This
+confirms the stored development configuration and one-command launcher path; it does
+not change the open traditional-provider gate.
+
 A real traditional-vision acceptance attempt now reaches the same live boundary. The
 configured free `inclusionai/ling-3.0-flash-vl:free` route received the X11 screenshot,
 returned a valid bounded coordinate action, rendered the approval panel, and dispatched
