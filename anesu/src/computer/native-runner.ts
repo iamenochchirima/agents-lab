@@ -134,6 +134,20 @@ function strictKeys(selection: Record<string, unknown>, allowed: readonly string
   }
 }
 
+function validateOptionalDecisionReason(value: unknown): void {
+  if (value === undefined) return;
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > MAX_NATIVE_TEXT_CHARS) {
+    throw new ToolExecutionError(`Native decision rationale must contain at most ${MAX_NATIVE_TEXT_CHARS} non-empty characters.`);
+  }
+}
+
+function coordinateValue(value: Record<string, unknown>, canonical: string, providerAlias: string, label: string): number {
+  if (value[canonical] !== undefined && value[providerAlias] !== undefined) {
+    throw new ToolExecutionError(`Native computer decision must provide only one ${label} field.`);
+  }
+  return finiteNumber(value[canonical] ?? value[providerAlias], label);
+}
+
 function nativeSelection(value: Record<string, unknown>): NativeSelection {
   if (typeof value.operation !== "string") throw new ToolExecutionError("Native computer decision must contain an operation.");
   switch (value.operation) {
@@ -146,16 +160,19 @@ function nativeSelection(value: Record<string, unknown>): NativeSelection {
     }
     case "click":
     case "move":
-      strictKeys(value, ["operation", "x", "y"]);
-      return { operation: value.operation, x: finiteNumber(value.x, "x coordinate"), y: finiteNumber(value.y, "y coordinate") };
+      strictKeys(value, ["operation", "x", "y", "x_abs", "y_abs", "reason"]);
+      validateOptionalDecisionReason(value.reason);
+      return { operation: value.operation, x: coordinateValue(value, "x", "x_abs", "x coordinate"), y: coordinateValue(value, "y", "y_abs", "y coordinate") };
     case "type":
-      strictKeys(value, ["operation", "text"]);
+      strictKeys(value, ["operation", "text", "reason"]);
+      validateOptionalDecisionReason(value.reason);
       if (typeof value.text !== "string" || value.text.length === 0 || value.text.length > MAX_NATIVE_TEXT_CHARS) {
         throw new ToolExecutionError(`Native text input must contain between 1 and ${MAX_NATIVE_TEXT_CHARS} characters.`);
       }
       return { operation: "type", text: value.text };
     case "press": {
-      strictKeys(value, ["operation", "key", "modifiers"]);
+      strictKeys(value, ["operation", "key", "modifiers", "reason"]);
+      validateOptionalDecisionReason(value.reason);
       if (typeof value.key !== "string" || value.key.length === 0 || value.key.length > MAX_NATIVE_KEY_CHARS) {
         throw new ToolExecutionError(`Native key input must contain between 1 and ${MAX_NATIVE_KEY_CHARS} characters.`);
       }
@@ -169,19 +186,21 @@ function nativeSelection(value: Record<string, unknown>): NativeSelection {
       return { operation: "press", key: value.key, ...(modifiers ? { modifiers } : {}) };
     }
     case "scroll":
-      strictKeys(value, ["operation", "x", "y", "direction", "amount"]);
+      strictKeys(value, ["operation", "x", "y", "x_abs", "y_abs", "direction", "amount", "reason"]);
+      validateOptionalDecisionReason(value.reason);
       if (value.direction !== "up" && value.direction !== "down" && value.direction !== "left" && value.direction !== "right") {
         throw new ToolExecutionError("Native scroll direction must be up, down, left, or right.");
       }
       return {
         operation: "scroll",
-        x: finiteNumber(value.x, "x coordinate"),
-        y: finiteNumber(value.y, "y coordinate"),
+        x: coordinateValue(value, "x", "x_abs", "x coordinate"),
+        y: coordinateValue(value, "y", "y_abs", "y coordinate"),
         direction: value.direction,
         amount: integerInRange(value.amount ?? 1, "scroll amount", 1, 100),
       };
     case "drag":
-      strictKeys(value, ["operation", "fromX", "fromY", "toX", "toY"]);
+      strictKeys(value, ["operation", "fromX", "fromY", "toX", "toY", "reason"]);
+      validateOptionalDecisionReason(value.reason);
       return {
         operation: "drag",
         fromX: finiteNumber(value.fromX, "drag start x coordinate"),
@@ -220,6 +239,45 @@ function nativeActionFromResponse(value: string): NativeSelection {
   return nativeSelection(selection);
 }
 
+function normalizeCoordinate(value: number, dimension: number): number {
+  return Math.min(dimension - 1, Math.max(0, Math.round(value * dimension)));
+}
+
+/**
+ * Some vision providers return normalized screen coordinates even when the
+ * action schema describes absolute pixels. Normalize only a complete bounded
+ * coordinate tuple from the same observation; all other values remain pixels
+ * and are checked by the ordinary screen-bound validation.
+ */
+function normalizeTraditionalSelection(selection: NativeSelection, observation: ComputerEnvironmentObservation): NativeSelection {
+  const width = observation.screenWidth;
+  const height = observation.screenHeight;
+  if (width === undefined || height === undefined || width <= 1 || height <= 1) return selection;
+  const normalized = (values: readonly number[]): boolean => values.every((value) => value >= 0 && value <= 1);
+  switch (selection.operation) {
+    case "click":
+    case "move":
+    case "scroll":
+      if (!normalized([selection.x, selection.y])) return selection;
+      return {
+        ...selection,
+        x: normalizeCoordinate(selection.x, width),
+        y: normalizeCoordinate(selection.y, height),
+      };
+    case "drag":
+      if (!normalized([selection.fromX, selection.fromY, selection.toX, selection.toY])) return selection;
+      return {
+        ...selection,
+        fromX: normalizeCoordinate(selection.fromX, width),
+        fromY: normalizeCoordinate(selection.fromY, height),
+        toX: normalizeCoordinate(selection.toX, width),
+        toY: normalizeCoordinate(selection.toY, height),
+      };
+    default:
+      return selection;
+  }
+}
+
 async function traditionalNativeDecision(options: NativeComputerRunnerOptions, goal: string, observation: ComputerEnvironmentObservation, signal?: AbortSignal): Promise<NativeModelDecision> {
   if (!options.openRouterApiKey) throw new ToolExecutionError("The native traditional computer strategy requires OPENROUTER_API_KEY.");
   if (!options.traditionalModel) throw new ToolExecutionError("The native traditional computer strategy requires a vision model name.");
@@ -241,7 +299,7 @@ async function traditionalNativeDecision(options: NativeComputerRunnerOptions, g
         type: "object",
         properties: {
           operation: { type: "string", enum: ["none", "click", "move", "type", "press", "scroll", "drag"] },
-          x: { type: "number" }, y: { type: "number" },
+          x: { type: "number" }, y: { type: "number" }, x_abs: { type: "number" }, y_abs: { type: "number" },
           reason: { type: "string", maxLength: MAX_NATIVE_TEXT_CHARS },
           text: { type: "string", maxLength: MAX_NATIVE_TEXT_CHARS },
           key: { type: "string", maxLength: MAX_NATIVE_KEY_CHARS },
@@ -261,7 +319,7 @@ async function traditionalNativeDecision(options: NativeComputerRunnerOptions, g
   const raw = await response.text();
   if (!response.ok) throw providerHttpError("Native computer decision", response.status, raw);
   if (Buffer.byteLength(raw, "utf8") > MAX_DECISION_RESPONSE_BYTES) throw new ToolExecutionError("Native computer decision exceeded its response limit.");
-  return { selection: nativeActionFromResponse(raw), model: options.traditionalModel, latencyMs: Math.max(0, Date.now() - decisionStartedAt) };
+  return { selection: normalizeTraditionalSelection(nativeActionFromResponse(raw), observation), model: options.traditionalModel, latencyMs: Math.max(0, Date.now() - decisionStartedAt) };
 }
 
 async function approval(

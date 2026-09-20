@@ -193,6 +193,44 @@ test("native traditional vision sends one bounded screenshot message per decisio
   }
 });
 
+test("native traditional accepts a bounded provider rationale alongside a click", async () => {
+  const fixture = await setup({ operation: "click", x: 123, y: 234, reason: "The requested visible control is unambiguous." });
+  try {
+    const result = await fixture.runner.run("native_traditional_provider_rationale", "Reveal the safe result.", {
+      approveComputer: async () => ({ decision: "allow-once" }),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(fixture.environment.actions.length, 1);
+    assert.deepEqual(fixture.environment.actions[0]?.position, { kind: "coordinates", x: 123, y: 234 });
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native traditional converts bounded normalized coordinates using the observed screen", async () => {
+  const fixture = await setup({ operation: "click", x: 0.5, y: 0.25 }, { maxActions: 1 });
+  try {
+    await fixture.runner.run("native_traditional_normalized_coordinates", "Reveal the safe result.", {
+      approveComputer: async () => ({ decision: "allow-once" }),
+    });
+    assert.deepEqual(fixture.environment.actions[0]?.position, { kind: "coordinates", x: 400, y: 150 });
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native traditional normalizes the declared provider coordinate aliases", async () => {
+  const fixture = await setup({ operation: "click", x_abs: 0.625, y_abs: 0.5 }, { maxActions: 1 });
+  try {
+    await fixture.runner.run("native_traditional_provider_aliases", "Reveal the safe result.", {
+      approveComputer: async () => ({ decision: "allow-once" }),
+    });
+    assert.deepEqual(fixture.environment.actions[0]?.position, { kind: "coordinates", x: 500, y: 300 });
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("native traditional can abstain without approval or input", async () => {
   const fixture = await setup({ operation: "none", reason: "The target is not unambiguous." });
   try {

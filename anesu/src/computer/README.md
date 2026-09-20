@@ -92,6 +92,13 @@ false or absent, configuration stops before a screenshot is sent. The action res
 is still validated independently: it must contain one allow-listed action selection
 in either a strict tool call or the supported strict JSON form.
 
+The traditional response boundary accepts the declared bounded `reason` metadata and the
+provider's explicit `x_abs`/`y_abs` coordinate aliases, while rejecting all other unknown
+fields. If a provider returns a complete coordinate tuple in the `[0, 1]` range, Anesu
+converts it against the current observed screen dimensions before approval; absolute pixel
+coordinates remain unchanged. The approval panel therefore shows the canonical coordinates
+that will be dispatched, not the provider's raw representation.
+
 The structured browser computer path also exposes a bounded `wait` candidate when
 the user explicitly requests a duration such as `wait 250 milliseconds`. The duration
 is parsed and capped by Anesu at 10 seconds before the model sees the candidate; the

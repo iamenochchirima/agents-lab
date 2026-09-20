@@ -184,6 +184,15 @@ traditional provider path and the failure boundary are connected, not that a fre
 model is yet reliable enough for completion. The traditional manual-acceptance item
 therefore remains open.
 
+The next live run with NVIDIA selected the computer tool and exposed two provider-shape
+compatibility cases at the Anesu boundary: a bounded `reason` field alongside a click and
+normalized coordinates (`0.3906, 0.5315`) for the 1280x720 display. Both are now normalized
+strictly at the provider boundary, with unknown fields still rejected and canonical pixel
+coordinates shown in approval. A subsequent retry reached the provider but received the
+bounded `HTTP 502 ResourceExhausted` response from NVIDIA's free worker pool before a new
+proposal was available. The live traditional acceptance item remains open until a free
+vision route returns a correct proposal that is approved and verified on the fixture.
+
 The CUA adapter now also translates the bounded native move, type, keypress, scroll,
 and drag operations through the pinned SDK, with the same one-observation consumption
 and no-retry rule. The traditional native runner now selects one of those operations
@@ -235,9 +244,9 @@ Jev receives a `none` option, and Anesu refuses a selected candidate when confid
 is missing, invalid, or below the shared 0.5 threshold. That signal is evidence only;
 the normal approval decision remains independent.
 
-Validation checkpoint: `pnpm test` passes all 496 tests; the build and typecheck pass.
-`pnpm coverage` passes with 89.57% line coverage, 76.51% branch coverage, and
-85.94% function coverage. The focused computer suite covers the bounded wait and
+Validation checkpoint: `pnpm test` passes all 499 tests; the build and typecheck pass.
+`pnpm coverage` passes with 89.56% line coverage, 76.58% branch coverage, and
+85.99% function coverage. The focused computer suite covers the bounded wait and
 scroll parsers, synthetic candidates, approval/no-approval dispatch,
 fresh-snapshot verification, terminal `waited`/`scrolled` evidence, and the browser
 TypeSafe `none`/low-confidence abstention boundary. The full suite also covers the
