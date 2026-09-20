@@ -176,6 +176,7 @@ export const RUN_EVIDENCE_FILES = [
   "context.json",
   "result.json",
   "logs/operations.jsonl",
+  "native/mastra.json",
 ] as const;
 
 export type RunEvidenceFile = (typeof RUN_EVIDENCE_FILES)[number];

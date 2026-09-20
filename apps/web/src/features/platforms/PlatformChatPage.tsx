@@ -533,7 +533,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }:
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
   const nativePlatform = run.executionReference?.platform;
-  const native = nativePlatform === "restate" || nativePlatform === "langgraph"
+  const native = nativePlatform === "restate" || nativePlatform === "langgraph" || nativePlatform === "mastra"
     ? run.executionReference?.native ?? null
     : null;
   const retrying = isRunRetrying(run, events);
@@ -565,7 +565,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }:
           <div><dt>Events</dt><dd>{events.length}</dd></div>
           <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
         </dl>
-        {native && nativePlatform && <NativeRunDetails native={native} platform={nativePlatform} />}
+        {native && nativePlatform && <NativeRunDetails native={native} platform={nativePlatform} variant={run.manifest.variant} />}
         {run.projection.state === "stale" && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {run.projection.reason ?? "The latest platform state is unavailable."}</p>}
         <details className="chat-activity" open={toolEvents.length > 0}>
           <summary><Wrench aria-hidden="true" size={13} /> Tool activity <small>{toolEvents.length}</small></summary>
@@ -584,7 +584,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }:
   );
 }
 
-function NativeRunDetails({ native, platform }: { native: Record<string, unknown>; platform: string }) {
+function NativeRunDetails({ native, platform, variant }: { native: Record<string, unknown>; platform: string; variant: string }) {
   const fields = platform === "langgraph"
     ? [
         { label: "Thread", value: native.threadId },
@@ -592,7 +592,17 @@ function NativeRunDetails({ native, platform }: { native: Record<string, unknown
         { label: "Event source", value: native.eventSource },
         { label: "Protocol", value: native.protocolVersion },
       ]
-    : [
+    : platform === "mastra"
+      ? [
+        { label: "Operation", value: native.operation },
+        { label: "Workflow", value: variant === "workflow" ? native.workflowId : undefined },
+        { label: "Native status", value: native.nativeStatus },
+        { label: "Model steps", value: native.modelStepCount },
+        { label: "Model requests", value: native.modelRequestCount },
+        { label: "Tool calls", value: native.toolCallCount },
+        { label: "Context", value: native.contextPrepared === true ? "prepared" : undefined },
+      ]
+      : [
         { label: "Workflow", value: native.workflowKey },
         { label: "Invocation", value: native.invocationId },
         { label: "Native status", value: native.nativeStatus },
@@ -603,7 +613,7 @@ function NativeRunDetails({ native, platform }: { native: Record<string, unknown
   if (visibleFields.length === 0) return null;
   return (
     <details className="chat-activity">
-      <summary><span>Native execution</span><small>{platform === "langgraph" ? "LangGraph" : "Restate"}</small></summary>
+      <summary><span>Native execution</span><small>{platform === "langgraph" ? "LangGraph" : platform === "mastra" ? "Mastra" : "Restate"}</small></summary>
       <dl className="chat-run-meta">
         {visibleFields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd title={String(value)}>{String(value)}</dd></div>)}
       </dl>
@@ -615,6 +625,7 @@ function availableEvidenceFiles(run: RunView): readonly RunEvidenceFile[] {
   const files: RunEvidenceFile[] = [];
   files.push("config.json", "events.jsonl");
   files.push("logs/operations.jsonl");
+  if (run.executionReference?.platform === "mastra") files.push("native/mastra.json");
   if (run.context) files.push("context.json");
   if (run.trajectory) files.push("trajectory.json");
   if (run.metrics) files.push("metrics.json");

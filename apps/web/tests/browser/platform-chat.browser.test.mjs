@@ -144,6 +144,34 @@ test("Platform Chat reports unavailable, API failure, and cancellation states", 
   }
 });
 
+test("Mastra Chat shows native agent evidence and safe Mastra evidence", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/mastra/chat");
+    await waitForText(browser.cdp, "Mastra");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Inspect the Mastra runtime.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Mastra fixture completed.");
+
+    await clickSummary(browser.cdp, "Run details");
+    await clickSummary(browser.cdp, "Native execution");
+    const native = await browser.cdp.evaluate(`document.querySelector('.chat-activity[open]')?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(native, /Native executionMastra/);
+    assert.match(native, /agent\.generate/);
+    assert.match(native, /completed/);
+    assert.match(native, /prepared/);
+
+    await clickSummary(browser.cdp, "Evidence");
+    assert.equal(await browser.cdp.evaluate(`Array.from(document.querySelectorAll(".chat-evidence a")).some((link) => link.textContent?.trim() === "native/mastra.json")`), true);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Restate Chat continues a session across workflow turns and requires a model", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -687,7 +715,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const runMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph)-\d+)$/);
+    const runMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph|mastra)-\d+)$/);
     if (runMatch && event.request.method === "GET") {
       const runId = runMatch[1];
       const request = state.runRequests.get(runId);
@@ -703,7 +731,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const eventsMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph)-\d+)\/events$/);
+    const eventsMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph|mastra)-\d+)\/events$/);
     if (eventsMatch && event.request.method === "GET") {
       const runId = eventsMatch[1];
       const request = state.runRequests.get(runId);
@@ -717,7 +745,7 @@ async function installFixture(cdp) {
       return;
     }
 
-    const cancelMatch = url.pathname.match(/^\/api\/runs\/(run-(?:temporal|restate|langgraph)-\d+)\/cancel$/);
+    const cancelMatch = url.pathname.match(/^\/api\/runs\/(run-(?:temporal|restate|langgraph|mastra)-\d+)\/cancel$/);
     if (cancelMatch && event.request.method === "POST") {
       const runId = cancelMatch[1];
       const request = state.runRequests.get(runId);
@@ -751,6 +779,7 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
   const langGraph = platform === "langgraph";
+  const mastra = platform === "mastra";
   const compaction = (platform === "restate" || platform === "langgraph") && mode === "compaction";
   const retrying = (platform === "restate" || platform === "langgraph") && mode === "retrying";
   const events = platform === "restate"
@@ -770,6 +799,13 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
           ? [event(runId, 1, "GraphRunStarted", platform), event(runId, 2, "ContextCompactionStarted", platform), event(runId, 3, "ContextCompacted", platform), event(runId, 4, "GraphRunCompleted", platform)]
           : retrying
             ? [event(runId, 1, "GraphRunStarted", platform), event(runId, 2, "ModelRetryScheduled", platform, { reason: "pre_dispatch" })]
+      : mastra
+        ? [
+          event(runId, 1, "AgentStarted", platform),
+          event(runId, 2, "ModelRequested", platform),
+          event(runId, 3, "ContextPrepared", platform, { compacted: false }),
+          event(runId, 4, "AgentCompleted", platform),
+        ]
       : [
         event(runId, 1, "GraphRunStarted", platform),
         event(runId, 2, "GraphNodeStarted", platform, { node: "model" }),
@@ -787,7 +823,7 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
         event(runId, 5, "ToolExecutionCompleted", platform, { toolName: "calculator" }),
         event(runId, 6, "AgentCompleted", platform),
       ];
-  const isSessionPlatform = platform === "temporal" || platform === "restate" || langGraph;
+  const isSessionPlatform = platform === "temporal" || platform === "restate" || langGraph || mastra;
   const sessionId = request.sessionId ?? "session-chat";
   const terminal = status === "completed" || status === "failed" || status === "cancelled" || status === "reconciliation_required";
   const result = terminal ? {
@@ -797,7 +833,8 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
     output: status === "completed"
       ? platform === "temporal" ? "The calculator result is 42."
         : platform === "langgraph" ? compaction ? "LangGraph fixture compacted." : "LangGraph fixture completed."
-          : compaction ? "Restate fixture compacted." : "Restate fixture completed."
+          : platform === "mastra" ? "Mastra fixture completed."
+            : compaction ? "Restate fixture compacted." : "Restate fixture completed."
         : null,
     error: status === "reconciliation_required" ? {
       code: platform === "langgraph" ? "LANGGRAPH_OUTCOME_UNKNOWN" : "RESTATE_SUBMISSION_OUTCOME_UNKNOWN",
@@ -818,7 +855,7 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
     status,
     manifest: {
       platform,
-      variant: "baseline",
+      variant: request.variant ?? "baseline",
       task: { prompt: request.task?.prompt ?? "fixture" },
       model: {
         provider: "openrouter",
@@ -828,10 +865,12 @@ function makeRun(request, status, runIdOverride, mode = "complete") {
       ...(isSessionPlatform ? { context: { sessionId, turnId: request.clientTurnId ?? "turn-chat", clientTurnId: request.clientTurnId, snapshotId: `snapshot-${runId}` } } : {}),
     },
     events,
-    executionReference: { platform, variant: "baseline", executionId: runId, native: platform === "restate"
+    executionReference: { platform, variant: request.variant ?? "baseline", executionId: runId, native: platform === "restate"
       ? { workflowKey: `agentlab:${runId}`, invocationId: "inv-restate-1", nativeStatus: "completed", retryCount: 1, lastModifiedAt: "2026-09-16T12:00:00.000Z" }
       : langGraph
         ? { serviceOrigin: "http://127.0.0.1:8090", executionId: `langgraph:${runId}`, labRunId: runId, eventSource: "langgraph-service", threadId: `langgraph:baseline:${sessionId}`, graph: "baseline", protocolVersion: 1 }
+        : mastra
+          ? { schemaVersion: 2, evidenceSchema: "mastra.native.v2", mastraVersion: "1.66.0", operation: "agent.generate", processScoped: true, storage: "none", nativeStatus: "completed", modelProvider: "openrouter", model: request.model?.model ?? "cohere/north-mini-code:free", eventCount: events.length, modelStepCount: 1, toolCallCount: 0, toolAttemptCount: 0, contextPrepared: true }
         : { fixture: true } },
     result,
     trajectory: terminal && (platform === "temporal" || langGraph) ? { schemaVersion: 1, runId, phases: [] } : null,
