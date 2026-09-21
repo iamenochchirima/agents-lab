@@ -20,6 +20,7 @@ import {
 } from "../../../../capabilities/context/index.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
+import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type {
   ToolCall,
@@ -55,6 +56,7 @@ export const baselineWorkflow = restate.workflow({
       registry.register(calculatorTool);
       registry.register(fixtureLookupTool);
       registry.register(fixtureWriteTool);
+      registry.register(mcpFixtureLookupTool);
       const toolDefinitions = registry.definitions();
       const turnId = input.turnId ?? `${input.runId}:turn:1`;
       let sequence = 0;

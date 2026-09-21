@@ -21,6 +21,13 @@ const workflowCapabilities = z.object({
     toolName: z.string().min(1).max(64),
     connectionRef: z.string().regex(/^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$/),
     operations: z.array(z.string().min(1).max(128)),
+    mcp: z.object({
+      endpointRef: z.string().min(1).max(64),
+      serverName: z.string().min(1).max(128),
+      protocolVersion: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      toolName: z.string().min(1).max(128),
+      toolVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
+    }).optional(),
   })).optional(),
 });
 

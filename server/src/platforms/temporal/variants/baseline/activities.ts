@@ -3,6 +3,7 @@ import { cancellationSignal, heartbeat } from "@temporalio/activity";
 import { ContextService, ContextSessionStore, CharacterTokenEstimator, type ContextSummaryGenerator } from "../../../../capabilities/context/index.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
+import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type { ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
 
@@ -83,6 +84,7 @@ export async function executeTool(input: TemporalToolExecutionInput): Promise<To
   registry.register(calculatorTool);
   registry.register(fixtureLookupTool);
   registry.register(fixtureWriteTool);
+  registry.register(mcpFixtureLookupTool);
   const validation = registry.validateCall(input.call);
   if (!validation.accepted) {
     return failedToolExecution("TOOL_EXECUTION_FAILED", `Tool call was invalid at the execution boundary: ${validation.code}.`);

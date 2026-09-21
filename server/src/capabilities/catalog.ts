@@ -169,6 +169,26 @@ export const DEFAULT_CAPABILITY_MANIFESTS: readonly CapabilityManifest[] = Objec
     requiredScopes: [],
     source: { kind: "connection", ref: "local-fixture" },
   },
+  {
+    schemaVersion: 1,
+    id: "mcp_fixture_lookup",
+    version: "1.0.0",
+    kind: "connection",
+    displayName: "Local MCP read fixture",
+    description: "Read one value through the local Streamable HTTP MCP server.",
+    risk: "read",
+    operations: ["lookup"],
+    inputSchema: { type: "object" },
+    requiredScopes: [],
+    source: { kind: "connection", ref: "local-fixture-mcp" },
+    mcp: {
+      endpointRef: "local-fixture-mcp",
+      serverName: "agentlab-local-mcp",
+      protocolVersion: "2025-06-18",
+      toolName: "fixture.lookup",
+      toolVersion: "1.0.0",
+    },
+  },
 ]);
 
 export const DEFAULT_CAPABILITY_PROFILES: readonly CapabilityProfile[] = Object.freeze([
@@ -194,6 +214,17 @@ export const DEFAULT_CAPABILITY_PROFILES: readonly CapabilityProfile[] = Object.
       grant("calculator", "calculate", "none"),
       grant("fixture_lookup", "lookup", "none", "conn_local_fixture"),
       grant("fixture_write", "write", "required", "conn_local_fixture"),
+    ],
+  },
+  {
+    id: "local-mcp-safe",
+    version: "1.0.0",
+    displayName: "Local MCP safe",
+    description: "Pure tools and a read-only local MCP fixture.",
+    policy: defaultPolicy("local-mcp-safe", ["calculator", "mcp_fixture_lookup"], ["pure", "read"], [], ["conn_local_mcp_fixture"]),
+    grants: [
+      grant("calculator", "calculate", "none"),
+      grant("mcp_fixture_lookup", "lookup", "none", "conn_local_mcp_fixture"),
     ],
   },
 ]);

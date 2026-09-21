@@ -9,6 +9,7 @@ import { getDefaultConnectionRuntime, type ConnectionRuntime } from "../../../..
 import type { ToolCall, ToolImplementation, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { createFixtureTools } from "../../../../capabilities/tools/fixtures.js";
+import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
@@ -63,6 +64,7 @@ export function createBaselineAgent(
   registry.register(calculatorTool);
   registry.register(fixtureLookupTool);
   registry.register(fixtureWriteTool);
+  registry.register(mcpFixtureLookupTool);
 
   return new Agent({
     id: MASTRA_AGENT_ID,
@@ -74,6 +76,7 @@ export function createBaselineAgent(
         ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options) } : {}),
         ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(fixtureLookupTool, registry, options) } : {}),
         ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(fixtureWriteTool, registry, options) } : {}),
+        ...(enabledNames.includes(mcpFixtureLookupTool.definition.name) ? { mcp_fixture_lookup: connectedAgentTool(registry, mcpFixtureLookupTool, mcpFixtureLookupInputSchema, options) } : {}),
       },
     } : {}),
     maxRetries: 0,
@@ -87,6 +90,7 @@ const calculatorInputSchema = z.object({
 }).strict();
 const fixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).strict();
 const fixtureWriteInputSchema = z.object({ key: z.string().min(1).max(64), value: z.string().max(512) }).strict();
+const mcpFixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).strict();
 
 function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
   let toolCallCount = 0;

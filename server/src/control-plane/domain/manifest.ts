@@ -151,13 +151,29 @@ function validateCapabilities(capabilities: RunRequest["capabilities"]): void {
     }
     const bindings = new Set<string>();
     for (const binding of capabilities.connections) {
-      if (!binding || typeof binding !== "object" || !/^[a-z][a-z0-9_-]{0,63}$/.test(binding.toolName) || !/^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$/.test(binding.connectionRef) || !Array.isArray(binding.operations) || binding.operations.length > 32 || binding.operations.some((operation: unknown) => typeof operation !== "string" || !/^[a-z][a-z0-9_.:-]{0,127}$/.test(operation))) {
+      if (!binding || typeof binding !== "object" || !/^[a-z][a-z0-9_-]{0,63}$/.test(binding.toolName) || !/^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$/.test(binding.connectionRef) || !Array.isArray(binding.operations) || binding.operations.length > 32 || binding.operations.some((operation: unknown) => typeof operation !== "string" || !/^[a-z][a-z0-9_.:-]{0,127}$/.test(operation)) || !validMcpBinding(binding.mcp)) {
         throw new InvalidRunRequestError("capabilities.connections contains an invalid binding.");
       }
       if (bindings.has(binding.toolName)) throw new InvalidRunRequestError(`Duplicate connection binding: ${binding.toolName}.`);
       bindings.add(binding.toolName);
     }
   }
+}
+
+function validMcpBinding(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const binding = value as Record<string, unknown>;
+  return typeof binding.endpointRef === "string"
+    && /^[a-z][a-z0-9._-]{0,63}$/.test(binding.endpointRef)
+    && typeof binding.serverName === "string"
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(binding.serverName)
+    && typeof binding.protocolVersion === "string"
+    && /^\d{4}-\d{2}-\d{2}$/.test(binding.protocolVersion)
+    && typeof binding.toolName === "string"
+    && /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(binding.toolName)
+    && typeof binding.toolVersion === "string"
+    && /^\d+\.\d+\.\d+$/.test(binding.toolVersion);
 }
 
 function isIdentifier(value: string, name: string): boolean {

@@ -6,6 +6,8 @@
  * credentials, and execution handles do not belong here.
  */
 
+import type { McpConnectionBinding } from "./integrations/contracts.js";
+
 export const CAPABILITY_SCHEMA_VERSION = 1 as const;
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -37,6 +39,8 @@ export interface CapabilityManifest {
   readonly inputSchema?: JsonObject;
   readonly requiredScopes: readonly string[];
   readonly source: CapabilitySource;
+  /** Server-owned selection metadata for an MCP-backed capability. */
+  readonly mcp?: McpConnectionBinding;
 }
 
 export interface CapabilityGrant {

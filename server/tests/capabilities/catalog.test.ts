@@ -5,13 +5,28 @@ import { createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.j
 
 test("default capability profiles are server-owned and resolve read-only grants", () => {
   const catalog = createDefaultCapabilityCatalog(() => "2026-09-20T00:00:00.000Z");
-  assert.deepEqual(catalog.list().map((profile) => profile.id), ["local-safe", "local-write-approved"]);
+  assert.deepEqual(catalog.list().map((profile) => profile.id), ["local-safe", "local-write-approved", "local-mcp-safe"]);
   const resolved = catalog.resolve("local-safe");
   assert.deepEqual(resolved.resolution.grants.map(({ manifest }) => manifest.id), ["calculator", "fixture_lookup"]);
   assert.deepEqual(resolved.skills.map((skill) => skill.manifest.id), ["research-summary"]);
   assert.deepEqual(catalog.list()[0]?.skills.map((skill) => skill.id), ["research-summary"]);
   assert.ok(resolved.resolution.grants.every(({ approval }) => approval === "not_required"));
   assert.equal(resolved.resolution.decisions.every((decision) => decision.status === "granted"), true);
+});
+
+test("the MCP profile keeps server-owned tool selection separate from the direct fixture", () => {
+  const catalog = createDefaultCapabilityCatalog(() => "2026-09-20T00:00:00.000Z");
+  const resolved = catalog.resolve("local-mcp-safe");
+  const grant = resolved.resolution.grants.find(({ manifest }) => manifest.id === "mcp_fixture_lookup");
+  assert.ok(grant);
+  assert.deepEqual(grant.manifest.mcp, {
+    endpointRef: "local-fixture-mcp",
+    serverName: "agentlab-local-mcp",
+    protocolVersion: "2025-06-18",
+    toolName: "fixture.lookup",
+    toolVersion: "1.0.0",
+  });
+  assert.equal(grant.grant.connectionRef, "conn_local_mcp_fixture");
 });
 
 test("write profile fails closed until a matching unexpired approval is supplied", () => {

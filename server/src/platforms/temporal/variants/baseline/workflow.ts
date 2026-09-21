@@ -14,6 +14,7 @@ import {
 import type { baselineActivities } from "./activities.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
+import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type { ToolCall, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
 import {
@@ -73,6 +74,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   toolRegistry.register(calculatorTool);
   toolRegistry.register(fixtureLookupTool);
   toolRegistry.register(fixtureWriteTool);
+  toolRegistry.register(mcpFixtureLookupTool);
   const toolDefinitions = toolRegistry.definitions();
 
   const snapshot = (): TemporalWorkflowSnapshot => ({

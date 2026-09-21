@@ -65,6 +65,7 @@ export function validateCapabilityManifest(value: unknown): CapabilityManifest {
     "inputSchema",
     "requiredScopes",
     "source",
+    "mcp",
   ], "manifest");
 
   assertSchemaVersion(input.schemaVersion, "manifest.schemaVersion");
@@ -80,6 +81,7 @@ export function validateCapabilityManifest(value: unknown): CapabilityManifest {
     : validateJsonObject(input.inputSchema, "manifest.inputSchema", CAPABILITY_LIMITS.maxSchemaBytes, CAPABILITY_LIMITS.maxSchemaDepth, CAPABILITY_LIMITS.maxSchemaNodes);
   const requiredScopes = validateStringList(input.requiredScopes, "manifest.requiredScopes", CAPABILITY_LIMITS.maxScopes, CAPABILITY_LIMITS.maxScopeBytes, SCOPE_PATTERN, false);
   const source = validateSource(input.source, "manifest.source");
+  const mcp = input.mcp === undefined ? undefined : validateMcpBinding(input.mcp, "manifest.mcp");
 
   return freeze({
     schemaVersion: CAPABILITY_SCHEMA_VERSION,
@@ -93,6 +95,7 @@ export function validateCapabilityManifest(value: unknown): CapabilityManifest {
     ...(inputSchema === undefined ? {} : { inputSchema }),
     requiredScopes,
     source,
+    ...(mcp === undefined ? {} : { mcp }),
   });
 }
 
@@ -243,6 +246,17 @@ function validateSource(value: unknown, path: string): CapabilitySource {
   const ref = validateIdentifierWithPattern(input.ref, `${path}.ref`, /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/, CAPABILITY_LIMITS.maxSourceRefBytes);
   const digest = input.digest === undefined ? undefined : validateIdentifierWithPattern(input.digest, `${path}.digest`, DIGEST_PATTERN, CAPABILITY_LIMITS.maxDigestBytes);
   return freeze({ kind, ref, ...(digest === undefined ? {} : { digest }) });
+}
+
+function validateMcpBinding(value: unknown, path: string): CapabilityManifest["mcp"] {
+  const input = validateRecord(value, path, 4_096);
+  assertKeys(input, ["endpointRef", "serverName", "protocolVersion", "toolName", "toolVersion"], path);
+  const endpointRef = validateIdentifierWithPattern(input.endpointRef, `${path}.endpointRef`, /^[a-z][a-z0-9._-]{0,63}$/, 128);
+  const serverName = validateIdentifierWithPattern(input.serverName, `${path}.serverName`, /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, 256);
+  const protocolVersion = validateIdentifierWithPattern(input.protocolVersion, `${path}.protocolVersion`, /^\d{4}-\d{2}-\d{2}$/, 64);
+  const toolName = validateIdentifierWithPattern(input.toolName, `${path}.toolName`, /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/, 256);
+  const toolVersion = validateVersion(input.toolVersion, `${path}.toolVersion`);
+  return Object.freeze({ endpointRef, serverName, protocolVersion, toolName, toolVersion });
 }
 
 function validateRecord(value: unknown, path: string, maxBytes: number): Record<string, unknown> {

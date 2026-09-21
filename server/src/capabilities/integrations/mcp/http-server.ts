@@ -90,7 +90,7 @@ export class HttpMcpServer implements McpServer {
   private async notification(method: string, signal: AbortSignal): Promise<void> {
     const response = await this.fetchImplementation(this.endpoint, {
       method: "POST",
-      headers: { accept: "application/json, text/event-stream", "content-type": "application/json" },
+      headers: this.headers(method),
       body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, method }),
       signal,
     });
@@ -104,24 +104,30 @@ export class HttpMcpServer implements McpServer {
     const id = requestId ?? `agentlab-${++this.requestSequence}`;
     const response = await this.fetchImplementation(this.endpoint, {
       method: "POST",
-      headers: { accept: "application/json, text/event-stream", "content-type": "application/json" },
+      headers: this.headers(method, params),
       body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, method, params }),
       signal,
     });
     const text = await boundedResponseText(response, this.maxResponseBytes);
     if (!response.ok) throw new Error(`MCP request failed with HTTP ${response.status}.`);
-    let envelope: unknown;
-    try {
-      envelope = JSON.parse(text);
-    } catch {
-      throw new Error("MCP returned malformed JSON.");
-    }
+    const envelope = parseResponse(text, response.headers.get("content-type"));
     if (!isRecord(envelope) || envelope.jsonrpc !== JSON_RPC_VERSION) throw new Error("MCP returned an invalid JSON-RPC envelope.");
     if (isRecord(envelope.error)) {
       const message = typeof envelope.error.message === "string" ? envelope.error.message : "MCP request failed.";
       throw new Error(bounded(message));
     }
     return envelope.result;
+  }
+
+  private headers(method: string, params?: Readonly<Record<string, unknown>>): Record<string, string> {
+    const name = params && typeof params.name === "string" ? params.name : undefined;
+    return {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+      "MCP-Protocol-Version": this.protocolVersion,
+      "Mcp-Method": method,
+      ...(name ? { "Mcp-Name": name } : {}),
+    };
   }
 }
 
@@ -139,6 +145,28 @@ async function boundedResponseText(response: Response, maxBytes: number): Promis
   const text = await response.text();
   if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error("MCP response exceeds the configured limit.");
   return text;
+}
+
+function parseResponse(text: string, contentType: string | null): unknown {
+  if (contentType?.toLowerCase().includes("text/event-stream")) {
+    const data = text
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data) throw new Error("MCP returned an empty event stream.");
+    return parseJson(data);
+  }
+  return parseJson(text);
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("MCP returned malformed JSON.");
+  }
 }
 
 function normalizeEndpoint(endpoint: string): string {

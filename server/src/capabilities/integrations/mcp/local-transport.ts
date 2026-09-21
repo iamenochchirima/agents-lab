@@ -19,11 +19,20 @@ export interface McpServer {
   ): Promise<{ readonly providerRequestId: string; readonly output: Readonly<Record<string, unknown>> }>;
 }
 
+export interface McpToolSelection {
+  readonly serverName: string;
+  readonly protocolVersion: string;
+  readonly toolName: string;
+  readonly toolVersion: string;
+}
+
 export interface McpTransportOptions {
   readonly server: McpServer;
   readonly endpoint: string;
   readonly allowedEndpoints: readonly string[];
   readonly limits: ConnectionLimits;
+  /** Optional server-owned selection that discovery and invocation must match. */
+  readonly selectedTool?: McpToolSelection;
 }
 
 export class McpTransport {
@@ -34,6 +43,12 @@ export class McpTransport {
   }
 
   async discover(signal: AbortSignal): Promise<readonly McpToolManifest[]> {
+    if (this.options.selectedTool && this.options.server.serverName !== this.options.selectedTool.serverName) {
+      throw new Error("MCP server identity does not match the selected capability.");
+    }
+    if (this.options.selectedTool && this.options.server.protocolVersion !== this.options.selectedTool.protocolVersion) {
+      throw new Error("MCP protocol version does not match the selected capability.");
+    }
     const tools = await withDeadline(
       (attemptSignal) => this.options.server.listTools(attemptSignal),
       this.options.limits.timeoutMs,
@@ -41,6 +56,10 @@ export class McpTransport {
     );
     if (tools.length > 64) throw new Error("MCP discovery returned too many tools.");
     for (const tool of tools) validateToolManifest(tool);
+    if (this.options.selectedTool) {
+      const selected = tools.find((tool) => tool.name === this.options.selectedTool?.toolName && tool.version === this.options.selectedTool?.toolVersion);
+      if (!selected) throw new Error("The selected MCP tool was not returned by discovery.");
+    }
     return tools;
   }
 
@@ -53,6 +72,9 @@ export class McpTransport {
     if (!isSafeRequestId(requestId)) throw new Error("MCP request ID is unsafe.");
     if (!this.options.server) throw new Error("MCP server is unavailable.");
     validateToolManifest(tool);
+    if (this.options.selectedTool && (tool.name !== this.options.selectedTool.toolName || tool.version !== this.options.selectedTool.toolVersion)) {
+      throw new Error("The MCP tool is not the server-owned selected tool.");
+    }
     const requestBytes = new TextEncoder().encode(JSON.stringify(argumentsValue)).byteLength;
     if (requestBytes > this.options.limits.maxRequestBytes) {
       return failure(requestId, new Date().toISOString(), "MCP_REQUEST_TOO_LARGE", "MCP request exceeds the configured request limit.", "failed");

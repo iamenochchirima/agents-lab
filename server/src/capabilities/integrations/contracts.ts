@@ -9,6 +9,20 @@ export interface ConnectionBinding {
   readonly toolName: string;
   readonly connectionRef: string;
   readonly operations: readonly string[];
+  /**
+   * Server-owned MCP selection metadata. The endpoint itself is resolved from
+   * process configuration by the native runtime; this record carries only its
+   * safe identity into the immutable run manifest.
+   */
+  readonly mcp?: McpConnectionBinding;
+}
+
+export interface McpConnectionBinding {
+  readonly endpointRef: string;
+  readonly serverName: string;
+  readonly protocolVersion: string;
+  readonly toolName: string;
+  readonly toolVersion: string;
 }
 
 export interface ConnectionReference {
@@ -43,6 +57,7 @@ export interface ConnectionRequest {
   readonly input: Readonly<Record<string, unknown>>;
   readonly idempotencyKey: string | null;
   readonly limits: ConnectionLimits;
+  readonly mcp?: McpConnectionBinding;
 }
 
 export interface ConnectionAttempt {

@@ -221,6 +221,7 @@ export class RunService {
             toolName: manifest.id,
             connectionRef: grant.connectionRef!,
             operations: [...grant.allowedOperations],
+            ...(manifest.mcp ? { mcp: manifest.mcp } : {}),
           })),
         resolution: resolved.resolution,
         skills: resolved.skills.map((skill) => ({
