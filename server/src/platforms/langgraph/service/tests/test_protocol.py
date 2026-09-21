@@ -38,6 +38,26 @@ def test_protocol_accepts_context_identity_and_bounded_tool_policy() -> None:
     assert parsed.tools.enabled_names == ["calculator"]
 
 
+def test_protocol_keeps_lab_capability_name_separate_from_mcp_server_tool_name() -> None:
+    request = valid_request()
+    request["connections"] = [{
+        "toolName": "mcp_fixture_lookup",
+        "connectionRef": "conn_local_mcp_fixture",
+        "operations": ["lookup"],
+        "mcp": {
+            "endpointRef": "local-fixture-mcp",
+            "serverName": "agentlab-local-mcp",
+            "protocolVersion": "2025-06-18",
+            "toolName": "fixture.lookup",
+            "toolVersion": "1.0.0",
+        },
+    }]
+    parsed = StartRunRequest.model_validate(request)
+    assert parsed.connections[0].tool_name == "mcp_fixture_lookup"
+    assert parsed.connections[0].mcp is not None
+    assert parsed.connections[0].mcp.tool_name == "fixture.lookup"
+
+
 def test_protocol_requires_client_turns_to_use_the_session_thread() -> None:
     request = valid_request()
     request["sessionId"] = "session-conformance"

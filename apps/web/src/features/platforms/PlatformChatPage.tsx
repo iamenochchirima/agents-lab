@@ -522,9 +522,10 @@ function chatMessageStatusLabel(status: ChatMessage["status"]): string {
 function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
   const event = [...events].reverse().find((candidate) => candidate.kind.startsWith("Tool"));
   if (!event) return null;
-  const toolName = typeof event.payload.toolName === "string" && event.payload.toolName.trim()
+  const mcp = readMcpEvidence(event);
+  const toolName = mcp?.toolName ?? (typeof event.payload.toolName === "string" && event.payload.toolName.trim()
     ? event.payload.toolName
-    : "Tool";
+    : "Tool");
   const state = event.kind === "ToolExecutionCompleted"
     ? "completed"
     : event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionCancelled" || event.kind === "ToolPolicyDenied" || event.kind === "ToolCallRejected"
@@ -571,6 +572,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }:
           <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
         </dl>
         {native && nativePlatform && <NativeRunDetails native={native} platform={nativePlatform} variant={run.manifest.variant} />}
+        <McpConnectionDetails events={events} />
         {run.projection.state === "stale" && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {run.projection.reason ?? "The latest platform state is unavailable."}</p>}
         <details className="chat-activity" open={toolEvents.length > 0}>
           <summary><Wrench aria-hidden="true" size={13} /> Tool activity <small>{toolEvents.length}</small></summary>
@@ -587,6 +589,46 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }:
       </div>
     </details>
   );
+}
+
+function McpConnectionDetails({ events }: { events: readonly RunEvent[] }) {
+  const evidence = [...events].reverse().map(readMcpEvidence).find((value): value is McpEvidence => value !== null);
+  if (!evidence) return null;
+  return (
+    <details className="chat-activity">
+      <summary><span>MCP connection</span><small>{evidence.phase}</small></summary>
+      <dl className="chat-run-meta">
+        <div><dt>Server</dt><dd title={evidence.serverName}>{evidence.serverName}</dd></div>
+        <div><dt>Tool</dt><dd title={evidence.toolName}>{evidence.toolName}</dd></div>
+        <div><dt>Protocol</dt><dd>{evidence.protocolVersion}</dd></div>
+        <div><dt>Version</dt><dd>{evidence.toolVersion}</dd></div>
+        {evidence.endpointRef && <div><dt>Endpoint</dt><dd>{evidence.endpointRef}</dd></div>}
+      </dl>
+    </details>
+  );
+}
+
+interface McpEvidence {
+  readonly endpointRef: string | null;
+  readonly serverName: string;
+  readonly protocolVersion: string;
+  readonly toolName: string;
+  readonly toolVersion: string;
+  readonly phase: string;
+}
+
+function readMcpEvidence(event: RunEvent): McpEvidence | null {
+  const connection = isRecord(event.payload.connection) ? event.payload.connection : null;
+  const mcp = connection && isRecord(connection.mcp) ? connection.mcp : null;
+  if (!mcp || typeof mcp.serverName !== "string" || typeof mcp.toolName !== "string" || typeof mcp.protocolVersion !== "string" || typeof mcp.toolVersion !== "string" || typeof mcp.phase !== "string") return null;
+  return {
+    endpointRef: typeof mcp.endpointRef === "string" ? mcp.endpointRef : null,
+    serverName: mcp.serverName,
+    protocolVersion: mcp.protocolVersion,
+    toolName: mcp.toolName,
+    toolVersion: mcp.toolVersion,
+    phase: mcp.phase,
+  };
 }
 
 function NativeRunDetails({ native, platform, variant }: { native: Record<string, unknown>; platform: string; variant: string }) {

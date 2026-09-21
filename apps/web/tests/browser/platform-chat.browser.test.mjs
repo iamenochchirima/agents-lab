@@ -99,7 +99,7 @@ test("Platform Chat displays and submits the selected capability profile", async
     await navigate(browser.cdp, "/platforms/temporal/chat");
     await waitForText(browser.cdp, "Temporal");
     await chooseModel(browser.cdp);
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 2');
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 3');
 
     const profileOptions = await browser.cdp.evaluate(`JSON.stringify({
       selected: document.querySelector('select[aria-label="Capability profile"]')?.selectedOptions[0]?.textContent?.trim(),
@@ -108,6 +108,7 @@ test("Platform Chat displays and submits the selected capability profile", async
     assert.equal(profileOptions.selected, "Local safe · 1 skill");
     assert.deepEqual(profileOptions.options, [
       { value: "local-safe", text: "Local safe · 1 skill" },
+      { value: "local-mcp-safe", text: "Local MCP safe" },
       { value: "local-write-approved", text: "Local write test · 1 skill" },
     ]);
 
@@ -138,6 +139,43 @@ test("Platform Chat displays and submits the selected capability profile", async
   }
 });
 
+test("Platform Chat exposes the native MCP connection details", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal/chat");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 3');
+    await chooseCapabilityProfile(browser.cdp, "local-mcp-safe");
+    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
+      value: document.querySelector('select[aria-label="Capability profile"]')?.value,
+      capabilities: document.querySelector('.capability-picker-summary span')?.textContent?.trim(),
+    })`).then(JSON.parse), {
+      value: "local-mcp-safe",
+      capabilities: "Calculator, Local MCP read fixture",
+    });
+
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Read alpha through MCP.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "MCP fixture returned alpha.");
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "local-mcp-safe");
+
+    await clickSummary(browser.cdp, "Run details");
+    await clickSummary(browser.cdp, "MCP connection");
+    const details = await browser.cdp.evaluate(`document.querySelector('.chat-activity[open]')?.textContent?.replace(/\\s+/g, " ").trim() ?? ""`);
+    assert.match(details, /MCP connectioninvocation/);
+    assert.match(details, /agentlab-local-mcp/);
+    assert.match(details, /fixture\.lookup/);
+    assert.match(details, /2025-06-18/);
+    assert.match(await browser.cdp.evaluate(`document.querySelector('.chat-tool-activity')?.textContent?.trim() ?? ""`), /fixture\.lookup.*Completed/);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Platform Chat uses an application approval dialog for a write-capable profile", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -146,7 +184,7 @@ test("Platform Chat uses an application approval dialog for a write-capable prof
     await navigate(browser.cdp, "/platforms/temporal/chat");
     await waitForText(browser.cdp, "Temporal");
     await chooseModel(browser.cdp);
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 2');
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 3');
     await chooseCapabilityProfile(browser.cdp, "local-write-approved");
     await waitForText(browser.cdp, "Allow write access?");
     await waitForText(browser.cdp, "Approval write fixture");
@@ -357,7 +395,7 @@ test("Compare displays one capability profile and sends it to each platform run"
     await chooseModel(browser.cdp);
     await clickButton(browser.cdp, "Compare");
     await waitForText(browser.cdp, "One task, multiple platforms");
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 2');
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 3');
 
     await chooseCapabilityProfile(browser.cdp, "local-safe", ".compare-modal");
     assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
@@ -1101,10 +1139,37 @@ function makeRun(request, status, runIdOverride, mode = "complete", resumedRunId
   const runId = runIdOverride ?? `run-${platform}-1`;
   const langGraph = platform === "langgraph";
   const mastra = platform === "mastra";
+  const mcp = request.capabilities?.profileId === "local-mcp-safe";
   const compaction = (platform === "restate" || platform === "langgraph") && mode === "compaction";
   const retrying = (platform === "restate" || platform === "langgraph") && mode === "retrying";
   const approvalWorkflow = mastra && request.variant === "workflow";
-  const events = approvalWorkflow
+  const events = mcp
+    ? [
+      event(runId, 1, "AgentStarted", platform),
+      event(runId, 2, "ModelCallStarted", platform),
+      event(runId, 3, "ToolCallRequested", platform, { toolName: "mcp_fixture_lookup" }),
+      event(runId, 4, "ToolExecutionStarted", platform, { toolName: "mcp_fixture_lookup" }),
+      event(runId, 5, "ToolExecutionCompleted", platform, {
+        toolName: "mcp_fixture_lookup",
+        connection: {
+          requestId: `${runId}:mcp:lookup`,
+          status: "completed",
+          attemptCount: 1,
+          providerRequestIds: [`mcp-http:${runId}:mcp:lookup`],
+          errorCode: null,
+          mcp: {
+            endpointRef: "local-fixture-mcp",
+            serverName: "agentlab-local-mcp",
+            protocolVersion: "2025-06-18",
+            toolName: "fixture.lookup",
+            toolVersion: "1.0.0",
+            phase: "invocation",
+          },
+        },
+      }),
+      event(runId, 6, "AgentCompleted", platform),
+    ]
+    : approvalWorkflow
     ? status === "suspended"
       ? [event(runId, 1, "AgentStarted", platform), event(runId, 2, "WorkflowStarted", platform), event(runId, 3, "WorkflowSuspended", platform, { approved: false })]
       : [event(runId, 1, "AgentStarted", platform), event(runId, 2, "WorkflowStarted", platform), ...(resumedRunIds.has(runId) ? [event(runId, 3, "WorkflowResumed", platform, { approved: true })] : []), event(runId, 4, "WorkflowCompleted", platform), event(runId, 5, "RunCompleted", platform)]
@@ -1157,7 +1222,8 @@ function makeRun(request, status, runIdOverride, mode = "complete", resumedRunId
     status,
     finishedAt: "2026-09-16T12:00:00.000Z",
     output: status === "completed"
-      ? platform === "temporal" ? "The calculator result is 42."
+      ? mcp ? "MCP fixture returned alpha."
+        : platform === "temporal" ? "The calculator result is 42."
         : platform === "langgraph" ? compaction ? "LangGraph fixture compacted." : "LangGraph fixture completed."
           : platform === "mastra" ? "Mastra fixture completed."
             : compaction ? "Restate fixture compacted." : "Restate fixture completed."
@@ -1265,6 +1331,17 @@ function capabilityProfiles() {
       capabilities: [
         { id: "calculator", version: "1.0.0", kind: "tool", displayName: "Calculator", description: "Bounded deterministic arithmetic.", risk: "pure", operations: ["calculate"] },
         { id: "fixture_lookup", version: "1.0.0", kind: "connection", displayName: "Local read fixture", description: "Read-only provider-shaped local data.", risk: "read", operations: ["lookup"] },
+      ],
+    },
+    {
+      id: "local-mcp-safe",
+      version: "1.0.0",
+      displayName: "Local MCP safe",
+      description: "Pure tools and a read-only local MCP fixture.",
+      skills: [],
+      capabilities: [
+        { id: "calculator", version: "1.0.0", kind: "tool", displayName: "Calculator", description: "Bounded deterministic arithmetic.", risk: "pure", operations: ["calculate"] },
+        { id: "mcp_fixture_lookup", version: "1.0.0", kind: "connection", displayName: "Local MCP read fixture", description: "Read one value through the local Streamable HTTP MCP server.", risk: "read", operations: ["lookup"] },
       ],
     },
     {

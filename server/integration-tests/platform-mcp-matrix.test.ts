@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { createDefaultCapabilityCatalog } from "../src/capabilities/catalog.js";
@@ -33,7 +33,10 @@ test(
   },
   async () => {
     const fixtureUrl = (process.env.AGENTLAB_LOCAL_FIXTURE_URL ?? "http://127.0.0.1:9191").replace(/\/$/, "");
-    const sharedContextRoot = process.env.AGENTLAB_CONTEXT_ROOT ?? join(process.cwd(), "lab/sessions");
+    const repositoryRoot = process.cwd().endsWith("/server") ? resolve(process.cwd(), "..") : process.cwd();
+    const sharedContextRoot = process.env.AGENTLAB_CONTEXT_ROOT ?? join(repositoryRoot, "lab/sessions");
+    const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    process.env.AGENTLAB_LOCAL_FIXTURE_URL = fixtureUrl;
     await assertFixtureReady(fixtureUrl);
     const roots = await Promise.all([
       mkdtemp(join(tmpdir(), "agentlab-platform-mcp-temporal-")),
@@ -113,6 +116,8 @@ test(
     } finally {
       await Promise.all(runners.map((runner) => runner.close?.()));
       await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+      if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+      else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
     }
   },
 );

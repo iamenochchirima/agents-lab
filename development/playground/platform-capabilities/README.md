@@ -19,6 +19,9 @@ curl http://127.0.0.1:9191/health
 AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191 \
 AGENTLAB_CONTEXT_ROOT="$PWD/lab/sessions" \
 pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix
+
+# Exercise the same profile through native MCP execution.
+pnpm --filter @agent-harness-lab/lab-server run test:platform-mcp-matrix
 ```
 
 Open `http://127.0.0.1:5173/platforms/temporal` and use Chat. Select a capability
@@ -49,6 +52,9 @@ node --test \
   operation.
 - local connection tests expose MCP request IDs, direct-API retry attempts, OAuth state
   and refresh behaviour, while keeping credentials out of results.
+- `local-mcp-safe` binds the Lab capability `mcp_fixture_lookup` to the MCP server tool
+  `fixture.lookup`; the two names are intentionally distinct and both remain visible in
+  bounded manifest/event evidence.
 - `logs/operations.jsonl` contains classifications for resolution, tool execution,
   retries, unknown outcomes, and provider request IDs without prompts or tokens.
 
@@ -72,6 +78,11 @@ Try one approved write, one missing approval, one cancellation, and one unavaila
 fixture. Observe that denied, unknown, and reconciliation-required states remain explicit.
 Restart the Lab server after dispatching a durable platform run and inspect the native
 reference plus the server projection; absence of a result is not treated as success.
+
+The MCP matrix runs the same deterministic read through Temporal, Restate, LangGraph, and
+Mastra. The fixture receives real `initialize`, `notifications/initialized`, `tools/list`,
+and `tools/call` requests. A local fixture proves the protocol and lifecycle boundary; it
+does not prove remote MCP-provider availability.
 
 ## Observations and limits
 

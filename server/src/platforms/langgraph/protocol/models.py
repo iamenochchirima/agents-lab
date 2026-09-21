@@ -108,8 +108,6 @@ class ConnectionBinding(ProtocolModel):
             raise ValueError("Connection operations must use lowercase letters, numbers, dots, underscores, hyphens, or colons.")
         if len(set(self.operations)) != len(self.operations):
             raise ValueError("Connection operations must not contain duplicates.")
-        if self.mcp is not None and self.mcp.tool_name != self.tool_name:
-            raise ValueError("MCP binding toolName must match its connection toolName.")
         return self
 
 
