@@ -422,6 +422,37 @@ test("Compare displays one capability profile and sends it to each platform run"
   }
 });
 
+test("Compare keeps MCP capability evidence independent for each platform run", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await clickButton(browser.cdp, "Compare");
+    await waitForText(browser.cdp, "One task, multiple platforms");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 3');
+    await chooseCapabilityProfile(browser.cdp, "local-mcp-safe", ".compare-modal");
+    await waitForExpression(browser.cdp, 'document.querySelector(\'.compare-modal select[aria-label="Capability profile"]\')?.value === "local-mcp-safe"');
+    await toggleComparisonPlatform(browser.cdp, "Mastra");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-platform-picker input:checked").length === 2');
+    await setInput(browser.cdp, ".compare-task-field textarea", "Read alpha through the selected MCP capability.");
+    await clickButton(browser.cdp, "Run comparison");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-result-completed").length === 2');
+
+    assert.equal(fixture.state.requests.length, 2);
+    assert.deepEqual(fixture.state.requests.map((request) => request.capabilities?.profileId), ["local-mcp-safe", "local-mcp-safe"]);
+    assert.equal(new Set(fixture.state.requests.map((request) => request.sessionId)).size, 2, "MCP comparison members need independent context sessions");
+    assert.equal(new Set(fixture.state.runIds).size, 2, "MCP comparison members need independent native runs");
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-output").length'), 2);
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".comparison-result-link").length'), 2);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("Compare keeps a completed member when another platform fails", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
@@ -1434,17 +1465,16 @@ async function chooseCapabilityProfile(cdp, profileId, scope = "") {
 
 async function toggleComparisonPlatform(cdp, platformName) {
   const target = JSON.stringify(platformName);
-  const bounds = JSON.parse(await cdp.evaluate(
-    "JSON.stringify((() => {" +
+  const clicked = await cdp.evaluate(
+    "(() => {" +
       "const label = Array.from(document.querySelectorAll('.comparison-platform-picker label')).find((candidate) => candidate.textContent?.replace(/\\\\s+/g, ' ').trim().startsWith(" + target + "));" +
-      "if (!label) return null;" +
-      "const rect = label.getBoundingClientRect();" +
-      "return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };" +
-    "})())",
-  ));
-  if (!bounds) throw new Error("Comparison platform not found: " + platformName);
-  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: bounds.x, y: bounds.y, button: "left", clickCount: 1 });
-  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: bounds.x, y: bounds.y, button: "left", clickCount: 1 });
+      "const input = label?.querySelector('input[type=checkbox]');" +
+      "if (!input) return false;" +
+      "input.click();" +
+      "return true;" +
+    "})()",
+  );
+  if (!clicked) throw new Error("Comparison platform not found: " + platformName);
 }
 
 async function clickModel(cdp, modelId) {

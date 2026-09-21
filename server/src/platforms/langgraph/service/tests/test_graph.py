@@ -315,6 +315,42 @@ def test_mcp_tool_turn_crosses_the_native_streamable_http_boundary() -> None:
                 {"configurable": {"thread_id": "thread-mcp-http"}, "run_id": "run-mcp-http"},
             )
 
+            checkpoint = graph.get_state({"configurable": {"thread_id": "thread-mcp-http"}})
+            assert checkpoint.values["output"] == snapshot["output"]
+            assert any(message["role"] == "tool" for message in checkpoint.values["messages"])
+
+            resumed_graph = build_baseline_graph(
+                ModelConfig(provider="fake", model="fake-mcp-connected-tool", api_key=None, timeout_ms=5_000),
+                lambda kind, payload: events.append((kind, payload)),
+                lambda: False,
+                "run-mcp-http-resumed",
+                2,
+                checkpointer,
+                tool_names=["mcp_fixture_lookup"],
+                connection_bindings=[{
+                    "toolName": "mcp_fixture_lookup",
+                    "connectionRef": "conn_local_mcp_fixture",
+                    "operations": ["lookup"],
+                    "mcp": {
+                        "endpointRef": "local-fixture-mcp",
+                        "serverName": "agentlab-local-mcp",
+                        "protocolVersion": "2025-06-18",
+                        "toolName": "fixture.lookup",
+                        "toolVersion": "1.0.0",
+                    },
+                }],
+                connection_url=f"http://127.0.0.1:{server.server_port}",
+                turn_id="turn-mcp-http-resumed",
+                max_rounds=3,
+                max_calls=2,
+            )
+            resumed = resumed_graph.invoke(
+                {"prompt": "Continue from the MCP checkpoint.", "system_instruction": "Use the selected MCP connection."},
+                {"configurable": {"thread_id": "thread-mcp-http"}, "run_id": "run-mcp-http-resumed"},
+            )
+            assert resumed["output"] == snapshot["output"]
+            assert [request["method"] for request in requests] == ["initialize", "notifications/initialized", "tools/list", "tools/call"]
+
         assert snapshot["output"] == 'The local MCP fixture returned {"key":"alpha","value":"local fixture alpha"}.'
         assert [request["method"] for request in requests] == ["initialize", "notifications/initialized", "tools/list", "tools/call"]
         completed = next(payload for kind, payload in events if kind == "ToolExecutionCompleted")
@@ -324,6 +360,47 @@ def test_mcp_tool_turn_crosses_the_native_streamable_http_boundary() -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_mcp_discovery_failure_is_a_native_tool_failure_not_an_unknown_outcome() -> None:
+    events: list[tuple[str, dict]] = []
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_baseline_graph(
+            ModelConfig(provider="fake", model="fake-mcp-connected-tool", api_key=None, timeout_ms=100),
+            lambda kind, payload: events.append((kind, payload)),
+            lambda: False,
+            "run-mcp-failure",
+            2,
+            checkpointer,
+            tool_names=["mcp_fixture_lookup"],
+            connection_bindings=[{
+                "toolName": "mcp_fixture_lookup",
+                "connectionRef": "conn_local_mcp_fixture",
+                "operations": ["lookup"],
+                "mcp": {
+                    "endpointRef": "local-fixture-mcp",
+                    "serverName": "agentlab-local-mcp",
+                    "protocolVersion": "2025-06-18",
+                    "toolName": "fixture.lookup",
+                    "toolVersion": "1.0.0",
+                },
+            }],
+            connection_url="http://127.0.0.1:1",
+            turn_id="turn-mcp-failure",
+            max_rounds=3,
+            max_calls=2,
+        )
+        with pytest.raises(ProviderError):
+            graph.invoke(
+                {"prompt": "Read the unavailable MCP fixture.", "system_instruction": "Use the selected MCP connection.", "output": "", "attempt_count": 0},
+                {"configurable": {"thread_id": "thread-mcp-failure"}, "run_id": "run-mcp-failure"},
+            )
+
+    failed = next(payload for kind, payload in events if kind == "ToolExecutionFailed")
+    assert failed["code"] == "MCP_DISCOVERY_FAILED"
+    assert failed["connection"]["status"] == "failed"
+    assert failed["connection"]["errorCode"] == "MCP_DISCOVERY_FAILED"
+    assert not any(kind == "ToolExecutionUnknown" for kind, _ in events)
 
 
 def test_mcp_cancellation_during_inflight_call_wins_before_tool_completion() -> None:

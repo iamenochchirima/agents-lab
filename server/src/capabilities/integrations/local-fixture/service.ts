@@ -46,6 +46,8 @@ export interface LocalFixtureServerHandle {
   readonly server: Server;
   readonly host: string;
   readonly port: number;
+  /** Number of MCP tools/call requests received by this fixture. */
+  readonly mcpCallCount: number;
   close(): Promise<void>;
 }
 
@@ -66,11 +68,12 @@ export async function createLocalFixtureServer(options: LocalFixtureServerOption
   const authorizationCodes = new Map<string, AuthorizationCode>();
   const refreshTokens = new Map<string, RefreshRecord>();
   const revokedTokens = new Set<string>();
+  const mcpStats = { callCount: 0 };
   const mcpCallBehavior = options.mcpCallBehavior ?? "success";
   const mcpCallDelayMs = boundedDelay(options.mcpCallDelayMs ?? 250);
 
   const server = createServer((request, response) => {
-    void handleRequest(request, response, values, writes, authorizationCodes, refreshTokens, revokedTokens, mcpCallBehavior, mcpCallDelayMs);
+    void handleRequest(request, response, values, writes, authorizationCodes, refreshTokens, revokedTokens, mcpStats, mcpCallBehavior, mcpCallDelayMs);
   });
   await listen(server, host, port);
   const address = server.address();
@@ -79,6 +82,9 @@ export async function createLocalFixtureServer(options: LocalFixtureServerOption
     server,
     host,
     port: address.port,
+    get mcpCallCount() {
+      return mcpStats.callCount;
+    },
     close: () => close(server),
   };
 }
@@ -109,6 +115,7 @@ async function handleRequest(
   authorizationCodes: Map<string, AuthorizationCode>,
   refreshTokens: Map<string, RefreshRecord>,
   revokedTokens: Set<string>,
+  mcpStats: { callCount: number },
   mcpCallBehavior: LocalFixtureServerOptions["mcpCallBehavior"],
   mcpCallDelayMs: number,
 ): Promise<void> {
@@ -117,7 +124,7 @@ async function handleRequest(
     return;
   }
   if (request.method === "POST" && request.url === "/mcp") {
-    await handleMcpRequest(request, response, values, mcpCallBehavior, mcpCallDelayMs);
+    await handleMcpRequest(request, response, values, mcpStats, mcpCallBehavior, mcpCallDelayMs);
     return;
   }
   if (request.method === "GET" && request.url?.startsWith("/oauth/authorize")) {
@@ -154,6 +161,7 @@ async function handleMcpRequest(
   request: IncomingMessage,
   response: ServerResponse,
   values: Map<string, string>,
+  mcpStats: { callCount: number },
   mcpCallBehavior: LocalFixtureServerOptions["mcpCallBehavior"],
   mcpCallDelayMs: number,
 ): Promise<void> {
@@ -189,6 +197,7 @@ async function handleMcpRequest(
       return;
     }
     if (body.method === "tools/call") {
+      mcpStats.callCount += 1;
       if (mcpCallBehavior === "disconnect") {
         response.destroy();
         return;

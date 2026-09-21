@@ -131,6 +131,26 @@ export class FakeRestateModel implements ModelAdapter {
       };
     }
 
+    if (input.model === "fake-mcp-tool-call-delay") {
+      const toolResult = input.messages.find((message) => message.role === "tool");
+      if (!toolResult || toolResult.role !== "tool") {
+        return toolFixtureCall("call-mcp-fixture-lookup-1", "mcp_fixture_lookup", { key: "alpha" });
+      }
+      try {
+        await waitWithAbort(15_000, signal);
+      } catch (error) {
+        if (signal.aborted) return cancelledResult();
+        throw error;
+      }
+      return {
+        kind: "success",
+        output: `The local MCP fixture returned ${toolResult.content}.`,
+        toolCalls: [],
+        providerRequestId: null,
+        usage: { inputTokens: 20, outputTokens: 9, totalTokens: 29 },
+      };
+    }
+
     if (input.model === "fake-connected-tool") {
       const toolResult = input.messages.find((message) => message.role === "tool");
       if (!toolResult || toolResult.role !== "tool") {

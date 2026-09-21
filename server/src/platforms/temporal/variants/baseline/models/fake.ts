@@ -95,6 +95,20 @@ export class FakeModelAdapter implements ModelAdapter {
         }
         return success(input, `The local MCP fixture returned ${toolResult.content}.`);
       }
+      case "fake-mcp-tool-call-delay": {
+        const toolResult = input.messages?.find((message) => message.role === "tool");
+        if (!toolResult || toolResult.role !== "tool") {
+          return {
+            kind: "success",
+            output: null,
+            toolCalls: [{ toolCallId: "call-mcp-fixture-lookup-1", name: "mcp_fixture_lookup", arguments: { key: "alpha" } }],
+            providerRequestId: `fake-${input.attemptId}`,
+            usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 },
+          };
+        }
+        await cancellableDelay(15_000, signal);
+        return success(input, `The local MCP fixture returned ${toolResult.content}.`);
+      }
       case "fake-connected-write": {
         const toolResult = input.messages?.find((message) => message.role === "tool");
         if (!toolResult || toolResult.role !== "tool") {

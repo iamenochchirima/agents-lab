@@ -35,6 +35,7 @@
     "test:dbos": "pnpm run build && node --test dist/tests/platforms/dbos/*.test.js dist/integration-tests/dbos-baseline.test.js",
     "test:inngest": "pnpm run build && node --test dist/tests/platforms/inngest/*.test.js dist/integration-tests/inngest-baseline.test.js",
     "test:temporal": "pnpm run build && node --test dist/integration-tests/temporal-baseline.test.js",
+    "test:temporal-mcp-restart": "pnpm run build && AGENTLAB_RUN_TEMPORAL_NATIVE_MCP_RESTART_INTEGRATION=1 node --test dist/integration-tests/temporal-mcp-restart.test.js",
     "test:platform-capability-matrix": "pnpm run build && AGENTLAB_RUN_PLATFORM_CAPABILITY_MATRIX=1 node --test dist/integration-tests/platform-capability-matrix.test.js",
     "test:platform-mcp-matrix": "pnpm run build && AGENTLAB_RUN_PLATFORM_MCP_MATRIX=1 node --test dist/integration-tests/platform-mcp-matrix.test.js",
     "test:trigger": "pnpm run build && node --test dist/tests/platforms/trigger-dev/*.test.js dist/integration-tests/trigger-dev-baseline.test.js",

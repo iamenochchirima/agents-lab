@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { buildRunManifest } from "../src/control-plane/domain/manifest.js";
+import { createLocalFixtureServer } from "../src/capabilities/integrations/local-fixture/service.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
 import { RestateBaselineRunner } from "../src/platforms/restate/runner-adapter/restate-runner.js";
 
@@ -25,6 +26,7 @@ test(
     const adminPort = await unusedPort();
     const messageFabricPort = await unusedPort();
     const servicePort = await unusedPort();
+    const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0 });
     const restateEnvironment = {
       ...process.env,
       AGENTLAB_CONTEXT_ROOT: contextRoot,
@@ -37,6 +39,7 @@ test(
       RESTATE_ADMIN__BIND_ADDRESS: `127.0.0.1:${adminPort}`,
       RESTATE_INGRESS__BIND_ADDRESS: `127.0.0.1:${ingressPort}`,
       RESTATE_BIND_PORT: String(messageFabricPort),
+      AGENTLAB_LOCAL_FIXTURE_URL: `http://127.0.0.1:${fixture.port}`,
     };
     let restateProcess: ChildProcess | null = null;
     let serviceProcess: ChildProcess | null = null;
@@ -71,6 +74,47 @@ test(
       assert.equal(serviceResult.result?.status, "completed");
       assert.equal(serviceResult.result?.output, "Fake response: Replay this run after the service is replaced.");
 
+      const mcpRunId = `restate-restart-mcp-${Date.now()}`;
+      const mcpManifest = buildRunManifest(
+        {
+          platform: "restate",
+          variant: "baseline",
+          task: { kind: "prompt", prompt: "Replay the completed MCP action after the service is replaced." },
+          model: { provider: "fake", model: "fake-mcp-tool-call-delay" },
+          capabilities: {
+            tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
+            connections: [{
+              toolName: "mcp_fixture_lookup",
+              connectionRef: "conn_local_mcp_fixture",
+              operations: ["lookup"],
+              mcp: {
+                endpointRef: "local-fixture-mcp",
+                serverName: "agentlab-local-mcp",
+                protocolVersion: "2025-06-18",
+                toolName: "fixture.lookup",
+                toolVersion: "1.0.0",
+              },
+            }],
+          },
+        },
+        { runId: mcpRunId, platformConfig: runner.manifestConfiguration() },
+      );
+      let mcpReference = await runner.start(mcpManifest);
+      await waitForMcpCall(fixture);
+      await stopProcess(serviceProcess);
+      serviceProcess = startServiceProcess(restateEnvironment);
+      await waitForTcp(servicePort);
+      await registerService(restateEnvironment.AGENTLAB_RESTATE_ADMIN_URL, restateEnvironment.AGENTLAB_RESTATE_SERVICE_URL, true);
+      const mcpResult = await waitForResult(runner, mcpReference);
+      mcpReference = mcpResult.reference;
+      assert.equal(mcpResult.result?.status, "completed");
+      assert.equal(mcpResult.result?.output, 'The local MCP fixture returned {"key":"alpha","value":"local fixture alpha"}.');
+      const mcpCompletion = mcpResult.eventIntents.find((event) => event.kind === "ToolExecutionCompleted");
+      assert.equal(mcpCompletion?.payload.toolName, "mcp_fixture_lookup");
+      assert.equal((mcpCompletion?.payload.connection as { providerRequestIds?: readonly string[] } | undefined)?.providerRequestIds?.length, 1);
+      assert.equal(fixture.mcpCallCount, 1, "the completed MCP action must be replayed from Restate's journal, not dispatched again");
+      assert.equal(mcpReference.executionId, `agentlab:${mcpRunId}`);
+
       const serverRunId = `restate-restart-server-${Date.now()}`;
       const serverManifest = buildRunManifest(
         {
@@ -103,6 +147,7 @@ test(
       await stopProcess(restateProcess);
       await rm(contextRoot, { recursive: true, force: true });
       await rm(dataDirectory, { recursive: true, force: true });
+      await fixture.close();
     }
   },
 );
@@ -113,6 +158,14 @@ function startRestateProcess(environment: NodeJS.ProcessEnv, dataDirectory: stri
     env: environment,
     stdio: ["ignore", "pipe", "pipe"],
   });
+}
+
+async function waitForMcpCall(fixture: { readonly mcpCallCount: number }): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (fixture.mcpCallCount > 0) return;
+    await delay(50);
+  }
+  throw new Error("The Restate workflow did not dispatch the MCP call before the replacement window.");
 }
 
 function startServiceProcess(environment: NodeJS.ProcessEnv): ChildProcess {
