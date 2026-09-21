@@ -156,6 +156,21 @@ usage, native workflow execution, normalized evidence, and secret redaction with
 making an external provider request. The normal test suite leaves this check skipped
 unless the flag is set.
 
+To exercise the native MCP Activity and worker-replacement boundary without Docker or a
+remote provider, keep a local Temporal server running and run:
+
+```bash
+AGENTLAB_RUN_TEMPORAL_NATIVE_MCP_RESTART_INTEGRATION=1 \
+  pnpm --filter @agent-harness-lab/lab-server run test:temporal-mcp-restart
+```
+
+The test starts its own worker on an isolated task queue and uses the local MCP fixture.
+It waits until `tools/call` has completed, replaces the worker, and asserts that Temporal
+does not dispatch the completed MCP Activity twice. The model Activity interrupted by the
+replacement has an unknown outcome, so the run remains an honest `outcome_unknown`
+failure rather than fabricating a final answer. This is a restart/reconciliation check,
+not an exactly-once guarantee for arbitrary remote providers.
+
 ## Stop the stack
 
 Press `Ctrl-C` in the stack terminal. The launcher stops only the Lab processes

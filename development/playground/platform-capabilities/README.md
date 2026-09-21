@@ -81,11 +81,13 @@ reference plus the server projection; absence of a result is not treated as succ
 
 The MCP matrix runs the same deterministic read through Temporal, Restate, LangGraph, and
 Mastra. The fixture receives real `initialize`, `notifications/initialized`, `tools/list`,
-and `tools/call` requests. The same matrix is also the local path for checking the
-native boundary, but its success case does not prove restart safety. Provider-declared
-errors are failures; a lost `tools/call` acknowledgement is `outcome_unknown` and is
-not silently retried. A local fixture proves the protocol and lifecycle boundary; it
-does not prove remote MCP-provider availability.
+and `tools/call` requests. The success matrix is complemented by native replacement
+exercises: Temporal replaces a worker after the MCP Activity, Restate replaces a service
+after the durable action, LangGraph replaces its service and records reconciliation, and
+Mastra restores persisted workflow evidence. Provider-declared errors are failures; a
+lost `tools/call` acknowledgement is `outcome_unknown` and is not silently retried. A
+local fixture proves the protocol and lifecycle boundary; it does not prove remote
+MCP-provider availability.
 
 ## Observations and limits
 

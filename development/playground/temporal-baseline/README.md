@@ -76,6 +76,22 @@ the restart, two model attempts, one `ModelRetryScheduled` event, and one
 exercise. Temporal replays workflow history and resumes the timer; the Lab does
 not recreate the run.
 
+## Native MCP Activity replacement
+
+For the MCP-specific boundary, run the isolated no-Docker exercise while the local
+Temporal server is available:
+
+```bash
+AGENTLAB_RUN_TEMPORAL_NATIVE_MCP_RESTART_INTEGRATION=1 \
+  pnpm --filter @agent-harness-lab/lab-server run test:temporal-mcp-restart
+```
+
+The test uses `local-mcp-safe` and waits for the real local `fixture.lookup` MCP call
+before replacing the worker. Inspect the retained `ToolExecutionCompleted` event and
+the fixture call count. The MCP Activity is not dispatched twice. The delayed model
+Activity is deliberately interrupted, so its acknowledgement is `outcome_unknown` and
+the run does not claim a final response.
+
 Do not use an in-flight `fake-cancel` activity for this recovery proof. Stopping
 the worker while a model activity is executing creates an ambiguous provider
 outcome. The baseline should fail that run as `outcome_unknown` rather than

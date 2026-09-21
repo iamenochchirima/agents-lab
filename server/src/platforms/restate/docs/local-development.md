@@ -161,10 +161,12 @@ AGENTLAB_RUN_RESTATE_NATIVE_RESTART_INTEGRATION=1 \
   pnpm --filter @agent-harness-lab/lab-server run test:restate
 ```
 
-The test uses the deterministic `fake-delay` fixture so the replacement window is
-reproducible. It removes its temporary data directory after the run. The fixture is
-not a claim about OpenRouter exactly-once billing; provider ambiguity is covered by
-the native baseline test and remains `reconciliation_required`.
+The test uses deterministic model fixtures and a local Streamable HTTP MCP fixture. It
+waits until the MCP `tools/call` has completed, replaces the service, and asserts that
+Restate replays the completed named action from its journal without dispatching a second
+MCP call. It removes its temporary data directory after the run. The fixture is not a
+claim about OpenRouter exactly-once billing; an interrupted model or provider operation
+still remains an explicit unknown outcome.
 
 ## Optional OpenRouter path
 

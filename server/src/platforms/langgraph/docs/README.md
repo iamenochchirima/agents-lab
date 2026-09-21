@@ -36,6 +36,12 @@ emits a bounded `CheckpointLoaded` event. The shared Lab context snapshot is sti
 prepared and recorded for budgeting; it does not replace the native checkpoint
 transcript for a continuing LangGraph thread.
 
+The native MCP graph test replaces the graph object while reusing the same SQLite
+checkpoint and thread. The continuation reads the persisted tool result and does not
+send a second `tools/call` request to the fixture. This is checkpoint continuation,
+not proof that an interrupted provider acknowledgement is exactly-once; a lost MCP
+response remains `unknown`.
+
 The TypeScript adapter prepares that shared snapshot before dispatch. When the shared
 budget crosses its compaction threshold, it compacts the older message groups before
 calling the Python service. Fake profiles use a deterministic bounded summary. Real
