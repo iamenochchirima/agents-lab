@@ -326,6 +326,8 @@ def build_baseline_graph(
                 )
             except OutcomeUnknownError:
                 raise
+            except CancellationError:
+                raise
             except Exception as exc:
                 message = _bounded_text(str(exc), 512)
                 emit("ToolExecutionFailed", {**payload, "code": "TOOL_EXECUTION_FAILED", "message": message})
@@ -984,6 +986,10 @@ class _McpHttpClient:
             with urllib_request.urlopen(request, timeout=self.timeout) as response:
                 raw = read_bounded_response(response, MAX_MCP_RESPONSE_BYTES)
                 content_type = response.headers.get("Content-Type", "")
+                # A blocking stdlib read cannot be interrupted by the graph's
+                # cancellation callback. Cancellation wins if it was observed
+                # before the response was handed back to the tool node.
+                self._check_cancelled()
         except (urllib_error.URLError, TimeoutError, OSError) as exc:
             if phase == "invocation":
                 raise OutcomeUnknownError("The MCP tool-call response outcome could not be established.") from exc
