@@ -1,5 +1,5 @@
-import { isSafeRequestId, type ConnectionLimits, type ConnectionResult, type McpConnectionEvidence } from "../contracts.js";
-import { McpDispatchUnknownError } from "./http-server.js";
+import { isSafeRequestId, type ConnectionAttempt, type ConnectionLimits, type ConnectionResult, type McpConnectionEvidence } from "../contracts.js";
+import { McpDispatchUnknownError, McpPreDispatchError } from "./http-server.js";
 
 export interface McpToolManifest {
   readonly name: string;
@@ -82,47 +82,63 @@ export class McpTransport {
       return failure(requestId, new Date().toISOString(), "MCP_REQUEST_TOO_LARGE", "MCP request exceeds the configured request limit.", "failed", this.invocationEvidence());
     }
     const startedAt = new Date().toISOString();
-    try {
-      const result = await withDeadline(
-        (attemptSignal) => this.options.server.callTool(tool.name, argumentsValue, requestId, attemptSignal),
-        this.options.limits.timeoutMs,
-        signal,
-      );
-      const output = JSON.stringify(result.output);
-      if (output === undefined || new TextEncoder().encode(output).byteLength > this.options.limits.maxResponseBytes) {
-        return failure(requestId, startedAt, "MCP_RESULT_TOO_LARGE", "MCP result exceeds the configured response limit.", "failed", this.invocationEvidence());
-      }
-      return {
-        requestId,
-        status: "completed",
-        output: result.output,
-        attempts: [{
+    const attempts: ConnectionAttempt[] = [];
+    for (let attempt = 1; attempt <= this.options.limits.maxAttempts; attempt += 1) {
+      const attemptStartedAt = attempt === 1 ? startedAt : new Date().toISOString();
+      try {
+        const result = await withDeadline(
+          (attemptSignal) => this.options.server.callTool(tool.name, argumentsValue, requestId, attemptSignal),
+          this.options.limits.timeoutMs,
+          signal,
+        );
+        const output = JSON.stringify(result.output);
+        if (output === undefined || new TextEncoder().encode(output).byteLength > this.options.limits.maxResponseBytes) {
+          return failure(requestId, attemptStartedAt, "MCP_RESULT_TOO_LARGE", "MCP result exceeds the configured response limit.", "failed", this.invocationEvidence(), attempts);
+        }
+        attempts.push({
           requestId,
-          attempt: 1,
-          startedAt,
+          attempt,
+          startedAt: attemptStartedAt,
           finishedAt: new Date().toISOString(),
           status: "completed",
           retryable: false,
           providerRequestId: result.providerRequestId,
           errorCode: null,
           errorMessage: null,
-        }],
-        error: null,
-        mcp: this.invocationEvidence(),
-      };
-    } catch (error) {
-      const timedOut = error instanceof DeadlineError;
-      const cancelled = signal.aborted && !timedOut;
-      const unknown = error instanceof McpDispatchUnknownError;
-      return failure(
-        requestId,
-        startedAt,
-        cancelled ? "MCP_CANCELLED" : unknown ? "MCP_OUTCOME_UNKNOWN" : timedOut ? "MCP_TIMEOUT" : "MCP_CALL_FAILED",
-        cancelled ? "MCP call was cancelled." : unknown ? "The MCP tool call may have been dispatched; outcome is unknown." : timedOut ? "MCP call exceeded its deadline." : safeMessage(error),
-        cancelled ? "cancelled" : unknown ? "unknown" : timedOut ? "timed_out" : "failed",
-        this.invocationEvidence(),
-      );
+        });
+        return {
+          requestId,
+          status: "completed",
+          output: result.output,
+          attempts,
+          error: null,
+          mcp: this.invocationEvidence(),
+        };
+      } catch (error) {
+        const timedOut = error instanceof DeadlineError;
+        const cancelled = signal.aborted && !timedOut;
+        const unknown = error instanceof McpDispatchUnknownError;
+        const preDispatch = error instanceof McpPreDispatchError;
+        const retryable = preDispatch && !signal.aborted && attempt < this.options.limits.maxAttempts;
+        const status = cancelled ? "cancelled" : unknown ? "unknown" : timedOut ? "timed_out" : "failed" as const;
+        const code = cancelled ? "MCP_CANCELLED" : unknown ? "MCP_OUTCOME_UNKNOWN" : timedOut ? "MCP_TIMEOUT" : preDispatch ? "MCP_PRE_DISPATCH" : "MCP_CALL_FAILED";
+        const message = cancelled ? "MCP call was cancelled." : unknown ? "The MCP tool call may have been dispatched; outcome is unknown." : timedOut ? "MCP call exceeded its deadline." : safeMessage(error);
+        attempts.push({
+          requestId,
+          attempt,
+          startedAt: attemptStartedAt,
+          finishedAt: new Date().toISOString(),
+          status,
+          retryable,
+          providerRequestId: null,
+          errorCode: code,
+          errorMessage: bounded(message),
+        });
+        if (retryable) continue;
+        return failure(requestId, attemptStartedAt, code, message, status, this.invocationEvidence(), attempts);
+      }
     }
+    throw new Error("MCP invocation exhausted without a terminal result.");
   }
 
   private invocationEvidence(): McpConnectionEvidence | undefined {
@@ -191,22 +207,23 @@ function failure(
   message: string,
   status: "failed" | "cancelled" | "timed_out" | "unknown",
   mcp?: McpConnectionEvidence,
+  previousAttempts: readonly ConnectionAttempt[] = [],
 ): ConnectionResult {
   return {
     requestId,
     status,
     output: null,
-    attempts: [{
-      requestId,
-      attempt: 1,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      status,
-      retryable: status === "failed",
-      providerRequestId: null,
-      errorCode: code,
-      errorMessage: bounded(message),
-    }],
+    attempts: previousAttempts.length > 0 ? [...previousAttempts] : [{
+        requestId,
+        attempt: 1,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        status,
+        retryable: false,
+        providerRequestId: null,
+        errorCode: code,
+        errorMessage: bounded(message),
+      }],
     error: { code, message: bounded(message) },
     ...(mcp ? { mcp } : {}),
   };

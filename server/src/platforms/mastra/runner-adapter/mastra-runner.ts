@@ -227,6 +227,11 @@ export class MastraBaselineRunner implements PlatformRunner {
       if (record.controller.signal.aborted && output.text.trim().length === 0) {
         throw abortError();
       }
+      if (record.events.some((event) => event.kind === "ToolExecutionUnknown")) {
+        const error = new Error("A Mastra tool may have been dispatched but its external outcome could not be confirmed.");
+        error.name = "TOOL_UNKNOWN";
+        throw error;
+      }
       const usage = normalizeUsage(output.totalUsage ?? output.usage);
       this.addEvent(record, "ModelCompleted", { finishReason: output.finishReason ?? null, usage });
       this.addEvent(record, "AgentCompleted", { finishReason: output.finishReason ?? null });

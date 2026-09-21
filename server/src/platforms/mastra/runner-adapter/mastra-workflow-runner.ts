@@ -7,6 +7,7 @@ import type { WorkflowState } from "@mastra/core/workflows";
 
 import type {
   PlatformExecutionReference,
+  FailureKind,
   RunEventIntent,
   RunManifest,
   RunMetrics,
@@ -279,9 +280,12 @@ export class MastraWorkflowRunner implements PlatformRunner {
       }
       if (result.status !== "success") {
         const error = "error" in result && result.error instanceof Error ? result.error.message : "The Mastra workflow failed.";
+        const failureKind = record.events.some((event) => event.kind === "ToolExecutionUnknown")
+          ? "outcome_unknown"
+          : workflowFailureKind("error" in result ? result.error : null);
         record.status = "failed";
-        this.addEvent(record, "RunFailed", { nativeStatus: result.status });
-        record.result = failureResult(record, "failed", error, "internal");
+        this.addEvent(record, "RunFailed", { nativeStatus: result.status, failureKind });
+        record.result = failureResult(record, "failed", error, failureKind);
         record.trajectory = trajectoryFor(record);
         record.metrics = metricsFor(record);
         return;
@@ -458,13 +462,22 @@ function inputForManifest(manifest: RunManifest, contextMessages: MastraWorkflow
     turnId: manifest.context.turnId ?? `${manifest.runId}:turn:1`,
     requiresApproval: manifest.task.prompt.trimStart().startsWith("[approval]"),
     capabilities: manifest.capabilities
-      ? { tools: {
-          enabledNames: [...manifest.capabilities.tools.enabledNames],
-          ...(manifest.capabilities.tools.approvedNames ? { approvedNames: [...manifest.capabilities.tools.approvedNames] } : {}),
-          maxRounds: manifest.capabilities.tools.maxRounds,
-          maxCalls: manifest.capabilities.tools.maxCalls,
-          ...(manifest.capabilities.connections ? { connections: [...manifest.capabilities.connections] } : {}),
-        } }
+      ? {
+          tools: {
+            enabledNames: [...manifest.capabilities.tools.enabledNames],
+            ...(manifest.capabilities.tools.approvedNames ? { approvedNames: [...manifest.capabilities.tools.approvedNames] } : {}),
+            maxRounds: manifest.capabilities.tools.maxRounds,
+            maxCalls: manifest.capabilities.tools.maxCalls,
+          },
+          ...(manifest.capabilities.connections ? {
+            connections: manifest.capabilities.connections.map((connection) => ({
+              toolName: connection.toolName,
+              connectionRef: connection.connectionRef,
+              operations: [...connection.operations],
+              ...(connection.mcp ? { mcp: { ...connection.mcp } } : {}),
+            })),
+          } : {}),
+        }
       : { tools: { enabledNames: ["calculator"], maxRounds: DEFAULT_MAX_TOOL_ROUNDS, maxCalls: DEFAULT_MAX_TOOL_CALLS } },
     contextMessages,
   };
@@ -541,7 +554,7 @@ function nativeSummaryFor(record: MastraWorkflowExecutionRecord): Readonly<Recor
   };
 }
 
-function failureResult(record: MastraWorkflowExecutionRecord, status: "failed" | "cancelled", message: string, failureKind: "internal" | "cancelled"): RunResult {
+function failureResult(record: MastraWorkflowExecutionRecord, status: "failed" | "cancelled", message: string, failureKind: FailureKind): RunResult {
   return {
     schemaVersion: 1,
     runId: record.manifest.runId,
@@ -549,10 +562,16 @@ function failureResult(record: MastraWorkflowExecutionRecord, status: "failed" |
     startedAt: record.startedAt,
     finishedAt: record.events.at(-1)?.occurredAt ?? record.startedAt,
     output: null,
-    error: { code: status === "cancelled" ? "MASTRA_WORKFLOW_CANCELLED" : "MASTRA_WORKFLOW_FAILED", message, failureKind, retryable: false },
+    error: { code: status === "cancelled" ? "MASTRA_WORKFLOW_CANCELLED" : failureKind === "outcome_unknown" ? "TOOL_UNKNOWN" : "MASTRA_WORKFLOW_FAILED", message, failureKind, retryable: false },
     attemptCount: 1,
     usage: emptyUsage(),
   };
+}
+
+function workflowFailureKind(error: unknown): FailureKind {
+  if (error instanceof Error && error.name === "AbortError") return "cancelled";
+  if (error instanceof Error && (error.name === "TOOL_UNKNOWN" || error.name.endsWith("_OUTCOME_UNKNOWN"))) return "outcome_unknown";
+  return "provider";
 }
 
 function trajectoryFor(record: MastraWorkflowExecutionRecord): RunTrajectory {

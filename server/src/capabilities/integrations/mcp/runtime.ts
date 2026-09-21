@@ -69,6 +69,9 @@ export class HttpMcpConnectionRuntime {
       }
       return transport.invoke(selected, request.requestId, request.input, options.signal);
     } catch (error) {
+      if (options.signal.aborted) {
+        return unavailable(request.requestId, "MCP_CANCELLED", "MCP connection was cancelled.", mcpEvidence(binding, "discovery"), "cancelled");
+      }
       return unavailable(request.requestId, "MCP_DISCOVERY_FAILED", safeMessage(error), mcpEvidence(binding, "discovery"));
     }
   }
@@ -117,7 +120,13 @@ function normalizeEndpoint(endpoint: string): string {
   return parsed.toString().replace(/\/$/, "");
 }
 
-function unavailable(requestId: string, code: string, message: string, mcp?: McpConnectionEvidence): ConnectionResult {
+function unavailable(
+  requestId: string,
+  code: string,
+  message: string,
+  mcp?: McpConnectionEvidence,
+  status: ConnectionResult["status"] = "failed",
+): ConnectionResult {
   const now = new Date().toISOString();
   return {
     requestId,
@@ -128,7 +137,7 @@ function unavailable(requestId: string, code: string, message: string, mcp?: Mcp
       attempt: 1,
       startedAt: now,
       finishedAt: now,
-      status: "failed",
+      status,
       retryable: false,
       providerRequestId: null,
       errorCode: code,

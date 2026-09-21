@@ -109,6 +109,7 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
       const initialInput = getInitData<z.infer<typeof mastraWorkflowInputSchema>>();
       const input = mastraWorkflowInputSchema.parse(initialInput);
       const manifest = workflowManifest(input, runId);
+      let unknownToolOutcome = false;
       options.eventSink?.(runId, "ModelRequested", {
         model: input.model,
         provider: input.modelProvider,
@@ -120,7 +121,10 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         signal: abortSignal,
         maxToolCalls: input.capabilities.tools.maxCalls,
         connectionBindings: input.capabilities.connections,
-        onToolEvent: (kind, payload) => options.eventSink?.(runId, kind, payload),
+        onToolEvent: (kind, payload) => {
+          unknownToolOutcome ||= kind === "ToolExecutionUnknown";
+          options.eventSink?.(runId, kind, payload);
+        },
       });
       const output = await agent.generate(inputData.prompt, {
         runId,
@@ -132,6 +136,12 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
           usage: safeUsage(safeValue(step, "usage")),
         }),
       });
+
+      if (unknownToolOutcome) {
+        const error = new Error("A Mastra tool may have been dispatched but its external outcome could not be confirmed.");
+        error.name = "TOOL_UNKNOWN";
+        throw error;
+      }
 
       const usage = normalizeUsage(output.totalUsage ?? output.usage);
       options.eventSink?.(runId, "ModelCompleted", {

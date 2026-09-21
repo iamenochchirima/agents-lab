@@ -19,6 +19,14 @@ export class McpDispatchUnknownError extends Error {
   }
 }
 
+/** The caller knows the MCP request was not dispatched and may retry safely. */
+export class McpPreDispatchError extends Error {
+  constructor(message = "The MCP request failed before dispatch.") {
+    super(message);
+    this.name = "MCP_PRE_DISPATCH";
+  }
+}
+
 /**
  * MCP Streamable HTTP client used by the local acceptance boundary.
  *
@@ -126,6 +134,7 @@ export class HttpMcpServer implements McpServer {
         signal,
       });
     } catch (error) {
+      if (error instanceof McpPreDispatchError) throw error;
       if (method === "tools/call" && !signal.aborted) {
         throw new McpDispatchUnknownError();
       }

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
+import { createLocalFixtureServer } from "../../../src/capabilities/integrations/local-fixture/service.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { MastraWorkflowRunner } from "../../../src/platforms/mastra/runner-adapter/mastra-workflow-runner.js";
 
@@ -27,6 +28,95 @@ test("Mastra workflow completes a native stored run", async () => {
     assert.ok(inspection.eventIntents.some((event) => event.kind === "WorkflowCompleted"));
   } finally {
     await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Mastra workflow passes the server-owned MCP binding into its native agent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-mcp-"));
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0 });
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  process.env.AGENTLAB_LOCAL_FIXTURE_URL = `http://127.0.0.1:${fixture.port}`;
+  const runner = new MastraWorkflowRunner({ storagePath: join(root, "workflow.db") });
+
+  try {
+    const manifest = buildRunManifest({
+      platform: "mastra",
+      variant: "workflow",
+      task: { kind: "prompt", prompt: "Read the alpha fixture through MCP." },
+      model: { provider: "fake", model: "fake-mcp-connected-tool" },
+      capabilities: {
+        tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
+        connections: [{
+          toolName: "mcp_fixture_lookup",
+          connectionRef: "conn_local_mcp_fixture",
+          operations: ["lookup"],
+          mcp: {
+            endpointRef: "local-fixture-mcp",
+            serverName: "agentlab-local-mcp",
+            protocolVersion: "2025-06-18",
+            toolName: "fixture.lookup",
+            toolVersion: "1.0.0",
+          },
+        }],
+      },
+    }, { runId: "mastra-workflow-mcp", platformConfig: runner.manifestConfiguration() });
+    const reference = await runner.start(manifest);
+    const inspection = await waitForTerminal(runner, reference);
+    assert.equal(inspection.status, "completed");
+    assert.match(inspection.result?.output ?? "", /local fixture/);
+    const completion = inspection.eventIntents.find((event) => event.kind === "ToolExecutionCompleted");
+    assert.equal(completion?.payload.toolName, "mcp_fixture_lookup");
+    assert.equal((completion?.payload.connection as { mcp?: { toolName?: string } } | undefined)?.mcp?.toolName, "fixture.lookup");
+  } finally {
+    await runner.close();
+    if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
+    await fixture.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Mastra workflow preserves an unknown MCP outcome", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-mcp-unknown-"));
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0, mcpCallBehavior: "disconnect" });
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  process.env.AGENTLAB_LOCAL_FIXTURE_URL = `http://127.0.0.1:${fixture.port}`;
+  const runner = new MastraWorkflowRunner({ storagePath: join(root, "workflow.db") });
+
+  try {
+    const manifest = buildRunManifest({
+      platform: "mastra",
+      variant: "workflow",
+      task: { kind: "prompt", prompt: "Read the alpha fixture through MCP." },
+      model: { provider: "fake", model: "fake-mcp-connected-tool" },
+      capabilities: {
+        tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
+        connections: [{
+          toolName: "mcp_fixture_lookup",
+          connectionRef: "conn_local_mcp_fixture",
+          operations: ["lookup"],
+          mcp: {
+            endpointRef: "local-fixture-mcp",
+            serverName: "agentlab-local-mcp",
+            protocolVersion: "2025-06-18",
+            toolName: "fixture.lookup",
+            toolVersion: "1.0.0",
+          },
+        }],
+      },
+    }, { runId: "mastra-workflow-mcp-unknown", platformConfig: runner.manifestConfiguration() });
+    const reference = await runner.start(manifest);
+    const inspection = await waitForStatus(runner, reference, "failed");
+    assert.equal(inspection.result?.error?.code, "TOOL_UNKNOWN");
+    assert.equal(inspection.result?.error?.failureKind, "outcome_unknown");
+    const unknown = inspection.eventIntents.find((event) => event.kind === "ToolExecutionUnknown");
+    assert.equal((unknown?.payload.connection as { status?: string } | undefined)?.status, "unknown");
+  } finally {
+    await runner.close();
+    if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
+    await fixture.close();
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -147,7 +237,7 @@ async function waitForTerminal(
 async function waitForStatus(
   runner: MastraWorkflowRunner,
   reference: Awaited<ReturnType<MastraWorkflowRunner["start"]>>,
-  expected: "suspended" | "completed" | "cancelled",
+  expected: "suspended" | "completed" | "failed" | "cancelled",
 ) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const inspection = await runner.inspect(reference);

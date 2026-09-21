@@ -97,6 +97,45 @@ test("Mastra native MCP tool crosses the local Streamable HTTP boundary", async 
   }
 });
 
+test("Mastra baseline preserves an ambiguous MCP outcome", async () => {
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0, mcpCallBehavior: "disconnect" });
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  process.env.AGENTLAB_LOCAL_FIXTURE_URL = `http://127.0.0.1:${fixture.port}`;
+  try {
+    const runner = new MastraBaselineRunner();
+    const manifest = buildRunManifest({
+      platform: "mastra",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "Read the alpha fixture through MCP." },
+      model: { provider: "fake", model: "fake-mcp-connected-tool" },
+      capabilities: {
+        tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
+        connections: [{
+          toolName: "mcp_fixture_lookup",
+          connectionRef: "conn_local_mcp_fixture",
+          operations: ["lookup"],
+          mcp: {
+            endpointRef: "local-fixture-mcp",
+            serverName: "agentlab-local-mcp",
+            protocolVersion: "2025-06-18",
+            toolName: "fixture.lookup",
+            toolVersion: "1.0.0",
+          },
+        }],
+      },
+    }, { runId: "mastra-mcp-unknown", platformConfig: runner.manifestConfiguration() });
+    const reference = await runner.start(manifest);
+    const inspection = await waitForTerminal(runner, reference);
+    assert.equal(inspection.status, "failed");
+    assert.equal(inspection.result?.error?.failureKind, "outcome_unknown");
+    assert.equal(inspection.result?.error?.code, "MASTRA_OUTCOME_UNKNOWN");
+    assert.ok(inspection.eventIntents.some((event) => event.kind === "ToolExecutionUnknown"));
+  } finally {
+    restoreFixtureUrl(previousFixtureUrl);
+    await fixture.close();
+  }
+});
+
 async function waitForTerminal(runner: MastraBaselineRunner, reference: PlatformExecutionReference) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
@@ -105,4 +144,9 @@ async function waitForTerminal(runner: MastraBaselineRunner, reference: Platform
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error("Mastra connection boundary run did not reach a terminal result.");
+}
+
+function restoreFixtureUrl(previousFixtureUrl: string | undefined): void {
+  if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
 }

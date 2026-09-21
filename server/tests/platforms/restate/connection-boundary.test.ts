@@ -92,11 +92,75 @@ test("Restate native MCP action crosses the local Streamable HTTP boundary", asy
   }
 });
 
-function createContext() {
+test("Restate preserves a known MCP failure without changing its native lifecycle", async () => {
+  const result = await runMcpWorkflow("restate-mcp-failure", { mcpCallBehavior: "error" });
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.failureKind, "provider");
+  const failure = result.eventIntents.find((event) => event.kind === "ToolExecutionFailed");
+  assert.equal(failure?.payload.connection && (failure.payload.connection as { errorCode?: string }).errorCode, "MCP_CALL_FAILED");
+});
+
+test("Restate preserves an ambiguous MCP dispatch and does not retry it", async () => {
+  const result = await runMcpWorkflow("restate-mcp-unknown", { mcpCallBehavior: "disconnect" });
+  assert.equal(result.status, "failed");
+  assert.equal(result.error?.code, "TOOL_UNKNOWN");
+  assert.equal(result.error?.failureKind, "outcome_unknown");
+  const unknown = result.eventIntents.find((event) => event.kind === "ToolExecutionUnknown");
+  assert.equal(unknown?.payload.connection && (unknown.payload.connection as { status?: string }).status, "unknown");
+  assert.equal(unknown?.payload.connection && (unknown.payload.connection as { attemptCount?: number }).attemptCount, 1);
+});
+
+test("Restate preserves cancellation while an MCP action is in flight", async () => {
+  const controller = new AbortController();
+  const pending = runMcpWorkflow("restate-mcp-cancel", { mcpCallBehavior: "delay", mcpCallDelayMs: 250 }, controller.signal);
+  setTimeout(() => controller.abort(new Error("cancelled by test")), 10);
+  const result = await pending;
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.error?.code, "TOOL_CANCELLED");
+  assert.equal(result.error?.failureKind, "cancelled");
+  assert.equal(result.eventIntents.at(-1)?.kind, "RunCancelled");
+});
+
+async function runMcpWorkflow(
+  runId: string,
+  fixtureOptions: { readonly mcpCallBehavior: "error" | "disconnect" | "delay"; readonly mcpCallDelayMs?: number },
+  signal = new AbortController().signal,
+) {
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0, ...fixtureOptions });
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  process.env.AGENTLAB_LOCAL_FIXTURE_URL = `http://127.0.0.1:${fixture.port}`;
+  try {
+    return await workflowRun(createContext(signal), {
+      runId,
+      prompt: "Read the alpha fixture through MCP.",
+      systemInstruction: "Use the selected MCP connection.",
+      model: { provider: "fake", model: "fake-mcp-connected-tool" },
+      tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
+      connections: [{
+        toolName: "mcp_fixture_lookup",
+        connectionRef: "conn_local_mcp_fixture",
+        operations: ["lookup"],
+        mcp: {
+          endpointRef: "local-fixture-mcp",
+          serverName: "agentlab-local-mcp",
+          protocolVersion: "2025-06-18",
+          toolName: "fixture.lookup",
+          toolVersion: "1.0.0",
+        },
+      }],
+    });
+  } finally {
+    if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
+    await fixture.close();
+  }
+}
+
+function createContext(signal = new AbortController().signal) {
   let timestamp = Date.parse("2026-09-20T00:00:00.000Z");
   return {
     key: "agentlab:restate-http-connection",
-    request: () => ({ id: "restate-http-invocation", attemptCompletedSignal: new AbortController().signal }),
+    request: () => ({ id: "restate-http-invocation", attemptCompletedSignal: signal }),
     date: { toJSON: async () => new Date(timestamp += 1).toISOString() },
     set: (_name: string, _value: unknown) => undefined,
     run: async <T>(_name: string, action: () => Promise<T> | T): Promise<T> => action(),

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { DirectApiClient, DispatchUnknownError } from "../../src/capabilities/integrations/direct-api/client.js";
 import type { ConnectionRequest } from "../../src/capabilities/integrations/contracts.js";
+import { McpPreDispatchError } from "../../src/capabilities/integrations/mcp/http-server.js";
 import { McpTransport } from "../../src/capabilities/integrations/mcp/local-transport.js";
 import { MemorySecretStore, OAuthFlow, type OAuthProvider, type OAuthTokenSet } from "../../src/capabilities/integrations/oauth/flow.js";
 import { createLocalMcpServer, LocalDirectApiFixture, LocalOAuthFixture } from "../fixtures/capabilities/local-connections.js";
@@ -77,6 +78,31 @@ test("MCP deadlines and cancellation abort the underlying call", async () => {
   assert.equal(cancelled.status, "cancelled");
   assert.equal(cancelled.error?.code, "MCP_CANCELLED");
   assert.equal(callAborted, true);
+});
+
+test("MCP retries an explicitly pre-dispatch failure but never retries an ambiguous dispatch", async () => {
+  let calls = 0;
+  const server = {
+    serverName: "local-retryable",
+    protocolVersion: "2025-06-18",
+    async listTools() {
+      return [{ name: "fixture.lookup", version: "1.0.0", description: "Read fixture data", inputSchema: { type: "object" } }];
+    },
+    async callTool(_name: string, _input: Readonly<Record<string, unknown>>, requestId: string) {
+      calls += 1;
+      if (calls === 1) throw new McpPreDispatchError("connection pool was unavailable before dispatch");
+      return { providerRequestId: `mcp:${requestId}`, output: { value: "retried" } };
+    },
+  };
+  const transport = new McpTransport({ server, endpoint: "local://retryable", allowedEndpoints: ["local://retryable"], limits });
+  const tool = (await transport.discover(new AbortController().signal))[0]!;
+  const result = await transport.invoke(tool, "mcp-retry", { key: "alpha" }, new AbortController().signal);
+  assert.equal(result.status, "completed");
+  assert.equal(calls, 2);
+  assert.deepEqual(result.attempts.map((attempt) => ({ status: attempt.status, retryable: attempt.retryable })), [
+    { status: "failed", retryable: true },
+    { status: "completed", retryable: false },
+  ]);
 });
 
 test("direct API retries bounded read failures and keeps provider request IDs", async () => {

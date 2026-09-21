@@ -6,6 +6,9 @@ const MAX_BODY_BYTES = 8_192;
 export interface LocalFixtureServerOptions {
   readonly host?: string;
   readonly port?: number;
+  /** Deterministic MCP call behavior used by native lifecycle tests. */
+  readonly mcpCallBehavior?: "success" | "error" | "disconnect" | "delay";
+  readonly mcpCallDelayMs?: number;
 }
 
 interface FixtureRequest {
@@ -63,9 +66,11 @@ export async function createLocalFixtureServer(options: LocalFixtureServerOption
   const authorizationCodes = new Map<string, AuthorizationCode>();
   const refreshTokens = new Map<string, RefreshRecord>();
   const revokedTokens = new Set<string>();
+  const mcpCallBehavior = options.mcpCallBehavior ?? "success";
+  const mcpCallDelayMs = boundedDelay(options.mcpCallDelayMs ?? 250);
 
   const server = createServer((request, response) => {
-    void handleRequest(request, response, values, writes, authorizationCodes, refreshTokens, revokedTokens);
+    void handleRequest(request, response, values, writes, authorizationCodes, refreshTokens, revokedTokens, mcpCallBehavior, mcpCallDelayMs);
   });
   await listen(server, host, port);
   const address = server.address();
@@ -104,13 +109,15 @@ async function handleRequest(
   authorizationCodes: Map<string, AuthorizationCode>,
   refreshTokens: Map<string, RefreshRecord>,
   revokedTokens: Set<string>,
+  mcpCallBehavior: LocalFixtureServerOptions["mcpCallBehavior"],
+  mcpCallDelayMs: number,
 ): Promise<void> {
   if (request.method === "GET" && request.url === "/health") {
     sendJson(response, 200, { service: "local-fixture", status: "ready", protocols: ["direct-api", "mcp", "oauth"] });
     return;
   }
   if (request.method === "POST" && request.url === "/mcp") {
-    await handleMcpRequest(request, response, values);
+    await handleMcpRequest(request, response, values, mcpCallBehavior, mcpCallDelayMs);
     return;
   }
   if (request.method === "GET" && request.url?.startsWith("/oauth/authorize")) {
@@ -143,7 +150,13 @@ async function handleRequest(
   }
 }
 
-async function handleMcpRequest(request: IncomingMessage, response: ServerResponse, values: Map<string, string>): Promise<void> {
+async function handleMcpRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  values: Map<string, string>,
+  mcpCallBehavior: LocalFixtureServerOptions["mcpCallBehavior"],
+  mcpCallDelayMs: number,
+): Promise<void> {
   try {
     const body: unknown = JSON.parse(await readBody(request));
     if (!isRecord(body) || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
@@ -176,6 +189,18 @@ async function handleMcpRequest(request: IncomingMessage, response: ServerRespon
       return;
     }
     if (body.method === "tools/call") {
+      if (mcpCallBehavior === "disconnect") {
+        response.destroy();
+        return;
+      }
+      if (mcpCallBehavior === "delay") {
+        await delay(mcpCallDelayMs);
+        if (response.destroyed) return;
+      }
+      if (mcpCallBehavior === "error") {
+        sendJson(response, 200, jsonRpcError(id, -32_603, "The deterministic MCP fixture rejected the call."));
+        return;
+      }
       if (!isRecord(body.params) || body.params.name !== "fixture.lookup" || !isRecord(body.params.arguments)) {
         sendJson(response, 200, jsonRpcError(id, -32_602, "Unknown or invalid tool call."));
         return;
@@ -360,6 +385,14 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown): 
   response.statusCode = statusCode;
   response.setHeader("content-type", "application/json");
   response.end(JSON.stringify(body));
+}
+
+function boundedDelay(value: number): number {
+  return Number.isFinite(value) && value >= 0 && value <= 60_000 ? Math.floor(value) : 250;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function listen(server: Server, host: string, port: number): Promise<void> {

@@ -13,7 +13,10 @@ handshake and the current `2026-07-28` per-request protocol metadata, then perfo
 `tools/list` and `tools/call`. Responses, tool manifests, and error messages are bounded;
 the selected server and tool version are checked again before invocation. A lost
 tool-call response is `unknown`, while cancellation and deadline expiry remain separate
-statuses. It does not authorize an endpoint; callers must still pass the exact
+statuses. Only an explicitly classified `McpPreDispatchError` is retryable, and
+`maxAttempts` bounds those retries; an ordinary HTTP failure during `tools/call` is
+treated as ambiguous because the request may have reached the server. It does not
+authorize an endpoint; callers must still pass the exact
 configured endpoint through `McpTransport`'s allowlist. The local fixture's `/mcp`
 endpoint is the deterministic no-Docker acceptance boundary.
 

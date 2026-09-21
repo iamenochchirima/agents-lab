@@ -359,6 +359,7 @@ export const baselineWorkflow = restate.workflow({
 
           let executionHalted = false;
           let toolOutcomeUnknown = false;
+          let toolCancelled = false;
           let callLimitExceeded = false;
 
           for (let index = 0; index < calls.length; index += 1) {
@@ -430,10 +431,18 @@ export const baselineWorkflow = restate.workflow({
             if (toolResult.status !== "completed") {
               executionHalted = true;
               toolOutcomeUnknown ||= toolResult.status === "unknown";
+              toolCancelled ||= toolResult.status === "cancelled";
             }
           }
 
           if (executionHalted) {
+            if (toolCancelled) {
+              const failure = internalFailure("TOOL_CANCELLED", "The run was cancelled while the tool was executing.", "cancelled");
+              await record("AgentCancelled", { code: failure.code, failureKind: failure.failureKind, round });
+              await completePhase(executionPhase);
+              await record("RunCancelled", { code: failure.code, failureKind: failure.failureKind });
+              return finish(input.runId, "cancelled", startedAt, null, failure, usage, modelCallCount, modelAttemptCount, toolCallCount, toolAttemptCount, events, phases);
+            }
             const failure = internalFailure(
               toolOutcomeUnknown ? "TOOL_UNKNOWN" : "TOOL_EXECUTION_FAILED",
               toolOutcomeUnknown ? "A tool may have been dispatched, but its external outcome is unknown." : "A tool execution did not complete, so the run was stopped.",
