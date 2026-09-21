@@ -86,3 +86,10 @@ The baseline has one model call, no tool side effects, no streaming response,
 no user authentication, no multi-tenant isolation, and no production Temporal
 deployment. Those omissions are explicit experimental boundaries, not implied
 guarantees about later platforms.
+
+The server-owned `local-mcp-safe` profile adds a read-only `mcp_fixture_lookup`
+capability. Temporal performs its discovery and invocation from the Activity boundary;
+the workflow records only bounded tool and connection evidence. The selected endpoint
+identity, MCP server, tool name/version, and protocol version are immutable run data.
+The deterministic local fixture proves the native boundary without claiming a hosted
+MCP deployment or exactly-once tool execution.

@@ -1,4 +1,5 @@
-import { isSafeRequestId, type ConnectionLimits, type ConnectionResult } from "../contracts.js";
+import { isSafeRequestId, type ConnectionLimits, type ConnectionResult, type McpConnectionEvidence } from "../contracts.js";
+import { McpDispatchUnknownError } from "./http-server.js";
 
 export interface McpToolManifest {
   readonly name: string;
@@ -20,6 +21,7 @@ export interface McpServer {
 }
 
 export interface McpToolSelection {
+  readonly endpointRef?: string;
   readonly serverName: string;
   readonly protocolVersion: string;
   readonly toolName: string;
@@ -77,7 +79,7 @@ export class McpTransport {
     }
     const requestBytes = new TextEncoder().encode(JSON.stringify(argumentsValue)).byteLength;
     if (requestBytes > this.options.limits.maxRequestBytes) {
-      return failure(requestId, new Date().toISOString(), "MCP_REQUEST_TOO_LARGE", "MCP request exceeds the configured request limit.", "failed");
+      return failure(requestId, new Date().toISOString(), "MCP_REQUEST_TOO_LARGE", "MCP request exceeds the configured request limit.", "failed", this.invocationEvidence());
     }
     const startedAt = new Date().toISOString();
     try {
@@ -88,7 +90,7 @@ export class McpTransport {
       );
       const output = JSON.stringify(result.output);
       if (output === undefined || new TextEncoder().encode(output).byteLength > this.options.limits.maxResponseBytes) {
-        return failure(requestId, startedAt, "MCP_RESULT_TOO_LARGE", "MCP result exceeds the configured response limit.", "failed");
+        return failure(requestId, startedAt, "MCP_RESULT_TOO_LARGE", "MCP result exceeds the configured response limit.", "failed", this.invocationEvidence());
       }
       return {
         requestId,
@@ -106,18 +108,33 @@ export class McpTransport {
           errorMessage: null,
         }],
         error: null,
+        mcp: this.invocationEvidence(),
       };
     } catch (error) {
       const timedOut = error instanceof DeadlineError;
       const cancelled = signal.aborted && !timedOut;
+      const unknown = error instanceof McpDispatchUnknownError;
       return failure(
         requestId,
         startedAt,
-        cancelled ? "MCP_CANCELLED" : timedOut ? "MCP_TIMEOUT" : "MCP_CALL_FAILED",
-        cancelled ? "MCP call was cancelled." : timedOut ? "MCP call exceeded its deadline." : safeMessage(error),
-        cancelled ? "cancelled" : timedOut ? "timed_out" : "failed",
+        cancelled ? "MCP_CANCELLED" : unknown ? "MCP_OUTCOME_UNKNOWN" : timedOut ? "MCP_TIMEOUT" : "MCP_CALL_FAILED",
+        cancelled ? "MCP call was cancelled." : unknown ? "The MCP tool call may have been dispatched; outcome is unknown." : timedOut ? "MCP call exceeded its deadline." : safeMessage(error),
+        cancelled ? "cancelled" : unknown ? "unknown" : timedOut ? "timed_out" : "failed",
+        this.invocationEvidence(),
       );
     }
+  }
+
+  private invocationEvidence(): McpConnectionEvidence | undefined {
+    const selected = this.options.selectedTool;
+    return selected ? {
+      endpointRef: selected.endpointRef ?? null,
+      serverName: selected.serverName,
+      protocolVersion: selected.protocolVersion,
+      toolName: selected.toolName,
+      toolVersion: selected.toolVersion,
+      phase: "invocation",
+    } : undefined;
   }
 }
 
@@ -172,7 +189,8 @@ function failure(
   startedAt: string,
   code: string,
   message: string,
-  status: "failed" | "cancelled" | "timed_out",
+  status: "failed" | "cancelled" | "timed_out" | "unknown",
+  mcp?: McpConnectionEvidence,
 ): ConnectionResult {
   return {
     requestId,
@@ -190,6 +208,7 @@ function failure(
       errorMessage: bounded(message),
     }],
     error: { code, message: bounded(message) },
+    ...(mcp ? { mcp } : {}),
   };
 }
 

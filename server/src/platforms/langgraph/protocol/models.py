@@ -88,10 +88,19 @@ class ToolConfiguration(ProtocolModel):
         return self
 
 
+class McpConnectionBinding(ProtocolModel):
+    endpoint_ref: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
+    server_name: str = Field(min_length=1, max_length=128)
+    protocol_version: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    tool_name: str = Field(min_length=1, max_length=128)
+    tool_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+
+
 class ConnectionBinding(ProtocolModel):
     tool_name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     connection_ref: str = Field(min_length=1, max_length=128, pattern=r"^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$")
     operations: list[str] = Field(min_length=1, max_length=32)
+    mcp: McpConnectionBinding | None = None
 
     @model_validator(mode="after")
     def validate_operations(self) -> "ConnectionBinding":
@@ -99,6 +108,8 @@ class ConnectionBinding(ProtocolModel):
             raise ValueError("Connection operations must use lowercase letters, numbers, dots, underscores, hyphens, or colons.")
         if len(set(self.operations)) != len(self.operations):
             raise ValueError("Connection operations must not contain duplicates.")
+        if self.mcp is not None and self.mcp.tool_name != self.tool_name:
+            raise ValueError("MCP binding toolName must match its connection toolName.")
         return self
 
 

@@ -59,3 +59,9 @@ The model request is at-least-once across an ambiguous provider acknowledgement
 window. Restate prevents ordinary replay from re-running a completed durable
 action, but it cannot prove whether OpenRouter received a request when the
 response was lost.
+
+The `local-mcp-safe` profile also exercises `mcp_fixture_lookup` through a named
+Restate action. MCP discovery and invocation are inside that durable action, and the
+normalized event retains the Restate request identity plus bounded MCP identity. A
+lost MCP tool-call acknowledgement is `unknown`; Restate journal replay must not turn
+that state into a fabricated success.

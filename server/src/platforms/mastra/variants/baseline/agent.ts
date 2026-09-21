@@ -203,6 +203,13 @@ function connectedAgentTool<TSchema extends z.ZodTypeAny>(
         resultBytes: new TextEncoder().encode(result.content).byteLength,
         ...(result.connection ? { connection: result.connection } : {}),
       });
+      if (result.status !== "completed") {
+        if (result.status === "cancelled" || result.status === "timed_out") throw abortError();
+        if (result.status === "unknown") {
+          throw mastraToolError("TOOL_UNKNOWN", "The external tool outcome could not be confirmed.");
+        }
+        throw mastraToolError(result.error?.code ?? "TOOL_EXECUTION_FAILED", "The Mastra connected tool failed.");
+      }
       return result.content;
     },
   });

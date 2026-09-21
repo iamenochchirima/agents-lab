@@ -78,6 +78,17 @@ export interface ConnectionResult {
   readonly output: Readonly<Record<string, unknown>> | null;
   readonly attempts: readonly ConnectionAttempt[];
   readonly error: { readonly code: string; readonly message: string } | null;
+  /** Bounded identity and lifecycle phase for an MCP connection, if used. */
+  readonly mcp?: McpConnectionEvidence;
+}
+
+export interface McpConnectionEvidence {
+  readonly endpointRef: string | null;
+  readonly serverName: string;
+  readonly protocolVersion: string;
+  readonly toolName: string;
+  readonly toolVersion: string;
+  readonly phase: "discovery" | "invocation";
 }
 
 export function isSafeConnectionRef(ref: string): boolean {

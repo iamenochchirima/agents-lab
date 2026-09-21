@@ -80,6 +80,11 @@ export async function requestModel(input: ModelRequestInput): Promise<ModelCallR
 }
 
 export async function executeTool(input: TemporalToolExecutionInput): Promise<ToolExecutionResult> {
+  return executeToolWithSignal(input, cancellationSignal());
+}
+
+/** Testable core of the Activity boundary; production calls provide Temporal's signal. */
+export async function executeToolWithSignal(input: TemporalToolExecutionInput, signal: AbortSignal): Promise<ToolExecutionResult> {
   const registry = new ToolRegistry({ enabledNames: input.enabledNames, approvedNames: input.approvedNames });
   registry.register(calculatorTool);
   registry.register(fixtureLookupTool);
@@ -94,7 +99,7 @@ export async function executeTool(input: TemporalToolExecutionInput): Promise<To
     turnId: input.turnId,
     toolCallId: input.call.toolCallId,
     connectionBindings: input.connectionBindings,
-    signal: cancellationSignal(),
+    signal,
   });
 }
 

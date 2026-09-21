@@ -1,4 +1,4 @@
-import type { ConnectionBinding, ConnectionRequest, ConnectionResult } from "../contracts.js";
+import type { ConnectionBinding, ConnectionRequest, ConnectionResult, McpConnectionEvidence } from "../contracts.js";
 import type { ConnectionRuntime } from "../runtime.js";
 import { HttpMcpServer } from "./http-server.js";
 import { McpTransport } from "./local-transport.js";
@@ -52,18 +52,24 @@ export class HttpMcpConnectionRuntime {
       endpoint: this.endpoint,
       allowedEndpoints: [this.endpoint],
       limits: request.limits,
-      selectedTool: binding,
+      selectedTool: {
+        endpointRef: binding.endpointRef,
+        serverName: binding.serverName,
+        protocolVersion: binding.protocolVersion,
+        toolName: binding.toolName,
+        toolVersion: binding.toolVersion,
+      },
     });
 
     try {
       const tools = await transport.discover(options.signal);
       const selected = tools.find((tool) => tool.name === binding.toolName && tool.version === binding.toolVersion);
       if (!selected) {
-        return unavailable(request.requestId, "MCP_TOOL_NOT_SELECTED", "The selected MCP tool was not returned by discovery.");
+        return unavailable(request.requestId, "MCP_TOOL_NOT_SELECTED", "The selected MCP tool was not returned by discovery.", mcpEvidence(binding, "discovery"));
       }
       return transport.invoke(selected, request.requestId, request.input, options.signal);
     } catch (error) {
-      return unavailable(request.requestId, "MCP_DISCOVERY_FAILED", safeMessage(error));
+      return unavailable(request.requestId, "MCP_DISCOVERY_FAILED", safeMessage(error), mcpEvidence(binding, "discovery"));
     }
   }
 }
@@ -111,7 +117,7 @@ function normalizeEndpoint(endpoint: string): string {
   return parsed.toString().replace(/\/$/, "");
 }
 
-function unavailable(requestId: string, code: string, message: string): ConnectionResult {
+function unavailable(requestId: string, code: string, message: string, mcp?: McpConnectionEvidence): ConnectionResult {
   const now = new Date().toISOString();
   return {
     requestId,
@@ -129,6 +135,18 @@ function unavailable(requestId: string, code: string, message: string): Connecti
       errorMessage: bounded(message),
     }],
     error: { code, message: bounded(message) },
+    ...(mcp ? { mcp } : {}),
+  };
+}
+
+function mcpEvidence(binding: NonNullable<ConnectionRequest["mcp"]>, phase: McpConnectionEvidence["phase"]): McpConnectionEvidence {
+  return {
+    endpointRef: binding.endpointRef,
+    serverName: binding.serverName,
+    protocolVersion: binding.protocolVersion,
+    toolName: binding.toolName,
+    toolVersion: binding.toolVersion,
+    phase,
   };
 }
 

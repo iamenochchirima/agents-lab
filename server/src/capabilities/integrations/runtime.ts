@@ -9,6 +9,7 @@ import type {
   ConnectionLimits,
   ConnectionRequest,
   ConnectionResult,
+  McpConnectionEvidence,
 } from "./contracts.js";
 
 export interface ConnectionRuntime {
@@ -31,6 +32,7 @@ export interface ConnectionEvidence {
   readonly attemptCount: number;
   readonly providerRequestIds: readonly string[];
   readonly errorCode: string | null;
+  readonly mcp?: McpConnectionEvidence;
 }
 
 const DEFAULT_FIXTURE_LIMITS: ConnectionLimits = Object.freeze({
@@ -227,6 +229,7 @@ export function summarizeConnectionResult(result: ConnectionResult): ConnectionE
       .map((attempt) => attempt.providerRequestId)
       .filter((requestId): requestId is string => requestId !== null),
     errorCode: result.error?.code ?? null,
+    ...(result.mcp ? { mcp: result.mcp } : {}),
   };
 }
 

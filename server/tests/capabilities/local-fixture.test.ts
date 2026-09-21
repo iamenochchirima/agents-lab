@@ -81,6 +81,14 @@ test("the MCP-backed tool executes through the local Streamable HTTP boundary", 
     assert.equal(result.status, "completed");
     assert.equal(result.content, '{"key":"alpha","value":"local fixture alpha"}');
     assert.deepEqual(result.connection?.providerRequestIds, ["mcp-http:fixture-run:fixture-turn:call-mcp-lookup-1"]);
+    assert.deepEqual(result.connection?.mcp, {
+      endpointRef: "local-fixture-mcp",
+      serverName: "agentlab-local-mcp",
+      protocolVersion: "2025-06-18",
+      toolName: "fixture.lookup",
+      toolVersion: "1.0.0",
+      phase: "invocation",
+    });
   } finally {
     await server.close();
   }

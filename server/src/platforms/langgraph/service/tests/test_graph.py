@@ -231,6 +231,97 @@ def test_connected_tool_turn_crosses_the_local_http_boundary() -> None:
         thread.join(timeout=2)
 
 
+def test_mcp_tool_turn_crosses_the_native_streamable_http_boundary() -> None:
+    requests: list[dict] = []
+
+    class McpHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            requests.append(body)
+            method = body.get("method")
+            if method == "notifications/initialized":
+                self.send_response(202)
+                self.end_headers()
+                return
+            if method == "initialize":
+                result = {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "agentlab-local-mcp", "version": "1.0.0"},
+                }
+            elif method == "tools/list":
+                result = {"tools": [{
+                    "name": "fixture.lookup",
+                    "description": "Read fixture data",
+                    "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}}},
+                    "_meta": {"agentlabVersion": "1.0.0"},
+                }]}
+            elif method == "tools/call":
+                result = {
+                    "structuredContent": {"key": "alpha", "value": "local fixture alpha"},
+                    "content": [{"type": "text", "text": '{"key":"alpha","value":"local fixture alpha"}'}],
+                    "isError": False,
+                }
+            else:
+                result = {}
+            response = {"jsonrpc": "2.0", "id": body.get("id"), "result": result}
+            encoded = json.dumps(response).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), McpHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        events: list[tuple[str, dict]] = []
+        with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+            graph = build_baseline_graph(
+                ModelConfig(provider="fake", model="fake-mcp-connected-tool", api_key=None, timeout_ms=5_000),
+                lambda kind, payload: events.append((kind, payload)),
+                lambda: False,
+                "run-mcp-http",
+                2,
+                checkpointer,
+                tool_names=["mcp_fixture_lookup"],
+                connection_bindings=[{
+                    "toolName": "mcp_fixture_lookup",
+                    "connectionRef": "conn_local_mcp_fixture",
+                    "operations": ["lookup"],
+                    "mcp": {
+                        "endpointRef": "local-fixture-mcp",
+                        "serverName": "agentlab-local-mcp",
+                        "protocolVersion": "2025-06-18",
+                        "toolName": "fixture.lookup",
+                        "toolVersion": "1.0.0",
+                    },
+                }],
+                connection_url=f"http://127.0.0.1:{server.server_port}",
+                turn_id="turn-mcp-http",
+                max_rounds=3,
+                max_calls=2,
+            )
+            snapshot = graph.invoke(
+                {"prompt": "Read the alpha fixture through MCP.", "system_instruction": "Use the selected MCP connection.", "output": "", "attempt_count": 0},
+                {"configurable": {"thread_id": "thread-mcp-http"}, "run_id": "run-mcp-http"},
+            )
+
+        assert snapshot["output"] == 'The local MCP fixture returned {"key":"alpha","value":"local fixture alpha"}.'
+        assert [request["method"] for request in requests] == ["initialize", "notifications/initialized", "tools/list", "tools/call"]
+        completed = next(payload for kind, payload in events if kind == "ToolExecutionCompleted")
+        assert completed["connection"]["providerRequestIds"] == ["mcp-http:run-mcp-http:turn-mcp-http:call-mcp-fixture-lookup-1"]
+        assert completed["connection"]["mcp"]["phase"] == "invocation"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_write_fixture_requires_approval_and_executes_after_approval() -> None:
     with SqliteSaver.from_conn_string(":memory:") as checkpointer:
         denied_graph = build_baseline_graph(

@@ -27,7 +27,9 @@ redacts skill bodies but retains safe IDs, versions, digests, and policy decisio
 Connection seams are deliberately independent:
 
 - MCP discovery and invocation require an allowlisted endpoint and bounded tool/result
-  payloads. Discovery does not authorize a tool.
+  payloads. Discovery does not authorize a tool. The `local-mcp-safe` profile binds the
+  same selected `fixture.lookup` server tool into Temporal, Restate, LangGraph, and
+  Mastra, but each platform performs the network work at its own native boundary.
 - Direct API requests preserve provider request IDs, retry read-only transient failures,
   and never automatically retry a write after a timeout or dispatch ambiguity.
 - OAuth uses one-time state, S256 PKCE, exact HTTP(S) redirects, serialized refresh,
@@ -44,7 +46,7 @@ from model output. Read calls may use bounded retries, while a dispatched write 
 loses its acknowledgement is recorded as unknown and requires reconciliation.
 
 See the [capability module](../../server/src/capabilities/README.md), the
-[platform implementation plan](../../development/implementation-plans/platforms/active/platform-capabilities-and-integrations.md),
+[platform implementation plan](../../development/implementation-plans/platforms/completed/platform-capabilities-and-integrations.md),
 and the [development playground](../../development/playground/platform-capabilities/README.md).
 
 Capability resolution is recorded before platform dispatch. The ordered event contains only
@@ -79,6 +81,12 @@ by the configured secret store. Rotate credentials there, reauthorize the opaque
 connection reference, and leave historical run evidence intact. Hosted secret stores and
 provider-specific retention remain deployment decisions rather than claims of this local
 profile.
+
+For MCP specifically, the run evidence retains the selected endpoint reference, server
+name, protocol version, tool name/version, discovery or invocation phase, and bounded
+provider request IDs. It excludes raw JSON-RPC messages, headers, credentials, and
+unbounded tool output. The local acceptance path supports both the legacy fixture
+handshake and the current per-request MCP protocol shape without requiring Docker.
 
 For rollback, set `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=false` before starting the server.
 The API keeps affected profiles visible with an unavailable reason, resolution fails closed,

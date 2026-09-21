@@ -105,6 +105,13 @@ approval-gated write fixture, and selected skills to the native Mastra Agent or 
 boundary. MCP and OAuth are explicit protocol integrations with local fixtures; they are
 not implicit connected accounts for this baseline.
 
+The `local-mcp-safe` profile registers `mcp_fixture_lookup` as a native Mastra Agent
+tool (and the workflow composition reuses the same binding). The tool raises a
+classified error for cancellation, failure, or unknown external outcomes instead of
+returning those states as ordinary successful model content. The direct Agent variant
+still has process-scoped lifecycle state; the workflow variant retains its own native
+workflow storage semantics.
+
 These exclusions keep the direct-agent comparison honest. Mastra's official docs
 describe storage-backed memory and workflow snapshots separately from a bare direct
 agent call:

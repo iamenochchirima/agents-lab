@@ -11,6 +11,14 @@ export interface HttpMcpServerOptions {
   readonly maxResponseBytes?: number;
 }
 
+/** The MCP request may have reached a server but no response was confirmed. */
+export class McpDispatchUnknownError extends Error {
+  constructor(message = "The MCP tool call may have been dispatched; its outcome is unknown.") {
+    super(message);
+    this.name = "MCP_OUTCOME_UNKNOWN";
+  }
+}
+
 /**
  * MCP Streamable HTTP client used by the local acceptance boundary.
  *
@@ -78,6 +86,13 @@ export class HttpMcpServer implements McpServer {
 
   private async initialize(signal: AbortSignal): Promise<void> {
     if (this.initialized) return;
+    // 2026-07-28 removed the initialize/session handshake. The protocol
+    // version is sent as request metadata instead. Keep the legacy handshake
+    // for the local 2025-06-18 fixture and older servers.
+    if (!requiresLegacyHandshake(this.protocolVersion)) {
+      this.initialized = true;
+      return;
+    }
     await this.request("initialize", {
       protocolVersion: this.protocolVersion,
       capabilities: {},
@@ -102,12 +117,20 @@ export class HttpMcpServer implements McpServer {
 
   private async request(method: string, params: Readonly<Record<string, unknown>>, signal: AbortSignal, requestId?: string): Promise<unknown> {
     const id = requestId ?? `agentlab-${++this.requestSequence}`;
-    const response = await this.fetchImplementation(this.endpoint, {
-      method: "POST",
-      headers: this.headers(method, params),
-      body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, method, params }),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(this.endpoint, {
+        method: "POST",
+        headers: this.headers(method, params),
+        body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, method, params }),
+        signal,
+      });
+    } catch (error) {
+      if (method === "tools/call" && !signal.aborted) {
+        throw new McpDispatchUnknownError();
+      }
+      throw error;
+    }
     const text = await boundedResponseText(response, this.maxResponseBytes);
     if (!response.ok) throw new Error(`MCP request failed with HTTP ${response.status}.`);
     const envelope = parseResponse(text, response.headers.get("content-type"));
@@ -150,11 +173,13 @@ async function boundedResponseText(response: Response, maxBytes: number): Promis
 function parseResponse(text: string, contentType: string | null): unknown {
   if (contentType?.toLowerCase().includes("text/event-stream")) {
     const data = text
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trimStart())
-      .join("\n")
-      .trim();
+      .split(/\r?\n\r?\n/)
+      .map((event) => event.split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n")
+        .trim())
+      .find(Boolean);
     if (!data) throw new Error("MCP returned an empty event stream.");
     return parseJson(data);
   }
@@ -181,4 +206,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function bounded(value: string): string {
   return value.length <= 512 ? value : value.slice(0, 512);
+}
+
+function requiresLegacyHandshake(protocolVersion: string): boolean {
+  return protocolVersion === "2025-06-18";
 }

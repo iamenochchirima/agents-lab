@@ -42,6 +42,56 @@ test("Restate native tool execution crosses the local HTTP connection boundary",
   }
 });
 
+test("Restate native MCP action crosses the local Streamable HTTP boundary", async () => {
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0 });
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  process.env.AGENTLAB_LOCAL_FIXTURE_URL = `http://127.0.0.1:${fixture.port}`;
+  try {
+    const result = await workflowRun(createContext(), {
+      runId: "restate-mcp-connection",
+      prompt: "Read the alpha fixture through MCP.",
+      systemInstruction: "Use the selected MCP connection.",
+      model: { provider: "fake", model: "fake-mcp-connected-tool" },
+      tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
+      connections: [{
+        toolName: "mcp_fixture_lookup",
+        connectionRef: "conn_local_mcp_fixture",
+        operations: ["lookup"],
+        mcp: {
+          endpointRef: "local-fixture-mcp",
+          serverName: "agentlab-local-mcp",
+          protocolVersion: "2025-06-18",
+          toolName: "fixture.lookup",
+          toolVersion: "1.0.0",
+        },
+      }],
+    });
+
+    assert.equal(result.status, "completed");
+    const completion = result.eventIntents.find((event) => event.kind === "ToolExecutionCompleted");
+    assert.equal(completion?.payload.toolName, "mcp_fixture_lookup");
+    assert.deepEqual(completion?.payload.connection, {
+      requestId: "restate-mcp-connection:restate-mcp-connection:turn:1:call-mcp-fixture-lookup-1",
+      status: "completed",
+      attemptCount: 1,
+      providerRequestIds: ["mcp-http:restate-mcp-connection:restate-mcp-connection:turn:1:call-mcp-fixture-lookup-1"],
+      errorCode: null,
+      mcp: {
+        endpointRef: "local-fixture-mcp",
+        serverName: "agentlab-local-mcp",
+        protocolVersion: "2025-06-18",
+        toolName: "fixture.lookup",
+        toolVersion: "1.0.0",
+        phase: "invocation",
+      },
+    });
+  } finally {
+    if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
+    await fixture.close();
+  }
+});
+
 function createContext() {
   let timestamp = Date.parse("2026-09-20T00:00:00.000Z");
   return {

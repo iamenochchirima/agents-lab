@@ -6,7 +6,7 @@ export interface DeterministicFakeModelOptions {
   readonly delayMs?: number;
   readonly failure?: "provider" | "ambiguous";
   readonly toolCall?: boolean;
-  readonly toolName?: "calculator" | "fixture_lookup" | "fixture_write";
+  readonly toolName?: "calculator" | "fixture_lookup" | "fixture_write" | "mcp_fixture_lookup";
   readonly contextAware?: boolean;
 }
 
@@ -43,9 +43,9 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
           return {
             content: [{
               type: "tool-call",
-              toolCallId: options.toolName === "fixture_lookup" ? "mastra-fixture-lookup-1" : options.toolName === "fixture_write" ? "mastra-fixture-write-1" : "mastra-calculator-1",
+              toolCallId: options.toolName === "fixture_lookup" ? "mastra-fixture-lookup-1" : options.toolName === "fixture_write" ? "mastra-fixture-write-1" : options.toolName === "mcp_fixture_lookup" ? "mastra-mcp-fixture-lookup-1" : "mastra-calculator-1",
               toolName: options.toolName ?? "calculator",
-              input: options.toolName === "fixture_lookup"
+            input: options.toolName === "fixture_lookup" || options.toolName === "mcp_fixture_lookup"
                 ? JSON.stringify({ key: "alpha" })
                 : options.toolName === "fixture_write"
                   ? JSON.stringify({ key: "alpha", value: "updated" })
@@ -60,7 +60,7 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
         return {
           content: [{
             type: "text",
-            text: options.toolName === "fixture_lookup"
+            text: options.toolName === "fixture_lookup" || options.toolName === "mcp_fixture_lookup"
               ? "The local fixture returned {\"key\":\"alpha\",\"value\":\"local fixture alpha\"}."
               : options.toolName === "fixture_write"
                 ? "The local fixture write returned {\"key\":\"alpha\",\"written\":true}."

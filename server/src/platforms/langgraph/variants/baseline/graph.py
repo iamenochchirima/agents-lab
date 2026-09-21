@@ -30,6 +30,10 @@ MAX_TOOL_CALL_ID_CHARS = 128
 MAX_TOOL_NAME_CHARS = 64
 MAX_TOOL_ARGUMENT_BYTES = 512
 MAX_TOOL_RESULT_BYTES = 256
+MAX_MCP_RESPONSE_BYTES = 256 * 1024
+MAX_MCP_TOOL_COUNT = 64
+MAX_MCP_DESCRIPTION_CHARS = 8_192
+MAX_MCP_SCHEMA_BYTES = 32_768
 
 
 class GraphState(TypedDict, total=False):
@@ -180,6 +184,20 @@ FIXTURE_WRITE_DEFINITION: dict[str, Any] = {
     },
 }
 
+MCP_FIXTURE_LOOKUP_DEFINITION: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "mcp_fixture_lookup",
+        "description": "Read one value through the selected local MCP server.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["key"],
+            "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 64}},
+        },
+    },
+}
+
 
 def build_baseline_graph(
     model: ModelConfig,
@@ -196,7 +214,7 @@ def build_baseline_graph(
     max_rounds: int = 6,
     max_calls: int = 8,
 ):
-    enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name in {"calculator", "fixture_lookup", "fixture_write"}]
+    enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name in {"calculator", "fixture_lookup", "fixture_write", "mcp_fixture_lookup"}]
     approved_tools = [name for name in (approved_tool_names or []) if name in enabled_tools]
     effective_connection_bindings = connection_bindings if connection_bindings is not None else [
         {"toolName": "fixture_lookup", "connectionRef": "conn_local_fixture", "operations": ["lookup"]},
@@ -430,6 +448,11 @@ def complete_fake(
         if tool_result is None:
             return ModelResponse(None, [ToolCall("call-fixture-lookup-1", "fixture_lookup", {"key": "alpha"})], empty_usage())
         return ModelResponse(f"The local fixture returned {tool_result.get('content', '')}.", [], empty_usage())
+    if model == "fake-mcp-connected-tool":
+        tool_result = next((message for message in messages if message.get("role") == "tool"), None)
+        if tool_result is None:
+            return ModelResponse(None, [ToolCall("call-mcp-fixture-lookup-1", "mcp_fixture_lookup", {"key": "alpha"})], empty_usage())
+        return ModelResponse(f"The local MCP fixture returned {tool_result.get('content', '')}.", [], empty_usage())
     if model == "fake-connected-write":
         tool_result = next((message for message in messages if message.get("role") == "tool"), None)
         if tool_result is None:
@@ -469,6 +492,8 @@ def complete_openrouter_response(
         definitions.append(FIXTURE_LOOKUP_DEFINITION)
     if "fixture_write" in tool_names:
         definitions.append(FIXTURE_WRITE_DEFINITION)
+    if "mcp_fixture_lookup" in tool_names:
+        definitions.append(MCP_FIXTURE_LOOKUP_DEFINITION)
     if definitions:
         payload_data["tools"] = definitions
         payload_data["tool_choice"] = "auto"
@@ -546,7 +571,7 @@ def parse_openrouter_response(body: Any, tool_names: list[str]) -> ModelResponse
         raise OutcomeUnknownError("OpenRouter returned an invalid response shape.") from exc
 
 
-def read_bounded_response(response: Any) -> bytes:
+def read_bounded_response(response: Any, max_bytes: int = MAX_RESPONSE_BYTES) -> bytes:
     chunks: list[bytes] = []
     total_bytes = 0
     while True:
@@ -554,10 +579,41 @@ def read_bounded_response(response: Any) -> bytes:
         if not chunk:
             break
         total_bytes += len(chunk)
-        if total_bytes > MAX_RESPONSE_BYTES:
+        if total_bytes > max_bytes:
             raise ResponseTooLargeError("OpenRouter returned a response larger than the configured safety limit.")
         chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _parse_mcp_response(raw: bytes, content_type: str) -> Any:
+    text = raw.decode("utf-8", errors="strict")
+    if "text/event-stream" in content_type.lower():
+        for event in text.split("\n\n"):
+            data = "\n".join(line[5:].lstrip() for line in event.splitlines() if line.startswith("data:"))
+            if data.strip():
+                return json.loads(data)
+        raise ValueError("MCP returned an empty event stream.")
+    return json.loads(text)
+
+
+def _mcp_endpoint(connection_url: str) -> str:
+    base = connection_url.rstrip("/")
+    return base if base.endswith("/mcp") else f"{base}/mcp"
+
+
+def _mcp_request_id(run_id: str, turn_id: str, tool_call_id: str) -> str:
+    return ":".join(_safe_id_part(part) for part in (run_id, turn_id, tool_call_id))
+
+
+def _mcp_evidence(binding: dict[str, Any], phase: str) -> dict[str, Any]:
+    return {
+        "endpointRef": binding.get("endpointRef", binding.get("endpoint_ref")),
+        "serverName": binding.get("serverName", binding.get("server_name", "")),
+        "protocolVersion": binding.get("protocolVersion", binding.get("protocol_version", "")),
+        "toolName": binding.get("toolName", binding.get("tool_name", "")),
+        "toolVersion": binding.get("toolVersion", binding.get("tool_version", "")),
+        "phase": phase,
+    }
 
 
 def _is_context_overflow_response(response: Any) -> bool:
@@ -626,7 +682,7 @@ def validate_tool_call(call: ToolCall, enabled_tools: list[str], approved_tools:
         return "INVALID_CALL_ID", "Tool call ID is missing or unsafe."
     if call.name not in enabled_tools:
         return "UNKNOWN_TOOL", f"Tool is not enabled: {call.name}"
-    if call.name not in {"calculator", "fixture_lookup", "fixture_write"}:
+    if call.name not in {"calculator", "fixture_lookup", "fixture_write", "mcp_fixture_lookup"}:
         return "UNKNOWN_TOOL", f"Tool is not registered: {call.name}"
     if call.name == "fixture_write" and call.name not in approved_tools:
         return "APPROVAL_REQUIRED", "Tool requires an explicit approval: fixture_write"
@@ -641,6 +697,10 @@ def validate_tool_call(call: ToolCall, enabled_tools: list[str], approved_tools:
     if call.name == "fixture_write":
         if not isinstance(call.arguments, dict) or set(call.arguments) != {"key", "value"} or not isinstance(call.arguments["key"], str) or not isinstance(call.arguments["value"], str) or not 1 <= len(call.arguments["key"]) <= 64 or len(call.arguments["value"]) > 512:
             return "INVALID_ARGUMENTS", "Fixture write arguments must contain only bounded key and value strings."
+        return None
+    if call.name == "mcp_fixture_lookup":
+        if not isinstance(call.arguments, dict) or set(call.arguments) != {"key"} or not isinstance(call.arguments["key"], str) or not 1 <= len(call.arguments["key"]) <= 64:
+            return "INVALID_ARGUMENTS", "MCP fixture lookup arguments must contain only a bounded key."
         return None
     if not isinstance(call.arguments, dict) or set(call.arguments) != {"operation", "left", "right"}:
         return "INVALID_ARGUMENTS", "Calculator arguments must contain only operation, left, and right."
@@ -711,7 +771,247 @@ def execute_tool(
             is_cancelled=is_cancelled,
             timeout_ms=timeout_ms,
         )
+    if name == "mcp_fixture_lookup":
+        return execute_mcp_connection_tool(
+            arguments,
+            connection_url=connection_url,
+            connection_bindings=connection_bindings or [],
+            run_id=run_id,
+            turn_id=turn_id,
+            tool_call_id=tool_call_id,
+            is_cancelled=is_cancelled,
+            timeout_ms=timeout_ms,
+        )
     raise ValueError(f"Unknown fixture tool: {name}")
+
+
+def execute_mcp_connection_tool(
+    arguments: Any,
+    *,
+    connection_url: str,
+    connection_bindings: list[dict[str, Any]],
+    run_id: str,
+    turn_id: str,
+    tool_call_id: str,
+    is_cancelled: Callable[[], bool] | None,
+    timeout_ms: int,
+) -> ToolExecution:
+    binding = next((candidate for candidate in connection_bindings if candidate.get("toolName", candidate.get("tool_name")) == "mcp_fixture_lookup"), None)
+    mcp = binding.get("mcp") if isinstance(binding, dict) else None
+    if (
+        binding is None
+        or binding.get("connectionRef", binding.get("connection_ref")) != "conn_local_mcp_fixture"
+        or "lookup" not in binding.get("operations", [])
+        or not isinstance(mcp, dict)
+    ):
+        return ToolExecution(
+            _tool_error("CONNECTION_NOT_CONFIGURED", "The server-owned MCP binding is not available for mcp_fixture_lookup."),
+            connection={
+                "requestId": _mcp_request_id(run_id, turn_id, tool_call_id),
+                "status": "failed",
+                "attemptCount": 0,
+                "providerRequestIds": [],
+                "errorCode": "CONNECTION_NOT_CONFIGURED",
+                "mcp": _mcp_evidence(mcp if isinstance(mcp, dict) else {}, "discovery"),
+            },
+            status="failed",
+            error_code="CONNECTION_NOT_CONFIGURED",
+            error_message="The server-owned MCP binding is not available.",
+        )
+
+    request_id = _mcp_request_id(run_id, turn_id, tool_call_id)
+    try:
+        client = _McpHttpClient(
+            _mcp_endpoint(connection_url),
+            mcp,
+            timeout_ms=timeout_ms,
+            is_cancelled=is_cancelled,
+        )
+        selected = client.discover()
+    except CancellationError:
+        raise
+    except Exception as exc:
+        message = _bounded_text(str(exc), 512)
+        connection = {
+            "requestId": request_id,
+            "status": "failed",
+            "attemptCount": 1,
+            "providerRequestIds": [],
+            "errorCode": "MCP_DISCOVERY_FAILED",
+            "mcp": _mcp_evidence(mcp, "discovery"),
+        }
+        return ToolExecution(_tool_error("MCP_DISCOVERY_FAILED", message), connection=connection, status="failed", error_code="MCP_DISCOVERY_FAILED", error_message=message)
+
+    try:
+        output, provider_request_id = client.call(selected, arguments, request_id)
+        connection = {
+            "requestId": request_id,
+            "status": "completed",
+            "attemptCount": 1,
+            "providerRequestIds": [provider_request_id],
+            "errorCode": None,
+            "mcp": _mcp_evidence(mcp, "invocation"),
+        }
+        content = json.dumps(output, separators=(",", ":"))
+        if _utf8_bytes(content) > MAX_TOOL_RESULT_BYTES:
+            message = "MCP tool result exceeds the configured output limit."
+            connection["status"] = "failed"
+            connection["errorCode"] = "MCP_RESULT_TOO_LARGE"
+            return ToolExecution(_tool_error("MCP_RESULT_TOO_LARGE", message), connection=connection, status="failed", error_code="MCP_RESULT_TOO_LARGE", error_message=message)
+        return ToolExecution(content, connection=connection)
+    except CancellationError:
+        raise
+    except OutcomeUnknownError as exc:
+        message = _bounded_text(str(exc), 512)
+        connection = {
+            "requestId": request_id,
+            "status": "unknown",
+            "attemptCount": 1,
+            "providerRequestIds": [],
+            "errorCode": "MCP_OUTCOME_UNKNOWN",
+            "mcp": _mcp_evidence(mcp, "invocation"),
+        }
+        return ToolExecution(_tool_error("MCP_OUTCOME_UNKNOWN", message), connection=connection, status="unknown", error_code="MCP_OUTCOME_UNKNOWN", error_message=message)
+    except Exception as exc:
+        message = _bounded_text(str(exc), 512)
+        connection = {
+            "requestId": request_id,
+            "status": "failed",
+            "attemptCount": 1,
+            "providerRequestIds": [],
+            "errorCode": "MCP_CALL_FAILED",
+            "mcp": _mcp_evidence(mcp, "invocation"),
+        }
+        return ToolExecution(_tool_error("MCP_CALL_FAILED", message), connection=connection, status="failed", error_code="MCP_CALL_FAILED", error_message=message)
+
+
+class _McpHttpClient:
+    def __init__(self, endpoint: str, binding: dict[str, Any], *, timeout_ms: int, is_cancelled: Callable[[], bool] | None) -> None:
+        self.endpoint = endpoint
+        self.binding = binding
+        self.timeout = max(0.1, timeout_ms / 1000)
+        self.is_cancelled = is_cancelled
+        self.protocol_version = str(binding.get("protocolVersion", binding.get("protocol_version", "")))
+        self.server_name = str(binding.get("serverName", binding.get("server_name", "")))
+        self.tool_name = str(binding.get("toolName", binding.get("tool_name", "")))
+        self.tool_version = str(binding.get("toolVersion", binding.get("tool_version", "")))
+        self.request_sequence = 0
+
+    def discover(self) -> dict[str, Any]:
+        if self.protocol_version == "2025-06-18":
+            initialized = self.request(
+                "initialize",
+                {
+                    "protocolVersion": self.protocol_version,
+                    "capabilities": {},
+                    "clientInfo": {"name": "agent-harness-lab-langgraph", "version": "1.0.0"},
+                },
+                phase="discovery",
+            )
+            if initialized.get("protocolVersion") != self.protocol_version:
+                raise ValueError("MCP protocol version does not match the selected capability.")
+            server_info = initialized.get("serverInfo")
+            if not isinstance(server_info, dict) or server_info.get("name") != self.server_name:
+                raise ValueError("MCP server identity does not match the selected capability.")
+            self.notification("notifications/initialized")
+
+        result = self.request("tools/list", {}, phase="discovery")
+        raw_tools = result.get("tools")
+        if not isinstance(raw_tools, list) or len(raw_tools) > MAX_MCP_TOOL_COUNT:
+            raise ValueError("MCP tools/list returned an invalid or oversized tool list.")
+        tools: list[dict[str, Any]] = []
+        for raw_tool in raw_tools:
+            if not isinstance(raw_tool, dict):
+                raise ValueError("MCP tools/list returned an invalid tool manifest.")
+            name = raw_tool.get("name")
+            description = raw_tool.get("description")
+            input_schema = raw_tool.get("inputSchema")
+            metadata = raw_tool.get("_meta")
+            version = metadata.get("agentlabVersion", "1.0.0") if isinstance(metadata, dict) else "1.0.0"
+            if not isinstance(name, str) or not name or len(name) > 128 or not isinstance(description, str) or len(description) > MAX_MCP_DESCRIPTION_CHARS or not isinstance(input_schema, dict):
+                raise ValueError("MCP tools/list returned an invalid tool manifest.")
+            if not isinstance(version, str) or not version or _utf8_bytes(json.dumps(input_schema, separators=(",", ":"))) > MAX_MCP_SCHEMA_BYTES:
+                raise ValueError("MCP tool manifest is unbounded.")
+            tools.append({"name": name, "version": version, "description": description, "inputSchema": input_schema})
+        selected = next((tool for tool in tools if tool["name"] == self.tool_name and tool["version"] == self.tool_version), None)
+        if selected is None:
+            raise ValueError("The selected MCP tool was not returned by discovery.")
+        return selected
+
+    def call(self, tool: dict[str, Any], arguments: Any, request_id: str) -> tuple[dict[str, Any], str]:
+        if tool["name"] != self.tool_name or tool["version"] != self.tool_version:
+            raise ValueError("The MCP tool is not the server-owned selected tool.")
+        result = self.request("tools/call", {"name": self.tool_name, "arguments": arguments}, phase="invocation", request_id=request_id)
+        if result.get("isError") is True:
+            raise ValueError("MCP tool returned an error.")
+        structured = result.get("structuredContent")
+        if isinstance(structured, dict):
+            return structured, f"mcp-http:{request_id}"
+        content = result.get("content")
+        if not isinstance(content, list):
+            raise ValueError("MCP tools/call returned no content.")
+        text = "\n".join(item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str)).strip()
+        if not text:
+            raise ValueError("MCP tools/call returned no text content.")
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {"text": text}, f"mcp-http:{request_id}"
+        if not isinstance(parsed, dict):
+            return {"text": text}, f"mcp-http:{request_id}"
+        return parsed, f"mcp-http:{request_id}"
+
+    def notification(self, method: str) -> None:
+        self._check_cancelled()
+        request = urllib_request.Request(
+            self.endpoint,
+            data=json.dumps({"jsonrpc": "2.0", "method": method}, separators=(",", ":")).encode("utf-8"),
+            headers=self.headers(method),
+            method="POST",
+        )
+        with urllib_request.urlopen(request, timeout=self.timeout) as response:
+            response.read(64 * 1024)
+            if response.status not in {200, 202}:
+                raise ValueError(f"MCP notification failed with HTTP {response.status}.")
+
+    def request(self, method: str, params: dict[str, Any], *, phase: str, request_id: str | None = None) -> dict[str, Any]:
+        self._check_cancelled()
+        self.request_sequence += 1
+        message_id = request_id or f"langgraph-mcp-{self.request_sequence}"
+        body = json.dumps({"jsonrpc": "2.0", "id": message_id, "method": method, "params": params}, separators=(",", ":")).encode("utf-8")
+        request = urllib_request.Request(self.endpoint, data=body, headers=self.headers(method, params), method="POST")
+        try:
+            with urllib_request.urlopen(request, timeout=self.timeout) as response:
+                raw = read_bounded_response(response, MAX_MCP_RESPONSE_BYTES)
+                content_type = response.headers.get("Content-Type", "")
+        except (urllib_error.URLError, TimeoutError, OSError) as exc:
+            if phase == "invocation":
+                raise OutcomeUnknownError("The MCP tool-call response outcome could not be established.") from exc
+            raise
+        parsed = _parse_mcp_response(raw, content_type)
+        if not isinstance(parsed, dict) or parsed.get("jsonrpc") != "2.0":
+            raise ValueError("MCP returned an invalid JSON-RPC envelope.")
+        error = parsed.get("error")
+        if isinstance(error, dict):
+            raise ValueError(_bounded_text(str(error.get("message", "MCP request failed.")), 512))
+        result = parsed.get("result")
+        if not isinstance(result, dict):
+            raise ValueError("MCP returned an invalid result.")
+        return result
+
+    def headers(self, method: str, params: dict[str, Any] | None = None) -> dict[str, str]:
+        name = params.get("name") if isinstance(params, dict) and isinstance(params.get("name"), str) else None
+        return {
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+            "MCP-Protocol-Version": self.protocol_version,
+            "Mcp-Method": method,
+            **({"Mcp-Name": name} if name else {}),
+        }
+
+    def _check_cancelled(self) -> None:
+        if self.is_cancelled and self.is_cancelled():
+            raise CancellationError("Cancellation was requested during the MCP call.")
 
 
 def execute_connection_tool(

@@ -67,3 +67,57 @@ test("HTTP MCP rejects an endpoint that is not explicitly allowlisted", async ()
   const server = new HttpMcpServer({ endpoint });
   assert.throws(() => new McpTransport({ server, endpoint, allowedEndpoints: [], limits }), /not allowlisted/);
 });
+
+test("HTTP MCP uses the current per-request protocol without a legacy handshake", async () => {
+  const methods: string[] = [];
+  const endpoint = "https://mcp.example.test/stream";
+  const server = new HttpMcpServer({
+    endpoint,
+    protocolVersion: "2026-07-28",
+    serverName: "modern-fixture",
+    fetchImplementation: async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { method: string };
+      methods.push(body.method);
+      const result = body.method === "tools/list"
+        ? { tools: [{ name: "fixture.lookup", description: "Read fixture data", inputSchema: { type: "object" }, _meta: { agentlabVersion: "1.0.0" } }] }
+        : { structuredContent: { key: "alpha", value: "modern fixture" }, content: [], isError: false };
+      return new Response(`data: ${JSON.stringify({ jsonrpc: "2.0", id: "response-1", result })}\n\n`, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    },
+  });
+  const transport = new McpTransport({ server, endpoint, allowedEndpoints: [endpoint], limits });
+
+  const tools = await transport.discover(new AbortController().signal);
+  const result = await transport.invoke(tools[0]!, "modern-mcp-1", { key: "alpha" }, new AbortController().signal);
+
+  assert.deepEqual(methods, ["tools/list", "tools/call"]);
+  assert.equal(result.status, "completed");
+  assert.deepEqual(result.output, { key: "alpha", value: "modern fixture" });
+});
+
+test("HTTP MCP classifies a lost tool-call response as an unknown outcome", async () => {
+  const endpoint = "https://mcp.example.test/unknown";
+  const server = new HttpMcpServer({
+    endpoint,
+    protocolVersion: "2026-07-28",
+    fetchImplementation: async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { method: string };
+      if (body.method === "tools/call") throw new Error("socket closed after dispatch");
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: "response-1",
+        result: { tools: [{ name: "fixture.lookup", description: "Read fixture data", inputSchema: { type: "object" } }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  const transport = new McpTransport({ server, endpoint, allowedEndpoints: [endpoint], limits });
+  const [tool] = await transport.discover(new AbortController().signal);
+
+  const result = await transport.invoke(tool!, "unknown-mcp-1", { key: "alpha" }, new AbortController().signal);
+
+  assert.equal(result.status, "unknown");
+  assert.equal(result.error?.code, "MCP_OUTCOME_UNKNOWN");
+  assert.equal(result.attempts[0]?.retryable, false);
+});
