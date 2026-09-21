@@ -291,9 +291,10 @@ export class MastraWorkflowRunner implements PlatformRunner {
         return;
       }
       record.status = "completed";
+      const output = safeRecord(result.result);
+      restorePersistedEvents(record, output.events);
       this.addEvent(record, "WorkflowCompleted", { nativeStatus: result.status });
       this.addEvent(record, "RunCompleted", {});
-      const output = safeRecord(result.result);
       record.result = {
         schemaVersion: 1,
         runId: record.manifest.runId,
@@ -346,6 +347,9 @@ export class MastraWorkflowRunner implements PlatformRunner {
       record.status = "completed";
       if (!record.result) {
         const output = safeRecord(state.result);
+        restorePersistedEvents(record, output.events);
+        this.addEvent(record, "WorkflowCompleted", { nativeStatus: state.status });
+        this.addEvent(record, "RunCompleted", {});
         record.result = {
           schemaVersion: 1,
           runId: record.manifest.runId,
@@ -598,6 +602,28 @@ function metricsFor(record: MastraWorkflowExecutionRecord): RunMetrics {
     totalTokens: usage.totalTokens,
     costUsd: null,
   };
+}
+
+function restorePersistedEvents(record: MastraWorkflowExecutionRecord, value: unknown): void {
+  if (!Array.isArray(value)) return;
+  for (const candidate of value.slice(0, 1_024)) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    const kind = (candidate as { kind?: unknown }).kind;
+    const payload = (candidate as { payload?: unknown }).payload;
+    if (typeof kind !== "string" || kind.length === 0 || kind.length > 64 || !payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+    record.events.push({
+      source: "mastra-workflow",
+      sourceSequence: record.events.length + 1,
+      kind,
+      runId: record.manifest.runId,
+      occurredAt: record.startedAt,
+      payload: payload as Record<string, unknown>,
+    });
+  }
+  const deduplicated = record.events.filter((event, index, events) =>
+    events.findIndex((candidate) => candidate.kind === event.kind && JSON.stringify(candidate.payload) === JSON.stringify(event.payload)) === index,
+  );
+  record.events.splice(0, record.events.length, ...deduplicated.map((event, index) => ({ ...event, sourceSequence: index + 1 })));
 }
 
 function parseResumeInput(input: unknown): { approved: boolean } {

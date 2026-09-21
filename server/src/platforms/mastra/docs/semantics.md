@@ -107,10 +107,12 @@ not implicit connected accounts for this baseline.
 
 The `local-mcp-safe` profile registers `mcp_fixture_lookup` as a native Mastra Agent
 tool (and the workflow composition reuses the same binding). The tool raises a
-classified error for cancellation, failure, or unknown external outcomes instead of
-returning those states as ordinary successful model content. The direct Agent variant
-still has process-scoped lifecycle state; the workflow variant retains its own native
-workflow storage semantics.
+classified error for cancellation, failure, or unknown external outcomes. Mastra may
+turn a known provider failure into a tool error that the model can recover from, so the
+run can complete while retaining `ToolExecutionFailed`. An unknown external outcome is
+different: the native runner rejects a final response after `ToolExecutionUnknown` and
+records `outcome_unknown`. The direct Agent variant still has process-scoped lifecycle
+state; the workflow variant retains its own native workflow storage semantics.
 
 These exclusions keep the direct-agent comparison honest. Mastra's official docs
 describe storage-backed memory and workflow snapshots separately from a bare direct

@@ -14,3 +14,14 @@ test suite, scenario, experiment, or published result.
 
 The key lesson is the boundary: Mastra owns the agent call; the Lab owns run identity,
 normalized evidence, and the explicit process-loss limitation.
+
+To inspect the native MCP tool, select `local-mcp-safe` in the run setup and send:
+
+```text
+Read alpha through MCP.
+```
+
+Expand **MCP connection** and **Native execution**. The run should show the Lab
+capability `mcp_fixture_lookup`, the remote tool `fixture.lookup`, and a bounded
+provider request ID. This is a local protocol fixture, not a connected remote account;
+an interrupted call remains `outcome_unknown` rather than being retried blindly.

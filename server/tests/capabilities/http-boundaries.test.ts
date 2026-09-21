@@ -68,6 +68,13 @@ test("HTTP MCP rejects an endpoint that is not explicitly allowlisted", async ()
   assert.throws(() => new McpTransport({ server, endpoint, allowedEndpoints: [], limits }), /not allowlisted/);
 });
 
+test("HTTP MCP fails closed when an allowlisted endpoint is unavailable", async () => {
+  const endpoint = "http://127.0.0.1:1/mcp";
+  const server = new HttpMcpServer({ endpoint, serverName: "unavailable-fixture" });
+  const transport = new McpTransport({ server, endpoint, allowedEndpoints: [endpoint], limits: { ...limits, timeoutMs: 250 } });
+  await assert.rejects(transport.discover(new AbortController().signal));
+});
+
 test("HTTP MCP uses the current per-request protocol without a legacy handshake", async () => {
   const methods: string[] = [];
   const endpoint = "https://mcp.example.test/stream";

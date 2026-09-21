@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 
+import { createDefaultCapabilityCatalog } from "../src/capabilities/catalog.js";
+import { createLocalFixtureServer } from "../src/capabilities/integrations/local-fixture/service.js";
 import { RunEvidenceStore } from "../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../src/control-plane/application/platform-registry.js";
 import { RunService, type RunView } from "../src/control-plane/application/run-service.js";
@@ -194,6 +196,54 @@ test("opt-in OpenRouter LangGraph session completes two real model turns", { ski
   }
 });
 
+test("real LangGraph MCP execution becomes reconciliation-required after native service replacement", { skip: !shouldRun }, async () => {
+  const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0, mcpCallBehavior: "delay", mcpCallDelayMs: 5_000 });
+  const stateDirectory = await mkdtemp(join(tmpdir(), "agentlab-langgraph-mcp-restart-"));
+  const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-mcp-restart-runs-"));
+  const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+  let nativeService: ManagedService | null = null;
+  let app: Awaited<ReturnType<typeof buildIntegrationApp>> | null = null;
+  try {
+    const contextRoot = join(stateDirectory, "sessions");
+    const fixtureUrl = `http://127.0.0.1:${fixture.port}`;
+    process.env.AGENTLAB_LOCAL_FIXTURE_URL = fixtureUrl;
+    nativeService = await startService(stateDirectory, { AGENTLAB_LOCAL_FIXTURE_URL: fixtureUrl });
+    app = await buildIntegrationApp(runRoot, nativeService.url, contextRoot);
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/runs",
+      payload: {
+        platform: "langgraph",
+        variant: "baseline",
+        task: { kind: "prompt", prompt: "Read alpha through the MCP fixture." },
+        model: { provider: "fake", model: "fake-mcp-connected-tool", contextWindowTokens: 16_384 },
+        capabilities: { profileId: "local-mcp-safe", tools: { enabledNames: [], maxRounds: 3, maxCalls: 2 } },
+      },
+    });
+    assert.equal(createdResponse.statusCode, 202, createdResponse.body);
+    const created = createdResponse.json() as RunView;
+    await waitForNativeEvent(nativeService.url, `langgraph:${created.runId}`, "ToolExecutionStarted");
+
+    await app.close();
+    app = null;
+    await nativeService.stop("SIGKILL");
+    nativeService = await startService(stateDirectory, { AGENTLAB_LOCAL_FIXTURE_URL: fixtureUrl });
+    app = await buildIntegrationApp(runRoot, nativeService.url, contextRoot);
+    const reconciled = await getRunFromApp(app, created.runId);
+    assert.equal(reconciled.status, "reconciliation_required", JSON.stringify(reconciled.result));
+    assert.equal(reconciled.result?.error?.failureKind, "reconciliation");
+    assert.equal(reconciled.result?.error?.code, "SERVICE_RESTARTED");
+  } finally {
+    await app?.close();
+    await nativeService?.stop();
+    await fixture.close();
+    if (previousFixtureUrl === undefined) delete process.env.AGENTLAB_LOCAL_FIXTURE_URL;
+    else process.env.AGENTLAB_LOCAL_FIXTURE_URL = previousFixtureUrl;
+    await rm(stateDirectory, { recursive: true, force: true });
+    await rm(runRoot, { recursive: true, force: true });
+  }
+});
+
 async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot: string): Promise<void> {
   const runRoot = await mkdtemp(join(tmpdir(), "agentlab-langgraph-api-"));
   const config = loadServerConfig(
@@ -212,7 +262,7 @@ async function assertGenericApiRun(runner: LangGraphBaselineRunner, contextRoot:
   });
   const registry = new PlatformRegistry([apiRunner]);
   const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
-  const service = new RunService({ config, context, evidence, registry });
+  const service = new RunService({ config, context, evidence, registry, capabilities: createDefaultCapabilityCatalog() });
   const app = buildControlPlaneServer({ config, service, evidence, registry });
 
   try {
@@ -586,7 +636,7 @@ async function buildIntegrationApp(runRoot: string, serviceUrl: string, contextR
   const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl, contextRoot, timeoutMs: 5_000 });
   const registry = new PlatformRegistry([runner]);
   const context = new ContextService(new ContextSessionStore(contextRoot, config.context), new CharacterTokenEstimator());
-  const service = new RunService({ config, context, evidence, registry });
+  const service = new RunService({ config, context, evidence, registry, capabilities: createDefaultCapabilityCatalog() });
   const app = buildControlPlaneServer({ config, service, evidence, registry });
   await app.ready();
   return app;
@@ -683,7 +733,7 @@ interface ManagedService {
   stop(signal?: NodeJS.Signals): Promise<void>;
 }
 
-async function startService(stateDirectory: string): Promise<ManagedService> {
+async function startService(stateDirectory: string, extraEnvironment: NodeJS.ProcessEnv = {}): Promise<ManagedService> {
   const port = await freePort();
   const python = resolvePython();
   const child = spawn(python, ["-m", "uvicorn", "service.app:app", "--host", "127.0.0.1", "--port", String(port)], {
@@ -694,6 +744,7 @@ async function startService(stateDirectory: string): Promise<ManagedService> {
       AGENTLAB_LANGGRAPH_STATE_DIR: stateDirectory,
       AGENTLAB_LANGGRAPH_PORT: String(port),
       AGENTLAB_CONTEXT_ROOT: join(stateDirectory, "sessions"),
+      ...extraEnvironment,
     },
     stdio: "pipe",
   });
@@ -716,6 +767,17 @@ async function startService(stateDirectory: string): Promise<ManagedService> {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     },
   };
+}
+
+async function waitForNativeEvent(serviceUrl: string, executionId: string, expectedKind: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const response = await fetch(`${serviceUrl}/v1/runs/${encodeURIComponent(executionId)}`);
+    assert.equal(response.status, 200);
+    const inspection = await response.json() as { events?: readonly { kind?: string }[] };
+    if (inspection.events?.some((event) => event.kind === expectedKind)) return;
+    await delay(25);
+  }
+  assert.fail(`LangGraph execution did not emit ${expectedKind}: ${executionId}`);
 }
 
 function resolvePython(): string {

@@ -75,6 +75,8 @@ The effective baseline tools are:
 
 - `calculator`: a bounded, pure arithmetic tool;
 - `fixture_lookup`: a read-only, deterministic local provider fixture; and
+- `mcp_fixture_lookup`: a server-owned read-only MCP binding to the local
+  `fixture.lookup` tool; and
 - `fixture_write`: a write-shaped local fixture used to test approval boundaries.
 
 `local-safe` enables the calculator and read fixture. The write profile enables the
@@ -90,6 +92,14 @@ platform request from bypassing the shared server policy.
 The platform does not define a second tool catalog. The common capability catalog is
 the source of profile and grant identity; the Python graph owns only the native
 translation, argument validation, execution boundary, and native tool events.
+
+For `mcp_fixture_lookup`, the Python graph's tool node performs discovery and
+invocation over Streamable HTTP using the immutable binding supplied by the TypeScript
+adapter. A provider-declared MCP error is a failed tool execution. A lost response,
+disconnect, or post-dispatch timeout is `unknown`; the graph does not emit a completed
+tool event or fabricate a checkpointed result. Cancellation observed after the blocking
+HTTP read but before the response is returned wins over the response, while a response
+already handed to the graph is not retroactively cancelled.
 
 For local provider-boundary acceptance, start the fixture with
 `./scripts/run_local_stack.sh local-fixture` or start the complete stack. The LangGraph

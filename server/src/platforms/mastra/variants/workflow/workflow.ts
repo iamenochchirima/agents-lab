@@ -78,6 +78,13 @@ const approvalStep = createStep({
 
 type MastraWorkflowEventKind = ToolLifecycleKind | "ModelRequested" | "ModelCompleted" | "AgentStepCompleted";
 
+const persistedWorkflowEventSchema = z.object({
+  kind: z.string().min(1).max(64),
+  payload: z.record(z.string(), z.unknown()),
+});
+
+type PersistedWorkflowEvent = z.infer<typeof persistedWorkflowEventSchema>;
+
 export interface MastraWorkflowEventSink {
   (runId: string, kind: MastraWorkflowEventKind, payload: ToolLifecyclePayload | Record<string, unknown>): void;
 }
@@ -104,13 +111,22 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         outputTokens: z.number().nullable(),
         totalTokens: z.number().nullable(),
       }),
+      events: z.array(persistedWorkflowEventSchema).max(1_024),
     }),
     execute: async ({ inputData, runId, abortSignal, getInitData }) => {
       const initialInput = getInitData<z.infer<typeof mastraWorkflowInputSchema>>();
       const input = mastraWorkflowInputSchema.parse(initialInput);
       const manifest = workflowManifest(input, runId);
+      const persistedEvents: PersistedWorkflowEvent[] = [];
+      const emit = (kind: MastraWorkflowEventKind, payload: Record<string, unknown>): void => {
+        if (persistedEvents.length >= 1_024) {
+          throw new Error("Mastra workflow event projection exceeded its bounded limit.");
+        }
+        persistedEvents.push({ kind, payload });
+        options.eventSink?.(runId, kind, payload);
+      };
       let unknownToolOutcome = false;
-      options.eventSink?.(runId, "ModelRequested", {
+      emit("ModelRequested", {
         model: input.model,
         provider: input.modelProvider,
       });
@@ -123,7 +139,7 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         connectionBindings: input.capabilities.connections,
         onToolEvent: (kind, payload) => {
           unknownToolOutcome ||= kind === "ToolExecutionUnknown";
-          options.eventSink?.(runId, kind, payload);
+          emit(kind, payload as unknown as Record<string, unknown>);
         },
       });
       const output = await agent.generate(inputData.prompt, {
@@ -131,7 +147,7 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         abortSignal,
         context: input.contextMessages.map(toAgentContextMessage),
         maxSteps: input.capabilities.tools.maxRounds,
-        onStepFinish: (step) => options.eventSink?.(runId, "AgentStepCompleted", {
+        onStepFinish: (step) => emit("AgentStepCompleted", {
           finishReason: safeValue(step, "finishReason"),
           usage: safeUsage(safeValue(step, "usage")),
         }),
@@ -144,11 +160,11 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
       }
 
       const usage = normalizeUsage(output.totalUsage ?? output.usage);
-      options.eventSink?.(runId, "ModelCompleted", {
+      emit("ModelCompleted", {
         finishReason: output.finishReason ?? null,
         usage,
       });
-      return { response: output.text, usage };
+      return { response: output.text, usage, events: persistedEvents };
     },
   });
 
@@ -163,6 +179,7 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         outputTokens: z.number().nullable(),
         totalTokens: z.number().nullable(),
       }),
+      events: z.array(persistedWorkflowEventSchema).max(1_024),
     }),
     options: {
       shouldPersistSnapshot: () => true,

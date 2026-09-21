@@ -48,6 +48,19 @@ pre-dispatch retry, cancellation, service replacement, Lab-server replacement, b
 processes being replaced, stale projection, timeout, ambiguous provider outcome, and
 provider-overflow recovery. It removes its temporary state when it finishes.
 
+To inspect the native MCP boundary through the complete local stack, select the
+server-owned `local-mcp-safe` profile in Platform Chat, or run the opt-in matrix:
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server run test:platform-mcp-matrix
+```
+
+The matrix sends `initialize`, `tools/list`, and `tools/call` through the LangGraph
+service's native graph tool node. Expand **MCP connection** and **Native execution** in
+the browser, then inspect the bounded `native/langgraph.json` record. A lost MCP
+response is shown as `unknown`; the local read fixture does not establish exactly-once
+behaviour.
+
 ## Follow the two-turn identity
 
 The important identities are intentionally different:
@@ -88,6 +101,8 @@ use it against an unrelated service.
 - `lab/runs/<run-id>/` — normalized Lab evidence when the run root is configured to a
   repository-visible location. Native SQLite state is separate from that evidence.
 
-The implementation does not include long-term memory, MCP/OAuth, side-effecting tools,
-hosted LangGraph deployment, or automatic in-flight resume. Those are separate design
-questions and should not be inferred from this baseline.
+The implementation does not include long-term memory, remote OAuth accounts,
+side-effecting external tools, hosted LangGraph deployment, or automatic in-flight
+resume. Local MCP is included only as a deterministic protocol boundary: its endpoint
+and selected tool are server-owned, its payloads are bounded, and its native graph
+checkpoint does not prove that an interrupted provider call completed.

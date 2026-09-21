@@ -81,7 +81,10 @@ reference plus the server projection; absence of a result is not treated as succ
 
 The MCP matrix runs the same deterministic read through Temporal, Restate, LangGraph, and
 Mastra. The fixture receives real `initialize`, `notifications/initialized`, `tools/list`,
-and `tools/call` requests. A local fixture proves the protocol and lifecycle boundary; it
+and `tools/call` requests. The same matrix is also the local path for checking the
+native boundary, but its success case does not prove restart safety. Provider-declared
+errors are failures; a lost `tools/call` acknowledgement is `outcome_unknown` and is
+not silently retried. A local fixture proves the protocol and lifecycle boundary; it
 does not prove remote MCP-provider availability.
 
 ## Observations and limits
