@@ -1220,7 +1220,7 @@ export class BrowserTools {
     const underlyingSummary = normalized.underlyingErrorCode ? ` Underlying browser outcome: ${normalized.underlyingErrorCode}.` : "";
     const dialogSummary = dialog ? ` Page dialog (${dialog.type}): ${dialog.message}` : "";
     const uncertaintyGuidance = normalized.errorCode === "browser-ambiguous"
-      ? " The action outcome is unknown. Do not repeat it. Use a fresh snapshot to report current page state separately."
+      ? " The action outcome is unknown. Do not repeat it. Take a fresh browser snapshot, then continue the user's original task from current evidence. Do not pivot to unrelated searches or reopen pages already reached without evidence. For forms, use only values the user supplied, ask for missing required values, and do not submit unless asked."
       : "";
     const refusalGuidance = normalized.errorCode === "browser-action-refused"
       ? " Cua refused the action before delivery; it was not carried out. Do not repeat it through the same route."
@@ -1237,7 +1237,7 @@ export class BrowserTools {
     context: BrowserToolContext,
     additionalEvidence: Readonly<Record<string, unknown>> = {},
   ): Promise<BrowserToolOutcome> {
-    const message = `Cua reported effect '${result.effect}' for browser ${request.action}. The action may have changed the page. Anesu did not verify it; do not repeat it. Take a fresh browser snapshot and decide from current evidence.`;
+    const message = `Cua reported effect '${result.effect}' for browser ${request.action}. The action may have changed the page. Anesu did not verify it; do not repeat it. Take a fresh browser snapshot, then continue the user's original task from current evidence. Do not pivot to unrelated searches or reopen pages already reached without evidence. For forms, use only values the user supplied, ask for missing required values, and do not submit unless asked.`;
     const visibleResult = {
       ...result,
       tab: safeTab(result.tab, this.options.redactionSecrets ?? []),

@@ -1210,7 +1210,8 @@ test("approved side-effect timeouts are reported as ambiguous with the underlyin
   assert.equal(outcome.errorCode, "browser-ambiguous");
   assert.match(outcome.content, /Underlying browser outcome: browser-timeout/u);
   assert.match(outcome.content, /The action outcome is unknown\. Do not repeat it\./u);
-  assert.match(outcome.content, /Use a fresh snapshot to report current page state separately/u);
+  assert.match(outcome.content, /Take a fresh browser snapshot, then continue the user's original task/u);
+  assert.match(outcome.content, /ask for missing required values/u);
   const completed = events.find((event) => event.type === "completed");
   assert.ok(completed && completed.type === "completed");
   assert.equal(completed.errorCode, "browser-ambiguous");
@@ -1309,6 +1310,8 @@ test("an unverifiable Cua dispatch is shown as ambiguous and the same action is 
   assert.equal(first.errorCode, "browser-ambiguous");
   assert.match(first.content, /effect 'unverifiable'/u);
   assert.match(first.content, /do not repeat it/iu);
+  assert.match(first.content, /continue the user's original task/u);
+  assert.match(first.content, /do not submit unless asked/u);
   const completion = events.find((event) => event.type === "completed");
   assert.ok(completion && completion.type === "completed");
   assert.equal(completion.ok, false);

@@ -233,7 +233,10 @@ test("interactive TUI lets the conversation model follow a current Cua ref and c
       computer: { enabled: true, environment: "browser", surface: "browser", strategy: "typesafe", model: "jev-latest", isolated: true },
       readContextSnapshot: async () => undefined,
       recoverInterruptedTurns: async () => [],
-      readTranscript: async () => [],
+      readTranscript: async () => [
+        { schemaVersion: 1 as const, messageId: "prior_user_message", sessionId: session.metadata.sessionId, turnId: asTurnId("prior_turn"), role: "user" as const, content: "Earlier request from this conversation.", createdAt: "2026-09-23T10:00:00.000Z" },
+        { schemaVersion: 1 as const, messageId: "prior_assistant_message", sessionId: session.metadata.sessionId, turnId: asTurnId("prior_turn"), role: "assistant" as const, content: "Older assistant reply remains readable.", createdAt: "2026-09-23T10:00:01.000Z" },
+      ],
       runTurn: async (
         userPrompt: string,
         signal: AbortSignal | undefined,
@@ -280,6 +283,10 @@ test("interactive TUI lets the conversation model follow a current Cua ref and c
     assert.match(rendered, /The current page heading is "More details"\./u);
     assert.match(rendered, /The page is still open and its heading is "More details"\./u);
     assert.match(rendered, /■ cancelled/u, "the cancelled turn should be reported before continuing");
+    assert.ok(rendered.indexOf("Earlier request from this conversation.") < rendered.indexOf("Older assistant reply remains readable."), "restored conversation messages remain chronological and role-labelled");
+    assert.ok(rendered.indexOf("Older assistant reply remains readable.") < rendered.indexOf("turn starting model run"), "the transcript is visible before browser activity streams");
+    assert.ok(rendered.indexOf("Open https://example.com, follow the Details link, and tell me the new page heading.") < rendered.indexOf("browser_click · started"), "the active user request remains in terminal scrollback while browser activity is emitted");
+    assert.ok(rendered.indexOf("turn starting model run") < rendered.indexOf("browser_click · started"), "tool activity follows the conversation rather than replacing it");
 
     // A fresh application and browser manager model a process restart: restore the
     // durable conversation, but do not carry the previous runtime's browser handles.

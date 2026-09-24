@@ -445,7 +445,17 @@ export class TerminalUi {
 
   private async printHistory(): Promise<void> {
     const transcript = await this.application.readTranscript();
-    this.write(`\n${this.style("36;1", "Transcript")} ${this.style("2", `· ${transcript.length} messages`)}\n`);
+    this.printTranscript(transcript, "Transcript");
+  }
+
+  private async printConversationTranscript(): Promise<void> {
+    const transcript = await this.application.readTranscript();
+    if (transcript.length === 0) return;
+    this.printTranscript(transcript, "Recent conversation");
+  }
+
+  private printTranscript(transcript: readonly TranscriptMessage[], title: string): void {
+    this.write(`\n${this.style("36;1", title)} ${this.style("2", `· ${transcript.length} messages`)}\n`);
     this.write(`${this.style("2", "────────────────────────────────────────────────────────────")}` + "\n");
     for (const message of transcript.slice(-12)) {
       const label = message.role === "user" ? "You" : "Agent";
@@ -571,6 +581,7 @@ export class TerminalUi {
       case "clear":
         if (this.interactive) this.write("\u001b[2J\u001b[H");
         this.printHeader();
+        await this.printConversationTranscript();
         return true;
       case "quit":
         return false;
@@ -716,6 +727,7 @@ export class TerminalUi {
     this.pendingSessionChoices = undefined;
     this.write(`\n${this.style("32;1", sessionId ? "Resumed conversation" : "Started new conversation")} ${this.style("36", next.sessionId)}\n\n`);
     this.write(`${this.style("2", "Any live browser from the previous conversation was closed; it is not carried into this one.")}\n\n`);
+    await this.printConversationTranscript();
     try {
       await current.close();
       this.openApplications.delete(current);
@@ -1672,6 +1684,7 @@ export class TerminalUi {
   async runInteractive(input: NodeJS.ReadableStream): Promise<void> {
     this.approvalInput = input;
     this.printHeader();
+    await this.printConversationTranscript();
     const readlineInterface = readline.createInterface({
       input,
       output: this.output,

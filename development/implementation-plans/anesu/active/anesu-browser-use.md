@@ -475,6 +475,22 @@ Live search completion and broader cross-origin browsing remain open items.
       fresh snapshot verification and a separate exact-action approval for the
       typed value. Do not add site-specific handlers to make acceptance prompts
       pass.
+- [x] Continue the user's original form task after an ambiguous Cua action:
+      take a fresh snapshot, do not replay the uncertain action, use only
+      supplied values for currently observed fields, ask for missing required
+      values, and do not submit unless requested. This is generic tool guidance,
+      not a site-specific workflow. A focused full-loop regression covers the
+      continuation and missing-value behavior; a real TUI run on a disposable
+      local form typed the supplied value after an `unverifiable` click, took a
+      fresh snapshot after typing, and did not submit. A read-only follow-up
+      confirmed the exact field value. Live evidence is limited to that form and
+      configured model; it does not claim all websites behave identically.
+- [x] Restore the recent role-labelled transcript at chat startup and resume.
+      Keep the current user request, tool activity, and assistant response in
+      chronological terminal scrollback. The TUI remains line-oriented, so the
+      request can scroll out of the viewport; it is not a pinned pane. A focused
+      TUI regression passed, and a real two-turn browser task showed the request
+      before each turn's events and the answer after them.
 - [x] Preserve Cua's exact active-tab identity across binding refreshes. A fresh
       bind can mint a new opaque tab ID; `browser_tabs` reports Cua's proven
       active tab, and recovery does not assume the old ID survives or select the
@@ -549,6 +565,18 @@ the selected filename. Same-origin follow-ups keep their browser session; a
 separate task for a different origin closes the old scoped session and starts a
 new Cua session for that origin. This was live-verified on
 `example.org` → same-origin follow-up → `example.com`.
+
+The reported form-task drift after an ambiguous action is now addressed by
+generic uncertain-action guidance, not a site-specific sequence. The focused
+tool-loop regression passes, and the 2026-09-24 real-TUI local-form run
+continued from a fresh snapshot, entered the user-provided value, re-observed
+it, and left the form unsubmitted. The TUI transcript visibility follow-up is
+also implemented. On 2026-09-24, two read-only browser turns on Python
+documentation showed each request before the browser events and each answer
+after them in terminal scrollback. A click returned `unverifiable`; the model
+took a fresh snapshot and continued without replay. Focused continuation,
+browser-tool, and TUI tests passed 46/46. The line-oriented TUI does not pin the
+active request in the viewport.
 
 A live upload attempt initially selected the generic `computer` tool because
 its description and the system instruction incorrectly advertised browser
