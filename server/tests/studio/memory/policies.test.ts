@@ -8,6 +8,7 @@ import {
   PolicyMemoryStore,
   ProceduralCachePolicy,
   SemanticFactPolicy,
+  StudioMemoryCancellationError,
   WorkingMemoryPolicy,
   type StudioMemoryNamespace,
 } from "../../../src/studio/memory/index.js";
@@ -24,6 +25,7 @@ const limits = {
   maxContentBytes: 16_000,
   maxRetrievedRecords: 5,
   maxJournalBytes: 100_000,
+  maxConsolidationOperations: 10,
 };
 
 test("no-memory is a real control and never proposes persistence", async () => {
@@ -217,4 +219,114 @@ test("Memory store rejects cancelled reads and writes before mutating state", as
     (error: unknown) => error instanceof Error && error.name === "AbortError",
   );
   assert.deepEqual((await repository.load()).records, []);
+});
+
+test("Memory operation IDs include the trial, policy, turn, and candidate identity", async () => {
+  const firstRepository = new InMemoryStudioMemoryRepository(namespace);
+  const firstStore = new PolicyMemoryStore(new SemanticFactPolicy(), firstRepository, limits);
+  await firstStore.seed([{
+    recordId: "language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-language");
+  const first = await firstStore.write({
+    trialId: namespace.trialId,
+    task: "support language",
+    turnId: "turn-1",
+    output: "Preference: support-language = Spanish",
+    now: "2026-09-20T00:01:00.000Z",
+    signal: new AbortController().signal,
+  });
+
+  const secondRepository = new InMemoryStudioMemoryRepository(namespace);
+  const secondStore = new PolicyMemoryStore(new SemanticFactPolicy(), secondRepository, limits);
+  await secondStore.seed([{
+    recordId: "language",
+    scope: "semantic",
+    content: "English",
+    logicalKey: "support-language",
+    source: "fixture-memory",
+    createdAt: "2026-09-20T00:00:00.000Z",
+  }], "seed-language");
+  const second = await secondStore.write({
+    trialId: namespace.trialId,
+    task: "support language",
+    turnId: "turn-1",
+    output: "Preference: support-language = Spanish",
+    now: "2026-09-20T00:01:00.000Z",
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(first.decisions[0]?.operationId, second.decisions[0]?.operationId);
+  assert.match(first.decisions[0]?.operationId ?? "", /^memory-[a-f0-9]{32}$/);
+});
+
+test("Memory consolidation is bounded and deterministic", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const store = new PolicyMemoryStore(new SemanticFactPolicy(), repository, { ...limits, maxConsolidationOperations: 1 });
+  await store.seed([
+    { recordId: "expired-a", scope: "semantic", content: "English", logicalKey: "language-a", source: "fixture-memory", expiresAt: "2026-09-19T00:00:00.000Z", createdAt: "2026-09-18T00:00:00.000Z" },
+    { recordId: "expired-b", scope: "semantic", content: "Spanish", logicalKey: "language-b", source: "fixture-memory", expiresAt: "2026-09-19T00:00:00.000Z", createdAt: "2026-09-18T00:00:00.000Z" },
+  ], "seed-expired");
+
+  await assert.rejects(
+    () => store.consolidate({ now: "2026-09-20T00:00:00.000Z", signal: new AbortController().signal }),
+    /consolidation limit/,
+  );
+});
+
+test("Memory reports a persisted cancellation without describing the write as rolled back", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const controller = new AbortController();
+  const store = new PolicyMemoryStore(new SemanticFactPolicy(), repository, limits, undefined, () => {
+    controller.abort();
+  });
+
+  await assert.rejects(
+    () => store.write({
+      trialId: namespace.trialId,
+      task: "support language",
+      turnId: "turn-cancelled-after-write",
+      output: "Preference: support-language = Spanish",
+      now: "2026-09-20T00:01:00.000Z",
+      signal: controller.signal,
+    }),
+    (error: unknown) => error instanceof StudioMemoryCancellationError
+      && error.phase === "after-persistence"
+      && error.persisted,
+  );
+  assert.equal((await repository.load()).records.length, 1);
+});
+
+test("Memory reports an acknowledgement-unknown cancellation during persistence", async () => {
+  const controller = new AbortController();
+  const repository = {
+    namespace,
+    lastLoadRecovered: false,
+    async load() { return { schemaVersion: 1 as const, namespace, revision: 0, records: [] }; },
+    async seed() { return { state: await this.load(), decisions: [], appliedOperationIds: [] }; },
+    async apply() {
+      controller.abort();
+      throw new Error("simulated persistence interruption");
+    },
+  };
+  const store = new PolicyMemoryStore(new SemanticFactPolicy(), repository, limits);
+
+  await assert.rejects(
+    () => store.write({
+      trialId: namespace.trialId,
+      task: "support language",
+      turnId: "turn-cancelled-during-write",
+      output: "Preference: support-language = Spanish",
+      now: "2026-09-20T00:01:00.000Z",
+      signal: controller.signal,
+    }),
+    (error: unknown) => error instanceof StudioMemoryCancellationError
+      && error.phase === "during-persistence"
+      && error.persistenceOutcome === "unknown"
+      && !error.persisted,
+  );
 });

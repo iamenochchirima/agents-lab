@@ -138,6 +138,65 @@ test("Studio can execute a three-strategy Context comparison through the same se
   });
 });
 
+test("Studio compares Context strategies against one fixed Memory state and publishes research evidence", async () => {
+  await withStudioApp(async (app) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      payload: contextResearchRequest("context-research-http-1"),
+    });
+
+    assert.equal(response.statusCode, 202);
+    const comparison = response.json();
+    assert.equal(comparison.status, "completed");
+    assert.equal(comparison.trials.length, 6);
+    assert.deepEqual(
+      comparison.trials.map((trial: { manifest: { strategy: { id: string } } }) => trial.manifest.strategy.id),
+      [
+        "full-history",
+        "group-aware-sliding-window",
+        "relevance-ranked-groups",
+        "deterministic-compaction",
+        "hierarchical-summary",
+        "token-budget-allocation",
+      ],
+    );
+    assert.equal(new Set(comparison.trials.map((trial: { manifest: { fixedControlFingerprint: string } }) => trial.manifest.fixedControlFingerprint)).size, 1);
+    for (const trial of comparison.trials) {
+      assert.deepEqual(trial.memory.retrievedRecordIds, ["context-research-memory-language"]);
+      assert.deepEqual(trial.memory.writtenRecordIds, []);
+      assert.deepEqual(trial.memory.updatedRecordIds, []);
+      assert.equal(trial.context.research.schemaVersion, 1);
+      assert.deepEqual(trial.context.research.memoryRecordIdsConsidered, ["context-research-memory-language"]);
+      assert.deepEqual(trial.context.research.memoryRecordIdsModelBound, ["context-research-memory-language"]);
+      assert.equal(trial.context.research.sourceGroups.some((group: { sourceClass: string; trust: string }) => group.sourceClass === "memory" && group.trust === "untrusted"), true);
+      assert.equal(trial.context.research.sourceGroups.some((group: { messageIds: string[] }) => group.messageIds.join(",") === "context-research-tool-call,context-research-tool-result"), true);
+    }
+    assert.equal(comparison.metrics.contextRetainedSourceCount > 0, true);
+    assert.equal(comparison.metrics.measurementBasis.contextCounts.length > 0, true);
+    assert.equal(comparison.events.some((event: { kind: string }) => event.kind === "MemoryWriteDecided"), true);
+    assert.equal(comparison.events.some((event: { kind: string }) => event.kind === "MemoryWritten"), false);
+
+    const contextEvidence = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[0].manifest.trialId}/context.json`,
+    });
+    assert.equal(contextEvidence.statusCode, 200);
+    const contextBody = JSON.parse(contextEvidence.body);
+    assert.equal(contextBody.research.strategyId, "full-history");
+    assert.equal(contextBody.research.sourceGroups.length >= 7, true);
+
+    const memoryEvidence = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparison.manifest.comparisonId}/evidence/trials/${comparison.trials[0].manifest.trialId}/memory.json`,
+    });
+    assert.equal(memoryEvidence.statusCode, 200);
+    const memoryBody = JSON.parse(memoryEvidence.body);
+    assert.deepEqual(memoryBody.retrievedRecordIds, ["context-research-memory-language"]);
+    assert.equal(JSON.stringify(memoryBody).includes("sourceGroups"), false);
+  });
+});
+
 test("Studio runs a Memory comparison with fixed Context and isolated durable policies", async () => {
   await withStudioApp(async (app) => {
     const response = await app.inject({
@@ -444,7 +503,7 @@ test("Studio multi-turn replay observations are stable across independent compar
           updatedRecordIds: turn.memory.updatedRecordIds,
           expiredRecordIds: turn.memory.expiredRecordIds,
           activeRecordIds: turn.memory.activeRecordIds,
-          decisions: turn.memory.decisions,
+          decisions: turn.memory.decisions.map(({ operationId, ...decision }: any) => ({ ...decision, operationId: "operation" })),
         },
         metrics: { ...turn.metrics, latencyMs: null },
       })),
@@ -462,7 +521,16 @@ test("Studio catalog exposes all harness areas without claiming planned implemen
     assert.equal(catalog.components[0].id, "input-perception");
     assert.equal(catalog.components[1].id, "context-management");
     assert.equal(catalog.components[1].status, "available");
-    assert.deepEqual(catalog.components[1].strategies.map((strategy: { id: string }) => strategy.id), ["full-history", "sliding-window", "relevance-ranked"]);
+    assert.deepEqual(catalog.components[1].strategies.map((strategy: { id: string }) => strategy.id), [
+      "full-history",
+      "sliding-window",
+      "relevance-ranked",
+      "group-aware-sliding-window",
+      "relevance-ranked-groups",
+      "deterministic-compaction",
+      "hierarchical-summary",
+      "token-budget-allocation",
+    ]);
     assert.equal(catalog.components[3].id, "memory");
     assert.equal(catalog.components[3].status, "available");
     assert.deepEqual(catalog.components[3].strategies.map((strategy: { id: string }) => strategy.id), ["no-memory", "semantic-keyed-facts", "episodic-lexical", "working-memory", "procedural-cache"]);
@@ -480,8 +548,57 @@ test("Studio catalog exposes all harness areas without claiming planned implemen
       "compare-memory-expiry",
       "compare-memory-procedures",
     ]);
+    assert.deepEqual(catalog.components[1].experiments.map((experiment: { id: string }) => experiment.id), [
+      "compare-context-retention",
+      "compare-context-research-boundary",
+    ]);
     assert.equal(JSON.stringify(catalog).includes("expectedAnswer"), false);
     assert.equal(JSON.stringify(catalog).includes("context-fact-language"), false);
+  });
+});
+
+test("every catalogued Context and Memory experiment is executable through the HTTP contract", async () => {
+  await withStudioApp(async (app) => {
+    const catalogResponse = await app.inject({ method: "GET", url: "/api/studio/catalog" });
+    assert.equal(catalogResponse.statusCode, 200);
+    const catalog = catalogResponse.json();
+    const available = catalog.components.filter((component: { status: string }) => component.status === "available");
+    const experiments = available.flatMap((component: { id: string; experiments: Array<any> }) => component.experiments.map((experiment) => ({ componentId: component.id, experiment })));
+    assert.equal(experiments.length, 14);
+
+    for (const [index, entry] of experiments.entries()) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/studio/comparisons",
+        headers: { "x-idempotency-key": `catalog-contract-${index}` },
+        payload: {
+          system: catalog.system,
+          environment: catalog.environment,
+          experiment: {
+            id: entry.experiment.id,
+            version: entry.experiment.version,
+            scenario: { id: entry.experiment.scenario.id, version: entry.experiment.scenario.version },
+            subject: {
+              component: entry.componentId,
+              strategies: entry.experiment.strategies.map((strategy: any) => ({
+                id: strategy.id,
+                version: strategy.version,
+                parameters: Object.fromEntries(strategy.parameters
+                  .filter((parameter: any) => parameter.defaultValue !== null)
+                  .map((parameter: any) => [parameter.id, parameter.defaultValue])),
+              })),
+            },
+          },
+          seed: `catalog-seed-${index}`,
+        },
+      });
+      assert.equal(response.statusCode, 202, entry.experiment.id);
+      const comparison = response.json();
+      assert.equal(comparison.status, "completed", entry.experiment.id);
+      assert.equal(comparison.trials.length, entry.experiment.strategies.length, entry.experiment.id);
+      assert.equal(new Set(comparison.trials.map((trial: any) => trial.manifest.fixedControlFingerprint)).size, 1, entry.experiment.id);
+      assert.equal(comparison.events.at(-1)?.kind, "ComparisonCompleted", entry.experiment.id);
+    }
   });
 });
 
@@ -521,6 +638,53 @@ test("Studio idempotency returns the original comparison and rejects a changed r
     });
     assert.equal(distinct.statusCode, 202);
     assert.notEqual(distinct.json().manifest.comparisonId, firstComparison.manifest.comparisonId);
+  });
+});
+
+test("Studio exposes terminal cancellation, event cursors, and safe evidence errors", async () => {
+  await withStudioApp(async (app) => {
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons",
+      headers: { "x-idempotency-key": "http-lifecycle-contract-1" },
+      payload: comparisonRequest("http-lifecycle-contract-1"),
+    });
+    assert.equal(created.statusCode, 202);
+    const comparison = created.json();
+    const comparisonId = comparison.manifest.comparisonId;
+
+    const cancel = await app.inject({
+      method: "POST",
+      url: `/api/studio/comparisons/${comparisonId}/cancel`,
+      payload: { reason: "The terminal comparison no longer needs polling." },
+    });
+    assert.equal(cancel.statusCode, 200);
+    assert.equal(cancel.json().status, "completed");
+
+    const events = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparisonId}/events?after=0&limit=2`,
+    });
+    assert.equal(events.statusCode, 200);
+    assert.equal(events.json().events.length, 2);
+    assert.equal(events.json().nextSequence, 2);
+    assert.equal(events.json().hasMore, true);
+    assert.equal(events.json().done, true);
+
+    const unsafeEvidence = await app.inject({
+      method: "GET",
+      url: `/api/studio/comparisons/${comparisonId}/evidence/trials/${comparison.trials[0].manifest.trialId}/private.json`,
+    });
+    assert.equal(unsafeEvidence.statusCode, 404);
+    assert.equal(unsafeEvidence.json().error.code, "STUDIO_NOT_FOUND");
+
+    const unknownCancel = await app.inject({
+      method: "POST",
+      url: "/api/studio/comparisons/not-a-real-comparison/cancel",
+      payload: { reason: "Unknown comparison check." },
+    });
+    assert.equal(unknownCancel.statusCode, 404);
+    assert.equal(unknownCancel.json().error.code, "STUDIO_NOT_FOUND");
   });
 });
 
@@ -593,6 +757,31 @@ function comparisonRequest(idempotencyKey = "context-comparison-1", includeRelev
       },
     },
     seed: "seed-1",
+    idempotencyKey,
+  };
+}
+
+function contextResearchRequest(idempotencyKey = "context-research-http-1"): StudioComparisonRequest {
+  return {
+    system: { id: "neutral-agent", version: "1" },
+    environment: { id: "deterministic-replay", version: "1" },
+    experiment: {
+      id: "compare-context-research-boundary",
+      version: "1",
+      scenario: { id: "context-research-boundary", version: "1" },
+      subject: {
+        component: "context-management",
+        strategies: [
+          { id: "full-history", version: "1", parameters: {} },
+          { id: "group-aware-sliding-window", version: "1", parameters: { recentGroups: "2" } },
+          { id: "relevance-ranked-groups", version: "1", parameters: { maxGroups: "4" } },
+          { id: "deterministic-compaction", version: "1", parameters: { recentGroups: "3", maxSummaryCharacters: "1200" } },
+          { id: "hierarchical-summary", version: "1", parameters: { recentGroups: "3", maxSummaryCharacters: "1200" } },
+          { id: "token-budget-allocation", version: "1", parameters: { instructionPercent: "20", activeTurnPercent: "25", transcriptPercent: "25", memoryPercent: "15", toolResultPercent: "15", summaryPercent: "0" } },
+        ],
+      },
+    },
+    seed: "seed-context-research-1",
     idempotencyKey,
   };
 }

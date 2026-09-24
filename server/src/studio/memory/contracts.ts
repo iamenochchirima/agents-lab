@@ -48,6 +48,7 @@ export interface StudioMemoryLimits {
   readonly maxContentBytes: number;
   readonly maxRetrievedRecords: number;
   readonly maxJournalBytes: number;
+  readonly maxConsolidationOperations: number;
 }
 
 export const DEFAULT_STUDIO_MEMORY_LIMITS: StudioMemoryLimits = Object.freeze({
@@ -56,7 +57,36 @@ export const DEFAULT_STUDIO_MEMORY_LIMITS: StudioMemoryLimits = Object.freeze({
   maxContentBytes: 16 * 1024,
   maxRetrievedRecords: 20,
   maxJournalBytes: 4 * 1024 * 1024,
+  maxConsolidationOperations: 100,
 });
+
+export type StudioMemoryCancellationPhase =
+  | "before-retrieval"
+  | "before-persistence"
+  | "during-persistence"
+  | "after-persistence";
+
+export type StudioMemoryPersistenceOutcome = "not-started" | "applied" | "unknown";
+
+export class StudioMemoryCancellationError extends Error {
+  constructor(
+    readonly phase: StudioMemoryCancellationPhase,
+    readonly persisted: boolean,
+    readonly persistenceOutcome: StudioMemoryPersistenceOutcome,
+    message: string,
+  ) {
+    super(message);
+    // Preserve the platform's existing cancellation classification while exposing
+    // the Memory-specific phase and persistence outcome to callers.
+    this.name = "AbortError";
+  }
+}
+
+export interface StudioMemoryJournalContext {
+  readonly policyId: string;
+  readonly policyVersion: string;
+  readonly timestamp: string;
+}
 
 export interface StudioMemorySeed {
   readonly recordId: string;
@@ -164,16 +194,18 @@ export interface StudioMemoryStoreAdapter {
     readonly signal: AbortSignal;
   }): Promise<StudioMemoryWriteResult>;
   consolidate(input: {
+    readonly turnId?: string;
     readonly now?: string;
     readonly signal: AbortSignal;
   }): Promise<StudioMemoryConsolidationResult>;
 }
 
 export interface StudioMemoryRepository {
+  readonly namespace: StudioMemoryNamespace;
   readonly lastLoadRecovered?: boolean;
   load(): Promise<StudioMemoryState>;
-  seed(seeds: readonly StudioMemorySeed[], operationId: string): Promise<StudioMemoryApplyResult>;
-  apply(mutations: readonly StudioMemoryMutation[]): Promise<StudioMemoryApplyResult>;
+  seed(seeds: readonly StudioMemorySeed[], operationId: string, context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult>;
+  apply(mutations: readonly StudioMemoryMutation[], context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult>;
 }
 
 export interface StudioMemoryPolicy {

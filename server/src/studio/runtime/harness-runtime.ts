@@ -1,6 +1,8 @@
 import type { CharacterTokenEstimator } from "../../capabilities/context/token-counter.js";
 import type { StudioScenarioCase } from "../domain/types.js";
 import type { StudioModelAdapter } from "../adapters/replay-model.js";
+import { StudioContextOverflowError } from "../adapters/replay-model.js";
+import { recoverContextAfterProviderOverflow } from "../strategies/context-strategy.js";
 import { ReplayEnvironmentAssembler, type StudioEnvironmentAssembler } from "./environment.js";
 import {
   createBaselineStudioComponents,
@@ -14,6 +16,7 @@ import type {
   StudioHarnessRuntimeDependencies,
   StudioMemoryStore,
 } from "./contracts.js";
+import { StudioMemoryCancellationError } from "../memory/contracts.js";
 
 /**
  * Coordinates one complete Studio trial. Comparison lifecycle and evidence file
@@ -72,6 +75,8 @@ export class StudioHarnessRuntime {
 
     const seededRecordIds = input.scenario.memorySeeds?.map((seed) => seed.recordId) ?? [];
     const memoryExperiment = input.manifest.experiment.changedComponent === "memory";
+    const fixedMemoryDependency = input.manifest.experiment.fixedMemoryStrategy !== undefined;
+    const inspectableMemory = memoryExperiment || fixedMemoryDependency;
     if (seededRecordIds.length > 0) {
       if (!components.memory.seed) throw new StudioHarnessCompositionError("The Memory scenario requires a seed-capable Memory adapter.");
       await components.memory.seed(input.scenario.memorySeeds ?? [], `seed-${input.trialId}`);
@@ -84,7 +89,7 @@ export class StudioHarnessRuntime {
     }
 
     const memoryRead = await components.memory.read({ task: normalized.task, now: this.now(), signal: input.signal });
-    if (memoryExperiment) {
+    if (inspectableMemory) {
       await input.events.emit("MemoryCandidatesRanked", {
         trialId: input.trialId,
         adapterId: components.memory.adapterId,
@@ -122,7 +127,7 @@ export class StudioHarnessRuntime {
     }
 
     const memoryMessages = memoryRecordsAsMessages(memoryRead.records, `studio-${input.scenario.id}`, this.now());
-    const context = components.context.assemble({
+    const contextInput = {
       trialId: input.trialId,
       task: normalized.task,
       messages: [...normalized.messages, ...memoryMessages],
@@ -130,7 +135,8 @@ export class StudioHarnessRuntime {
       budgetPolicy: environment.budgetPolicy,
       tokenCounter: input.tokenCounter,
       strategy: input.strategy,
-    });
+    } as const;
+    let context = components.context.assemble(contextInput);
     await input.events.emit("ContextAssembled", {
       trialId: input.trialId,
       strategyId: components.context.id,
@@ -141,6 +147,7 @@ export class StudioHarnessRuntime {
       remainingTokens: context.budget.remainingTokens,
       pressure: context.budget.pressure,
       decision: context.decision,
+      research: context.research ?? null,
     });
     if (context.decision !== "within-budget") {
       throw new Error(`Context strategy ${components.context.id} did not produce a within-budget context.`);
@@ -161,33 +168,69 @@ export class StudioHarnessRuntime {
       maxTurns: components.control.maxTurns,
     });
 
+    let modelCalls = 0;
+    let overflowRecoveryUsed = false;
     const response = await components.control.run({
       signal: input.signal,
       act: async () => {
         throwIfAborted(input.signal);
-        await input.events.emit("ModelRequested", {
-          trialId: input.trialId,
-          provider: components.model.provider,
-          model: components.model.model,
-          messageIds: context.messages.map((message) => message.messageId),
-        });
-        const result = await components.model.complete({
-          model: input.manifest.environment.model.model,
-          task: normalized.task,
-          messages: context.messages,
-          seed: input.manifest.seed,
-          expectedAnswer: input.scenario.expectedAnswer,
-        }, input.signal);
-        await input.events.emit("ModelCompleted", {
-          trialId: input.trialId,
-          provider: components.model.provider,
-          model: components.model.model,
-          providerRequestId: result.providerRequestId ?? null,
-          inputTokens: result.inputTokens,
-          outputTokens: result.outputTokens,
-          costUsd: result.costUsd ?? null,
-        });
-        return result;
+        while (true) {
+          await input.events.emit("ModelRequested", {
+            trialId: input.trialId,
+            provider: components.model.provider,
+            model: components.model.model,
+            messageIds: context.messages.map((message) => message.messageId),
+          });
+          modelCalls += 1;
+          try {
+            const result = await components.model.complete({
+              model: input.manifest.environment.model.model,
+              task: normalized.task,
+              messages: context.messages,
+              seed: input.manifest.seed,
+              expectedAnswer: input.scenario.expectedAnswer,
+            }, input.signal);
+            await input.events.emit("ModelCompleted", {
+              trialId: input.trialId,
+              provider: components.model.provider,
+              model: components.model.model,
+              providerRequestId: result.providerRequestId ?? null,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+              costUsd: result.costUsd ?? null,
+            });
+            return result;
+          } catch (error) {
+            if (overflowRecoveryUsed || !isContextOverflowError(error)) throw error;
+            overflowRecoveryUsed = true;
+            const previousContext = context;
+            const recoveredContext = recoverContextAfterProviderOverflow(contextInput, previousContext);
+            await input.events.emit("ContextOverflowRecovery", {
+              trialId: input.trialId,
+              recovered: recoveredContext !== null,
+              originalStrategyId: components.context.id,
+              recoveryStrategyId: recoveredContext?.research?.strategyId ?? null,
+              originalMessageIds: previousContext.retainedMessageIds,
+              recoveredMessageIds: recoveredContext?.retainedMessageIds ?? [],
+              reason: error instanceof Error ? error.message : "The model provider rejected the Context.",
+            });
+            if (!recoveredContext) throw error;
+            context = recoveredContext;
+            await input.events.emit("ContextAssembled", {
+              trialId: input.trialId,
+              strategyId: components.context.id,
+              retainedMessageIds: context.retainedMessageIds,
+              omittedMessageIds: context.omittedMessageIds,
+              summarizedMessageIds: context.summarizedMessageIds,
+              inputTokens: context.budget.inputTokens,
+              remainingTokens: context.budget.remainingTokens,
+              pressure: context.budget.pressure,
+              decision: context.decision,
+              research: context.research ?? null,
+              recovery: "provider-overflow",
+            });
+          }
+        }
       },
     });
 
@@ -229,15 +272,23 @@ export class StudioHarnessRuntime {
       outputBytes: Buffer.byteLength(output.output, "utf8"),
       sideEffect: output.sideEffect,
     });
-    const memoryWrite = await components.memory.write({
-      trialId: input.trialId,
-      task: normalized.task,
-      turnId,
-      output: output.output,
-      now: this.now(),
-      signal: input.signal,
-    });
-    if (memoryExperiment) {
+    let memoryWrite: Awaited<ReturnType<StudioMemoryStore["write"]>>;
+    try {
+      memoryWrite = fixedMemoryDependency
+        ? emptyMemoryWrite(memoryRead)
+        : await components.memory.write({
+          trialId: input.trialId,
+          task: normalized.task,
+          turnId,
+          output: output.output,
+          now: this.now(),
+          signal: input.signal,
+        });
+    } catch (error) {
+      await emitMemoryCancellation(input, components, error);
+      throw error;
+    }
+    if (inspectableMemory) {
       await input.events.emit("MemoryWriteDecided", {
         trialId: input.trialId,
         adapterId: components.memory.adapterId,
@@ -261,7 +312,15 @@ export class StudioHarnessRuntime {
         writtenRecordIds: memoryWrite.writtenRecordIds,
       });
     }
-    const memoryConsolidated = await components.memory.consolidate({ now: this.now(), signal: input.signal });
+    let memoryConsolidated: Awaited<ReturnType<StudioMemoryStore["consolidate"]>>;
+    try {
+      memoryConsolidated = fixedMemoryDependency
+        ? emptyMemoryConsolidation(memoryRead)
+        : await components.memory.consolidate({ turnId, now: this.now(), signal: input.signal });
+    } catch (error) {
+      await emitMemoryCancellation(input, components, error);
+      throw error;
+    }
     await input.events.emit("MemoryConsolidated", {
       trialId: input.trialId,
       adapterId: components.memory.adapterId,
@@ -269,7 +328,7 @@ export class StudioHarnessRuntime {
       expiredRecordIds: memoryConsolidated.expiredRecordIds,
       stateRevision: memoryConsolidated.stateRevision,
     });
-    if (memoryExperiment) {
+    if (inspectableMemory) {
       await input.events.emit("MemoryStatePersisted", {
         trialId: input.trialId,
         adapterId: components.memory.adapterId,
@@ -279,7 +338,7 @@ export class StudioHarnessRuntime {
       });
     }
 
-    const grade = gradeContext(input.scenario, context.retainedMessageIds, memoryRead.retrievedRecordIds, output.output);
+    const grade = gradeContext(input.scenario, context.retainedMessageIds, memoryRead.retrievedRecordIds, context.research?.memoryRecordIdsModelBound ?? [], output.output);
     await input.events.emit("TrialGraded", { trialId: input.trialId, ...grade });
     await input.events.emit("TurnCompleted", {
       trialId: input.trialId,
@@ -291,6 +350,7 @@ export class StudioHarnessRuntime {
       context,
       contextBudget: context.budget,
       model: response,
+      modelCalls,
       output: output.output,
       grade,
       memory: {
@@ -403,17 +463,21 @@ function gradeContext(
   scenario: StudioScenarioCase,
   retainedMessageIds: readonly string[],
   retrievedMemoryRecordIds: readonly string[],
+  modelBoundMemoryRecordIds: readonly string[],
   output: string,
 ) {
   if (scenario.requiredMemoryRecordId) {
     const retrieved = retrievedMemoryRecordIds.includes(scenario.requiredMemoryRecordId);
+    const modelBound = modelBoundMemoryRecordIds.length === 0 || modelBoundMemoryRecordIds.includes(scenario.requiredMemoryRecordId);
     const outputPresent = output.trim().length > 0;
     return {
       graderId: "memory-source-presence-v1",
-      status: retrieved && outputPresent ? "pass" as const : "fail" as const,
-      reason: retrieved
-        ? "The required Memory record was retrieved and the model returned output."
-        : "The required Memory record was not retrieved.",
+      status: retrieved && modelBound && outputPresent ? "pass" as const : "fail" as const,
+      reason: !retrieved
+        ? "The required Memory record was not retrieved."
+        : !modelBound
+          ? "The required Memory record was retrieved but Context did not serialize it for the model."
+          : "The required Memory record was retrieved, serialized, and the model returned output.",
       requiredSourceId: scenario.requiredMemoryRecordId,
     };
   }
@@ -429,9 +493,58 @@ function gradeContext(
   };
 }
 
+function emptyMemoryWrite(memoryRead: Awaited<ReturnType<StudioMemoryStore["read"]>>) {
+  return {
+    stateRevision: memoryRead.stateRevision,
+    decisions: [],
+    writtenRecordIds: [],
+    updatedRecordIds: [],
+    discardedRecordIds: [],
+    expiredRecordIds: [],
+    activeRecordIds: memoryRead.records.filter((record) => record.state === "active").map((record) => record.recordId),
+    scopes: [...new Set(memoryRead.records.map((record) => record.scope))],
+  };
+}
+
+function emptyMemoryConsolidation(memoryRead: Awaited<ReturnType<StudioMemoryStore["read"]>>) {
+  return {
+    stateRevision: memoryRead.stateRevision,
+    decisions: [],
+    expiredRecordIds: [],
+    activeRecordIds: memoryRead.records.filter((record) => record.state === "active").map((record) => record.recordId),
+    scopes: [...new Set(memoryRead.records.map((record) => record.scope))],
+  };
+}
+
+async function emitMemoryCancellation(
+  input: HarnessTurnInput,
+  components: StudioHarnessComponents,
+  error: unknown,
+): Promise<void> {
+  if (!(error instanceof StudioMemoryCancellationError)) return;
+  await input.events.emit("MemoryPersistenceCancelled", {
+    trialId: input.trialId,
+    adapterId: components.memory.adapterId,
+    adapterVersion: components.memory.adapterVersion,
+    phase: error.phase,
+    persisted: error.persisted,
+    persistenceOutcome: error.persistenceOutcome,
+  });
+}
+
 function throwIfAborted(signal: AbortSignal): void {
   if (!signal.aborted) return;
   const error = new Error(typeof signal.reason === "string" ? signal.reason : "The Studio turn was cancelled.");
   error.name = "AbortError";
   throw error;
+}
+
+function isContextOverflowError(error: unknown): boolean {
+  if (error instanceof StudioContextOverflowError) return true;
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { readonly code?: unknown; readonly details?: { readonly code?: unknown } };
+  const code = typeof candidate.code === "string"
+    ? candidate.code
+    : typeof candidate.details?.code === "string" ? candidate.details.code : "";
+  return /CONTEXT|TOKEN_LIMIT|REQUEST_TOO_LARGE|INPUT_TOO_LARGE/i.test(code);
 }

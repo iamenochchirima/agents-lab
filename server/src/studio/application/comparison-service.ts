@@ -31,7 +31,9 @@ import { ReplayModelAdapter } from "../adapters/replay-model.js";
 import { ReplayEnvironmentAssembler, type StudioEnvironmentAssembler } from "../runtime/environment.js";
 import { StudioHarnessRuntime } from "../runtime/harness-runtime.js";
 import type { StudioMemoryStore } from "../runtime/contracts.js";
+import type { StudioContextDecisionEvidence, StudioContextSourceClass } from "../strategies/context-research-contracts.js";
 import { memoryPolicies } from "../memory/policies.js";
+import { StudioMemoryCancellationError } from "../memory/contracts.js";
 import {
   StudioEvidenceConflictError,
   StudioEvidenceNotFoundError,
@@ -80,6 +82,7 @@ export interface StudioComparisonServiceDependencies {
     readonly trialId: string;
     readonly scenario: StudioScenarioCase;
     readonly strategy: StudioStrategyVariant;
+    readonly memoryStrategy?: StudioStrategyVariant;
   }) => StudioMemoryStore;
 }
 
@@ -205,6 +208,15 @@ export class StudioComparisonService implements StudioComparisonRunner {
       }
       return strategy;
     });
+    if (catalog.experiment.fixedMemoryStrategy) {
+      const fixedMemory = memoryPolicies().find((policy) => policy.adapterId === catalog.experiment.fixedMemoryStrategy?.id);
+      if (!fixedMemory || fixedMemory.adapterVersion !== catalog.experiment.fixedMemoryStrategy.version) {
+        throw new InvalidStudioRequestError(`Fixed Memory policy is unavailable: ${catalog.experiment.fixedMemoryStrategy.id}@${catalog.experiment.fixedMemoryStrategy.version}.`);
+      }
+      if (Object.keys(catalog.experiment.fixedMemoryStrategy.parameters).length > 0) {
+        throw new InvalidStudioRequestError(`Fixed Memory policy does not accept parameters: ${catalog.experiment.fixedMemoryStrategy.id}.`);
+      }
+    }
     if (resolvedStrategies.length > catalog.environment.maxStrategies) {
       throw new InvalidStudioRequestError(`Studio environment allows at most ${catalog.environment.maxStrategies} strategies.`);
     }
@@ -254,6 +266,13 @@ export class StudioComparisonService implements StudioComparisonRunner {
     let memoryExpiredCount = 0;
     let recoveredStateCount = 0;
     let maxActiveRecordCount = 0;
+    let contextRetainedSourceCount = 0;
+    let contextOmittedSourceCount = 0;
+    let contextSummarizedSourceCount = 0;
+    let contextCompactionCount = 0;
+    let contextOverflowRecoveryCount = 0;
+    let contextPressureEventCount = 0;
+    const contextOmittedBySourceClass = emptyContextOmittedBySourceClass();
     let currentTrial: StudioTrialManifest | null = null;
     let currentTrialStartedAt: string | null = null;
 
@@ -284,11 +303,12 @@ export class StudioComparisonService implements StudioComparisonRunner {
         const contextStrategy = manifest.experiment.fixedContextStrategy
           ? this.strategies.get(manifest.experiment.fixedContextStrategy.id)
           : this.strategies.get(strategy.id);
-        let trialMemory = manifest.experiment.changedComponent === "memory"
-          ? this.dependencies.memoryFactory?.({ comparisonId: manifest.comparisonId, trialId, scenario, strategy })
+        const memoryStrategy = manifest.experiment.fixedMemoryStrategy ?? (manifest.experiment.changedComponent === "memory" ? strategy : undefined);
+        let trialMemory = memoryStrategy
+          ? this.dependencies.memoryFactory?.({ comparisonId: manifest.comparisonId, trialId, scenario, strategy, memoryStrategy })
           : undefined;
-        if (manifest.experiment.changedComponent === "memory" && !trialMemory) {
-          throw new InvalidStudioRequestError("Memory experiments require a configured Studio Memory factory.");
+        if ((manifest.experiment.changedComponent === "memory" || manifest.experiment.fixedMemoryStrategy) && !trialMemory) {
+          throw new InvalidStudioRequestError("This Studio comparison requires a configured Memory factory.");
         }
         let finalTurn: Awaited<ReturnType<StudioHarnessRuntime["execute"]>> | null = null;
         const turnDefinitions = scenario.turns ?? [legacyScenarioTurn(scenario)];
@@ -333,7 +353,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
             costUsd += turn.model.costUsd;
             hasCost = true;
           }
-          modelCallCount += 1;
+          modelCallCount += turn.modelCalls;
           memoryRetrievedCount += turn.memory.retrievedRecordIds.length;
           memoryWrittenCount += turn.memory.writtenRecordIds.length;
           memoryUpdatedCount += turn.memory.updatedRecordIds.length;
@@ -343,6 +363,13 @@ export class StudioComparisonService implements StudioComparisonRunner {
           maxActiveRecordCount = Math.max(maxActiveRecordCount, turn.memory.activeRecordIds.length);
 
           const turnMetrics = metricsForTurn(turn, turnScenario, turnStartedAt, this.now());
+          contextRetainedSourceCount += turnMetrics.contextRetainedSourceCount;
+          contextOmittedSourceCount += turnMetrics.contextOmittedSourceCount;
+          contextSummarizedSourceCount += turnMetrics.contextSummarizedSourceCount;
+          contextCompactionCount += turnMetrics.contextCompactionCount;
+          if (turnMetrics.contextPressure !== "normal" || turn.context.research?.pressure.trigger !== "none") contextPressureEventCount += 1;
+          if (turn.context.research?.compaction.trigger === "provider-overflow") contextOverflowRecoveryCount += 1;
+          addContextOmissionCounts(contextOmittedBySourceClass, turnMetrics.contextOmittedBySourceClass);
           const turnEvidence: StudioTurnEvidence = {
             schemaVersion: 1,
             comparisonId: manifest.comparisonId,
@@ -411,7 +438,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
       };
       await this.failureInjector?.inject("during-evidence-publication", manifest.comparisonId);
       await this.dependencies.evidence.writeTrajectory(trajectory(manifest.comparisonId, startedAt, finishedAt));
-      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, "completed", startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null, hasCost ? costUsd : null, turnCount, completedTurnCount, memoryRetrievedCount, memoryWrittenCount, memoryUpdatedCount, memoryNoopCount, memoryExpiredCount, recoveredStateCount, maxActiveRecordCount));
+      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, "completed", startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null, hasCost ? costUsd : null, turnCount, completedTurnCount, memoryRetrievedCount, memoryWrittenCount, memoryUpdatedCount, memoryNoopCount, memoryExpiredCount, recoveredStateCount, maxActiveRecordCount, contextRetainedSourceCount, contextOmittedSourceCount, contextSummarizedSourceCount, contextCompactionCount, contextOverflowRecoveryCount, contextPressureEventCount, contextOmittedBySourceClass));
       await this.dependencies.evidence.writeResult(result);
       await emit("ComparisonCompleted", { trialIds, completedTrialCount });
       return this.inspect(manifest.comparisonId);
@@ -447,7 +474,7 @@ export class StudioComparisonService implements StudioComparisonRunner {
         error: failure,
       };
       await this.dependencies.evidence.writeTrajectory(trajectory(manifest.comparisonId, startedAt, finishedAt));
-      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, status, startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null, hasCost ? costUsd : null, turnCount, completedTurnCount, memoryRetrievedCount, memoryWrittenCount, memoryUpdatedCount, memoryNoopCount, memoryExpiredCount, recoveredStateCount, maxActiveRecordCount));
+      await this.dependencies.evidence.writeMetrics(metrics(manifest.comparisonId, status, startedAt, finishedAt, trialIds.length, completedTrialCount, modelCallCount, hasInputTokens ? inputTokens : null, hasOutputTokens ? outputTokens : null, hasCost ? costUsd : null, turnCount, completedTurnCount, memoryRetrievedCount, memoryWrittenCount, memoryUpdatedCount, memoryNoopCount, memoryExpiredCount, recoveredStateCount, maxActiveRecordCount, contextRetainedSourceCount, contextOmittedSourceCount, contextSummarizedSourceCount, contextCompactionCount, contextOverflowRecoveryCount, contextPressureEventCount, contextOmittedBySourceClass));
       await this.dependencies.evidence.writeResult(result);
       await emit(cancelled ? "ComparisonCancelled" : "ComparisonFailed", { error: failure, completedTrialCount });
       return this.inspect(manifest.comparisonId);
@@ -486,6 +513,7 @@ function fixedControlFingerprint(manifest: StudioComparisonManifest, scenario: S
       turns: scenario.turns,
     },
     fixedContextStrategy: manifest.experiment.fixedContextStrategy,
+    fixedMemoryStrategy: manifest.experiment.fixedMemoryStrategy,
     seed: manifest.seed,
   }));
 }
@@ -541,6 +569,7 @@ function contextEvidence(
     messages: turn.context.messages,
     budget: turn.context.budget,
     decision: turn.context.decision,
+    research: turn.context.research,
   };
 }
 
@@ -550,11 +579,13 @@ function metricsForTurn(
   startedAt: string,
   finishedAt: string,
 ): StudioTurnMetrics {
+  const research = turn.context.research;
+  const omittedBySourceClass = omittedBySourceClassFor(research);
   return {
     contextInputTokens: turn.context.budget.inputTokens,
     modelInputTokens: turn.model.inputTokens,
     modelOutputTokens: turn.model.outputTokens,
-    modelCalls: 1,
+    modelCalls: turn.modelCalls,
     latencyMs: elapsedMs(startedAt, finishedAt),
     costUsd: turn.model.costUsd ?? null,
     memoryCandidateCount: turn.memory.candidates.length,
@@ -569,6 +600,12 @@ function metricsForTurn(
       ? null
       : turn.memory.retrievedRecordIds.includes(scenario.requiredMemoryRecordId),
     stateRecovered: turn.memory.stateRecovered,
+    contextRetainedSourceCount: research?.retainedSourceIds.length ?? turn.context.retainedMessageIds.length,
+    contextOmittedSourceCount: research?.omittedSourceIds.length ?? turn.context.omittedMessageIds.length,
+    contextSummarizedSourceCount: research?.summarizedSourceIds.length ?? turn.context.summarizedMessageIds.length,
+    contextCompactionCount: research && research.compaction.trigger !== "none" ? 1 : 0,
+    contextPressure: research?.pressure.before ?? turn.context.budget.pressure,
+    contextOmittedBySourceClass: omittedBySourceClass,
     measurementBasis: measurementBasis(),
   };
 }
@@ -624,6 +661,13 @@ function metrics(
   memoryExpiredCount: number,
   recoveredStateCount: number,
   maxActiveRecordCount: number,
+  contextRetainedSourceCount: number,
+  contextOmittedSourceCount: number,
+  contextSummarizedSourceCount: number,
+  contextCompactionCount: number,
+  contextOverflowRecoveryCount: number,
+  contextPressureEventCount: number,
+  contextOmittedBySourceClass: Readonly<Record<StudioContextSourceClass, number>>,
 ): StudioMetrics {
   return {
     schemaVersion: 1,
@@ -646,6 +690,13 @@ function metrics(
     memoryExpiredCount,
     recoveredStateCount,
     maxActiveRecordCount,
+    contextRetainedSourceCount,
+    contextOmittedSourceCount,
+    contextSummarizedSourceCount,
+    contextCompactionCount,
+    contextOverflowRecoveryCount,
+    contextPressureEventCount,
+    contextOmittedBySourceClass,
     measurementBasis: measurementBasis(),
   };
 }
@@ -657,7 +708,36 @@ function measurementBasis(): StudioTurnMetrics["measurementBasis"] {
     latency: "Wall-clock duration measured by the Studio runtime around one replay turn.",
     cost: "Model adapter result; null when the adapter does not report cost.",
     memoryCounts: "Fixture-derived counts of ranked records and applied Memory decisions; not precision or recall.",
+    contextCounts: "Context source-group, compaction, allocation, and pressure observations; not a universal quality score.",
   };
+}
+
+function emptyContextOmittedBySourceClass(): Record<StudioContextSourceClass, number> {
+  return {
+    instruction: 0,
+    "active-turn": 0,
+    transcript: 0,
+    memory: 0,
+    "tool-result": 0,
+    summary: 0,
+  };
+}
+
+function omittedBySourceClassFor(research: StudioContextDecisionEvidence | undefined): Record<StudioContextSourceClass, number> {
+  const counts = emptyContextOmittedBySourceClass();
+  if (!research) return counts;
+  const omitted = new Set(research.omittedSourceIds);
+  for (const group of research.sourceGroups) {
+    if (group.messageIds.some((messageId) => omitted.has(messageId))) counts[group.sourceClass] += group.messageIds.filter((messageId) => omitted.has(messageId)).length;
+  }
+  return counts;
+}
+
+function addContextOmissionCounts(
+  target: Record<StudioContextSourceClass, number>,
+  source: Readonly<Record<StudioContextSourceClass, number>>,
+): void {
+  for (const sourceClass of Object.keys(target) as StudioContextSourceClass[]) target[sourceClass] += source[sourceClass];
 }
 
 function elapsedMs(startedAt: string, finishedAt: string): number | null {
@@ -667,10 +747,18 @@ function elapsedMs(startedAt: string, finishedAt: string): number | null {
 }
 
 function runError(error: unknown, cancelled: boolean): StudioRunError {
+  const details = error instanceof StudioMemoryCancellationError
+    ? {
+      memoryCancellationPhase: error.phase,
+      memoryPersistenceOutcome: error.persistenceOutcome,
+      memoryPersisted: error.persisted,
+    }
+    : undefined;
   return {
     code: cancelled ? "STUDIO_CANCELLED" : "STUDIO_RUN_FAILED",
     message: error instanceof Error ? error.message : "Studio comparison failed.",
     retryable: false,
+    ...(details ? { details } : {}),
   };
 }
 

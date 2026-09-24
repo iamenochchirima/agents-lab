@@ -1,11 +1,12 @@
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { appendFile, lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 
 import {
   DEFAULT_STUDIO_MEMORY_LIMITS,
   type StudioMemoryApplyResult,
   type StudioMemoryDecision,
   type StudioMemoryLimits,
+  type StudioMemoryJournalContext,
   type StudioMemoryMutation,
   type StudioMemoryNamespace,
   type StudioMemoryRecord,
@@ -20,6 +21,12 @@ const SAFE_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 interface StudioMemoryJournalEvent {
   readonly schemaVersion: 1;
   readonly sequence: number;
+  readonly namespace: StudioMemoryNamespace;
+  readonly policyId: string;
+  readonly policyVersion: string;
+  readonly timestamp: string;
+  readonly previousRevision: number;
+  readonly recordIds: readonly string[];
   readonly operationIds: readonly string[];
   readonly operationFingerprints: readonly { readonly operationId: string; readonly fingerprint: string }[];
   readonly decisions: readonly StudioMemoryDecision[];
@@ -30,6 +37,11 @@ interface StudioMemoryDecisionJournalEvent {
   readonly schemaVersion: 1;
   readonly sequence: number;
   readonly namespace: StudioMemoryNamespace;
+  readonly policyId: string;
+  readonly policyVersion: string;
+  readonly timestamp: string;
+  readonly previousRevision: number;
+  readonly recordIds: readonly string[];
   readonly operationIds: readonly string[];
   readonly decisions: readonly StudioMemoryDecision[];
   readonly stateRevision: number;
@@ -70,6 +82,7 @@ export class InMemoryStudioMemoryRepository implements StudioMemoryRepository {
     private readonly limits: StudioMemoryLimits = DEFAULT_STUDIO_MEMORY_LIMITS,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {
+    validateLimits(limits);
     this.state = emptyState(namespace);
   }
 
@@ -79,17 +92,17 @@ export class InMemoryStudioMemoryRepository implements StudioMemoryRepository {
     return cloneState(this.state);
   }
 
-  async seed(seeds: readonly StudioMemorySeed[], operationId: string): Promise<StudioMemoryApplyResult> {
+  async seed(seeds: readonly StudioMemorySeed[], operationId: string, context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult> {
     const mutations = seeds.map((seed, index) => ({
       operationId: `${operationId}:${index + 1}`,
       operation: "add" as const,
       candidate: seedToCandidate(seed),
       reason: "Seeded by the fixed Memory fixture.",
     }));
-    return this.apply(mutations);
+    return this.apply(mutations, context);
   }
 
-  async apply(mutations: readonly StudioMemoryMutation[]): Promise<StudioMemoryApplyResult> {
+  async apply(mutations: readonly StudioMemoryMutation[], _context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult> {
     const existing = mutations.map((mutation) => this.operations.get(mutation.operationId));
     for (const [index, entry] of existing.entries()) {
       if (entry && entry.fingerprint !== mutationFingerprint(mutations[index]!)) {
@@ -127,6 +140,8 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     private readonly hooks: StudioMemoryRepositoryHooks = {},
   ) {
     assertNamespace(namespace);
+    validateLimits(limits);
+    assertLexicallySafePath(rootDirectory);
     this.recordsPath = join(rootDirectory, "records.json");
     this.journalPath = join(rootDirectory, "events.jsonl");
     this.decisionsPath = join(rootDirectory, "decisions.jsonl");
@@ -140,21 +155,22 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     return this.enqueue(() => this.loadNow());
   }
 
-  seed(seeds: readonly StudioMemorySeed[], operationId: string): Promise<StudioMemoryApplyResult> {
+  seed(seeds: readonly StudioMemorySeed[], operationId: string, context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult> {
     const mutations = seeds.map((seed, index) => ({
       operationId: `${operationId}:${index + 1}`,
       operation: "add" as const,
       candidate: seedToCandidate(seed),
       reason: "Seeded by the fixed Memory fixture.",
     }));
-    return this.apply(mutations);
+    return this.apply(mutations, context);
   }
 
-  apply(mutations: readonly StudioMemoryMutation[]): Promise<StudioMemoryApplyResult> {
-    return this.enqueue(() => this.applyNow(mutations));
+  apply(mutations: readonly StudioMemoryMutation[], context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult> {
+    return this.enqueue(() => this.applyNow(mutations, context));
   }
 
   private async loadNow(): Promise<StudioMemoryState> {
+    await assertStoragePathSafety(this.rootDirectory, this.recordsPath, this.journalPath, this.decisionsPath);
     await mkdir(this.rootDirectory, { recursive: true });
     const snapshot = await readOptionalJson<StudioMemoryState>(this.recordsPath);
     const journal = await readJournal(this.journalPath, this.namespace, this.limits);
@@ -166,7 +182,8 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     return emptyState(this.namespace);
   }
 
-  private async applyNow(mutations: readonly StudioMemoryMutation[]): Promise<StudioMemoryApplyResult> {
+  private async applyNow(mutations: readonly StudioMemoryMutation[], context?: StudioMemoryJournalContext): Promise<StudioMemoryApplyResult> {
+    await assertStoragePathSafety(this.rootDirectory, this.recordsPath, this.journalPath, this.decisionsPath);
     if (mutations.length === 0) {
       const state = await this.loadNow();
       return { state, decisions: [], appliedOperationIds: [] };
@@ -198,9 +215,17 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
     }
     const state = latest ?? await this.loadNow();
     const result = applyMutations(state, mutations, this.limits, this.now);
+    const journalContext = normalizeJournalContext(context, this.now);
+    const recordIds = [...new Set(result.decisions.flatMap((decision) => [decision.recordId, decision.targetRecordId].filter((id): id is string => id !== null)))].sort();
     const event: StudioMemoryJournalEvent = {
       schemaVersion: 1,
       sequence: journal.length + 1,
+      namespace: this.namespace,
+      policyId: journalContext.policyId,
+      policyVersion: journalContext.policyVersion,
+      timestamp: journalContext.timestamp,
+      previousRevision: state.revision,
+      recordIds,
       operationIds: result.appliedOperationIds,
       operationFingerprints: mutations.map((mutation) => ({ operationId: mutation.operationId, fingerprint: mutationFingerprint(mutation) })),
       decisions: result.decisions,
@@ -218,6 +243,11 @@ export class FileStudioMemoryRepository implements StudioMemoryRepository {
       schemaVersion: 1,
       sequence: event.sequence,
       namespace: this.namespace,
+      policyId: event.policyId,
+      policyVersion: event.policyVersion,
+      timestamp: event.timestamp,
+      previousRevision: event.previousRevision,
+      recordIds,
       operationIds: result.appliedOperationIds,
       decisions: result.decisions,
       stateRevision: result.state.revision,
@@ -371,7 +401,7 @@ async function readJournal(path: string, namespace: StudioMemoryNamespace, limit
     } catch {
       throw new StudioMemoryCorruptStateError(path);
     }
-    if (event.schemaVersion !== 1 || event.sequence !== index + 1 || event.state.namespace.comparisonId !== namespace.comparisonId || event.state.namespace.trialId !== namespace.trialId) {
+    if (event.schemaVersion !== 1 || event.sequence !== index + 1 || event.namespace.comparisonId !== namespace.comparisonId || event.namespace.trialId !== namespace.trialId) {
       throw new StudioMemoryCorruptStateError(path);
     }
     return validateJournalEvent(event, path, rawLines.length, namespace, limits);
@@ -386,10 +416,37 @@ function validateJournalEvent(
   limits: StudioMemoryLimits,
 ): StudioMemoryJournalEvent {
   validateState(event.state, namespace, limits, path);
-  if (event.operationIds.length !== event.decisions.length || event.operationFingerprints.length !== event.operationIds.length || event.operationIds.some((operationId) => !event.decisions.some((decision) => decision.operationId === operationId)) || event.operationIds.some((operationId) => !event.operationFingerprints.some((entry) => entry.operationId === operationId && typeof entry.fingerprint === "string"))) {
+  const recordIds = Array.isArray(event.recordIds) ? event.recordIds : [];
+  const operationIds = Array.isArray(event.operationIds) ? event.operationIds : [];
+  const operationFingerprints = Array.isArray(event.operationFingerprints) ? event.operationFingerprints : [];
+  const decisions = Array.isArray(event.decisions) ? event.decisions : [];
+  const validRecordIds = Array.isArray(event.recordIds) && recordIds.every((recordId) => typeof recordId === "string" && SAFE_ID.test(recordId));
+  const validOperationIds = Array.isArray(event.operationIds) && operationIds.every((operationId) => typeof operationId === "string" && SAFE_KEY.test(operationId));
+  const validFingerprints = Array.isArray(event.operationFingerprints)
+    && operationFingerprints.length === operationIds.length
+    && operationFingerprints.every((entry) => entry !== null && typeof entry === "object" && typeof entry.operationId === "string" && SAFE_KEY.test(entry.operationId) && typeof entry.fingerprint === "string" && entry.fingerprint.length > 0);
+  const validDecisions = Array.isArray(event.decisions) && decisions.every((decision) => isValidJournalDecision(decision, event.previousRevision, event.state.revision));
+  if (!SAFE_KEY.test(event.policyId) || !SAFE_KEY.test(event.policyVersion) || !validTimestamp(event.timestamp) || !Number.isInteger(event.previousRevision) || event.previousRevision < 0 || event.previousRevision > event.state.revision || !validRecordIds || !validOperationIds || !validFingerprints || !validDecisions || operationIds.length !== decisions.length || new Set(operationIds).size !== operationIds.length || new Set(recordIds).size !== recordIds.length || operationIds.some((operationId) => !decisions.some((decision) => decision.operationId === operationId)) || operationIds.some((operationId) => !operationFingerprints.some((entry) => entry.operationId === operationId))) {
     throw new StudioMemoryCorruptStateError(path);
   }
   return event;
+}
+
+function isValidJournalDecision(value: unknown, previousRevision: number, stateRevision: number): value is StudioMemoryDecision {
+  if (value === null || typeof value !== "object") return false;
+  const decision = value as Record<string, unknown>;
+  return typeof decision.operationId === "string"
+    && SAFE_KEY.test(decision.operationId)
+    && typeof decision.operation === "string"
+    && ["add", "update", "delete", "noop", "expire"].includes(decision.operation)
+    && (decision.recordId === null || typeof decision.recordId === "string" && SAFE_ID.test(decision.recordId))
+    && (decision.targetRecordId === null || typeof decision.targetRecordId === "string" && SAFE_ID.test(decision.targetRecordId))
+    && (decision.logicalKey === null || typeof decision.logicalKey === "string" && SAFE_KEY.test(decision.logicalKey))
+    && (decision.scope === null || typeof decision.scope === "string" && ["working", "episodic", "semantic", "procedural"].includes(decision.scope))
+    && typeof decision.reason === "string"
+    && Number.isInteger(decision.stateRevision)
+    && (decision.stateRevision as number) >= previousRevision
+    && (decision.stateRevision as number) <= stateRevision;
 }
 
 function mutationFingerprint(mutation: StudioMemoryMutation): string {
@@ -402,6 +459,7 @@ function validateState(state: StudioMemoryState, namespace: StudioMemoryNamespac
   }
   for (const record of state.records) {
     validateRecord(record, limits, path);
+    if (stableJson(record.namespace) !== stableJson(namespace)) throw new StudioMemoryCorruptStateError(path);
     if (record.revision > state.revision) throw new StudioMemoryCorruptStateError(path);
   }
   return state;
@@ -425,6 +483,51 @@ function assertNamespace(namespace: StudioMemoryNamespace): void {
 
 function assertOperationId(value: string): void {
   if (!SAFE_KEY.test(value)) throw new StudioMemoryRepositoryError(`Invalid Memory operation ID: ${value}`);
+}
+
+function validateLimits(limits: StudioMemoryLimits): void {
+  const entries: readonly [keyof StudioMemoryLimits, number][] = [
+    ["maxRecords", limits.maxRecords],
+    ["maxRecordBytes", limits.maxRecordBytes],
+    ["maxContentBytes", limits.maxContentBytes],
+    ["maxRetrievedRecords", limits.maxRetrievedRecords],
+    ["maxJournalBytes", limits.maxJournalBytes],
+    ["maxConsolidationOperations", limits.maxConsolidationOperations],
+  ];
+  if (entries.some(([, value]) => !Number.isInteger(value) || value < 1)) {
+    throw new StudioMemoryRepositoryError("Studio Memory limits must be positive integers.");
+  }
+  if (limits.maxRecordBytes < limits.maxContentBytes) {
+    throw new StudioMemoryRepositoryError("Studio Memory record limit must cover the configured content limit.");
+  }
+}
+
+function normalizeJournalContext(context: StudioMemoryJournalContext | undefined, now: () => string): StudioMemoryJournalContext {
+  const result = context ?? { policyId: "repository", policyVersion: "1", timestamp: now() };
+  if (!SAFE_KEY.test(result.policyId) || !SAFE_KEY.test(result.policyVersion) || !validTimestamp(result.timestamp)) {
+    throw new StudioMemoryRepositoryError("Studio Memory journal context is invalid.");
+  }
+  return result;
+}
+
+function assertLexicallySafePath(path: string): void {
+  if (path.split(/[\\/]+/).includes("..")) throw new StudioMemoryRepositoryError("Studio Memory state path cannot contain traversal segments.");
+}
+
+async function assertStoragePathSafety(rootDirectory: string, ...paths: readonly string[]): Promise<void> {
+  for (const path of [rootDirectory, ...paths]) {
+    const absolute = resolve(path);
+    let current = absolute.startsWith(sep) ? sep : "";
+    for (const segment of absolute.split(sep).filter(Boolean)) {
+      current = current ? join(current, segment) : segment;
+      try {
+        if ((await lstat(current)).isSymbolicLink()) throw new StudioMemoryRepositoryError("Studio Memory state path cannot traverse a symlink.");
+      } catch (error) {
+        if (isNodeError(error, "ENOENT")) break;
+        throw error;
+      }
+    }
+  }
 }
 
 function assertSafeId(value: string, label: string): void {

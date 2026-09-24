@@ -113,6 +113,12 @@ test("Memory-to-Context serialization preserves provenance without upgrading tru
     memoryRevision: "1",
     memoryState: "active",
     memoryTrust: "retrieved-untrusted",
+    memorySourceMessageIds: "setup-1",
+    memoryComparisonId: "comparison-1",
+    memoryTrialId: "trial-1",
+    memoryScenarioId: "scenario-1",
+    memorySessionId: "session-1",
+    memoryLogicalKey: "support-language",
   });
 });
 

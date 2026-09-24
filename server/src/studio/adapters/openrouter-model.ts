@@ -89,10 +89,11 @@ export class OpenRouterModelAdapter implements StudioModelAdapter {
     try {
       const bodyText = await readBoundedBody(response);
       if (!response.ok) {
-        const retryable = response.status === 408 || response.status === 409 || response.status === 425 || response.status === 429 || response.status >= 500;
+        const contextOverflow = response.status === 400 && /context\s+(?:length|window|limit)|maximum\s+(?:context|input)|prompt\s+too\s+long|token\s+limit/i.test(bodyText);
+        const retryable = contextOverflow || response.status === 408 || response.status === 409 || response.status === 425 || response.status === 429 || response.status >= 500;
         throw new StudioOpenRouterError(
-          `OpenRouter returned HTTP ${response.status}.`,
-          { code: `OPENROUTER_HTTP_${response.status}`, retryable, requestSent: true },
+          contextOverflow ? "OpenRouter rejected the Context because it exceeded the provider input limit." : `OpenRouter returned HTTP ${response.status}.`,
+          { code: contextOverflow ? "OPENROUTER_CONTEXT_OVERFLOW" : `OPENROUTER_HTTP_${response.status}`, retryable, requestSent: true },
         );
       }
 

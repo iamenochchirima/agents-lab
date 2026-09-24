@@ -48,11 +48,14 @@ configuration. Fake models remain available only for deterministic tests and fai
 experiments. A missing OpenRouter key leaves model selection unavailable; the UI does
 not silently fall back to a fake response.
 
-Run requests may include an optional provider-neutral `capabilities.tools` object with
-an explicit enabled-tool list and bounded round/call limits. The server validates its
-shape and freezes it into the run manifest; each platform adapter still validates the
-tool against its own native execution policy. Omitting the object preserves the
-single-turn baseline defaults.
+Run requests may select a server-owned capability profile. The profile resolves an
+allowlisted pure tool, a read-only local connection fixture, and a context-only skill;
+the server freezes the resolution into the run manifest before dispatch. Write-capable
+profiles require an explicit, unexpired approval and platform adapters enforce that
+decision again at the execution boundary. MCP, direct API, and OAuth modules use local
+deterministic fixtures for protocol tests; no external account or Docker container is
+required for the local profile. The browser receives profile summaries and safe activity,
+never tokens or raw provider payloads.
 
 Temporal baseline runs use a server-owned multi-turn context session. The session ID is
 kept in the run manifest and the canonical transcript is stored under
@@ -81,6 +84,7 @@ Normalized evidence is platform-neutral:
 ```text
 lab/runs/<run-id>/
   config.json
+  capabilities.json
   events.jsonl
   trajectory.json
   metrics.json
@@ -94,6 +98,7 @@ platform's own execution identity and diagnostics:
 | Lab record | Common meaning | Platform-native detail retained separately |
 | --- | --- | --- |
 | `config.json` | Effective safe run configuration | Platform settings captured by the selected adapter |
+| `capabilities.json` | Redacted profile, grants, and policy decisions | Connection and native activity remains in platform evidence |
 | `events.jsonl` | Ordered lifecycle projection | Native event payloads and source names |
 | `trajectory.json`, `metrics.json`, `result.json` | Comparable execution outcome | Platform history, checkpoints, retry metadata, or provider detail |
 | `native/<platform>.json` | Selected execution reference | Platform-specific identifiers needed for inspection and recovery |
@@ -172,6 +177,12 @@ The replay model only verifies whether the fixture's required fact reached the m
 boundary. Its output is harness-wiring evidence, not a model-quality benchmark. Real
 provider calls, tools, sandboxing, and additional component strategies are later Studio
 slices.
+
+The deterministic Memory repository is bounded by the `AGENTLAB_STUDIO_MEMORY_*`
+settings in [.env.example](.env.example). The limits cover record count and size,
+retrieval count, journal bytes, and consolidation work. A lower limit is useful when
+running rejection and recovery tests; the server never silently removes records to fit
+an over-limit operation.
 
 See the [Temporal local development guide](src/platforms/temporal/docs/local-development.md)
 and the [completed implementation plan](../development/implementation-plans/platforms/completed/lab-server-temporal-baseline.md)

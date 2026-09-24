@@ -8,6 +8,7 @@ import {
   OPENROUTER_DEFAULT_CATALOG_TIMEOUT_MS,
 } from "../../models/openrouter/catalog.js";
 import { DEFAULT_CONTEXT_SESSION_LIMITS } from "../../capabilities/context/contracts.js";
+import { DEFAULT_STUDIO_MEMORY_LIMITS, type StudioMemoryLimits } from "../../studio/memory/contracts.js";
 
 export const DEFAULTS = {
   apiHost: "127.0.0.1",
@@ -33,6 +34,7 @@ export const DEFAULTS = {
     workflowStoragePath: "lab/mastra/mastra-workflows.db",
   },
   context: DEFAULT_CONTEXT_SESSION_LIMITS,
+  studioMemory: DEFAULT_STUDIO_MEMORY_LIMITS,
 } as const;
 
 export interface ServerConfig {
@@ -49,6 +51,7 @@ export interface ServerConfig {
     readonly maxTranscriptBytes: number;
   };
   readonly studioRunsRoot: string;
+  readonly studioMemory: StudioMemoryLimits;
   readonly temporal: {
     readonly endpoint: string;
     readonly namespace: string;
@@ -144,6 +147,50 @@ export function loadServerConfig(
       ),
     },
     studioRunsRoot: isAbsolute(studioRunsRoot) ? studioRunsRoot : resolve(workingDirectory, studioRunsRoot),
+    studioMemory: {
+      maxRecords: parseBoundedInteger(
+        "AGENTLAB_STUDIO_MEMORY_MAX_RECORDS",
+        environment.AGENTLAB_STUDIO_MEMORY_MAX_RECORDS,
+        DEFAULTS.studioMemory.maxRecords,
+        1,
+        10_000,
+      ),
+      maxRecordBytes: parseBoundedInteger(
+        "AGENTLAB_STUDIO_MEMORY_MAX_RECORD_BYTES",
+        environment.AGENTLAB_STUDIO_MEMORY_MAX_RECORD_BYTES,
+        DEFAULTS.studioMemory.maxRecordBytes,
+        1_024,
+        16 * 1024 * 1024,
+      ),
+      maxContentBytes: parseBoundedInteger(
+        "AGENTLAB_STUDIO_MEMORY_MAX_CONTENT_BYTES",
+        environment.AGENTLAB_STUDIO_MEMORY_MAX_CONTENT_BYTES,
+        DEFAULTS.studioMemory.maxContentBytes,
+        1_024,
+        8 * 1024 * 1024,
+      ),
+      maxRetrievedRecords: parseBoundedInteger(
+        "AGENTLAB_STUDIO_MEMORY_MAX_RETRIEVED_RECORDS",
+        environment.AGENTLAB_STUDIO_MEMORY_MAX_RETRIEVED_RECORDS,
+        DEFAULTS.studioMemory.maxRetrievedRecords,
+        1,
+        500,
+      ),
+      maxJournalBytes: parseBoundedInteger(
+        "AGENTLAB_STUDIO_MEMORY_MAX_JOURNAL_BYTES",
+        environment.AGENTLAB_STUDIO_MEMORY_MAX_JOURNAL_BYTES,
+        DEFAULTS.studioMemory.maxJournalBytes,
+        4 * 1024,
+        256 * 1024 * 1024,
+      ),
+      maxConsolidationOperations: parseBoundedInteger(
+        "AGENTLAB_STUDIO_MEMORY_MAX_CONSOLIDATION_OPERATIONS",
+        environment.AGENTLAB_STUDIO_MEMORY_MAX_CONSOLIDATION_OPERATIONS,
+        DEFAULTS.studioMemory.maxConsolidationOperations,
+        1,
+        10_000,
+      ),
+    },
     temporal: {
       endpoint: temporalEndpoint,
       namespace: temporalNamespace,

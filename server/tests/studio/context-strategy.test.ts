@@ -72,6 +72,23 @@ test("Sliding Window rejects invalid parameters explicitly", () => {
   );
 });
 
+test("Sliding Window can opt into complete source-group retention", () => {
+  const groupedMessages = [
+    message("system-1", "system", "Follow the task instructions."),
+    { ...message("tool-call", "assistant", "call tool"), groupId: "tool-round", source: "tools" as const },
+    { ...message("tool-result", "tool", "tool result"), groupId: "tool-round", source: "tools" as const },
+    { ...message("active", "user", "answer now"), groupId: "active-turn" },
+  ];
+  const result = new SlidingWindowStrategy().assemble({
+    ...input,
+    messages: groupedMessages,
+    strategy: { id: "sliding-window", version: "1", parameters: { recentMessages: "1", groupAtomic: "true", recentGroups: "1" } },
+  });
+  assert.equal(result.retainedMessageIds.includes("tool-call"), false);
+  assert.equal(result.retainedMessageIds.includes("tool-result"), false);
+  assert.equal(result.retainedMessageIds.includes("active"), true);
+});
+
 test("Relevance Ranked retains task-overlapping messages and restores source order", () => {
   const result = new RelevanceRankedStrategy().assemble({
     ...input,

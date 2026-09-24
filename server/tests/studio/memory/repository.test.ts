@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { join } from "node:path";
 
@@ -8,6 +8,7 @@ import {
   InMemoryStudioMemoryRepository,
   StudioMemoryCorruptStateError,
   StudioMemoryConflictError,
+  StudioMemoryRepositoryError,
   type StudioMemoryNamespace,
   type StudioMemoryMutation,
 } from "../../../src/studio/memory/index.js";
@@ -254,6 +255,87 @@ test("file Memory repository treats a persisted write as applied after acknowled
   }
 });
 
+test("Memory journal records policy, namespace, revision, decision, reason, and timestamp", async () => {
+  const root = await mkdtemp(join(process.cwd(), "studio-memory-journal-metadata-"));
+  try {
+    const repository = new FileStudioMemoryRepository(root, namespace);
+    await repository.apply([{
+      operationId: "memory-operation-1",
+      operation: "add",
+      candidate: {
+        recordId: "journal-record",
+        scope: "semantic",
+        content: "English",
+        logicalKey: "support-language",
+        source: "fixture-memory",
+        createdAt: "2026-09-20T00:00:00.000Z",
+      },
+      reason: "Persist the fixed fixture fact.",
+    }], {
+      policyId: "semantic-keyed-facts",
+      policyVersion: "1",
+      timestamp: "2026-09-20T00:00:01.000Z",
+    });
+
+    const event = JSON.parse((await readFile(join(root, "events.jsonl"), "utf8")).trim()) as Record<string, unknown>;
+    assert.equal(event.policyId, "semantic-keyed-facts");
+    assert.equal(event.policyVersion, "1");
+    assert.deepEqual(event.namespace, namespace);
+    assert.equal(event.previousRevision, 0);
+    assert.deepEqual(event.recordIds, ["journal-record"]);
+    assert.equal(event.timestamp, "2026-09-20T00:00:01.000Z");
+    assert.equal((event.decisions as Array<Record<string, unknown>>)[0]?.reason, "Persist the fixed fixture fact.");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Memory repository rejects lexical traversal and symlinked state roots", async () => {
+  const root = await mkdtemp(join(process.cwd(), "studio-memory-path-safety-"));
+  const target = join(root, "target");
+  const link = join(root, "link");
+  try {
+    await mkdtemp(target);
+    await symlink(target, link, "dir");
+    assert.throws(
+      () => new FileStudioMemoryRepository(`${root}/../escaped`, namespace),
+      StudioMemoryRepositoryError,
+    );
+    const linked = new FileStudioMemoryRepository(link, namespace);
+    await assert.rejects(() => linked.load(), StudioMemoryRepositoryError);
+    assert.equal((await lstat(link)).isSymbolicLink(), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Memory validation errors do not include the rejected record content", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace, {
+    maxRecords: 10,
+    maxRecordBytes: 32_000,
+    maxContentBytes: 4,
+    maxRetrievedRecords: 5,
+    maxJournalBytes: 100_000,
+    maxConsolidationOperations: 10,
+  });
+  const secret = "do-not-leak-this-fixture";
+  await assert.rejects(
+    () => repository.apply([{
+      operationId: "oversized-record",
+      operation: "add",
+      candidate: {
+        scope: "semantic",
+        content: secret,
+        logicalKey: "safe-key",
+        source: "fixture-memory",
+        createdAt: "2026-09-20T00:00:00.000Z",
+      },
+      reason: "Oversized test record.",
+    }]),
+    (error: unknown) => error instanceof Error && !error.message.includes(secret),
+  );
+});
+
 test("Memory repository rejects invalid timestamps and updates to retired records", async () => {
   const repository = new InMemoryStudioMemoryRepository(namespace);
   await assert.rejects(
@@ -300,5 +382,60 @@ test("Memory repository rejects invalid timestamps and updates to retired record
       reason: "Stale update.",
     }]),
     /active.*updated/i,
+  );
+});
+
+test("Memory records preserve all scopes, provenance, namespace, and revision links", async () => {
+  const repository = new InMemoryStudioMemoryRepository(namespace);
+  const result = await repository.seed([
+    { recordId: "working-note", scope: "working", content: "Current turn note", source: "fixture-working", sourceMessageIds: ["turn-1"], createdAt: "2026-09-20T00:00:00.000Z" },
+    { recordId: "episodic-note", scope: "episodic", content: "Past invoice note", source: "fixture-episodic", sourceMessageIds: ["turn-0"], createdAt: "2026-09-20T00:00:01.000Z" },
+    { recordId: "semantic-fact", scope: "semantic", content: "English", logicalKey: "support-language", source: "fixture-semantic", sourceMessageIds: ["turn-0"], createdAt: "2026-09-20T00:00:02.000Z" },
+    { recordId: "procedural-rule", scope: "procedural", content: "Verify invoice", logicalKey: "invoice-check", source: "fixture-procedural", sourceMessageIds: ["turn-0"], createdAt: "2026-09-20T00:00:03.000Z" },
+  ], "seed-scopes");
+
+  assert.deepEqual(result.state.records.map((record) => record.scope), ["episodic", "procedural", "semantic", "working"]);
+  assert.equal(result.state.records.every((record) => JSON.stringify(record.namespace) === JSON.stringify(namespace)), true);
+  assert.deepEqual(result.state.records.find((record) => record.recordId === "semantic-fact")?.sourceMessageIds, ["turn-0"]);
+  const updated = await repository.apply([{
+    operationId: "update-semantic-fact",
+    operation: "update",
+    targetRecordId: "semantic-fact",
+    candidate: {
+      scope: "semantic",
+      content: "Spanish",
+      logicalKey: "support-language",
+      source: "fixture-semantic-update",
+      sourceMessageIds: ["turn-2"],
+      createdAt: "2026-09-20T00:01:00.000Z",
+    },
+    reason: "The preference changed.",
+  }]);
+  assert.equal(updated.state.records.find((record) => record.recordId === "semantic-fact")?.state, "superseded");
+  assert.equal(updated.state.records.find((record) => record.supersedesRecordId === "semantic-fact")?.revision, 5);
+});
+
+test("Memory repository rejects invalid bounds before it can persist state", () => {
+  assert.throws(
+    () => new InMemoryStudioMemoryRepository(namespace, {
+      maxRecords: 0,
+      maxRecordBytes: 1024,
+      maxContentBytes: 1024,
+      maxRetrievedRecords: 1,
+      maxJournalBytes: 4096,
+      maxConsolidationOperations: 1,
+    }),
+    StudioMemoryRepositoryError,
+  );
+  assert.throws(
+    () => new InMemoryStudioMemoryRepository(namespace, {
+      maxRecords: 1,
+      maxRecordBytes: 1024,
+      maxContentBytes: 2048,
+      maxRetrievedRecords: 1,
+      maxJournalBytes: 4096,
+      maxConsolidationOperations: 1,
+    }),
+    /record limit must cover/i,
   );
 });

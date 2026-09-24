@@ -24,6 +24,8 @@ test("configuration has safe local defaults and resolves the run root", () => {
   assert.equal(config.context.maxSessionBytes, DEFAULTS.context.maxSessionBytes);
   assert.equal(config.context.maxTranscriptBytes, DEFAULTS.context.maxTranscriptBytes);
   assert.equal(config.studioRunsRoot, "/repo/lab/studio-runs");
+  assert.equal(config.studioMemory.maxRecords, DEFAULTS.studioMemory.maxRecords);
+  assert.equal(config.studioMemory.maxConsolidationOperations, DEFAULTS.studioMemory.maxConsolidationOperations);
 });
 
 test("configuration allows an explicit local profile and optional OpenRouter", () => {
@@ -35,6 +37,9 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
       AGENTLAB_CONTEXT_MAX_SESSION_BYTES: "200000",
       AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES: "100000",
       AGENTLAB_STUDIO_RUN_ROOT: "var/studio-runs",
+      AGENTLAB_STUDIO_MEMORY_MAX_RECORDS: "200",
+      AGENTLAB_STUDIO_MEMORY_MAX_CONTENT_BYTES: "32000",
+      AGENTLAB_STUDIO_MEMORY_MAX_CONSOLIDATION_OPERATIONS: "25",
       AGENTLAB_TEMPORAL_ENDPOINT: "127.0.0.1:7233",
       AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake, openrouter, fake",
       AGENTLAB_CONNECTED_CAPABILITIES_ENABLED: "false",
@@ -55,6 +60,9 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   assert.equal(config.context.maxSessionBytes, 200000);
   assert.equal(config.context.maxTranscriptBytes, 100000);
   assert.equal(config.studioRunsRoot, "/repo/var/studio-runs");
+  assert.equal(config.studioMemory.maxRecords, 200);
+  assert.equal(config.studioMemory.maxContentBytes, 32000);
+  assert.equal(config.studioMemory.maxConsolidationOperations, 25);
   assert.deepEqual(config.allowedModelProviders, ["fake", "openrouter"]);
   assert.equal(config.connectedCapabilitiesEnabled, false);
   assert.equal(config.openRouter.apiKey, "test-secret");
@@ -81,6 +89,10 @@ test("invalid or missing explicit configuration fails before startup", () => {
   );
   assert.throws(
     () => loadServerConfig({ AGENTLAB_CONTEXT_MAX_TRANSCRIPT_BYTES: "not-a-size" }),
+    (error: unknown) => error instanceof InvalidServerConfigError,
+  );
+  assert.throws(
+    () => loadServerConfig({ AGENTLAB_STUDIO_MEMORY_MAX_RECORDS: "0" }),
     (error: unknown) => error instanceof InvalidServerConfigError,
   );
   assert.throws(

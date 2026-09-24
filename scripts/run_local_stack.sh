@@ -33,6 +33,13 @@ VERCEL_WORKFLOWS_HOST="${AGENTLAB_VERCEL_WORKFLOWS_HOST:-127.0.0.1}"
 VERCEL_WORKFLOWS_PORT="${AGENTLAB_VERCEL_WORKFLOWS_PORT:-9094}"
 VERCEL_WORKFLOWS_SERVICE_URL="${AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL:-http://${VERCEL_WORKFLOWS_HOST}:${VERCEL_WORKFLOWS_PORT}}"
 
+# These values are deliberately process-wide rather than locals in start_all.
+# Bash runs an EXIT trap after the function that installed it has unwound, so
+# local log and PID state would otherwise be unavailable during cleanup.
+stack_log_directory=""
+declare -a stack_pids=()
+declare -a stack_process_names=()
+
 # Make the ignored server/.env available to separate local workers and
 # services. Only known provider settings are loaded, and values are never
 # printed by this script.
@@ -598,24 +605,23 @@ start_all() {
   ensure_port_available "Vercel Workflows service" "$VERCEL_WORKFLOWS_HOST" "$VERCEL_WORKFLOWS_PORT"
   stop_existing_lab_workers
 
-  local log_directory
-  log_directory="$(mktemp -d "${TMPDIR:-/tmp}/agentlab-stack.XXXXXX")"
-  local -a pids=()
-  local -a process_names=()
+  stack_log_directory="$(mktemp -d "${TMPDIR:-/tmp}/agentlab-stack.XXXXXX")"
+  stack_pids=()
+  stack_process_names=()
 
   start_background() {
     local name="$1"
     shift
-    setsid "$@" >"$log_directory/$name.log" 2>&1 &
-    pids+=("$!")
-    process_names+=("$name")
+    setsid "$@" >"$stack_log_directory/$name.log" 2>&1 &
+    stack_pids+=("$!")
+    stack_process_names+=("$name")
   }
 
   stack_processes_alive() {
     local index
-    for index in "${!pids[@]}"; do
-      if ! kill -0 "${pids[$index]}" 2>/dev/null; then
-        echo "${process_names[$index]} exited. Check $log_directory/${process_names[$index]}.log." >&2
+    for index in "${!stack_pids[@]}"; do
+      if ! kill -0 "${stack_pids[$index]}" 2>/dev/null; then
+        echo "${stack_process_names[$index]} exited. Check $stack_log_directory/${stack_process_names[$index]}.log." >&2
         return 1
       fi
     done
@@ -624,7 +630,7 @@ start_all() {
   cleanup() {
     trap - EXIT INT TERM
     local index pid exit_code=$?
-    local -a cleanup_pids=("${pids[@]-}")
+    local -a cleanup_pids=("${stack_pids[@]-}")
     for ((index = ${#cleanup_pids[@]} - 1; index >= 0; index--)); do
       pid="${cleanup_pids[$index]}"
       kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
@@ -632,7 +638,7 @@ start_all() {
     for pid in "${cleanup_pids[@]}"; do
       wait "$pid" 2>/dev/null || true
     done
-    echo "Local stack stopped. Logs retained at $log_directory"
+    echo "Local stack stopped. Logs retained at $stack_log_directory"
     exit "$exit_code"
   }
   trap cleanup EXIT INT TERM
@@ -643,7 +649,7 @@ start_all() {
     ensure_port_available "Temporal" "127.0.0.1" "7233"
     echo "Starting local Temporal server."
     start_background "temporal" "$TEMPORAL_CLI" server start-dev
-    wait_for_temporal "$log_directory/temporal.log"
+    wait_for_temporal "$stack_log_directory/temporal.log"
   else
     echo "Temporal is not reachable at $TEMPORAL_ENDPOINT and cannot be started automatically for a non-local endpoint." >&2
     echo "Start the configured Temporal server, then run this script again." >&2
@@ -686,7 +692,7 @@ start_all() {
   done
   if ! curl --silent --show-error --fail --max-time 2 "$RESTATE_ADMIN_URL/deployments" 2>/dev/null | grep -Fq "$RESTATE_SERVICE_URL"; then
     echo "Restate service could not be registered at $RESTATE_SERVICE_URL." >&2
-    echo "Check $log_directory/restate-server.log and $log_directory/restate.log." >&2
+    echo "Check $stack_log_directory/restate-server.log and $stack_log_directory/restate.log." >&2
     return 1
   fi
 
@@ -747,7 +753,7 @@ start_all() {
   stack_processes_alive
   wait_for_http "Web app" "http://${WEB_HOST}:${WEB_PORT}"
   stack_processes_alive
-  wait_for_worker "$log_directory/worker.log"
+  wait_for_worker "$stack_log_directory/worker.log"
 
   echo "Agent Harness Lab local stack is ready."
   echo "  Web:        http://${WEB_HOST}:${WEB_PORT}"
@@ -757,7 +763,7 @@ start_all() {
   echo "  LangGraph:  $LANGGRAPH_SERVICE_URL"
   echo "  Fixture:    $LOCAL_FIXTURE_URL"
   echo "  Vercel:     $VERCEL_WORKFLOWS_SERVICE_URL"
-  echo "  Logs:       $log_directory"
+  echo "  Logs:       $stack_log_directory"
   echo "Press Ctrl-C to stop the Lab processes. An existing Temporal server is left running."
 
   while :; do

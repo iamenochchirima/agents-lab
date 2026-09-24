@@ -1,11 +1,21 @@
-import { calculateContextBudget } from "../../capabilities/context/budget.js";
 import type {
   ContextBudget,
   ContextBudgetPolicy,
   ContextMessage,
   ContextTokenCounter,
 } from "../../capabilities/context/contracts.js";
+import type { StudioContextDecisionEvidence, StudioContextSourceGroup } from "./context-research-contracts.js";
 import type { StudioContextEvidence, StudioStrategyVariant } from "../domain/types.js";
+import {
+  DeterministicCompactionStrategy,
+  GroupAwareSlidingWindowStrategy,
+  HierarchicalSummaryStrategy,
+  RelevanceRankedGroupsStrategy,
+  selectGroupAwareRecentMessages,
+  TokenBudgetAllocationStrategy,
+  recoverContextAfterProviderOverflow,
+  resultForResearch,
+} from "./context-research.js";
 
 export interface ContextAssemblyInput {
   readonly trialId: string;
@@ -15,6 +25,8 @@ export interface ContextAssemblyInput {
   readonly budgetPolicy: ContextBudgetPolicy;
   readonly tokenCounter: ContextTokenCounter;
   readonly strategy: StudioStrategyVariant;
+  /** Optional richer source metadata; message grouping remains backward compatible. */
+  readonly sourceGroups?: readonly StudioContextSourceGroup[];
 }
 
 export interface ContextAssemblyResult {
@@ -24,6 +36,8 @@ export interface ContextAssemblyResult {
   readonly summarizedMessageIds: readonly string[];
   readonly budget: ContextBudget;
   readonly decision: StudioContextEvidence["decision"];
+  /** Additive research projection; legacy callers can ignore it. */
+  readonly research?: StudioContextDecisionEvidence;
 }
 
 export interface ContextStrategy {
@@ -69,12 +83,7 @@ export class FullHistoryStrategy implements ContextStrategy {
 
   assemble(input: ContextAssemblyInput): ContextAssemblyResult {
     const messages = [...input.messages];
-    const budget = calculateContextBudget(
-      input.contextWindowTokens,
-      input.tokenCounter.count(messages),
-      input.budgetPolicy,
-    );
-    return resultFor(messages, input.messages, budget);
+    return resultForResearch(input, messages);
   }
 }
 
@@ -89,15 +98,11 @@ export class SlidingWindowStrategy implements ContextStrategy {
       input.strategy.parameters.recentMessages,
       4,
     );
-    const systemMessages = input.messages.filter((message) => message.role === "system");
-    const nonSystemMessages = input.messages.filter((message) => message.role !== "system");
-    const messages = [...systemMessages, ...nonSystemMessages.slice(-recentMessages)];
-    const budget = calculateContextBudget(
-      input.contextWindowTokens,
-      input.tokenCounter.count(messages),
-      input.budgetPolicy,
-    );
-    return resultFor(messages, input.messages, budget);
+    const groupAtomic = input.strategy.parameters.groupAtomic === "true" && input.messages.some((message) => message.groupId !== undefined);
+    const messages = groupAtomic
+      ? selectGroupAwareRecentMessages(input, input.strategy.parameters.recentGroups ?? String(recentMessages)).messages
+      : [...input.messages.filter((message) => message.role === "system"), ...input.messages.filter((message) => message.role !== "system").slice(-recentMessages)];
+    return resultForResearch(input, messages);
   }
 }
 
@@ -126,38 +131,8 @@ export class RelevanceRankedStrategy implements ContextStrategy {
       .sort((left, right) => left.index - right.index)
       .map((entry) => entry.message);
     const messages = [...systemMessages, ...rankedMessages];
-    const budget = calculateContextBudget(
-      input.contextWindowTokens,
-      input.tokenCounter.count(messages),
-      input.budgetPolicy,
-    );
-    return resultFor(messages, input.messages, budget);
+    return resultForResearch(input, messages);
   }
-}
-
-function resultFor(
-  retainedMessages: readonly ContextMessage[],
-  allMessages: readonly ContextMessage[],
-  budget: ContextBudget,
-): ContextAssemblyResult {
-  const retainedIds = new Set(retainedMessages.map((message) => message.messageId));
-  const retainedMessageIds = retainedMessages.map((message) => message.messageId);
-  const omittedMessageIds = allMessages
-    .filter((message) => !retainedIds.has(message.messageId))
-    .map((message) => message.messageId);
-  const decision = budget.quality === "unknown"
-    ? "unknown-budget"
-    : budget.pressure === "exhausted"
-      ? "over-budget"
-      : "within-budget";
-  return {
-    messages: retainedMessages,
-    retainedMessageIds,
-    omittedMessageIds,
-    summarizedMessageIds: [],
-    budget,
-    decision,
-  };
 }
 
 function parseBoundedParameter(strategyId: string, parameterId: string, value: string | undefined, defaultValue: number): number {
@@ -197,3 +172,12 @@ const STOP_WORDS = new Set([
   "was",
   "use",
 ]);
+
+export {
+  DeterministicCompactionStrategy,
+  GroupAwareSlidingWindowStrategy,
+  HierarchicalSummaryStrategy,
+  RelevanceRankedGroupsStrategy,
+  TokenBudgetAllocationStrategy,
+  recoverContextAfterProviderOverflow,
+} from "./context-research.js";

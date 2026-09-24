@@ -11,7 +11,9 @@ import {
   type StudioFailureInjector,
 } from "../../src/studio/application/comparison-service.js";
 import type { StudioComparisonRequest, StudioMemoryStore, StudioModelAdapter } from "../../src/studio/index.js";
+import { StudioContextOverflowError, StudioMemoryCancellationError } from "../../src/studio/index.js";
 import { FixtureMemoryStore } from "../../src/studio/runtime/baseline-components.js";
+import { ReplayEnvironmentAssembler } from "../../src/studio/runtime/environment.js";
 
 test("an interrupted comparison is exposed as recovery_required without a fabricated parent result", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-recovery-"));
@@ -258,6 +260,83 @@ test("cancellation during a model call leaves only the in-flight trial cancelled
   }
 });
 
+test("provider Context overflow gets one changed-input recovery and preserves the recovery evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-context-overflow-"));
+  try {
+    let calls = 0;
+    const model: StudioModelAdapter = {
+      provider: "replay",
+      model: "overflow-recovery-test-model",
+      async complete(request) {
+        calls += 1;
+        if (calls === 1) throw new StudioContextOverflowError();
+        return { output: request.expectedAnswer ?? "completed", inputTokens: null, outputTokens: null };
+      },
+    };
+    const service = new StudioComparisonService({ evidence: new StudioEvidenceStore(root), model });
+    const completed = await service.create(comparisonRequest("context-overflow-recovery-1"));
+
+    assert.equal(completed.status, "completed");
+    assert.equal(calls, 3);
+    assert.equal(completed.metrics?.modelCallCount, 3);
+    assert.equal(completed.trials[0]?.turns[0]?.metrics.modelCalls, 2);
+    assert.equal(completed.trials[0]?.context?.research?.compaction.trigger, "provider-overflow");
+    assert.equal(completed.events.filter((event) => event.kind === "ContextOverflowRecovery").length, 1);
+    assert.equal(completed.events.some((event) => event.kind === "ModelCompleted"), true);
+    assert.equal(completed.trials[0]?.context?.research?.compaction.summaryMessageId !== null, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("unrecoverable provider Context overflow fails without fabricating a model or turn result", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-context-overflow-failed-"));
+  try {
+    const model: StudioModelAdapter = {
+      provider: "replay",
+      model: "overflow-failure-test-model",
+      async complete() {
+        throw new StudioContextOverflowError("provider limit remains exceeded after the bounded recovery attempt");
+      },
+    };
+    const service = new StudioComparisonService({ evidence: new StudioEvidenceStore(root), model });
+    const failed = await service.create(comparisonRequest("context-overflow-failure-1"));
+
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.trials[0]?.result?.status, "failed");
+    assert.equal(failed.trials[0]?.turns.length, 0);
+    assert.equal(failed.events.filter((event) => event.kind === "ContextOverflowRecovery").length, 1);
+    assert.equal(failed.events.some((event) => event.kind === "ModelCompleted"), false);
+    assert.equal(failed.metrics?.completedTurnCount, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an over-limit Context comparison fails before model dispatch without fabricated evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-context-over-limit-"));
+  try {
+    const replayEnvironment = new ReplayEnvironmentAssembler();
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      environment: {
+        assemble(manifest, scenario) {
+          return { ...replayEnvironment.assemble(manifest, scenario), contextWindowTokens: 40 };
+        },
+      },
+    });
+    const failed = await service.create(comparisonRequest("context-over-limit-1"));
+
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.trials[0]?.result?.status, "failed");
+    assert.equal(failed.trials[0]?.turns.length, 0);
+    assert.equal(failed.events.some((event) => event.kind === "ModelRequested"), false);
+    assert.equal(failed.metrics?.completedTurnCount, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cancellation during Memory retrieval leaves no fabricated turn evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-studio-memory-read-cancel-"));
   try {
@@ -303,6 +382,55 @@ test("cancellation during Memory persistence leaves prior turns intact and the c
     assert.equal(completed.status, "cancelled");
     assert.equal(cancelled.trials[0]?.result?.status, "cancelled");
     assert.deepEqual(cancelled.trials[0]?.turns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Memory persistence cancellation is classified in the result and event stream", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-studio-memory-cancellation-evidence-"));
+  try {
+    const service = new StudioComparisonService({
+      evidence: new StudioEvidenceStore(root),
+      memoryFactory: () => ({
+        adapterId: "cancellation-memory",
+        adapterVersion: "1",
+        scope: "semantic" as const,
+        async read() {
+          return emptyMemoryRead();
+        },
+        async write() {
+          throw new StudioMemoryCancellationError(
+            "after-persistence",
+            true,
+            "applied",
+            "Memory persistence completed but cancellation was observed before acknowledgement.",
+          );
+        },
+        async consolidate() {
+          return emptyMemoryConsolidation();
+        },
+      }),
+    });
+
+    const cancelled = await service.create(multiturnMemoryRequest("memory-cancellation-evidence-1"));
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(cancelled.result?.error?.code, "STUDIO_CANCELLED");
+    assert.deepEqual(cancelled.result?.error?.details, {
+      memoryCancellationPhase: "after-persistence",
+      memoryPersistenceOutcome: "applied",
+      memoryPersisted: true,
+    });
+    const cancellationEvent = cancelled.events.find((event) => event.kind === "MemoryPersistenceCancelled");
+    assert.deepEqual(cancellationEvent?.payload, {
+      trialId: cancelled.trials[0]?.manifest.trialId,
+      turnId: "turn-01-learn",
+      adapterId: "cancellation-memory",
+      adapterVersion: "1",
+      phase: "after-persistence",
+      persisted: true,
+      persistenceOutcome: "applied",
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -68,6 +68,23 @@ test("Studio OpenRouter adapter classifies provider errors without exposing cred
   );
 });
 
+test("Studio OpenRouter adapter classifies provider context overflow as recoverable", async () => {
+  const adapter = new OpenRouterModelAdapter({
+    apiKey: "test-key",
+    model: "openai/gpt-test",
+    baseUrl: "https://openrouter.example",
+    fetchImplementation: async () => new Response(JSON.stringify({ error: { message: "maximum context length is 4096 tokens" } }), { status: 400 }),
+  });
+
+  await assert.rejects(
+    () => adapter.complete({ model: "openai/gpt-test", task: "task", seed: "seed", messages: [] }),
+    (error: unknown) => error instanceof StudioOpenRouterError
+      && error.details.code === "OPENROUTER_CONTEXT_OVERFLOW"
+      && error.details.retryable
+      && error.details.requestSent,
+  );
+});
+
 test("Studio OpenRouter adapter rejects an oversized request before dispatch", async () => {
   let dispatched = false;
   const adapter = new OpenRouterModelAdapter({

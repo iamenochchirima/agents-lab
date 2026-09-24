@@ -4,7 +4,7 @@ import { StudioComparisonService } from "./application/comparison-service.js";
 import { StudioEvidenceStore } from "./adapters/evidence-store.js";
 import type { StudioModelAdapter } from "./adapters/replay-model.js";
 import { registerStudioRoutes } from "./http/routes.js";
-import { DEFAULT_STUDIO_MEMORY_LIMITS, FileStudioMemoryRepository, InMemoryStudioMemoryRepository, PolicyMemoryStore, memoryPolicies } from "./memory/index.js";
+import { DEFAULT_STUDIO_MEMORY_LIMITS, FileStudioMemoryRepository, InMemoryStudioMemoryRepository, PolicyMemoryStore, memoryPolicies, type StudioMemoryLimits } from "./memory/index.js";
 import type { StudioMemoryStore } from "./runtime/contracts.js";
 
 export interface StudioModule {
@@ -17,6 +17,7 @@ export interface StudioModuleOptions {
   readonly model?: StudioModelAdapter;
   readonly now?: () => string;
   readonly memoryFactory?: ConstructorParameters<typeof StudioComparisonService>[0]["memoryFactory"];
+  readonly memoryLimits?: StudioMemoryLimits;
 }
 
 /**
@@ -25,10 +26,12 @@ export interface StudioModuleOptions {
  */
 export function createStudioModule(runsRoot: string, options: StudioModuleOptions = {}): StudioModule {
   const evidence = new StudioEvidenceStore(runsRoot);
+  const memoryLimits = options.memoryLimits ?? DEFAULT_STUDIO_MEMORY_LIMITS;
   const policies = new Map(memoryPolicies().map((policy) => [policy.adapterId, policy]));
   const createMemoryStore = (input: Parameters<NonNullable<StudioModuleOptions["memoryFactory"]>>[0]): StudioMemoryStore => {
-    const policy = policies.get(input.strategy.id);
-    if (!policy) throw new Error(`Unknown Studio Memory policy: ${input.strategy.id}.`);
+    const memoryStrategy = input.memoryStrategy ?? input.strategy;
+    const policy = policies.get(memoryStrategy.id);
+    if (!policy) throw new Error(`Unknown Studio Memory policy: ${memoryStrategy.id}.`);
     const namespace = {
       comparisonId: input.comparisonId,
       trialId: input.trialId,
@@ -37,12 +40,12 @@ export function createStudioModule(runsRoot: string, options: StudioModuleOption
     } as const;
     const durable = policy.scope !== "working" && policy.scope !== "none";
     const repository = policy.scope === "working"
-      ? new InMemoryStudioMemoryRepository(namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now)
-      : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace, DEFAULT_STUDIO_MEMORY_LIMITS, options.now);
+      ? new InMemoryStudioMemoryRepository(namespace, memoryLimits, options.now)
+      : new FileStudioMemoryRepository(evidence.memoryDirectory(input.comparisonId, input.trialId), namespace, memoryLimits, options.now);
     return new PolicyMemoryStore(
       policy,
       repository,
-      DEFAULT_STUDIO_MEMORY_LIMITS,
+      memoryLimits,
       durable ? () => createMemoryStore(input) : undefined,
     );
   };

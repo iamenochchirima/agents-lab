@@ -25,6 +25,17 @@ export interface StudioModelAdapter {
   complete(request: StudioModelRequest, signal?: AbortSignal): Promise<StudioModelResponse>;
 }
 
+/** Provider/model error that is safe to retry only with a changed Context input. */
+export class StudioContextOverflowError extends Error {
+  readonly code = "STUDIO_CONTEXT_OVERFLOW" as const;
+  readonly retryable = true;
+
+  constructor(message = "The model provider rejected the Context because it exceeded its input limit.") {
+    super(message);
+    this.name = "StudioContextOverflowError";
+  }
+}
+
 /**
  * This adapter makes the model boundary reproducible. The optional fixture
  * answer is returned unchanged, whether or not the context contained the

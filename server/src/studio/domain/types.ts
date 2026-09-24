@@ -8,6 +8,11 @@ import type {
   StudioMemoryScope,
   StudioMemorySeed,
 } from "../memory/contracts.js";
+import type {
+  StudioContextDecisionEvidence,
+  StudioContextSourceClass,
+} from "../strategies/context-research-contracts.js";
+import type { ContextPressure } from "../../capabilities/context/contracts.js";
 
 export const STUDIO_SCHEMA_VERSION = 1 as const;
 export const STUDIO_CONTEXT_COMPONENT = "context-management" as const;
@@ -150,6 +155,8 @@ export interface StudioExperimentDefinition {
     readonly version: string;
   };
   readonly fixedContextStrategy?: StudioStrategyVariant;
+  /** Context comparisons use this policy as a fixed Memory dependency. */
+  readonly fixedMemoryStrategy?: StudioStrategyVariant;
   readonly strategies: readonly StudioStrategyVariant[];
 }
 
@@ -212,6 +219,8 @@ export interface StudioContextEvidence {
   readonly messages: readonly ContextMessage[];
   readonly budget: ContextBudget;
   readonly decision: "within-budget" | "over-budget" | "unknown-budget";
+  /** Additive research projection; legacy context evidence remains readable. */
+  readonly research?: StudioContextDecisionEvidence;
 }
 
 export interface StudioTrialResult {
@@ -284,12 +293,19 @@ export interface StudioTurnMetrics {
   readonly activeRecordCount: number;
   readonly requiredRecordHit: boolean | null;
   readonly stateRecovered: boolean;
+  readonly contextRetainedSourceCount: number;
+  readonly contextOmittedSourceCount: number;
+  readonly contextSummarizedSourceCount: number;
+  readonly contextCompactionCount: number;
+  readonly contextPressure: ContextPressure;
+  readonly contextOmittedBySourceClass: Readonly<Record<StudioContextSourceClass, number>>;
   readonly measurementBasis: {
     readonly contextTokens: string;
     readonly modelTokens: string;
     readonly latency: string;
     readonly cost: string;
     readonly memoryCounts: string;
+    readonly contextCounts: string;
   };
 }
 
@@ -311,6 +327,7 @@ export interface StudioRunError {
   readonly code: string;
   readonly message: string;
   readonly retryable: boolean;
+  readonly details?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface StudioEventIntent<TPayload extends Record<string, unknown> = Record<string, unknown>> {
@@ -360,6 +377,13 @@ export interface StudioMetrics {
   readonly memoryExpiredCount: number;
   readonly recoveredStateCount: number;
   readonly maxActiveRecordCount: number;
+  readonly contextRetainedSourceCount: number;
+  readonly contextOmittedSourceCount: number;
+  readonly contextSummarizedSourceCount: number;
+  readonly contextCompactionCount: number;
+  readonly contextOverflowRecoveryCount: number;
+  readonly contextPressureEventCount: number;
+  readonly contextOmittedBySourceClass: Readonly<Record<StudioContextSourceClass, number>>;
   readonly measurementBasis: StudioTurnMetrics["measurementBasis"];
 }
 

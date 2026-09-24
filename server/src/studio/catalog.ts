@@ -1,14 +1,20 @@
 import type { ContextMessage } from "../capabilities/context/contracts.js";
 import {
+  DeterministicCompactionStrategy,
   FullHistoryStrategy,
+  GroupAwareSlidingWindowStrategy,
+  HierarchicalSummaryStrategy,
   RelevanceRankedStrategy,
+  RelevanceRankedGroupsStrategy,
   SlidingWindowStrategy,
+  TokenBudgetAllocationStrategy,
   ContextStrategyRegistry,
 } from "./strategies/index.js";
 import type {
   StudioCatalogProjection,
   StudioComponentDescriptor,
   StudioEnvironmentProfile,
+  StudioExperimentDescriptor,
   StudioExperimentDefinition,
   StudioScenarioCase,
   StudioScenarioTurn,
@@ -51,7 +57,7 @@ export const replayEnvironment: StudioEnvironmentProfile = {
   contextWindowTokens: 1_200,
   reservedOutputTokens: 240,
   safetyMarginTokens: 60,
-  maxStrategies: 3,
+  maxStrategies: 6,
 };
 
 const sessionId = "studio-context-old-fact";
@@ -88,6 +94,119 @@ export const contextExperiment: StudioExperimentDefinition = {
   strategies: [
     { id: "full-history", version: "1", parameters: {} },
     { id: "sliding-window", version: "1", parameters: { recentMessages: "4" } },
+  ],
+};
+
+const contextResearchSessionId = "studio-context-research-boundary";
+
+export const contextResearchScenario: StudioScenarioCase = {
+  id: "context-research-boundary",
+  version: "1",
+  name: "Context source boundary",
+  task: "What language should the support agent use for this account?",
+  requiredMessageId: "context-research-active-question",
+  requiredMemoryRecordId: "context-research-memory-language",
+  expectedAnswer: "The support agent should use English for this account.",
+  memorySeeds: [{
+    recordId: "context-research-memory-language",
+    scope: "semantic",
+    content: "The preferred support language for this account is English.",
+    logicalKey: "support-language",
+    source: "context-research-fixture",
+    sourceMessageIds: ["context-research-transcript-preference"],
+    createdAt: "2026-09-19T23:00:00.000Z",
+    metadata: { fixture: "context-research-boundary", trust: "retrieved-untrusted" },
+  }],
+  messages: [
+    {
+      schemaVersion: 1,
+      messageId: "context-research-instruction",
+      sessionId: contextResearchSessionId,
+      sequence: 0,
+      role: "system",
+      content: "Keep account data private and answer only from the supplied evidence.",
+      source: "system",
+      createdAt: "2026-09-20T00:00:00.000Z",
+      metadata: { sourceClass: "instruction", trust: "trusted" },
+    },
+    {
+      schemaVersion: 1,
+      messageId: "context-research-transcript-preference",
+      sessionId: contextResearchSessionId,
+      sequence: 1,
+      role: "user",
+      content: "The account support language is English.",
+      source: "transcript",
+      groupId: "context-research-transcript-1",
+      createdAt: "2026-09-20T00:00:01.000Z",
+      metadata: { sourceClass: "transcript", trust: "trusted" },
+    },
+    {
+      schemaVersion: 1,
+      messageId: "context-research-transcript-invoice",
+      sessionId: contextResearchSessionId,
+      sequence: 2,
+      role: "user",
+      content: "The invoice has a service fee after the plan change.",
+      source: "transcript",
+      groupId: "context-research-transcript-2",
+      createdAt: "2026-09-20T00:00:02.000Z",
+      metadata: { sourceClass: "transcript", trust: "trusted" },
+    },
+    {
+      schemaVersion: 1,
+      messageId: "context-research-tool-call",
+      sessionId: contextResearchSessionId,
+      sequence: 3,
+      role: "assistant",
+      content: "account_lookup({ account: AC-4821 })",
+      source: "tools",
+      groupId: "context-research-tool-round-1",
+      createdAt: "2026-09-20T00:00:03.000Z",
+      metadata: { sourceClass: "tool-result", trust: "untrusted", toolName: "account_lookup" },
+    },
+    {
+      schemaVersion: 1,
+      messageId: "context-research-tool-result",
+      sessionId: contextResearchSessionId,
+      sequence: 4,
+      role: "tool",
+      content: "Account AC-4821 has an English support preference and an open invoice.",
+      source: "tools",
+      groupId: "context-research-tool-round-1",
+      createdAt: "2026-09-20T00:00:04.000Z",
+      metadata: { sourceClass: "tool-result", trust: "untrusted", toolName: "account_lookup" },
+    },
+    {
+      schemaVersion: 1,
+      messageId: "context-research-active-question",
+      sessionId: contextResearchSessionId,
+      sequence: 5,
+      role: "user",
+      content: "What language should the support agent use for this account?",
+      source: "transcript",
+      groupId: "context-research-active-turn",
+      createdAt: "2026-09-20T00:00:05.000Z",
+      metadata: { sourceClass: "active-turn", trust: "trusted" },
+    },
+  ],
+};
+
+export const contextResearchExperiment: StudioExperimentDefinition = {
+  id: "compare-context-research-boundary",
+  version: "1",
+  name: "Compare Context source and pressure strategies",
+  hypothesis: "Source-aware retention, deterministic compaction, and explicit allocation expose different model-visible evidence under the same Memory state.",
+  changedComponent: "context-management",
+  fixedMemoryStrategy: { id: "semantic-keyed-facts", version: "1", parameters: {} },
+  scenario: { id: contextResearchScenario.id, version: contextResearchScenario.version },
+  strategies: [
+    { id: "full-history", version: "1", parameters: {} },
+    { id: "group-aware-sliding-window", version: "1", parameters: { recentGroups: "2" } },
+    { id: "relevance-ranked-groups", version: "1", parameters: { maxGroups: "4" } },
+    { id: "deterministic-compaction", version: "1", parameters: { recentGroups: "3", maxSummaryCharacters: "1200" } },
+    { id: "hierarchical-summary", version: "1", parameters: { recentGroups: "3", maxSummaryCharacters: "1200" } },
+    { id: "token-budget-allocation", version: "1", parameters: { instructionPercent: "20", activeTurnPercent: "25", transcriptPercent: "25", memoryPercent: "15", toolResultPercent: "15", summaryPercent: "0" } },
   ],
 };
 
@@ -620,7 +739,10 @@ const contextStrategyDescriptors = [
     version: "1",
     name: "Sliding window",
     summary: "Retain system messages and the newest configured non-system messages.",
-    parameters: [{ id: "recentMessages", description: "Number of newest non-system messages to retain.", defaultValue: "4", options: ["1", "2", "4", "8"] }],
+    parameters: [
+      { id: "recentMessages", description: "Number of newest non-system messages to retain.", defaultValue: "4", options: ["1", "2", "4", "8"] },
+      { id: "groupAtomic", description: "When enabled, retain complete declared source groups.", defaultValue: "false", options: ["false", "true"] },
+    ],
   },
   {
     id: "relevance-ranked",
@@ -628,6 +750,48 @@ const contextStrategyDescriptors = [
     name: "Relevance ranked",
     summary: "Retain non-system messages with the most lexical overlap with the task, then restore source order.",
     parameters: [{ id: "maxMessages", description: "Maximum number of highest-scoring non-system messages to retain.", defaultValue: "4", options: ["1", "2", "4", "8"] }],
+  },
+  {
+    id: "group-aware-sliding-window",
+    version: "1",
+    name: "Group-aware sliding window",
+    summary: "Retain complete recent source groups without splitting tool calls from their results.",
+    parameters: [{ id: "recentGroups", description: "Number of newest eligible groups to retain.", defaultValue: "2", options: ["1", "2", "4", "8"] }],
+  },
+  {
+    id: "relevance-ranked-groups",
+    version: "1",
+    name: "Relevance-ranked groups",
+    summary: "Rank complete source groups with deterministic lexical scores and stable tie-breaking.",
+    parameters: [{ id: "maxGroups", description: "Maximum number of eligible groups to retain.", defaultValue: "4", options: ["1", "2", "4", "8"] }],
+  },
+  {
+    id: "deterministic-compaction",
+    version: "1",
+    name: "Deterministic compaction",
+    summary: "Replace eligible older groups with a bounded deterministic summary fixture.",
+      parameters: [{ id: "recentGroups", description: "Maximum recent groups kept outside the deterministic summary.", defaultValue: "3", options: ["1", "2", "3", "4"] }, { id: "maxSummaryCharacters", description: "Bound the deterministic summary fixture.", defaultValue: "1200", options: ["256", "512", "1200"] }],
+  },
+  {
+    id: "hierarchical-summary",
+    version: "1",
+    name: "Hierarchical summary",
+    summary: "Create deterministic phase summaries with explicit source coverage and limitations.",
+    parameters: [{ id: "recentGroups", description: "Maximum recent groups kept alongside phase summaries.", defaultValue: "3", options: ["1", "2", "3", "4"] }, { id: "maxSummaryCharacters", description: "Bound each deterministic summary fixture.", defaultValue: "1200", options: ["256", "512", "1200"] }],
+  },
+  {
+    id: "token-budget-allocation",
+    version: "1",
+    name: "Token-budget allocation",
+    summary: "Allocate bounded input tokens across source classes before selecting messages.",
+    parameters: [
+      { id: "instructionPercent", description: "Instruction-class share of available input tokens.", defaultValue: "20", options: ["0", "20", "40", "60"] },
+      { id: "activeTurnPercent", description: "Active-turn share of available input tokens.", defaultValue: "25", options: ["0", "25", "40", "60"] },
+      { id: "transcriptPercent", description: "Transcript share of available input tokens.", defaultValue: "25", options: ["0", "25", "40", "60"] },
+      { id: "memoryPercent", description: "Memory share of available input tokens.", defaultValue: "15", options: ["0", "15", "30", "60"] },
+      { id: "toolResultPercent", description: "Tool-result share of available input tokens.", defaultValue: "15", options: ["0", "15", "30", "60"] },
+      { id: "summaryPercent", description: "Summary share of available input tokens.", defaultValue: "0", options: ["0", "10", "20"] },
+    ],
   },
 ] as const;
 
@@ -678,21 +842,10 @@ const componentDescriptors: readonly StudioComponentDescriptor[] = [
     summary: "Choose and budget what reaches the model this turn.",
     status: "available",
     strategies: contextStrategyDescriptors,
-    experiments: [{
-      id: contextExperiment.id,
-      version: contextExperiment.version,
-      name: contextExperiment.name,
-      hypothesis: contextExperiment.hypothesis,
-      scenario: {
-        id: contextScenario.id,
-        version: contextScenario.version,
-        name: contextScenario.name,
-        task: contextScenario.task,
-        intendedObservation: "Compare whether an older account preference remains in the model-bound context.",
-        controls: ["scenario fixture", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
-      },
-      strategies: contextStrategyDescriptors,
-    }],
+    experiments: [
+      contextExperimentDescriptor(contextExperiment, contextScenario, "Compare whether an older account preference remains in the model-bound context."),
+      contextExperimentDescriptor(contextResearchExperiment, contextResearchScenario, "Compare source-aware retention, deterministic summaries, and source-class allocation against one fixed Memory state."),
+    ],
   },
   plannedComponent("planning-reasoning", 3, "Planning / reasoning", "Compare ways to decompose and review work before acting."),
   {
@@ -738,7 +891,34 @@ export const contextStrategies = new ContextStrategyRegistry([
   new FullHistoryStrategy(),
   new SlidingWindowStrategy(),
   new RelevanceRankedStrategy(),
+  new GroupAwareSlidingWindowStrategy(),
+  new RelevanceRankedGroupsStrategy(),
+  new DeterministicCompactionStrategy(),
+  new HierarchicalSummaryStrategy(),
+  new TokenBudgetAllocationStrategy(),
 ]);
+
+function contextExperimentDescriptor(
+  experiment: StudioExperimentDefinition,
+  scenario: StudioScenarioCase,
+  intendedObservation: string,
+): StudioExperimentDescriptor {
+  return {
+    id: experiment.id,
+    version: experiment.version,
+    name: experiment.name,
+    hypothesis: experiment.hypothesis,
+    scenario: {
+      id: scenario.id,
+      version: scenario.version,
+      name: scenario.name,
+      task: scenario.task,
+      intendedObservation,
+      controls: ["scenario fixture", "fixed Memory policy", "replay model", "seed", "context window", "reserved output budget", "safety margin"],
+    },
+    strategies: experiment.strategies.map((strategy) => contextStrategyDescriptors.find((descriptor) => descriptor.id === strategy.id)).filter((descriptor) => descriptor !== undefined) as readonly StudioStrategyDescriptor[],
+  };
+}
 
 function plannedComponent(id: Exclude<StudioComponentDescriptor["id"], "context-management">, ordinal: number, name: string, summary: string): StudioComponentDescriptor {
   return { id, ordinal, name, summary, status: "planned", strategies: [], experiments: [] };
@@ -764,6 +944,12 @@ export function resolveStudioCatalog(request: {
       throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
     }
     return { system: studioSystem, environment: replayEnvironment, experiment: contextExperiment, scenario: contextScenario } as const;
+  }
+  if (request.experiment.id === contextResearchExperiment.id && request.experiment.version === contextResearchExperiment.version) {
+    if (request.experiment.scenario.id !== contextResearchScenario.id || request.experiment.scenario.version !== contextResearchScenario.version) {
+      throw new StudioCatalogError(`Unknown Studio scenario: ${request.experiment.scenario.id}@${request.experiment.scenario.version}.`);
+    }
+    return { system: studioSystem, environment: replayEnvironment, experiment: contextResearchExperiment, scenario: contextResearchScenario } as const;
   }
   if (request.experiment.id === memoryExperiment.id && request.experiment.version === memoryExperiment.version) {
     if (request.experiment.scenario.id !== memoryScenario.id || request.experiment.scenario.version !== memoryScenario.version) {

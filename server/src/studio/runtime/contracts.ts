@@ -35,8 +35,10 @@ export type StudioRuntimeEventKind =
   | "MemoryStatePersisted"
   | "MemoryStateRecovered"
   | "MemoryStoreReopened"
+  | "MemoryPersistenceCancelled"
   | "MemoryConsolidated"
   | "ContextAssembled"
+  | "ContextOverflowRecovery"
   | "PlanProduced"
   | "ControlLoopStarted"
   | "ModelRequested"
@@ -181,6 +183,7 @@ export interface HarnessTurnResult {
   readonly context: ContextAssemblyResult;
   readonly contextBudget: ContextBudget;
   readonly model: StudioModelResponse;
+  readonly modelCalls: number;
   readonly output: string;
   readonly grade: StudioGrade;
   readonly memory: StudioMemoryEvidence;

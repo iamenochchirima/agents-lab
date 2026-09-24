@@ -253,6 +253,13 @@ export function memoryRecordsAsMessages(records: readonly StudioMemoryRecord[], 
       memoryRevision: String(record.revision),
       memoryState: record.state,
       memoryTrust: "retrieved-untrusted",
+      memorySourceMessageIds: record.sourceMessageIds.join(","),
+      memoryComparisonId: record.namespace.comparisonId,
+      memoryTrialId: record.namespace.trialId,
+      memoryScenarioId: record.namespace.scenarioId,
+      memorySessionId: record.namespace.sessionId,
+      ...(record.logicalKey === null ? {} : { memoryLogicalKey: record.logicalKey }),
+      ...(record.supersedesRecordId === null ? {} : { memorySupersedesRecordId: record.supersedesRecordId }),
     },
   }));
 }

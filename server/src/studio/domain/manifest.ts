@@ -71,8 +71,8 @@ export function validateStudioComparisonRequest(request: StudioComparisonRequest
   }
 
   const strategies = request.experiment.subject.strategies;
-  if (!Array.isArray(strategies) || strategies.length < 2 || strategies.length > 3) {
-    throw new InvalidStudioRequestError("A Studio comparison must contain between 2 and 3 strategies.");
+  if (!Array.isArray(strategies) || strategies.length < 2 || strategies.length > 6) {
+    throw new InvalidStudioRequestError("A Studio comparison must contain between 2 and 6 strategies.");
   }
   const strategyIds = new Set<string>();
   for (const strategy of strategies) {
