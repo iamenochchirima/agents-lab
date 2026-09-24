@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "long-running-work": {
+      "source": "iamenochchirima/skills",
+      "sourceType": "github",
+      "skillPath": "skills/long-running-work/SKILL.md",
+      "computedHash": "a23e560ee71f02dca76dc955191c695c1710bf30ebebfeed51e83086703f11d0"
+    }
+  }
+}
