@@ -386,17 +386,18 @@ runner completing a fixed goal does not pass this checkpoint.
 - [x] Confirm the prepared Chrome lifecycle under this per-task manifest in the
       real TUI: an unlisted public origin opened and produced a fresh semantic
       observation. The requested heading itself was not verified.
-- [ ] Prove navigation between origins can preserve the same user task through
-      live link/redirect acceptance. The implementation can now replace the
-      immutable session after the model supplies a validated HTTPS destination
-      or chooses to continue to a safe current URL returned by exact Cua binding.
-      If binding cannot establish a safe destination, retain the refusal.
+- [x] Prove navigation between origins can preserve the same user task through
+      live link/redirect acceptance. On 2026-09-24, the real TUI handled both
+      the `www.ubuntu.com` → `ubuntu.com` redirect and an observed IANA link
+      from example.org. For the link, it rebound the exact browser window,
+      opened the validated destination in a new origin-scoped Cua session, and
+      answered from a fresh destination snapshot; the original click remained
+      durably ambiguous and was not replayed.
 
-**Checkpoint:** If an exact task-origin session cannot work, record the Cua
-limitation. That path has passed. A fresh immutable session is the supported
-mechanism for a model-supplied public HTTPS destination; live link and redirect
-continuation still require evidence. Do not build around an unavailable
-destination signal or permission mechanism.
+**Checkpoint passed:** A fresh immutable session is the supported mechanism
+for a validated public HTTPS destination. The live link run proves continuation
+from an observed destination, not that the ambiguous click itself succeeded.
+Do not build around an unavailable destination signal or permission mechanism.
 
 ### 3. Make arbitrary public sites work through the agent loop
 
@@ -456,7 +457,7 @@ coverage remain open questions.
       bring-to-front operation.
 - [ ] Prove multi-tab selection in a real TUI session. A 2026-09-24 attempt
       followed a link on `the-internet.herokuapp.com/windows`; Cua reported one
-      tab and the task exhausted its model rounds, so the attempt does not prove
+      tab and the task exhausted its model rounds, so that attempt did not prove
       multi-tab support or a Cua limitation. It did expose that listing tabs
       refreshes Cua's exact binding and invalidates old element refs. Anesu now
       clears those refs and requires a fresh snapshot before further action;
@@ -465,12 +466,19 @@ coverage remain open questions.
       a `target="_blank"` link. Anesu's Linux default is Cua `dom_event`; Cua
       0.28.2 documents this as synthetic dispatch that can be ignored when a
       page requires trusted user activation. Its trusted route refuses
-      standalone Linux Chromium rather than activating the window. The exact
-      popup-block reason was not returned by this run, so treat it as the likely
-      explanation, not directly observed proof. Do not replay the click or add
-      page-script/Playwright/desktop-focus fallbacks. A Cua-supported,
-      background-safe user-gesture route (or a separately designed approved
-      foreground route) is needed before claiming this works on Ubuntu.
+      standalone Linux Chromium rather than activating the window. A third run
+      explicitly selected `trusted`; Cua returned `browser_action_refused`
+      before dispatch and a fresh tab list still contained only the original
+      tab. The pinned TypeScript package has no browser tab-creation or
+      activation tool, and source inspection of the newer local Cua checkout
+      found no registered operation for one. The exact popup-block reason from
+      the synthetic route was not returned, so that explanation is likely, not
+      directly observed proof. Do not replay the click or add
+      page-script/Playwright/desktop-focus fallbacks. This capability remains
+      unsupported on the current standalone Ubuntu/Cua route; existing returned
+      opaque tab IDs remain usable through the tested typed tool loop. Revisit
+      when Cua provides a supported route or the plan explicitly adopts a
+      separately approved native-browser interaction.
 - [x] Add model-callable search without requiring a user-supplied URL. Bing is
       the default; `ANESU_BROWSER_SEARCH_PROVIDER` accepts `bing`, `duckduckgo`,
       or `google`. The tool opens the real results page through task-scoped Cua
@@ -551,10 +559,13 @@ coverage remain open questions.
       for consequential submissions and other higher-risk operations. Exact
       action prompts identify the current site and semantic target; the TUI does
       not label those approvals as a task-wide grant.
-- [ ] Run ordinary-language TUI tasks that search and follow a result, read
+- [x] Run ordinary-language TUI tasks that search and follow a result, read
       one public site, interact within a site, and follow a link to a second
-      public origin. Exercise an approved file transfer in the disposable
-      profile when its Cua contract is available.
+      public origin. The 2026-09-24 live runs cover a successful Bing result,
+      fresh public-page reads, same-origin form entry without submission,
+      approved upload with fresh filename evidence, and cross-origin IANA
+      continuation with the original click retained as ambiguous. These are
+      observed cases, not a claim that all providers or websites behave alike.
 
 ### 5. Focused verification and handoff
 

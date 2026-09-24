@@ -194,6 +194,14 @@ required by the acceptance path.
   this Ubuntu route remains unsupported/unverified until Cua provides a background-safe
   user-gesture path or a separately approved route; no Playwright, page-script, or desktop
   focus workaround is used.
+- A third disposable TUI run explicitly selected Cua's `trusted` click route for the same
+  link. Cua refused before dispatch (`browser_action_refused`); a fresh tab listing still
+  showed only the original tab. The installed `@trycua/cua-driver` 0.28.2 contract and the
+  inspected newer local Cua source do not register a browser tab-creation or activation
+  operation. This establishes a capability gap for the current standalone Ubuntu/Cua route,
+  not a universal limitation of Cua on every platform. Existing opaque IDs for tabs Cua has
+  already returned remain selectable through the typed tool path; creating a second tab is
+  not live-proven here. The synthetic route's exact popup-block reason remains unknown.
 - In the disposable local acceptance profile, a real TUI prompt opened
   `http://127.0.0.1:4173/files`, read `workspace/browser-acceptance.txt`, requested
   approval for the exact path and 41-byte size, assigned it through `browser_upload`,
