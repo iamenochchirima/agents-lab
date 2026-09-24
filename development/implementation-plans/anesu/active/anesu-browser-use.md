@@ -28,11 +28,13 @@ supplies a validated destination on a new public HTTPS origin, Anesu can end the
 old session and start a new one whose exact manifest includes only origins
 encountered in that approved task. It discards old tab references during the
 handoff. Live TUI runs prove one model-selected cross-origin navigation and one
-redirect handoff. A separate cross-origin link click reached IANA, but Cua marked
-the click outcome unknown while refusing the out-of-origin page read. The model
-recovered from a fresh exact bind and read the destination, but the turn still
-ended with an unknown task status. That path is evidence, not a passing
-cross-origin-link acceptance. Existing checks against private, local, and
+redirect handoff. In a separate link-following task, Cua marked the click
+ambiguous while refusing the out-of-origin page read. The model recovered from
+a fresh exact bind, opened the validated destination in a new exact-origin
+session, and answered from fresh page evidence. The turn completed, while the
+durable click record remained ambiguous; later evidence did not rewrite the
+earlier action as verified. This proves that recovery path, not every
+cross-origin site or interaction. Existing checks against private, local, and
 metadata destinations remain unless the user is using an explicitly configured
 local development profile.
 
@@ -253,18 +255,19 @@ unproven. No estimate guarantees an upstream Cua or provider change.
 - Known gaps: one live Bing search reached an official Python tutorial and
   returned page evidence; DuckDuckGo previously returned no semantic results and
   Google returned a CAPTCHA. Other providers and queries may still be blocked.
-  The example.org → IANA cross-origin link reached fresh destination content but
-  ended with a Cua-ambiguous click and `outcome-unknown` turn status. Multi-tab
+  The example.org → IANA cross-origin link reached fresh destination content
+  after Cua returned an ambiguous click; the turn completed from the fresh
+  destination evidence while the action record stayed ambiguous. Live multi-tab
   selection and downloads remain open. Downloads are implemented by Cua 0.28.2,
   but the public TypeScript `callTool` path strips the private MCP-host approval
   evidence that Cua requires. Text entry, keys, controls, and uploads keep their
   exact action approval. The task action budget is 8 by default, configurable
   within the existing 1–32 bound.
-- A real same-origin follow-up failed after 10 minutes 36 seconds idle: Anesu
-  allowed 30 minutes, while its Cua trusted session expired after 10 minutes.
-  The adapter and regression test now align both Cua TTLs to Anesu's 30-minute
-  limit; a fresh TUI session is still being checked beyond the old 10-minute
-  expiry before this is counted as verified.
+- A real same-origin follow-up previously failed after 10 minutes 36 seconds
+  idle because Cua's trusted session expired before Anesu's 30-minute limit.
+  The adapter now aligns Cua's TTLs with Anesu's 30-minute session. A later real
+  TUI follow-up after 11m02.754s reused the same session and returned fresh
+  `example.org` page evidence, closing that acceptance item.
 - Git state: branch `main`, baseline `ae1ad06`; the worktree contains
   concurrent Anesu changes. Preserve them and only touch files required by
   this plan.
@@ -290,27 +293,28 @@ unproven. No estimate guarantees an upstream Cua or provider change.
 - [x] On a user-named public site, a real TUI request follows a link and uses
       a supported page control through current Cua references, then reports
       the observed result or an explicit unknown outcome.
-- [ ] A real cross-origin link, redirect, and follow-up finish with an honest
+- [x] A real cross-origin link, redirect, and follow-up finish with an honest
       terminal status through Cua permission transitions, without stale refs or
       repeated origin prompts. Unrelated origins are never granted
       preemptively. One redirect and one model-selected cross-origin navigation
-      are live-proven. The IANA link test recovered and read destination content,
-      but ended `outcome-unknown` after Cua returned an ambiguous click result;
-      resolve that task-status gap before marking this complete.
+      are live-proven. In the IANA link run, the turn completed from a fresh
+      destination read while the click remained durably `ambiguous`; later
+      evidence did not rewrite the click as verified.
 - [x] Two unrelated public sites work in separate tasks without permission,
       tab, or session identity leaking between them. Same-origin follow-ups reuse
       the active isolated session; a separate task for another origin receives a
       fresh Cua session bound to that origin.
-- [ ] A browser explicitly left open for a follow-up remains usable after the
-      former 10-minute Cua idle limit. The adapter now configures the Cua idle
-      TTL to match Anesu's 30-minute managed session; require a real TUI
-      follow-up after more than 10 minutes before accepting the fix.
-- [ ] Same-origin reading, observed-link navigation, and bounded scrolling stay
+- [x] A browser explicitly left open for a follow-up remains usable after the
+      former 10-minute Cua idle limit. A real TUI session remained open for
+      11m02.754s; the next user turn reused it, took a fresh snapshot of
+      `example.org`, and answered `Example Domain`. The adapter configures Cua's
+      idle TTL to match Anesu's 30-minute managed session.
+- [x] Same-origin reading, observed-link navigation, and bounded scrolling stay
       within the approved task grant. Text entry, buttons and other controls,
       dialogs, and file transfers show the exact operation, target, and origin
       for fresh approval. Cross-origin navigation uses a new exact-manifest
-      session for a validated public HTTPS destination; live link/redirect
-      continuation remains to be proven.
+      session for a validated public HTTPS destination; live link and redirect
+      continuation have the bounded evidence recorded above.
 - [x] A real TUI task assigns an approved local file to a current file input,
       then inspects a fresh snapshot to verify the selected filename without
       submitting the form.
@@ -409,7 +413,9 @@ is not acceptance.
 **Acceptance evidence:** On 2026-09-23, `pnpm run chat` opened
 `https://example.org`; the normal model selected browser tools and answered
 “Example Domain” from fresh Cua state. This passes the open/read checkpoint.
-Live search completion and broader cross-origin browsing remain open items.
+A later live Bing search also completed one Python documentation task from fresh
+page evidence. Search-provider reliability and broader cross-origin site
+coverage remain open questions.
 
 ### 4. General interaction and origin changes
 
@@ -436,6 +442,35 @@ Live search completion and broader cross-origin browsing remain open items.
       `example.org` → same-origin follow-up → separate `example.com` task. A
       regression also verifies that opening a later task without a preceding
       `browser_start` cannot inherit origins from the previous task.
+- [x] Preserve an ambiguous cross-origin click record while allowing a later
+      fresh destination read to complete the user turn. On 2026-09-24, the real
+      TUI followed example.org's IANA link, rebound the exact Cua window, opened
+      the validated URL in a new exact-origin session, and answered from fresh
+      page evidence. The task completed; its click record remained `ambiguous`.
+- [x] Verify the managed browser after the former Cua idle expiry. On
+      2026-09-24, the same private TUI/Cua session was followed up after
+      11m02.754s; it reused the managed browser, observed `Example Domain` from
+      a fresh snapshot, and did not start or navigate another browser session.
+- [x] Pass the existing normal tool-loop regression for selecting an inactive
+      tab using its opaque Cua ID. The contract does not imply a
+      bring-to-front operation.
+- [ ] Prove multi-tab selection in a real TUI session. A 2026-09-24 attempt
+      followed a link on `the-internet.herokuapp.com/windows`; Cua reported one
+      tab and the task exhausted its model rounds, so the attempt does not prove
+      multi-tab support or a Cua limitation. It did expose that listing tabs
+      refreshes Cua's exact binding and invalidates old element refs. Anesu now
+      clears those refs and requires a fresh snapshot before further action;
+      live multiple-tab acceptance remains open. A follow-up run on the
+      deterministic local `/tabs` page reproduced the same one-tab result after
+      a `target="_blank"` link. Anesu's Linux default is Cua `dom_event`; Cua
+      0.28.2 documents this as synthetic dispatch that can be ignored when a
+      page requires trusted user activation. Its trusted route refuses
+      standalone Linux Chromium rather than activating the window. The exact
+      popup-block reason was not returned by this run, so treat it as the likely
+      explanation, not directly observed proof. Do not replay the click or add
+      page-script/Playwright/desktop-focus fallbacks. A Cua-supported,
+      background-safe user-gesture route (or a separately designed approved
+      foreground route) is needed before claiming this works on Ubuntu.
 - [x] Add model-callable search without requiring a user-supplied URL. Bing is
       the default; `ANESU_BROWSER_SEARCH_PROVIDER` accepts `bing`, `duckduckgo`,
       or `google`. The tool opens the real results page through task-scoped Cua
@@ -557,8 +592,10 @@ observed regression merely to move faster.
 
 ## Current position
 
-Milestones 1 and 3 are complete: the normal conversation model chooses typed
-browser tools, receives their Cua results, and controls continuation. Live TUI
+Milestones 1–4 are complete for the currently verified scope: the normal
+conversation model chooses typed browser tools, receives their Cua results,
+and controls continuation; search, form entry, exact-origin handoff, and
+same-origin persistence have live evidence. Live TUI
 runs prove public-site reading, same-origin link following, form entry without
 submission, and a local-file assignment followed by a fresh snapshot that shows
 the selected filename. Same-origin follow-ups keep their browser session; a
@@ -605,11 +642,15 @@ task action budget of three also interrupted the search attempt; the shared
 default is now eight and remains configurable within the existing 1–32 limit.
 Focused browser-tool and Cua-adapter tests previously passed 59/59. After the
 active-tab and default-budget changes, the full Anesu suite passed 735/735.
-The latest focused task/TUI regression run passes 35/35; rerun the full suite
-after this browser-session correction. Remaining live acceptance includes
-cross-origin terminal status, multiple-tab selection, and downloads.
-The pinned download-approval contract remains upstream; Anesu does not mutate
-manifests or add a second browser backend.
+The latest focused browser-tool and task-continuation suites pass 43/43,
+including durable ambiguous-action evidence and invalidation of stale element
+refs after tab listing. The existing inactive-tab tool-loop regression passes
+1/1. A real delayed follow-up after 11m02.754s reused the same session and read
+fresh page evidence. A separate real cross-origin link run completed from a
+fresh IANA read while retaining the click as ambiguous. Multi-tab live
+acceptance and downloads remain open. The pinned download-approval contract
+remains upstream; Anesu does not mutate manifests or add a second browser
+backend.
 
 On 2026-09-24, a real Bing search for official Python list-comprehension
 documentation returned 11.8 KB and 174 semantic refs. The model opened the
@@ -621,11 +662,12 @@ an intent-parser bug: “current browser” was treated as a request for the use
 personal profile. The parser now requires explicit personal or already-open
 profile wording, with a task-compiler regression and full TUI continuation test.
 
-A separate live example.org → IANA link action caused Cua to return an ambiguous
-click result while the origin-protected snapshot failed. Fresh exact binding
-then exposed IANA, and the model opened the new exact-origin session and read the
-page. The turn still ended with `computer task outcome unknown`. Do not mark the
-cross-origin-link acceptance complete until this terminal status is resolved.
+A separate live example.org → IANA link action caused Cua to return an
+ambiguous click result while the origin-protected snapshot failed. Fresh exact
+binding then exposed IANA, and the model opened a new exact-origin session and
+read the page. The turn completed from that fresh destination evidence; its
+durable click record remained ambiguous. Do not describe the click itself as
+verified.
 
 Approval tests continue to verify task admission separately from exact-action
 approval: a task grant covers observed links but not button clicks or text entry.

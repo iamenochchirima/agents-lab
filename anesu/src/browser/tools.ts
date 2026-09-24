@@ -379,7 +379,7 @@ export const BROWSER_TOOL_DEFINITIONS = [
   },
   {
     name: "browser_tabs",
-    description: "List tabs owned by the active browser session and identify the active tab when Cua can prove it. Tab IDs are opaque identifiers, not tab numbers. After a link may have opened a new tab, inspect this list and use its freshly reported active tab instead of reusing an old ID. If page access is refused for an out-of-manifest origin, inspect the active tab reported here; do not assume a previous tab ID remains valid after Cua rebinds.",
+    description: "List tabs owned by the active browser session and identify the active tab when Cua can prove it. Tab IDs are opaque identifiers, not tab numbers. Listing tabs refreshes Cua's exact browser binding and invalidates element references from earlier snapshots; take a fresh browser_snapshot for the selected tab before acting. If page access is refused for an out-of-manifest origin, inspect the active tab reported here; do not assume a previous tab ID remains valid after Cua rebinds.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -868,6 +868,10 @@ export class BrowserTools {
   private async tabs(signal?: AbortSignal): Promise<BrowserToolOutcome> {
     const sessionId = this.requireSession();
     const tabs = await this.options.manager.listTabs(sessionId, signal);
+    // Cua refreshes its exact window binding here. That replaces the opaque
+    // target capability and each tab's document identity, so element refs from
+    // any earlier snapshot must not remain usable after a tab listing.
+    this.snapshots.clear();
     const activeTab = tabs.find((tab) => tab.active === true);
     if (activeTab) this.activeTabId = activeTab.tabId;
     else if (!this.activeTabId || !tabs.some((tab) => tab.tabId === this.activeTabId)) {

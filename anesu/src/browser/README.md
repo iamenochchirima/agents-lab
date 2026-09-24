@@ -47,6 +47,11 @@ action against the current snapshot and Cua declaration, then returns the typed 
 refusal to the model. A Cua dispatch acknowledgement is not proof of a consequential
 result; uncertain actions invalidate their refs and are not replayed.
 
+Listing tabs also refreshes Cua's exact browser binding and can invalidate element refs
+from the previous snapshot. After `browser_tabs`, take a fresh `browser_snapshot` for the
+selected opaque tab ID before acting. Cua's current typed interface does not provide a
+bring-to-front operation; Anesu does not imply or emulate one.
+
 Approval is scoped by operation and observed target. The initial browser-task grant
 covers ordinary viewport scrolling and clicks on observed links within the task's exact
 origin. Clicking buttons or other controls, entering text, pressing keys, resolving page
@@ -167,10 +172,28 @@ required by the acceptance path.
   available across the user-turn boundary. A regression now ensures “current browser” does
   not accidentally request disabled personal-profile attachment.
 - A separate real task clicked example.org's observed IANA link. Cua reported the click
-  outcome as unknown while refusing the out-of-origin page read. A fresh exact bind exposed
-  IANA, and the model opened the public destination in a new exact-origin session and read
-  its page title. The TUI still ended with `computer task outcome unknown`, so this is useful
-  recovery evidence, not a passing cross-origin-link terminal-status acceptance.
+  outcome as ambiguous while refusing the out-of-origin page read. A fresh exact bind
+  exposed IANA, and the model opened the public destination in a new exact-origin session
+  and read its page title. The turn completed from that fresh destination evidence; the
+  durable click record remained ambiguous and was not replayed. This verifies that bounded
+  recovery path, not every cross-origin interaction.
+- A real follow-up after 11m02.754s reused the same managed browser session and read
+  `Example Domain` from a fresh snapshot without starting or navigating another session.
+- A real multi-tab attempt on `the-internet.herokuapp.com/windows` was inconclusive: Cua
+  listed one tab and the model exhausted its turn limit. The attempt exposed that tab
+  listing refreshes the exact binding and invalidates old element refs. Anesu now clears
+  those refs and requires a fresh snapshot before action. This does not establish live
+  multi-tab support or a definitive Cua limitation.
+- A second live attempt used the deterministic local `/tabs` page and its observed
+  `target="_blank"` link. Under Anesu's Linux-default Cua `dom_event` route, Cua returned
+  `unverifiable`, fresh state showed only the original tab, and Anesu blocked the model's
+  repeated click. Cua 0.28.2 documents `dom_event` as synthetic (some pages may ignore it
+  because `isTrusted` is false) and documents that trusted CDP clicks on standalone Linux
+  Chromium refuse rather than activate the window. The run did not return an explicit
+  popup-block reason, so that explanation is likely, not proven. Live multi-tab opening on
+  this Ubuntu route remains unsupported/unverified until Cua provides a background-safe
+  user-gesture path or a separately approved route; no Playwright, page-script, or desktop
+  focus workaround is used.
 - In the disposable local acceptance profile, a real TUI prompt opened
   `http://127.0.0.1:4173/files`, read `workspace/browser-acceptance.txt`, requested
   approval for the exact path and 41-byte size, assigned it through `browser_upload`,
@@ -190,7 +213,8 @@ workspace/browser-acceptance.txt into its file input. Do not submit the form.` T
 and exact upload each require their normal approval; the next fresh snapshot must show
 the filename before reporting it selected.
 
-These runs establish model-directed public-site reading, same-origin interaction, one
-model-directed public redirect handoff, approved local upload, and clean new-site task
-sessions. They do not establish reliable public search, multi-tab selection, downloads, or
-support for every website/browser interaction.
+These runs establish model-directed public-site reading and search, same-origin interaction
+and delayed follow-up, one public redirect handoff, one cross-origin link recovery with an
+honestly ambiguous click record, approved local upload, and clean new-site task sessions.
+They do not establish live multi-tab selection, downloads, or support for every
+website/browser interaction.

@@ -470,6 +470,50 @@ test("browser_search builds a Bing results URL and browser tools describe curren
   }
 });
 
+test("listing Cua tabs invalidates old refs and requires a fresh snapshot before clicking", async () => {
+  class RebindingTabAdapter extends ToolTestAdapter {
+    private binding = 0;
+
+    override async listTabs(sessionId: ReturnType<typeof asBrowserSessionId>, signal?: AbortSignal): Promise<readonly BrowserTabInfo[]> {
+      const tabs = await super.listTabs(sessionId, signal);
+      return tabs.map((tab) => {
+        const rebound = { ...tab, documentId: asBrowserDocumentId(`tab-list-binding-${++this.binding}`) };
+        this.tabs.set(sessionId, rebound);
+        return rebound;
+      });
+    }
+  }
+
+  const adapter = new RebindingTabAdapter();
+  const tools = createTools(adapter);
+  try {
+    const opened = await tools.execute("browser_open", "tab-rebind-open", { url: "http://127.0.0.1:4173/fixture" }, {});
+    assert.equal(opened.ok, true, opened.content);
+    const listed = await tools.execute("browser_tabs", "tab-rebind-list", {}, {});
+    assert.equal(listed.ok, true, listed.content);
+
+    await assert.rejects(
+      () => tools.execute("browser_click", "tab-rebind-stale-click", { ref: "@e1" }, {
+        approveBrowser: async () => ({ decision: "allow-once" }),
+      }),
+      (error: unknown) => error instanceof BrowserError
+        && error.browserCode === "stale-reference"
+        && /Take a browser snapshot before using an element reference/u.test(error.message),
+    );
+    assert.equal(adapter.actionCount, 0, "a tab-list rebind must not dispatch with the old document identity");
+
+    const fresh = await tools.execute("browser_snapshot", "tab-rebind-fresh-snapshot", {}, {});
+    assert.equal(fresh.ok, true, fresh.content);
+    const clicked = await tools.execute("browser_click", "tab-rebind-fresh-click", { ref: "@e1" }, {
+      approveBrowser: async () => ({ decision: "allow-once" }),
+    });
+    assert.equal(clicked.ok, true, clicked.content);
+    assert.equal(adapter.actionCount, 1, "one click is dispatched only after the rebound tab has a fresh snapshot");
+  } finally {
+    await tools.execute("browser_close", "tab-rebind-close", {}, {});
+  }
+});
+
 test("a Cua origin refusal exposes the exact redirected tab so the model can choose a fresh scoped navigation", async () => {
   class RedirectedOriginAdapter extends ToolTestAdapter {
     readonly scopes: (readonly string[] | undefined)[] = [];
