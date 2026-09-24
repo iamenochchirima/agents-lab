@@ -1,7 +1,7 @@
 # Anesu browser use
 
 **Created:** 2026-09-23
-**Last updated:** 2026-09-24
+**Last updated:** 2026-09-25
 **Status:** Active, implementation in progress
 **Owner:** Anesu standalone product
 
@@ -295,7 +295,8 @@ unproven. No estimate guarantees an upstream Cua or provider change.
 - [x] Generic form controls beyond text entry are covered by the separate
       [browser form-controls plan](anesu-browser-form-controls.md): a checkbox,
       custom dropdown, and native date input passed a natural-language fill-only
-      TUI run with fresh-state confirmation. Native `<select>` activation and
+      TUI run with fresh-state confirmation; the slice is committed as
+      `9435485`. Native `<select>` activation and
       date-picker navigation remain unavailable on the current Ubuntu/Cua
       route; radio controls and multiple date fields were not live-tested. The
       text-field acceptance above is not the evidence for those controls.

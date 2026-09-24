@@ -2,7 +2,7 @@
 
 **Created:** 2026-09-24T18:40:20+02:00
 **Last updated:** 2026-09-25
-**Status:** Acceptance passed for the tested Cua 0.28.2 Ubuntu/X11 path; closeout pending
+**Status:** Complete for the tested Cua 0.28.2 Ubuntu/X11 control set; remaining limitations are explicit
 **Owner:** Anesu
 
 ## Start here
@@ -205,12 +205,12 @@ current per-action evidence and ambiguity semantics.
       not support. Native-select support is not a completion prerequisite if the
       installed Cua typed contract does not expose it; the limitation must be
       recorded accurately.
-- [ ] Stage and commit only this verified form-control slice after separating
+- [x] Stage and commit only this verified form-control slice after separating
       it from pre-existing browser changes; record the commit hash. Do not stage
-      unrelated work.
+      unrelated work. Commit: `9435485` (`Add verified Cua browser form controls`).
 
-No commit was created as part of this acceptance. The worktree contains
-unrelated changes; any later commit should stage only the browser form slice.
+The form-control slice is committed. Unrelated Anesu session/TUI and studio
+changes remain outside that commit and untouched.
 
 ## Evidence and decisions
 
@@ -266,6 +266,12 @@ unrelated changes; any later commit should stage only the browser form slice.
   native `<select>` is not a supported route in this API. See the pinned Cua
   [`semantic.rs`](https://github.com/trycua/cua/blob/cua-driver-rs-v0.28.2/libs/cua-driver/rust/crates/cua-driver-core/src/browser/semantic.rs)
   and [`tools.rs`](https://github.com/trycua/cua/blob/cua-driver-rs-v0.28.2/libs/cua-driver/rust/crates/cua-driver-core/src/browser/tools.rs).
+- On 2026-09-25, the Cua releases page showed stable `0.28.2` and a
+  `0.28.3` nightly dated 2026-09-19. The nightly source still has no
+  select-specific or tab-creation browser operation, so upgrading Anesu would
+  not currently supply the missing native-select route. See the [official
+  releases](https://github.com/trycua/cua/releases) and the
+  [0.28.3 nightly browser tool source](https://github.com/trycua/cua/blob/nightly-cua-driver-rs-v0.28.3-nightly.20260919.35421378483/libs/cua-driver/rust/crates/cua-driver-core/src/browser/tools.rs).
 - Anesu pins `@trycua/cua-driver` 0.28.2. The separately installed `cua-driver`
   CLI is 0.23.2 and is not the runtime used by Anesu.
 
@@ -309,8 +315,9 @@ test is not live acceptance.
 ## Current position
 
 Milestone: supported common-control acceptance passed.
-Current item: close out the plan without staging unrelated work.
-Status: implementation verified; closeout pending.
+Current item: none for the tested control set; broader Cua limitations remain
+recorded below and in the parent browser-use plan.
+Status: complete for this control set; not a claim of support for every widget.
 Last verified checkpoint: combined real-TUI fill-only request and a separate
 fresh read-only snapshot confirmed the requested text, checkbox, custom
 dropdown, and date; no form submission occurred.
@@ -324,8 +331,8 @@ remain unproven. The full suite has one unrelated failure described above.
 
 ## Completion record
 
-The supported-control acceptance passed on 2026-09-24. Keep this plan active
-only for a safe, focused commit; the implementation and live acceptance are
-complete for the tested control set. The separate native-task suite failure is
-recorded but is outside this plan. This plan does not claim all website widgets
-or native `<select>` support.
+The supported-control acceptance passed on 2026-09-24 and the focused
+implementation was committed as `9435485`. This plan remains linked from the
+active general browser-use plan as its completed form-control evidence. The
+separate native-task suite failure is recorded but is outside this plan. This
+plan does not claim all website widgets or native `<select>` support.
