@@ -7,7 +7,79 @@ complete for a mature or production-ready Anesu product.
 The full production-readiness definition is in
 [Anesu production-readiness gaps](active/anesu-production-readiness-gaps.md).
 
-## Current implementation slice
+## Current implementation foundation
+
+### Sessions and approvals
+
+Status: **Completed first-iteration slice.**
+
+Plan: [Anesu sessions and approvals](completed/anesu-sessions-and-approvals.md)
+
+This completed harness-wide slice adds multiple durable conversations with TUI `/new` and
+`/resume`, understandable scoped approvals, inspectable/revocable exact process permissions,
+and fixes browser ownership so an open browser remains available across turns in its own
+conversation. Tests cover cancellation continuity, cleanup, restart without browser
+reattachment, and approval routing. A manual TUI check confirmed real-model output and
+`/new`/`/resume`; full Anesu validation passed. Browser sessions have a configured maximum
+lifetime and are not restored after process exit. This work builds on existing session
+persistence and domain-specific approval checks; it does not replace them with a universal
+policy engine. Browser use is next in the implementation queue.
+
+### Browser use
+
+Status: **Active, implementation in progress.**
+
+Plan: [Anesu browser use](active/anesu-browser-use.md)
+
+The implementation focus is general browser use from ordinary chat prompts on
+user-chosen public sites. The conversation model chooses from typed Cua browser tools;
+the plan records the live-proven path and remaining origin, search, and file-transfer
+gaps. The earlier combined [Jev/Cua plan](archived/anesu-jev-cua-native-computer-use.md)
+and [remaining-acceptance plan](archived/anesu-computer-use-remaining-acceptance.md)
+are archived records, not work to complete alongside this browser slice. Native app,
+cursor, and visual-fallback work are not part of the browser slice.
+
+### Model-directed desktop use
+
+Status: **Active plan, queued after sessions/approvals and browser use.**
+
+Plan: [Anesu model-directed desktop use](active/anesu-model-directed-desktop-use.md)
+
+The existing desktop `computer` call runs a hidden native action-selection loop. This
+plan makes current Cua observations and supported desktop actions available through the
+normal conversation model/tool loop, so the model chooses whether and how to continue.
+It reuses the shared session and approval work, keeps browser actions in the browser-use
+plan, and avoids app-specific scripts or a second automation backend.
+
+### Natural computer-use routing and surface switching
+
+Status: **Completed first natural-routing slice.**
+
+Plan: [anesu-natural-computer-use.md](completed/anesu-natural-computer-use.md)
+
+This slice turns the completed browser/native dual-path primitives into a natural
+conversation. It adds intent admission, automatic browser-versus-desktop resolution,
+capability-aware `auto` selection between Jev and traditional vision, one bounded
+pre-approval fallback, and TUI visibility for the selected surface and strategy. It
+does not add a second computer-use executor or remove the existing approval,
+verification, cancellation, recovery, and no-retry boundaries.
+
+The natural prompt, surface-routing, automatic strategy, browser executable, and
+structured approval path are now connected through the existing guarded executors. The
+core hardening plan remains the source of shared lifecycle and production-foundation
+work; the production-readiness register remains open.
+
+### Goal-oriented computer-use execution
+
+Status: **Completed first goal-oriented execution slice.**
+
+Plan: [Anesu goal-oriented computer-use execution](completed/anesu-goal-oriented-computer-use.md)
+
+This slice extends the completed natural-routing and dual-strategy foundation into a
+bounded multi-step goal loop. It adds browser and native environment-owned verification,
+explicit clarification and terminal outcomes, step progress in the TUI, approval-visible
+verification expectations, and focused failure/recovery coverage. It does not add a new
+executor, OCR model, unrestricted desktop access, or a second runtime loop.
 
 ### Core hardening and production foundation
 
@@ -42,7 +114,7 @@ open, even though the first-iteration paths above are usable and validated.
 | --- | --- | --- |
 | Workspace and filesystem | Read, write, patch, regular-file and directory copy/move/rename, directory creation, delete/restore, quarantine, approval, bounded limits, and recovery evidence. | Proven cross-file rollback, broader race and special-file policy, cross-platform guarantees, and OS-level isolation. |
 | Shell and process execution | Approved local foreground argv execution, cwd policy, environment redaction, timeout, output limit, cancellation, and process evidence. | Interactive stdin/PTY, background jobs, durable job recovery, shell grammar, process-tree enforcement, remote/container execution, OS/network isolation, and stronger privilege controls. |
-| Browser interaction | Managed local Chromium/Playwright sessions, bounded snapshots, navigation/actions, approval, dialogs, artifacts, cancellation, and local-fixture recovery. | Personal Chrome/CDP, remote browser providers, extensions, arbitrary JavaScript, cookie/storage access, auth/OAuth/CAPTCHA flows, request interception, durable browser profiles, and stronger isolation. |
+| Browser interaction | Cua-owned local Chromium/Edge preparation, bounded semantic snapshots, navigation/actions, approval, dialogs, upload policy, cancellation, and local contract recovery. | Personal Chrome/CDP, remote browser providers, extensions, arbitrary JavaScript, cookie/storage access, auth/OAuth/CAPTCHA flows, request interception, downloads through a trusted host route, durable browser profiles, and stronger isolation. |
 | Memory foundation | Markdown user/durable stores, dated notes, bounded lexical retrieval, approval-gated mutation, provenance, retention, deletion, restart handling, and evidence. | Supported production persistence, session search, hybrid/semantic retrieval, compaction flush, consolidation/promotion, conflict handling, broad deletion, import/export, privacy controls, migration, index reconciliation, and real-model acceptance. |
 | Initial TUI and approvals | Standalone terminal chat, real model output, structured approval panels, activity messages, slash commands, Ctrl+C cancellation, responsive panels, and concise process output. | Full-screen interaction, richer scrolling/history/composer behaviour, resize redraw, accessibility, and recovery-focused UX. |
 | Model connection | Real OpenRouter path, stored development configuration, deterministic test provider, explicit model selection, capability metadata, bounded retries, partial-stream handling, usage evidence, and no silent fallback. | Broader malformed responses, fallback policy, cost evidence, credential rotation, and wider provider acceptance. |
@@ -137,17 +209,25 @@ This must consume the standalone runtime. It must not create a second agent loop
 
 ## Implementation order
 
-1. Complete [core hardening and production foundation](active/anesu-core-hardening.md).
-2. The initial [computer-use dual-path slice](completed/anesu-computer-use-dual-paths.md)
-   is complete; later hardening follows the production-readiness register.
-3. The first [Context Management](completed/anesu-context-management.md) slice is
-   complete; its later maturity gaps remain in the production-readiness register.
-4. Extend the completed Skills foundation only through a new scoped active plan.
-5. Implement Plugins with the same trust and permission model.
-6. Implement External Integrations with idempotency and recovery contracts.
-7. Implement durable jobs, scheduling, and delegated work.
-8. Complete production security and operations for the named deployment profile.
-9. Integrate the main Agent Harness Lab UI.
+1. [Sessions and approvals](completed/anesu-sessions-and-approvals.md) is complete. It
+   established the harness-wide conversation and approval lifecycle, including the
+   browser auto-close fix. It did not implement general browser-use capabilities.
+2. Implement [browser use](active/anesu-browser-use.md) as the next standalone
+   Computer Native feature slice.
+3. Implement [model-directed desktop use](active/anesu-model-directed-desktop-use.md)
+   after the shared session/approval and browser-use foundations.
+4. Continue [core hardening and production foundation](active/anesu-core-hardening.md)
+   for shared reliability work required by this and later slices.
+5. Extend the completed Skills foundation only through a new scoped active plan.
+6. Implement Plugins with the same trust and permission model.
+7. Implement External Integrations with idempotency and recovery contracts.
+8. Implement durable jobs, scheduling, and delegated work.
+9. Complete production security and operations for the named deployment profile.
+10. Integrate the main Agent Harness Lab UI.
+
+The completed dual-path, natural-routing, goal-oriented execution, and context-management
+slices are foundations for this order, not unfinished steps in it. Their remaining
+maturity work stays in the production-readiness register.
 
 Each future area needs its own active plan before implementation starts. That plan must
 state exactly what it implements, what it does not implement, its security and approval

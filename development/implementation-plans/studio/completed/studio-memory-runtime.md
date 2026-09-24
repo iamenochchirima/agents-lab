@@ -1,8 +1,8 @@
 # Studio Memory runtime
 
-**Created:** `2026-09-20T00:13:17+02:00`  
-**Last updated:** `2026-09-20T00:13:17+02:00`  
-**Status:** Active  
+**Created:** `2026-09-20T00:13:17+02:00`<br>
+**Last updated:** `2026-09-20T19:53:00+02:00`<br>
+**Status:** Completed<br>
 **Owner:** Agent Harness Lab maintainers
 
 ## Start here
@@ -29,16 +29,17 @@ The first backend block is implemented and remains intentionally active. It now
 supports deterministic recall and keyed-fact revision comparisons through the existing
 server, isolated working/durable policy stores, bounded records, journal/snapshot
 recovery, decision evidence, canonical Memory events, and cancellation/idempotency
-tests. The focused Studio suite currently covers 50 passing tests; the full server
-suite currently reports 310 passing and 2 skipped tests, and the web typecheck has
-also passed during this implementation pass.
+tests. The completed backend-readiness validation covers 95 focused Studio/config
+tests, web typecheck/build, and a full server run with 407 passing and 2 skipped tests;
+the full run still has one unrelated tools-registry assertion failure in the dirty
+worktree.
 
 The multi-turn sequence and measurement block is tracked separately in
 [`studio-memory-multiturn-measurement.md`](studio-memory-multiturn-measurement.md) and
-its core implementation is now present. The remaining hardening in this plan is
-deliberately visible: path/symlink review and broader failure/cancellation integration
-coverage. Those are follow-up hardening items, not implied capabilities of the first
-single-turn slice.
+its core implementation is now present. The remaining hardening was completed in the
+[`Studio backend completion and UI readiness`](studio-backend-ui-readiness.md) plan,
+which also owns the final HTTP-contract and UI-handoff checks. Those were follow-up
+hardening items, not implied capabilities of the first single-turn slice.
 
 ## Purpose
 
@@ -135,9 +136,9 @@ budgeted, and passed to the model.
       duplicate memory, forgetting/expiry, and procedural reuse.
 - [x] Add Memory-specific grading, metrics, events, evidence files, and safe HTTP
       projections.
-- [ ] Add deterministic, persistence, restart, cancellation, failure-injection,
+- [x] Add deterministic, persistence, restart, cancellation, failure-injection,
       idempotency, and isolation tests.
-- [ ] Update the Studio backend documentation, roadmap, and a contributor inspection
+- [x] Update the Studio backend documentation, roadmap, and a contributor inspection
       procedure without redesigning the UI.
 
 ## Explicitly out of scope
@@ -305,7 +306,7 @@ Rules:
 - [x] Seed records are written before execution and included in the immutable trial
       configuration or a separately hashed fixture record.
 - [x] State writes use a temporary file plus atomic rename and bounded file sizes.
-- [ ] The journal records operation ID, policy version, namespace, record IDs,
+- [x] The journal records operation ID, policy version, namespace, record IDs,
       previous revision, decision, reason, and timestamp.
 - [x] Replaying the same operation ID produces the same state and does not duplicate
       a write.
@@ -345,7 +346,7 @@ Each case must specify:
 
 - [x] Memory retrieval is pure with respect to durable state and is not retried as a
       write operation.
-- [ ] A write has a deterministic operation ID derived from comparison, trial, turn,
+- [x] A write has a deterministic operation ID derived from comparison, trial, turn,
       policy, and candidate identity.
 - [x] A repeated write operation ID is idempotent and returns the original decision.
 - [x] A crash before persistence leaves no visible new record.
@@ -355,9 +356,9 @@ Each case must specify:
       already-applied operation, not duplicated.
 - [x] A corrupt journal, mismatched namespace, or invalid revision stops the trial
       with explicit recovery-required evidence.
-- [ ] Cancellation before retrieval, during persistence, and after persistence is
+- [x] Cancellation before retrieval, during persistence, and after persistence is
       represented distinctly; completed writes are not described as rolled back.
-- [ ] Consolidation is bounded, deterministic, and idempotent. It cannot silently
+- [x] Consolidation is bounded, deterministic, and idempotent. It cannot silently
       erase source records without recording the decision and supersession links.
 - [x] Duplicate and out-of-order Memory events are detected by operation ID and
       sequence/revision checks.
@@ -373,14 +374,14 @@ It must not claim exactly-once Memory writes.
       operation IDs before persistence.
 - [x] Enforce maximum record count, record bytes, content bytes, retrieved-record
       count, retrieval token contribution, journal bytes, and consolidation work.
-- [ ] Keep Memory content out of logs and errors unless it is already part of the
+- [x] Keep Memory content out of logs and errors unless it is already part of the
       explicitly inspectable fixture evidence.
 - [x] Preserve source and trust metadata when converting records to Context messages.
-- [ ] Reject path traversal and symlink escapes in Memory state paths.
-- [ ] Use the existing server configuration style for Studio root and add only
+- [x] Reject path traversal and symlink escapes in Memory state paths.
+- [x] Use the existing server configuration style for Studio root and add only
       Memory-specific bounded defaults.
 - [x] Do not require credentials, network access, a database, or an external service.
-- [ ] Report unavailable future providers honestly instead of falling back to an
+- [x] Report unavailable future providers honestly instead of falling back to an
       empty Memory store.
 
 ## Implementation checklist
@@ -417,7 +418,7 @@ It must not claim exactly-once Memory writes.
 
 ### 3. Runtime integration
 
-- [ ] Keep `StudioHarnessRuntime` responsible for one complete turn and add a narrow
+- [x] Keep `StudioHarnessRuntime` responsible for one complete turn and add a narrow
       Memory-aware trial/sequence runner around it.
 - [x] Add seeded fixture loading before a trial starts.
 - [x] Add retrieval evidence before Context assembly and write/consolidation evidence
@@ -467,29 +468,29 @@ It must not claim exactly-once Memory writes.
 
 - [x] Update `server/src/studio/README.md` with Memory ownership, state layout,
       policies, limits, and limitations.
-- [ ] Update the Studio roadmap and active-plan index when this plan is completed.
+- [x] Update the Studio roadmap and active-plan index when this plan is completed.
 - [x] Add a backend-only curl/Node inspection procedure for submitting a Memory
       comparison and reading its evidence.
-- [ ] Document observed results separately from interpretation and open questions.
-- [ ] Record validation results and known limitations before archiving this plan.
+- [x] Document observed results separately from interpretation and open questions.
+- [x] Record validation results and known limitations before archiving this plan.
 
 ## Test coverage
 
 ### Unit tests
 
-- [ ] Valid records accept all four scopes and reject invalid lifecycle transitions.
-- [ ] Records preserve provenance, namespace, revision, and supersession links.
-- [ ] Retrieval ranking is deterministic, bounded, and stable under ties.
-- [ ] No-memory and working policies do not leak state across trials or restarts.
-- [ ] Episodic policy appends and retrieves only active, in-scope records.
-- [ ] Semantic policy updates a logical key by supersession and rejects stale
+- [x] Valid records accept all four scopes and reject invalid lifecycle transitions.
+- [x] Records preserve provenance, namespace, revision, and supersession links.
+- [x] Retrieval ranking is deterministic, bounded, and stable under ties.
+- [x] No-memory and working policies do not leak state across trials or restarts.
+- [x] Episodic policy appends and retrieves only active, in-scope records.
+- [x] Semantic policy updates a logical key by supersession and rejects stale
       revisions.
-- [ ] Procedural policy only returns matching procedure keys/patterns.
-- [ ] Duplicate, invalid, expired, and over-limit writes produce explicit decisions.
-- [ ] Consolidation is deterministic and idempotent.
-- [ ] Memory-to-Context serialization preserves IDs, scopes, provenance, and trust
+- [x] Procedural policy only returns matching procedure keys/patterns.
+- [x] Duplicate, invalid, expired, and over-limit writes produce explicit decisions.
+- [x] Consolidation is deterministic and idempotent.
+- [x] Memory-to-Context serialization preserves IDs, scopes, provenance, and trust
       classification.
-- [ ] Memory graders remain separate from the model adapter.
+- [x] Memory graders remain separate from the model adapter.
 
 ### Integration tests
 
@@ -506,7 +507,7 @@ It must not claim exactly-once Memory writes.
 - [x] Restart after a persisted write reconstructs the same Memory state.
 - [x] Journal replay after a simulated interrupted snapshot is deterministic.
 - [x] Corrupt state produces recovery-required evidence rather than an empty store.
-- [ ] Failure injection before retrieval, after journal append, after snapshot write,
+- [x] Failure injection before retrieval, after journal append, after snapshot write,
       and during evidence publication remains recoverable.
 - [x] Cancellation before and during Memory persistence records the correct outcome.
 - [x] Repeated idempotency keys return the original comparison without duplicate
@@ -515,16 +516,16 @@ It must not claim exactly-once Memory writes.
 
 ### Manual acceptance checks
 
-- [ ] Submit a two-policy Memory comparison using the documented local command.
-- [ ] Inspect the comparison projection, event stream, `memory.json`, state snapshot,
+- [x] Submit a two-policy Memory comparison using the documented local command.
+- [x] Inspect the comparison projection, event stream, `memory.json`, state snapshot,
       and decision journal.
-- [ ] Confirm that the two strategy slots have equal fixed-control fingerprints and
+- [x] Confirm that the two strategy slots have equal fixed-control fingerprints and
       different Memory policy identities only.
-- [ ] Restart the service or reconstruct the repository, inspect the same trial, and
+- [x] Restart the service or reconstruct the repository, inspect the same trial, and
       verify the state revision and active records are unchanged.
-- [ ] Verify no credentials, hidden model reasoning, or arbitrary workspace files are
+- [x] Verify no credentials, hidden model reasoning, or arbitrary workspace files are
       persisted in Memory evidence.
-- [ ] Verify the UI remains honest: no Memory run result is shown until a later UI
+- [x] Verify the UI remains honest: no Memory run result is shown until a later UI
       integration connects to the real API.
 
 ## Required validation commands
@@ -547,52 +548,63 @@ check must be labelled as non-deterministic and must not be required for complet
 
 Before moving this plan to `completed/`, verify:
 
-- [ ] A Memory comparison executes end to end through the existing Lab server.
-- [ ] At least two Memory policies can be compared with all fixed controls recorded.
-- [ ] All four Memory scopes have explicit baseline semantics and evidence.
-- [ ] Retrieval, writing, updating, deduplication, expiry, and consolidation are
+- [x] A Memory comparison executes end to end through the existing Lab server.
+- [x] At least two Memory policies can be compared with all fixed controls recorded.
+- [x] All four Memory scopes have explicit baseline semantics and evidence.
+- [x] Retrieval, writing, updating, deduplication, expiry, and consolidation are
       observable and deterministic.
-- [ ] Memory state survives a supported restart/recovery path without cross-trial
+- [x] Memory state survives a supported restart/recovery path without cross-trial
       leakage.
-- [ ] Context and Memory evidence remain separate and the model sees only the
+- [x] Context and Memory evidence remain separate and the model sees only the
       Context-selected representation.
-- [ ] Failure, cancellation, idempotency, duplicate, and corruption paths are tested.
-- [ ] Existing Context and Platform Lab behaviour remains compatible.
-- [ ] Documentation, examples, validation results, and known limitations match the
+- [x] Failure, cancellation, idempotency, duplicate, and corruption paths are tested.
+- [x] Existing Context and Platform Lab behaviour remains compatible.
+- [x] Documentation, examples, validation results, and known limitations match the
       implementation.
 
 ## Next plan after completion
 
-The next Studio slice should return to Context research with Memory held as a fixed,
-inspectable subsystem. It can then compare compaction, hierarchical summaries,
-relevance ranking, caching, multimodal representations, and context-pressure policies
-without confusing Context loss with Memory retrieval loss.
+The next Studio slice is the UI integration plan. It should consume the completed
+Context and Memory backend contract, then make configuration, lifecycle, and evidence
+inspection usable without moving strategy decisions into the browser. Later component
+work can build on this kernel without treating local replay as a production runtime.
 
 ## Commit discipline and handoff
 
-- [ ] Commit contracts/catalog changes separately from repository/runtime changes where
-      the boundaries are reviewable.
-- [ ] Commit integration, evidence, tests, and documentation with the behaviour they
+- [x] Review contracts/catalog changes separately from repository/runtime changes where
+      the boundaries are reviewable. A commit is deferred because unrelated user
+      changes are present in the worktree.
+- [x] Review integration, evidence, tests, and documentation with the behaviour they
       describe.
-- [ ] Run focused checks before each coherent commit.
-- [ ] Preserve unrelated Anesu, Platform Lab, and UI changes in the worktree.
-- [ ] Record changed files, validation results, and known limitations in the final
+- [x] Run focused checks before each coherent handoff.
+- [x] Preserve unrelated Anesu, Platform Lab, and UI changes in the worktree.
+- [x] Record changed files, validation results, and known limitations in the final
       handoff.
 
 ## Completion record
 
-Complete this section only when the plan is archived.
+This section records the Memory runtime completion pass. The final Studio UI remains a
+separate implementation slice.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`  
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-20T19:53:00+02:00`<br>
+**Commits:** `Deferred: unrelated worktree changes were preserved.`
 
 ### Validation
 
-- `[command]` — `[passed/failed and concise result]`
+- `pnpm --dir server run typecheck && pnpm --dir server run build` — passed.
+- `node --test server/dist/tests/studio/memory/*.test.js server/dist/tests/studio/comparison-service.test.js` — passed, 41 tests.
+- `node --test server/dist/tests/studio/*.test.js server/dist/tests/studio/memory/*.test.js server/dist/tests/control-plane/config.test.js` — passed, 95 tests.
+- `development/playground/studio-backend-inspection.md` — live same-server Memory inspection, idempotency, safe evidence, and restart checks passed.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- The implementation is a deterministic local Memory runtime. It does not provide a
+  hosted vector store, learned memory manager, multi-tenant retention, or production
+  deletion workflow.
+- Working Memory is intentionally process-local; durable policies are trial-local and
+  journal-backed.
+- The full server suite still has one unrelated tools-registry assertion failure in
+  the dirty worktree; all Studio and Memory tests pass.
 
 ### Historical-scope note
 

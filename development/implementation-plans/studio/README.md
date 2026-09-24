@@ -10,8 +10,10 @@ plans live in [the platform plan directory](../platforms/README.md).
 
 ## Studio roadmap
 
-Studio is implemented in separate active plans. Each plan should finish one concrete
-slice before the next component strategy is added.
+Studio is implemented in separate plans. Each plan finishes one concrete slice before
+the next component strategy is added. The backend kernel is complete; the current UI
+plan is still active and must consume the backend contract rather than invent a second
+execution path.
 
 1. **Foundation kernel:** compose one complete deterministic agent turn through all
    twelve component slots, with baseline adapters, Context strategies, evidence, and
@@ -21,12 +23,16 @@ slice before the next component strategy is added.
 3. **Multi-turn Memory and measurement:** carry Memory across ordered turns and add
    reproducible retrieval, growth, Context-cost, latency, and recovery measurements.
 4. **Context research:** hold Memory fixed while adding compaction, summarization,
-   ranking, budgeting, caching, and pressure-controlled scenario families.
-5. **Tools and control:** add tool selection, retries, parallel dispatch, loops,
+   ranking, budgeting, and pressure-controlled scenario families.
+5. **Backend contract and UI readiness:** verify the same-server Context/Memory API,
+   persistence, cancellation, recovery, evidence safety, and the future UI handoff.
+6. **Studio UI:** connect the existing navigation to the catalog, comparison lifecycle,
+   safe projections, and evidence inspection without fabricating run data.
+7. **Tools and control:** add tool selection, retries, parallel dispatch, loops,
    graphs, replanning, delegation, and termination comparisons.
-6. **Environment and safety:** add real permissions, resource governors, failure
+8. **Environment and safety:** add real permissions, resource governors, failure
    injection, side-effect gates, and computer-use profiles.
-7. **Model and observability:** add provider routing, cost/latency studies,
+9. **Model and observability:** add provider routing, cost/latency studies,
    distributed traces, and richer model-backed experiments.
 
 The roadmap describes the intended order. The active plan defines the work that may
@@ -34,12 +40,13 @@ be implemented now.
 
 ## Active plans
 
-- [Studio Memory runtime](active/studio-memory-runtime.md)
-- [Studio Context research runtime](active/studio-context-research-runtime.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
-- [Studio backend runtime foundation](active/studio-backend.md)
 
 ## Completed plans
 
+- [Studio backend completion and UI readiness](completed/studio-backend-ui-readiness.md)
+- [Studio Memory runtime](completed/studio-memory-runtime.md)
+- [Studio backend runtime foundation](completed/studio-backend.md)
 - [Studio foundation kernel](completed/studio-runtime-kernel.md)
 - [Studio multi-turn Memory and measurement](completed/studio-memory-multiturn-measurement.md)
+- [Studio Context research runtime](completed/studio-context-research-runtime.md)

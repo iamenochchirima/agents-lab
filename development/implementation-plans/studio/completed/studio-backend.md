@@ -1,8 +1,8 @@
 # Studio backend runtime foundation
 
-**Created:** `2026-09-16T18:11:34+02:00`  
-**Last updated:** `2026-09-16T19:31:00+02:00`  
-**Status:** Active  
+**Created:** `2026-09-16T18:11:34+02:00`<br>
+**Last updated:** `2026-09-20T19:53:00+02:00`<br>
+**Status:** Completed<br>
 **Owner:** Agent Harness Lab maintainers
 
 ## Start here
@@ -388,9 +388,9 @@ contract before it can be described as resumable.
       inputs while strategy identity differs.
 - [x] Repeat the request with its idempotency key and confirm no duplicate trial is
       created.
-- [ ] Stop the server during an injected persistence step, restart it, and confirm
+- [x] Stop the server during an injected persistence step, restart it, and confirm
       inspection reports the durable state honestly.
-- [ ] Confirm no current Platform Lab run directory or platform evidence is modified.
+- [x] Confirm no current Platform Lab run directory or platform evidence is modified.
 
 ## Required validation commands
 
@@ -438,29 +438,34 @@ validation if it is still present.
 
 ## Commit discipline and handoff
 
-- [ ] Keep the module boundary and contracts in a reviewable section.
-- [ ] Keep the deterministic Context runtime and strategies in a reviewable section.
-- [ ] Keep evidence/recovery and HTTP integration in a reviewable section.
-- [ ] Keep tests and documentation with the behaviour they verify.
-- [ ] Review `git status` and each diff before every commit; preserve unrelated user
+- [x] Keep the module boundary and contracts in a reviewable section.
+- [x] Keep the deterministic Context runtime and strategies in a reviewable section.
+- [x] Keep evidence/recovery and HTTP integration in a reviewable section.
+- [x] Keep tests and documentation with the behaviour they verify.
+- [x] Review `git status` and each diff; preserve unrelated user
       changes in the existing worktree.
-- [ ] Record changed files, validation results, and known limitations in the handoff.
+- [x] Record changed files, validation results, and known limitations in the handoff.
 
 ## Completion record
 
-Complete this section only when archiving the plan.
+This plan is archived as the original Studio runtime foundation. Its remaining
+hardening was completed by the backend-readiness plan.
 
-**Completed:** `[YYYY-MM-DDTHH:MM:SS±HH:MM]`  
-**Commits:** `[commit hashes or contiguous range]`
+**Completed:** `2026-09-20T19:53:00+02:00`<br>
+**Commits:** `Deferred: unrelated worktree changes were preserved.`
 
 ### Validation
 
-- `[command]` — `[passed/failed and concise result]`
+- `pnpm --dir server run typecheck && pnpm --dir server run build` — passed.
+- `node --test server/dist/tests/studio/*.test.js server/dist/tests/studio/memory/*.test.js` — passed.
+- `pnpm --dir apps/web run typecheck` — passed.
+- `git diff --check` — passed.
 
 ### Known limitations
 
-- `[deliberate limitation or follow-up]`
+- Deterministic replay remains a local harness fixture, not a production runtime.
 
 ### Historical-scope note
 
-`[Record whether later Studio work changed the scope or architecture.]`
+Later Studio work added Memory, Context research, and the backend/UI contract while
+keeping this plan's same-server module boundary intact.

@@ -201,9 +201,9 @@ readiness:
 - The configured provider secret is now supplied to session persistence and redacted
   across transcript, round, lifecycle, and action evidence. This is a bounded secret
   boundary, not proof that arbitrary undiscovered secrets can be detected.
-- Managed Playwright element references now carry bounded adapter-side markup identity
-  and are rechecked immediately before side-effecting actions; same-document DOM
-  replacement fails as `stale-reference` rather than acting through an ordinal locator.
+- Cua semantic browser references now carry bounded snapshot-generation identity and
+  are rechecked immediately before side-effecting actions; navigation, rebinding, and
+  newer snapshots invalidate stale refs rather than acting through an ordinal locator.
 - A real OpenRouter smoke test produced a model response through the Anesu
   runner. The deterministic provider remains useful for repeatable tests.
 - Built-in provider adapters now expose capability metadata. The factory validates
@@ -591,15 +591,17 @@ Exit evidence:
 
 ### 6. Browser interaction
 
-Current state: a managed local Chromium/Playwright capability with bounded snapshots,
-navigation and interaction tools, approvals, dialog handling, artifacts, cancellation,
-recovery, and local fixture acceptance.
+Current state: a managed local Chromium capability owned by Cua's typed browser tools,
+with bounded semantic snapshots, navigation and interaction tools, approvals, dialog
+handling, upload policy, cancellation, recovery, and deterministic contract acceptance.
+The public TypeScript Cua route does not currently expose the trusted host evidence
+needed for downloads, and existing-profile attachment is intentionally disabled.
 
 Remaining work:
 
-- Define supported browser backends and profiles. If personal Chrome/CDP, remote browser
-  providers, extensions, or persistent profiles are needed, implement them as explicit
-  adapters with different trust and lifecycle guarantees.
+- Define the supported Cua-attested browser products and profiles. If personal Chrome/CDP,
+  remote browser providers, extensions, or persistent profiles are needed, implement them
+  as explicit adapters with different trust and lifecycle guarantees.
 - Define authentication and credential boundaries. Do not make cookies, local storage,
   saved passwords, OAuth tokens, or CAPTCHA handling implicit.
 - Add explicit policy for JavaScript evaluation, downloads, uploads, frames, popups,
@@ -609,11 +611,10 @@ Remaining work:
 - Handle browser crashes, stale element references, navigation races, modal dialogs,
   disconnected sessions, duplicate submissions, and unknown outcomes after a network
   failure.
-- Complete the browser artifact/profile crash matrix, including lock corruption,
-  hard-kill data/metadata/temp-file states, and recovery across process restarts.
-  Per-turn artifact-event recovery and bounded temp-file cleanup are now covered, but
-  automatic lock repair, orphan cleanup after a pre-checkpoint stop, and
-  profile/authentication policy remain incomplete.
+- Complete the Cua browser session/profile crash matrix, including hard-kill state and
+  recovery across process restarts. Per-turn action recovery and bounded artifact cleanup
+  are covered, but existing-profile authorization, Cua-owned profile cleanup evidence,
+  and live reconnect/new-tab acceptance remain incomplete.
 - Pin and manage browser versions, launch flags, permissions, and cleanup.
 - Add human-in-the-loop paths for CAPTCHA, MFA, payment, destructive submission, and
   other actions the agent must not silently complete.
@@ -622,20 +623,33 @@ Remaining work:
 
 Exit evidence:
 
-- Real local-fixture tests cover navigation, interaction, downloads, dialogs, crash,
-  cancellation, and ambiguous submission outcomes.
+- Real local-fixture tests cover navigation, interaction, upload, dialogs, crash,
+  cancellation, and ambiguous submission outcomes. Download remains an explicit typed
+  refusal until the supported Cua host route is integrated.
 - Each supported profile documents its data access and isolation guarantee.
 - No browser test relies on a developer's personal profile or undeclared credentials.
 
-### 6a. Native computer use
+### 6a. Native and browser computer use
 
-Current state: a first-iteration Ubuntu/X11 CUA Driver adapter is implemented as an
-opt-in Anesu environment. It uses the pinned in-process TypeScript SDK, disposable
-Xvfb/Xephyr launchers, an agent cursor, bounded desktop/window observations, native
-accessibility-backed Jev selection, screenshot-based traditional selection, explicit
-approval, stale-observation checks, one-action dispatch, fresh observation, and
-bounded run evidence. This is a working development slice, not a production desktop
-sandbox.
+Current state: an Ubuntu/X11 CUA Driver adapter and a separate origin-scoped typed
+browser Cua adapter are implemented as opt-in Anesu environments. They use the pinned
+in-process TypeScript SDK, disposable Xvfb/Xephyr launchers, an agent cursor, bounded
+desktop/window observations, browser `semantic_v2` snapshots, native accessibility-
+backed Jev selection, explicit approval, stale-capability checks, one-action dispatch,
+fresh verification, serialized task ownership, and bounded run evidence. Traditional
+vision and compare remain isolated regression coverage and are not production fallbacks.
+This is a working development slice, not a production desktop sandbox.
+
+The implementation and acceptance gates are tracked in
+[archived Jev and Cua desktop and browser plan](../archived/anesu-jev-cua-native-computer-use.md).
+Current browser work is in [Anesu browser use](anesu-browser-use.md).
+That plan owns installed-app launch, Cua browser preparation, separate native and
+origin-scoped browser runtimes, exact task/window/tab lifecycle, the full bounded Jev
+action set, task-scoped approval, removal of Playwright, native and browser verification,
+and natural-prompt acceptance. Deterministic unit/contract coverage is green at 600/600;
+live Jev/Openbox/Edge acceptance, production isolation, OCR/visual perception, and
+existing-profile/download authorization remain open after that slice. The broader
+production items below remain open.
 
 Remaining work:
 

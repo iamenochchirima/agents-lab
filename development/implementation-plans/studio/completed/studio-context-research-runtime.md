@@ -1,34 +1,34 @@
 # Studio Context research runtime
 
-**Created:** `2026-09-20T00:00:00+02:00`  
-**Last updated:** `2026-09-20T15:57:53+02:00`
-**Status:** Active — follows multi-turn Memory and measurement  
+**Created:** `2026-09-20T00:00:00+02:00`<br>
+**Last updated:** `2026-09-20T17:23:56+02:00`
+**Status:** Completed — follows multi-turn Memory and measurement<br>
 **Owner:** Agent Harness Lab maintainers
 
 ## Secondary implementation note
 
-The next safe Context block can begin with a test-only boundary fixture before new
-production strategies are added. It should combine instructions, old and recent
-transcript messages, a grouped tool call/result, a retrieved Memory message with
-provenance, and a deliberately tight budget. The current strategies should be tested
-for deterministic ordering, tie-breaking, provenance preservation, and explicit
-unknown/over-budget states. Group-aware sliding-window behaviour, summaries, source
-class allocation, and provider-overflow recovery remain production work; the current
-runtime must not silently claim those capabilities.
+The initial boundary fixture has now been extended into the production Context
+research slice. The next work must preserve the additive legacy message projection
+while hardening runtime failure/recovery semantics, catalog examples, evidence
+inspection, and the scenario matrix. No result may be interpreted as a universal
+Context quality ranking.
 
 ## Current implementation checkpoint
 
-The first boundary-fixture block is now implemented in
-`server/tests/studio/context-strategy.test.ts`. It exercises the existing
-`full-history`, `sliding-window`, and `relevance-ranked` strategies against one
-fixed fixture containing an instruction, transcript turns, a grouped tool call and
-result, and retrieved Memory carrying untrusted provenance metadata. The tests verify
-stable source order, deterministic relevance ties, metadata and group visibility,
-exact budget pressure, and explicit unknown-token behaviour.
+The production Context research slice is implemented across the versioned source-group
+contract, strategy registry, fixed-Memory comparison path, runtime, evidence, and
+metrics. It includes the original three strategies plus group-aware sliding-window,
+relevance-ranked groups, deterministic compaction, hierarchical-summary, and explicit
+source-class token allocation. The research fixture combines an instruction,
+transcript turns, a grouped tool call/result, retrieved Memory with untrusted
+provenance, and an active turn.
 
-This block intentionally adds no new production strategy. The current strategies
-remain message-based and do not yet guarantee atomic tool-group retention or a
-source-class budget allocation; those are the next production slices.
+The bounded provider-overflow path makes one changed-input deterministic-compaction
+attempt and records whether it recovered. A failed attempt leaves the trial failed;
+it does not fabricate model output or Memory persistence. Unit, HTTP, failure,
+restart/cancellation, deterministic replay, and provider-adapter tests cover the
+current slice. The completion gates below are checked from the validation evidence
+recorded in this plan; the plan is ready to move to `completed/`.
 
 ## Start here
 
@@ -91,21 +91,21 @@ general quality metric unless the scenario explicitly defines the relevant sourc
 
 ## Scope
 
-- [ ] Preserve the current Context strategy contract and one-turn API behaviour.
-- [ ] Add a versioned Context experiment contract for source groups, priority,
+- [x] Preserve the current Context strategy contract and one-turn API behaviour.
+- [x] Add a versioned Context experiment contract for source groups, priority,
       summary eligibility, token contribution, and pressure triggers.
-- [ ] Hold Memory fixed and make the Memory-to-Context boundary inspectable.
-- [ ] Add deterministic compaction and hierarchical-summary baselines without
+- [x] Hold Memory fixed and make the Memory-to-Context boundary inspectable.
+- [x] Add deterministic compaction and hierarchical-summary baselines without
       claiming model-generated summary quality.
-- [ ] Add explicit token-budget allocation across source classes.
-- [ ] Add pressure scenarios for fitting, near-limit, over-limit, and provider-
+- [x] Add explicit token-budget allocation across source classes.
+- [x] Add pressure scenarios for fitting, near-limit, over-limit, and provider-
       overflow recovery conditions.
-- [ ] Add Context evidence and metrics for retained, omitted, summarized, and
+- [x] Add Context evidence and metrics for retained, omitted, summarized, and
       model-bound sources.
-- [ ] Add deterministic grading and source-retention measurements with clear limits.
-- [ ] Keep tool results, Memory records, transcript messages, and instructions
+- [x] Add deterministic grading and source-retention measurements with clear limits.
+- [x] Keep tool results, Memory records, transcript messages, and instructions
       distinguishable throughout packing and compaction.
-- [ ] Document the strategy controls, fixture limitations, and inspection procedure.
+- [x] Document the strategy controls, fixture limitations, and inspection procedure.
 
 ## Explicitly out of scope
 
@@ -215,62 +215,84 @@ values. Metrics must be derived from evidence and must not influence strategy ou
 
 ### 1. Contracts and fixed controls
 
-- [ ] Add versioned source-group and Context decision contracts.
-- [ ] Add priority, grouping, summary eligibility, and token-contribution metadata.
-- [ ] Extend fixed-control fingerprints with source and Memory fixtures.
-- [ ] Preserve existing Context strategy IDs, parameters, and response projections.
+- [x] Add versioned source-group and Context decision contracts.
+- [x] Add priority, grouping, summary eligibility, and token-contribution metadata.
+- [x] Extend fixed-control fingerprints with source and Memory fixtures.
+- [x] Preserve existing Context strategy IDs, parameters, and response projections.
 
 ### 2. Strategy implementations
 
-- [ ] Harden full-history and sliding-window group boundaries.
-- [ ] Harden relevance-ranked scores, ties, and deterministic source order.
-- [ ] Implement the deterministic compaction baseline.
-- [ ] Implement hierarchical/rolling summary fixtures with coverage metadata.
-- [ ] Implement explicit token-budget allocation and reserve behaviour.
-- [ ] Make over-budget and unknown-token outcomes explicit and inspectable.
+- [x] Harden full-history and sliding-window group boundaries.
+- [x] Harden relevance-ranked scores, ties, and deterministic source order.
+- [x] Implement the deterministic compaction baseline.
+- [x] Implement hierarchical/rolling summary fixtures with coverage metadata.
+- [x] Implement explicit token-budget allocation and reserve behaviour.
+- [x] Make over-budget and unknown-token outcomes explicit and inspectable.
 
 ### 3. Runtime and Memory boundary
 
-- [ ] Run Context comparisons against a fixed Memory policy and namespace.
-- [ ] Preserve Memory provenance, scope, revision, and untrusted classification.
-- [ ] Ensure Context evidence records what it received and what it emitted to the
+- [x] Run Context comparisons against a fixed Memory policy and namespace.
+- [x] Preserve Memory provenance, scope, revision, and untrusted classification.
+- [x] Ensure Context evidence records what it received and what it emitted to the
       model boundary.
-- [ ] Add bounded provider-overflow recovery with one changed Context input.
-- [ ] Keep Context failure from fabricating Memory or model evidence.
+- [x] Add bounded provider-overflow recovery with one changed Context input.
+- [x] Keep Context failure from fabricating Memory or model evidence.
 
 ### 4. Evidence, metrics, and HTTP
 
-- [ ] Add source-group, compaction, allocation, and pressure evidence.
-- [ ] Add deterministic Context metrics and comparison summaries.
-- [ ] Keep raw content bounded and use the existing evidence allowlist.
-- [ ] Add catalog descriptors and request examples for each executable strategy.
-- [ ] Preserve existing Context and Memory API compatibility.
+- [x] Add source-group, compaction, allocation, and pressure evidence.
+- [x] Add deterministic Context metrics and comparison summaries.
+- [x] Keep raw content bounded and use the existing evidence allowlist.
+- [x] Add catalog descriptors and request examples for each executable strategy.
+- [x] Preserve existing Context and Memory API compatibility.
 
 ### 5. Tests and documentation
 
-- [ ] Add unit tests for grouping, ordering, ranking, allocation, compaction, and
+- [x] Add unit tests for grouping, ordering, ranking, allocation, compaction, and
       summary coverage.
-- [ ] Add integration tests for every scenario in the matrix.
-- [ ] Add tests proving Memory remains fixed while Context changes.
-- [ ] Add over-budget, unknown-token, provider-overflow, cancellation, and restart
+- [x] Add integration tests for every scenario in the matrix.
+- [x] Add tests proving Memory remains fixed while Context changes.
+- [x] Add over-budget, unknown-token, provider-overflow, cancellation, and restart
       tests.
-- [ ] Add deterministic replay and evidence idempotency tests.
-- [ ] Run the existing Context, Memory, and Platform Lab regression suites.
-- [ ] Update `server/src/studio/README.md` and the contributor inspection procedure.
-- [ ] Record observed results, interpretations, and limitations before archiving.
+- [x] Add deterministic replay and evidence idempotency tests.
+- [x] Run the existing Context, Memory, and Platform Lab regression suites.
+- [x] Update `server/src/studio/README.md` and the contributor inspection procedure.
+- [x] Record observed results, interpretations, and limitations before archiving.
+
+## Observed validation
+
+Validated on `2026-09-20`:
+
+- `pnpm --dir server run build` and `pnpm --dir server run typecheck` passed.
+- The focused Studio and Memory suites passed: 80 tests.
+- The Platform Lab adapter regression suite passed: 194 tests, 2 existing native
+  integration tests skipped, 0 failures.
+- The repository build passed, including Anesu, the server, and web typechecks/build.
+- The Context HTTP fixture completed six strategy trials with one fixed Memory
+  policy, identical fixed-control fingerprints, separate Context/Memory evidence,
+  and no fixed-Memory writes.
+- Provider overflow recovery completed exactly one changed-input retry; an
+  unrecoverable overflow failed without a model completion, turn evidence, or
+  Memory persistence.
+
+Observed limitations remain deliberate: summaries are deterministic fixtures rather
+than learned summaries; relevance is lexical; allocation does not borrow unused
+class reserve (`reserveConsumedBy` is explicitly `null`); the replay environment is
+not an OS sandbox; and metrics describe fixture observations rather than universal
+Context or answer quality.
 
 ## Completion gate
 
 Do not archive this plan until:
 
-- [ ] At least three Context strategies run against the same fixed Memory state.
-- [ ] Compaction and budget allocation produce inspectable, deterministic decisions.
-- [ ] Source groups, trust, provenance, and tool-result boundaries survive packing.
-- [ ] Context and Memory evidence remain separate.
-- [ ] Pressure and overflow recovery are tested without fabricated success.
-- [ ] Metrics identify their basis and do not make unsupported quality claims.
-- [ ] Existing one-turn and multi-turn Memory comparisons remain compatible.
-- [ ] Documentation, request examples, and known limitations match the implementation.
+- [x] At least three Context strategies run against the same fixed Memory state.
+- [x] Compaction and budget allocation produce inspectable, deterministic decisions.
+- [x] Source groups, trust, provenance, and tool-result boundaries survive packing.
+- [x] Context and Memory evidence remain separate.
+- [x] Pressure and overflow recovery are tested without fabricated success.
+- [x] Metrics identify their basis and do not make unsupported quality claims.
+- [x] Existing one-turn and multi-turn Memory comparisons remain compatible.
+- [x] Documentation, request examples, and known limitations match the implementation.
 
 ## Next plan
 

@@ -12,23 +12,38 @@ From the repository root:
 pnpm run chat
 ```
 
-Ask the agent:
+Ask the agent in ordinary language:
 
 ```text
-Open https://www.iana.org/domains/example and click the “Domains” link.
+Open https://www.iana.org/domains/example and tell me the page heading.
 ```
 
-Replace the URL and label with any allowed page and one visible button or link you
-actually want to use. The label is matched against the page's accessible text, not a
-CSS selector or coordinate.
+Replace the URL with an allowed HTTP(S) page you actually want to read. You do not
+need to name the computer tool, provider, fixture, Cua operation, or selector.
 
-Anesu uses one bounded `browser_open_and_click` workflow: it opens the allowed URL,
-matches the exact accessible button or link label, shows the normal approval panel, and
-clicks once after approval. The managed browser remains open so the interaction can be
-observed. This path uses browser accessibility state and exact labels; it is not yet
-native desktop computer use.
+Anesu routes the request to Cua's isolated browser runtime. Cua prepares the supported
+Chrome or Edge process, binds one exact native window and tab, captures a bounded
+`semantic_v2` snapshot, and lets Jev choose only from code-built candidates. A fresh
+snapshot proves the requested heading or URL; model narration and a tool acknowledgement
+do not count as completion. Browser interaction actions such as click, type, press,
+scroll, and upload show the normal bounded approval panel before input.
 
-## Dual-strategy browser validation
+For a harmless local acceptance interaction, use the private launcher instead:
+
+```bash
+pnpm run chat:cua-xvfb -- --acceptance --window-manager gnome-shell
+```
+
+Then ask:
+
+```text
+Open http://127.0.0.1:4173/contact, enter "Anesu browser acceptance" in the message field, and submit it.
+```
+
+The local service and its origin are part of the disposable acceptance harness. Do not
+substitute a personal browser profile or add an origin to the manifest for an ad-hoc test.
+
+## Automatic browser strategy
 
 The development `anesu/.env` can enable the computer tool and use the stored TypeSafe
 credential. From the repository root:
@@ -40,26 +55,37 @@ pnpm run chat
 Ask the agent:
 
 ```text
-Use computer to reveal the safe result in the local fixture.
+Open http://127.0.0.1:4173/ and reveal the safe result.
 ```
 
-With `ANESU_COMPUTER_STRATEGY=typesafe`, Anesu starts a visible managed Chromium
-profile, gives Jev the bounded accessibility state, asks the existing structured browser
-approval panel for permission, clicks the selected fixture button once, and verifies the
-success marker. The browser closes when the computer call finishes.
+With `ANESU_COMPUTER_STRATEGY=typesafe`, Anesu starts a visible Cua-managed Chromium
+profile, asks Jev to choose from the bounded semantic candidates, asks the existing
+structured browser approval panel for permission, clicks the selected button once,
+and verifies the success marker. Jev abstention is terminal; production never falls
+back to screenshot vision or a second browser backend.
 
-To exercise the traditional path, set these local-only values in `anesu/.env`:
+The disposable fixture also supports a bounded two-step prompt:
 
 ```text
-ANESU_COMPUTER_STRATEGY=traditional
-ANESU_COMPUTER_TRADITIONAL_MODEL=<vision-capable-openrouter-model>
+Open http://127.0.0.1:4173/ and open the details on that page, then reveal the safe result.
 ```
 
-To compare both decision proposals without allowing a second click:
+Anesu observes again after the approved first click, invalidates the previous target,
+and only approves the second click against the new observation. The run completes only
+when the fresh page contains the success marker.
+
+The same computer tool can route a native request when the isolated Ubuntu/X11 profile
+is enabled, or coordinate both surfaces under one Anesu task owner:
 
 ```text
-ANESU_COMPUTER_STRATEGY=compare
+Open http://127.0.0.1:4173/, read the page heading, then write it in Text Editor.
 ```
+
+Mixed work uses separate native and browser Cua sessions and one serialized task history;
+neither runtime can use the other's manifest.
+
+Traditional vision and compare mode are retired from production admission. Their
+direct runner tests remain only as isolated regression coverage.
 
 The computer tool also supports a natural open-only request for an allowed public
 URL:
@@ -73,18 +99,18 @@ fresh snapshot, and reports `opened`. It does not force the local fixture action
 ask Jev to invent a click. If the request also asks for an interaction, the page is
 handled by the bounded model-selected action path and still requires approval.
 For an external page without a configured application verifier, the terminal result
-reports `action_dispatched` with `verification: not-configured` after the approved
-action and one fresh follow-up snapshot; it does not retry the action or claim that
-the user's larger goal was proven.
+reports `action_dispatched` with `outcome-unknown` after the approved action and one
+fresh follow-up snapshot; it does not retry the action or claim that the user's larger
+goal was proven.
 
 For keyboard confirmation, make the key explicit in the request, for example:
 `Open https://example.com and press Enter in the Search terms field.` The action space
 will expose `press` only for that explicit supported key, and the normal approval panel
 appears before `browser_press` runs.
 
-For a native HTML select, quote the exact visible option label, for example:
-`Open https://example.com and select "South Africa" in Country.` The option is shown
-in the approval panel and checked against the current select options before it runs.
+Native HTML select controls are intentionally unavailable in this bounded typed Cua
+slice. A request such as `select "South Africa" in Country` is refused before approval;
+Anesu does not emulate a select with JavaScript or native desktop input.
 
 For a read-only settling delay, make the duration explicit, for example:
 `Open https://example.com and wait 250 milliseconds.` The computer action space exposes
@@ -106,27 +132,19 @@ the confidence value never grants approval by itself.
 
 The native path uses the installed `@trycua/cua-driver` package in the Anesu process;
 it does not require a separately running CUA MCP server. It is available only when
-you already have a disposable X11 display. Choose `traditional` for a vision-capable
-OpenRouter model, or `typesafe` when the foreground application exposes a CUA
-accessibility tree and you have a TypeSafe credential. Configure `anesu/.env` as follows:
+you already have a disposable X11 display. The production policy is Jev over the
+foreground application's CUA accessibility tree; missing semantic state is a safe
+abstention. Configure `anesu/.env` as follows:
 
 ```text
 ANESU_COMPUTER_ENABLED=true
 ANESU_COMPUTER_ENVIRONMENT=ubuntu-x11-cua
-ANESU_COMPUTER_STRATEGY=traditional
-ANESU_COMPUTER_OPENROUTER_API_KEY=<openrouter-key>
-ANESU_COMPUTER_TRADITIONAL_MODEL=<vision-capable-openrouter-model>
-ANESU_COMPUTER_TRADITIONAL_VISION=true
-ANESU_COMPUTER_CUA_DISPLAY_ID=primary
-ANESU_COMPUTER_CUA_ISOLATED_DISPLAY=true
-```
-
-For native Jev, use:
-
-```text
+ANESU_COMPUTER_SURFACE=auto
 ANESU_COMPUTER_STRATEGY=typesafe
 TYPESAFE_API_KEY=<typesafe-key>
 ANESU_COMPUTER_TYPESAFE_MODEL=jev-latest
+ANESU_COMPUTER_CUA_DISPLAY_ID=primary
+ANESU_COMPUTER_CUA_ISOLATED_DISPLAY=true
 ```
 
 The native TypeSafe path does not use invented OCR, raw screenshots, or
@@ -136,10 +154,10 @@ element token is dispatched back to that same window. If CUA exposes no usable
 accessibility candidate, Anesu abstains instead of guessing.
 
 Start Anesu from the same shell that owns the disposable display (`DISPLAY` must be
-set), then ask:
+set), then ask naturally:
 
 ```text
-Use computer to click the visible safe control on the Ubuntu desktop.
+Click the visible safe control on the Ubuntu desktop.
 ```
 
 Before asking for an action, `/computer` shows the configured environment, strategy,
@@ -163,35 +181,85 @@ artifact reference; it never renders absolute paths, raw provider bodies, or scr
 bytes in the normal run summary.
 Repeatable private launchers are available as `pnpm run chat:cua-xvfb` for headless
 work and `pnpm run chat:cua-xephyr` for a visible nested X11 window. Add `--fixture`
-to either command to open the repository's local disposable Chrome page automatically:
+to either command to open the repository's local disposable Cua browser fixture
+automatically. The fixture launcher defaults to `--browser-product auto`, choosing
+Chrome and then Edge. Select a product explicitly when fixture evidence must name it:
 
 ```bash
-pnpm run chat:cua-xephyr -- --fixture
+pnpm run chat:cua-xephyr -- --fixture --browser-product chrome
+pnpm run chat:cua-xephyr -- --fixture --browser-product edge
 ```
 
-Those launchers put Chrome and Anesu in one short-lived `dbus-run-session`, which is
-needed for Linux CUA/AT-SPI discovery, and the fixture enables Chromium accessibility.
+The launcher prints separate Chrome and Edge availability before starting a fixture.
+If the requested product is not installed, it exits without opening a browser; an
+unavailable Edge installation is not reported as a successful Edge run. `auto` only
+selects a product after the host executable and the local Cua manifest-shaped binary
+are found. The fixture enables Chromium accessibility.
+
+This flag applies only to `--fixture`, where the launcher starts the browser itself.
+For ordinary browser tasks and `--acceptance`, Cua's `browser_prepare` owns isolated
+browser selection and attestation; Anesu does not pass an executable path or pretend
+that the fixture selector controls that Cua-owned choice. Passing an explicit product
+without `--fixture` fails closed.
+
+Those launchers put the selected browser and Anesu in one short-lived
+`dbus-run-session`, which is needed for Linux CUA/AT-SPI discovery. They use a private
+cookie-protected X11 display, private `HOME`/XDG state directories, and a disposable
+browser profile under the launcher directory. The fixture browser receives only the
+display, D-Bus, locale, and private XDG environment; model credentials remain with
+Anesu. This is a repeatable acceptance harness, not a host-wide sandbox.
 Native Jev additionally needs a window manager in that disposable display. Bare Xvfb
-can provide a screenshot but usually exposes no selectable window, so Jev will report
-an abstention until the host supplies a window manager and accessibility-capable
-application. If `openbox` is already installed, opt into starting it only inside the
-disposable display:
+can provide a screenshot but usually exposes no exact selectable browser/native window,
+so Cua acceptance refuses before launch and Jev will report an abstention until the host
+supplies a window manager and accessibility-capable application. On Ubuntu systems with
+GNOME Shell available, opt into starting it only inside the disposable display:
 
 ```bash
-pnpm run chat:cua-xvfb -- --fixture --window-manager openbox
+pnpm run chat:cua-xvfb -- --fixture --window-manager gnome-shell
 ```
 
 The launcher intentionally does not install a system window manager or attach to the
 contributor's personal desktop. `fluxbox`, `twm`, `jwm`, and `gnome-shell` are also
 accepted; GNOME Shell is heavier but is already present on some Ubuntu systems.
 
+For deterministic browser acceptance, add `--acceptance`. The launcher starts a
+short-lived local HTTP service at `http://127.0.0.1:4173`, prints SHA-256 digests for
+the native and browser CUA manifests, and reports every installed manifest-listed
+Chrome or Edge product before starting Anesu:
+
+```bash
+pnpm run chat:cua-xvfb -- --acceptance --window-manager gnome-shell
+pnpm run chat:cua-xephyr -- --acceptance --fixture --window-manager gnome-shell
+```
+
+`--acceptance` must include an explicit window manager so Cua can bind the prepared
+browser window exactly. It leaves browser preparation to Cua, so a prompt can open the
+service's `/`, `/contact`, or `/files` route through the normal browser task path.
+Combining it with `--fixture` opens the deterministic root page in the disposable
+browser for a native CUA smoke as well. The service makes no external requests and
+is removed with the private launcher state. The current immutable manifest allows
+`127.0.0.1:4173`; the launcher never invents a DNS answer for `anesu.test`.
+The harness rejects any host or port other than `127.0.0.1:4173`; changing that
+origin requires a manifest and acceptance-evidence update first. With `--fixture`
+without `--acceptance`, the checked-in native page is served as
+`http://127.0.0.1:4173/native.html`, so no filesystem URL is sent to Cua.
+
+`--browser-product auto|chrome|edge` selects the product used by the fixture; `auto`
+prefers Chrome and otherwise uses Edge. It does not override Cua's isolated browser
+preparation. An unavailable requested product is a failed prerequisite, not a mock
+pass or a silent substitution. `--help` prints the launcher contract.
+
+The launcher gives the child a private `HOME`, XDG configuration/cache/data/state
+directories, runtime directory, Xauthority file, session bus, browser profile, and
+Corepack cache copy. Teardown removes that state. This is development isolation, not
+an OS filesystem sandbox.
+
 Then ask Anesu to click `Reveal safe result`; the nested window lets you watch the
 agent cursor and the page update. For the repository fixture, the fresh observation
 also verifies `Computer success: safe result revealed.`; if CUA reports an uncertain
 acknowledgement, Anesu uses that observation to verify the result and still does not
-retry the click. Native Jev requires the fixture or desktop
-application to expose accessibility candidates; traditional mode remains the
-explicit screenshot path, but Anesu never switches strategies silently.
+retry the click. Native Jev requires the fixture or desktop application to expose
+accessibility candidates; missing semantic state is a safe abstention.
 
 Live backend evidence on 2026-09-20: with the stored TypeSafe credential, Jev received
 15 bounded accessibility candidates and selected `Reveal safe result` (confidence
@@ -215,8 +283,9 @@ provider availability/model-compatibility failure, not a CUA action result.
   label is an internal fixture assertion, not the intended everyday chat wording.
 - Approval must happen before the click.
 - The final observation must contain `Computer success: safe result revealed.`
-- The result reports the strategy, candidate identity, and TypeSafe confidence/probabilities
-  when available.
+- The result reports the strategy, candidate identity, step, verifier, and TypeSafe
+  confidence/probabilities when available. `/computer` reports the durable terminal
+  outcome and event count without exposing raw event payloads.
 - Browser artifacts and action records remain under the normal Anesu evidence directory;
   credentials and raw image base64 must not appear there.
 
@@ -227,11 +296,11 @@ the run asks for clarification; credential-like or secret-looking text is refuse
 
 ## Known limits
 
-This browser playground does not demonstrate native desktop control, operating-system cursor
-input, OCR, macOS Accessibility, CoreML segmentation, coordinates, drag, windows,
-remote nodes, or arbitrary websites. It does not claim the full planned per-step
-observation/action/provider evidence bundle; the current run journal is the bounded
-`computer-runs/<run-id>/run.json` plus `events.jsonl` projection, with optional native
-artifact copies stored separately. Low-confidence abstention and complete compare
-shadow-failure reporting remain tracked in the single
-[computer-use dual-path plan](../implementation-plans/anesu/active/anesu-computer-use-dual-paths.md).
+This playground demonstrates the bounded native Ubuntu/X11 and Cua browser slices, not
+an unrestricted desktop agent. It does not cover OCR, macOS Accessibility, CoreML
+segmentation, arbitrary coordinates, native drag-and-drop, remote nodes, arbitrary
+websites, downloads, screenshots, personal browser profiles, or existing-profile
+attachment. Downloads remain disabled because the installed public Cua TypeScript SDK
+does not expose the trusted host approval evidence required to prove them. Application-
+specific verifiers, richer perception, production isolation, and exhaustive
+race/load/release hardening remain later work in the active implementation plan.
