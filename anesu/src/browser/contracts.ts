@@ -1,4 +1,13 @@
 import type { BrowserDownloadCapture, BrowserDownloadTarget, BrowserScreenshotTarget } from "./artifacts.js";
+import type {
+  BrowserActionEffect as CuaBrowserActionEffect,
+  BrowserActionRoute as CuaBrowserActionRoute,
+  BrowserDeliveryMode as CuaBrowserDeliveryMode,
+  BrowserEscalationReason as CuaBrowserEscalationReason,
+  BrowserEscalationTarget as CuaBrowserEscalationTarget,
+} from "./cua-browser-gateway.js";
+import type { ComputerRuntimeEvidence } from "../computer/contracts.js";
+import type { CuaAuthorizationCallback } from "./cua-authorization.js";
 
 export type BrowserSessionId = string & { readonly __brand: "BrowserSessionId" };
 export type BrowserTabId = string & { readonly __brand: "BrowserTabId" };
@@ -9,11 +18,20 @@ export const DEFAULT_BROWSER_READ_RETRY_COUNT = 1;
 export const DEFAULT_BROWSER_READ_ONLY_TIMEOUT_MS = 10_000;
 
 export type BrowserSessionStatus = "active" | "closed" | "expired" | "failed";
+export type BrowserProfileMode = "isolated_new" | "existing_profile";
+export type BrowserSearchProvider = "bing" | "duckduckgo" | "google";
 export type BrowserScrollDirection = "up" | "down" | "left" | "right";
-export type BrowserActionKind = "click" | "type" | "press" | "select" | "scroll" | "upload" | "download";
+export type BrowserInputRoute = "trusted" | "dom_event";
+export type BrowserPointerAction = "hover" | "right_click" | "double_click" | "drag";
+export type BrowserActionKind = "click" | "type" | "press" | "select" | "scroll" | "upload" | "download" | "pointer";
 export type BrowserApprovalAction = BrowserActionKind | "dialog";
 export type BrowserDialogType = "alert" | "beforeunload" | "confirm" | "prompt";
 export type BrowserDialogDecision = "accept" | "dismiss";
+export type BrowserActionEffect = CuaBrowserActionEffect;
+export type BrowserActionRoute = CuaBrowserActionRoute;
+export type BrowserDeliveryMode = CuaBrowserDeliveryMode;
+export type BrowserEscalationTarget = CuaBrowserEscalationTarget;
+export type BrowserEscalationReason = CuaBrowserEscalationReason;
 
 export interface BrowserDialogObservation {
   readonly type: BrowserDialogType;
@@ -30,6 +48,14 @@ export type BrowserDialogApproval = (dialog: BrowserDialogObservation, signal?: 
 export interface BrowserElementReference {
   readonly value: string;
   readonly documentId: BrowserDocumentId;
+  /** Bounded semantic_v2 action declarations from the same snapshot. */
+  readonly actions?: readonly string[];
+  /** Current editable value when semantic_v2 exposes one; never treated as an opaque ref. */
+  readonly currentValue?: string;
+  readonly role?: string;
+  readonly name?: string;
+  readonly type?: string;
+  readonly destinationRef?: string;
 }
 
 export interface BrowserTabInfo {
@@ -38,6 +64,8 @@ export interface BrowserTabInfo {
   readonly documentId: BrowserDocumentId;
   readonly url: string;
   readonly title: string;
+  /** Present when the adapter can prove the active tab from its exact binding. */
+  readonly active?: boolean;
 }
 
 export interface BrowserSnapshot {
@@ -48,11 +76,33 @@ export interface BrowserSnapshot {
   readonly title: string;
   readonly content: string;
   readonly references: readonly BrowserElementReference[];
+  /** Read-only heading facts from semantic_v2 content refs. */
+  readonly headings?: readonly string[];
+  /** Cua semantic_v2 completeness and bounded-read metadata. */
+  readonly complete?: boolean;
+  readonly scope?: string;
+  readonly continuation?: string;
+  readonly omissions?: Readonly<Record<string, number>>;
+  readonly oopif?: {
+    readonly status: string;
+    readonly frames: number;
+  };
+}
+
+/** Bounded semantic_v2 read parameters. A continuation is single-use. */
+export interface BrowserSnapshotRequest {
+  readonly scopeRef?: string;
+  readonly query?: string;
+  readonly continuation?: string;
 }
 
 export interface BrowserActionRequest {
   readonly kind: BrowserActionKind;
+  /** The route is part of the approved action; Linux X11 may require dom_event. */
+  readonly inputRoute?: BrowserInputRoute;
   readonly reference?: BrowserElementReference;
+  readonly destinationReference?: BrowserElementReference;
+  readonly pointerAction?: BrowserPointerAction;
   readonly text?: string;
   readonly key?: string;
   /** Exact visible option label for a native select control. */
@@ -67,6 +117,17 @@ export interface BrowserActionResult {
   readonly sessionId: BrowserSessionId;
   readonly tab: BrowserTabInfo;
   readonly summary: string;
+  /** Bounded Cua result metadata for the dispatched browser action. */
+  readonly effect?: BrowserActionEffect;
+  readonly route?: BrowserActionRoute;
+  readonly delivery?: {
+    readonly mode: BrowserDeliveryMode;
+    readonly deliveredCount?: number;
+  };
+  readonly escalation?: {
+    readonly target: BrowserEscalationTarget;
+    readonly reason: BrowserEscalationReason;
+  };
 }
 
 export interface BrowserWaitRequest {
@@ -110,7 +171,8 @@ export interface BrowserFileIdentity {
 
 export interface BrowserSessionInfo {
   readonly sessionId: BrowserSessionId;
-  readonly profileDirectory: string;
+  /** Present only for adapters whose profile lifecycle Anesu owns. */
+  readonly profileDirectory?: string;
   readonly status: BrowserSessionStatus;
   readonly createdAt: string;
   readonly expiresAt: string;
@@ -123,7 +185,14 @@ export interface BrowserSessionInfo {
 
 export interface BrowserAdapterStartRequest {
   readonly sessionId: BrowserSessionId;
-  readonly profileDirectory: string;
+  /** Exact public origins admitted by the current computer task. */
+  readonly allowedOrigins?: readonly string[];
+  /** Compatibility input for adapters with an Anesu-managed profile. Cua owns its profile. */
+  readonly profileDirectory?: string;
+  /** Isolated Cua launch is the default; existing-profile attachment is explicit. */
+  readonly profileMode?: BrowserProfileMode;
+  /** One task-scoped, digest-bound host decision for an existing-profile attach. */
+  readonly authorizeExistingProfile?: CuaAuthorizationCallback;
   readonly signal?: AbortSignal;
 }
 
@@ -133,12 +202,16 @@ export interface BrowserAdapterStartRequest {
  * depend on this interface's concrete browser library.
  */
 export interface BrowserAdapter {
+  /** Cua-owned adapters prepare and clean profiles through their own runtime. */
+  readonly ownsProfileLifecycle?: boolean;
+  /** Content-free capability proof captured during Cua preflight. */
+  runtimeEvidence?(): ComputerRuntimeEvidence | undefined;
   startSession(request: BrowserAdapterStartRequest): Promise<void>;
   closeSession(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<void>;
   closeTab?(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<void>;
   listTabs(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<readonly BrowserTabInfo[]>;
   open(sessionId: BrowserSessionId, url: string, signal?: AbortSignal): Promise<BrowserTabInfo>;
-  snapshot(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<BrowserSnapshot>;
+  snapshot(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal, request?: BrowserSnapshotRequest): Promise<BrowserSnapshot>;
   act(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserActionRequest, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserActionResult>;
   wait(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserWaitRequest, signal?: AbortSignal): Promise<BrowserWaitResult>;
   screenshot(sessionId: BrowserSessionId, tabId: BrowserTabId, target: BrowserScreenshotTarget, signal?: AbortSignal): Promise<BrowserScreenshotCapture>;

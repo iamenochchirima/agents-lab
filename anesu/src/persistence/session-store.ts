@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { lstat, readdir, rm, stat } from "node:fs/promises";
+import { constants as fsConstants, type Dirent } from "node:fs";
+import { lstat, open, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   asSessionId,
@@ -60,6 +61,70 @@ export interface SessionStoreOptions {
   readonly writeHooks?: PersistenceWriteHooks;
   /** Secrets known by the selected local provider; never write them to evidence. */
   readonly redactionSecrets?: readonly string[];
+}
+
+export interface SessionSummary {
+  readonly sessionId: SessionId;
+  readonly state: "available" | "unavailable";
+  readonly createdAt?: string;
+  readonly lastActivityAt?: string;
+  readonly lastMessage?: { readonly role: TranscriptMessage["role"]; readonly preview: string };
+}
+
+const MAX_SESSION_METADATA_BYTES = 8 * 1024;
+const MAX_SESSION_PREVIEW_BYTES = 8 * 1024;
+const MAX_SESSION_PREVIEW_CHARS = 180;
+
+async function readSessionMetadata(filePath: string, expectedSessionId: string): Promise<SessionMetadata> {
+  const handle = await open(filePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > MAX_SESSION_METADATA_BYTES) {
+      throw new AnesuError("persistence", "Session metadata is not a bounded regular file.");
+    }
+    const value = JSON.parse(await handle.readFile("utf8")) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new AnesuError("persistence", "Session metadata is invalid.");
+    }
+    const metadata = value as Record<string, unknown>;
+    if (metadata.schemaVersion !== 1
+      || metadata.sessionId !== expectedSessionId
+      || typeof metadata.createdAt !== "string"
+      || !Number.isFinite(Date.parse(metadata.createdAt))
+      || metadata.source !== "cli"
+      || metadata.profileId !== "default") {
+      throw new AnesuError("persistence", "Session metadata is invalid.");
+    }
+    return metadata as unknown as SessionMetadata;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readLastSessionMessage(filePath: string, expectedSessionId: SessionId): Promise<SessionSummary["lastMessage"]> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(filePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    const info = await handle.stat();
+    if (!info.isFile() || info.size === 0) return undefined;
+    const length = Math.min(info.size, MAX_SESSION_PREVIEW_BYTES);
+    const offset = info.size - length;
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, offset);
+    const tail = buffer.subarray(0, bytesRead).toString("utf8");
+    const end = tail.endsWith("\n") ? tail.length - 1 : tail.length;
+    const separator = tail.lastIndexOf("\n", end - 1);
+    if (offset > 0 && separator < 0) return undefined;
+    const line = tail.slice(separator + 1, end);
+    if (line.length === 0) return undefined;
+    const message = JSON.parse(line) as unknown;
+    validateTranscriptMessage(message, expectedSessionId);
+    return { role: message.role, preview: message.content.slice(0, MAX_SESSION_PREVIEW_CHARS) };
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
 }
 
 function now(): string {
@@ -890,6 +955,14 @@ function assertProcessExecutionRecord(
       && processIdentity.executablePath.trim().length > 0
       && typeof processIdentity.startTime === "string"
       && processIdentity.startTime.trim().length > 0);
+  const permissionGrant = candidate.permissionGrant as Record<string, unknown> | undefined;
+  const validPermissionGrant = permissionGrant === undefined
+    || (permissionGrant !== null
+      && typeof permissionGrant === "object"
+      && typeof permissionGrant.id === "string"
+      && /^(?:conversation|local)_[a-f0-9]{32}$/u.test(permissionGrant.id)
+      && (permissionGrant.scope === "conversation" || permissionGrant.scope === "local")
+      && permissionGrant.id.startsWith(`${permissionGrant.scope}_`));
   if (typeof candidate.callId !== "string" || candidate.callId.trim().length === 0
     || typeof candidate.command !== "string" || candidate.command.trim().length === 0
     || !Array.isArray(candidate.displayArgs) || candidate.displayArgs.some((value) => typeof value !== "string")
@@ -908,6 +981,7 @@ function assertProcessExecutionRecord(
     || (candidate.errorCode !== undefined && !validErrorCode)
     || (candidate.errorMessage !== undefined && typeof candidate.errorMessage !== "string")
     || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
+    || !validPermissionGrant
     || (candidate.approvalTimeoutMs !== undefined && !validPositiveInteger(candidate.approvalTimeoutMs))
     || (candidate.pid !== undefined && !validPositiveInteger(candidate.pid))
     || (candidate.processIdentity !== undefined && !validProcessIdentity)
@@ -942,6 +1016,7 @@ function assertBrowserActionRecord(
     || candidate.action === "scroll"
     || candidate.action === "upload"
     || candidate.action === "download"
+    || candidate.action === "pointer"
     || candidate.action === "dialog";
   const validStatus = candidate.status === "prepared"
     || candidate.status === "approved"
@@ -962,12 +1037,38 @@ function assertBrowserActionRecord(
     || candidate.errorCode === "browser-timeout"
     || candidate.errorCode === "browser-cancelled"
     || candidate.errorCode === "browser-crash"
+    || candidate.errorCode === "browser-action-refused"
     || candidate.errorCode === "browser-ambiguous"
     || candidate.errorCode === "browser-resource-limit"
     || candidate.errorCode === "artifact-violation"
     || candidate.errorCode === "adapter-failure"
     || candidate.errorCode === "browser-approval-denied"
     || candidate.errorCode === "browser-approval-unavailable";
+  const validEffect = candidate.effect === undefined
+    || candidate.effect === "confirmed"
+    || candidate.effect === "partial"
+    || candidate.effect === "unverifiable"
+    || candidate.effect === "suspected_noop"
+    || candidate.effect === "refused";
+  const validRoute = candidate.route === undefined
+    || candidate.route === "accessibility"
+    || candidate.route === "synthetic_events"
+    || candidate.route === "global_input"
+    || candidate.route === "system_api"
+    || candidate.route === "dom"
+    || candidate.route === "trusted_input"
+    || candidate.route === "trusted"
+    || candidate.route === "dom_event";
+  const delivery = candidate.delivery as Record<string, unknown> | undefined;
+  const validDelivery = candidate.delivery === undefined
+    || (delivery !== null && typeof delivery === "object"
+      && (delivery.mode === "background" || delivery.mode === "foreground" || delivery.mode === "not_applicable" || delivery.mode === "unknown")
+      && (delivery.deliveredCount === undefined || (Number.isSafeInteger(delivery.deliveredCount) && (delivery.deliveredCount as number) >= 0)));
+  const escalation = candidate.escalation as Record<string, unknown> | undefined;
+  const validEscalation = candidate.escalation === undefined
+    || (escalation !== null && typeof escalation === "object"
+      && (escalation.target === "pixel" || escalation.target === "foreground" || escalation.target === "page" || escalation.target === "session")
+      && (escalation.reason === "route_unavailable" || escalation.reason === "delivery_failed" || escalation.reason === "effect_unconfirmed" || escalation.reason === "suspected_noop" || escalation.reason === "permission_required"));
   const dialog = candidate.dialog as Record<string, unknown> | undefined;
   const validDialog = dialog === undefined
     || (dialog !== null
@@ -982,6 +1083,8 @@ function assertBrowserActionRecord(
       && typeof diagnostic.message === "string");
   const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
   const validNonNegativeInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) >= 0;
+  const validTaskActions = (value: unknown): boolean => value === undefined
+    || (Array.isArray(value) && value.length <= 16 && value.every((item) => typeof item === "string" && item.length > 0 && item.length <= 32));
   const validScrollDirection = candidate.direction === undefined
     || candidate.direction === "up"
     || candidate.direction === "down"
@@ -991,6 +1094,9 @@ function assertBrowserActionRecord(
     || typeof candidate.callId !== "string" || candidate.callId.trim().length === 0
     || typeof candidate.tabId !== "string" || candidate.tabId.trim().length === 0
     || !validAction
+    || (candidate.taskId !== undefined && (typeof candidate.taskId !== "string" || candidate.taskId.trim().length === 0 || candidate.taskId.length > 128))
+    || (candidate.grantHash !== undefined && (typeof candidate.grantHash !== "string" || !/^[a-f0-9]{64}$/u.test(candidate.grantHash)))
+    || !validTaskActions(candidate.allowedTaskActions)
     || typeof candidate.reference !== "string" || candidate.reference.trim().length === 0
     || typeof candidate.documentId !== "string" || candidate.documentId.trim().length === 0
     || (candidate.text !== undefined && typeof candidate.text !== "string")
@@ -1007,8 +1113,13 @@ function assertBrowserActionRecord(
     || !validStatus
     || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
     || (candidate.summary !== undefined && typeof candidate.summary !== "string")
+    || !validEffect
+    || !validRoute
+    || !validDelivery
+    || !validEscalation
     || (candidate.errorCode !== undefined && !validErrorCode)
     || (candidate.underlyingErrorCode !== undefined && !validErrorCode)
+    || (candidate.cuaCode !== undefined && (typeof candidate.cuaCode !== "string" || candidate.cuaCode.length === 0 || candidate.cuaCode.length > 128))
     || (candidate.errorMessage !== undefined && typeof candidate.errorMessage !== "string")
     || !validDialog
     || (candidate.dialogDecision !== undefined && candidate.dialogDecision !== "accept" && candidate.dialogDecision !== "dismiss")
@@ -1062,12 +1173,17 @@ function assertComputerActionRecord(
     || (Array.isArray(candidate.modifiers)
       && candidate.modifiers.length <= 8
       && candidate.modifiers.every((value) => validNonEmptyString(value) && (value as string).length <= 32));
+  const validTaskActions = candidate.allowedTaskActions === undefined
+    || (Array.isArray(candidate.allowedTaskActions) && candidate.allowedTaskActions.length <= 16 && candidate.allowedTaskActions.every((value) => validNonEmptyString(value) && (value as string).length <= 32));
   const validPositiveInteger = (value: unknown): boolean => Number.isSafeInteger(value) && (value as number) > 0;
   if (candidate.environment !== "ubuntu-x11-cua"
     || !validNonEmptyString(candidate.callId)
     || !validNonEmptyString(candidate.sessionId)
     || !validNonEmptyString(candidate.displayId)
     || !validOperation
+    || (candidate.taskId !== undefined && !validNonEmptyString(candidate.taskId))
+    || (candidate.grantHash !== undefined && (typeof candidate.grantHash !== "string" || !/^[a-f0-9]{64}$/u.test(candidate.grantHash)))
+    || !validTaskActions
     || !validNonEmptyString(candidate.observationId)
     || !Number.isSafeInteger(candidate.generation) || (candidate.generation as number) < 0
     || !validCoordinate(candidate.x) || !validCoordinate(candidate.y)
@@ -1080,7 +1196,7 @@ function assertComputerActionRecord(
     || (candidate.amount !== undefined && (!validPositiveInteger(candidate.amount) || (candidate.amount as number) > 100))
     || (candidate.targetLabel !== undefined && (typeof candidate.targetLabel !== "string" || candidate.targetLabel.trim().length === 0 || candidate.targetLabel.length > 512))
     || (candidate.targetRole !== undefined && (typeof candidate.targetRole !== "string" || candidate.targetRole.trim().length === 0 || candidate.targetRole.length > 64))
-    || (candidate.targetSource !== undefined && candidate.targetSource !== "accessibility" && candidate.targetSource !== "screen")
+    || (candidate.targetSource !== undefined && candidate.targetSource !== "accessibility" && candidate.targetSource !== "focused" && candidate.targetSource !== "screen")
     || (candidate.approvalTimeoutMs !== undefined && !validPositiveInteger(candidate.approvalTimeoutMs))
     || !validStatus
     || (candidate.decision !== undefined && candidate.decision !== "allow-once" && candidate.decision !== "deny" && candidate.decision !== "unavailable")
@@ -1107,15 +1223,68 @@ function assertComputerRunRecord(
   const validStatus = candidate.status === "running"
     || candidate.status === "completed"
     || candidate.status === "failed"
+    || candidate.status === "cancelled"
     || candidate.status === "outcome-unknown";
+  const validOutcome = candidate.outcome === undefined
+    || candidate.outcome === "completed"
+    || candidate.outcome === "clarification-required"
+    || candidate.outcome === "abstained"
+    || candidate.outcome === "failed"
+    || candidate.outcome === "cancelled"
+    || candidate.outcome === "outcome-unknown"
+    || candidate.outcome === "action-limit";
+  const validErrorCode = candidate.errorCode === undefined
+    || candidate.errorCode === "computer-disabled"
+    || candidate.errorCode === "computer-no-candidate"
+    || candidate.errorCode === "computer-confidence-abstention"
+    || candidate.errorCode === "computer-blocked"
+    || candidate.errorCode === "computer-disagreement"
+    || candidate.errorCode === "computer-verification"
+    || candidate.errorCode === "computer-decision"
+    || candidate.errorCode === "computer-malformed-response"
+    || candidate.errorCode === "computer-provider-timeout"
+    || candidate.errorCode === "computer-driver-failure"
+    || candidate.errorCode === "computer-display-unavailable"
+    || candidate.errorCode === "computer-stale-observation"
+    || candidate.errorCode === "computer-action-limit"
+    || candidate.errorCode === "computer-surface-ambiguous"
+    || candidate.errorCode === "computer-surface-unavailable"
+    || candidate.errorCode === "computer-task-invalid"
+    || candidate.errorCode === "computer-strategy-unavailable"
+    || candidate.errorCode === "computer-approval-denied"
+    || candidate.errorCode === "computer-approval-unavailable"
+    || candidate.errorCode === "computer-cancelled"
+    || candidate.errorCode === "computer-environment";
   const validStrategy = candidate.strategy === "traditional" || candidate.strategy === "typesafe" || candidate.strategy === "compare";
+  const validOrigins = candidate.allowedOrigins === undefined
+    || (Array.isArray(candidate.allowedOrigins) && candidate.allowedOrigins.length <= 32 && candidate.allowedOrigins.every((value) => validString(value) && value.length <= 512));
+  const validTypeSafeModel = candidate.typeSafeModel === undefined || (() => {
+    const raw = candidate.typeSafeModel;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const model = raw as Record<string, unknown>;
+    return typeof model.requestedModel === "string"
+      && model.requestedModel.length > 0
+      && model.requestedModel.length <= 128
+      && typeof model.resolvedModel === "string"
+      && model.resolvedModel.length > 0
+      && model.resolvedModel.length <= 128;
+  })();
   if (candidate.sessionId !== expectedSessionId
     || !validString(candidate.callId)
     || (candidate.environment !== "browser" && candidate.environment !== "ubuntu-x11-cua")
     || !validStrategy
     || !validString(candidate.goal) || candidate.goal.length > 1_000
     || (candidate.maxActions !== undefined && (!Number.isSafeInteger(candidate.maxActions) || (candidate.maxActions as number) <= 0))
+    || (candidate.taskId !== undefined && !validString(candidate.taskId))
+    || (candidate.grantHash !== undefined && (typeof candidate.grantHash !== "string" || !/^[a-f0-9]{64}$/u.test(candidate.grantHash)))
+    || (candidate.taskSurface !== undefined && candidate.taskSurface !== "browser" && candidate.taskSurface !== "native")
+    || !validOrigins
+    || (candidate.inputRoute !== undefined && candidate.inputRoute !== "trusted" && candidate.inputRoute !== "dom_event")
+    || (candidate.taskExpiresAtMs !== undefined && (!Number.isSafeInteger(candidate.taskExpiresAtMs) || (candidate.taskExpiresAtMs as number) <= 0))
+    || !validTypeSafeModel
     || !validStatus
+    || !validOutcome
+    || !validErrorCode
     || (candidate.summary !== undefined && (typeof candidate.summary !== "string" || candidate.summary.length > 2_000))
     || !validString(candidate.startedAt)
     || (candidate.finishedAt !== undefined && !validString(candidate.finishedAt))
@@ -1437,6 +1606,80 @@ export class SessionStore {
       await store.replaceJson(metadataPath, metadata);
       return store;
     }
+  }
+
+  static async listRecentSessions(stateDir: string, limit = 20): Promise<readonly SessionSummary[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new AnesuError("invalid-input", "Session list limit must be an integer between 1 and 100.");
+    }
+    const sessionsDirectory = path.join(stateDir, "sessions");
+    let entries: Dirent[];
+    try {
+      const directoryInfo = await lstat(sessionsDirectory);
+      if (!directoryInfo.isDirectory()) {
+        throw new AnesuError("persistence", "The sessions path is not a directory.");
+      }
+      entries = await readdir(sessionsDirectory, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if (error instanceof AnesuError) throw error;
+      throw new AnesuError("persistence", "Sessions cannot be listed.", { cause: error });
+    }
+
+    const summaries: SessionSummary[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      let selectedId: string;
+      try {
+        selectedId = safePathSegment(entry.name, "Session ID");
+      } catch {
+        continue;
+      }
+      const sessionDirectory = path.join(sessionsDirectory, selectedId);
+      try {
+        const sessionInfo = await lstat(sessionDirectory);
+        if (!sessionInfo.isDirectory()) continue;
+      } catch {
+        continue;
+      }
+
+      let metadata: SessionMetadata;
+      try {
+        metadata = await readSessionMetadata(path.join(sessionDirectory, "session.json"), selectedId);
+      } catch {
+        summaries.push({ sessionId: asSessionId(selectedId), state: "unavailable" });
+        continue;
+      }
+
+      const createdAtMs = Date.parse(metadata.createdAt);
+      let lastActivityAtMs = createdAtMs;
+      let lastMessage: SessionSummary["lastMessage"];
+      try {
+        const transcriptPath = path.join(sessionDirectory, "transcript.jsonl");
+        const transcriptInfo = await lstat(transcriptPath);
+        if (transcriptInfo.isFile()) {
+          lastActivityAtMs = Math.max(createdAtMs, transcriptInfo.mtimeMs);
+          lastMessage = await readLastSessionMessage(transcriptPath, metadata.sessionId);
+        }
+      } catch {
+        // A session without a readable transcript can still be selected. The full
+        // read path reports corruption or permissions when the user resumes it.
+      }
+      summaries.push({
+        sessionId: metadata.sessionId,
+        state: "available",
+        createdAt: metadata.createdAt,
+        lastActivityAt: new Date(lastActivityAtMs).toISOString(),
+        ...(lastMessage ? { lastMessage } : {}),
+      });
+    }
+
+    summaries.sort((left, right) => {
+      if (left.lastActivityAt === undefined) return right.lastActivityAt === undefined ? left.sessionId.localeCompare(right.sessionId) : 1;
+      if (right.lastActivityAt === undefined) return -1;
+      return right.lastActivityAt.localeCompare(left.lastActivityAt) || left.sessionId.localeCompare(right.sessionId);
+    });
+    return summaries.slice(0, limit);
   }
 
   /** Normalize untrusted values before any session-owned evidence is published. */
@@ -2578,6 +2821,7 @@ export class TurnStore {
     await this.writeComputerRun({
       ...record,
       status: "outcome-unknown",
+      outcome: "outcome-unknown",
       summary: reason,
       finishedAt: timestamp,
       recordedAt: timestamp,

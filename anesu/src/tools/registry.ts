@@ -3,7 +3,7 @@ import { stableStringify } from "../persistence/json.js";
 import { isRuntimeInterruptionError, MutationError, ProcessExecutionError, redactSecrets, safeErrorMessage, ToolExecutionError } from "../runtime/errors.js";
 import type { ModelToolCall, ModelToolDefinition, ProcessErrorCode } from "../runtime/contracts.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
-import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessEvent, ProcessResult, ProcessRunner, ProcessToolEvent } from "../process/process.js";
+import { processPermissionIdentity, type ProcessApprovalDecision, type ProcessApprovalRequest, type ProcessEvent, type ProcessResult, type ProcessRunner, type ProcessToolEvent } from "../process/process.js";
 import type { ProcessSecurityPolicy } from "../security/process-policy.js";
 
 export type { ProcessToolEvent } from "../process/process.js";
@@ -14,10 +14,20 @@ import { BrowserError, BrowserTools, type BrowserApprovalDecision, type BrowserA
 import { type MemoryApproval, type MemoryApprovalDecision, type MemoryApprovalRequest, type MemoryEvent, type MemoryOperation, type MemoryScope, type MemoryRecord, type MemorySearchEvidence } from "../memory/contracts.js";
 import { hashMemoryContent, MemoryPolicyError, MemoryStore, type MemoryBatchMutation } from "../memory/store.js";
 import { SkillRegistry } from "../skills/index.js";
-import { COMPUTER_TOOL_DEFINITION, ComputerRunner, type ComputerContext, type ComputerEvent, type ComputerOutcome, type ComputerStrategy } from "../computer/runner.js";
+import { COMPUTER_TOOL_DEFINITION, type ComputerContext, type ComputerEvent, type ComputerOutcome } from "../computer/runner.js";
 import type { ComputerErrorCode } from "../computer/failures.js";
 import { NativeComputerRunner, type NativeComputerRunnerOptions } from "../computer/native-runner.js";
 import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest } from "../computer/contracts.js";
+import { ComputerRouter, type ComputerRunExclusive } from "../computer/router.js";
+import type { TypeSafeModelEvidence } from "../computer/contracts.js";
+import type { ComputerSelectableStrategy, ComputerStrategyPolicy, ComputerSurfacePolicy } from "../computer/routing.js";
+import { compileComputerTask } from "../computer/task.js";
+import { resolveNativeApplication } from "../computer/native-runner.js";
+import type { ComputerTaskApprovalDecision, ComputerTaskApprovalRequest } from "../computer/task.js";
+import { DEFAULT_COMPUTER_TASK_DURATION_MS } from "../config/config.js";
+import type { CuaAuthorizationCallback } from "../browser/cua-authorization.js";
+import type { ComputerTaskContext } from "../computer/contracts.js";
+import type { ComputerTaskSpec } from "../computer/task.js";
 
 export interface ToolExecutionResult {
   readonly callId: string;
@@ -49,22 +59,40 @@ export interface SkillToolOptions {
 
 export interface ComputerToolOptions {
   readonly environment?: "browser" | "ubuntu-x11-cua";
+  readonly surface?: ComputerSurfacePolicy;
   readonly browser?: BrowserToolOptions;
   readonly native?: NativeComputerRunnerOptions;
-  readonly strategy: ComputerStrategy;
+  readonly strategy: ComputerStrategyPolicy;
   readonly openRouterApiKey?: string;
   readonly traditionalModel?: string;
   readonly traditionalVision?: boolean;
   readonly typeSafeApiKey?: string;
   readonly typeSafeModel?: string;
   readonly maxActions?: number;
+  readonly taskDeadlineMs?: number;
+  readonly browserInputRoute?: "trusted" | "dom_event";
   readonly fetchImpl?: typeof fetch;
+  /** Must mirror the immutable origins admitted by the Cua browser manifest. */
+  readonly browserAllowedOrigins?: readonly string[];
+  /** Explicit deployment opt-in for attaching to a user-owned existing browser profile. */
+  readonly existingProfileEnabled?: boolean;
+  /** Cua readiness hooks run after routing but before task approval. */
+  readonly browserPreflight?: () => Promise<void>;
+  readonly nativePreflight?: () => Promise<void>;
+  readonly typeSafePreflight?: (signal?: AbortSignal) => Promise<TypeSafeModelEvidence>;
+  /** Complete task serialization for shared Cua/browser state. */
+  readonly browserRunExclusive?: ComputerRunExclusive;
+  readonly nativeRunExclusive?: ComputerRunExclusive;
+  /** Serializes mixed and single-surface computer runs under one owner. */
+  readonly computerRunExclusive?: ComputerRunExclusive;
 }
 
 export type { BrowserToolEvent } from "../browser/tools.js";
 
 export interface ToolExecutionContext {
   readonly signal?: AbortSignal;
+  /** Original user wording used for computer surface admission; model tool arguments remain the execution goal. */
+  readonly userPrompt?: string;
   readonly approvalTimeoutMs?: number;
   readonly pauseDeadline?: () => void;
   readonly resumeDeadline?: () => void;
@@ -76,13 +104,22 @@ export interface ToolExecutionContext {
   readonly onProcess?: (event: ProcessToolEvent) => Promise<void> | void;
   readonly approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>;
   readonly onBrowser?: (event: BrowserToolEvent) => Promise<void> | void;
+  /** Turn-local task grant and shared conversation browser used during this turn. */
+  readonly browserTurn?: BrowserToolTurnState;
   readonly approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>;
+  readonly approveComputerTask?: (request: ComputerTaskApprovalRequest, signal?: AbortSignal) => Promise<ComputerTaskApprovalDecision>;
+  readonly authorizeExistingProfile?: CuaAuthorizationCallback;
   readonly onComputerApproval?: (event: ComputerApprovalEvent) => Promise<void> | void;
   readonly onComputer?: (event: ComputerEvent) => Promise<void> | void;
   readonly approveMemory?: MemoryApproval;
   readonly onMemory?: (event: MemoryEvent) => Promise<void> | void;
   readonly onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => Promise<void> | void;
   readonly processCallLimitReached?: boolean;
+}
+
+export interface BrowserToolTurnState {
+  readonly tools: BrowserTools;
+  taskContext?: ComputerTaskContext;
 }
 
 interface ToolArguments {
@@ -577,8 +614,10 @@ function mutationRisk(prepared: PreparedWorkspaceMutation): MutationRisk {
 export class ToolRegistry {
   private readonly baseDefinitions: readonly ModelToolDefinition[] = [LIST_DIRECTORY, READ_FILE, STAT, SEARCH_FILES, LIST_QUARANTINE, WRITE_FILE, MKDIR, DELETE_DIRECTORY, DELETE_DIRECTORY_TREE, DELETE_FILE, RESTORE_FILE, RESTORE_DIRECTORY, PURGE_QUARANTINE, COPY_FILE, MOVE_FILE, RENAME, APPLY_PATCH, APPLY_PATCH_SET];
   readonly definitions: readonly ModelToolDefinition[];
+  private readonly computer?: ComputerRouter;
+  private readonly browserOptions?: BrowserToolOptions;
   private readonly browserTools?: BrowserTools;
-  private readonly computer?: { run(callId: string, rawGoal: unknown, context: ComputerContext): Promise<ComputerOutcome> };
+  private readonly compileBrowserTask?: (taskId: string, goal: string, currentBrowserOrigin?: string) => ComputerTaskSpec;
 
   constructor(
     readonly workspace: Workspace,
@@ -589,23 +628,49 @@ export class ToolRegistry {
     private readonly skills?: SkillToolOptions,
     computer?: ComputerToolOptions,
   ) {
-    this.browserTools = browser ? new BrowserTools(browser) : undefined;
-    this.computer = computer
-      ? computer.environment === "ubuntu-x11-cua"
-        ? computer.native ? new NativeComputerRunner({ ...computer.native, maxOutputBytes }) : undefined
-        : computer.browser ? new ComputerRunner({
-            browser: new BrowserTools(computer.browser),
-            strategy: computer.strategy,
-            openRouterApiKey: computer.openRouterApiKey,
-            traditionalModel: computer.traditionalModel,
-            traditionalVision: computer.traditionalVision,
-            typeSafeApiKey: computer.typeSafeApiKey,
-            typeSafeModel: computer.typeSafeModel,
-            maxActions: computer.maxActions,
-            maxOutputBytes,
-            fetchImpl: computer.fetchImpl,
-          })
-        : undefined
+    this.browserOptions = computer?.browser ?? browser;
+    this.browserTools = this.browserOptions ? new BrowserTools(this.browserOptions) : undefined;
+    const compileTask = computer ? ({ taskId, goal, surface, browserAgentMode, currentBrowserOrigin }: { readonly taskId: string; readonly goal: string; readonly surface: "browser" | "native"; readonly browserAgentMode?: boolean; readonly currentBrowserOrigin?: string }) => compileComputerTask({
+      taskId,
+      goal,
+      surface,
+      ...(browserAgentMode ? { browserAgentMode: true } : {}),
+      ...(surface === "native" ? { application: resolveNativeApplication(goal) } : {}),
+      allowedOrigins: surface === "browser" ? computer.browserAllowedOrigins ?? [] : [],
+      ...(surface === "browser" && currentBrowserOrigin ? { currentBrowserOrigin } : {}),
+      inputRoute: surface === "browser" ? computer.browserInputRoute : "trusted",
+      existingProfileEnabled: computer.existingProfileEnabled,
+      maxActions: computer.maxActions ?? 1,
+      nowMs: Date.now(),
+      deadlineMs: computer.taskDeadlineMs ?? DEFAULT_COMPUTER_TASK_DURATION_MS,
+    }) : undefined;
+    this.compileBrowserTask = compileTask
+      ? (taskId, goal, currentBrowserOrigin) => compileTask({ taskId, goal, surface: "browser", browserAgentMode: true, ...(currentBrowserOrigin ? { currentBrowserOrigin } : {}) })
+      : undefined;
+    this.computer = computer?.native
+      ? new ComputerRouter({
+          // The model-facing browser tools own web work. A `computer` call in
+          // this registry is therefore the native-desktop tool, not a second
+          // prompt-routed browser planner.
+          surface: "desktop",
+          preferredSurface: "desktop",
+          strategy: computer.strategy,
+          desktopRunExclusive: computer.nativeRunExclusive,
+          computerRunExclusive: computer.computerRunExclusive,
+          typeSafePreflight: computer.typeSafePreflight,
+          desktop: {
+            availableStrategies: {
+              typesafe: Boolean(computer.typeSafeApiKey ?? computer.native.typeSafeApiKey),
+              // Native production tasks use Jev over CUA accessibility candidates.
+              // Screenshot/compare strategies remain available only to isolated
+              // strategy-unit tests, never through the configured task surface.
+              traditional: false,
+            },
+            preflight: computer.nativePreflight,
+            create: (strategy: ComputerSelectableStrategy) => new NativeComputerRunner({ ...computer.native!, strategy, maxOutputBytes }),
+          },
+          ...(compileTask ? { compileTask } : {}),
+        })
       : undefined;
     this.definitions = [
       ...(process ? [...this.baseDefinitions, RUN_COMMAND] : this.baseDefinitions),
@@ -618,6 +683,15 @@ export class ToolRegistry {
 
   get skillRegistry(): SkillRegistry | undefined {
     return this.skills?.registry;
+  }
+
+  createBrowserTurn(): BrowserToolTurnState | undefined {
+    return this.browserOptions && this.browserTools ? { tools: this.browserTools } : undefined;
+  }
+
+  endBrowserTurn(state: BrowserToolTurnState | undefined): void {
+    state?.tools.endTurn();
+    if (state) state.taskContext = undefined;
   }
 
   async execute(call: ModelToolCall, context: ToolExecutionContext = {}): Promise<ToolExecutionResult> {
@@ -665,11 +739,11 @@ export class ToolRegistry {
                             ? await this.executeMemory(call, args, context)
                           : this.skills && (call.name === LIST_SKILLS.name || call.name === READ_SKILL.name)
                             ? await this.executeSkill(call, args, context.signal)
-                          : this.computer && call.name === COMPUTER_TOOL_DEFINITION.name
-                            ? await this.executeComputer(call, args, context)
                           : this.browserTools && this.browserTools.definitions.some((definition) => definition.name === call.name)
                             ? await this.executeBrowser(call, args, context)
-                            : this.unknown(call);
+                          : this.computer && call.name === COMPUTER_TOOL_DEFINITION.name
+                            ? await this.executeComputer(call, args, context)
+                          : this.unknown(call);
       return result;
     } catch (error) {
       if (isRuntimeInterruptionError(error)) throw error;
@@ -685,6 +759,32 @@ export class ToolRegistry {
         ...(error instanceof BrowserError ? { errorCode: error.browserCode } : {}),
       };
     }
+  }
+
+  private async executeBrowser(call: ModelToolCall, args: ToolArguments, context: ToolExecutionContext): Promise<ToolExecutionResult> {
+    const browser = context.browserTurn?.tools ?? this.browserTools;
+    if (!browser) throw new ToolExecutionError("Browser tools are disabled by configuration.");
+    let taskContext = context.browserTurn?.taskContext;
+    if (!taskContext && context.userPrompt && this.compileBrowserTask) {
+      const currentBrowserOrigin = await browser.currentPageOrigin(context.signal);
+      const task = this.compileBrowserTask(`browser_${randomUUID().replaceAll("-", "")}`, context.userPrompt, currentBrowserOrigin);
+      taskContext = { task, grant: { approved: false, actionCount: 0 } };
+      if (context.browserTurn) context.browserTurn.taskContext = taskContext;
+    }
+    const outcome = await browser.execute(call.name, call.callId, args, {
+      signal: context.signal,
+      approvalTimeoutMs: context.approvalTimeoutMs,
+      pauseDeadline: context.pauseDeadline,
+      resumeDeadline: context.resumeDeadline,
+      pauseTurnDeadline: context.pauseTurnDeadline,
+      resumeTurnDeadline: context.resumeTurnDeadline,
+      approveBrowser: context.approveBrowser,
+      approveComputerTask: context.approveComputerTask,
+      authorizeExistingProfile: context.authorizeExistingProfile,
+      onBrowser: context.onBrowser,
+      ...(taskContext ? { taskContext } : {}),
+    });
+    return { callId: call.callId, name: call.name, ...outcome };
   }
 
   private async executeSkill(call: ModelToolCall, args: ToolArguments, signal?: AbortSignal): Promise<ToolExecutionResult> {
@@ -979,21 +1079,6 @@ export class ToolRegistry {
     }
   }
 
-  private async executeBrowser(call: ModelToolCall, args: ToolArguments, context: ToolExecutionContext): Promise<ToolExecutionResult> {
-    if (!this.browserTools) throw new ToolExecutionError("Browser tools are disabled by configuration.");
-    const outcome = await this.browserTools.execute(call.name, call.callId, args, {
-      signal: context.signal,
-      approvalTimeoutMs: context.approvalTimeoutMs,
-      pauseDeadline: context.pauseDeadline,
-      resumeDeadline: context.resumeDeadline,
-      pauseTurnDeadline: context.pauseTurnDeadline,
-      resumeTurnDeadline: context.resumeTurnDeadline,
-      approveBrowser: context.approveBrowser,
-      onBrowser: context.onBrowser,
-    });
-    return { callId: call.callId, name: call.name, ...outcome, ...(call.name === "browser_open_and_click" ? { terminal: true } : {}) };
-  }
-
   private async executeComputer(call: ModelToolCall, args: ToolArguments, context: ToolExecutionContext): Promise<ToolExecutionResult> {
     if (!this.computer) throw new ToolExecutionError("Computer use is disabled by configuration.");
     const goal = args.goal;
@@ -1006,9 +1091,13 @@ export class ToolRegistry {
       resumeTurnDeadline: context.resumeTurnDeadline,
       approveBrowser: context.approveBrowser,
       onBrowser: context.onBrowser,
-      approveComputer: context.approveComputer,
+            approveComputer: context.approveComputer,
+      approveComputerTask: context.approveComputerTask,
+      authorizeExistingProfile: context.authorizeExistingProfile,
       onComputerApproval: context.onComputerApproval,
       onComputer: context.onComputer,
+      routingGoal: context.userPrompt,
+      taskGoal: context.userPrompt,
     } satisfies ComputerContext);
     return { callId: call.callId, name: call.name, ...outcome, terminal: true };
   }
@@ -1049,6 +1138,7 @@ export class ToolRegistry {
       environmentKeys: prepared.environmentKeys,
       limits: prepared.limits,
       argvHash: prepared.argvHash,
+      permissionIdentity: processPermissionIdentity(prepared),
       approvalTimeoutMs: context.approvalTimeoutMs ?? 120_000,
       warning: "This runs a real local host process. The workspace is its starting directory, not an OS sandbox; the command may access other files, network resources, and credentials available through the host.",
     };

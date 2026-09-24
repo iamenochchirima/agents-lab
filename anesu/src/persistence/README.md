@@ -223,13 +223,11 @@ record stores the session, tab, document, reference, action hash, approval decis
 approval timeout, bounded outcome, and terminal status. Browser actions that were prepared or approved
 when the parent stopped are closed as approval-unavailable; actions that were running
 become ambiguous and are never replayed. Known configured secrets are redacted before
-browser action records and lifecycle payloads are written. Screenshot and download
-artifacts first write bounded per-turn metadata under `browser-artifacts/<artifact-id>.json`,
-then emit `BrowserArtifactCreated`. Restart recovery reconstructs that lifecycle event if
-its acknowledgement was lost, before finalizing the interrupted turn; artifact contents
-are not copied into turn evidence. This closes the Anesu evidence boundary, but
-does not make external artifact creation transactional: an interruption before the
-per-turn record can still leave an orphan for bounded artifact cleanup to handle.
+browser action records and lifecycle payloads are written. The current Cua browser
+surface does not expose screenshot or download artifacts, so no browser artifact is
+created or reported by the production application. The older artifact store remains a
+compatibility seam for focused legacy tests only and is not part of the Cua model-facing
+contract.
 
 Memory action recovery is operation-specific. An approved `add` or `replace` can be
 reconciled after the canonical Markdown write succeeded but acknowledgement of its

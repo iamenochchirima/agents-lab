@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CorrelationId, ProcessErrorCode } from "../runtime/contracts.js";
 import { assertLifecycleTransition } from "../runtime/lifecycle.js";
 
@@ -80,14 +81,37 @@ export interface ProcessApprovalRequest {
   readonly environmentKeys: readonly string[];
   readonly limits: ProcessLimits;
   readonly argvHash: string;
+  /** Opaque identity for an exact request; includes resolved executable, cwd, environment, and limits. */
+  readonly permissionIdentity?: string;
   readonly approvalTimeoutMs?: number;
   readonly warning: string;
 }
 
 export type ProcessApprovalDecision =
-  | { readonly decision: "allow-once" }
+  | { readonly decision: "allow-once"; readonly permissionGrant?: { readonly id: string; readonly scope: "conversation" | "local" } }
   | { readonly decision: "deny"; readonly reason?: string }
   | { readonly decision: "unavailable"; readonly reason: string };
+
+/** Build a stable, secret-free matcher for an exact prepared request. */
+export function processPermissionIdentity(prepared: PreparedProcess): string {
+  const payload = {
+    command: prepared.command,
+    argvHash: prepared.argvHash,
+    cwdAbsolutePath: prepared.cwdAbsolutePath,
+    cwdIdentity: {
+      device: prepared.cwdIdentity.device,
+      inode: prepared.cwdIdentity.inode,
+      mode: prepared.cwdIdentity.mode,
+    },
+    executablePath: prepared.executablePath,
+    executableIdentity: prepared.executableIdentity,
+    environment: Object.entries(prepared.environment).sort(([left], [right]) => left.localeCompare(right)),
+    environmentProfile: prepared.environmentProfile,
+    environmentKeys: prepared.environmentKeys,
+    limits: prepared.limits,
+  };
+  return createHash("sha256").update(JSON.stringify(payload), "utf8").digest("hex");
+}
 
 export interface ProcessExecutionRecord {
   readonly schemaVersion: 1;
@@ -104,6 +128,7 @@ export interface ProcessExecutionRecord {
   readonly environmentKeys: readonly string[];
   readonly limits: ProcessLimits;
   readonly argvHash: string;
+  readonly permissionGrant?: { readonly id: string; readonly scope: "conversation" | "local" };
   readonly approvalTimeoutMs?: number;
   readonly status: ProcessState;
   readonly decision?: "allow-once" | "deny" | "unavailable";
@@ -156,6 +181,7 @@ export function assertProcessTransition(previous: ProcessExecutionRecord, next: 
     previous.processIdentity !== undefined && !sameProcessIdentity(previous.processIdentity, next.processIdentity) ? "processIdentity" : undefined,
     !sameLimits ? "limits" : undefined,
     previous.argvHash !== next.argvHash ? "argvHash" : undefined,
+    previous.permissionGrant !== undefined && JSON.stringify(previous.permissionGrant) !== JSON.stringify(next.permissionGrant) ? "permissionGrant" : undefined,
     previous.approvalTimeoutMs !== next.approvalTimeoutMs ? "approvalTimeoutMs" : undefined,
   ].filter((field): field is string => field !== undefined);
   if (changedFields.length > 0) throw new Error("Process execution identity cannot change after it is recorded (" + changedFields.join(", ") + ").");

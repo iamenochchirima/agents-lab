@@ -25,6 +25,9 @@ export interface ApprovalPanel {
 
 export type ApprovalAction =
   | { readonly kind: "approve-once" }
+  | { readonly kind: "approve-task" }
+  | { readonly kind: "approve-conversation" }
+  | { readonly kind: "approve-local" }
   | { readonly kind: "deny" }
   | { readonly kind: "details" }
   | { readonly kind: "cancel" };
@@ -38,6 +41,9 @@ export type DialogApprovalAction =
 
 export type ApprovalResult =
   | { readonly decision: "allow-once" }
+  | { readonly decision: "allow-task" }
+  | { readonly decision: "allow-conversation" }
+  | { readonly decision: "allow-local" }
   | { readonly decision: "deny"; readonly reason?: string }
   | { readonly decision: "unavailable"; readonly reason: string };
 
@@ -57,6 +63,14 @@ export interface ApprovalQuestionOptions {
   readonly pauseRawInput?: () => void;
   /** Restores line-editor ownership after a raw approval decision. */
   readonly resumeRawInput?: () => void;
+  /** Offer one grant for the bounded high-level task in addition to one action. */
+  readonly allowTask?: boolean;
+  /** The prompt itself approves one already-compiled bounded task, not a single action. */
+  readonly taskOnly?: boolean;
+  /** Offer a durable grant scoped to the current conversation. */
+  readonly allowConversation?: boolean;
+  /** Offer a local saved grant with this exact, user-facing matcher description. */
+  readonly allowLocalLabel?: string;
 }
 
 export interface ApprovalPromptOptions {
@@ -130,6 +144,9 @@ export function renderApprovalPanel(panel: ApprovalPanel, options: { readonly co
 
 export function parseApprovalAction(input: string): ApprovalAction {
   const normalized = input.trim().toLowerCase();
+  if (normalized === "t" || normalized === "task" || normalized === "approve task" || normalized === "allow task") return { kind: "approve-task" };
+  if (normalized === "c" || normalized === "conversation" || normalized === "approve for this conversation") return { kind: "approve-conversation" };
+  if (normalized === "l" || normalized === "p" || normalized === "always" || normalized === "approve local" || normalized === "always allow") return { kind: "approve-local" };
   if (normalized === "a" || normalized === "approve" || normalized === "approve once" || normalized === "y" || normalized === "yes") {
     return { kind: "approve-once" };
   }
@@ -169,8 +186,11 @@ export class ApprovalPrompt {
     if (rawTerminal) {
       options.pauseRawInput?.();
       try {
-        const choice = await this.askKeyboard(options.rawInput, options.signal, "approve once", "deny", () => this.writeDetails(panel));
+        const choice = await this.askKeyboard(options.rawInput, options.signal, "approve once", "deny", () => this.writeDetails(panel), options.allowTask, options.taskOnly, options.allowConversation, options.allowLocalLabel);
         if (choice === "approve") return { decision: "allow-once" };
+        if (choice === "task") return { decision: "allow-task" };
+        if (choice === "conversation") return { decision: "allow-conversation" };
+        if (choice === "local") return { decision: "allow-local" };
         if (choice === "cancel") return { decision: "unavailable", reason: "The approval prompt was cancelled before the operation started." };
         return { decision: "deny", reason: "The user did not approve the proposed operation." };
       } finally {
@@ -180,7 +200,13 @@ export class ApprovalPrompt {
     let detailsShown = false;
     for (;;) {
       if (detailsShown) this.writeDetails(panel);
-      const answer = await this.readAnswer("Choice [a] approve once · [d] deny · [v] details · Esc cancel", options);
+      const taskChoice = options.allowTask ? " · [t] approve this task" : "";
+      const conversationChoice = options.allowConversation ? " · [c] approve for this conversation" : "";
+      const localChoice = options.allowLocalLabel ? ` · [l] ${options.allowLocalLabel}` : "";
+      const instruction = options.taskOnly
+        ? "Choice [t] approve this task · [d] deny · [v] details · Esc cancel"
+        : `Choice [a] approve once${taskChoice}${conversationChoice}${localChoice} · [d] deny · [v] details · Esc cancel`;
+      const answer = await this.readAnswer(instruction, options);
       if (answer.kind === "cancelled") {
         return { decision: "unavailable", reason: "The approval prompt was cancelled before the operation started." };
       }
@@ -189,7 +215,11 @@ export class ApprovalPrompt {
         detailsShown = true;
         continue;
       }
-      if (action.kind === "approve-once") return { decision: "allow-once" };
+      if (action.kind === "approve-once" && !options.taskOnly) return { decision: "allow-once" };
+      if (action.kind === "approve-task" && options.taskOnly) return { decision: "allow-task" };
+      if (action.kind === "approve-task" && options.allowTask) return { decision: "allow-task" };
+      if (action.kind === "approve-conversation" && options.allowConversation) return { decision: "allow-conversation" };
+      if (action.kind === "approve-local" && options.allowLocalLabel) return { decision: "allow-local" };
       if (action.kind === "cancel") return { decision: "unavailable", reason: "The approval prompt was cancelled before the operation started." };
       return { decision: "deny", reason: "The user did not approve the proposed operation." };
     }
@@ -281,23 +311,54 @@ export class ApprovalPrompt {
     approveLabel: string,
     denyLabel: string,
     showDetails: () => void,
-  ): Promise<"approve" | "deny" | "cancel"> {
-    type Choice = "approve" | "deny" | "cancel";
-    const choices: readonly Choice[] = ["approve", "deny", "cancel"];
-    let selected = 1;
+    allowTask = false,
+    taskOnly = false,
+    allowConversation = false,
+    allowLocalLabel?: string,
+  ): Promise<"approve" | "task" | "conversation" | "local" | "deny" | "cancel"> {
+    type Choice = "approve" | "task" | "conversation" | "local" | "deny";
+    const choices: readonly Choice[] = taskOnly
+      ? ["task", "deny"]
+      : ["approve", ...(allowTask ? ["task" as const] : []), ...(allowConversation ? ["conversation" as const] : []), ...(allowLocalLabel ? ["local" as const] : []), "deny"];
+    const defaultChoice = choices[0] ?? "deny";
+    let selected = 0;
     let detailsShown = false;
-    const labels: Record<Choice, string> = { approve: approveLabel, deny: denyLabel, cancel: "cancel" };
+    const labels: Record<Choice, string> = {
+      approve: approveLabel,
+      task: "approve this task",
+      conversation: "approve for this conversation",
+      local: allowLocalLabel ?? "always allow this exact request",
+      deny: denyLabel,
+    };
+    const menuLines = choices.length + 2;
+    let rendered = false;
     const renderChoices = (): void => {
-      const line = choices.map((choice, index) => `${index === selected ? "›" : " "} [${choice === "approve" ? "a" : choice === "deny" ? "d" : "Esc"}] ${labels[choice]}`).join("   ");
-      this.output.write(`\n${style(this.colour, "33;1", line)}${style(this.colour, "2", " · arrows/j/k move · Enter select · v details")}\n`);
+      if (rendered) this.output.write(`\u001b[${menuLines}A\r\u001b[J`);
+      else this.output.write("\n");
+      this.output.write(`${style(this.colour, "36;1", "Choose an action") }\n`);
+      for (let index = 0; index < choices.length; index += 1) {
+        const choice = choices[index]!;
+        const isSelected = index === selected;
+        const isDefault = choice === defaultChoice;
+        const title = `${labels[choice].charAt(0).toUpperCase()}${labels[choice].slice(1)}`;
+        const label = `${title}${isDefault ? (isSelected && !this.colour ? " (selected · default)" : " (default)") : isSelected && !this.colour ? " (selected)" : ""}`;
+        const row = `${isSelected ? "❯" : " "} ${index + 1}. ${label}`;
+        const visibleRow = isSelected && this.colour ? row.padEnd(Math.max(row.length, this.width)) : row;
+        this.output.write(`${isSelected && this.colour ? style(true, "30;43;1", visibleRow) : row}\n`);
+      }
+      this.output.write(`${style(this.colour, "2", `↑/↓ move · Enter confirm · Esc/Ctrl+C cancel${detailsShown ? " · details shown" : " · v details"}`)}\n`);
+      rendered = true;
     };
     renderChoices();
     return new Promise((resolve) => {
       let settled = false;
       const raw = input as NodeJS.ReadableStream & { setRawMode?: (enabled: boolean) => void };
-      const finish = (choice: "approve" | "deny" | "cancel"): void => {
+      let keyBuffer = "";
+      let escapeTimer: NodeJS.Timeout | undefined;
+      const finish = (choice: "approve" | "task" | "conversation" | "local" | "deny" | "cancel"): void => {
         if (settled) return;
         settled = true;
+        if (escapeTimer) clearTimeout(escapeTimer);
         input.removeListener("data", onData);
         signal?.removeEventListener("abort", onAbort);
         raw.setRawMode?.(false);
@@ -305,19 +366,70 @@ export class ApprovalPrompt {
         resolve(choice);
       };
       const onAbort = (): void => finish("cancel");
-      const onData = (chunk: string | Buffer): void => {
-        const value = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-        if (value.includes("\u0003") || value === "\u001b") return finish("cancel");
-        if (value.includes("\u001b[A") || value.toLowerCase() === "k") selected = Math.max(0, selected - 1);
-        else if (value.includes("\u001b[B") || value.toLowerCase() === "j") selected = Math.min(choices.length - 1, selected + 1);
-        else if (value.toLowerCase() === "a") return finish("approve");
-        else if (value.toLowerCase() === "d") return finish("deny");
-        else if (value.toLowerCase() === "v") {
-          detailsShown = !detailsShown;
-          this.output.write(`${style(this.colour, "36;1", detailsShown ? "Details shown" : "Details hidden")}\n`);
-          if (detailsShown) showDetails();
-        } else if (value.includes("\r") || value.includes("\n")) return finish(choices[selected] ?? "cancel");
+      const move = (delta: -1 | 1): void => {
+        const next = Math.max(0, Math.min(choices.length - 1, selected + delta));
+        if (next === selected) return;
+        selected = next;
         renderChoices();
+      };
+      const onEnter = (): void => finish(choices[selected] ?? "deny");
+      const onEscape = (): void => finish("cancel");
+      const showMoreDetails = (): void => {
+        if (detailsShown) return;
+        detailsShown = true;
+        this.output.write(`\u001b[${menuLines}A\r\u001b[J`);
+        rendered = false;
+        showDetails();
+        renderChoices();
+      };
+      const knownArrows: Readonly<Record<string, -1 | 1>> = {
+        "\u001b[A": -1,
+        "\u001b[B": 1,
+        "\u001bOA": -1,
+        "\u001bOB": 1,
+      };
+      const arrowPrefixes = Object.keys(knownArrows);
+      const processKeys = (): void => {
+        while (!settled && keyBuffer.length > 0) {
+          if (keyBuffer.startsWith("\u0003")) return onEscape();
+          const arrow = Object.keys(knownArrows).find((sequence) => keyBuffer.startsWith(sequence));
+          if (arrow) {
+            if (escapeTimer) clearTimeout(escapeTimer);
+            escapeTimer = undefined;
+            keyBuffer = keyBuffer.slice(arrow.length);
+            move(knownArrows[arrow]!);
+            continue;
+          }
+          if (keyBuffer.startsWith("\u001b")) {
+            if (arrowPrefixes.some((sequence) => sequence.startsWith(keyBuffer))) {
+              if (!escapeTimer) {
+                escapeTimer = setTimeout(() => {
+                  escapeTimer = undefined;
+                  if (keyBuffer === "\u001b") onEscape();
+                  else keyBuffer = "";
+                }, 80);
+              }
+              return;
+            }
+            if (keyBuffer.startsWith("\u001b[")) {
+              const finalByte = [...keyBuffer].findIndex((character, index) => index >= 2 && /[\u0040-\u007e]/u.test(character));
+              if (finalByte < 0) return;
+              keyBuffer = keyBuffer.slice(finalByte + 1);
+              continue;
+            }
+            if (keyBuffer.startsWith("\u001bO") && keyBuffer.length < 3) return;
+            keyBuffer = keyBuffer.slice(1);
+            continue;
+          }
+          const character = keyBuffer[0]!;
+          keyBuffer = keyBuffer.slice(1);
+          if (character === "\r" || character === "\n") return onEnter();
+          if (character.toLowerCase() === "v") showMoreDetails();
+        }
+      };
+      const onData = (chunk: string | Buffer): void => {
+        keyBuffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+        processKeys();
       };
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });

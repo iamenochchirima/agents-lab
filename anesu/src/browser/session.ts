@@ -9,15 +9,20 @@ import type {
   BrowserSessionId,
   BrowserSessionInfo,
   BrowserSnapshot,
+  BrowserSnapshotRequest,
   BrowserTabCloseResult,
   BrowserTabId,
   BrowserTabInfo,
+  BrowserProfileMode,
+  BrowserAdapterStartRequest,
 } from "./contracts.js";
+import type { CuaAuthorizationCallback } from "./cua-authorization.js";
 import { asBrowserSessionId } from "./contracts.js";
 import { BrowserUrlPolicy } from "./policy.js";
 import { BrowserArtifactStore, type BrowserArtifactInfo, type BrowserDownloadTarget } from "./artifacts.js";
 import type { BrowserProfileLease } from "./cleanup.js";
 import type { BrowserWaitRequest, BrowserWaitResult, BrowserScreenshotCapture } from "./contracts.js";
+import type { ComputerRuntimeEvidence } from "../computer/contracts.js";
 
 export interface BrowserSessionManagerOptions {
   readonly maxTabs?: number;
@@ -31,6 +36,12 @@ export interface BrowserSessionManagerOptions {
   readonly now?: () => string;
   readonly createSessionId?: () => BrowserSessionId;
   readonly urlPolicy?: BrowserUrlPolicy;
+}
+
+export interface BrowserNavigationTarget {
+  readonly url: string;
+  readonly origin: string;
+  readonly local: boolean;
 }
 
 interface SessionState {
@@ -58,6 +69,8 @@ function defaultSessionId(): BrowserSessionId {
  */
 export class BrowserSessionManager {
   private readonly sessions = new Map<BrowserSessionId, SessionState>();
+  /** Serializes all browser state and adapter calls for one task session. */
+  private readonly sessionQueues = new Map<BrowserSessionId, Promise<void>>();
   private readonly profileDirectory: (sessionId: BrowserSessionId) => string;
   private readonly acquireProfileLease?: (profileDirectory: string) => Promise<BrowserProfileLease>;
   private readonly cleanupProfile?: (profileDirectory: string) => Promise<void>;
@@ -99,28 +112,41 @@ export class BrowserSessionManager {
     this.urlPolicy = options.urlPolicy ?? new BrowserUrlPolicy();
   }
 
-  async start(signal?: AbortSignal): Promise<BrowserSessionInfo> {
+  async start(signal?: AbortSignal, options?: { readonly profileMode?: BrowserProfileMode; readonly authorizeExistingProfile?: CuaAuthorizationCallback; readonly allowedOrigins?: readonly string[] }): Promise<BrowserSessionInfo> {
     const sessionId = this.createSessionId();
     if (this.sessions.has(sessionId)) {
       throw new BrowserError("adapter-failure", `Browser session '${sessionId}' already exists.`);
     }
     const createdAt = this.now();
     const expiresAt = new Date(Date.parse(createdAt) + this.sessionTimeoutMs).toISOString();
+    const profileDirectory = this.adapter.ownsProfileLifecycle
+      ? undefined
+      : this.profileDirectory(sessionId);
     const info: BrowserSessionInfo = {
       sessionId,
-      profileDirectory: this.profileDirectory(sessionId),
       status: "active",
       createdAt,
       expiresAt,
+      ...(profileDirectory ? { profileDirectory } : {}),
     };
     let profileLease: BrowserProfileLease | undefined;
     try {
-      profileLease = this.acquireProfileLease ? await this.acquireProfileLease(info.profileDirectory) : undefined;
-      await this.adapter.startSession({ sessionId, profileDirectory: info.profileDirectory, signal });
+      profileLease = this.acquireProfileLease && profileDirectory
+        ? await this.acquireProfileLease(profileDirectory)
+        : undefined;
+      const startRequest: BrowserAdapterStartRequest = {
+        sessionId,
+        ...(options?.allowedOrigins ? { allowedOrigins: options.allowedOrigins } : {}),
+        ...(profileDirectory ? { profileDirectory } : {}),
+        ...(options?.profileMode ? { profileMode: options.profileMode } : {}),
+        ...(options?.authorizeExistingProfile ? { authorizeExistingProfile: options.authorizeExistingProfile } : {}),
+        signal,
+      };
+      await this.adapter.startSession(startRequest);
       const state: SessionState = { info, tabs: new Map(), closedTabs: new Set(), adapterClosed: false, profileCleaned: false, profileLease };
       this.sessions.set(sessionId, state);
       const expiryTimer = setTimeout(() => {
-        void this.expireSession(sessionId);
+        void this.withSessionLock(sessionId, () => this.expireSession(sessionId));
       }, this.sessionTimeoutMs);
       expiryTimer.unref?.();
       state.expiryTimer = expiryTimer;
@@ -132,6 +158,16 @@ export class BrowserSessionManager {
   }
 
   async close(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<BrowserSessionInfo> {
+    return this.withSessionLock(sessionId, () => this.closeUnlocked(sessionId, signal));
+  }
+
+  /** Validate a destination without dispatching browser navigation. */
+  async validateNavigationTarget(rawUrl: string): Promise<BrowserNavigationTarget> {
+    const target = await this.validateUrl(rawUrl);
+    return { url: target.url, origin: new URL(target.url).origin, local: target.local };
+  }
+
+  private async closeUnlocked(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<BrowserSessionInfo> {
     const session = this.requireSession(sessionId);
     if (session.info.status === "closed") return session.info;
     if (session.expiryTimer) clearTimeout(session.expiryTimer);
@@ -145,7 +181,7 @@ export class BrowserSessionManager {
       }
     }
     let cleanupError: unknown;
-    if (this.cleanupProfile && !session.profileCleaned) {
+    if (this.cleanupProfile && session.info.profileDirectory && !session.profileCleaned) {
       try {
         await this.cleanupProfile(session.info.profileDirectory);
         session.profileCleaned = true;
@@ -198,7 +234,15 @@ export class BrowserSessionManager {
     return this.requireSession(sessionId).info;
   }
 
+  runtimeEvidence(): ComputerRuntimeEvidence | undefined {
+    return this.adapter.runtimeEvidence?.();
+  }
+
   async listTabs(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<readonly BrowserTabInfo[]> {
+    return this.withSessionLock(sessionId, () => this.listTabsUnlocked(sessionId, signal));
+  }
+
+  private async listTabsUnlocked(sessionId: BrowserSessionId, signal?: AbortSignal): Promise<readonly BrowserTabInfo[]> {
     const session = this.requireActiveSession(sessionId);
     const tabs = await this.withReadOnlyRetry(sessionId, signal, (readSignal) => this.adapter.listTabs(sessionId, readSignal));
     this.assertTabLimit(tabs.length);
@@ -207,6 +251,10 @@ export class BrowserSessionManager {
   }
 
   async closeTab(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<BrowserTabCloseResult> {
+    return this.withSessionLock(sessionId, () => this.closeTabUnlocked(sessionId, tabId, signal));
+  }
+
+  private async closeTabUnlocked(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<BrowserTabCloseResult> {
     const session = this.requireActiveSession(sessionId);
     this.requireTab(session, tabId);
     if (!this.adapter.closeTab) {
@@ -219,6 +267,10 @@ export class BrowserSessionManager {
   }
 
   async open(sessionId: BrowserSessionId, rawUrl: string, signal?: AbortSignal): Promise<BrowserTabInfo> {
+    return this.withSessionLock(sessionId, () => this.openUnlocked(sessionId, rawUrl, signal));
+  }
+
+  private async openUnlocked(sessionId: BrowserSessionId, rawUrl: string, signal?: AbortSignal): Promise<BrowserTabInfo> {
     const session = this.requireActiveSession(sessionId);
     this.assertTabLimit(session.tabs.size + 1);
     const requested = await this.validateUrl(rawUrl);
@@ -230,10 +282,20 @@ export class BrowserSessionManager {
     return tab;
   }
 
-  async snapshot(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<BrowserSnapshot> {
+  async snapshot(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal, request?: BrowserSnapshotRequest): Promise<BrowserSnapshot> {
+    return this.withSessionLock(sessionId, () => this.snapshotUnlocked(sessionId, tabId, signal, request));
+  }
+
+  private async snapshotUnlocked(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal, request?: BrowserSnapshotRequest): Promise<BrowserSnapshot> {
     const session = this.requireActiveSession(sessionId);
     this.requireTab(session, tabId);
-    const snapshot = await this.withReadOnlyRetry(sessionId, signal, (readSignal) => this.adapter.snapshot(sessionId, tabId, readSignal));
+    const read = (readSignal: AbortSignal) => this.adapter.snapshot(sessionId, tabId, readSignal, request);
+    // Cua continuations are single-use capabilities. Retrying one after a lost
+    // acknowledgement could consume a different page read or replay a stale
+    // capability, so only ordinary fresh reads use the read-only retry policy.
+    const snapshot = request?.continuation === undefined
+      ? await this.withReadOnlyRetry(sessionId, signal, read)
+      : await this.withFailureTracking(sessionId, () => read(signal ?? new AbortController().signal));
     this.assertSnapshotBelongsToSession(sessionId, tabId, snapshot);
     await this.validateUrl(snapshot.url);
     session.tabs.set(tabId, {
@@ -253,10 +315,23 @@ export class BrowserSessionManager {
     signal?: AbortSignal,
     approveDialog?: BrowserDialogApproval,
   ): Promise<BrowserActionResult> {
+    return this.withSessionLock(sessionId, () => this.actUnlocked(sessionId, tabId, request, signal, approveDialog));
+  }
+
+  private async actUnlocked(
+    sessionId: BrowserSessionId,
+    tabId: BrowserTabId,
+    request: BrowserActionRequest,
+    signal?: AbortSignal,
+    approveDialog?: BrowserDialogApproval,
+  ): Promise<BrowserActionResult> {
     const session = this.requireActiveSession(sessionId);
     const tab = this.requireTab(session, tabId);
     if (request.reference && request.reference.documentId !== tab.documentId) {
       throw new BrowserError("stale-reference", "The browser element reference is stale; take a new snapshot before acting.");
+    }
+    if (request.destinationReference && request.destinationReference.documentId !== tab.documentId) {
+      throw new BrowserError("stale-reference", "The browser pointer destination reference is stale; take a new snapshot before acting.");
     }
     const result = await this.withFailureTracking(sessionId, () => this.adapter.act(sessionId, tabId, request, signal, approveDialog));
     this.assertTabBelongsToSession(sessionId, result.tab);
@@ -266,6 +341,15 @@ export class BrowserSessionManager {
   }
 
   async wait(
+    sessionId: BrowserSessionId,
+    tabId: BrowserTabId,
+    request: BrowserWaitRequest,
+    signal?: AbortSignal,
+  ): Promise<BrowserWaitResult> {
+    return this.withSessionLock(sessionId, () => this.waitUnlocked(sessionId, tabId, request, signal));
+  }
+
+  private async waitUnlocked(
     sessionId: BrowserSessionId,
     tabId: BrowserTabId,
     request: BrowserWaitRequest,
@@ -282,6 +366,10 @@ export class BrowserSessionManager {
   }
 
   async screenshot(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<BrowserArtifactInfo> {
+    return this.withSessionLock(sessionId, () => this.screenshotUnlocked(sessionId, tabId, signal));
+  }
+
+  private async screenshotUnlocked(sessionId: BrowserSessionId, tabId: BrowserTabId, signal?: AbortSignal): Promise<BrowserArtifactInfo> {
     const store = this.artifactStore;
     if (!store) throw new BrowserError("artifact-violation", "Browser artifact storage is not configured.");
     const session = this.requireActiveSession(sessionId);
@@ -299,6 +387,10 @@ export class BrowserSessionManager {
   }
 
   async reserveDownload(sessionId: BrowserSessionId, tabId: BrowserTabId): Promise<BrowserDownloadTarget> {
+    return this.withSessionLock(sessionId, () => this.reserveDownloadUnlocked(sessionId, tabId));
+  }
+
+  private async reserveDownloadUnlocked(sessionId: BrowserSessionId, tabId: BrowserTabId): Promise<BrowserDownloadTarget> {
     const store = this.artifactStore;
     if (!store) throw new BrowserError("artifact-violation", "Browser artifact storage is not configured.");
     const session = this.requireActiveSession(sessionId);
@@ -314,9 +406,16 @@ export class BrowserSessionManager {
   }
 
   async upload(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserActionRequest, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserActionResult> {
+    return this.withSessionLock(sessionId, () => this.uploadUnlocked(sessionId, tabId, request, signal, approveDialog));
+  }
+
+  private async uploadUnlocked(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserActionRequest, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserActionResult> {
     const session = this.requireActiveSession(sessionId);
     const tab = this.requireTab(session, tabId);
     if (!request.sourcePath) throw new BrowserError("invalid-action", "A browser upload requires a resolved source path.");
+    if (request.reference && request.reference.documentId !== tab.documentId) {
+      throw new BrowserError("stale-reference", "The browser upload reference is stale; take a new snapshot before uploading.");
+    }
     await this.validateUrl(tab.url);
     const result = await this.withFailureTracking(sessionId, () => this.adapter.upload(sessionId, tabId, request, signal, approveDialog));
     this.assertTabBelongsToSession(sessionId, result.tab);
@@ -326,6 +425,10 @@ export class BrowserSessionManager {
   }
 
   async download(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserActionRequest, target: BrowserDownloadTarget, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserArtifactInfo> {
+    return this.withSessionLock(sessionId, () => this.downloadUnlocked(sessionId, tabId, request, target, signal, approveDialog));
+  }
+
+  private async downloadUnlocked(sessionId: BrowserSessionId, tabId: BrowserTabId, request: BrowserActionRequest, target: BrowserDownloadTarget, signal?: AbortSignal, approveDialog?: BrowserDialogApproval): Promise<BrowserArtifactInfo> {
     const store = this.artifactStore;
     if (!store) throw new BrowserError("artifact-violation", "Browser artifact storage is not configured.");
     const session = this.requireActiveSession(sessionId);
@@ -345,6 +448,20 @@ export class BrowserSessionManager {
     const session = this.sessions.get(sessionId);
     if (!session) throw new BrowserError("session-not-found", `Browser session '${sessionId}' was not found.`);
     return session;
+  }
+
+  private async withSessionLock<T>(sessionId: BrowserSessionId, operation: () => Promise<T>): Promise<T> {
+    const predecessor = this.sessionQueues.get(sessionId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.sessionQueues.set(sessionId, current);
+    await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.sessionQueues.get(sessionId) === current) this.sessionQueues.delete(sessionId);
+    }
   }
 
   private async validateUrl(rawUrl: string) {
@@ -390,7 +507,7 @@ export class BrowserSessionManager {
       }
     }
     let cleanupError: unknown;
-    if (this.cleanupProfile && !session.profileCleaned) {
+    if (this.cleanupProfile && session.info.profileDirectory && !session.profileCleaned) {
       try {
         await this.cleanupProfile(session.info.profileDirectory);
         session.profileCleaned = true;

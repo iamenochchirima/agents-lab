@@ -36,6 +36,7 @@ const panel: ApprovalPanel = {
 
 test("approval actions are explicit and keep deny/cancel distinct", () => {
   assert.deepEqual(parseApprovalAction("a"), { kind: "approve-once" });
+  assert.deepEqual(parseApprovalAction("t"), { kind: "approve-task" });
   assert.deepEqual(parseApprovalAction("y"), { kind: "approve-once" });
   assert.deepEqual(parseApprovalAction("d"), { kind: "deny" });
   assert.deepEqual(parseApprovalAction("v"), { kind: "details" });
@@ -108,7 +109,7 @@ test("approval prompt turns Escape into a cancelled safe result", async () => {
   });
 });
 
-test("approval prompt supports raw-terminal navigation with a safe deny default", async () => {
+test("approval prompt visibly selects the first action and supports raw-terminal arrow navigation", async () => {
   const { output, chunks } = captureOutput();
   const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
   input.isTTY = true;
@@ -119,12 +120,93 @@ test("approval prompt supports raw-terminal navigation with a safe deny default"
     rawInput: input,
   });
   input.write("v");
+  input.write("\u001b[B");
   input.write("\u001b[A");
   input.write("\r");
   assert.deepEqual(await pending, { decision: "allow-once" });
   const rendered = chunks.join("");
-  assert.match(rendered, /arrows\/j\/k move/u);
+  assert.match(rendered, /❯ 1\. Approve once \(selected · default\)/u);
+  assert.match(rendered, /❯ 2\. Deny \(selected\)/u);
+  assert.match(rendered, /↑\/↓ move · Enter confirm/u);
   assert.match(rendered, /The exact patch changes one line/u);
+});
+
+test("raw approval parses a split down-arrow and Enter confirms the highlighted denial", async () => {
+  const { output, chunks } = captureOutput();
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
+  input.isTTY = true;
+  input.setRawMode = () => undefined;
+  const prompt = new ApprovalPrompt({ output, colour: false });
+  const pending = prompt.ask(panel, {
+    question: () => undefined,
+    rawInput: input,
+  });
+
+  assert.match(chunks.join(""), /❯ 1\. Approve once \(selected · default\)/u);
+  input.write("\u001b");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  input.write("[B");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.match(chunks.join(""), /❯ 2\. Deny \(selected\)/u);
+  input.write("\r");
+
+  assert.deepEqual(await pending, { decision: "deny", reason: "The user did not approve the proposed operation." });
+});
+
+test("raw approval ignores letter shortcuts and exposes bounded-task approval as a separate choice", async () => {
+  const { output, chunks } = captureOutput();
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
+  input.isTTY = true;
+  input.setRawMode = () => undefined;
+  const prompt = new ApprovalPrompt({ output, colour: false });
+  let settled = false;
+  const pending = prompt.ask(panel, {
+    question: () => undefined,
+    rawInput: input,
+    allowTask: true,
+  }).then((result) => {
+    settled = true;
+    return result;
+  });
+
+  input.write("a");
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(settled, false, "a single letter must not approve a TTY prompt");
+  input.write("\u001b[B\r");
+
+  assert.deepEqual(await pending, { decision: "allow-task" });
+  assert.match(chunks.join(""), /2\. Approve this task \(selected\)/u);
+});
+
+test("a task-only approval names the grant accurately and defaults to the task", async () => {
+  const { output, chunks } = captureOutput();
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
+  input.isTTY = true;
+  input.setRawMode = () => undefined;
+  const prompt = new ApprovalPrompt({ output, colour: false });
+  const pending = prompt.ask(panel, {
+    question: () => undefined,
+    rawInput: input,
+    taskOnly: true,
+  });
+
+  assert.match(chunks.join(""), /❯ 1\. Approve this task \(selected · default\)/u);
+  assert.match(chunks.join(""), /2\. Deny/u);
+  input.write("\r");
+
+  assert.deepEqual(await pending, { decision: "allow-task" });
+});
+
+test("task-only line-input approval explicitly requires the task choice", async () => {
+  const { output } = captureOutput();
+  const prompt = new ApprovalPrompt({ output, colour: false });
+
+  const result = await prompt.ask(panel, {
+    question: (_value, callback) => callback("t"),
+    taskOnly: true,
+  });
+
+  assert.deepEqual(result, { decision: "allow-task" });
 });
 
 test("raw-terminal approval keeps the TTY readable when readline pause hooks are supplied", async () => {
@@ -140,7 +222,7 @@ test("raw-terminal approval keeps the TTY readable when readline pause hooks are
     pauseRawInput: () => ownership.push("raw-start"),
     resumeRawInput: () => ownership.push("raw-end"),
   });
-  input.write("d");
+  input.write("\u001b[B\r");
   assert.deepEqual(await pending, { decision: "deny", reason: "The user did not approve the proposed operation." });
   assert.deepEqual(ownership, ["raw-start", "raw-end"]);
 });
@@ -195,6 +277,80 @@ test("active Ctrl+C cancellation is idempotent and reaches a terminal result", {
   const rendered = chunks.join("");
   assert.equal(rendered.match(/Cancelling current turn…/gu)?.length, 1);
   assert.match(rendered, /cancelled/u);
+});
+
+test("interactive Ctrl+C cancels the active turn and a second Ctrl+C exits", { timeout: 2_000 }, async () => {
+  const input = new PassThrough();
+  const chunks: string[] = [];
+  let promptSent = false;
+  let cancelSent = false;
+  let exitSent = false;
+  let cancellationObserved = false;
+  let runCount = 0;
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+      const rendered = chunks.join("");
+      if (!promptSent && rendered.includes("❯ You ›")) {
+        promptSent = true;
+        queueMicrotask(() => input.write("work\n"));
+      }
+      if (promptSent && !cancelSent && rendered.includes("turn") && rendered.includes("starting model run")) {
+        cancelSent = true;
+        queueMicrotask(() => input.write("\u0003"));
+      }
+      if (cancellationObserved && !exitSent && rendered.includes("■ cancelled")) {
+        exitSent = true;
+        setTimeout(() => input.write("\u0003"), 10);
+      }
+    },
+  });
+  const application = {
+    sessionId: "session_interactive_ctrl_c",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: [],
+    recoverInterruptedTurns: async () => [],
+    readTranscript: async () => [],
+    runTurn: async (message: string, signal?: AbortSignal) => {
+      runCount += 1;
+      assert.equal(message, "work");
+      return await new Promise((resolve) => {
+        const cancel = () => {
+          cancellationObserved = true;
+          resolve({
+            schemaVersion: 1,
+            sessionId: "session_interactive_ctrl_c",
+            turnId: "turn_interactive_ctrl_c",
+            status: "cancelled",
+            provider: "openrouter",
+            model: "test/model",
+            startedAt: new Date(0).toISOString(),
+            finishedAt: new Date(1).toISOString(),
+            error: { code: "cancelled", message: "The active turn was cancelled." },
+          });
+        };
+        if (signal?.aborted) cancel();
+        else signal?.addEventListener("abort", cancel, { once: true });
+      });
+    },
+    close: async () => undefined,
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, true).runInteractive(input);
+
+  const rendered = chunks.join("").replace(/\u001b\[[0-9;]*m/gu, "");
+  assert.equal(promptSent, true);
+  assert.equal(cancelSent, true);
+  assert.equal(cancellationObserved, true);
+  assert.equal(exitSent, true);
+  assert.equal(runCount, 1, "Ctrl+C must cancel the active turn, not submit its key as another prompt");
+  assert.match(rendered, /Cancelling current turn/u);
+  assert.match(rendered, /■ cancelled/u);
+  assert.match(rendered, /Session closed\./u);
 });
 
 test("interactive TUI renders unexpected turn errors and remains usable", { timeout: 2_000 }, async () => {
@@ -261,6 +417,46 @@ test("TUI distinguishes partial and outcome-unknown actions from ordinary failur
   const rendered = chunks.join("");
   assert.match(rendered, /workspace change · partial\/uncertain · one\.txt/u);
   assert.match(rendered, /browser · click · outcome unknown/u);
+});
+
+test("TUI keeps an ambiguous browser action visible without overriding a completed agent turn", async () => {
+  const { output, chunks } = captureOutput();
+  const application = {
+    sessionId: "session_browser_recovery",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["browser_click", "browser_snapshot"],
+    runTurn: async (...args: unknown[]) => {
+      const onText = args[2] as ((text: string) => void) | undefined;
+      const onEvent = args[3] as ((event: unknown) => void) | undefined;
+      const onBrowser = args[9] as ((event: unknown) => void) | undefined;
+      onEvent?.({ type: "waiting", round: 1 });
+      onBrowser?.({
+        type: "completed",
+        request: { action: "click" },
+        ok: false,
+        errorCode: "browser-ambiguous",
+        summary: "Cua could not confirm the cross-origin click effect.",
+      });
+      // The model then receives fresh destination-page evidence through a
+      // read-only browser tool and completes its answer. That observation does
+      // not rewrite the click's separately recorded ambiguous outcome.
+      onEvent?.({ type: "tool_started", round: 2, call: { name: "browser_snapshot" } });
+      onEvent?.({ type: "tool_completed", round: 2, name: "browser_snapshot", ok: true, summary: "Read the destination page title." });
+      onText?.("The destination page title is Example Domains.");
+      onEvent?.({ type: "status", status: "completed", round: 0 });
+      return { status: "completed", assistantText: "The destination page title is Example Domains." };
+    },
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runSingle("Follow the link and report the page title.");
+
+  const rendered = chunks.join("");
+  assert.match(rendered, /browser · click · outcome unknown/u);
+  assert.match(rendered, /✓ completed ·/u);
+  assert.doesNotMatch(rendered, /turn completed · computer task outcome unknown/u);
 });
 
 test("TUI redacts configured and provider-shaped secrets from live output", async () => {

@@ -1,4 +1,4 @@
-import type { ComputerRunEventKind, ComputerRunEventRecord, ComputerRunRecord } from "./records.js";
+import type { ComputerRunEventKind, ComputerRunEventRecord, ComputerRunRecord, ComputerTerminalOutcome } from "./records.js";
 
 /**
  * Safe, read-only projection of one computer lifecycle event. Deliberately
@@ -22,6 +22,11 @@ export interface ComputerRunEventSummary {
   readonly success?: boolean;
   readonly terminal?: boolean;
   readonly runStatus?: "completed" | "outcome-unknown" | "failed";
+  readonly outcome?: ComputerTerminalOutcome;
+  readonly step?: number;
+  readonly maxActions?: number;
+  readonly verifier?: string;
+  readonly verificationEvidence?: Readonly<Record<string, string>>;
   readonly reason?: string;
   readonly artifactId?: string;
   readonly artifactPath?: string;
@@ -85,6 +90,13 @@ export function summarizeComputerRunEvent(event: ComputerRunEventRecord): Comput
     ...(typeof payload.success === "boolean" ? { success: payload.success } : {}),
     ...(typeof payload.terminal === "boolean" ? { terminal: payload.terminal } : {}),
     ...(safeStatus(payload.runStatus) ? { runStatus: safeStatus(payload.runStatus) } : {}),
+    ...(typeof payload.outcome === "string" && ["completed", "clarification-required", "abstained", "failed", "cancelled", "outcome-unknown", "action-limit"].includes(payload.outcome) ? { outcome: payload.outcome as ComputerTerminalOutcome } : {}),
+    ...(safeNumber(payload.step) !== undefined ? { step: safeNumber(payload.step) } : {}),
+    ...(safeNumber(payload.maxActions) !== undefined ? { maxActions: safeNumber(payload.maxActions) } : {}),
+    ...(boundedString(payload.verifier, 64) ? { verifier: boundedString(payload.verifier, 64) } : {}),
+    ...(payload.verificationEvidence && typeof payload.verificationEvidence === "object" && !Array.isArray(payload.verificationEvidence)
+      ? { verificationEvidence: Object.fromEntries(Object.entries(payload.verificationEvidence).slice(0, 8).flatMap(([key, value]) => typeof value === "string" ? [[key.slice(0, 64), value.slice(0, 512)]] : [])) }
+      : {}),
     ...(boundedString(payload.reason, 2_000) ? { reason: boundedString(payload.reason, 2_000) } : {}),
     ...(boundedString(payload.artifactId, 256) ? { artifactId: boundedString(payload.artifactId, 256) } : {}),
     ...(boundedString(payload.artifactPath, 512) ? { artifactPath: boundedString(payload.artifactPath, 512) } : {}),

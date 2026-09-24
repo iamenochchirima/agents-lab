@@ -185,6 +185,10 @@ export class OpenRouterModelProvider implements ModelProvider {
               parameters: tool.inputSchema,
             },
           })),
+          ...(request.toolChoice ? {
+            tool_choice: request.toolChoice,
+            parallel_tool_calls: false,
+          } : {}),
           stream: true,
           stream_options: { include_usage: true },
         }),

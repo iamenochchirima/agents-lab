@@ -97,6 +97,31 @@ class TestBrowserAdapter implements BrowserAdapter {
   }
 }
 
+class CuaOwnedProfileAdapter extends TestBrowserAdapter {
+  readonly ownsProfileLifecycle = true;
+  startRequest: Parameters<BrowserAdapter["startSession"]>[0] | undefined;
+
+  override async startSession(request?: Parameters<BrowserAdapter["startSession"]>[0]): Promise<void> {
+    this.startRequest = request;
+  }
+}
+
+class ConcurrencyTrackingAdapter extends TestBrowserAdapter {
+  inFlight = 0;
+  maximumInFlight = 0;
+
+  async open(sessionId: BrowserSessionId, url: string): Promise<BrowserTabInfo> {
+    this.inFlight += 1;
+    this.maximumInFlight = Math.max(this.maximumInFlight, this.inFlight);
+    await new Promise<void>((resolve) => setTimeout(resolve, 15));
+    try {
+      return await super.open(sessionId, url);
+    } finally {
+      this.inFlight -= 1;
+    }
+  }
+}
+
 class CrashingBrowserAdapter extends TestBrowserAdapter {
   async snapshot(): Promise<never> {
     throw new BrowserError("browser-crash", "The browser process exited unexpectedly.");
@@ -167,6 +192,46 @@ test("browser session manager owns session and tab identity", async () => {
   assert.equal(tab.sessionId, session.sessionId);
   assert.deepEqual(tabs, [tab]);
   assert.deepEqual(adapter.openedUrls, ["http://127.0.0.1:4173/fixture"]);
+});
+
+test("Cua-owned browser profiles bypass the manager's legacy profile lifecycle", async () => {
+  const adapter = new CuaOwnedProfileAdapter();
+  let cleaned = 0;
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => asBrowserSessionId("browser_cua_owned_profile"),
+    profileDirectory: () => "/should-not-be-created",
+    acquireProfileLease: async () => { throw new Error("Cua-owned profiles must not acquire an Anesu lease."); },
+    cleanupProfile: async () => { cleaned += 1; },
+    urlPolicy: policy(),
+  });
+
+  const session = await manager.start();
+  assert.equal(session.profileDirectory, undefined);
+  assert.ok(adapter.startRequest);
+  assert.equal("profileDirectory" in adapter.startRequest, false);
+
+  await manager.close(session.sessionId);
+  assert.equal(cleaned, 0);
+});
+
+test("browser session manager serializes adapter operations within one task session", async () => {
+  const adapter = new ConcurrencyTrackingAdapter();
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => asBrowserSessionId("browser_serialized"),
+    urlPolicy: policy(),
+  });
+  const session = await manager.start();
+
+  await Promise.all([
+    manager.open(session.sessionId, "http://127.0.0.1:4173/first"),
+    manager.open(session.sessionId, "http://127.0.0.1:4173/second"),
+  ]);
+
+  assert.equal(adapter.maximumInFlight, 1);
+  assert.deepEqual(adapter.openedUrls, [
+    "http://127.0.0.1:4173/first",
+    "http://127.0.0.1:4173/second",
+  ]);
 });
 
 test("browser session manager enforces the configured tab limit before opening another tab", async () => {
@@ -389,6 +454,14 @@ test("browser session manager holds and releases an optional profile lease", asy
   assert.equal(released, 0);
   await manager.close(session.sessionId);
   assert.equal(released, 1);
+});
+
+test("browser session manager passes task origins to the adapter before browser setup", async () => {
+  const adapter = new CuaOwnedProfileAdapter();
+  const manager = new BrowserSessionManager(adapter);
+  const session = await manager.start(undefined, { allowedOrigins: ["https://unlisted.example"] });
+  assert.deepEqual(adapter.startRequest?.allowedOrigins, ["https://unlisted.example"]);
+  await manager.close(session.sessionId);
 });
 
 test("browser session manager releases a profile lease when adapter startup fails", async () => {

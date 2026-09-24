@@ -1,10 +1,13 @@
+import { access, constants } from "node:fs/promises";
+import path from "node:path";
 import type { Writable } from "node:stream";
 import type { AppConfig } from "../config/config.js";
+import { CuaBrowserAdapter, DEFAULT_CUA_BROWSER_ORIGINS } from "../browser/index.js";
+import { CuaNativeDriverOwner, inspectCuaReadiness } from "../computer/cua-driver.js";
 import { createModelProvider } from "../models/factory.js";
 import { asSessionId, asTurnId, type ModelRequest } from "../runtime/contracts.js";
 import { AnesuError, safeErrorMessage } from "../runtime/errors.js";
 import { Workspace } from "../workspace/workspace.js";
-import { inspectCuaReadiness } from "../computer/cua-driver.js";
 
 interface DoctorResult {
   readonly ok: boolean;
@@ -21,6 +24,81 @@ function boundedResponse(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
   if (normalized.length <= 240) return normalized;
   return `${normalized.slice(0, 239)}…`;
+}
+
+async function findExecutable(names: readonly string[]): Promise<string | undefined> {
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter((entry) => entry.length > 0);
+  for (const name of names) {
+    const candidates = path.isAbsolute(name) ? [name] : pathEntries.map((entry) => path.join(entry, name));
+    for (const candidate of candidates) {
+      try {
+        await access(candidate, constants.X_OK);
+        return candidate;
+      } catch {
+        // Keep checking the bounded candidate list.
+      }
+    }
+  }
+  return undefined;
+}
+
+async function writeCuaProbe(
+  output: Writable,
+  label: string,
+  probe: () => Promise<{ readonly packageVersion?: string; readonly driverVersion?: string; readonly capabilityVersion?: string; readonly visualRegionCapability?: "available" | "unavailable" } | undefined>,
+  close: () => Promise<void>,
+): Promise<void> {
+  let result: { readonly packageVersion?: string; readonly driverVersion?: string; readonly capabilityVersion?: string; readonly visualRegionCapability?: "available" | "unavailable" } | undefined;
+  let failure: unknown;
+  try {
+    result = await probe();
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    await close();
+  } catch (error) {
+    failure ??= error;
+  }
+  if (failure) {
+    output.write(`${label}: unavailable (${safeErrorMessage(failure)})\n`);
+    return;
+  }
+  const identity = [result?.packageVersion ? `package ${result.packageVersion}` : undefined, result?.driverVersion ? `driver ${result.driverVersion}` : undefined, result?.capabilityVersion ? `capability ${result.capabilityVersion}` : undefined].filter(Boolean).join(", ");
+  const visual = result?.visualRegionCapability ? `; visual regions ${result.visualRegionCapability}` : "";
+  output.write(`${label}: ready${identity || visual ? ` (${[identity, visual.slice(2)].filter(Boolean).join("")})` : ""}\n`);
+}
+
+async function writeComputerReadiness(config: AppConfig, output: Writable): Promise<void> {
+  if (!config.computerEnabled) return;
+  output.write(`computer Jev credential: ${config.typeSafeApiKey ? "present" : "missing"}\n`);
+  const [chrome, edge, windowManager] = await Promise.all([
+    findExecutable(["google-chrome", "google-chrome-stable", "/opt/google/chrome/chrome"]),
+    findExecutable(["microsoft-edge", "microsoft-edge-stable", "/opt/microsoft/msedge/msedge"]),
+    findExecutable(["openbox", "fluxbox", "twm", "jwm", "gnome-shell"]),
+  ]);
+  output.write(`computer Chrome executable: ${chrome ? "present" : "missing"}\n`);
+  output.write(`computer Edge executable: ${edge ? "present" : "missing"}\n`);
+  output.write(`computer supported window manager: ${windowManager ? `present (${path.basename(windowManager)})` : "missing"}\n`);
+
+  const manifestRoot = path.join(process.cwd(), "config");
+  if (config.computerEnvironment === "ubuntu-x11-cua") {
+    const owner = new CuaNativeDriverOwner({ manifestPath: path.join(manifestRoot, "cua-native-capabilities.yaml") });
+    await writeCuaProbe(output, "computer native Cua", async () => {
+      await owner.preflight();
+      return owner.runtimeEvidence();
+    }, () => owner.shutdown());
+  }
+  if (config.browserEnabled && (config.computerEnvironment === "browser" || config.computerEnvironment === "ubuntu-x11-cua")) {
+    const adapter = new CuaBrowserAdapter({
+      manifestPath: path.join(manifestRoot, "cua-browser-capabilities.yaml"),
+      allowedOrigins: DEFAULT_CUA_BROWSER_ORIGINS,
+    });
+    await writeCuaProbe(output, "computer browser Cua", async () => {
+      await adapter.preflight();
+      return adapter.runtimeEvidence();
+    }, () => adapter.shutdown());
+  }
 }
 
 async function probeProvider(config: AppConfig): Promise<DoctorResult> {
@@ -94,14 +172,11 @@ export async function runDoctor(config: AppConfig, output: Writable): Promise<bo
   output.write(`browser read-only retries: ${config.browserReadRetryCount}\n`);
   output.write(`browser max tabs: ${config.browserMaxTabs}\n`);
   output.write(`browser profile retention: ${config.browserProfileRetentionMs}ms\n`);
-  output.write(`browser artifact retention: ${config.browserArtifactRetentionMs}ms\n`);
-  output.write(`browser cleanup maximum: ${config.browserCleanupMaxEntries} entries\n`);
   output.write(`browser wait maximum: ${config.browserWaitMaxMs}ms\n`);
   output.write(`browser snapshot: ${config.browserSnapshotMaxChars} chars, ${config.browserMaxSnapshotReferences} references\n`);
-  output.write(`browser screenshots: ${config.browserScreenshotMaxBytes} bytes, ${config.browserScreenshotMaxWidth}x${config.browserScreenshotMaxHeight} pixels\n`);
-  output.write(`browser file artifacts: ${config.browserUploadMaxBytes} upload bytes, ${config.browserDownloadMaxBytes} download bytes\n`);
+  output.write(`browser uploads: ${config.browserUploadMaxBytes} bytes; downloads, screenshots, and native select controls: unavailable\n`);
   output.write(`browser local hosts: ${config.browserAllowedLocalHosts.join(",") || "none"}\n`);
-  output.write(`computer: ${config.computerEnabled ? `${config.computerEnvironment}/${config.computerStrategy}` : "disabled"}\n`);
+  output.write(`computer: ${config.computerEnabled ? `${config.computerEnvironment}/${config.computerSurface}/${config.computerStrategy}` : "disabled"}\n`);
   output.write(`computer decision/action deadline: ${config.computerDurationMs}ms\n`);
   output.write(`computer run retention: ${config.computerRunRetentionMs}ms\n`);
   output.write(`computer cleanup maximum: ${config.computerCleanupMaxEntries} entries\n`);
@@ -113,6 +188,7 @@ export async function runDoctor(config: AppConfig, output: Writable): Promise<bo
     const readiness = inspectCuaReadiness();
     output.write(`computer CUA display: ${readiness.available ? `ready (${readiness.display})` : `unavailable (${readiness.reason ?? "unknown"})`}\n`);
   }
+  await writeComputerReadiness(config, output);
   try {
     const result = await probeProvider(config);
     if (!result.ok) {

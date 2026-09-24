@@ -7,6 +7,8 @@ import type { ProcessApprovalDecision, ProcessApprovalRequest, ProcessExecutionR
 import type { ProcessToolEvent } from "../tools/registry.js";
 import type { ComputerEvent } from "../computer/runner.js";
 import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest } from "../computer/contracts.js";
+import type { ComputerTaskApprovalDecision, ComputerTaskApprovalRequest } from "../computer/task.js";
+import type { CuaAuthorizationCallback } from "../browser/cua-authorization.js";
 import type { ComputerActionRecord, ComputerRunRecord } from "../computer/records.js";
 import type { BrowserActionRecord, BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolErrorCode, BrowserToolEvent } from "../browser/index.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
@@ -42,7 +44,7 @@ export interface RunTurnOptions {
   readonly session: SessionStore;
   readonly provider: ModelProvider;
   readonly tools?: ToolRegistry;
-  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "computerDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxPatchSetBytes" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
+  readonly config: Pick<AppConfig, "timeoutMs" | "firstEventTimeoutMs" | "approvalTimeoutMs" | "modelRetryAttempts" | "modelRetryBackoffMs" | "maxModelToolRounds" | "maxToolDurationMs" | "browserActionTimeoutMs" | "computerDurationMs" | "initialInstruction" | "workspaceRoot" | "maxFileBytes" | "maxDirectoryEntries" | "maxTreeEntries" | "maxTreeBytes" | "maxTreeDepth" | "maxPatchSetBytes" | "maxToolOutputBytes" | "maxModelRequestBytes" | "maxModelOutputBytes" | "processMode" | "processDurationMs" | "processTerminationGraceMs" | "processOutputBytes" | "processArgumentCount" | "processArgumentBytes" | "processCallsPerTurn" | "openRouterApiKey" | "memoryBootstrapMaxChars" | "memoryUserMaxChars" | "memoryWorkspaceMaxChars" | "memoryMaxResults" | "memoryDailyRetentionDays">;
   readonly memory?: MemoryStore;
   /** Diagnostic/test adapter for exercising context preparation failure semantics. */
   readonly contextCompactor?: ContextCompactor;
@@ -58,6 +60,8 @@ export interface RunTurnOptions {
   readonly approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>;
   readonly onBrowser?: (event: BrowserToolEvent) => void | Promise<void>;
   readonly approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>;
+  readonly approveComputerTask?: (request: ComputerTaskApprovalRequest, signal?: AbortSignal) => Promise<ComputerTaskApprovalDecision>;
+  readonly authorizeExistingProfile?: CuaAuthorizationCallback;
   readonly onComputerApproval?: (event: ComputerApprovalEvent) => void | Promise<void>;
   readonly onComputer?: (event: ComputerEvent) => void | Promise<void>;
   readonly approveMemory?: MemoryApproval;
@@ -202,13 +206,14 @@ const SIDE_EFFECTING_TOOLS = new Set([
   "apply_patch",
   "apply_patch_set",
   "run_command",
+  "computer",
   "browser_start",
-  "browser_open_and_click",
+  "browser_open",
   "browser_click",
   "browser_type",
   "browser_press",
+  "browser_scroll",
   "browser_upload",
-  "browser_download",
   "browser_close",
   "memory",
   "memory_forget",
@@ -377,6 +382,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
     );
   }
   const turn = await options.session.admitTurn(options.userPrompt, options.provider.provider, options.provider.model);
+  const browserTurn = tools.createBrowserTurn();
   const recordMutation = async (event: MutationEvent): Promise<void> => {
     const request = event.request;
     const decision = event.type === "approval_decided" ? event.decision.decision : undefined;
@@ -531,8 +537,19 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
     }
     await options.onMutation?.(event);
   };
+  const processAuthorization = new Map<string, {
+    readonly decision: ProcessExecutionRecord["decision"];
+    readonly permissionGrant?: ProcessExecutionRecord["permissionGrant"];
+  }>();
   const recordProcess = async (event: ProcessToolEvent): Promise<void> => {
     const request = event.request;
+    if (event.type === "approval_decided") {
+      processAuthorization.set(request.executionId, {
+        decision: event.decision.decision,
+        ...(event.decision.decision === "allow-once" && event.decision.permissionGrant ? { permissionGrant: event.decision.permissionGrant } : {}),
+      });
+    }
+    const authorization = processAuthorization.get(request.executionId);
     const base = {
       schemaVersion: 1 as const,
       executionId: request.executionId,
@@ -548,6 +565,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       environmentKeys: request.environmentKeys,
       limits: request.limits,
       argvHash: request.argvHash,
+      ...(authorization?.permissionGrant ? { permissionGrant: authorization.permissionGrant } : {}),
       ...(request.approvalTimeoutMs !== undefined ? { approvalTimeoutMs: request.approvalTimeoutMs } : {}),
     };
     let record: ProcessExecutionRecord | undefined;
@@ -570,7 +588,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       record = {
         ...base,
         status: "running",
-        decision: "allow-once",
+        decision: authorization?.decision ?? "allow-once",
         pid: event.pid,
         ...(event.processIdentity ? { processIdentity: event.processIdentity } : {}),
         startedAt: new Date().toISOString(),
@@ -581,7 +599,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       record = {
         ...base,
         status: result.state,
-        decision: "allow-once",
+        ...(authorization?.decision ? { decision: authorization.decision } : {}),
         ...(result.pid !== undefined ? { pid: result.pid } : {}),
         ...(result.processIdentity ? { processIdentity: result.processIdentity } : {}),
         stdout: redactSecrets(result.stdout, [options.config.openRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? ""]),
@@ -613,7 +631,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
                 ? "ProcessTerminating"
                 : "ProcessCompleted";
         const payload = event.type === "approval_decided"
-          ? { executionId: request.executionId, callId: request.callId, decision: event.decision.decision }
+          ? { executionId: request.executionId, callId: request.callId, decision: event.decision.decision, ...(event.decision.decision === "allow-once" && event.decision.permissionGrant ? { permissionGrant: event.decision.permissionGrant } : {}) }
           : event.type === "started"
             ? { executionId: request.executionId, callId: request.callId, pid: event.pid }
             : event.type === "terminating"
@@ -685,6 +703,10 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       correlationId: turn.correlationId,
       tabId: request.tabId,
       action: request.action,
+      ...(request.inputRoute !== undefined ? { inputRoute: request.inputRoute } : {}),
+      ...(request.taskId !== undefined ? { taskId: request.taskId } : {}),
+      ...(request.grantHash !== undefined ? { grantHash: request.grantHash } : {}),
+      ...(request.allowedTaskActions !== undefined ? { allowedTaskActions: request.allowedTaskActions } : {}),
       reference: request.reference,
       documentId: request.documentId,
       ...(request.text !== undefined ? { text: redactSecrets(request.text, secrets) } : {}),
@@ -692,7 +714,8 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       ...(request.value !== undefined ? { value: redactSecrets(request.value, secrets) } : {}),
       ...(request.direction !== undefined ? { direction: request.direction } : {}),
       ...(request.amount !== undefined ? { amount: request.amount } : {}),
-      ...(request.path !== undefined ? { path: redactSecrets(request.path, secrets) } : {}),
+      // Upload source paths are approval-time evidence only. Do not persist
+      // filesystem paths in the durable browser action record.
       ...(request.maxBytes !== undefined ? { maxBytes: request.maxBytes } : {}),
       ...(request.dialog ? { dialog: {
         type: request.dialog.type,
@@ -743,8 +766,13 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
         status,
         decision: "allow-once",
         summary: redactSecrets(event.summary, secrets),
+        ...(event.effect !== undefined ? { effect: event.effect } : {}),
+        ...(event.route !== undefined ? { route: event.route } : {}),
+        ...(event.delivery !== undefined ? { delivery: event.delivery } : {}),
+        ...(event.escalation !== undefined ? { escalation: event.escalation } : {}),
         ...(errorCode ? { errorCode } : {}),
         ...(event.underlyingErrorCode ? { underlyingErrorCode: event.underlyingErrorCode } : {}),
+        ...(event.cuaCode ? { cuaCode: bounded(event.cuaCode, 128) } : {}),
         ...(dialog ? { dialog } : {}),
         ...(event.dialogDecision ? { dialogDecision: event.dialogDecision } : {}),
         ...(event.cancellationConfirmed !== undefined ? { cancellationConfirmed: event.cancellationConfirmed } : {}),
@@ -769,7 +797,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       const payload = event.type === "approval_decided"
         ? { actionId: request.actionId, callId: request.callId, decision: event.decision.decision }
         : event.type === "completed"
-          ? { actionId: request.actionId, callId: request.callId, status: record.status, errorCode: event.errorCode ?? null, underlyingErrorCode: event.underlyingErrorCode ?? null, ...(dialog ? { dialog } : {}), ...(event.dialogDecision ? { dialogDecision: event.dialogDecision } : {}), ...(event.cancellationConfirmed !== undefined ? { cancellationConfirmed: event.cancellationConfirmed } : {}), ...(event.diagnostic ? { diagnostic: {
+          ? { actionId: request.actionId, callId: request.callId, status: record.status, errorCode: event.errorCode ?? null, underlyingErrorCode: event.underlyingErrorCode ?? null, cuaCode: event.cuaCode ?? null, ...(event.effect !== undefined ? { effect: event.effect } : {}), ...(event.route !== undefined ? { route: event.route } : {}), ...(event.delivery !== undefined ? { delivery: event.delivery } : {}), ...(event.escalation !== undefined ? { escalation: event.escalation } : {}), ...(dialog ? { dialog } : {}), ...(event.dialogDecision ? { dialogDecision: event.dialogDecision } : {}), ...(event.cancellationConfirmed !== undefined ? { cancellationConfirmed: event.cancellationConfirmed } : {}), ...(event.diagnostic ? { diagnostic: {
             name: bounded(redactSecrets(event.diagnostic.name, secrets), 128),
             message: bounded(redactSecrets(event.diagnostic.message, secrets), 2_000),
           } } : {}) }
@@ -791,6 +819,9 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
   let nativeComputerAction = false;
   let activeComputerRun: ComputerRunRecord | undefined;
   const recordComputerRunEvent = async (event: ComputerEvent): Promise<void> => {
+    // Routing is emitted before a concrete runner starts. The selected runner's
+    // started event carries the durable routing metadata.
+    if (event.type === "routed") return;
     if (event.type === "started") {
       const run: ComputerRunRecord = {
         schemaVersion: 1,
@@ -803,6 +834,18 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
         strategy: event.strategy,
         goal: bounded(event.goal, 1_000),
         ...(event.maxActions !== undefined ? { maxActions: event.maxActions } : {}),
+        ...(event.taskId !== undefined ? { taskId: event.taskId } : {}),
+        ...(event.grantHash !== undefined ? { grantHash: event.grantHash } : {}),
+        ...(event.taskSurface !== undefined ? { taskSurface: event.taskSurface } : {}),
+        ...(event.applicationName !== undefined ? { applicationName: event.applicationName } : {}),
+        ...(event.profileMode !== undefined ? { profileMode: event.profileMode } : {}),
+        ...(event.nativeFallbackRoutes !== undefined ? { nativeFallbackRoutes: event.nativeFallbackRoutes } : {}),
+        ...(event.allowedOrigins !== undefined ? { allowedOrigins: event.allowedOrigins } : {}),
+        ...(event.inputRoute !== undefined ? { inputRoute: event.inputRoute } : {}),
+        ...(event.taskExpiresAtMs !== undefined ? { taskExpiresAtMs: event.taskExpiresAtMs } : {}),
+        ...(event.timeZone !== undefined ? { timeZone: event.timeZone } : {}),
+        ...(event.compiledValueEvidence !== undefined ? { compiledValueEvidence: event.compiledValueEvidence } : {}),
+        ...(event.typeSafeModel ? { typeSafeModel: event.typeSafeModel } : {}),
         status: "running",
         startedAt: new Date().toISOString(),
         recordedAt: new Date().toISOString(),
@@ -824,13 +867,23 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
       strategy: event.strategy,
       payload: payload as Readonly<Record<string, unknown>>,
     });
-    if ((type === "verified" && event.terminal !== false) || type === "abstained" || type === "failed") {
+    if ((type === "verified" && event.terminal !== false) || type === "abstained" || type === "cancelled" || type === "failed") {
       const status = type === "verified"
         ? event.runStatus ?? (event.success ? "completed" as const : "outcome-unknown" as const)
         : type === "failed"
           ? event.runStatus ?? "failed" as const
+          : type === "cancelled"
+            ? "cancelled" as const
           : "failed" as const;
-      activeComputerRun = { ...run, status, summary: bounded(type === "verified" ? event.reason ?? (event.success ? "Computer action verified." : "Computer action outcome is unknown.") : event.reason, 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() };
+      activeComputerRun = {
+        ...run,
+        status,
+        ...(type === "verified" && event.outcome ? { outcome: event.outcome } : type === "abstained" ? { outcome: event.outcome ?? "abstained" } : type === "cancelled" ? { outcome: event.outcome } : type === "failed" ? { outcome: event.outcome ?? (event.runStatus === "outcome-unknown" ? "outcome-unknown" : "failed") } : {}),
+        ...(("errorCode" in event && event.errorCode) ? { errorCode: event.errorCode } : {}),
+        summary: bounded(type === "verified" ? event.reason ?? (event.success ? "Computer action verified." : "Computer action outcome is unknown.") : event.reason, 2_000),
+        finishedAt: new Date().toISOString(),
+        recordedAt: new Date().toISOString(),
+      };
       await turn.writeComputerRun(activeComputerRun);
     }
   };
@@ -844,6 +897,9 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
     environment: "ubuntu-x11-cua",
     displayId: request.displayId,
     operation: request.operation,
+    ...(request.taskId !== undefined ? { taskId: request.taskId } : {}),
+    ...(request.grantHash !== undefined ? { grantHash: request.grantHash } : {}),
+    ...(request.allowedTaskActions !== undefined ? { allowedTaskActions: request.allowedTaskActions } : {}),
     observationId: request.observationId,
     generation: request.generation,
     ...(request.x !== undefined ? { x: request.x } : {}),
@@ -937,7 +993,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
   const recordComputer = async (event: ComputerEvent): Promise<void> => {
     await recordComputerRunEvent(event);
     if (event.type === "started" && event.environment === "ubuntu-x11-cua") nativeComputerAction = true;
-    if (nativeComputerAction && (event.type === "act_requested" || event.type === "verified" || event.type === "abstained" || event.type === "failed")) {
+    if (nativeComputerAction && (event.type === "act_requested" || event.type === "verified" || event.type === "abstained" || event.type === "cancelled" || event.type === "failed")) {
       const actionId = event.type === "failed" ? undefined : event.actionId;
       const actions = await turn.readComputerActions();
       const current = actionId ? actions.find((action) => action.actionId === actionId) : actions.at(-1);
@@ -966,6 +1022,10 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
             errorCode: current.errorCode ?? null,
             recovered: false,
           });
+        } else if (event.type === "cancelled" && (current.status === "prepared" || current.status === "approved")) {
+          const terminal: ComputerActionRecord = { ...current, status: "cancelled", errorCode: "computer-cancelled", errorMessage: bounded(event.reason, 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() };
+          await turn.writeComputerAction(terminal);
+          await turn.appendEvent("ComputerCompleted", { actionId: terminal.actionId, callId: terminal.callId, status: terminal.status, errorCode: terminal.errorCode, recovered: false });
         } else if (event.type === "failed" && (current.status === "approved" || current.status === "running")) {
           const terminal: ComputerActionRecord = current.status === "running"
             ? { ...current, status: "ambiguous", decision: "allow-once", errorCode: "computer-ambiguous", errorMessage: bounded(event.reason, 2_000), finishedAt: new Date().toISOString(), recordedAt: new Date().toISOString() }
@@ -1412,7 +1472,11 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
             contextSnapshot = preparedContext.snapshot;
             await appendContextEvidence(contextSnapshot);
             roundProjection = contextManager.prepareRound(preparedContext, messages);
-            roundRequest = { ...roundProjection.request, correlationId: turn.correlationId, tools: tools.definitions };
+            roundRequest = {
+              ...roundProjection.request,
+              correlationId: turn.correlationId,
+              tools: tools.definitions,
+            };
             requestBytes = Buffer.byteLength(JSON.stringify(roundRequest), "utf8");
             abort.clearFirstEventTimer();
             continue;
@@ -1469,9 +1533,13 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
           ? Math.max(options.config.maxToolDurationMs, options.config.processDurationMs + options.config.processTerminationGraceMs + 1_000)
           : call.name === "computer"
             ? options.config.computerDurationMs
-          : options.config.maxToolDurationMs;
+            : call.name.startsWith("browser_")
+              ? Math.max(options.config.maxToolDurationMs, options.config.browserActionTimeoutMs)
+              : options.config.maxToolDurationMs;
         await checkpoint(options.diagnostics, { type: "before-tool-execution", round, toolName: call.name, callId: call.callId });
         const result = await executeToolWithDeadline(tools, call, toolDeadline, abort.signal, {
+          userPrompt: options.userPrompt,
+          browserTurn,
           approvalTimeoutMs: options.config.approvalTimeoutMs,
           pauseTurnDeadline: abort.pauseTotalDeadline,
           resumeTurnDeadline: abort.resumeTotalDeadline,
@@ -1502,6 +1570,8 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
                 return options.approveComputer!(approvalRequest, signal);
               }
             : undefined,
+          approveComputerTask: options.approveComputerTask,
+          authorizeExistingProfile: options.authorizeExistingProfile,
           onComputerApproval: recordComputerApproval,
           onComputer: recordComputer,
           approveMemory: options.approveMemory
@@ -1588,6 +1658,7 @@ async function runTurnWithExecutionLock(options: RunTurnOptions): Promise<TurnRe
     emit({ type: "status", status: failure.status, round: 0 });
     return result;
   } finally {
+    tools.endBrowserTurn(browserTurn);
     abort.dispose();
   }
 }

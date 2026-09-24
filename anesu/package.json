@@ -10,8 +10,9 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc",
-    "test": "pnpm run build && node --test --test-concurrency=1 dist/tests/*.test.js",
-    "coverage": "pnpm run build && node --test --test-concurrency=1 --experimental-test-coverage dist/tests/*.test.js",
+    "clean": "find dist -mindepth 1 -delete 2>/dev/null || true",
+    "test": "pnpm run clean && pnpm run build && node --test --test-concurrency=1 dist/tests/*.test.js",
+    "coverage": "pnpm run clean && pnpm run build && node --test --test-concurrency=1 --experimental-test-coverage dist/tests/*.test.js",
     "chat": "pnpm run build && node dist/src/cli/main.js chat",
     "chat:cua-xvfb": "bash scripts/chat-cua-xvfb.sh",
     "chat:cua-xephyr": "bash scripts/chat-cua-xephyr.sh",
@@ -23,7 +24,6 @@
   },
   "dependencies": {
     "@trycua/cua-driver": "0.28.2",
-    "@typesafe-ai/sdk": "^0.6.0",
-    "playwright": "1.55.0"
+    "@typesafe-ai/sdk": "0.6.0"
   }
 }

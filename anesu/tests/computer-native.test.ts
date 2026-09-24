@@ -5,10 +5,13 @@ import path from "node:path";
 import test from "node:test";
 import { NativeComputerRunner } from "../src/computer/native-runner.js";
 import { ComputerArtifactStore } from "../src/computer/artifacts.js";
+import { compileComputerTask } from "../src/computer/task.js";
 import { loadConfig } from "../src/config/config.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import { runTurn } from "../src/runtime/turn.js";
+import { ModelProviderError } from "../src/runtime/errors.js";
+import type { ModelRequest, ModelStreamEvent } from "../src/runtime/contracts.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { Workspace } from "../src/workspace/workspace.js";
 import type {
@@ -18,22 +21,34 @@ import type {
   ComputerEnvironmentObservation,
   ComputerEnvironmentReadiness,
   ComputerEnvironmentResult,
+  ComputerEnvironmentVerification,
 } from "../src/computer/contracts.js";
 
 class FakeNativeEnvironment implements ComputerEnvironment {
   readonly kind = "ubuntu-x11-cua" as const;
   readonly sessionId = "native-test-session";
   readonly actions: ComputerEnvironmentAction[] = [];
+  readonly presentedActions: ComputerEnvironmentAction[] = [];
+  onPresentAction: ((action: ComputerEnvironmentAction, signal?: AbortSignal) => Promise<void> | void) | undefined;
   executionResult: ComputerEnvironmentResult = { ok: true, status: "completed", summary: "clicked" };
+  executionResults: ComputerEnvironmentResult[] = [];
   revealOnDispatch = false;
   blockExecutionUntilAbort = false;
   blockFollowUpObservationUntilAbort = false;
+  closeFailure = false;
+  hostVerification: ComputerEnvironmentVerification | undefined;
   observationFailures = 0;
   abortSignal: AbortSignal | undefined;
   private observationNumber = 0;
   private safeResultVisible = false;
 
-  constructor(private readonly screenshotPath: string, private readonly semantic = false) {}
+  constructor(
+    private readonly screenshotPath: string,
+    private readonly semantic = false,
+    private readonly applicationName = "Fixture",
+    private readonly semanticEditable = false,
+    private readonly semanticElements?: readonly Record<string, unknown>[] | ((observationNumber: number) => readonly Record<string, unknown>[]),
+  ) {}
 
   readiness(): ComputerEnvironmentReadiness {
     return { kind: this.kind, available: true, display: ":99", isolated: true };
@@ -51,6 +66,9 @@ class FakeNativeEnvironment implements ComputerEnvironment {
       throw new Error("transient observation failure");
     }
     this.observationNumber += 1;
+    const semanticElements = typeof this.semanticElements === "function"
+      ? this.semanticElements(this.observationNumber)
+      : this.semanticElements;
     if (this.blockFollowUpObservationUntilAbort && this.observationNumber > 1) {
       return await new Promise<ComputerEnvironmentObservation>((_resolve, reject) => {
         const abort = () => reject(new DOMException("cancelled", "AbortError"));
@@ -74,9 +92,11 @@ class FakeNativeEnvironment implements ComputerEnvironment {
             pid: 9001,
             windowId: "42",
             snapshotId: "snapshot-1",
-            appName: "Fixture",
-            windowTitle: "Fixture",
-            elements: [{ elementToken: "element-1", role: "button", label: "Reveal safe result", enabled: true, actions: ["click"], frame: { x: 100, y: 200, width: 80, height: 70 } }],
+            appName: this.applicationName,
+            windowTitle: this.applicationName,
+            elements: semanticElements ?? [this.semanticEditable
+              ? { elementToken: "element-1", role: "entry", label: "Editor", enabled: true, actions: ["set_value"], frame: { x: 100, y: 200, width: 200, height: 30 } }
+              : { elementToken: "element-1", role: "button", label: "Reveal safe result", enabled: true, actions: ["click"], frame: { x: 100, y: 200, width: 80, height: 70 } }],
           },
         } : {}),
       }),
@@ -105,24 +125,45 @@ class FakeNativeEnvironment implements ComputerEnvironment {
       });
     }
     if (this.revealOnDispatch) this.safeResultVisible = true;
-    return this.executionResult;
+    return this.executionResults.shift() ?? this.executionResult;
   }
 
-  async close(): Promise<void> {}
+  async presentAction(action: ComputerEnvironmentAction, signal?: AbortSignal): Promise<void> {
+    this.presentedActions.push(action);
+    await this.onPresentAction?.(action, signal);
+  }
+
+  async verify(): Promise<ComputerEnvironmentVerification> {
+    return this.hostVerification ?? {
+      status: "verified",
+      summary: "native fixture verification passed",
+      evidence: { cuaStatus: "satisfied" },
+    };
+  }
+
+  async close(): Promise<void> {
+    if (this.closeFailure) throw new Error("native fixture close failed");
+  }
 }
 
-async function setup(selection: Record<string, unknown> = { operation: "click", x: 123, y: 234 }, options: { readonly strategy?: "traditional" | "typesafe" | "compare"; readonly semantic?: boolean; readonly typeSafeConfidence?: number; readonly maxActions?: number; readonly blockDecision?: boolean; readonly blockExecutionUntilAbort?: boolean; readonly blockFollowUpObservationUntilAbort?: boolean; readonly abortSignal?: AbortSignal; readonly captureArtifacts?: boolean; readonly observationFailures?: number; readonly decisionFailures?: number; readonly providerEnvelopeError?: { readonly code: number; readonly message: string } } = {}): Promise<{ readonly root: string; readonly environment: FakeNativeEnvironment; readonly runner: NativeComputerRunner; readonly requestBodies: Record<string, unknown>[] }> {
+async function setup(selection: Record<string, unknown> = { operation: "click", x: 123, y: 234 }, options: { readonly strategy?: "traditional" | "typesafe" | "compare"; readonly semantic?: boolean; readonly semanticEditable?: boolean; readonly semanticElements?: readonly Record<string, unknown>[] | ((observationNumber: number) => readonly Record<string, unknown>[]); readonly applicationName?: string; readonly typeSafeConfidence?: number; readonly typeSafeChoices?: readonly string[]; readonly maxActions?: number; readonly blockDecision?: boolean; readonly blockExecutionUntilAbort?: boolean; readonly blockFollowUpObservationUntilAbort?: boolean; readonly abortSignal?: AbortSignal; readonly captureArtifacts?: boolean; readonly observationFailures?: number; readonly decisionFailures?: number; readonly providerEnvelopeError?: { readonly code: number; readonly message: string }; readonly closeFailure?: boolean; readonly revealOnDispatch?: boolean; readonly onPresentAction?: (action: ComputerEnvironmentAction, signal?: AbortSignal) => Promise<void> | void; readonly executionResults?: readonly ComputerEnvironmentResult[]; readonly hostVerification?: ComputerEnvironmentVerification } = {}): Promise<{ readonly root: string; readonly environment: FakeNativeEnvironment; readonly runner: NativeComputerRunner; readonly requestBodies: Record<string, unknown>[] }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "anesu-native-computer-"));
   const artifactStore = new ComputerArtifactStore(path.join(root, "managed-artifacts"));
   let environment: FakeNativeEnvironment | undefined;
   let decisionFailuresRemaining = options.decisionFailures ?? 0;
+  let typeSafeChoiceIndex = 0;
   const requestBodies: Record<string, unknown>[] = [];
   const runner = new NativeComputerRunner({
     createEnvironment: (screenshotPath) => {
-      environment = new FakeNativeEnvironment(screenshotPath, options.semantic);
+      environment = new FakeNativeEnvironment(screenshotPath, options.semantic, options.applicationName, options.semanticEditable, options.semanticElements);
       environment.blockExecutionUntilAbort = options.blockExecutionUntilAbort ?? false;
       environment.blockFollowUpObservationUntilAbort = options.blockFollowUpObservationUntilAbort ?? false;
       environment.observationFailures = options.observationFailures ?? 0;
+      environment.closeFailure = options.closeFailure ?? false;
+      environment.revealOnDispatch = options.revealOnDispatch ?? false;
+      environment.onPresentAction = options.onPresentAction;
+      environment.executionResults = [...(options.executionResults ?? [])];
+      environment.hostVerification = options.hostVerification;
       environment.abortSignal = options.abortSignal;
       return environment;
     },
@@ -141,9 +182,10 @@ async function setup(selection: Record<string, unknown> = { operation: "click", 
       const request = JSON.parse(String(init?.body)) as { readonly messages?: unknown; readonly questions?: unknown };
       requestBodies.push(request as Record<string, unknown>);
       if (options.strategy === "typesafe" || (options.strategy === "compare" && request.questions !== undefined)) {
+        const choice = options.typeSafeChoices?.[typeSafeChoiceIndex++] ?? "native_accessibility_click_0";
         return new Response(JSON.stringify({
           model: "jev-latest",
-          answers: { target: { type: "choice", choice: "native_accessibility_click_0", confidence: options.typeSafeConfidence ?? 0.96, probabilities: { native_accessibility_click_0: options.typeSafeConfidence ?? 0.96 } } },
+          answers: { target: { type: "choice", choice, confidence: options.typeSafeConfidence ?? 0.96, probabilities: { [choice]: options.typeSafeConfidence ?? 0.96 } } },
           usage: { input_tokens: 10, output_tokens: 3 },
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
@@ -178,6 +220,63 @@ async function setup(selection: Record<string, unknown> = { operation: "click", 
     runner,
   };
 }
+
+test("native app-open tasks verify immediately after launch without asking Jev for input", async () => {
+  const fixture = await setup(undefined, { applicationName: "GNOME Calendar", strategy: "typesafe", semantic: true });
+  try {
+    const task = compileComputerTask({
+      taskId: "native-open-calendar",
+      goal: "Open Calendar.",
+      surface: "native",
+      application: { name: "Calendar", launchPath: "/usr/bin/gnome-calendar" },
+      allowedOrigins: [],
+      maxActions: 3,
+      nowMs: Date.now(),
+      deadlineMs: 30_000,
+    });
+    const events: string[] = [];
+    const result = await fixture.runner.run("native_open_calendar", "Open Calendar.", {
+      taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+      approveComputer: async () => ({ decision: "allow-once" }),
+      onComputer: (event) => { events.push(event.type); },
+    });
+    assert.equal(result.ok, true, result.content);
+    assert.equal(result.status, "completed");
+    assert.equal(fixture.environment.actions.length, 0);
+    assert.equal(fixture.requestBodies.length, 0);
+    assert.deepEqual(events, ["started", "observed", "verified"]);
+    assert.match(result.content, /native-app-open/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native cleanup failure replaces an otherwise verified result with outcome unknown", async () => {
+  const fixture = await setup({ operation: "click", x: 123, y: 234 }, { revealOnDispatch: true, closeFailure: true });
+  const result = await fixture.runner.run("native_cleanup_failure", "Reveal the safe result.", { approveComputer: async () => ({ decision: "allow-once" as const }) });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "outcome-unknown");
+  assert.match(result.summary, /cleanup failed/u);
+});
+
+test("native runner cannot upgrade an unknown Cua verify_state result", async () => {
+  const fixture = await setup({ operation: "click", x: 123, y: 234 }, {
+    revealOnDispatch: true,
+    hostVerification: {
+      status: "unknown",
+      summary: "CUA could not prove the exact native postcondition.",
+      evidence: { cuaStatus: "unknown", cuaStable: "false" },
+    },
+  });
+  try {
+    const result = await fixture.runner.run("native_verify_unknown", "Reveal the safe result.", { approveComputer: async () => ({ decision: "allow-once" }) });
+    assert.equal(result.status, "clarification-required");
+    assert.match(result.summary, /completion remains unproven/u);
+    assert.equal(fixture.environment.actions.length, 1);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
 
 test("native traditional vision sends one bounded screenshot message per decision", async () => {
   const fixture = await setup();
@@ -369,6 +468,9 @@ test("native TypeSafe selects a bounded CUA accessibility candidate and uses its
     assert.match(result.content, /"candidateId":"native_accessibility_click_0"/u);
     assert.equal(approvals[0]?.targetLabel, "Reveal safe result");
     assert.equal(approvals[0]?.targetSource, "accessibility");
+    assert.deepEqual(approvals[0]?.expectedVerification, { kind: "text-present", expected: "Computer success: safe result revealed." });
+    assert.equal(approvals[0]?.step, 1);
+    assert.equal(approvals[0]?.maxActions, 1);
     assert.deepEqual(fixture.environment.actions[0]?.position, { kind: "element", token: "element-1" });
     assert.equal(proposedEvidence?.model, "jev-latest");
     assert.equal(typeof proposedEvidence?.latencyMs, "number");
@@ -402,6 +504,248 @@ test("native TypeSafe refuses when CUA does not expose semantic candidates", asy
     assert.equal(result.ok, false);
     assert.equal(result.errorCode, "computer-no-candidate");
     assert.equal(fixture.environment.actions.length, 0);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native TypeSafe uses the focused text rung only for an explicit value when accessibility has no candidate", async () => {
+  const fixture = await setup(undefined, {
+    strategy: "typesafe",
+    semantic: false,
+    typeSafeChoices: ["native_focused_type"],
+  });
+  try {
+    const proposed: Array<{ readonly targetSource?: string; readonly targetRole?: string }> = [];
+    const result = await fixture.runner.run("native_typesafe_focused", 'Type "Meeting notes" into the focused editor.', {
+      approveComputer: async () => ({ decision: "allow-once" }),
+      onComputer: (event) => {
+        if (event.type === "proposed") proposed.push({ targetSource: event.targetSource, targetRole: event.targetRole });
+      },
+    });
+
+    assert.equal(result.ok, true, result.content);
+    assert.deepEqual(fixture.environment.actions[0] && {
+      operation: fixture.environment.actions[0].operation,
+      text: fixture.environment.actions[0].text,
+      position: fixture.environment.actions[0].position,
+    }, { operation: "type", text: "Meeting notes", position: undefined });
+    assert.deepEqual(proposed, [{ targetSource: "focused", targetRole: "focused-window" }]);
+    const state = fixture.requestBodies[0]?.state as { readonly accessibilityCandidates?: Record<string, string> } | undefined;
+    assert.match(state?.accessibilityCandidates?.native_focused_type ?? "", /task-approved text/u);
+    assert.doesNotMatch(JSON.stringify(state?.accessibilityCandidates), /Meeting notes/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native alarm entry types the compiled time only into a fresh time-labelled CUA control", async () => {
+  const fixture = await setup(undefined, {
+    strategy: "typesafe",
+    semantic: true,
+    applicationName: "Clocks",
+    maxActions: 3,
+    typeSafeChoices: ["native_accessibility_type_1"],
+    semanticElements: [
+      { elementToken: "label-field", role: "entry", label: "Alarm label", enabled: true, editable: true, actions: ["set_value"] },
+      { elementToken: "alarm-time", role: "spin button", label: "Alarm time", enabled: true, editable: true, actions: ["set_value"] },
+    ],
+    hostVerification: { status: "unknown", summary: "fixture has not saved an alarm", evidence: { cuaStatus: "unknown" } },
+  });
+  try {
+    const task = compileComputerTask({
+      taskId: "clock-time-binding",
+      goal: "Set an alarm for 7:30 tomorrow in Clocks.",
+      surface: "native",
+      application: { name: "Clocks", launchPath: "/usr/bin/gnome-clocks" },
+      allowedOrigins: [],
+      maxActions: 3,
+      nowMs: Date.now(),
+      deadlineMs: 30_000,
+      timeZone: "Africa/Johannesburg",
+    });
+
+    const result = await fixture.runner.run("clock-time-binding", task.originalGoal, {
+      taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+      approveComputer: async () => ({ decision: "allow-once" }),
+    });
+
+    assert.equal(result.status, "clarification-required", "a CUA action without fresh alarm evidence must not be reported as completed");
+    assert.deepEqual(fixture.environment.actions.map((action) => ({
+      operation: action.operation,
+      text: action.text,
+      position: action.position,
+    })), [{
+      operation: "type",
+      text: "07:30",
+      position: { kind: "element", token: "alarm-time" },
+    }]);
+    const state = fixture.requestBodies[0]?.state as { readonly accessibilityCandidates?: Record<string, string> } | undefined;
+    assert.match(state?.accessibilityCandidates?.native_accessibility_type_1 ?? "", /task-approved time/u);
+    assert.doesNotMatch(state?.accessibilityCandidates?.native_accessibility_type_1 ?? "", /07:30/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native Calendar task sequences compiled title, date, and time values and verifies the committed event", async () => {
+  const task = compileComputerTask({
+    taskId: "calendar-form-sequence",
+    goal: 'Create a calendar event called "Planning" tomorrow at 10:00 in Calendar.',
+    surface: "native",
+    application: { name: "Calendar", launchPath: "/usr/bin/gnome-calendar" },
+    allowedOrigins: [],
+    maxActions: 5,
+    nowMs: Date.now(),
+    deadlineMs: 30_000,
+    timeZone: "Africa/Johannesburg",
+  });
+  const fixture = await setup(undefined, {
+    strategy: "typesafe",
+    semantic: true,
+    applicationName: "Calendar",
+    maxActions: 5,
+    typeSafeChoices: [
+      "native_accessibility_click_0",
+      "native_accessibility_type_0",
+      "native_accessibility_type_1",
+      "native_accessibility_type_2",
+      "native_accessibility_click_3",
+    ],
+    semanticElements: (observationNumber) => observationNumber === 1
+      ? [
+        { elementToken: "new-event", role: "button", label: "New Event", enabled: true, actions: ["click"] },
+      ]
+      : observationNumber >= 6
+        ? [
+          { elementToken: "saved-event", role: "list item", label: `Planning ${task.values.date?.value} 10:00`, enabled: true, actions: [] },
+        ]
+        : [
+          { elementToken: "event-title", role: "entry", label: "Event title", enabled: true, editable: true, actions: ["set_value"] },
+          { elementToken: "event-date", role: "entry", label: "Start date", enabled: true, editable: true, actions: ["set_value"] },
+          { elementToken: "event-time", role: "spin button", label: "Start time", enabled: true, editable: true, actions: ["set_value"] },
+          { elementToken: "save-event", role: "button", label: "Save", enabled: true, actions: ["click"] },
+        ],
+  });
+  try {
+    const result = await fixture.runner.run("calendar-form-sequence", task.originalGoal, {
+      taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+      approveComputer: async () => ({ decision: "allow-once" }),
+    });
+
+    assert.equal(result.ok, true, result.content);
+    assert.equal(result.status, "completed");
+    assert.deepEqual(fixture.environment.actions.map((action) => ({
+      operation: action.operation,
+      text: action.text,
+      position: action.position,
+    })), [
+      { operation: "click", text: undefined, position: { kind: "element", token: "new-event" } },
+      { operation: "type", text: "Planning", position: { kind: "element", token: "event-title" } },
+      { operation: "type", text: task.values.date?.value, position: { kind: "element", token: "event-date" } },
+      { operation: "type", text: "10:00", position: { kind: "element", token: "event-time" } },
+      { operation: "click", text: undefined, position: { kind: "element", token: "save-event" } },
+    ]);
+    assert.equal(fixture.requestBodies.length, 5);
+    for (const body of fixture.requestBodies.slice(1)) {
+      const state = body.state as { readonly accessibilityCandidates?: Record<string, string> } | undefined;
+      const serialized = JSON.stringify(state?.accessibilityCandidates);
+      assert.doesNotMatch(serialized, /Planning|10:00/u);
+      assert.ok(task.values.date?.value);
+      assert.equal(serialized.includes(task.values.date.value), false);
+    }
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native runner cannot acquire focused input outside the compiled task grant", async () => {
+  const fixture = await setup(undefined, {
+    strategy: "typesafe",
+    semantic: false,
+  });
+  try {
+    const compiled = compileComputerTask({
+      taskId: "native-focused-route-denied",
+      goal: 'Type "Meeting notes" into the focused editor.',
+      surface: "native",
+      application: { name: "Notes", launchPath: "/usr/bin/gnome-text-editor" },
+      allowedOrigins: [],
+      maxActions: 1,
+      nowMs: Date.now(),
+      deadlineMs: 30_000,
+    });
+    const task = { ...compiled, nativeFallbackRoutes: [] as const };
+    const result = await fixture.runner.run("native_focused_route_denied", task.originalGoal, {
+      taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+      approveComputer: async () => ({ decision: "allow-once" }),
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.errorCode, "computer-no-candidate");
+    assert.equal(fixture.environment.actions.length, 0);
+    assert.equal(fixture.requestBodies.length, 0);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native TypeSafe fresh-observes and changes to focused input after a structured refusal", async () => {
+  const fixture = await setup(undefined, {
+    strategy: "typesafe",
+    semantic: true,
+    semanticEditable: true,
+    maxActions: 2,
+    typeSafeChoices: ["native_accessibility_type_0", "native_focused_type"],
+    executionResults: [
+      { ok: false, status: "refused", summary: "background element typing is unavailable" },
+      { ok: true, status: "completed", summary: "focused typing completed" },
+    ],
+  });
+  try {
+    const observed: string[] = [];
+    const result = await fixture.runner.run("native_typesafe_focused_after_refusal", 'Type "Meeting notes" into the editor.', {
+      approveComputer: async () => ({ decision: "allow-once" }),
+      onComputer: (event) => {
+        if (event.type === "observed") observed.push(event.observationId);
+      },
+    });
+
+    assert.equal(result.ok, true, result.content);
+    assert.deepEqual(observed, ["observation-1", "observation-2"]);
+    assert.equal(fixture.environment.actions.length, 2);
+    assert.deepEqual(fixture.environment.actions.map((action) => ({
+      operation: action.operation,
+      position: action.position,
+      text: action.text,
+    })), [
+      { operation: "type", position: { kind: "element", token: "element-1" }, text: "Meeting notes" },
+      { operation: "type", position: undefined, text: "Meeting notes" },
+    ]);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native TypeSafe reobserves before input when Jev rejects the current structured route", async () => {
+  const fixture = await setup(undefined, {
+    strategy: "typesafe",
+    semantic: true,
+    typeSafeChoices: ["reobserve", "native_accessibility_click_0"],
+    revealOnDispatch: true,
+  });
+  try {
+    const observed: string[] = [];
+    const result = await fixture.runner.run("native_typesafe_reobserve", "Reveal the safe result.", {
+      approveComputer: async () => ({ decision: "allow-once" }),
+      onComputer: (event) => {
+        if (event.type === "observed") observed.push(event.observationId);
+      },
+    });
+
+    assert.equal(result.ok, true, result.content);
+    assert.equal(fixture.environment.actions.length, 1);
+    assert.deepEqual(observed, ["observation-1", "observation-2"]);
+    assert.equal(fixture.requestBodies.length, 2);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -442,7 +786,8 @@ test("native traditional path approves one model-selected click and reobserves",
     });
 
     assert.equal(result.ok, true);
-  assert.match(result.summary, /fresh CUA observation/);
+    assert.match(result.summary, /no further input will be sent without a trusted verifier/);
+    assert.match(result.content, /"outcome":"outcome-unknown"/u);
     assert.deepEqual(approvals, ["click:123,234"]);
     assert.deepEqual(fixture.environment.actions[0]?.position, { kind: "coordinates", x: 123, y: 234 });
     assert.deepEqual(events, ["started", "observed", "proposed", "prepared", "approval_decided", "act_requested", "verified"]);
@@ -575,11 +920,11 @@ test("native computer loop reobserves between approved inputs and enforces its a
   }
 });
 
-test("native cancellation before input emits a terminal failed event", async () => {
+test("native cancellation before input emits a terminal cancelled event", async () => {
   const fixture = await setup(undefined, { blockDecision: true });
   const controller = new AbortController();
   try {
-    const events: Array<{ readonly type: string; readonly runStatus?: string; readonly reason?: string }> = [];
+    const events: Array<{ readonly type: string; readonly outcome?: string; readonly reason?: string }> = [];
     const promise = fixture.runner.run("native_cancel_before_input", "Click the visible fixture control.", {
       signal: controller.signal,
       approveComputer: async () => ({ decision: "allow-once" }),
@@ -589,9 +934,58 @@ test("native cancellation before input emits a terminal failed event", async () 
     controller.abort("test cancellation");
     await assert.rejects(promise);
     assert.equal(fixture.environment.actions.length, 0);
-    assert.deepEqual(events.map((event) => event.type), ["started", "observed", "failed"]);
-    assert.equal(events.at(-1)?.runStatus, "failed");
+    assert.deepEqual(events.map((event) => event.type), ["started", "observed", "cancelled"]);
+    assert.equal(events.at(-1)?.outcome, "cancelled");
     assert.match(events.at(-1)?.reason ?? "", /cancelled before any input/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native cancellation after action approval is terminal and sends no input", async () => {
+  const fixture = await setup();
+  const controller = new AbortController();
+  try {
+    const events: Array<{ readonly type: string; readonly outcome?: string; readonly reason?: string }> = [];
+    const result = await fixture.runner.run("native_cancel_after_approval", "Click the visible fixture control.", {
+      signal: controller.signal,
+      approveComputer: async () => ({ decision: "allow-once" }),
+      onComputerApproval: (event) => {
+        if (event.type === "approval_decided") controller.abort("cancel immediately after approval");
+      },
+      onComputer: (event) => { events.push(event); },
+    });
+
+    assert.equal(result.status, "cancelled");
+    assert.equal(result.errorCode, "computer-cancelled");
+    assert.equal(fixture.environment.actions.length, 0);
+    assert.equal(events.at(-1)?.type, "cancelled");
+    assert.equal(events.at(-1)?.outcome, "cancelled");
+    assert.match(events.at(-1)?.reason ?? "", /after approval and before dispatch/u);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("native cancellation during cursor presentation remains pre-dispatch and sends no input", async () => {
+  const controller = new AbortController();
+  const fixture = await setup(undefined, {
+    onPresentAction: () => controller.abort("cancel while showing the approved target"),
+  });
+  try {
+    const events: Array<{ readonly type: string; readonly outcome?: string }> = [];
+    const result = await fixture.runner.run("native_cancel_cursor_presentation", "Click the visible fixture control.", {
+      signal: controller.signal,
+      approveComputer: async () => ({ decision: "allow-once" }),
+      onComputer: (event) => { events.push(event); },
+    });
+
+    assert.equal(result.status, "cancelled");
+    assert.equal(fixture.environment.presentedActions.length, 1);
+    assert.equal(fixture.environment.actions.length, 0);
+    assert.equal(events.at(-1)?.type, "cancelled");
+    assert.equal(events.at(-1)?.outcome, "cancelled");
+    assert.equal(events.some((event) => event.type === "act_requested"), false);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -758,7 +1152,7 @@ test("native runner verifies an uncertain CUA effect from a fresh fixture observ
     assert.equal(result.ok, true, result.content);
     assert.match(result.summary, /fresh observation verified the safe result/u);
     assert.match(result.content, /"executionStatus":"unknown"/u);
-    assert.match(result.content, /"verification":"safe-fixture-marker"/u);
+    assert.match(result.content, /"verification":"text-present"/u);
     assert.equal(fixture.environment.actions.length, 1);
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
@@ -835,25 +1229,30 @@ test("the tool registry dispatches the configured Ubuntu/X11 native environment"
     const workspace = await Workspace.open(root, { maxFileBytes: 64 * 1024, maxDirectoryEntries: 100, maxTreeEntries: 500, maxTreeBytes: 1024 * 1024, maxTreeDepth: 16 });
     const registry = new ToolRegistry(workspace, 8_192, undefined, undefined, undefined, undefined, {
       environment: "ubuntu-x11-cua",
-      strategy: "traditional",
+      strategy: "typesafe",
+      typeSafePreflight: async () => ({ requestedModel: "jev-latest", resolvedModel: "jev-latest" }),
       native: {
         displayId: "primary",
         artifactDirectory: path.join(root, "artifacts"),
         openRouterApiKey: "openrouter-test-key",
         traditionalModel: "vision-test-model",
+        typeSafeApiKey: "typesafe-test-key",
+        typeSafeModel: "jev-latest",
         maxOutputBytes: 8_192,
         createEnvironment: (screenshotPath) => {
-          environment = new FakeNativeEnvironment(screenshotPath);
+          environment = new FakeNativeEnvironment(screenshotPath, true);
           return environment;
         },
-        fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ operation: "click", x: 123, y: 234 }) } }] }), { status: 200 }),
+        fetchImpl: async () => new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "native_accessibility_click_0", confidence: 0.96, probabilities: { native_accessibility_click_0: 0.96 } } } }), { status: 200 }),
       },
     });
     assert.ok(registry.definitions.some((definition) => definition.name === "computer"));
 
-    const result = await registry.execute({ callId: "registry_native_call", name: "computer", argumentsJson: JSON.stringify({ goal: "Click the visible fixture control." }) }, {
+    const result = await registry.execute({ callId: "registry_native_call", name: "computer", argumentsJson: JSON.stringify({ goal: "Open Notes and reveal the safe result." }) }, {
       approveComputer: async () => ({ decision: "allow-once" }),
+      approveComputerTask: async (request) => ({ decision: "allow-task", grantHash: request.grantHash }),
     });
+
 
     assert.equal(result.ok, true);
     assert.equal(result.terminal, true);
@@ -877,20 +1276,23 @@ test("the runtime persists the native action lifecycle around approval and verif
     });
     const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, undefined, undefined, {
       environment: "ubuntu-x11-cua",
-      strategy: "traditional",
+      strategy: "typesafe",
+      typeSafePreflight: async () => ({ requestedModel: "jev-latest", resolvedModel: "jev-latest" }),
       native: {
         displayId: "primary",
         artifactDirectory: path.join(root, "artifacts"),
         openRouterApiKey: "openrouter-test-key",
         traditionalModel: "vision-test-model",
+        typeSafeApiKey: "typesafe-test-key",
+        typeSafeModel: "jev-latest",
         maxActions: config.computerMaxActions,
         maxOutputBytes: config.maxToolOutputBytes,
         createEnvironment: (screenshotPath) => {
-          const environment = new FakeNativeEnvironment(screenshotPath);
+          const environment = new FakeNativeEnvironment(screenshotPath, true);
           environment.revealOnDispatch = true;
           return environment;
         },
-        fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ operation: "click", x: 123, y: 234 }) } }] }), { status: 200 }),
+        fetchImpl: async () => new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "native_accessibility_click_0", confidence: 0.96, probabilities: { native_accessibility_click_0: 0.96 } } } }), { status: 200 }),
       },
     });
     const result = await runTurn({
@@ -898,30 +1300,43 @@ test("the runtime persists the native action lifecycle around approval and verif
       provider: new DeterministicModelProvider("deterministic/computer-records", {
         toolCall: {
           name: "computer",
-          argumentsJson: JSON.stringify({ goal: "Click the visible fixture control." }),
+          argumentsJson: JSON.stringify({ goal: "Open Notes and reveal the safe result." }),
           finalResponse: "Native computer action recorded.",
         },
       }),
       tools,
       config,
-      userPrompt: "Click the visible fixture control.",
+      userPrompt: "Open Notes and reveal the safe result.",
       approveComputer: async () => ({ decision: "allow-once" }),
+      approveComputerTask: async (request) => ({ decision: "allow-task", grantHash: request.grantHash }),
     });
+
 
     assert.equal(result.status, "completed");
     const turnDirectory = path.join(session.sessionDirectory, "turns", result.turnId);
     const [recordName] = await readdir(path.join(turnDirectory, "computer-actions"));
     assert.ok(recordName);
-    const action = JSON.parse(await readFile(path.join(turnDirectory, "computer-actions", recordName), "utf8")) as { status?: string; operation?: string };
+    const action = JSON.parse(await readFile(path.join(turnDirectory, "computer-actions", recordName), "utf8")) as { status?: string; operation?: string; taskId?: string; grantHash?: string };
     assert.equal(action.status, "completed");
     assert.equal(action.operation, "click");
+    assert.match(action.taskId ?? "", /^computer_/u);
+    assert.match(action.grantHash ?? "", /^[a-f0-9]{64}$/u);
     const [runName] = await readdir(path.join(turnDirectory, "computer-runs"));
     assert.ok(runName);
-    const run = JSON.parse(await readFile(path.join(turnDirectory, "computer-runs", runName, "run.json"), "utf8")) as { status?: string; strategy?: string; environment?: string; maxActions?: number };
+    const run = JSON.parse(await readFile(path.join(turnDirectory, "computer-runs", runName, "run.json"), "utf8")) as { status?: string; strategy?: string; environment?: string; maxActions?: number; taskId?: string; grantHash?: string; taskSurface?: string; applicationName?: string; profileMode?: string; nativeFallbackRoutes?: string[]; inputRoute?: string; timeZone?: string; compiledValueEvidence?: unknown[] };
     assert.equal(run.status, "completed");
-    assert.equal(run.strategy, "traditional");
+    assert.equal(run.strategy, "typesafe");
     assert.equal(run.environment, "ubuntu-x11-cua");
-    assert.equal(run.maxActions, 3);
+    assert.equal(run.maxActions, 8);
+    assert.match(run.taskId ?? "", /^computer_/u);
+    assert.match(run.grantHash ?? "", /^[a-f0-9]{64}$/u);
+    assert.equal(run.taskSurface, "native");
+    assert.equal(run.applicationName, "Notes");
+    assert.equal(run.profileMode, "isolated_new");
+    assert.deepEqual(run.nativeFallbackRoutes, ["structured", "focused-key-text"]);
+    assert.equal(run.timeZone, "Africa/Johannesburg");
+    assert.deepEqual(run.compiledValueEvidence, []);
+    assert.equal(run.inputRoute, "trusted");
     const runEvents = (await readFile(path.join(turnDirectory, "computer-runs", runName, "events.jsonl"), "utf8"))
       .trim()
       .split("\n")
@@ -941,11 +1356,12 @@ test("the runtime persists the native action lifecycle around approval and verif
     assert.equal(nativeObservationIds.length, 4);
     assert.equal(new Set(nativeObservationIds).size, 1);
     assert.match(String(nativeObservationIds[0]), /^observation-/u);
+    assert.equal(runEvents.find((event) => event.kind === "observed")?.payload?.cuaSessionLabel, "native-test-session");
     assert.equal(runEvents[1]?.payload?.display, ":99");
     assert.equal(runEvents[1]?.payload?.cursorX, 50);
     assert.equal(runEvents[1]?.payload?.cursorY, 60);
     assert.equal(runEvents[1]?.payload?.windowId, "42");
-    assert.equal(runEvents[2]?.payload?.model, "vision-test-model");
+    assert.equal(runEvents[2]?.payload?.model, "jev-latest");
     assert.equal(typeof runEvents[2]?.payload?.latencyMs, "number");
     assert.ok(runEvents.every((event) => !JSON.stringify(event).includes("openrouter-test-key")));
     const events = await readFile(path.join(turnDirectory, "events.jsonl"), "utf8");
@@ -959,28 +1375,314 @@ test("the runtime persists the native action lifecycle around approval and verif
       provider: new DeterministicModelProvider("deterministic/computer-records-denied", {
         toolCall: {
           name: "computer",
-          argumentsJson: JSON.stringify({ goal: "Click the visible fixture control." }),
+          argumentsJson: JSON.stringify({ goal: "Open Notes and reveal the safe result." }),
           finalResponse: "Native computer action was denied.",
         },
       }),
       tools,
       config,
-      userPrompt: "Click the visible fixture control, but deny the action.",
-      approveComputer: async () => ({ decision: "deny", reason: "test denial" }),
+      userPrompt: "Open Notes and reveal the safe result, but deny the action.",
+      approveComputerTask: async () => ({ decision: "deny", reason: "test task denial" }),
     });
     assert.equal(denied.status, "completed");
     const deniedDirectory = path.join(session.sessionDirectory, "turns", denied.turnId);
-    const [deniedRecordName] = await readdir(path.join(deniedDirectory, "computer-actions"));
-    assert.ok(deniedRecordName);
-    const deniedAction = JSON.parse(await readFile(path.join(deniedDirectory, "computer-actions", deniedRecordName), "utf8")) as { status?: string; errorCode?: string };
-    assert.equal(deniedAction.status, "failed");
-    assert.equal(deniedAction.errorCode, "computer-approval-denied");
     const [deniedRunName] = await readdir(path.join(deniedDirectory, "computer-runs"));
     assert.ok(deniedRunName);
-    const deniedRun = JSON.parse(await readFile(path.join(deniedDirectory, "computer-runs", deniedRunName, "run.json"), "utf8")) as { status?: string; summary?: string };
+    const deniedRun = JSON.parse(await readFile(path.join(deniedDirectory, "computer-runs", deniedRunName, "run.json"), "utf8")) as { status?: string; summary?: string; errorCode?: string };
     assert.equal(deniedRun.status, "failed");
-    assert.equal(deniedRun.summary, "test denial");
-    assert.match(await readFile(path.join(deniedDirectory, "events.jsonl"), "utf8"), /ComputerCompleted/u);
+    assert.equal(deniedRun.summary, "test task denial");
+    assert.equal(deniedRun.errorCode, "computer-approval-denied");
+    // Task denial happens before any native action is prepared, so there is no
+    // per-action completion event to emit. The failed computer run is the
+    // durable denial record in this case.
+    assert.doesNotMatch(await readFile(path.join(deniedDirectory, "events.jsonl"), "utf8"), /ComputerCompleted/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the conversation model can choose native computer use without forced or synthetic calls", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "anesu-native-tool-routing-"));
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    const session = await SessionStore.open(config.stateDir);
+    const workspace = await Workspace.open(root, {
+      maxFileBytes: config.maxFileBytes,
+      maxDirectoryEntries: config.maxDirectoryEntries,
+      maxTreeEntries: config.maxTreeEntries,
+      maxTreeBytes: config.maxTreeBytes,
+      maxTreeDepth: config.maxTreeDepth,
+    });
+    let launchCount = 0;
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, undefined, undefined, {
+      environment: "ubuntu-x11-cua",
+      strategy: "typesafe",
+      typeSafePreflight: async () => ({ requestedModel: "jev-latest", resolvedModel: "jev-latest" }),
+      native: {
+        displayId: "primary",
+        artifactDirectory: path.join(root, "artifacts"),
+        openRouterApiKey: "openrouter-test-key",
+        traditionalModel: "vision-test-model",
+        typeSafeApiKey: "typesafe-test-key",
+        typeSafeModel: "jev-latest",
+        maxOutputBytes: config.maxToolOutputBytes,
+        createEnvironment: (screenshotPath) => {
+          launchCount += 1;
+          return new FakeNativeEnvironment(screenshotPath, true, "Notes");
+        },
+        fetchImpl: async () => new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "native_accessibility_click_0", confidence: 0.96, probabilities: { native_accessibility_click_0: 0.96 } } } }), { status: 200 }),
+      },
+    });
+    const actionRequests: ModelRequest[] = [];
+    const actionProvider = {
+      provider: "deterministic" as const,
+      model: "deterministic/recorded-computer-route",
+      async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+        actionRequests.push(request);
+        assert.equal(request.toolChoice, undefined);
+        assert.ok(request.tools?.some((tool) => tool.name === "computer"));
+        yield { type: "tool_call", call: { callId: "open_notes_call", name: "computer", argumentsJson: JSON.stringify({ goal: "Open Notes" }) } };
+      },
+    };
+
+    const actionResult = await runTurn({
+      session,
+      provider: actionProvider,
+      tools,
+      config,
+      userPrompt: "Open Notes",
+      approveComputerTask: async (request) => ({ decision: "allow-task", grantHash: request.grantHash }),
+    });
+
+    assert.equal(actionResult.status, "completed");
+    assert.equal(actionRequests[0]?.toolChoice, undefined);
+    assert.equal(launchCount, 1);
+
+    const questionRequests: ModelRequest[] = [];
+    const questionProvider = {
+      provider: "deterministic" as const,
+      model: "deterministic/recorded-computer-route",
+      async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+        questionRequests.push(request);
+        yield { type: "text", text: "Notes is a note-taking application." };
+      },
+    };
+    const questionResult = await runTurn({
+      session,
+      provider: questionProvider,
+      tools,
+      config,
+      userPrompt: "What is the Notes app used for?",
+    });
+
+    assert.equal(questionResult.status, "completed");
+    assert.equal(questionResult.assistantText, "Notes is a note-taking application.");
+    assert.equal(questionRequests[0]?.toolChoice, undefined);
+    assert.equal(launchCount, 1);
+
+    let ordinaryText = "";
+    const modelDeclinesComputer = {
+      provider: "deterministic" as const,
+      model: "deterministic/model-declines-computer",
+      async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+        assert.equal(request.toolChoice, undefined);
+        yield { type: "text", text: "I can explain how to open Notes." };
+      },
+    };
+    const modelDeclinesResult = await runTurn({
+      session,
+      provider: modelDeclinesComputer,
+      tools,
+      config,
+      userPrompt: "Open Notes",
+      onText: (text) => { ordinaryText += text; },
+    });
+
+    assert.equal(modelDeclinesResult.status, "completed");
+    assert.equal(modelDeclinesResult.assistantText, "I can explain how to open Notes.");
+    assert.equal(ordinaryText, "I can explain how to open Notes.");
+    assert.equal(launchCount, 1);
+
+    const refusalProvider = {
+      provider: "deterministic" as const,
+      model: "deterministic/computer-refusal",
+      async *stream(): AsyncIterable<ModelStreamEvent> {
+        throw new ModelProviderError("The model refused this request.", { code: "provider-refusal", retryable: false });
+      },
+    };
+    const refusalResult = await runTurn({
+      session,
+      provider: refusalProvider,
+      tools,
+      config,
+      userPrompt: "Open Notes",
+    });
+
+    assert.equal(refusalResult.status, "failed");
+    assert.equal(refusalResult.error?.code, "provider-refusal");
+    assert.equal(launchCount, 1, "a typed provider refusal must not be converted into computer execution");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runTurn persists native cancellation after approval on both action and run records", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "anesu-native-cancel-records-"));
+  const controller = new AbortController();
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    const session = await SessionStore.open(config.stateDir);
+    const workspace = await Workspace.open(root, {
+      maxFileBytes: config.maxFileBytes,
+      maxDirectoryEntries: config.maxDirectoryEntries,
+      maxTreeEntries: config.maxTreeEntries,
+      maxTreeBytes: config.maxTreeBytes,
+      maxTreeDepth: config.maxTreeDepth,
+    });
+    let environment: FakeNativeEnvironment | undefined;
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, undefined, undefined, {
+      environment: "ubuntu-x11-cua",
+      strategy: "typesafe",
+      typeSafePreflight: async () => ({ requestedModel: "jev-latest", resolvedModel: "jev-latest" }),
+      native: {
+        displayId: "primary",
+        artifactDirectory: path.join(root, "artifacts"),
+        openRouterApiKey: "openrouter-test-key",
+        traditionalModel: "vision-test-model",
+        typeSafeApiKey: "typesafe-test-key",
+        typeSafeModel: "jev-latest",
+        maxActions: config.computerMaxActions,
+        maxOutputBytes: config.maxToolOutputBytes,
+        createEnvironment: (screenshotPath) => {
+          environment = new FakeNativeEnvironment(screenshotPath, true, "Notes");
+          return environment;
+        },
+        fetchImpl: async () => new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "native_accessibility_click_0", confidence: 0.96, probabilities: { native_accessibility_click_0: 0.96 } } } }), { status: 200 }),
+      },
+    });
+    const provider = {
+      provider: "deterministic" as const,
+      model: "deterministic/native-cancellation",
+      async *stream(): AsyncIterable<ModelStreamEvent> {
+        yield { type: "tool_call", call: { callId: "cancel_after_approval", name: "computer", argumentsJson: JSON.stringify({ goal: "Reveal the safe result in Notes." }) } };
+      },
+    };
+    const approvalEvents: string[] = [];
+    const result = await runTurn({
+      session,
+      provider,
+      tools,
+      config,
+      userPrompt: "Reveal the safe result in Notes.",
+      signal: controller.signal,
+      approveComputerTask: async (request) => ({ decision: "allow-task", grantHash: request.grantHash }),
+      onComputerApproval: (event) => {
+        approvalEvents.push(event.type);
+        if (event.type === "approval_decided") controller.abort("cancel after durable action approval");
+      },
+    });
+
+    assert.deepEqual(approvalEvents, ["prepared", "approval_decided"]);
+    assert.equal(result.status, "cancelled");
+    assert.equal(environment?.actions.length, 0);
+    const turnDirectory = path.join(session.sessionDirectory, "turns", result.turnId);
+    const actionNames = await readdir(path.join(turnDirectory, "computer-actions"));
+    assert.equal(actionNames.length, 1);
+    const action = JSON.parse(await readFile(path.join(turnDirectory, "computer-actions", actionNames[0]!), "utf8")) as { status?: string; errorCode?: string };
+    assert.equal(action.status, "cancelled");
+    assert.equal(action.errorCode, "computer-cancelled");
+
+    const runNames = await readdir(path.join(turnDirectory, "computer-runs"));
+    assert.equal(runNames.length, 1);
+    const runDirectory = path.join(turnDirectory, "computer-runs", runNames[0]!);
+    const run = JSON.parse(await readFile(path.join(runDirectory, "run.json"), "utf8")) as { status?: string; outcome?: string };
+    assert.equal(run.status, "cancelled");
+    assert.equal(run.outcome, "cancelled");
+    const runEvents = (await readFile(path.join(runDirectory, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { kind?: string });
+    assert.equal(runEvents.at(-1)?.kind, "cancelled");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runTurn persists cancellation after native dispatch as outcome-unknown without replay", { timeout: 3_000 }, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "anesu-native-cancel-dispatched-"));
+  const controller = new AbortController();
+  try {
+    const config = loadConfig({ stateDir: path.join(root, "state"), workspaceRoot: root, browserEnabled: false }, {});
+    const session = await SessionStore.open(config.stateDir);
+    const workspace = await Workspace.open(root, {
+      maxFileBytes: config.maxFileBytes,
+      maxDirectoryEntries: config.maxDirectoryEntries,
+      maxTreeEntries: config.maxTreeEntries,
+      maxTreeBytes: config.maxTreeBytes,
+      maxTreeDepth: config.maxTreeDepth,
+    });
+    let environment: FakeNativeEnvironment | undefined;
+    const tools = new ToolRegistry(workspace, config.maxToolOutputBytes, undefined, undefined, undefined, undefined, {
+      environment: "ubuntu-x11-cua",
+      strategy: "typesafe",
+      typeSafePreflight: async () => ({ requestedModel: "jev-latest", resolvedModel: "jev-latest" }),
+      native: {
+        displayId: "primary",
+        artifactDirectory: path.join(root, "artifacts"),
+        openRouterApiKey: "openrouter-test-key",
+        traditionalModel: "vision-test-model",
+        typeSafeApiKey: "typesafe-test-key",
+        typeSafeModel: "jev-latest",
+        maxActions: config.computerMaxActions,
+        maxOutputBytes: config.maxToolOutputBytes,
+        createEnvironment: (screenshotPath) => {
+          environment = new FakeNativeEnvironment(screenshotPath, true, "Notes");
+          environment.blockExecutionUntilAbort = true;
+          return environment;
+        },
+        fetchImpl: async () => new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "native_accessibility_click_0", confidence: 0.96, probabilities: { native_accessibility_click_0: 0.96 } } } }), { status: 200 }),
+      },
+    });
+    const provider = new DeterministicModelProvider("deterministic/native-cancellation-after-dispatch", {
+      toolCall: {
+        name: "computer",
+        argumentsJson: JSON.stringify({ goal: "Reveal the safe result in Notes." }),
+        finalResponse: "Native computer action recorded.",
+      },
+    });
+    const computerEvents: string[] = [];
+    const result = await runTurn({
+      session,
+      provider,
+      tools,
+      config,
+      userPrompt: "Reveal the safe result in Notes.",
+      signal: controller.signal,
+      approveComputerTask: async (request) => ({ decision: "allow-task", grantHash: request.grantHash }),
+      onComputer: (event) => {
+        computerEvents.push(event.type);
+        if (event.type === "act_requested") controller.abort("cancel after native dispatch began");
+      },
+    });
+
+    assert.equal(result.status, "cancelled");
+    assert.equal(environment?.actions.length, 1, "the dispatched input must not be replayed");
+    assert.equal(computerEvents.filter((event) => event === "act_requested").length, 1);
+    const turnDirectory = path.join(session.sessionDirectory, "turns", result.turnId);
+    const actionNames = await readdir(path.join(turnDirectory, "computer-actions"));
+    assert.equal(actionNames.length, 1);
+    const action = JSON.parse(await readFile(path.join(turnDirectory, "computer-actions", actionNames[0]!), "utf8")) as { status?: string; errorCode?: string };
+    assert.equal(action.status, "ambiguous");
+    assert.equal(action.errorCode, "computer-ambiguous");
+
+    const runNames = await readdir(path.join(turnDirectory, "computer-runs"));
+    assert.equal(runNames.length, 1);
+    const runDirectory = path.join(turnDirectory, "computer-runs", runNames[0]!);
+    const run = JSON.parse(await readFile(path.join(runDirectory, "run.json"), "utf8")) as { status?: string; outcome?: string };
+    assert.equal(run.status, "outcome-unknown");
+    assert.equal(run.outcome, "outcome-unknown");
+    const runEvents = (await readFile(path.join(runDirectory, "events.jsonl"), "utf8"))
+      .trim().split("\n").map((line) => JSON.parse(line) as { kind?: string });
+    assert.equal(runEvents.at(-1)?.kind, "failed");
+    assert.equal(runEvents.filter((event) => event.kind === "act_requested").length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

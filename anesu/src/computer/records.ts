@@ -3,9 +3,12 @@ import type {
   ComputerNativeOperation,
   ComputerScrollDirection,
 } from "./contracts.js";
+import type { TypeSafeModelEvidence } from "./contracts.js";
 import type { CorrelationId } from "../runtime/contracts.js";
+import type { ComputerErrorCode } from "./failures.js";
 import { assertLifecycleTransition } from "../runtime/lifecycle.js";
 import { stableStringify } from "../persistence/json.js";
+import type { ComputerNativeFallbackRoute, ComputerTaskValueEvidence } from "./task.js";
 
 export type ComputerActionStatus =
   | "prepared"
@@ -41,6 +44,10 @@ export interface ComputerActionRecord {
   readonly environment: Extract<ComputerEnvironmentKind, "ubuntu-x11-cua">;
   readonly displayId: string;
   readonly operation: Exclude<ComputerNativeOperation, "wait">;
+  /** Bounded identity of the high-level task that authorized this action. */
+  readonly taskId?: string;
+  readonly grantHash?: string;
+  readonly allowedTaskActions?: readonly string[];
   readonly observationId: string;
   readonly generation: number;
   readonly x?: number;
@@ -55,10 +62,10 @@ export interface ComputerActionRecord {
   readonly amount?: number;
   readonly targetLabel?: string;
   readonly targetRole?: string;
-  readonly targetSource?: "accessibility" | "screen";
+  readonly targetSource?: "accessibility" | "focused" | "screen";
   readonly approvalTimeoutMs?: number;
   readonly status: ComputerActionStatus;
-  readonly decision?: "allow-once" | "deny" | "unavailable";
+  readonly decision?: "allow-once" | "allow-task" | "deny" | "unavailable";
   readonly summary?: string;
   readonly errorCode?: ComputerActionErrorCode;
   readonly errorMessage?: string;
@@ -67,9 +74,21 @@ export interface ComputerActionRecord {
   readonly recordedAt: string;
 }
 
-export type ComputerRunStatus = "running" | "completed" | "failed" | "outcome-unknown";
+export type ComputerRunStatus = "running" | "completed" | "failed" | "cancelled" | "outcome-unknown";
 
-export type ComputerRunEventKind = "started" | "observed" | "decision_attempt" | "proposed" | "approval" | "act_requested" | "verified" | "abstained" | "failed";
+/** User-visible settlement of a goal run. The durable lifecycle status remains
+ * intentionally coarse for recovery compatibility; this field preserves the
+ * reason the run settled. */
+export type ComputerTerminalOutcome =
+  | "completed"
+  | "clarification-required"
+  | "abstained"
+  | "failed"
+  | "cancelled"
+  | "outcome-unknown"
+  | "action-limit";
+
+export type ComputerRunEventKind = "started" | "observed" | "decision_attempt" | "proposed" | "approval" | "act_requested" | "verified" | "abstained" | "cancelled" | "failed";
 
 /** Bounded per-tool-call metadata. Raw screenshots and provider bodies do not belong here. */
 export interface ComputerRunRecord {
@@ -84,7 +103,23 @@ export interface ComputerRunRecord {
   readonly goal: string;
   /** Configured action budget for this run, when the environment enforces one. */
   readonly maxActions?: number;
+  /** Bounded task-admission identity; secrets and raw driver state are excluded. */
+  readonly taskId?: string;
+  readonly grantHash?: string;
+  readonly taskSurface?: "browser" | "native";
+  readonly applicationName?: string;
+  readonly profileMode?: "isolated_new" | "existing_profile";
+  readonly nativeFallbackRoutes?: readonly ComputerNativeFallbackRoute[];
+  readonly allowedOrigins?: readonly string[];
+  readonly inputRoute?: "trusted" | "dom_event";
+  readonly taskExpiresAtMs?: number;
+  readonly timeZone?: string;
+  readonly compiledValueEvidence?: readonly ComputerTaskValueEvidence[];
+  readonly typeSafeModel?: TypeSafeModelEvidence;
   readonly status: ComputerRunStatus;
+  readonly outcome?: ComputerTerminalOutcome;
+  /** Stable bounded category for a terminal run failure or abstention. */
+  readonly errorCode?: ComputerErrorCode;
   readonly summary?: string;
   readonly startedAt: string;
   readonly finishedAt?: string;
@@ -110,9 +145,10 @@ export type ComputerRunEventInput = Omit<ComputerRunEventRecord, "sequence" | "r
 };
 
 const COMPUTER_RUN_TRANSITIONS: Readonly<Record<ComputerRunStatus, readonly ComputerRunStatus[]>> = {
-  running: ["completed", "failed", "outcome-unknown"],
+  running: ["completed", "failed", "cancelled", "outcome-unknown"],
   completed: [],
   failed: [],
+  cancelled: [],
   "outcome-unknown": [],
 };
 
@@ -127,6 +163,18 @@ export function assertComputerRunTransition(previous: ComputerRunRecord, next: C
     previous.strategy !== next.strategy ? "strategy" : undefined,
     previous.goal !== next.goal ? "goal" : undefined,
     previous.maxActions !== next.maxActions ? "maxActions" : undefined,
+    previous.taskId !== next.taskId ? "taskId" : undefined,
+    previous.grantHash !== next.grantHash ? "grantHash" : undefined,
+    previous.taskSurface !== next.taskSurface ? "taskSurface" : undefined,
+    previous.applicationName !== next.applicationName ? "applicationName" : undefined,
+    previous.profileMode !== next.profileMode ? "profileMode" : undefined,
+    stableStringify(previous.nativeFallbackRoutes) !== stableStringify(next.nativeFallbackRoutes) ? "nativeFallbackRoutes" : undefined,
+    stableStringify(previous.allowedOrigins) !== stableStringify(next.allowedOrigins) ? "allowedOrigins" : undefined,
+    previous.inputRoute !== next.inputRoute ? "inputRoute" : undefined,
+    previous.taskExpiresAtMs !== next.taskExpiresAtMs ? "taskExpiresAtMs" : undefined,
+    previous.timeZone !== next.timeZone ? "timeZone" : undefined,
+    stableStringify(previous.compiledValueEvidence) !== stableStringify(next.compiledValueEvidence) ? "compiledValueEvidence" : undefined,
+    stableStringify(previous.typeSafeModel) !== stableStringify(next.typeSafeModel) ? "typeSafeModel" : undefined,
     previous.startedAt !== next.startedAt ? "startedAt" : undefined,
   ].filter((field): field is string => field !== undefined);
   if (changedFields.length > 0) {
@@ -142,7 +190,7 @@ export function assertComputerRunEvent(event: ComputerRunEventRecord): void {
     || typeof event.sessionId !== "string" || event.sessionId.trim().length === 0
     || typeof event.turnId !== "string" || event.turnId.trim().length === 0
     || !Number.isSafeInteger(event.sequence) || event.sequence <= 0
-    || !["started", "observed", "decision_attempt", "proposed", "approval", "act_requested", "verified", "abstained", "failed"].includes(event.kind)
+    || !["started", "observed", "decision_attempt", "proposed", "approval", "act_requested", "verified", "abstained", "cancelled", "failed"].includes(event.kind)
     || !["traditional", "typesafe", "compare"].includes(event.strategy)
     || !event.payload || typeof event.payload !== "object" || Array.isArray(event.payload)
     || Buffer.byteLength(stableStringify(event.payload), "utf8") > 16 * 1024
@@ -176,6 +224,9 @@ export function assertComputerActionTransition(previous: ComputerActionRecord, n
     previous.environment !== next.environment ? "environment" : undefined,
     previous.displayId !== next.displayId ? "displayId" : undefined,
     previous.operation !== next.operation ? "operation" : undefined,
+    previous.taskId !== next.taskId ? "taskId" : undefined,
+    previous.grantHash !== next.grantHash ? "grantHash" : undefined,
+    stableStringify(previous.allowedTaskActions) !== stableStringify(next.allowedTaskActions) ? "allowedTaskActions" : undefined,
     previous.observationId !== next.observationId ? "observationId" : undefined,
     previous.generation !== next.generation ? "generation" : undefined,
     previous.x !== next.x ? "x" : undefined,
@@ -185,7 +236,7 @@ export function assertComputerActionTransition(previous: ComputerActionRecord, n
     previous.textLength !== next.textLength ? "textLength" : undefined,
     previous.textPreview !== next.textPreview ? "textPreview" : undefined,
     previous.key !== next.key ? "key" : undefined,
-    JSON.stringify(previous.modifiers) !== JSON.stringify(next.modifiers) ? "modifiers" : undefined,
+    stableStringify(previous.modifiers) !== stableStringify(next.modifiers) ? "modifiers" : undefined,
     previous.direction !== next.direction ? "direction" : undefined,
     previous.amount !== next.amount ? "amount" : undefined,
     previous.targetLabel !== next.targetLabel ? "targetLabel" : undefined,

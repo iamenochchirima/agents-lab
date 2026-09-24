@@ -15,8 +15,13 @@ export type ComputerErrorCode =
   | "computer-display-unavailable"
   | "computer-stale-observation"
   | "computer-action-limit"
+  | "computer-surface-ambiguous"
+  | "computer-surface-unavailable"
+  | "computer-task-invalid"
+  | "computer-strategy-unavailable"
   | "computer-approval-denied"
   | "computer-approval-unavailable"
+  | "computer-cancelled"
   | "computer-environment";
 
 /**

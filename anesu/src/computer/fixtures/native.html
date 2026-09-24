@@ -21,10 +21,16 @@
       <p class="note">This local page is disposable. It does not make network requests or persist input.</p>
       <label for="safe-text">Safe text field</label><br>
       <input id="safe-text" aria-label="Safe text field" placeholder="Type non-secret text">
+      <button id="details" type="button" aria-pressed="false">Open details</button>
       <button id="reveal" type="button">Reveal safe result</button>
+      <p id="details-state" aria-live="polite" hidden>Details are open.</p>
       <p id="result" aria-live="polite"></p>
     </main>
     <script>
+      document.getElementById("details").addEventListener("click", () => {
+        document.getElementById("details").setAttribute("aria-pressed", "true");
+        document.getElementById("details-state").hidden = false;
+      });
       document.getElementById("reveal").addEventListener("click", () => {
         document.getElementById("result").textContent = "Computer success: safe result revealed.";
       });

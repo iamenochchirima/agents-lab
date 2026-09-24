@@ -437,7 +437,7 @@ test("model run persists bounded process evidence and returns the real result", 
       }),
       config,
       userPrompt: "Run the harmless process.",
-      approveProcess: async () => ({ decision: "allow-once" }),
+      approveProcess: async () => ({ decision: "allow-once", permissionGrant: { id: `local_${"a".repeat(32)}`, scope: "local" } }),
     });
     assert.equal(result.status, "completed");
     assert.equal(result.assistantText, "The command completed.");
@@ -448,6 +448,7 @@ test("model run persists bounded process evidence and returns the real result", 
     assert.match(records, /persisted output/u);
     assert.match(records, /"status":"completed"/u);
     assert.match(records, /"approvalTimeoutMs":120000/u);
+    assert.match(records, new RegExp(`"permissionGrant":\\{"id":"local_${"a".repeat(32)}","scope":"local"\\}`, "u"));
     assert.doesNotMatch(records, /OPENROUTER_API_KEY|must-not-be-inherited/u);
     const events = await readFile(path.join(executionDirectory, "..", "events.jsonl"), "utf8");
     assert.match(events, /ProcessPrepared/u);

@@ -59,6 +59,15 @@ test("computer run evidence keeps bounded ordered events and terminal status", a
       environment: "ubuntu-x11-cua",
       strategy: "typesafe",
       goal: "reveal the safe result",
+      allowedOrigins: ["https://example.com"],
+      compiledValueEvidence: [{
+        kind: "url",
+        digest: "0f115db062b7c0dd030b16878c99dea5c354b49dc37b38eb8846179c7783e9d7",
+        length: 20,
+        sourceStart: 5,
+        sourceEnd: 16,
+      }],
+      typeSafeModel: { requestedModel: "jev-latest", resolvedModel: "jev-2026-09-01" },
       status: "running",
       startedAt: "2026-09-20T00:00:00.000Z",
       recordedAt: "2026-09-20T00:00:00.000Z",
@@ -78,17 +87,23 @@ test("computer run evidence keeps bounded ordered events and terminal status", a
     await turn.appendComputerRunEvent(event("event_observed", "observed", { observationId: "observation_test", candidateCount: 1 }));
     await turn.appendComputerRunEvent(event("event_decision_retry", "decision_attempt", { observationId: "observation_test", attempt: 1, maxAttempts: 2, retrying: true, reason: "provider rate limit", errorCode: "computer-decision" }));
     await turn.appendComputerRunEvent(event("event_proposed", "proposed", { actionId: "native_accessibility_click_0", confidence: 0.8 }));
-    await turn.writeComputerRun({ ...run, status: "completed", summary: "safe result verified", finishedAt: "2026-09-20T00:00:01.000Z", recordedAt: "2026-09-20T00:00:01.000Z" });
+    await turn.writeComputerRun({ ...run, status: "completed", outcome: "completed", summary: "safe result verified", finishedAt: "2026-09-20T00:00:01.000Z", recordedAt: "2026-09-20T00:00:01.000Z" });
 
     const events = await turn.readComputerRunEvents(run.runId);
     assert.deepEqual(events.map((value) => [value.sequence, value.kind]), [[1, "observed"], [2, "decision_attempt"], [3, "proposed"]]);
     assert.equal((await turn.readComputerRuns())[0]?.status, "completed");
+    assert.equal((await turn.readComputerRuns())[0]?.outcome, "completed");
+    assert.deepEqual((await turn.readComputerRuns())[0]?.typeSafeModel, { requestedModel: "jev-latest", resolvedModel: "jev-2026-09-01" });
     await assert.rejects(
       () => turn.appendComputerRunEvent(event("event_too_large", "failed", { diagnostic: "x".repeat(20_000) })),
       /bounded|limit/u,
     );
     await assert.rejects(
       () => turn.writeComputerRun({ ...run, strategy: "traditional" }),
+      /identity cannot change/u,
+    );
+    await assert.rejects(
+      () => turn.writeComputerRun({ ...run, typeSafeModel: { requestedModel: "jev-latest", resolvedModel: "jev-other" } }),
       /identity cannot change/u,
     );
   } finally {
@@ -300,6 +315,11 @@ test("computer run summaries expose bounded inspection metadata without raw even
         success: true,
         terminal: true,
         runStatus: "completed",
+        outcome: "completed",
+        step: 1,
+        maxActions: 3,
+        verifier: "text-present",
+        verificationEvidence: { expected: "safe result", observed: "present" },
         reason: "safe result verified",
       },
     });
@@ -314,6 +334,10 @@ test("computer run summaries expose bounded inspection metadata without raw even
     assert.equal(summaries[0]?.lastEvent?.model, "jev-latest");
     assert.equal(summaries[0]?.lastEvent?.latencyMs, 42);
     assert.equal(summaries[0]?.lastEvent?.runStatus, "completed");
+    assert.equal(summaries[0]?.lastEvent?.outcome, "completed");
+    assert.equal(summaries[0]?.lastEvent?.step, 1);
+    assert.equal(summaries[0]?.lastEvent?.verifier, "text-present");
+    assert.deepEqual(summaries[0]?.lastEvent?.verificationEvidence, { expected: "safe result", observed: "present" });
     assert.equal(summaries[0]?.lastEvent?.reason, "safe result verified");
     assert.equal("payload" in (summaries[0]?.lastEvent ?? {}), false);
     assert.equal(JSON.stringify(summaries[0]).includes("raw/screenshot"), false);

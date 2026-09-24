@@ -1,4 +1,4 @@
-import type { BrowserApprovalAction, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserScrollDirection, BrowserSessionId, BrowserTabId } from "./contracts.js";
+import type { BrowserActionEffect, BrowserActionRoute, BrowserApprovalAction, BrowserDeliveryMode, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserEscalationReason, BrowserEscalationTarget, BrowserInputRoute, BrowserScrollDirection, BrowserSessionId, BrowserTabId } from "./contracts.js";
 import type { BrowserDiagnostic, BrowserErrorCode } from "./errors.js";
 import type { CorrelationId } from "../runtime/contracts.js";
 import { assertLifecycleTransition } from "../runtime/lifecycle.js";
@@ -23,6 +23,12 @@ export interface BrowserActionRecord {
   readonly correlationId?: CorrelationId;
   readonly tabId: BrowserTabId;
   readonly action: BrowserApprovalAction;
+  /** The host-selected Cua delivery route is durable approval evidence. */
+  readonly inputRoute?: BrowserInputRoute;
+  /** Bounded identity of the high-level task that authorized this action. */
+  readonly taskId?: string;
+  readonly grantHash?: string;
+  readonly allowedTaskActions?: readonly string[];
   readonly reference: string;
   readonly documentId: BrowserDocumentId;
   readonly text?: string;
@@ -35,10 +41,16 @@ export interface BrowserActionRecord {
   readonly actionHash: string;
   readonly approvalTimeoutMs?: number;
   readonly status: BrowserActionStatus;
-  readonly decision?: "allow-once" | "deny" | "unavailable";
+  readonly decision?: "allow-once" | "allow-task" | "deny" | "unavailable";
   readonly summary?: string;
+  /** Cua's bounded effect verdict is evidence, not a task completion claim. */
+  readonly effect?: BrowserActionEffect;
+  readonly route?: BrowserActionRoute;
+  readonly delivery?: { readonly mode: BrowserDeliveryMode; readonly deliveredCount?: number };
+  readonly escalation?: { readonly target: BrowserEscalationTarget; readonly reason: BrowserEscalationReason };
   readonly errorCode?: BrowserActionErrorCode;
   readonly underlyingErrorCode?: BrowserActionErrorCode;
+  readonly cuaCode?: string;
   readonly errorMessage?: string;
   readonly dialog?: BrowserDialogObservation;
   readonly dialogDecision?: BrowserDialogDecision;
@@ -73,6 +85,10 @@ export function assertBrowserActionTransition(previous: BrowserActionRecord, nex
     previous.correlationId !== undefined && previous.correlationId !== next.correlationId ? "correlationId" : undefined,
     previous.tabId !== next.tabId ? "tabId" : undefined,
     previous.action !== next.action ? "action" : undefined,
+    previous.inputRoute !== next.inputRoute ? "inputRoute" : undefined,
+    previous.taskId !== next.taskId ? "taskId" : undefined,
+    previous.grantHash !== next.grantHash ? "grantHash" : undefined,
+    JSON.stringify(previous.allowedTaskActions) !== JSON.stringify(next.allowedTaskActions) ? "allowedTaskActions" : undefined,
     previous.reference !== next.reference ? "reference" : undefined,
     previous.documentId !== next.documentId ? "documentId" : undefined,
     previous.text !== next.text ? "text" : undefined,

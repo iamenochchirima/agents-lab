@@ -2,6 +2,7 @@ import { loadConfig } from "../config/config.js";
 import { loadLocalEnvironment } from "../config/local-env.js";
 import { safeErrorMessage, AnesuError } from "../runtime/errors.js";
 import { openChatApplication } from "../runtime/application.js";
+import { SessionStore } from "../persistence/session-store.js";
 import { HELP_TEXT, parseArgs } from "./args.js";
 import { runDoctor } from "./doctor.js";
 import { TerminalUi } from "./tui.js";
@@ -18,14 +19,35 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
     if (options.command === "doctor") {
       return (await runDoctor(config, process.stdout)) ? 0 : 1;
     }
-    const application = await openChatApplication(config, options.sessionId);
-    try {
-      const recovered = await application.recoverInterruptedTurns();
-      for (const result of recovered) {
-        process.stdout.write(`Recovered interrupted turn ${result.turnId}. No model request was retried.\n`);
+    let ui: TerminalUi | undefined;
+    const openSession = async (sessionId?: string) => {
+      const opened = await openChatApplication(config, sessionId);
+      try {
+        const recovered = await opened.recoverInterruptedTurns();
+        for (const result of recovered) {
+          process.stdout.write(`Recovered interrupted turn ${result.turnId}. No model request was retried.\n`);
+        }
+        await opened.maintainMemoryEvidence?.();
+        return opened;
+      } catch (error) {
+        await opened.close().catch(() => undefined);
+        throw error;
       }
-      await application.maintainMemoryEvidence?.();
-      const ui = new TerminalUi(application, process.stdout, Boolean(process.stdin.isTTY && process.stdout.isTTY), [config.openRouterApiKey, config.computerOpenRouterApiKey].filter((value): value is string => Boolean(value)));
+    };
+    const application = await openSession(options.sessionId);
+    try {
+      ui = new TerminalUi(
+        application,
+        process.stdout,
+        Boolean(process.stdin.isTTY && process.stdout.isTTY),
+        [config.openRouterApiKey, config.computerOpenRouterApiKey].filter((value): value is string => Boolean(value)),
+        options.message === undefined
+          ? {
+              listRecent: () => SessionStore.listRecentSessions(config.stateDir),
+              open: openSession,
+            }
+          : undefined,
+      );
       if (options.message !== undefined) {
         const result = await ui.runSingle(options.message);
         return result.status === "completed" ? 0 : 1;
@@ -33,7 +55,8 @@ export async function runCli(argv: readonly string[] = process.argv.slice(2)): P
       await ui.runInteractive(process.stdin);
       return 0;
     } finally {
-      await application.close();
+      if (ui) await ui.close();
+      else await application.close();
     }
   } catch (error) {
     const message = safeErrorMessage(error);

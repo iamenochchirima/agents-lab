@@ -1,11 +1,11 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { rm } from "node:fs/promises";
 import type { AppConfig } from "../config/config.js";
-import { acquireBrowserProfileLease, BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, PlaywrightBrowserAdapter, cleanupOrphanedBrowserProfiles, type BrowserApprovalDecision, type BrowserApprovalRequest } from "../browser/index.js";
+import { BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, CuaBrowserAdapter, DEFAULT_CUA_BROWSER_ORIGINS, cleanupOrphanedBrowserProfiles, createCuaBrowserManifest, type BrowserApprovalDecision, type BrowserApprovalRequest, type BrowserInputRoute } from "../browser/index.js";
 import { createModelProvider } from "../models/factory.js";
 import { listModelProviderSummaries, type ModelProviderSummary } from "../models/registry.js";
 import { SessionStore } from "../persistence/session-store.js";
+import { ProcessApprovalPermissions } from "../persistence/process-approval-permissions.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
 import { reconcileRunningProcess } from "../process/recovery.js";
@@ -20,10 +20,16 @@ import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserToolEvent } from "../tools/registry.js";
 import type { ComputerEvent } from "../computer/runner.js";
 import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest, ComputerEnvironmentKind, ComputerEnvironmentReadiness } from "../computer/contracts.js";
-import type { ComputerStrategy } from "../computer/runner.js";
-import { CuaEnvironment, inspectCuaReadiness } from "../computer/cua-driver.js";
+import type { ComputerTaskApprovalDecision, ComputerTaskApprovalRequest } from "../computer/task.js";
+import type { CuaAuthorizationCallback } from "../browser/cua-authorization.js";
+import type { ComputerStrategyPolicy, ComputerSurfacePolicy } from "../computer/routing.js";
+import type { ComputerRunExclusive } from "../computer/router.js";
+import { CuaEnvironment, CuaNativeDriverOwner, inspectCuaReadiness } from "../computer/cua-driver.js";
+import { createCuaNativeManifest } from "../computer/cua-manifest.js";
+import { createTypeSafeModelPreflight } from "../computer/typesafe-preflight.js";
 import { ComputerArtifactStore } from "../computer/artifacts.js";
 import type { ComputerRunSummary } from "../computer/inspection.js";
+import { NATIVE_APPLICATION_CATALOG, type NativeApplicationRequest } from "../computer/native-runner.js";
 import type { MemoryApproval, MemoryEvent, MemorySearchEvidence, MemoryStatus } from "../memory/contracts.js";
 import { MemoryStore, type MemoryEvidenceMaintenanceResult } from "../memory/store.js";
 import { SkillRegistry, type SkillCatalog } from "../skills/index.js";
@@ -38,6 +44,7 @@ export interface ChatApplication {
   readonly availableProviders?: readonly ModelProviderSummary[];
   readonly workspaceRoot: string;
   readonly evidenceDirectory: string;
+  readonly processPermissions?: ProcessApprovalPermissions;
   readonly toolNames: readonly string[];
   readonly computer: ComputerUiStatus;
   readonly readMemoryStatus?: () => Promise<MemoryStatus>;
@@ -47,25 +54,52 @@ export interface ChatApplication {
   readonly readComputerRuns?: () => Promise<readonly ComputerRunSummary[]>;
   recoverInterruptedTurns(): Promise<readonly TurnResult[]>;
   readTranscript(): Promise<readonly TranscriptMessage[]>;
-  runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void, onComputer?: (event: ComputerEvent) => void, approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>, onComputerApproval?: (event: ComputerApprovalEvent) => void): Promise<TurnResult>;
+  runTurn(userPrompt: string, signal: AbortSignal | undefined, onText?: (text: string) => void, onEvent?: (event: TurnEvent) => void, approveMutation?: MutationApproval, onMutation?: (event: MutationEvent) => void, approveProcess?: (request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>, onProcess?: (event: ProcessToolEvent) => void, approveBrowser?: (request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>, onBrowser?: (event: BrowserToolEvent) => void, approveMemory?: MemoryApproval, onMemory?: (event: MemoryEvent) => void, onMemorySearch?: (evidence: Omit<MemorySearchEvidence, "sessionId" | "turnId" | "recordedAt">) => void, onComputer?: (event: ComputerEvent) => void, approveComputer?: (request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>, onComputerApproval?: (event: ComputerApprovalEvent) => void, approveComputerTask?: (request: ComputerTaskApprovalRequest, signal?: AbortSignal) => Promise<ComputerTaskApprovalDecision>, authorizeExistingProfile?: CuaAuthorizationCallback): Promise<TurnResult>;
   close(): Promise<void>;
 }
 
 export interface ComputerUiStatus {
   readonly enabled: boolean;
   readonly environment?: ComputerEnvironmentKind;
-  readonly strategy?: ComputerStrategy;
+  readonly surface?: ComputerSurfacePolicy;
+  readonly strategy?: ComputerStrategyPolicy;
   readonly model?: string;
+  readonly browserInputRoute?: BrowserInputRoute;
   readonly isolated?: boolean;
   readonly visible?: boolean;
+  /** Code-owned native identities admitted by the current task compiler. */
+  readonly nativeCatalog?: readonly string[];
   readonly readiness?: ComputerEnvironmentReadiness;
 }
+
+function createComputerRunQueue(): ComputerRunExclusive {
+  let tail: Promise<void> = Promise.resolve();
+  return async <T>(operation: () => Promise<T>): Promise<T> => {
+    const predecessor = tail;
+    let release!: () => void;
+    tail = new Promise<void>((resolve) => { release = resolve; });
+    await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  };
+}
+
 export async function openChatApplication(config: AppConfig, requestedSessionId?: string): Promise<ChatApplication> {
   const session = await SessionStore.open(config.stateDir, requestedSessionId, {
     redactionSecrets: [config.openRouterApiKey ?? "", config.computerOpenRouterApiKey ?? "", config.typeSafeApiKey ?? ""].filter(Boolean),
   });
   const lock: SessionLock = await session.acquireLock();
+  const processPermissions = new ProcessApprovalPermissions(
+    config.stateDir,
+    session.sessionDirectory,
+    session.metadata.sessionId,
+    session.metadata.profileId,
+  );
   let memory: MemoryStore | undefined;
+  let nativeCuaOwner: CuaNativeDriverOwner | undefined;
   try {
     const provider = createModelProvider(config);
     const workspace = await Workspace.open(config.workspaceRoot, {
@@ -103,19 +137,34 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
         })
       : undefined;
     const browserUrlPolicy = new BrowserUrlPolicy({ allowedLocalHosts: config.browserAllowedLocalHosts });
-    const browserAdapter = new PlaywrightBrowserAdapter({
-      headless: config.computerEnabled && config.computerEnvironment === "browser" ? !config.computerBrowserVisible : true,
-      actionTimeoutMs: config.browserActionTimeoutMs,
-      snapshotMaxChars: config.browserSnapshotMaxChars,
-      maxSnapshotReferences: config.browserMaxSnapshotReferences,
+    const typeSafePreflight = config.computerEnabled
+      ? createTypeSafeModelPreflight({ apiKey: config.typeSafeApiKey, model: config.computerTypesafeModel })
+      : undefined;
+    const browserInputRoute: BrowserInputRoute = config.computerBrowserInputRoute;
+    // BrowserTools and the native Cua application window are application-owned
+    // state. Serialize complete task lifecycles so approval, references,
+    // process/window binding, and cleanup cannot interleave across turns.
+    const browserRunExclusive = createComputerRunQueue();
+    const nativeRunExclusive = createComputerRunQueue();
+    const computerRunExclusive = createComputerRunQueue();
+    const browserSessionRoot = createHash("sha256").update(session.metadata.sessionId, "utf8").digest("hex").slice(0, 32);
+    const browserManifest = await createCuaBrowserManifest({
+      basePath: path.join(process.cwd(), "config", "cua-browser-capabilities.yaml"),
+      outputPath: path.join(config.stateDir, "cua", `browser-capabilities-${browserSessionRoot}.yaml`),
+      uploadRoot: path.join(config.stateDir, "cua", "browser-uploads", browserSessionRoot),
+      existingProfileEnabled: config.computerExistingProfileEnabled,
+    });
+    const browserAdapter = new CuaBrowserAdapter({
+      manifestPath: browserManifest.manifestPath,
+      uploadStagingRoot: browserManifest.uploadRoot,
+      allowedOrigins: DEFAULT_CUA_BROWSER_ORIGINS,
+      maxSnapshotChars: config.browserSnapshotMaxChars,
+      inputRoute: browserInputRoute,
       urlPolicy: browserUrlPolicy,
     });
-    const browserArtifacts = new BrowserArtifactStore(path.join(config.stateDir, "browser-artifacts"), {
-      maxScreenshotBytes: config.browserScreenshotMaxBytes,
-      maxScreenshotWidth: config.browserScreenshotMaxWidth,
-      maxScreenshotHeight: config.browserScreenshotMaxHeight,
-      maxDownloadBytes: config.browserDownloadMaxBytes,
-    });
+    // Cua owns live browser profiles. This cleanup only removes orphaned state
+    // left by older managed-browser runs and never supplies a profile to Cua.
+    const browserArtifacts = new BrowserArtifactStore(path.join(config.stateDir, "browser-artifacts"));
     await cleanupOrphanedBrowserProfiles(path.join(config.stateDir, "browser-profiles"), {
       maxAgeMs: config.browserProfileRetentionMs,
       maxEntries: config.browserCleanupMaxEntries,
@@ -137,22 +186,27 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       maxAgeMs: config.computerArtifactRetentionMs,
       maxEntries: config.computerArtifactCleanupMaxEntries,
     });
+    const nativeManifest = config.computerEnabled && config.computerEnvironment === "ubuntu-x11-cua"
+      ? await createCuaNativeManifest({
+          basePath: path.join(process.cwd(), "config", "cua-native-capabilities.yaml"),
+          outputPath: path.join(config.stateDir, "cua", `native-capabilities-${browserSessionRoot}.yaml`),
+          screenshotRoot: path.join(config.stateDir, "computer-artifacts", ".scratch"),
+        })
+      : undefined;
+    const nativeCuaDriver = config.computerEnabled && config.computerEnvironment === "ubuntu-x11-cua"
+      ? (() => {
+          nativeCuaOwner = new CuaNativeDriverOwner({
+            manifestPath: nativeManifest!.manifestPath,
+          });
+          return nativeCuaOwner.acquire();
+        })()
+      : undefined;
+    const sharedNativeCuaDriver = nativeCuaDriver ? await nativeCuaDriver : undefined;
     const browserSessions = new BrowserSessionManager(browserAdapter, {
       maxTabs: config.browserMaxTabs,
       readOnlyRetryCount: config.browserReadRetryCount,
       readOnlyTimeoutMs: config.browserActionTimeoutMs,
       sessionTimeoutMs: config.browserSessionTimeoutMs,
-      profileDirectory: (sessionId) => path.join(config.stateDir, "browser-profiles", sessionId),
-      acquireProfileLease: acquireBrowserProfileLease,
-      cleanupProfile: async (profileDirectory) => {
-        const profileRoot = path.resolve(config.stateDir, "browser-profiles");
-        const target = path.resolve(profileDirectory);
-        if (!target.startsWith(`${profileRoot}${path.sep}`)) {
-          throw new Error("Browser profile cleanup target escaped the managed profile root.");
-        }
-        await rm(target, { recursive: true, force: true });
-      },
-      artifactStore: browserArtifacts,
       urlPolicy: browserUrlPolicy,
     });
     const browserFilePolicy = config.browserEnabled
@@ -163,15 +217,38 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
           manager: browserSessions,
           maxOutputBytes: config.maxToolOutputBytes,
           maxWaitMs: config.browserWaitMaxMs,
+          inputRoute: browserInputRoute,
+          searchProvider: config.browserSearchProvider,
+          runtimeEvidence: () => browserAdapter.runtimeEvidence(),
           resolveUpload: browserFilePolicy.resolveUpload.bind(browserFilePolicy),
           redactionSecrets: [config.openRouterApiKey ?? "", config.computerOpenRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? "", config.typeSafeApiKey ?? process.env.TYPESAFE_API_KEY ?? ""].filter(Boolean),
         }
       : undefined;
+    let browserReadiness: ComputerEnvironmentReadiness = {
+      kind: "browser",
+      available: false,
+      isolated: true,
+      reason: "Browser Cua readiness has not been proven.",
+    };
+    if (config.computerEnabled && config.computerSurface !== "desktop" && browserToolOptions !== undefined) {
+      try {
+        await browserAdapter.preflight();
+        browserReadiness = { kind: "browser", available: true, isolated: true };
+      } catch (error) {
+        browserReadiness = {
+          kind: "browser",
+          available: false,
+          isolated: true,
+          reason: error instanceof Error ? error.message.slice(0, 256) : "Browser Cua readiness failed.",
+        };
+      }
+    }
     const computerToolOptions = !config.computerEnabled
       ? undefined
       : config.computerEnvironment === "browser" && browserToolOptions
         ? {
             environment: "browser" as const,
+            surface: config.computerSurface,
             browser: browserToolOptions,
             strategy: config.computerStrategy,
             openRouterApiKey: config.computerOpenRouterApiKey,
@@ -179,23 +256,42 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
             traditionalVision: config.computerTraditionalVision,
             typeSafeApiKey: config.typeSafeApiKey,
             typeSafeModel: config.computerTypesafeModel,
+            existingProfileEnabled: config.computerExistingProfileEnabled,
             maxActions: config.computerMaxActions,
+            taskDeadlineMs: config.computerTaskDurationMs,
+            browserInputRoute: config.computerBrowserInputRoute,
+            browserAllowedOrigins: DEFAULT_CUA_BROWSER_ORIGINS,
+            browserPreflight: () => browserAdapter.preflight(),
+            typeSafePreflight,
+            browserRunExclusive,
+            computerRunExclusive,
           }
         : config.computerEnvironment === "ubuntu-x11-cua"
           ? {
               environment: "ubuntu-x11-cua" as const,
+              surface: config.computerSurface,
+              browser: browserToolOptions,
               strategy: config.computerStrategy,
               openRouterApiKey: config.computerOpenRouterApiKey,
               traditionalModel: config.computerTraditionalModel,
               typeSafeApiKey: config.typeSafeApiKey,
               typeSafeModel: config.computerTypesafeModel,
+              existingProfileEnabled: config.computerExistingProfileEnabled,
               maxActions: config.computerMaxActions,
+              taskDeadlineMs: config.computerTaskDurationMs,
+              browserInputRoute: config.computerBrowserInputRoute,
+              browserAllowedOrigins: DEFAULT_CUA_BROWSER_ORIGINS,
+              browserPreflight: () => browserAdapter.preflight(),
+              nativePreflight: nativeCuaOwner ? () => nativeCuaOwner!.preflight() : undefined,
+              typeSafePreflight,
+              browserRunExclusive,
+              nativeRunExclusive,
+              computerRunExclusive,
               native: {
                 displayId: config.computerCuaDisplayId,
                 artifactDirectory: path.join(config.stateDir, "computer-artifacts"),
                 artifactStore: computerArtifacts,
                 captureArtifacts: config.computerArtifactsEnabled,
-                strategy: config.computerStrategy,
                 openRouterApiKey: config.computerOpenRouterApiKey,
                 traditionalModel: config.computerTraditionalModel,
                 traditionalVision: config.computerTraditionalVision,
@@ -203,8 +299,14 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
                 typeSafeModel: config.computerTypesafeModel,
                 maxActions: config.computerMaxActions,
                 maxOutputBytes: config.maxToolOutputBytes,
-                createEnvironment: (screenshotPath: string) => new CuaEnvironment({
+                runtimeEvidence: () => nativeCuaOwner?.runtimeEvidence(),
+                createEnvironment: (screenshotPath: string, application?: NativeApplicationRequest) => new CuaEnvironment({
                   screenshotPath,
+                  application: application ? { name: application.name, launchPath: application.launchPath } : undefined,
+                  manifestPath: nativeManifest!.manifestPath,
+                  driver: sharedNativeCuaDriver,
+                  shutdownDriver: false,
+                  loadSdk: nativeCuaOwner ? () => nativeCuaOwner!.loadSdk() : undefined,
                   // Both native strategies receive the exact foreground-window frame
                   // whose coordinates CUA will dispatch. Desktop capture remains an
                   // explicit adapter capability, not an implicit coordinate transform.
@@ -231,9 +333,18 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
         ? {
             enabled: true,
             environment: config.computerEnvironment,
+            surface: config.computerSurface,
             strategy: config.computerStrategy,
-            model: config.computerStrategy === "typesafe" ? config.computerTypesafeModel : config.computerTraditionalModel,
+            browserInputRoute: config.computerBrowserInputRoute,
+            model: config.computerStrategy === "typesafe"
+              ? config.computerTypesafeModel
+              : config.computerStrategy === "traditional"
+                ? config.computerTraditionalModel
+                : config.computerStrategy === "compare"
+                  ? `${config.computerTraditionalModel} + ${config.computerTypesafeModel}`
+                  : `auto · ${config.computerTypesafeModel} + ${config.computerTraditionalModel}`,
             isolated: config.computerCuaIsolatedDisplay,
+            nativeCatalog: NATIVE_APPLICATION_CATALOG.map((application) => application.name),
             readiness: inspectCuaReadiness({
               environment: { ...process.env, ANESU_COMPUTER_CUA_ISOLATED_DISPLAY: config.computerCuaIsolatedDisplay ? "true" : "false" },
             }),
@@ -242,9 +353,17 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
             enabled: true,
             environment: config.computerEnvironment,
             strategy: config.computerStrategy,
-            model: config.computerStrategy === "typesafe" ? config.computerTypesafeModel : config.computerTraditionalModel,
+            surface: config.computerSurface,
+            browserInputRoute: config.computerBrowserInputRoute,
+            model: config.computerStrategy === "typesafe"
+              ? config.computerTypesafeModel
+              : config.computerStrategy === "traditional"
+                ? config.computerTraditionalModel
+                : config.computerStrategy === "compare"
+                  ? `${config.computerTraditionalModel} + ${config.computerTypesafeModel}`
+                  : `auto · ${config.computerTypesafeModel} + ${config.computerTraditionalModel}`,
             visible: config.computerBrowserVisible,
-            readiness: { kind: "browser", available: true, isolated: false },
+            readiness: browserReadiness,
           };
     return {
       sessionId: session.metadata.sessionId,
@@ -255,6 +374,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       availableProviders: listModelProviderSummaries(),
       workspaceRoot: config.workspaceRoot,
       evidenceDirectory: session.sessionDirectory,
+      processPermissions,
       toolNames: tools.definitions.map((definition) => definition.name),
       computer,
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,
@@ -264,21 +384,46 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       readComputerRuns: () => session.readComputerRunSummaries({ limit: 20 }),
       recoverInterruptedTurns: () => session.recoverInterruptedTurns((record) => workspace.reconcileMutation(record), reconcileRunningProcess, activeMemory ? (record) => activeMemory.reconcileAction(record) : undefined),
       readTranscript: () => session.readTranscript(),
-      runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch, onComputer, approveComputer, onComputerApproval) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveComputer, onComputerApproval, approveMemory, onMemory, onMemorySearch, onComputer }),
+      runTurn: (userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveMemory, onMemory, onMemorySearch, onComputer, approveComputer, onComputerApproval, approveComputerTask, authorizeExistingProfile) => runTurn({ session, provider, tools, memory: activeMemory, config, userPrompt, signal, onText, onEvent, approveMutation, onMutation, approveProcess, onProcess, approveBrowser, onBrowser, approveComputer, onComputerApproval, approveComputerTask, authorizeExistingProfile, approveMemory, onMemory, onMemorySearch, onComputer }),
       close: async () => {
+        let firstError: unknown;
         try {
           await browserSessions.closeAll();
-        } finally {
-          await activeMemory?.close();
-          await lock.release();
+        } catch (error) {
+          firstError ??= error;
         }
+        try {
+          await browserAdapter.shutdown();
+        } catch (error) {
+          firstError ??= error;
+        }
+        try {
+          await nativeCuaOwner?.shutdown();
+        } catch (error) {
+          firstError ??= error;
+        }
+        try {
+          await activeMemory?.close();
+        } catch (error) {
+          firstError ??= error;
+        }
+        try {
+          await lock.release();
+        } catch (error) {
+          firstError ??= error;
+        }
+        if (firstError) throw firstError;
       },
     };
   } catch (error) {
     try {
       await memory?.close();
     } finally {
-      await lock.release();
+      try {
+        await nativeCuaOwner?.shutdown();
+      } finally {
+        await lock.release();
+      }
     }
     throw error;
   }

@@ -7,13 +7,25 @@
  * selector, coordinate, script, or target outside the observation.
  */
 
-export type ComputerBrowserOperation = "click" | "type" | "press" | "select" | "scroll" | "wait" | "blocked";
+export type ComputerBrowserPointerOperation = "hover" | "right_click" | "double_click" | "drag";
+export type ComputerBrowserOperation = "click" | "type" | "press" | "select" | "scroll" | "wait" | "upload" | ComputerBrowserPointerOperation | "blocked";
 
 export type ComputerBrowserScrollDirection = "up" | "down" | "left" | "right";
 
 export interface BrowserStrategyReference {
   readonly value: string;
   readonly documentId: string;
+  /** Cua semantic_v2's closed action declaration for this ref. */
+  readonly actions?: readonly string[];
+  /** Current editable value exposed by semantic_v2, when available. */
+  readonly currentValue?: string;
+  /** Optional semantic identity retained by the snapshot boundary. */
+  readonly role?: string;
+  readonly name?: string;
+  readonly label?: string;
+  readonly type?: string;
+  /** Code-owned drag destination retained from the same snapshot. */
+  readonly destinationRef?: string;
 }
 
 export interface BrowserStrategySnapshot {
@@ -36,6 +48,8 @@ export interface ComputerBrowserAction {
   /** Only present on the synthetic, user-requested scroll action. */
   readonly direction?: ComputerBrowserScrollDirection;
   readonly amount?: number;
+  /** Only present for a declared drag action with a current destination ref. */
+  readonly destinationRef?: string;
   readonly reason?: string;
 }
 
@@ -44,7 +58,10 @@ const MAX_ACTIONS = 256;
 const MAX_BROWSER_WAIT_MS = 10_000;
 const MAX_BROWSER_SCROLL_PIXELS = 2_000;
 const DEFAULT_BROWSER_SCROLL_PIXELS = 600;
+const MAX_BROWSER_QUERY_CHARS = 96;
 const INPUT_TYPES = new Set(["button", "checkbox", "color", "date", "datetime-local", "email", "file", "hidden", "month", "number", "password", "radio", "range", "search", "submit", "tel", "text", "time", "url", "week"]);
+const POINTER_OPERATIONS: readonly ComputerBrowserPointerOperation[] = ["hover", "right_click", "double_click", "drag"];
+const INTERACTIVE_ROLES = new Set(["button", "a", "link", "checkbox", "radio", "input", "textarea"]);
 
 const BROWSER_KEYS: Readonly<Record<string, string>> = {
   enter: "Enter",
@@ -59,6 +76,41 @@ const BROWSER_KEYS: Readonly<Record<string, string>> = {
   arrowleft: "ArrowLeft",
   arrowright: "ArrowRight",
 };
+
+function browserQueryText(value: string): string | undefined {
+  const normalized = value
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/\s+(?:field|box|input|button|link|menu|tab|control|form)$/iu, "")
+    .trim();
+  return normalized ? normalized.slice(0, MAX_BROWSER_QUERY_CHARS) : undefined;
+}
+
+/**
+ * Derive a bounded Cua semantic query from a control the user explicitly
+ * named. The query only narrows a read. It never supplies an action argument,
+ * and quoted values intended for typing are removed before extraction.
+ */
+export function requestedBrowserQuery(goal: string): string | undefined {
+  const withoutUrls = goal.replace(/https?:\/\/[^\s)\]}>,;]+/giu, " ");
+  const quotedControl = withoutUrls.match(/\b(?:button|link|tab|menu|field|box|input|control|form)\s+(?:labelled|labeled|named|called)\s+["“](?<label>[^"”\r\n]{1,64})[”"]?/iu);
+  const quotedActionTarget = withoutUrls.match(/\b(?:click|open|follow|choose|select|hover)\s+(?:on\s+)?(?:the\s+)?["“](?<label>[^"”\r\n]{1,64})[”"]\s+(?<kind>button|link|tab|menu|field|box|input|control|form)\b/iu);
+  const control = quotedActionTarget?.groups?.label && quotedActionTarget.groups.kind
+    ? `${quotedActionTarget.groups.label} ${quotedActionTarget.groups.kind}`
+    : quotedControl?.groups?.label
+      ? quotedControl.groups.label
+      : undefined;
+  if (control) return browserQueryText(control);
+
+  const withoutQuotedValues = withoutUrls.replace(/["“][^"”\r\n]{0,512}[”"]/gu, " ").replace(/'[^'\r\n]{0,512}'/gu, " ");
+  const describedControl = withoutQuotedValues.match(/\b(?:in|into|on|at|from)\s+(?:the\s+)?(?<target>[a-z][a-z0-9' -]{0,64}?\b(?:field|box|input|button|link|menu|tab|control|form))\b/iu);
+  if (describedControl?.groups?.target) {
+    return browserQueryText(describedControl.groups.target);
+  }
+
+  if (/\b(?:search|look\s+up|find)\b/iu.test(withoutQuotedValues)) return "search";
+  return undefined;
+}
 
 /** Extract only a small, user-requested browser key set; models cannot invent keys. */
 export function requestedBrowserKey(goal: string): string | undefined {
@@ -96,6 +148,18 @@ export function requestedBrowserScroll(goal: string): { readonly direction: Comp
   return Number.isSafeInteger(amount) && amount > 0 && amount <= MAX_BROWSER_SCROLL_PIXELS ? { direction, amount } : undefined;
 }
 
+/**
+ * Extract one exact upload source named by the user. The page and the chooser
+ * never supply this value. The browser upload policy still resolves and
+ * authorizes the resulting workspace path before it reaches Cua.
+ */
+export function requestedBrowserUploadPath(goal: string): string | undefined {
+  const match = goal.match(/\b(?:upload|attach)\b[^\r\n.!?]{0,160}["“](?<path>[^"”\r\n]{1,512})[”"]/iu);
+  const value = match?.groups?.path?.trim();
+  if (!value || value.includes("\u0000")) return undefined;
+  return value;
+}
+
 function actionId(operation: ComputerBrowserOperation, candidateId: string): string {
   return `${operation}:${candidateId}`;
 }
@@ -111,11 +175,41 @@ function parseDescription(description: string): { readonly role: string; readonl
   return { role, ...(type ? { type } : {}), label };
 }
 
+function normalizeRole(value: string): string {
+  const role = value.trim().toLowerCase();
+  return role === "textbox" || role === "searchbox" ? "input" : role;
+}
+
+function normalizeDeclaredAction(value: string): string {
+  return value.trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+}
+
+function declared(reference: BrowserStrategyReference, operation: ComputerBrowserOperation): boolean | undefined {
+  if (reference.actions === undefined) return undefined;
+  return reference.actions.some((value) => normalizeDeclaredAction(value) === operation);
+}
+
+function declaredPointer(reference: BrowserStrategyReference): boolean {
+  return reference.actions?.some((value) => normalizeDeclaredAction(value) === "pointer") === true;
+}
+
+function metadataDescription(reference: BrowserStrategyReference): string | undefined {
+  const label = reference.name ?? reference.label;
+  const uploadDeclared = declared(reference, "upload") === true;
+  const role = reference.role ? normalizeRole(reference.role) : uploadDeclared ? "input" : undefined;
+  if (!role || !label) return undefined;
+  return `${role}${reference.type ? ` ${reference.type}` : ""} ${label}`;
+}
+
+function pointerTarget(parsed: { readonly role: string; readonly type?: string }): boolean {
+  return INTERACTIVE_ROLES.has(parsed.role) && parsed.type !== "password" && parsed.type !== "hidden";
+}
+
 function operationFor(role: string, type?: string): { readonly operation: ComputerBrowserOperation; readonly reason?: string } | undefined {
   if (role === "button" || role === "a" || role === "link" || role === "checkbox" || role === "radio") {
     return { operation: "click" };
   }
-  if (role === "select") return { operation: "select" };
+  if (role === "select") return { operation: "blocked", reason: "native select controls are not exposed by the typed Cua browser surface" };
   if (role === "combobox") return { operation: "blocked", reason: "combobox selection is not available until its option semantics are observed" };
   if (role === "textarea") return { operation: "type" };
   if (role !== "input") return undefined;
@@ -134,36 +228,80 @@ function operationFor(role: string, type?: string): { readonly operation: Comput
  * hiding them would make an abstention look like a missing observation.
  */
 export function buildBrowserActionSpace(snapshot: BrowserStrategySnapshot): readonly ComputerBrowserAction[] {
-  const referenceIds = new Set(snapshot.references
-    .filter((reference) => reference.documentId === snapshot.documentId)
-    .map((reference) => reference.value));
+  const currentReferences = snapshot.references.filter((reference) => reference.documentId === snapshot.documentId);
+  const referenceById = new Map(currentReferences.map((reference) => [reference.value, reference]));
   const actions: ComputerBrowserAction[] = [];
+  const descriptions = new Map<string, { readonly role: string; readonly type?: string; readonly label: string }>();
   for (const line of snapshot.content.split(/\r?\n/u)) {
-    const match = line.match(/^\[(?<ref>@e[1-9][0-9]*)\]\s+(?<description>[^\n]{1,512})$/u);
+    const match = line.match(/^\[(?<ref>(?:@e[1-9][0-9]*|p[0-9]+:[0-9]+))\]\s+(?<description>[^\n]{1,512})$/u);
     if (!match?.groups) continue;
     const ref = match.groups.ref;
     const description = match.groups.description.trim();
-    if (!referenceIds.has(ref)) continue;
+    if (!referenceById.has(ref)) continue;
     const parsed = parseDescription(description);
     if (!parsed) continue;
-    const operation = operationFor(parsed.role, parsed.type);
-    if (!operation) continue;
+    descriptions.set(ref, parsed);
+  }
+  for (const reference of currentReferences) {
+    if (descriptions.has(reference.value)) continue;
+    const description = metadataDescription(reference);
+    const parsed = description ? parseDescription(description) : undefined;
+    if (parsed) descriptions.set(reference.value, parsed);
+  }
+  for (const [ref, parsed] of descriptions) {
+    const reference = referenceById.get(ref);
+    if (!reference) continue;
+    const role = normalizeRole(parsed.role);
+    const operation = operationFor(role, parsed.type);
+    const uploadDeclared = declared(reference, "upload") === true;
+    // semantic_v2's action declaration is authoritative. Some Chromium
+    // accessibility projections expose a file input as a generic `input`
+    // without preserving the HTML input type in the outline; a declared
+    // `upload` action still gives us a safe, typed candidate in that case.
+    if (!operation && !uploadDeclared) continue;
     const candidateId = `${ref}:${snapshot.documentId}`;
-    const operations: readonly ComputerBrowserOperation[] = operation.operation === "type"
+    const operations: ComputerBrowserOperation[] = [];
+    const baseDeclared = operation ? declared(reference, operation.operation) : false;
+    if (operation && baseDeclared !== false) operations.push(operation.operation);
+    if (operation?.operation === "type"
       && snapshot.goal !== undefined
       && requestedBrowserKey(snapshot.goal) !== undefined
-      ? [operation.operation, "press"]
-      : [operation.operation];
-    for (const selectedOperation of operations) {
+      && baseDeclared !== false) {
+      operations.push("press");
+    }
+    // The typed Cua action declaration is the binding authority. Accessibility
+    // role projections for file inputs vary across Chromium/AT-SPI versions;
+    // requiring one particular role here would discard a valid exact file ref.
+    if (uploadDeclared) {
+      operations.push("upload");
+    }
+    if (pointerTarget({ ...parsed, role })) {
+      for (const pointerOperation of POINTER_OPERATIONS) {
+        // Cua semantic_v2 declares the whole pointer capability as `pointer`;
+        // the concrete gesture is selected by Anesu and still requires a
+        // current same-snapshot ref (and a destination for drag).
+        if (!declaredPointer(reference)) continue;
+        if (pointerOperation === "drag") {
+          const destinationRef = reference.destinationRef;
+          if (!destinationRef || !referenceById.has(destinationRef) || destinationRef === ref) continue;
+          operations.push(pointerOperation);
+          continue;
+        }
+        operations.push(pointerOperation);
+      }
+    }
+    const uniqueOperations = [...new Set(operations)];
+    for (const selectedOperation of uniqueOperations) {
       actions.push({
         actionId: actionId(selectedOperation, candidateId),
         candidateId,
         operation: selectedOperation,
         ref,
-        role: parsed.role,
+        role,
         label: parsed.label,
         documentId: snapshot.documentId,
-        ...(operation.reason ? { reason: operation.reason } : {}),
+        ...(selectedOperation === "drag" && reference.destinationRef ? { destinationRef: reference.destinationRef } : {}),
+        ...(operation?.reason ? { reason: operation.reason } : {}),
       });
     }
     if (actions.length >= MAX_ACTIONS) break;

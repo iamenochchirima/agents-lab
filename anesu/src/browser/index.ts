@@ -6,5 +6,7 @@ export * from "./cleanup.js";
 export * from "./files.js";
 export * from "./records.js";
 export * from "./session.js";
-export * from "./playwright-adapter.js";
+export * from "./cua-adapter.js";
+export * from "./cua-authorization.js";
+export * from "./cua-manifest.js";
 export * from "./tools.js";

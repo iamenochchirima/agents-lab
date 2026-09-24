@@ -36,34 +36,53 @@ bounded output/time, no shell interpretation, and durable execution evidence. Th
 workspace is not an operating-system sandbox, so the approval panel states that an
 approved command may access other host resources.
 
-The active browser slice adds an isolated local Chromium capability behind the same tool
-loop. It exposes browser session lifecycle, navigation, bounded snapshots with element
-references, waits/screenshots, approval-gated click/type/press/select actions, and controlled
-upload/download artifacts. Browser URLs are checked for unsafe schemes, credentials,
-private targets, metadata addresses, and unsafe redirects.
-For simple natural requests such as “open a URL and click this named link,” the
-`browser_open_and_click` tool performs the bounded open, exact accessible-label match,
-approval, and click workflow in one turn.
-The browser adapter is Playwright-backed, but Playwright is not exposed to the model.
+The active browser slice adds an isolated Chrome/Edge capability behind the same tool
+loop. It exposes Cua-owned browser session lifecycle, navigation, bounded semantic
+snapshots with opaque element references, waits, approval-gated click/type/press and
+controlled uploads. Browser URLs are checked for unsafe schemes, credentials, private
+targets, metadata addresses, and unsafe redirects. Screenshots, native select controls,
+and downloads remain unavailable in this bounded slice. Attaching to an already-open
+personal browser is currently unavailable on Linux: the pinned Cua route requires an
+exact trusted PID and window ID, but this profile has no supported least-privilege way to
+discover and supply that target. Setting `ANESU_COMPUTER_EXISTING_PROFILE=true` alone
+does not make attachment usable; keep it disabled until Cua or a trusted host provides
+the exact target without broad desktop enumeration. Isolated browser sessions remain the
+supported path.
+For websites, the conversation model uses the typed `browser_*` tools directly: it sees
+each Cua result and chooses whether to inspect, navigate, interact, or answer. The separate
+`computer` tool is for native desktop applications and uses Jev over current Cua candidates.
+An isolated browser session remains open across turns for the same site. Starting a separate
+task on another site replaces it with a new session scoped to that site's origin. Within an
+approved public-web task, a model-supplied HTTPS destination is URL-validated and opened in a
+fresh Cua session scoped to the origins already encountered plus that destination; old
+references are discarded and the immutable manifest is not widened. This path has focused
+test and pinned-manifest evidence, but live continuation from an off-origin link or redirect
+is not yet proven and may be refused by Cua.
+The browser adapter is backed by a bounded Cua browser runtime; Cua owns the browser
+process, exact window/tab binding, semantic snapshots, input delivery, origin scope,
+and cleanup.
 Timeouts, cancellation, and browser crashes have distinct outcomes; a crashed session
 is quarantined and cleaned rather than reused. Personal browser profiles, remote browser
-providers, arbitrary JavaScript, and page-dialog decisions remain later slices in the
-active implementation plan.
+providers, and arbitrary JavaScript remain later slices in the active implementation
+plan. Page-owned dialogs are handled through their explicit approval path, subject to
+the current Cua host's background-input limitations.
 
-The computer tool is the first computer-use slice. It is opt-in and currently validates
-the dual decision paths against a visible, disposable browser environment: the
-traditional path selects from a bounded visual observation, while the TypeSafe/Jev path
-selects an Anesu-owned `operation + target` action from the current browser snapshot.
-Both paths share approval, execution, freshness, and post-action verification. An
-open-only computer request can now open one user-requested public URL through the
-managed browser policy and return a fresh-snapshot `opened` result without forcing the
-local fixture action. Interactive URL goals remain bounded and application-specific
-when independent success verification is unavailable. The browser computer action space
-also supports explicitly requested common keypresses
-such as Enter through the same approval boundary; the model cannot invent a key name.
-An explicit Ubuntu/X11 profile also connects the traditional path to the installed CUA
-Driver SDK for one bounded foreground click and a fresh desktop observation; it never
-silently attaches to the operator's personal display.
+The computer tool is the first computer-use slice. It is opt-in and accepts a natural
+language goal; users do not need to name the tool, provider, fixture, or strategy.
+`ANESU_COMPUTER_SURFACE=auto` routes URL/page requests to the managed browser and
+desktop/window/native-input requests to the isolated Ubuntu/X11 environment when that
+profile is enabled. Surface-neutral requests use the configured profile preference or
+return a concise ambiguity result instead of silently choosing a host.
+`ANESU_COMPUTER_STRATEGY=typesafe` uses the accessibility-backed TypeSafe/Jev path over
+bounded Cua candidates. Traditional vision, compare mode, and automatic fallback are
+retired from production admission; their isolated strategy tests remain for regression
+coverage only. The production path shares approval, execution, freshness, post-action
+verification, cancellation, and restart recovery.
+An open-only computer request can open one user-requested public URL through the
+managed browser policy and return a fresh-snapshot `opened` result without forcing a
+local fixture action. An explicit Ubuntu/X11 profile connects the native path to the
+installed CUA Driver SDK with a visible agent cursor; it never silently attaches to the
+operator's personal display.
 
 The native environment foundation is now kept separately in
 [`src/computer/`](src/computer/README.md). Anesu pins CUA Driver's TypeScript SDK and
@@ -71,17 +90,21 @@ has a fake-host-tested Ubuntu/X11 adapter with named sessions, the visible CUA a
 cursor, bounded observations, and stale/duplicate-click protection. It can be
 selected explicitly in normal chat with the Ubuntu/X11 environment setting; the
 default remains the visible browser profile. The current native slice supports
-traditional vision-model and TypeSafe/Jev accessibility actions, plus a native
-shadow-only compare mode that executes at most one agreed click. All paths share TUI
-approval, bounded multi-step re-observation, durable run-level evidence, and restart
-recovery without replay. A disposable Xephyr/Xvfb launcher is included. Optional
+TypeSafe/Jev accessibility actions over the exact CUA window and element tokens.
+Production tasks share TUI approval, bounded multi-step re-observation, durable
+run-level evidence, and restart recovery without replay. A disposable Xephyr/Xvfb
+launcher is included. Optional
 native screenshots can be retained as bounded managed artifacts with
 `ANESU_COMPUTER_ARTIFACTS_ENABLED=true`; raw provider bodies, arbitrary-application
 goal verification, and OCR/visual segmentation remain separate work.
-Traditional or compare mode also requires
-`ANESU_COMPUTER_TRADITIONAL_VISION=true`, an explicit confirmation that the selected
-OpenRouter model accepts image input; otherwise configuration fails before a
-screenshot is sent.
+The current code-owned native launch catalog covers Notes, Calendar, Clocks, Calculator,
+and Settings. Notes, Calendar opening, and Settings opening are live-proven in the
+disposable Ubuntu/X11 lane. Calculator has a tested task compiler and verifier, but its
+latest live Cua launch returned a process that exited before the next usable observation,
+so Calculator support remains unverified. Clocks is retained as an honest matrix
+case but is currently unavailable through Cua's direct Linux launch identity because its
+DBus-activatable service outlives the PID returned by `launch_app`; Files and Terminal
+are not exposed until Cua provides an equivalent activation contract.
 
 The current memory slice adds durable, inspectable user, workspace, and dated daily
 notes under the state directory. `memory_search` and `memory_get` are bounded read-only
@@ -116,16 +139,33 @@ The command creates a new session unless `--session <session-id>` is supplied. S
 The interactive terminal opens as a compact agent console: a branded context panel shows
 the session, model, workspace, evidence location, and actual registered tools; the status
 ribbon and activity lane show factual turn/tool state; and the composer has a distinct
-prompt. Type `/help` for commands, `/memory` for bounded memory status, and `/computer`
-to inspect the selected computer environment and native-host readiness without starting
-CUA. Workspace,
-process, browser, and memory changes use the same review panel with explicit approve,
-deny, details, and cancel choices; approval defaults to the safe deny selection. A line
+prompt. Type `/help` for commands, `/new` to start a conversation, `/resume` to choose a
+recent one, `/resume <session-id>` to resume an exact ID, `/memory` for bounded memory
+status, `/computer` to inspect computer readiness without starting CUA, and `/permissions`
+to inspect saved process permissions. Use `/permissions revoke <permission-id>` to revoke
+one. Workspace,
+process, browser, and memory changes use a review panel with approve, deny, details, and
+cancel choices; the narrowest available approval is visibly selected by default. A line
 ending in `\\` continues into a multiline prompt. Ctrl-C cancels an active turn or
 approval, clears a draft before a second idle Ctrl-C exits, and exits cleanly when the
 composer is empty; Ctrl-D, `/quit`, and `/exit` remain explicit exit paths. The default
 workspace is the current directory; set `--workspace <path>` or
 `ANESU_WORKSPACE_ROOT` to change it.
+
+An isolated browser remains available to later prompts in the same live conversation.
+Starting `/new` or switching with `/resume` closes that conversation's live browser;
+browser state is not restored after Anesu exits and starts again. The browser also has a
+configured maximum lifetime of 30 minutes by default, measured from session start rather
+than reset after activity.
+
+`run_command` approvals can be saved for the current conversation or local profile only
+when the exact prepared request has a stable identity. A saved process permission matches
+the command and arguments, working directory, sanitized environment, limits, and current
+executable identity; it is not a command-prefix or shell-wide rule. Arguments redacted as
+sensitive cannot be saved. Use `/permissions` and `/permissions revoke <permission-id>`
+to inspect and revoke these grants. Other tools continue to expose only the approval scopes
+they can enforce; saved process permissions do not authorize browser, workspace, memory,
+or computer actions.
 
 For repeated local development, copy `.env.example` to `.env`, set the provider, model,
 and key, then run the normal command. The `.env` file is ignored by git and loaded

@@ -44,6 +44,13 @@ also exits. Resume the session with:
 pnpm run chat --session <session-id>
 ```
 
+With browser use enabled, search naturally, for example: `Search the web for the latest
+Ubuntu LTS release and summarize the official Ubuntu result.` Anesu opens the configured
+search engine in its isolated browser and reads results through Cua. Bing is the default;
+set `ANESU_BROWSER_SEARCH_PROVIDER=duckduckgo` or `google` to use another provider. In an
+interactive chat, the isolated browser stays available for follow-up prompts in the same
+conversation and closes when Anesu exits.
+
 The workspace tools are bounded and accept workspace-relative paths only. `stat` reports
 metadata without reading contents, and `search_files` performs bounded literal searches
 while skipping hidden, generated, sensitive, symbolic-link, oversized, and binary files.
@@ -56,11 +63,11 @@ reads; `delete` quarantines one regular file and returns a restore token, while
 is the separate recursive operation: it preflights a bounded tree, rejects links and
 special files, moves the tree to quarantine, and returns a token for
 `restore_directory`. `purge_quarantine` permanently removes one exact token and is
-irreversible. In an
-interactive TTY, side-effecting tools show a shared review panel with risk, exact target,
-bounded preview, and `a` approve once, `d` deny, `v` details, arrow keys or `j`/`k` to
-move, Enter to select, and Escape to cancel. The default selection is deny. Non-
-interactive commands have no approval channel and fail closed without writing.
+irreversible. In an interactive TTY, side-effecting tools show a shared review panel with
+risk, exact target, and bounded preview. Its first action is highlighted on open; use the
+Up/Down arrows to move and Enter to confirm. Escape or Ctrl+C cancels, while `v` reveals
+additional details. Typing a letter cannot approve an action. Non-TTY input uses an
+explicit line prompt; non-interactive commands without an approval channel fail closed.
 `copy` and `move` likewise require approval, operate on regular files, reject an existing
 destination, and recheck the source hash before the operation. `apply_patch_set` reviews
 2–16 file patches together, caps the aggregate resulting content at
@@ -129,23 +136,28 @@ run_command(command="node", args=["scripts/check.mjs"], cwd="scripts")
 Each call is approved separately. These examples pass no shell string: pipelines,
 redirection, command substitution, and background operators are not interpreted.
 
-The active browser slice is also available from the same standalone TUI. It uses a
-managed local Chromium profile through the pinned Playwright adapter; it does not attach
-to the user's personal browser. The current model-facing tools are
+The active browser slice is also available from the same standalone TUI. By default it
+uses a Cua-owned isolated Chrome or Edge profile and does not attach to the user's
+personal browser. Cua owns browser preparation, exact native-window/tab binding, semantic
+snapshots, typed input, origin scope, and cleanup. The current model-facing tools are
 `browser_start`, `browser_open`, `browser_tabs`, `browser_snapshot`, `browser_click`,
-`browser_type`, `browser_press`, `browser_wait`, `browser_screenshot`,
-`browser_upload`, `browser_download`, and `browser_close`. Open only allowed HTTP/HTTPS
-targets. Take a fresh snapshot before an interaction, then approve click, type, and key
-actions when the TUI presents the exact session, tab, reference, and action hash. Uploads
-show the workspace-relative source and byte size; downloads show the reserved managed
-artifact destination and byte limit.
+`browser_type`, `browser_press`, `browser_wait`, `browser_upload`, and `browser_close`.
+Open only allowed HTTP/HTTPS targets. Take a fresh snapshot before an interaction, then
+approve click, type, and key actions when the TUI presents the exact session, tab,
+reference, and action hash. Downloads, screenshots, and native select controls remain
+unavailable in this bounded slice. Attaching to an already-open Chrome or Edge profile
+is currently unavailable on Linux: the pinned Cua runtime requires an exact trusted
+process and window identity, but this profile has no supported least-privilege
+target-discovery path. The `ANESU_COMPUTER_EXISTING_PROFILE=true` opt-in does not resolve
+that limitation. Use the isolated profile for now; existing-profile access must remain
+disabled until a trusted, app-scoped target source is available.
 Snapshots are bounded and page content is explicitly bracketed as untrusted data.
-Screenshots are written to the
-managed browser artifact directory with a configured byte limit and return metadata
-instead of page instructions. Upload sources must be regular files inside the configured
-workspace; browser downloads cannot choose an arbitrary destination. The browser slice
-does not yet expose arbitrary JavaScript, personal-profile attachment, or remote browser
-providers. Browser sessions are limited to eight tabs by default; change the bound with
+Upload sources must be regular files inside the configured
+workspace. The browser slice does not yet expose arbitrary JavaScript or remote browser
+providers. Personal-profile attachment is unavailable until the trusted target source
+described above is implemented.
+Browser sessions are limited to eight tabs by
+default; change the bound with
 `ANESU_BROWSER_MAX_TABS`. Chromium receives only a small runtime/display
 environment allowlist and does not inherit provider keys or arbitrary parent variables.
 Sessions expire after 30 minutes by default; change that bound with
@@ -153,19 +165,14 @@ Sessions expire after 30 minutes by default; change that bound with
 rejects later browser work rather than allowing an unbounded session to remain active.
 Read-only tab listing and snapshots retry one transient adapter failure by default,
 within the browser action timeout; change `ANESU_BROWSER_READ_RETRY_COUNT` to
-adjust or disable that bound.
-Application startup removes only old generated browser profiles and expired or
-incomplete managed screenshot/download records. The default retention is one day for
-profiles and seven days for artifacts, with at most 100 cleanup candidates per root;
-adjust `ANESU_BROWSER_PROFILE_RETENTION_MS`,
-`ANESU_BROWSER_ARTIFACT_RETENTION_MS`, and
-`ANESU_BROWSER_CLEANUP_MAX_ENTRIES` when developing locally. Recent profiles,
-unknown entries, symlinks, and paths outside the managed roots are retained.
-Screenshots are additionally limited to 4 MiB and 1920x1080 pixels by default. Adjust
-`ANESU_BROWSER_SCREENSHOT_MAX_BYTES`,
-`ANESU_BROWSER_SCREENSHOT_MAX_WIDTH`, and
-`ANESU_BROWSER_SCREENSHOT_MAX_HEIGHT` if a local fixture needs a different
-bound.
+adjust or disable that bound. Browser tool calls use a dedicated 30-second timeout
+by default, rather than being cut off by the shorter generic tool deadline; adjust
+it with `ANESU_BROWSER_ACTION_TIMEOUT_MS`.
+Cua owns the isolated browser profile and removes it when the Cua session ends.
+Anesu does not create a second browser profile, screenshot artifact, or download
+artifact lifecycle. Startup may still remove bounded orphaned state left by older
+runs. Downloads and screenshots remain unavailable until the installed Cua TypeScript
+surface exposes the required trusted contracts.
 
 Browser action evidence is stored under the turn directory in
 `browser-actions/<action-id>.json`; lifecycle events are in `events.jsonl`. Prepared or
@@ -181,12 +188,6 @@ the browser and the outcome remains ambiguous. Ctrl-C during an already-started 
 action requests termination; the managed adapter closes the affected tab and reports
 whether the underlying action settled. The result remains ambiguous because the external
 side effect may already have happened, and uncertain browser actions are never replayed.
-
-The Chromium binary is installed once after `pnpm install`:
-
-```bash
-pnpm --filter @agent-harness-lab/anesu exec playwright install chromium
-```
 
 For a deterministic local browser check, ask the agent to start the browser and open a
 local HTTP fixture or development server. The default local development allowlist is

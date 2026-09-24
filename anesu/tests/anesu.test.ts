@@ -9,7 +9,9 @@ import assert from "node:assert/strict";
 import { loadConfig } from "../src/config/config.js";
 import { loadLocalEnvironment } from "../src/config/local-env.js";
 import type { BrowserActionRecord } from "../src/browser/records.js";
-import type { BrowserDocumentId, BrowserSessionId, BrowserTabId } from "../src/browser/contracts.js";
+import type { BrowserAdapter, BrowserDocumentId, BrowserSessionId, BrowserTabId, BrowserTabInfo } from "../src/browser/contracts.js";
+import { BrowserSessionManager } from "../src/browser/session.js";
+import { BrowserUrlPolicy } from "../src/browser/policy.js";
 import { buildInitialContext } from "../src/context/context.js";
 import { DeterministicModelProvider } from "../src/models/deterministic.js";
 import { OpenRouterModelProvider } from "../src/models/openrouter.js";
@@ -89,7 +91,9 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.processCallsPerTurn, 4);
   assert.equal(deterministic.maxModelToolRounds, 8);
   assert.equal(deterministic.browserMaxTabs, 8);
+  assert.equal(deterministic.browserActionTimeoutMs, 30_000);
   assert.equal(deterministic.browserEnabled, true);
+  assert.equal(deterministic.browserSearchProvider, "bing");
   assert.equal(deterministic.browserSessionTimeoutMs, 1_800_000);
   assert.equal(deterministic.browserReadRetryCount, 1);
   assert.equal(deterministic.browserProfileRetentionMs, 86_400_000);
@@ -138,6 +142,13 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.throws(
     () => loadConfig({ stateDir: tempDirectory() }, { ANESU_BROWSER_ENABLED: "sometimes" }),
     /browser enabled must be true or false/u,
+  );
+  assert.equal(loadConfig({ stateDir: tempDirectory() }, { ANESU_BROWSER_SEARCH_PROVIDER: "google" }).browserSearchProvider, "google");
+  assert.equal(loadConfig({ stateDir: tempDirectory() }, { ANESU_BROWSER_SEARCH_PROVIDER: "duckduckgo" }).browserSearchProvider, "duckduckgo");
+  assert.equal(loadConfig({ stateDir: tempDirectory() }, { ANESU_BROWSER_SEARCH_PROVIDER: "bing" }).browserSearchProvider, "bing");
+  assert.throws(
+    () => loadConfig({ stateDir: tempDirectory() }, { ANESU_BROWSER_SEARCH_PROVIDER: "unknown" }),
+    /Use bing, duckduckgo, or google/u,
   );
   assert.equal(deterministic.openRouterApiKey, undefined);
   const renamedLocalProvider = loadConfig({ stateDir: tempDirectory() }, {
@@ -2464,6 +2475,7 @@ test("OpenRouter adapter normalizes streamed tool calls and serializes the provi
       { role: "tool", content: "{\"entries\":[]}", toolCallId: "call_0", name: "list_directory" },
     ],
     tools: [{ name: "read_file", description: "Read a file.", inputSchema: { type: "object" } }],
+    toolChoice: { type: "function", function: { name: "computer" } },
   };
   const events = [];
   for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
@@ -2473,6 +2485,8 @@ test("OpenRouter adapter normalizes streamed tool calls and serializes the provi
   assert.equal(events[2]?.usage, undefined);
   assert.equal(typeof events[2]?.latencyMs, "number");
   assert.deepEqual(requestBody?.tools, [{ type: "function", function: { name: "read_file", description: "Read a file.", parameters: { type: "object" } } }]);
+  assert.deepEqual(requestBody?.tool_choice, { type: "function", function: { name: "computer" } });
+  assert.equal(requestBody?.parallel_tool_calls, false);
   assert.deepEqual(requestBody?.messages, [
     { role: "assistant", content: null, tool_calls: [{ id: "call_0", type: "function", function: { name: "list_directory", arguments: "{}" } }] },
     { role: "tool", content: "{\"entries\":[]}", tool_call_id: "call_0", name: "list_directory" },
@@ -2843,9 +2857,7 @@ test("provider doctor reports bounded deterministic connectivity without creatin
   assert.match(result.stdout, /browser session timeout: 1800000ms/);
   assert.match(result.stdout, /browser read-only retries: 1/);
   assert.match(result.stdout, /browser profile retention: 86400000ms/);
-  assert.match(result.stdout, /browser artifact retention: 604800000ms/);
-  assert.match(result.stdout, /browser cleanup maximum: 100 entries/);
-  assert.match(result.stdout, /browser screenshots: 4194304 bytes, 1920x1080 pixels/);
+  assert.match(result.stdout, /browser uploads: 4194304 bytes; downloads, screenshots, and native select controls: unavailable/);
   assert.match(result.stdout, /result: reachable/);
   await assert.rejects(() => readFile(path.join(stateDir, "sessions"), "utf8"));
 });
@@ -4004,6 +4016,179 @@ test("deterministic model can inspect a file through the bounded tool loop", asy
     "model_completed",
   ]);
   assert.ok(evidence.every((entry) => entry.round >= 1));
+});
+
+test("the model selects an inactive browser tab by its opaque Cua id through the normal tool loop", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 10 });
+  const parentId = "cua-tab-parent-7f31" as BrowserTabId;
+  const childId = "cua-tab-child-a924" as BrowserTabId;
+  const sessionId = "browser_multi_tab_test" as BrowserSessionId;
+  const parentDocumentId = "document_parent" as BrowserDocumentId;
+  const childDocumentId = "document_child" as BrowserDocumentId;
+  let tabs: BrowserTabInfo[] = [];
+  const adapter: BrowserAdapter = {
+    async startSession(request) { assert.equal(request.sessionId, sessionId); },
+    async closeSession() {},
+    async listTabs() { return tabs; },
+    async open(activeSessionId, url) {
+      const parent = { sessionId: activeSessionId, tabId: parentId, documentId: parentDocumentId, url, title: "First tab", active: true };
+      tabs = [parent];
+      return parent;
+    },
+    async snapshot(activeSessionId, tabId) {
+      assert.equal(activeSessionId, sessionId);
+      const tab = tabs.find((candidate) => candidate.tabId === tabId);
+      assert.ok(tab, `snapshot must use one of the listed opaque tab ids: ${tabId}`);
+      if (tabId === parentId) {
+        return {
+          ...tab,
+          content: "heading First tab",
+          headings: ["First tab"],
+          references: [{ value: "@open-child", documentId: parentDocumentId, role: "link", name: "Open second tab", actions: ["click"] }],
+        };
+      }
+      assert.equal(tabId, childId);
+      return { ...tab, content: "heading Second tab", headings: ["Second tab"], references: [] };
+    },
+    async act(activeSessionId, tabId, request) {
+      assert.equal(activeSessionId, sessionId);
+      assert.equal(tabId, parentId);
+      assert.equal(request.kind, "click");
+      assert.equal(request.reference?.value, "@open-child");
+      const parent = tabs[0];
+      assert.ok(parent);
+      const child = { sessionId: activeSessionId, tabId: childId, documentId: childDocumentId, url: "https://example.com/child", title: "Second tab", active: true };
+      tabs = [{ ...parent, active: false }, child];
+      return { sessionId: activeSessionId, tab: child, summary: "Opened the second tab." };
+    },
+    async wait() { throw new Error("Wait is not used in this test."); },
+    async screenshot() { throw new Error("Screenshots are not used in this test."); },
+    async upload() { throw new Error("Uploads are not used in this test."); },
+    async download() { throw new Error("Downloads are not used in this test."); },
+  };
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => sessionId,
+    urlPolicy: new BrowserUrlPolicy({ dnsLookup: async () => ["93.184.216.34"] }),
+  });
+  const browserOptions = { manager, maxOutputBytes: 32_000, inputRoute: "trusted" as const };
+  const tools = new ToolRegistry(workspace, 32_000, undefined, browserOptions);
+  const decisions: string[] = [];
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/browser-multi-tab",
+    async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+      assert.equal(request.toolChoice, undefined, "the runtime must let the model choose its browser operation");
+      const prior = request.messages.at(-1);
+      if (decisions.length === 0) {
+        assert.equal(prior?.role, "user");
+        decisions.push("start");
+        yield { type: "tool_call", call: { callId: "start", name: "browser_start", argumentsJson: "{}" } };
+      } else if (decisions.length === 1) {
+        decisions.push("open");
+        yield { type: "tool_call", call: { callId: "open", name: "browser_open", argumentsJson: JSON.stringify({ url: "https://example.com/parent" }) } };
+      } else if (decisions.length === 2) {
+        decisions.push("snapshot-parent");
+        yield { type: "tool_call", call: { callId: "snapshot-parent", name: "browser_snapshot", argumentsJson: "{}" } };
+      } else if (decisions.length === 3) {
+        assert.match(prior?.content ?? "", /Open second tab/u);
+        decisions.push("click-new-tab-link");
+        yield { type: "tool_call", call: { callId: "click-new-tab-link", name: "browser_click", argumentsJson: JSON.stringify({ ref: "@open-child" }) } };
+      } else if (decisions.length === 4) {
+        decisions.push("list-tabs");
+        yield { type: "tool_call", call: { callId: "list-tabs", name: "browser_tabs", argumentsJson: "{}" } };
+      } else if (decisions.length === 5) {
+        assert.match(prior?.content ?? "", /cua-tab-parent-7f31/u);
+        assert.match(prior?.content ?? "", /cua-tab-child-a924/u);
+        assert.match(prior?.content ?? "", /"active":false/u);
+        decisions.push("inspect-inactive-parent");
+        yield { type: "tool_call", call: { callId: "inspect-inactive-parent", name: "browser_snapshot", argumentsJson: JSON.stringify({ tabId: parentId }) } };
+      } else {
+        assert.equal(decisions.length, 6);
+        assert.equal(prior?.role, "tool");
+        assert.equal(prior?.toolCallId, "inspect-inactive-parent");
+        assert.match(prior?.content ?? "", /heading First tab/u);
+        decisions.push("answer");
+        yield { type: "text", text: "The other tab is headed First tab." };
+      }
+      yield { type: "completed" };
+    },
+  };
+
+  try {
+    const result = await runTurn({
+      session: await openSession(stateDir),
+      tools,
+      provider,
+      config: config(stateDir, { workspaceRoot: root, maxModelToolRounds: 8 }),
+      userPrompt: "Open the page, follow its link to the second tab, then tell me the heading in the other tab.",
+      approveBrowser: async () => ({ decision: "allow-once" }),
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(result.assistantText, "The other tab is headed First tab.");
+    assert.deepEqual(decisions, ["start", "open", "snapshot-parent", "click-new-tab-link", "list-tabs", "inspect-inactive-parent", "answer"]);
+  } finally {
+    await manager.closeAll();
+  }
+});
+
+test("browser tools use the browser timeout instead of the shorter general tool deadline", async () => {
+  const stateDir = tempDirectory();
+  const root = path.join(stateDir, "workspace");
+  await mkdir(root, { recursive: true });
+  const workspace = await Workspace.open(root, { maxFileBytes: 100, maxDirectoryEntries: 10 });
+  let adapterStarted = false;
+  const adapter: BrowserAdapter = {
+    ownsProfileLifecycle: true,
+    async startSession(request) {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      if (request.signal?.aborted) throw new Error("Browser start was cancelled.");
+      adapterStarted = true;
+    },
+    async closeSession() {},
+    async listTabs() { return []; },
+    async open() { throw new Error("Opening is not part of this test."); },
+    async snapshot() { throw new Error("Snapshots are not part of this test."); },
+    async act() { throw new Error("Actions are not part of this test."); },
+    async wait() { throw new Error("Waits are not part of this test."); },
+    async screenshot() { throw new Error("Screenshots are not part of this test."); },
+    async upload() { throw new Error("Uploads are not part of this test."); },
+    async download() { throw new Error("Downloads are not part of this test."); },
+  };
+  const manager = new BrowserSessionManager(adapter);
+  const tools = new ToolRegistry(workspace, 1_000, undefined, { manager, maxOutputBytes: 1_000 });
+  let browserToolResult = "";
+  const provider = {
+    provider: "deterministic" as const,
+    model: "deterministic/browser-deadline",
+    async *stream(request: ModelRequest): AsyncIterable<ModelStreamEvent> {
+      if (request.messages.at(-1)?.role === "tool") {
+        browserToolResult = request.messages.at(-1)?.content ?? "";
+        yield { type: "text", text: "Browser session started." };
+        yield { type: "completed" };
+        return;
+      }
+      yield { type: "tool_call", call: { callId: "start-browser", name: "browser_start", argumentsJson: "{}" } };
+      yield { type: "completed" };
+    },
+  };
+
+  try {
+    const result = await runTurn({
+      session: await openSession(stateDir),
+      tools,
+      provider,
+      config: config(stateDir, { workspaceRoot: root, timeoutMs: 1_000, firstEventTimeoutMs: 1_000, maxToolDurationMs: 20, browserActionTimeoutMs: 200 }),
+      userPrompt: "Start the managed browser.",
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(adapterStarted, true);
+    assert.match(browserToolResult, /"status":"active"/u);
+  } finally {
+    await manager.closeAll();
+  }
 });
 
 test("bounded tool loop leaves a reporting round after a multi-step interaction", async () => {
@@ -6365,6 +6550,8 @@ test("cancellation interrupts a waiting read-only tool without committing an ass
   const session = await openSession(stateDir);
   const tools = {
     definitions: [],
+    createBrowserTurn: () => undefined,
+    endBrowserTurn: () => undefined,
     execute: async () => await new Promise<never>(() => undefined),
   } as unknown as ToolRegistry;
   const provider = {
@@ -6389,6 +6576,8 @@ test("cancellation waits for an in-flight side-effecting tool to settle", async 
   let settled = false;
   const tools = {
     definitions: [],
+    createBrowserTurn: () => undefined,
+    endBrowserTurn: () => undefined,
     execute: async (call: { readonly name: string }) => {
       assert.equal(call.name, "apply_patch_set");
       controller.abort("cancelled after side effect start");
@@ -6751,6 +6940,43 @@ test("TUI renders the public turn lifecycle as styled activity", async () => {
   assert.match(rendered, /workspace change · committed note\.md/);
   assert.match(rendered, /Agent › answer/);
   assert.match(rendered, /✓ completed/);
+});
+
+test("TUI distinguishes assistant completion from a failed computer task", async () => {
+  const chunks: string[] = [];
+  const output = new Writable({
+    write(chunk, _encoding, callback) {
+      chunks.push(String(chunk));
+      callback();
+    },
+  });
+  const application = {
+    sessionId: "session_tui_computer_failure",
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    workspaceRoot: "/tmp/workspace",
+    evidenceDirectory: "/tmp/evidence",
+    toolNames: ["computer"],
+    runTurn: async (...args: unknown[]) => {
+      const onText = args[2] as ((text: string) => void) | undefined;
+      const onComputer = args[13] as ((event: unknown) => void) | undefined;
+      onComputer?.({
+        type: "failed",
+        strategy: "typesafe",
+        errorCode: "computer-driver-failure",
+        reason: "Calendar exited before Cua observed its window.",
+      });
+      onText?.("I couldn't open Calendar.");
+      return { status: "completed", assistantText: "I couldn't open Calendar." };
+    },
+  } as unknown as ChatApplication;
+
+  await new TerminalUi(application, output, false).runSingle("Open Calendar");
+
+  const rendered = chunks.join("");
+  assert.match(rendered, /computer · typesafe · failed · computer-driver-failure/u);
+  assert.match(rendered, /! turn completed · computer task failed/u);
+  assert.doesNotMatch(rendered, /✓ completed ·/u);
 });
 
 test("TUI sanitizes streamed output and separates it from activity", async () => {

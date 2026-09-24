@@ -1,0 +1,52 @@
+version: 3
+expires_after: 8h
+idle_timeout: 30m
+
+# Native Cua is application-scoped. Browser windows are deliberately absent;
+# browser origin access belongs to the separate browser runtime.
+allow:
+  tools:
+    - start_session
+    - end_session
+    - launch_app
+    - kill_app
+    - list_windows
+    - get_window_state
+    - get_agent_cursor_state
+    - set_agent_cursor_theme
+    - set_agent_cursor_enabled
+    - move_cursor
+    - click
+    - invoke_menu
+    - type_text
+    - press_key
+    - scroll
+    - drag
+    - verify_state
+    - health_report
+
+resources:
+  apps:
+    - executable: /usr/bin/gnome-text-editor
+      launch: true
+      windows: all
+      terminate: driver_launched
+    - executable: /usr/bin/gnome-calendar
+      launch: true
+      windows: all
+      terminate: driver_launched
+    - executable: /usr/bin/gnome-clocks
+      launch: true
+      windows: all
+      terminate: driver_launched
+    - executable: /usr/bin/gnome-calculator
+      launch: true
+      windows: all
+      terminate: driver_launched
+    - executable: /usr/bin/gnome-control-center
+      launch: true
+      windows: all
+      terminate: driver_launched
+  # Desktop-wide observation is intentionally absent. Native applications are
+  # selected from the checked-in allow-list and Cua authorizes the exact launch
+  # path through the app resources above.

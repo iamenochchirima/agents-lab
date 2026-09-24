@@ -72,6 +72,11 @@ export interface ModelToolDefinition {
   readonly inputSchema: Readonly<Record<string, unknown>>;
 }
 
+export interface ModelToolChoice {
+  readonly type: "function";
+  readonly function: { readonly name: string };
+}
+
 export interface ModelRequest {
   readonly sessionId: SessionId;
   readonly turnId: TurnId;
@@ -81,6 +86,8 @@ export interface ModelRequest {
   readonly model: string;
   readonly messages: readonly ModelMessage[];
   readonly tools?: readonly ModelToolDefinition[];
+  /** Requests one exact function when the runtime has already identified an explicit action intent. */
+  readonly toolChoice?: ModelToolChoice;
 }
 
 export interface ModelUsage {
@@ -113,7 +120,7 @@ export type RuntimeCheckpoint =
   | { readonly type: "before-model-send"; readonly round: number; readonly attempt: number; readonly attemptId: string }
   | { readonly type: "after-model-response"; readonly round: number; readonly attempt: number; readonly attemptId: string; readonly emittedEvent: boolean }
   | { readonly type: "before-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string }
-  | { readonly type: "after-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string; readonly decision: "allow-once" | "deny" | "unavailable" }
+  | { readonly type: "after-approval"; readonly actionKind: RuntimeActionKind; readonly toolName: string; readonly callId: string; readonly identity: string; readonly decision: "allow-once" | "allow-task" | "deny" | "unavailable" }
   | { readonly type: "after-process-start"; readonly callId: string; readonly executionId: string; readonly pid: number }
   | { readonly type: "after-mutation-member"; readonly callId: string; readonly mutationId: string; readonly path: string; readonly commitOrder: number }
   | { readonly type: "before-tool-execution"; readonly round: number; readonly toolName: string; readonly callId: string }

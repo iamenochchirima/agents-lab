@@ -8,21 +8,40 @@ import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
 import type { ComputerEvent } from "../computer/runner.js";
 import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest, ComputerEnvironmentReadiness } from "../computer/contracts.js";
+import type { ComputerNativeFallbackRoute, ComputerTaskApprovalDecision, ComputerTaskApprovalRequest } from "../computer/task.js";
+import type { CuaAuthorizationDecision, CuaAuthorizationRequestView } from "../browser/cua-authorization.js";
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import type { SkillCatalog } from "../skills/index.js";
 import type { ContextSnapshot } from "../context/context.js";
-import { redactSecrets, safeErrorMessage } from "../runtime/errors.js";
+import { AnesuError, redactSecrets, safeErrorMessage } from "../runtime/errors.js";
 import { ApprovalPrompt, type ApprovalPanel } from "./approval.js";
 import type { ModelProviderSummary } from "../models/registry.js";
 import { sanitizeTerminalChunk, sanitizeTerminalSingleLine, sanitizeTerminalText } from "./terminal-safety.js";
+import type { SessionSummary } from "../persistence/session-store.js";
+import type { ProcessPermissionScope } from "../persistence/process-approval-permissions.js";
 
-const COMMANDS = ["/help", "/status", "/context", "/models", "/history", "/skills", "/memory", "/computer", "/evidence", "/clear", "/quit"] as const;
+const COMMANDS = ["/help", "/status", "/context", "/models", "/history", "/skills", "/memory", "/computer", "/evidence", "/permissions", "/new", "/resume", "/clear", "/quit"] as const;
 const PANEL_WIDTH = 72;
 const MIN_PANEL_WIDTH = 24;
 const MAX_PANEL_WIDTH = 100;
 const LABEL_WIDTH = 11;
 
 type TerminalOutput = Writable & { readonly columns?: number };
+type TuiComputerTaskIssue = "failed" | "outcome-unknown" | "not-completed" | "cancelled";
+
+export interface TuiSessionController {
+  listRecent(): Promise<readonly SessionSummary[]>;
+  open(sessionId?: string): Promise<ChatApplication>;
+}
+
+function computerTaskIssueLabel(issue: TuiComputerTaskIssue): string {
+  switch (issue) {
+    case "failed": return "computer task failed";
+    case "outcome-unknown": return "computer task outcome unknown";
+    case "not-completed": return "computer task did not complete";
+    case "cancelled": return "computer task cancelled";
+  }
+}
 
 export type TuiCommand =
   | { readonly kind: "help" }
@@ -34,6 +53,10 @@ export type TuiCommand =
   | { readonly kind: "memory" }
   | { readonly kind: "computer" }
   | { readonly kind: "evidence" }
+  | { readonly kind: "permissions" }
+  | { readonly kind: "revoke-permission"; readonly permissionId: string }
+  | { readonly kind: "new-session" }
+  | { readonly kind: "resume-session"; readonly sessionId?: string }
   | { readonly kind: "clear" }
   | { readonly kind: "quit" }
   | { readonly kind: "unknown"; readonly name: string };
@@ -41,7 +64,8 @@ export type TuiCommand =
 export function parseTuiCommand(input: string): TuiCommand | undefined {
   const value = input.trim();
   if (!value.startsWith("/")) return undefined;
-  const name = value.split(/\s+/u, 1)[0]?.toLowerCase() ?? value.toLowerCase();
+  const parts = value.split(/\s+/u);
+  const name = parts[0]?.toLowerCase() ?? value.toLowerCase();
   switch (name) {
     case "/help":
       return { kind: "help" };
@@ -61,6 +85,18 @@ export function parseTuiCommand(input: string): TuiCommand | undefined {
       return { kind: "computer" };
     case "/evidence":
       return { kind: "evidence" };
+    case "/permissions":
+      if (parts.length === 1) return { kind: "permissions" };
+      if (parts.length === 3 && parts[1]?.toLowerCase() === "revoke") {
+        return { kind: "revoke-permission", permissionId: parts[2]! };
+      }
+      return { kind: "unknown", name: "Use /permissions or /permissions revoke <permission-id>" };
+    case "/new":
+      return parts.length === 1 ? { kind: "new-session" } : { kind: "unknown", name: "/new takes no arguments" };
+    case "/resume":
+      return parts.length <= 2
+        ? { kind: "resume-session", ...(parts[1] ? { sessionId: parts[1] } : {}) }
+        : { kind: "unknown", name: "/resume accepts at most one session ID" };
     case "/clear":
       return { kind: "clear" };
     case "/quit":
@@ -81,6 +117,21 @@ function shorten(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
+function browserTargetLabel(request: BrowserApprovalRequest): string {
+  if (request.dialog) return `${request.dialog.type} dialog`;
+  if (request.action === "scroll") return "page viewport";
+  const name = request.targetName === undefined
+    ? undefined
+    : sanitizeTerminalSingleLine(request.targetName).slice(0, 160);
+  const role = request.targetRole === undefined
+    ? undefined
+    : sanitizeTerminalSingleLine(request.targetRole).slice(0, 64);
+  if (name && role) return `${name} (${role})`;
+  if (name) return name;
+  if (role) return `current ${role}`;
+  return "current page element";
+}
+
 export function formatComputerApprovalTarget(request: ComputerApprovalRequest): string {
   if (request.targetLabel) {
     const role = request.targetRole ? ` (${request.targetRole})` : "";
@@ -89,6 +140,28 @@ export function formatComputerApprovalTarget(request: ComputerApprovalRequest): 
   if (request.x === undefined || request.y === undefined) return `${request.displayId} · current foreground target`;
   if (request.endX === undefined || request.endY === undefined) return `${request.displayId} · (${request.x}, ${request.y})`;
   return `${request.displayId} · (${request.x}, ${request.y}) → (${request.endX}, ${request.endY})`;
+}
+
+export function formatComputerTaskCompletion(
+  completion: ComputerTaskApprovalRequest["completion"],
+  surface?: ComputerTaskApprovalRequest["surface"],
+): string {
+  if (completion.expected) {
+    return `${completion.kind} · ${completion.expected}${completion.state ? ` · ${completion.state}` : ""}`;
+  }
+  if (completion.kind === "none" && surface === "browser") return "model-directed · answer from fresh page evidence";
+  return completion.kind === "none" ? "none · terminal assurance unavailable" : completion.kind;
+}
+
+export function formatComputerNativeFallback(routes: readonly ComputerNativeFallbackRoute[] | undefined): string | undefined {
+  if (!routes || routes.length === 0) return undefined;
+  const labels: Record<ComputerNativeFallbackRoute, string> = {
+    structured: "structured accessibility",
+    "focused-key-text": "focused key/text",
+    "background-pixel": "background pixel",
+    "foreground-pixel": "foreground pixel",
+  };
+  return routes.map((route) => labels[route]).join(" → ");
 }
 
 function capabilitySummary(capabilities: ModelProviderSummary["capabilities"]): string {
@@ -109,7 +182,7 @@ function computerSummary(computer: ComputerUiStatus | undefined): string {
   const isolation = computer.environment === "ubuntu-x11-cua"
     ? computer.isolated === true ? "isolated" : "not isolated"
     : computer.visible === true ? "visible browser" : "managed browser";
-  return `${computer.strategy ?? "unselected"} · ${environment} · ${isolation}${computer.model ? ` · ${computer.model}` : ""}`;
+  return `${computer.strategy ?? "unselected"} · ${environment} · ${isolation}${computer.model ? ` · ${computer.model}` : ""}${computer.surface ? ` · ${computer.surface} surface` : ""}${computer.browserInputRoute ? ` · ${computer.browserInputRoute}` : ""}`;
 }
 
 function panelRule(title: string, width: number): string {
@@ -134,10 +207,13 @@ function commandCompleter(line: string): [string[], string] {
 }
 
 export class TerminalUi {
+  private readonly openApplications = new Set<ChatApplication>();
+  private pendingSessionChoices: readonly SessionSummary[] | undefined;
   private activeController: AbortController | undefined;
   private responseStarted = false;
   private waiting = false;
   private cancellationRequested = false;
+  private computerTaskIssue: TuiComputerTaskIssue | undefined;
   private status: string = "ready";
   private statusRound = 0;
   private startedAt = 0;
@@ -149,17 +225,21 @@ export class TerminalUi {
   private processApprovalQuestion: ((request: ProcessApprovalRequest, signal?: AbortSignal) => Promise<ProcessApprovalDecision>) | undefined;
   private browserApprovalQuestion: ((request: BrowserApprovalRequest, signal?: AbortSignal) => Promise<BrowserApprovalDecision>) | undefined;
   private computerApprovalQuestion: ((request: ComputerApprovalRequest, signal?: AbortSignal) => Promise<ComputerApprovalDecision>) | undefined;
+  private computerTaskApprovalQuestion: ((request: ComputerTaskApprovalRequest, signal?: AbortSignal) => Promise<ComputerTaskApprovalDecision>) | undefined;
+  private existingProfileAuthorizationQuestion: ((request: CuaAuthorizationRequestView, signal?: AbortSignal) => Promise<CuaAuthorizationDecision>) | undefined;
   private memoryApprovalQuestion: MemoryApproval | undefined;
   private approvalInput: NodeJS.ReadableStream | undefined;
   private pauseApprovalInput: (() => void) | undefined;
   private resumeApprovalInput: (() => void) | undefined;
 
   constructor(
-    private readonly application: ChatApplication,
+    private application: ChatApplication,
     private readonly output: Writable,
     private readonly interactive: boolean,
     redactionSecrets: readonly string[] = [],
+    private readonly sessions?: TuiSessionController,
   ) {
+    this.openApplications.add(application);
     this.colour = interactive && !process.env.NO_COLOR && process.env.TERM !== "dumb";
     this.redactionSecrets = [process.env.OPENROUTER_API_KEY ?? "", ...redactionSecrets]
       .filter((secret, index, values) => secret.length > 0 && values.indexOf(secret) === index);
@@ -222,6 +302,14 @@ export class TerminalUi {
         return "■";
       case "interrupted":
         return "!";
+      case "computer task failed":
+        return "×";
+      case "computer task outcome unknown":
+        return "?";
+      case "computer task did not complete":
+        return "!";
+      case "computer task cancelled":
+        return "■";
       default:
         return "◆";
     }
@@ -257,10 +345,15 @@ export class TerminalUi {
     this.write(`  ${this.style("33", "/context")}    Inspect the last prepared model context and its budget\n`);
     this.write(`  ${this.style("33", "/models")}     Show provider choices and model capabilities\n`);
     this.write(`  ${this.style("33", "/history")}    Show recent transcript messages\n`);
+    this.write(`  ${this.style("33", "/new")}        Start a new conversation\n`);
+    this.write(`  ${this.style("33", "/resume")}     Pick a recent conversation\n`);
+    this.write(`  ${this.style("33", "/resume ID")}  Resume an exact session ID\n`);
     this.write(`  ${this.style("33", "/skills")}     Show workspace skill packages\n`);
     this.write(`  ${this.style("33", "/memory")}     Show bounded durable-memory status\n`);
     this.write(`  ${this.style("33", "/computer")}   Inspect computer environment, strategy, and readiness\n`);
     this.write(`  ${this.style("33", "/evidence")}   Show the durable evidence directory\n`);
+    this.write(`  ${this.style("33", "/permissions")}  List saved process permissions\n`);
+    this.write(`  ${this.style("33", "/permissions revoke <permission-id>")}  Revoke one saved permission\n`);
     this.write(`  ${this.style("33", "/clear")}      Redraw the console\n`);
     this.write(`  ${this.style("33", "/quit")}       Close the session\n\n`);
     this.write(`${this.style("33;1", "Input")}\n`);
@@ -288,20 +381,23 @@ export class TerminalUi {
     this.printPanel("Computer use", [
       ["state", computer.enabled ? "enabled" : "disabled · opt-in required"],
       ["environment", computer.environment ?? "not selected"],
+      ["surface", computer.surface ?? "auto"],
       ["strategy", computer.strategy ?? "not selected"],
       ["model", computer.model ?? "not selected"],
+      ["browser input", computer.browserInputRoute ?? "not selected"],
       ["readiness", readinessValue],
       ["display", readiness?.display ?? "not reported"],
       ["isolation", computer.isolated === undefined ? "not applicable" : computer.isolated ? "isolated" : "not isolated"],
       ["visibility", computer.visible === undefined ? "not reported" : computer.visible ? "visible" : "headless"],
-      ["last run", latestRun ? `${latestRun.run.status} · ${latestRun.eventCount} events` : "none recorded"],
+      ...(computer.nativeCatalog ? [["native catalog", computer.nativeCatalog.join(" · ")] as const] : []),
+      ["last run", latestRun ? `${latestRun.run.outcome ?? latestRun.run.status} · ${latestRun.eventCount} events` : "none recorded"],
       ["artifact", latestArtifact],
     ]);
     if (runs.length > 0) {
       this.write(`${this.style("36;1", "Recent computer runs") }\n`);
       for (const summary of runs.slice(0, 5)) {
         const latest = summary.lastEvent ? ` · latest ${summary.lastEvent.kind}${summary.lastEvent.artifactPath ? ` · artifact ${shorten(sanitizeTerminalSingleLine(summary.lastEvent.artifactPath), 40)}` : ""}` : "";
-        this.write(`  ${this.style("33", shorten(summary.run.runId, 36))} ${this.style("2", `${summary.run.status} · ${summary.run.strategy} · ${summary.eventCount} events${latest}`)}\n`);
+        this.write(`  ${this.style("33", shorten(summary.run.runId, 36))} ${this.style("2", `${summary.run.outcome ?? summary.run.status} · ${summary.run.strategy} · ${summary.eventCount} events${latest}`)}\n`);
       }
       this.write("\n");
     }
@@ -459,6 +555,19 @@ export class TerminalUi {
       case "evidence":
         this.printEvidence();
         return true;
+      case "permissions":
+        await this.printPermissions();
+        return true;
+      case "revoke-permission":
+        await this.revokePermission(command.permissionId);
+        return true;
+      case "new-session":
+        await this.switchSession();
+        return true;
+      case "resume-session":
+        if (command.sessionId) await this.switchSession(command.sessionId);
+        else await this.showSessionPicker();
+        return true;
       case "clear":
         if (this.interactive) this.write("\u001b[2J\u001b[H");
         this.printHeader();
@@ -474,6 +583,158 @@ export class TerminalUi {
   private printEvidence(): void {
     this.write("\nEvidence directory:\n");
     this.write(sanitizeTerminalText(this.application.evidenceDirectory) + "\n\n");
+  }
+
+  private async printPermissions(): Promise<void> {
+    const permissions = this.application.processPermissions;
+    if (!permissions) {
+      this.write(`\n${this.style("31", "Saved permissions are unavailable in this invocation.")}\n\n`);
+      return;
+    }
+    try {
+      const grants = await permissions.list();
+      this.write("\n");
+      this.printPanel("Saved process permissions", [
+        ["scope", "current conversation and local profile"],
+        ["matching", "exact command, arguments, directory, environment, limits, and executable version"],
+      ]);
+      if (grants.length === 0) {
+        this.write(`  ${this.style("2", "No saved process permissions.")}\n\n`);
+        return;
+      }
+      for (const grant of grants) {
+        this.write(`  ${this.style("36", grant.id)} · ${grant.scope === "conversation" ? "this conversation" : "local profile"}\n`);
+        this.write(`    ${sanitizeTerminalSingleLine(grant.label)}\n`);
+        this.write(`    created ${grant.createdAt}${grant.lastUsedAt ? ` · last used ${grant.lastUsedAt}` : " · not used yet"}\n`);
+      }
+      this.write(`\n${this.style("2", "Revoke with /permissions revoke <permission-id>.")}\n\n`);
+    } catch (error) {
+      this.write(`\n${this.style("31", `Saved permissions could not be read: ${safeErrorMessage(error)}`)}\n\n`);
+    }
+  }
+
+  private async revokePermission(permissionId: string): Promise<void> {
+    const permissions = this.application.processPermissions;
+    if (!permissions) {
+      this.write(`\n${this.style("31", "Saved permissions are unavailable in this invocation.")}\n\n`);
+      return;
+    }
+    try {
+      const revoked = await permissions.revoke(permissionId);
+      this.write(revoked
+        ? `\n${this.style("32;1", `Revoked saved process permission ${permissionId}. Future matching commands will ask again.`)}\n\n`
+        : `\n${this.style("31", `No saved process permission '${permissionId}' was found for this conversation or local profile.`)}\n\n`);
+    } catch (error) {
+      this.write(`\n${this.style("31", `Permission was not revoked: ${safeErrorMessage(error)}`)}\n\n`);
+    }
+  }
+
+  private async showSessionPicker(): Promise<void> {
+    if (!this.sessions) {
+      this.write(`\n${this.style("31", "Session switching is unavailable in this invocation.")}\n\n`);
+      return;
+    }
+    const sessions = await this.sessions.listRecent();
+    this.pendingSessionChoices = sessions;
+    this.write("\n");
+    this.printPanel("Recent conversations", [
+      ["current", this.application.sessionId],
+      ["selection", "Enter a number or exact session ID · /cancel to keep current"],
+    ]);
+    if (sessions.length === 0) {
+      this.write(`  ${this.style("2", "No saved conversations found.")}\n\n`);
+      this.pendingSessionChoices = undefined;
+      return;
+    }
+    sessions.forEach((session, index) => {
+      const time = session.lastActivityAt ?? session.createdAt ?? "time unavailable";
+      const preview = session.lastMessage
+        ? ` · ${session.lastMessage.role}: ${session.lastMessage.preview}`
+        : "";
+      const state = session.state === "available" ? "" : " · unavailable metadata";
+      this.write(`  ${this.style("33", `${index + 1}.`)} ${this.style("36", session.sessionId)} ${this.style("2", `${time}${state}${preview}`)}\n`);
+    });
+    this.write("\n");
+  }
+
+  private async selectSession(value: string): Promise<boolean> {
+    const choices = this.pendingSessionChoices;
+    if (!choices) return false;
+    if (value === "/cancel" || value.toLowerCase() === "cancel" || value.toLowerCase() === "q") {
+      this.pendingSessionChoices = undefined;
+      this.write(`${this.style("2", "Keeping the current conversation.")}\n`);
+      return true;
+    }
+    if (value === "/new") {
+      this.pendingSessionChoices = undefined;
+      await this.switchSession();
+      return true;
+    }
+    const command = parseTuiCommand(value);
+    if (value.startsWith("/") && command) {
+      this.pendingSessionChoices = undefined;
+      return false;
+    }
+    const index = /^\d+$/u.test(value) ? Number(value) - 1 : -1;
+    const selected = index >= 0 ? choices[index] : choices.find((session) => session.sessionId === value);
+    if (!selected) {
+      this.write(`${this.style("31", "Choose a listed number or exact session ID; use /cancel to keep the current conversation.")}\n`);
+      return true;
+    }
+    this.pendingSessionChoices = undefined;
+    await this.switchSession(selected.sessionId);
+    return true;
+  }
+
+  private async switchSession(sessionId?: string): Promise<void> {
+    if (!this.sessions) {
+      this.write(`\n${this.style("31", "Session switching is unavailable in this invocation.")}\n\n`);
+      return;
+    }
+    if (sessionId && sessionId === this.application.sessionId) {
+      this.write(`\n${this.style("2", "That conversation is already active.")}\n\n`);
+      return;
+    }
+    if (this.activeController || this.waiting) {
+      this.write(`\n${this.style("33;1", "Finish or cancel the active turn before switching conversations.")}\n\n`);
+      return;
+    }
+    const current = this.application;
+    let next: ChatApplication;
+    try {
+      // Keep the current app active until the destination has opened and acquired its lock.
+      next = await this.sessions.open(sessionId);
+    } catch (error) {
+      const message = error instanceof AnesuError && error.code === "session-not-found"
+        ? "No conversation has that exact ID. Use /resume to choose from recent conversations."
+        : safeErrorMessage(error);
+      this.printActivity("×", `conversation not switched · ${message}`, "31;1");
+      return;
+    }
+    this.openApplications.add(next);
+    this.application = next;
+    this.pendingSessionChoices = undefined;
+    this.write(`\n${this.style("32;1", sessionId ? "Resumed conversation" : "Started new conversation")} ${this.style("36", next.sessionId)}\n\n`);
+    this.write(`${this.style("2", "Any live browser from the previous conversation was closed; it is not carried into this one.")}\n\n`);
+    try {
+      await current.close();
+      this.openApplications.delete(current);
+    } catch (error) {
+      this.write(`${this.style("31", `Previous session cleanup failed: ${safeErrorMessage(error)}`)}\n`);
+    }
+  }
+
+  async close(): Promise<void> {
+    let firstError: unknown;
+    for (const application of this.openApplications) {
+      try {
+        await application.close();
+        this.openApplications.delete(application);
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
+    if (firstError) throw firstError;
   }
 
   private handleEvent(event: TurnEvent): void {
@@ -522,6 +783,7 @@ export class TerminalUi {
       case "tool_completed":
         this.status = event.ok ? "tool completed" : "tool failed";
         this.statusRound = event.round;
+        if (!event.ok && event.name === "computer") this.computerTaskIssue ??= "failed";
         this.printActivity(event.ok ? "✓" : "×", `${event.name} · ${event.summary}`, event.ok ? "32;1" : "31;1");
         break;
       case "status":
@@ -571,12 +833,14 @@ export class TerminalUi {
     switch (event.type) {
       case "prepared":
         this.status = `command approval: ${event.request.command}`;
-        this.printActivity("◇", `command · approval requested · ${event.request.command} ${event.request.displayArgs.join(" ")}`, "33;1");
+        this.printActivity("◇", `command · checking permission · ${event.request.command} ${event.request.displayArgs.join(" ")}`, "33;1");
         break;
       case "approval_decided":
         if (event.decision.decision === "allow-once") {
+          const grant = event.decision.permissionGrant;
+          const source = grant ? ` by ${grant.scope} permission ${grant.id}` : " once";
           this.status = `command approved: ${event.request.command}`;
-          this.printActivity("✓", `command · approved · ${event.request.command}`, "32;1");
+          this.printActivity("✓", `command · approved${source} · ${event.request.command}`, "32;1");
         } else {
           this.status = `command not started: ${event.request.command}`;
           this.printActivity("×", `command · ${event.decision.decision} · ${event.request.command}`, "31;1");
@@ -617,14 +881,22 @@ export class TerminalUi {
         this.printActivity("◆", `browser · ${event.artifact.kind} · ${event.artifact.artifactId} · ${event.artifact.byteSize} bytes · ${event.artifact.path}`, "36;1");
         break;
       case "prepared":
-        this.status = `browser approval: ${event.request.action}`;
-        this.printActivity("◇", `browser · approval requested · ${event.request.action} ${event.request.reference}`, "33;1");
+        {
+          const taskGrant = event.request.taskId !== undefined
+            && event.request.grantHash !== undefined
+            && event.request.approvalScope !== "action";
+          this.status = taskGrant ? `browser · task grant covers ${event.request.action}` : `browser approval: ${event.request.action}`;
+          this.printActivity("◇", `browser · ${taskGrant ? "task grant covers" : "approval requested"} · ${event.request.action} ${browserTargetLabel(event.request)}`, "33;1");
+        }
         break;
       case "approval_decided":
         if (event.decision.decision === "allow-once") {
-          this.status = `browser approved: ${event.request.action}`;
+          const taskGrant = event.request.taskId !== undefined
+            && event.request.grantHash !== undefined
+            && event.request.approvalScope !== "action";
+          this.status = `${taskGrant ? "browser task grant covers" : "browser approved"}: ${event.request.action}`;
           const dialogDecision = event.decision.dialogDecision ? ` · ${event.decision.dialogDecision}` : "";
-          this.printActivity("✓", `browser · approved · ${event.request.action}${dialogDecision}`, "32;1");
+          this.printActivity("✓", `browser · ${taskGrant ? "task-grant" : "approved"} · ${event.request.action}${dialogDecision}`, "32;1");
         } else {
           this.status = `browser ${event.request.action} not approved`;
           this.printActivity("×", `browser · ${event.request.action} not approved`, "31;1");
@@ -632,7 +904,7 @@ export class TerminalUi {
         break;
       case "started":
         this.status = `browser ${event.request.action} running`;
-        this.printActivity("↳", `browser · ${event.request.action} running · ${event.request.reference}`, "33;1");
+        this.printActivity("↳", `browser · ${event.request.action} running · ${browserTargetLabel(event.request)}`, "33;1");
         break;
       case "completed":
         const outcomeUnknown = !event.ok && event.errorCode === "browser-ambiguous";
@@ -647,13 +919,17 @@ export class TerminalUi {
 
   private handleComputer(event: ComputerEvent): void {
     switch (event.type) {
+      case "routed":
+        this.status = `computer · routing · ${event.surface}`;
+        this.printActivity("◇", `computer · route · ${event.surface} · ${event.reason}`, "36;1");
+        break;
       case "started":
         this.status = `computer · ${event.strategy} · starting`;
-        this.printActivity("◌", `computer · ${event.strategy} · observe`, "36;1");
+        this.printActivity("◌", `computer · ${event.strategy} · observe · goal: ${shorten(sanitizeTerminalSingleLine(event.goal), 96)} · ${event.surface ?? event.environment ?? "selected"}${event.fallbackFrom ? ` · fallback from ${event.fallbackFrom}` : ""}`, "36;1");
         break;
       case "observed":
-        this.status = `computer · ${event.strategy} · ${event.candidateCount} candidate${event.candidateCount === 1 ? "" : "s"}`;
-        this.printActivity("⌕", `computer · observed · ${event.candidateCount} candidate${event.candidateCount === 1 ? "" : "s"}`, "36;1");
+        this.status = `computer · ${event.strategy} · step ${event.step ?? 0}`;
+        this.printActivity("⌕", `computer · observed · ${event.candidateCount} candidate${event.candidateCount === 1 ? "" : "s"} · step ${event.step ?? 0}${event.maxActions === undefined ? "" : `/${event.maxActions}`} · observing${event.cursorX === undefined || event.cursorY === undefined ? "" : ` · cursor ${event.cursorX},${event.cursorY}`}`, "36;1");
         break;
       case "decision_attempt":
         this.status = event.retrying
@@ -662,24 +938,38 @@ export class TerminalUi {
         this.printActivity(event.retrying ? "↻" : "×", `computer · ${event.strategy} · decision attempt ${event.attempt}/${event.maxAttempts} failed${event.retrying ? " · retrying" : ""} · ${event.reason}`, event.retrying ? "33;1" : "31;1");
         break;
       case "proposed":
-        this.status = `computer · ${event.strategy} · proposal`;
-        this.printActivity("◇", `computer · ${event.strategy} · proposed ${event.operation} ${event.targetLabel ? `“${event.targetLabel}” ` : ""}${event.candidateId}${event.confidence === undefined ? "" : ` · confidence ${(event.confidence * 100).toFixed(0)}%`}`, "33;1");
+        this.status = `computer · ${event.strategy} · step ${event.step ?? "?"} · proposal`;
+        this.printActivity("◇", `computer · ${event.strategy} · proposed ${event.operation} ${event.targetLabel ? `“${sanitizeTerminalSingleLine(event.targetLabel)}” ` : ""}${event.candidateId}${event.confidence === undefined ? "" : ` · confidence ${(event.confidence * 100).toFixed(0)}%`} · step ${event.step ?? "?"}${event.maxActions === undefined ? "" : `/${event.maxActions}`}`, "33;1");
         break;
       case "abstained":
-        this.status = `computer · ${event.strategy} · stopped`;
-        this.printActivity("!", `computer · ${event.strategy} · stopped${event.errorCode ? ` · ${event.errorCode}` : ""} · ${event.reason}`, "33;1");
+        this.computerTaskIssue ??= "not-completed";
+        this.status = `computer · ${event.strategy} · ${event.outcome ?? "abstained"}`;
+        this.printActivity("!", `computer · ${event.outcome ?? "abstained"}${event.errorCode ? ` · ${event.errorCode}` : ""} · ${event.reason}`, "33;1");
         break;
       case "act_requested":
-        this.status = `computer · ${event.strategy} · approval`;
-        this.printActivity("↳", `computer · ${event.strategy} · ${event.operation} requested ${event.candidateId}`, "33;1");
+        this.status = `computer · ${event.strategy} · step ${event.step ?? "?"} · approval`;
+        this.printActivity("↳", `computer · step ${event.step ?? "?"}${event.maxActions === undefined ? "" : `/${event.maxActions}`} · dispatch requested · ${event.operation} · ${event.candidateId}`, "33;1");
         break;
       case "verified":
-        this.status = event.success ? "computer · verified" : "computer · verification failed";
-        this.printActivity(event.success ? "✓" : "×", `computer · verify · ${event.success ? "success" : "failed"}`, event.success ? "32;1" : "31;1");
+        if (event.terminal !== false) {
+          this.computerTaskIssue = event.success
+            ? undefined
+            : event.outcome === "outcome-unknown" ? "outcome-unknown" : "failed";
+        }
+        this.status = event.success ? "computer · completed" : `computer · ${event.outcome ?? "outcome-unknown"}`;
+        this.printActivity(event.success ? "✓" : event.outcome === "outcome-unknown" ? "?" : "×", `computer · verify · ${event.success ? "success" : event.outcome ?? "failed"}${event.verifier ? ` · ${event.verifier}` : ""} · step ${event.step ?? "?"}${event.reason ? ` · ${sanitizeTerminalSingleLine(event.reason)}` : ""}`, event.success ? "32;1" : event.outcome === "outcome-unknown" ? "33;1" : "31;1");
+        break;
+      case "cancelled":
+        this.computerTaskIssue ??= "cancelled";
+        this.status = `computer · ${event.strategy} · cancelled`;
+        this.printActivity("■", `computer · cancelled${event.actionId ? ` · ${event.actionId}` : ""} · ${event.reason}`, "2");
         break;
       case "failed":
-        this.status = `computer · ${event.strategy} · failed`;
-        this.printActivity("×", `computer · ${event.strategy} · failed${event.errorCode ? ` · ${event.errorCode}` : ""} · ${event.reason}`, "31;1");
+        this.computerTaskIssue ??= event.outcome === "outcome-unknown" || event.runStatus === "outcome-unknown"
+          ? "outcome-unknown"
+          : "failed";
+        this.status = `computer · ${event.strategy} · ${event.outcome ?? "failed"}`;
+        this.printActivity("×", `computer · ${event.strategy} · ${event.outcome ?? "failed"}${event.errorCode ? ` · ${event.errorCode}` : ""} · ${event.reason}`, "31;1");
         break;
     }
   }
@@ -687,13 +977,16 @@ export class TerminalUi {
   private handleComputerApproval(event: ComputerApprovalEvent): void {
     const request = event.request;
     const target = formatComputerApprovalTarget(request);
+    const strategy = request.strategy === "typesafe" ? "Jev" : request.strategy === "traditional" ? "traditional vision" : request.strategy === "compare" ? "compare" : undefined;
+    const taskGrant = request.taskId !== undefined && request.grantHash !== undefined;
     if (event.type === "prepared") {
-      this.status = "computer approval requested";
-      this.printActivity("◇", `computer · approval requested · ${request.operation} · ${target}`, "33;1");
+      this.status = taskGrant ? "computer · task grant covers action" : "computer approval requested";
+      this.printActivity("◇", `computer · ${taskGrant ? "task grant covers" : "approval requested"}${strategy ? ` · ${strategy}` : ""} · ${request.operation} · ${target}`, "33;1");
       return;
     }
     this.status = event.decision.decision === "allow-once" ? "computer approved" : "computer not approved";
-    this.printActivity(event.decision.decision === "allow-once" ? "✓" : "×", `computer · ${event.decision.decision} · ${request.operation} · ${target}`, event.decision.decision === "allow-once" ? "32;1" : "31;1");
+    const decisionLabel = taskGrant && event.decision.decision === "allow-once" ? "task-grant" : event.decision.decision;
+    this.printActivity(event.decision.decision === "allow-once" ? "✓" : "×", `computer · ${decisionLabel}${strategy ? ` · ${strategy}` : ""} · ${request.operation} · ${target}`, event.decision.decision === "allow-once" ? "32;1" : "31;1");
   }
 
   private handleMemory(event: MemoryEvent): void {
@@ -738,6 +1031,7 @@ export class TerminalUi {
     this.pendingRedaction = "";
     this.waiting = false;
     this.cancellationRequested = false;
+    this.computerTaskIssue = undefined;
     this.status = "starting";
     this.statusRound = 0;
     this.write(`\n${this.style("36;1", "┌ turn")} ${this.style("2", "starting model run")}\n`);
@@ -792,14 +1086,21 @@ export class TerminalUi {
     this.closeResponseLine();
     this.pendingTerminalEscape = "";
     const elapsed = formatDuration(Date.now() - this.startedAt);
-    const icon = result.status === "completed" ? "✓" : result.status === "cancelled" ? "■" : result.status === "interrupted" ? "!" : "×";
+    const computerIssue = result.status === "completed" ? this.computerTaskIssue : undefined;
+    const issueLabel = computerIssue ? computerTaskIssueLabel(computerIssue) : undefined;
+    const icon = issueLabel
+      ? computerIssue === "outcome-unknown" ? "?" : "!"
+      : result.status === "completed" ? "✓" : result.status === "cancelled" ? "■" : result.status === "interrupted" ? "!" : "×";
+    const terminalLabel = issueLabel ? `turn completed · ${issueLabel}` : result.status;
     const detail = result.status === "completed"
       ? `${elapsed}${result.usage?.outputTokens === undefined ? "" : ` · ${result.usage.outputTokens} output tokens`}`
       : result.error?.message ?? "No assistant response was committed.";
-    this.status = result.status;
+    const terminalColour = issueLabel ? "33;1" : result.status === "completed" ? "32;1" : "31;1";
+    this.status = issueLabel ?? result.status;
     this.statusRound = 0;
+    this.waiting = false;
     this.cancellationRequested = false;
-    this.write(`\n${this.style(result.status === "completed" ? "32;1" : "31;1", `${icon} ${result.status}`)} ${this.style("2", `· ${detail}`)}\n`);
+    this.write(`\n${this.style(terminalColour, `${icon} ${terminalLabel}`)} ${this.style("2", `· ${detail}`)}\n`);
     this.printStatusLine();
     this.write(`${this.style("2", "────────────────────────────────────────────────────────────")}\n\n`);
     this.startedAt = 0;
@@ -811,6 +1112,7 @@ export class TerminalUi {
     const message = shorten(sanitizeTerminalSingleLine(safeErrorMessage(error)) || "Unexpected failure.", 1_000);
     this.status = "failed";
     this.statusRound = 0;
+    this.waiting = false;
     this.cancellationRequested = false;
     this.write(`${this.style("31;1", "× failed")} ${this.style("2", `· ${message}`)}\n`);
     this.printStatusLine();
@@ -874,6 +1176,21 @@ export class TerminalUi {
     signal?: AbortSignal,
     cancelQuestion?: () => void,
   ): Promise<ProcessApprovalDecision> {
+    const permissions = this.application.processPermissions;
+    const identityHash = request.permissionIdentity;
+    const maySave = Boolean(permissions && identityHash && !request.displayArgs.some((argument) => argument.includes("[REDACTED]")));
+    if (maySave && identityHash) {
+      try {
+        const saved = await permissions!.find(identityHash);
+        if (saved) {
+          this.write(`${this.style("32;1", `✓ allowed by ${saved.scope === "conversation" ? "conversation" : "local profile"} permission ${saved.id}`)}\n`);
+          return { decision: "allow-once", permissionGrant: { id: saved.id, scope: saved.scope } };
+        }
+      } catch (error) {
+        this.write(`${this.style("31", `Saved permission check failed; the command was not started: ${safeErrorMessage(error)}`)}\n`);
+        return { decision: "unavailable", reason: "Saved process permissions could not be safely checked." };
+      }
+    }
     const command = [request.command, ...request.displayArgs.map((argument) => JSON.stringify(argument))].join(" ");
     const panel: ApprovalPanel = {
       title: "Proposed local process",
@@ -883,6 +1200,7 @@ export class TerminalUi {
       scope: request.cwd,
       identity: `execution ${request.executionId} · argv ${request.argvHash}`,
       expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
+      extra: maySave ? [["saved match", "exact request digest; command details are not stored"]] : undefined,
       preview: `${command}\n${request.warning}`,
       details: [
         `command: ${command}`,
@@ -894,7 +1212,17 @@ export class TerminalUi {
       ].join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
+    const localLabel = maySave ? "Always allow this exact command here" : undefined;
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, {
+      question,
+      signal,
+      cancelQuestion,
+      rawInput: this.approvalInput,
+      pauseRawInput: this.pauseApprovalInput,
+      resumeRawInput: this.resumeApprovalInput,
+      allowConversation: maySave,
+      allowLocalLabel: localLabel,
+    });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the process was not started.")}\n`);
       return answer;
@@ -902,6 +1230,17 @@ export class TerminalUi {
     if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return { decision: "allow-once" };
+    }
+    if ((answer.decision === "allow-conversation" || answer.decision === "allow-local") && maySave && identityHash && permissions) {
+      const scope: ProcessPermissionScope = answer.decision === "allow-conversation" ? "conversation" : "local";
+      try {
+        const grant = await permissions.save(scope, identityHash, `${request.executablePath} · argv ${request.argvHash.slice(0, 12)} · cwd ${request.cwd}`);
+        this.write(`${this.style("32;1", `✓ permission saved for ${scope === "conversation" ? "this conversation" : "this local profile"} · ${grant.id}`)}\n`);
+        return { decision: "allow-once", permissionGrant: { id: grant.id, scope: grant.scope } };
+      } catch (error) {
+        this.write(`${this.style("31", `Permission was not saved; command not started: ${safeErrorMessage(error)}`)}\n`);
+        return { decision: "unavailable", reason: "The requested process permission could not be saved safely." };
+      }
     }
     this.write(`${this.style("2", "Command denied; the process was not started.")}\n`);
     return { decision: "deny", reason: "The user did not approve the command." };
@@ -913,7 +1252,13 @@ export class TerminalUi {
     signal?: AbortSignal,
     cancelQuestion?: () => void,
   ): Promise<BrowserApprovalDecision> {
+    const targetLabel = request.targetName === undefined
+      ? undefined
+      : sanitizeTerminalSingleLine(request.targetName).slice(0, 160);
+    const targetDescription = browserTargetLabel(request);
+    const approvalScope = request.approvalScope ?? "action";
     const preview = [
+      request.origin === undefined ? undefined : `site: ${request.origin}`,
       request.text === undefined ? undefined : `text: ${request.text}`,
       request.key === undefined ? undefined : `key: ${request.key}`,
       request.value === undefined ? undefined : `value: ${request.value}`,
@@ -921,19 +1266,25 @@ export class TerminalUi {
       request.amount === undefined ? undefined : `amount: ${request.amount}px`,
       request.path === undefined ? undefined : `path: ${request.path}`,
       request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
+      request.inputRoute === undefined ? undefined : `input route: ${request.inputRoute}`,
       request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
+      request.step === undefined ? undefined : `step: ${request.step}${request.maxActions === undefined ? "" : `/${request.maxActions}`}`,
+      request.expectedVerification === undefined ? undefined : `verify: ${request.expectedVerification.kind}${request.expectedVerification.expected ? ` · ${request.expectedVerification.expected}` : ""}${request.expectedVerification.state ? ` · ${request.expectedVerification.state}` : ""}`,
       request.warning,
     ].filter((value): value is string => value !== undefined).join("\n");
     const panel: ApprovalPanel = {
       title: "Proposed browser interaction",
       risk: request.dialog ? "page-dialog" : "browser-interaction",
       action: request.action,
-      target: `${request.reference} · document ${request.documentId}`,
-      scope: `${request.sessionId} · ${request.tabId}`,
+      target: targetDescription,
+      scope: `${request.origin ?? "current browser origin"} · managed browser session`,
       identity: `action ${request.actionId} · ${request.actionHash}`,
       expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
       extra: [
-        ["document", request.documentId],
+        ["approval scope", approvalScope === "action" ? "this exact action" : "approved browser task"],
+        ...(request.targetRole === undefined ? [] : [["target role", sanitizeTerminalSingleLine(request.targetRole).slice(0, 64)] as const]),
+        ...(targetLabel === undefined ? [] : [["target name", targetLabel] as const]),
+        ...(request.origin === undefined ? [] : [["site", request.origin] as const]),
         ...(request.text === undefined ? [] : [["text", request.text] as const]),
         ...(request.key === undefined ? [] : [["key", request.key] as const]),
         ...(request.value === undefined ? [] : [["value", request.value] as const]),
@@ -941,14 +1292,19 @@ export class TerminalUi {
         ...(request.amount === undefined ? [] : [["amount", `${request.amount}px`] as const]),
         ...(request.path === undefined ? [] : [["path", request.path] as const]),
         ...(request.maxBytes === undefined ? [] : [["max bytes", String(request.maxBytes)] as const]),
+        ...(request.inputRoute === undefined ? [] : [["input route", request.inputRoute] as const]),
         ...(request.dialog === undefined ? [] : [["dialog", `${request.dialog.type}: ${request.dialog.message}`] as const]),
+        ...(request.step === undefined ? [] : [["step", `${request.step}${request.maxActions === undefined ? "" : `/${request.maxActions}`}`] as const]),
+        ...(request.expectedVerification === undefined ? [] : [["verify", `${request.expectedVerification.kind}${request.expectedVerification.expected ? ` · ${request.expectedVerification.expected}` : ""}${request.expectedVerification.state ? ` · ${request.expectedVerification.state}` : ""}`] as const]),
         ["hash", request.actionHash],
         ["approval", `${request.approvalTimeoutMs ?? "?"}ms from prompt`],
       ],
       preview,
       details: [
-        `document: ${request.documentId}`,
-        `reference: ${request.reference}`,
+        `approval scope: ${approvalScope}`,
+        ...(request.origin === undefined ? [] : [`site: ${request.origin}`]),
+        ...(request.targetRole === undefined ? [] : [`target role: ${sanitizeTerminalSingleLine(request.targetRole).slice(0, 64)}`]),
+        ...(targetLabel === undefined ? [] : [`target name: ${targetLabel}`]),
         request.text === undefined ? undefined : `text: ${request.text}`,
         request.key === undefined ? undefined : `key: ${request.key}`,
         request.value === undefined ? undefined : `value: ${request.value}`,
@@ -956,7 +1312,10 @@ export class TerminalUi {
         request.amount === undefined ? undefined : `amount: ${request.amount}px`,
         request.path === undefined ? undefined : `path: ${request.path}`,
         request.maxBytes === undefined ? undefined : `max bytes: ${request.maxBytes}`,
+        request.inputRoute === undefined ? undefined : `input route: ${request.inputRoute}`,
         request.dialog === undefined ? undefined : `dialog: ${request.dialog.type}: ${request.dialog.message}`,
+        request.step === undefined ? undefined : `step: ${request.step}${request.maxActions === undefined ? "" : `/${request.maxActions}`}`,
+        request.expectedVerification === undefined ? undefined : `verification: ${request.expectedVerification.kind}${request.expectedVerification.expected ? ` · ${request.expectedVerification.expected}` : ""}${request.expectedVerification.state ? ` · ${request.expectedVerification.state}` : ""}`,
         `action hash: ${request.actionHash}`,
         `approval timeout: ${request.approvalTimeoutMs ?? "unknown"}ms from prompt`,
         `warning: ${request.warning}`,
@@ -966,7 +1325,7 @@ export class TerminalUi {
     const prompt = new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() });
     const answer = request.dialog
       ? await prompt.askDialog(panel, request.dialog.type, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput })
-      : await prompt.ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
+      : await prompt.ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput, allowTask: request.taskId !== undefined && approvalScope !== "action" });
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the browser action was not started.")}\n`);
       return answer;
@@ -985,11 +1344,15 @@ export class TerminalUi {
         };
       }
       this.write(`${this.style("2", "Dialog not resolved; the browser action was not allowed to continue.")}\n`);
-      return answer;
+      return { decision: "deny", reason: "The page dialog was not explicitly resolved." };
     }
     if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
       return { decision: "allow-once" };
+    }
+    if (answer.decision === "allow-task" && request.taskId && request.grantHash) {
+      this.write(`${this.style("32;1", "✓ approved for this bounded task")}\n`);
+      return { decision: "allow-task", grantHash: request.grantHash };
     }
     this.write(`${this.style("2", "Browser action denied; no interaction was performed.")}\n`);
     return { decision: "deny", reason: "The user did not approve the browser action." };
@@ -1010,20 +1373,25 @@ export class TerminalUi {
         : request.operation === "scroll"
           ? `${request.direction ?? "?"} · ${request.amount ?? 1}`
           : undefined;
+    const strategyLabel = request.strategy === "typesafe" ? "Jev" : request.strategy === "traditional" ? "traditional vision" : request.strategy === "compare" ? "compare" : undefined;
     const panel: ApprovalPanel = {
-      title: "Proposed computer interaction",
+      title: strategyLabel ? `Proposed computer interaction · ${strategyLabel}` : "Proposed computer interaction",
       risk: "native-computer-use",
       action: request.operation,
       target,
-      scope: `${request.environment} · session ${request.sessionId}`,
+      scope: `${request.environment}${strategyLabel ? ` · ${strategyLabel}` : ""} · session ${request.sessionId}`,
       identity: `action ${request.actionId} · observation ${request.observationId} · generation ${request.generation}`,
       expiry: `${request.approvalTimeoutMs ?? "?"}ms from prompt`,
       extra: [
+        ...(request.taskId ? [["task", `${request.taskId} · grant ${request.grantHash ?? "unknown"}`] as const] : []),
         ...(request.targetLabel ? [["target", `${request.targetLabel}${request.targetRole ? ` (${request.targetRole})` : ""}`] as const] : []),
         ...(request.targetSource ? [["source", request.targetSource] as const] : []),
+        ...(request.menuPath ? [["menu path", request.menuPath.join(" → ")] as const] : []),
         ...(request.x === undefined || request.y === undefined ? [] : [["coordinates", `${request.x}, ${request.y}`] as const]),
         ...(request.endX === undefined || request.endY === undefined ? [] : [["end", `${request.endX}, ${request.endY}`] as const]),
         ...(payload ? [["payload", payload] as const] : []),
+        ...(request.step === undefined ? [] : [["step", `${request.step}${request.maxActions === undefined ? "" : `/${request.maxActions}`}`] as const]),
+        ...(request.expectedVerification ? [["verify", `${request.expectedVerification.kind}${request.expectedVerification.expected ? ` · ${request.expectedVerification.expected}` : ""}${request.expectedVerification.state ? ` · ${request.expectedVerification.state}` : ""}`] as const] : []),
         ["warning", request.warning],
       ],
       preview: semanticTarget
@@ -1031,12 +1399,16 @@ export class TerminalUi {
         : `One visible foreground ${request.operation} on the isolated display.`,
       details: [
         `operation: ${request.operation}`,
+        ...(strategyLabel ? [`strategy: ${strategyLabel}`] : []),
         `display: ${request.displayId}`,
         ...(request.targetLabel ? [`target: ${request.targetLabel}${request.targetRole ? ` (${request.targetRole})` : ""}`] : []),
         ...(request.targetSource ? [`target source: ${request.targetSource}`] : []),
+        ...(request.menuPath ? [`menu path: ${request.menuPath.join(" → ")}`] : []),
         ...(request.x === undefined || request.y === undefined ? [] : [`coordinates: ${request.x}, ${request.y}`]),
         ...(request.endX === undefined || request.endY === undefined ? [] : [`end coordinates: ${request.endX}, ${request.endY}`]),
         ...(payload ? [`payload: ${payload}`] : []),
+        ...(request.step === undefined ? [] : [`step: ${request.step}${request.maxActions === undefined ? "" : `/${request.maxActions}`}`]),
+        ...(request.expectedVerification ? [`verification: ${request.expectedVerification.kind}${request.expectedVerification.expected ? ` · ${request.expectedVerification.expected}` : ""}${request.expectedVerification.state ? ` · ${request.expectedVerification.state}` : ""}`] : []),
         `session: ${request.sessionId}`,
         `observation: ${request.observationId}`,
         `generation: ${request.generation}`,
@@ -1044,17 +1416,169 @@ export class TerminalUi {
       ].join("\n"),
       redactionSecrets: this.redactionSecrets,
     };
-    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput });
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, { question, signal, cancelQuestion, rawInput: this.approvalInput, pauseRawInput: this.pauseApprovalInput, resumeRawInput: this.resumeApprovalInput, allowTask: request.taskId !== undefined });
     if (answer.decision === "allow-once") {
       this.write(`${this.style("32;1", "✓ approved once")}\n`);
-      return answer;
+      return { decision: "allow-once" };
+    }
+    if (answer.decision === "allow-task" && request.taskId && request.grantHash) {
+      this.write(`${this.style("32;1", "✓ approved for this bounded task")}\n`);
+      return { decision: "allow-task", grantHash: request.grantHash };
     }
     if (answer.decision === "unavailable") {
       this.write(`${this.style("33;1", "Approval cancelled; the native computer action was not started.")}\n`);
       return answer;
     }
     this.write(`${this.style("2", "Computer action denied; no native input was sent.")}\n`);
-    return answer;
+    return { decision: "deny", reason: "The user did not approve the native computer action." };
+  }
+
+  private async askForComputerTaskApproval(
+    request: ComputerTaskApprovalRequest,
+    question: (prompt: string, callback: (answer: string) => void) => void,
+    signal?: AbortSignal,
+    cancelQuestion?: () => void,
+  ): Promise<ComputerTaskApprovalDecision> {
+    const target = request.surface === "native"
+      ? request.applicationName ?? "approved native application"
+      : request.profileMode === "existing_profile"
+        ? "the currently visible Chrome/Edge window (existing profile)"
+        : "isolated Chrome/Edge browser";
+    const completion = formatComputerTaskCompletion(request.completion, request.surface);
+    const applicationArguments = request.applicationArguments?.join(" ") ?? "";
+    const nativeFallback = formatComputerNativeFallback(request.nativeFallbackRoutes);
+    const profileWarning = request.profileMode === "existing_profile"
+      ? "This task may access live browser tabs, cookies, and storage through the separately approved existing profile."
+      : undefined;
+    const values = Object.entries(request.values)
+      .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(" · ");
+    const panel: ApprovalPanel = {
+      title: "Approve bounded computer task",
+      risk: "computer-task",
+      action: "run this bounded task once",
+      target,
+      scope: `${request.surface} · ${request.profileMode} · ${request.inputRoute}${request.surface === "browser" && request.browserOriginPolicy === "public-web" ? " · public HTTPS sites" : request.allowedOrigins.length > 0 ? ` · ${request.allowedOrigins.join(", ")}` : ""}`,
+      identity: `task ${request.taskId} · grant ${request.grantHash}`,
+      expiry: new Date(request.expiresAtMs).toISOString(),
+      extra: [
+        ["grant scope", "this bounded task only"],
+        ...(request.surface === "browser" && request.browserOriginPolicy === "public-web"
+          ? [["browser sites", "public HTTPS destinations · private/local blocked"] as const]
+          : []),
+        ["actions", request.allowedActions.join(", ")],
+        ["input route", request.inputRoute],
+        ...(nativeFallback ? [["native fallback", nativeFallback] as const] : []),
+        ...(request.profileMode === "existing_profile" ? [["profile access", "live tabs · cookies · storage"] as const] : []),
+        ...(request.surface === "native" || request.surface === "mixed" ? [["visual/foreground", "not authorized in this Cua profile"] as const] : []),
+        ...(applicationArguments ? [["launch arguments", applicationArguments] as const] : []),
+        ["timezone", request.timeZone],
+        ...(values ? [["values", values] as const] : []),
+        ["limit", String(request.maxActions)],
+        ["completion", completion],
+        ["deadline", `${request.deadlineMs}ms`],
+      ],
+      preview: profileWarning ? `${request.originalGoal}\n\n${profileWarning}` : request.originalGoal,
+      details: [
+        `goal: ${request.originalGoal}`,
+        `surface: ${request.surface}`,
+        `target: ${target}`,
+        "grant scope: this bounded task only",
+        `profile: ${request.profileMode}`,
+        `input route: ${request.inputRoute}`,
+        ...(request.surface === "browser" && request.browserOriginPolicy === "public-web"
+          ? ["browser sites: public HTTPS destinations; private and local destinations are blocked"]
+          : []),
+        ...(nativeFallback ? [`native fallback: ${nativeFallback}`] : []),
+        ...(request.surface === "native" || request.surface === "mixed" ? ["visual/foreground: not authorized in this Cua profile; a separate capability and approval are required"] : []),
+        ...(profileWarning ? [profileWarning] : []),
+        ...(applicationArguments ? [`launch arguments: ${applicationArguments}`] : []),
+        `timezone: ${request.timeZone}`,
+        ...(values ? [`values: ${values}`] : []),
+        `origins: ${request.allowedOrigins.join(", ") || "none"}`,
+        `actions: ${request.allowedActions.join(", ")}`,
+        `maximum actions: ${request.maxActions}`,
+        `completion: ${completion}`,
+        `expires: ${new Date(request.expiresAtMs).toISOString()}`,
+        `grant hash: ${request.grantHash}`,
+      ].join("\n"),
+      redactionSecrets: this.redactionSecrets,
+    };
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, {
+      question,
+      signal,
+      cancelQuestion,
+      rawInput: this.approvalInput,
+      pauseRawInput: this.pauseApprovalInput,
+      resumeRawInput: this.resumeApprovalInput,
+      taskOnly: true,
+    });
+    if (answer.decision === "allow-task") {
+      this.write(`${this.style("32;1", "✓ approved for this task")}\n`);
+      return { decision: "allow-task", grantHash: request.grantHash };
+    }
+    if (answer.decision === "unavailable") {
+      this.write(`${this.style("33;1", "Task approval cancelled; no computer process was started.")}\n`);
+      return answer;
+    }
+    const reason = "The user did not approve the bounded computer task.";
+    this.write(`${this.style("2", reason)}\n`);
+    return { decision: "deny", reason };
+  }
+
+  private async askForExistingProfileAuthorization(
+    request: CuaAuthorizationRequestView,
+    question: (prompt: string, callback: (answer: string) => void) => void,
+    signal?: AbortSignal,
+    cancelQuestion?: () => void,
+  ): Promise<CuaAuthorizationDecision> {
+    const panel: ApprovalPanel = {
+      title: "Approve existing browser profile",
+      risk: "browser-profile",
+      action: "attach profile",
+      target: "the currently visible Chrome or Edge window",
+      scope: `${request.riskClass} · ${request.adapterId} · session ${request.publicSession}`,
+      identity: `Cua request ${request.requestDigest}`,
+      expiry: new Date(request.expiresUnixMs).toISOString(),
+      extra: [
+        ["summary", request.humanSummary],
+        ["resource digest", request.resourceDigest],
+        ...(request.taskGrantHash ? [["task grant", request.taskGrantHash] as const] : []),
+        ["request schema", request.schema],
+      ],
+      preview: "This can expose the existing browser's tabs, cookies, and storage to the approved task.",
+      details: [
+        request.humanSummary,
+        `adapter: ${request.adapterId}`,
+        `risk: ${request.riskClass}`,
+        `session: ${request.publicSession}`,
+        `request digest: ${request.requestDigest}`,
+        `resource digest: ${request.resourceDigest}`,
+        ...(request.taskGrantHash ? [`task grant: ${request.taskGrantHash}`] : []),
+        `expires: ${new Date(request.expiresUnixMs).toISOString()}`,
+      ].join("\n"),
+      redactionSecrets: this.redactionSecrets,
+    };
+    const answer = await new ApprovalPrompt({ output: this.output, colour: this.colour, width: this.panelWidth() }).ask(panel, {
+      question,
+      signal,
+      cancelQuestion,
+      rawInput: this.approvalInput,
+      pauseRawInput: this.pauseApprovalInput,
+      resumeRawInput: this.resumeApprovalInput,
+      allowTask: false,
+    });
+    if (answer.decision === "allow-once") {
+      this.write(`${this.style("32;1", "✓ existing browser profile approved")}` + "\n");
+      return "allow";
+    }
+    if (answer.decision === "unavailable") {
+      this.write(`${this.style("33;1", "Profile approval cancelled; no existing browser was attached.")}` + "\n");
+      return "cancel";
+    }
+    this.write(`${this.style("2", "Existing browser profile denied; no personal browser state was attached.")}` + "\n");
+    return "deny";
   }
 
   private async askForMemoryApproval(
@@ -1093,7 +1617,7 @@ export class TerminalUi {
       return answer;
     }
     this.write(`${this.style("2", "Memory change denied; no entry was changed.")}\n`);
-    return answer;
+    return { decision: "deny", reason: "The user did not approve the memory change." };
   }
 
   async runTurn(message: string, signal?: AbortSignal): Promise<TurnResult> {
@@ -1122,6 +1646,8 @@ export class TerminalUi {
         (event) => this.handleComputer(event),
         this.computerApprovalQuestion,
         (event) => this.handleComputerApproval(event),
+        this.computerTaskApprovalQuestion,
+        this.existingProfileAuthorizationQuestion,
       );
       this.finishTurn(result);
       return result;
@@ -1201,6 +1727,22 @@ export class TerminalUi {
         () => readlineInterface.write("\n"),
       )
       : undefined;
+    this.computerTaskApprovalQuestion = this.interactive
+      ? (request, signal) => this.askForComputerTaskApproval(
+        request,
+        (prompt, callback) => readlineInterface.question(prompt, callback),
+        signal,
+        () => readlineInterface.write("\n"),
+      )
+      : undefined;
+    this.existingProfileAuthorizationQuestion = this.interactive
+      ? (request, signal) => this.askForExistingProfileAuthorization(
+        request,
+        (prompt, callback) => readlineInterface.question(prompt, callback),
+        signal,
+        () => readlineInterface.write("\n"),
+      )
+      : undefined;
     this.memoryApprovalQuestion = this.interactive
       ? (request, signal) => this.askForMemoryApproval(
         request,
@@ -1269,6 +1811,16 @@ export class TerminalUi {
           if (this.interactive) readlineInterface.prompt();
           continue;
         }
+        try {
+          if (await this.selectSession(value)) {
+            if (this.interactive) readlineInterface.prompt();
+            continue;
+          }
+        } catch (error) {
+          this.finishUnexpectedError(error);
+          if (this.interactive) readlineInterface.prompt();
+          continue;
+        }
         const command = parseTuiCommand(value);
         if (command) {
           let keepRunning = true;
@@ -1295,6 +1847,8 @@ export class TerminalUi {
       this.processApprovalQuestion = undefined;
       this.browserApprovalQuestion = undefined;
       this.computerApprovalQuestion = undefined;
+      this.computerTaskApprovalQuestion = undefined;
+      this.existingProfileAuthorizationQuestion = undefined;
       this.memoryApprovalQuestion = undefined;
       this.approvalInput = undefined;
       this.pauseApprovalInput = undefined;

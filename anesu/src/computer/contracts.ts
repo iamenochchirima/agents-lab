@@ -5,7 +5,31 @@
  * model never receives a driver object and cannot choose a driver method or a
  * raw selector/coordinate outside the action produced by the environment.
  */
+import type { ComputerTaskApprovalDecision, ComputerTaskApprovalRequest, ComputerTaskGrantState, ComputerTaskSpec } from "./task.js";
+import type { ComputerVerificationSpec } from "./verification.js";
+
 export type ComputerEnvironmentKind = "browser" | "ubuntu-x11-cua";
+
+/** Bounded, content-free proof of the Cua contract admitted for one runtime. */
+export interface ComputerRuntimeEvidence {
+  readonly provider: "cua";
+  readonly schemaVersion: string;
+  /** Installed TypeScript package and Rust runtime identities are diagnostic evidence. */
+  readonly packageVersion?: string;
+  readonly driverVersion?: string;
+  readonly contractVersion?: string;
+  readonly capabilityVersion?: string;
+  readonly capabilityFingerprint: string;
+  readonly requiredOperations: readonly string[];
+  /** Native visual-region support is optional and must be proven by both Cua operations. */
+  readonly visualRegionCapability?: "available" | "unavailable";
+}
+
+/** Content-free identity returned by the TypeSafe readiness contract. */
+export interface TypeSafeModelEvidence {
+  readonly requestedModel: string;
+  readonly resolvedModel: string;
+}
 
 /** A model confidence signal is a safety gate, never an approval decision. */
 export const MIN_COMPUTER_CONFIDENCE = 0.5;
@@ -61,8 +85,12 @@ export interface ComputerEnvironmentAction {
   readonly windowPid?: number;
   readonly windowId?: string;
   readonly windowSnapshotId?: string;
+  /** Code-owned native application-menu path derived from the current snapshot. */
+  readonly menuPath?: readonly string[];
   readonly position?: ComputerActionPosition;
   readonly endPosition?: ComputerActionPosition;
+  /** Element-bound text uses CUA's explicit semantic input route. */
+  readonly inputMethod?: "set_value" | "type_text";
   readonly text?: string;
   readonly key?: string;
   readonly modifiers?: readonly string[];
@@ -74,6 +102,13 @@ export interface ComputerEnvironmentResult {
   readonly ok: boolean;
   readonly status: "completed" | "unknown" | "refused";
   readonly summary: string;
+}
+
+/** A bounded native proof returned by an environment-owned verifier. */
+export interface ComputerEnvironmentVerification {
+  readonly status: "verified" | "unsatisfied" | "unknown";
+  readonly summary: string;
+  readonly evidence: Readonly<Record<string, string>>;
 }
 
 export interface ComputerApprovalRequest {
@@ -97,13 +132,30 @@ export interface ComputerApprovalRequest {
   readonly amount?: number;
   readonly targetLabel?: string;
   readonly targetRole?: string;
-  readonly targetSource?: "accessibility" | "screen";
+  readonly targetSource?: "accessibility" | "focused" | "screen";
+  /** Exact Cua application-menu path, when derived from the current snapshot. */
+  readonly menuPath?: readonly string[];
   readonly approvalTimeoutMs?: number;
   readonly warning: string;
+  /** The code-owned condition checked after this exact input, when available. */
+  readonly expectedVerification?: {
+    readonly kind: string;
+    readonly expected?: string;
+    readonly state?: string;
+  };
+  readonly step?: number;
+  readonly maxActions?: number;
+  /** Scope shown to the approver for a high-level compiled computer task. */
+  readonly taskId?: string;
+  readonly grantHash?: string;
+  readonly allowedTaskActions?: readonly string[];
+  /** The decision strategy selected for this action, when routed by auto mode. */
+  readonly strategy?: "traditional" | "typesafe" | "compare";
 }
 
 export type ComputerApprovalDecision =
   | { readonly decision: "allow-once" }
+  | { readonly decision: "allow-task"; readonly grantHash: string; readonly reason?: string }
   | { readonly decision: "deny"; readonly reason?: string }
   | { readonly decision: "unavailable"; readonly reason: string };
 
@@ -111,12 +163,25 @@ export type ComputerApprovalEvent =
   | { readonly type: "prepared"; readonly request: ComputerApprovalRequest }
   | { readonly type: "approval_decided"; readonly request: ComputerApprovalRequest; readonly decision: ComputerApprovalDecision };
 
+export interface ComputerTaskContext {
+  readonly task: ComputerTaskSpec;
+  readonly grant: ComputerTaskGrantState;
+}
+
+export type { ComputerTaskApprovalDecision, ComputerTaskApprovalRequest };
+
 export interface ComputerEnvironment {
   readonly kind: ComputerEnvironmentKind;
   readonly sessionId: string;
   readiness(): ComputerEnvironmentReadiness;
+  /** Optional read-only capability/app proof; must not launch or mutate state. */
+  preflight?(signal?: AbortSignal): Promise<ComputerEnvironmentReadiness>;
   start(signal?: AbortSignal): Promise<ComputerEnvironmentReadiness>;
   observe(signal?: AbortSignal): Promise<ComputerEnvironmentObservation>;
+  /** Optional host-native postcondition proof; deterministic fakes may omit it. */
+  verify?(spec: ComputerVerificationSpec, observation: ComputerEnvironmentObservation, signal?: AbortSignal): Promise<ComputerEnvironmentVerification | undefined>;
+  /** Optional presentation-only feedback for an approved action; it must not dispatch application input. */
+  presentAction?(action: ComputerEnvironmentAction, signal?: AbortSignal): Promise<void>;
   execute(action: ComputerEnvironmentAction, signal?: AbortSignal): Promise<ComputerEnvironmentResult>;
   close(signal?: AbortSignal): Promise<void>;
 }
