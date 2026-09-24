@@ -364,6 +364,7 @@ test("interactive TUI renders unexpected turn errors and remains usable", { time
     workspaceRoot: "/tmp/workspace",
     evidenceDirectory: "/tmp/evidence",
     toolNames: [],
+    readTranscript: async () => [],
     runTurn: async (message: string, _signal: AbortSignal | undefined, onText?: (text: string) => void) => {
       calls += 1;
       if (message === "first") throw new Error("simulated persistence failure");

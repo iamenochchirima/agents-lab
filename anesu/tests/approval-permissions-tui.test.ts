@@ -347,6 +347,7 @@ test("TUI denial of an existing-profile request is returned to the Cua authoriza
     workspaceRoot: "/workspace",
     evidenceDirectory: sessionDirectory,
     toolNames: ["computer"],
+    readTranscript: async () => [],
     runTurn: async (...args: unknown[]) => {
       const authorize = args[17] as ((value: CuaAuthorizationRequestView) => Promise<CuaAuthorizationDecision>) | undefined;
       const decision = authorize ? await authorize(request) : "cancel";
