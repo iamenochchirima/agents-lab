@@ -22,6 +22,7 @@ export type BrowserProfileMode = "isolated_new" | "existing_profile";
 export type BrowserSearchProvider = "bing" | "duckduckgo" | "google";
 export type BrowserScrollDirection = "up" | "down" | "left" | "right";
 export type BrowserInputRoute = "trusted" | "dom_event";
+export type BrowserTypingMode = "insert_text" | "keystrokes";
 export type BrowserPointerAction = "hover" | "right_click" | "double_click" | "drag";
 export type BrowserActionKind = "click" | "type" | "press" | "select" | "scroll" | "upload" | "download" | "pointer";
 export type BrowserApprovalAction = BrowserActionKind | "dialog";
@@ -50,6 +51,7 @@ export interface BrowserElementReference {
   readonly documentId: BrowserDocumentId;
   /** Bounded semantic_v2 action declarations from the same snapshot. */
   readonly actions?: readonly string[];
+  readonly states?: Readonly<Partial<Record<"checked" | "selected" | "expanded" | "disabled" | "required", boolean>>>;
   /** Current editable value when semantic_v2 exposes one; never treated as an opaque ref. */
   readonly currentValue?: string;
   readonly role?: string;
@@ -103,6 +105,8 @@ export interface BrowserActionRequest {
   readonly reference?: BrowserElementReference;
   readonly destinationReference?: BrowserElementReference;
   readonly pointerAction?: BrowserPointerAction;
+  /** Optional Cua delivery mode for typed text; omitted uses Cua's default. */
+  readonly typingMode?: BrowserTypingMode;
   readonly text?: string;
   readonly key?: string;
   /** Exact visible option label for a native select control. */

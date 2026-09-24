@@ -164,7 +164,7 @@ test("gateway models click, type, and pointer as coarse action results", async (
   const gateway = new CuaBrowserGateway(driver, "browser_actions_1");
 
   const click = await gateway.click({ targetId: "target-1", tabId: "tab-1", ref: "p1:1", inputRoute: "dom_event" });
-  const typed = await gateway.type({ targetId: "target-1", tabId: "tab-1", ref: "p1:2", text: "hello", replace: true });
+  const typed = await gateway.type({ targetId: "target-1", tabId: "tab-1", ref: "p1:2", text: "hello", mode: "keystrokes", replace: true });
   const pointer = await gateway.pointer({ targetId: "target-1", tabId: "tab-1", action: "hover", ref: "p1:3" });
   const scrolled = await gateway.pointer({ targetId: "target-1", tabId: "tab-1", action: "scroll", ref: "p1:5", deltaY: 400, inputRoute: "dom_event" });
 
@@ -181,6 +181,7 @@ test("gateway models click, type, and pointer as coarse action results", async (
   const typeCall = driver.calls.find((call) => call.name === "browser_type");
   assert.ok(typeCall);
   assert.equal(JSON.parse(typeCall.argumentsJson).input_route, undefined);
+  assert.equal(JSON.parse(typeCall.argumentsJson).mode, "keystrokes");
   assert.deepEqual(pointer, { kind: "ok", value: { effect: "confirmed", route: "trusted_input" } });
   assert.deepEqual(scrolled, { kind: "ok", value: { effect: "confirmed", route: "trusted_input" } });
   const scrollCall = driver.calls.find((call) => call.name === "browser_pointer" && JSON.parse(call.argumentsJson).action === "scroll");

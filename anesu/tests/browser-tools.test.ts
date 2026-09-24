@@ -307,7 +307,7 @@ class InjectionToolAdapter extends ToolTestAdapter {
   }
 }
 
-function createTools(adapter: ToolTestAdapter, artifactStore?: BrowserArtifactStore, resolveUpload?: (requestedPath: string) => Promise<{ readonly requestedPath: string; readonly absolutePath: string; readonly byteSize: number; readonly identity: { readonly device: number; readonly inode: number; readonly mode: number; readonly size: number; readonly modifiedAtMs: number; readonly contentHash: string } }>, redactionSecrets?: readonly string[], maxOutputBytes = 32_000, searchProvider: "bing" | "duckduckgo" | "google" = "bing"): BrowserTools {
+function createTools(adapter: ToolTestAdapter, artifactStore?: BrowserArtifactStore, resolveUpload?: (requestedPath: string) => Promise<{ readonly requestedPath: string; readonly absolutePath: string; readonly byteSize: number; readonly identity: { readonly device: number; readonly inode: number; readonly mode: number; readonly size: number; readonly modifiedAtMs: number; readonly contentHash: string } }>, redactionSecrets?: readonly string[], maxOutputBytes = 32_000, searchProvider: "bing" | "duckduckgo" | "google" = "bing", inputRoute?: "trusted" | "dom_event"): BrowserTools {
   const urlPolicy = new BrowserUrlPolicy({
     allowedLocalHosts: ["127.0.0.1"],
     dnsLookup: async () => ["127.0.0.1"],
@@ -317,7 +317,7 @@ function createTools(adapter: ToolTestAdapter, artifactStore?: BrowserArtifactSt
     urlPolicy,
     ...(artifactStore ? { artifactStore } : {}),
   });
-  return new BrowserTools({ manager, maxOutputBytes, maxWaitMs: 100, resolveUpload, redactionSecrets, searchProvider });
+  return new BrowserTools({ manager, maxOutputBytes, maxWaitMs: 100, resolveUpload, redactionSecrets, searchProvider, inputRoute });
 }
 
 test("browser_open starts an exact task-scoped session when the model opens the first page", async () => {
@@ -463,11 +463,24 @@ test("browser_search builds a Bing results URL and browser tools describe curren
     assert.match(tabIdDescription ?? "", /never a numeric position/u);
     assert.match(String(open?.description), /exact observedTab\.url/u);
     assert.match(String(open?.description), /do not repeat the URL/u);
+    assert.match(String(snapshot?.description), /end of each user turn/u);
     assert.match(String(click?.description), /do not repeat that action/u);
     assert.match(String(click?.description), /fresh page evidence/u);
+    assert.match(String(click?.description), /native controls/u);
   } finally {
     await tools.execute("browser_close", "bing-search-close", {}, context);
   }
+});
+
+test("browser snapshot tells the model the configured Cua click route", async () => {
+  const adapter = new ToolTestAdapter();
+  const tools = createTools(adapter, undefined, undefined, undefined, 8_000, "bing", "dom_event");
+  await tools.execute("browser_start", "route_start", {}, {});
+  await tools.execute("browser_open", "route_open", { url: "http://127.0.0.1:4173/form-controls" }, {});
+
+  const result = await tools.execute("browser_snapshot", "route_snapshot", {}, {});
+  assert.equal(result.ok, true, result.content);
+  assert.equal((JSON.parse(result.content) as { readonly configuredInputRoute?: string }).configuredInputRoute, "dom_event");
 });
 
 test("listing Cua tabs invalidates old refs and requires a fresh snapshot before clicking", async () => {
@@ -921,6 +934,16 @@ test("browser tools expose only the implemented model-facing surface", () => {
   assert.ok(snapshot);
   assert.match(snapshot.description, /full reference exactly as returned by the most recent snapshot/u);
   assert.match(snapshot.description, /omit scopeRef for a full-page snapshot/u);
+  const click = tools.definitions.find((definition) => definition.name === "browser_click");
+  assert.ok(click);
+  assert.match(click.description, /prefer browser_type directly rather than opening its picker/u);
+  const type = tools.definitions.find((definition) => definition.name === "browser_type");
+  assert.ok(type);
+  assert.deepEqual(type.inputSchema.properties?.mode, { type: "string", enum: ["insert_text", "keystrokes"] });
+  assert.match(type.description, /type directly into that ref before opening its picker/u);
+  assert.match(type.description, /unambiguous Day\/Month\/Year spinbutton group/u);
+  assert.match(type.description, /approval shows the exact text sent/u);
+  assert.match(type.description, /not the calendar's focused day/u);
 });
 
 test("legacy browser_open_and_click is not exposed or executable", async () => {
@@ -961,10 +984,72 @@ test("browser mutations reject refs that do not declare the selected action", as
   );
 });
 
-test("browser native select controls are not exposed by the Cua model-facing surface", async () => {
+test("browser date refs use Cua keystrokes while the model still selects the field and value", async () => {
+  class DateInputAdapter extends ToolTestAdapter {
+    override async snapshot(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, signal?: AbortSignal): Promise<BrowserSnapshot> {
+      const snapshot = await super.snapshot(sessionId, tabId, signal);
+      return {
+        ...snapshot,
+        references: [
+          { ...snapshot.references[0]!, role: "date", name: "Preferred date" },
+          { value: "@day", documentId: snapshot.documentId, actions: ["click"], role: "spinbutton", name: "Day Day" },
+          { value: "@month", documentId: snapshot.documentId, actions: ["click"], role: "spinbutton", name: "Month Month" },
+          { value: "@year", documentId: snapshot.documentId, actions: ["click"], role: "spinbutton", name: "Year Year" },
+        ],
+      };
+    }
+  }
+  const adapter = new DateInputAdapter();
+  const tools = createTools(adapter);
+  await tools.execute("browser_start", "date_start", {}, {});
+  await tools.execute("browser_open", "date_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+  await tools.execute("browser_snapshot", "date_snapshot", {}, {});
+  let approval: import("../src/browser/index.js").BrowserApprovalRequest | undefined;
+  const result = await tools.execute("browser_type", "date_type", {
+    ref: "@e1",
+    text: "2026-10-12",
+    mode: "insert_text",
+  }, { approveBrowser: async (request) => { approval = request; return { decision: "allow-once" }; } });
+
+  assert.equal(result.ok, true);
+  assert.equal(approval?.targetName, "Preferred date");
+  assert.equal(approval?.text, "12/10/2026");
+  assert.equal(approval?.typingMode, "keystrokes");
+  assert.equal(adapter.lastAction?.typingMode, "keystrokes");
+  assert.equal(adapter.lastAction?.text, "12/10/2026");
+});
+
+test("browser date refs refuse ISO typing when Cua does not identify the date-part order", async () => {
+  class UnlabelledDateInputAdapter extends ToolTestAdapter {
+    override async snapshot(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, signal?: AbortSignal): Promise<BrowserSnapshot> {
+      const snapshot = await super.snapshot(sessionId, tabId, signal);
+      return {
+        ...snapshot,
+        references: [{ ...snapshot.references[0]!, role: "date", name: "Preferred date" }],
+      };
+    }
+  }
+  const adapter = new UnlabelledDateInputAdapter();
+  const tools = createTools(adapter);
+  await tools.execute("browser_start", "date_ambiguous_start", {}, {});
+  await tools.execute("browser_open", "date_ambiguous_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+  await tools.execute("browser_snapshot", "date_ambiguous_snapshot", {}, {});
+
+  await assert.rejects(
+    tools.execute("browser_type", "date_ambiguous_type", { ref: "@e1", text: "2026-10-12" }, {
+      approveBrowser: async () => ({ decision: "allow-once" }),
+    }),
+    (error: unknown) => error instanceof BrowserError
+      && error.browserCode === "invalid-action"
+      && /does not expose one unambiguous Day\/Month\/Year/u.test(error.message),
+  );
+  assert.equal(adapter.actionCount, 0);
+});
+
+test("browser native select controls remain unavailable through the Cua model-facing surface", async () => {
   const tools = createTools(new ToolTestAdapter());
   await assert.rejects(
-    tools.execute("browser_select", "call_select", { ref: "@e1", value: "South Africa" }, {}),
+    tools.execute("browser_select", "call_select", { ref: "@e1", value: "Product" }, {}),
     /Unknown browser tool 'browser_select'/u,
   );
 });
@@ -1514,17 +1599,19 @@ test("a browser task grant covers observed links but leaves button clicks for ex
   await inputTools.execute("browser_open", "input_open", { url: "http://127.0.0.1:4173/fixture" }, inputContext);
   await inputTools.execute("browser_snapshot", "input_snapshot", {}, inputContext);
   let inputApproval: import("../src/browser/index.js").BrowserApprovalRequest | undefined;
-  const typed = await inputTools.execute("browser_type", "input_type", { ref: "@e1", text: "quarterly report" }, {
+  const typed = await inputTools.execute("browser_type", "input_type", { ref: "@e1", text: "quarterly report", mode: "keystrokes" }, {
     ...inputContext,
     approveBrowser: async (request) => { inputApproval = request; return { decision: "allow-once" }; },
   });
   assert.equal(typed.ok, true);
   assert.equal(inputApproval?.action, "type");
   assert.equal(inputApproval?.text, "quarterly report");
+  assert.equal(inputApproval?.typingMode, "keystrokes");
   assert.equal(inputApproval?.targetRole, "searchbox");
   assert.equal(inputApproval?.targetName, "Search");
   assert.equal(inputApproval?.origin, "http://127.0.0.1:4173");
   assert.equal(inputApproval?.approvalScope, "action");
+  assert.equal(inputAdapter.lastAction?.typingMode, "keystrokes");
 });
 
 test("browser wait is bounded while screenshot artifacts remain unavailable through Cua", async () => {

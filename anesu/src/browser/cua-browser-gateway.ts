@@ -94,6 +94,7 @@ export interface BrowserSemanticRef {
   readonly name?: string;
   readonly value?: string;
   readonly actions: readonly string[];
+  readonly states?: Readonly<Partial<Record<"checked" | "selected" | "expanded" | "disabled" | "required", boolean>>>;
   readonly destinationRef?: string;
   readonly frame: string;
   readonly visibility: string;
@@ -353,12 +354,18 @@ function decodeSemanticRef(value: unknown, index: number): BrowserSemanticRef {
   if (!Array.isArray(actions) || actions.length > MAX_REF_ACTIONS || actions.some((action) => typeof action !== "string" || action.length === 0 || Buffer.byteLength(action, "utf8") > MAX_ID_BYTES)) {
     throw new CuaBrowserGatewayError("malformed-result", `Cua semantic ref ${index}.actions is invalid.`);
   }
+  const rawStates = isRecord(value.states) ? value.states : undefined;
+  const stateNames = ["checked", "selected", "expanded", "disabled", "required"] as const;
+  const states = rawStates
+    ? Object.fromEntries(stateNames.flatMap((name) => typeof rawStates[name] === "boolean" ? [[name, rawStates[name]]] : [])) as Partial<Record<typeof stateNames[number], boolean>>
+    : undefined;
   return {
     ref: boundedString(value.ref, `refs[${index}].ref`, MAX_ID_BYTES),
     role: boundedString(value.role, `refs[${index}].role`, MAX_ID_BYTES),
     ...(value.name === undefined || value.name === null ? {} : { name: boundedString(value.name, `refs[${index}].name`) }),
     ...(value.value === undefined || value.value === null ? {} : { value: boundedString(value.value, `refs[${index}].value`) }),
     actions: actions as string[],
+    ...(states && Object.keys(states).length > 0 ? { states } : {}),
     ...(value.destination_ref === undefined || value.destination_ref === null ? {} : { destinationRef: boundedString(value.destination_ref, `refs[${index}].destination_ref`, MAX_ID_BYTES) }),
     frame: boundedString(value.frame, `refs[${index}].frame`, MAX_ID_BYTES),
     visibility: boundedString(value.visibility, `refs[${index}].visibility`, MAX_ID_BYTES),

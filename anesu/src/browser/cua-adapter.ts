@@ -317,6 +317,7 @@ function semanticSnapshot(value: Record<string, unknown> | BrowserSnapshotOutput
     readonly name?: string;
     readonly type?: string;
     readonly destinationRef?: string;
+    readonly states?: Readonly<Partial<Record<"checked" | "selected" | "expanded" | "disabled" | "required", boolean>>>;
   }> => {
     const ref = objectValue(raw);
     const valueRef = textValue(ref?.ref, 256);
@@ -340,6 +341,9 @@ function semanticSnapshot(value: Record<string, unknown> | BrowserSnapshotOutput
       ...(name ? { name } : {}),
       ...(type ? { type } : {}),
       ...(currentValue !== undefined ? { currentValue } : {}),
+      ...(ref?.states && typeof ref.states === "object" && !Array.isArray(ref.states)
+        ? { states: ref.states as Readonly<Partial<Record<"checked" | "selected" | "expanded" | "disabled" | "required", boolean>>> }
+        : {}),
       ...(destinationRef ? { destinationRef } : {}),
     }];
   });
@@ -861,7 +865,23 @@ export class CuaBrowserAdapter implements BrowserAdapter {
         if (inputRoute !== "trusted") {
           throw new BrowserError("browser-input-trust-unavailable", "Cua's installed browser_type contract has no synthetic DOM input route; the task must use trusted browser typing.");
         }
-        actionOutput = gatewayValue<BrowserActionOutput>(await session.gateway.type({ targetId: managed.targetId, tabId, ref, text: request.text, replace: true }, signal), "browser_type");
+        const isDateInput = request.reference.role?.toLocaleLowerCase() === "date";
+        if (isDateInput && request.reference.currentValue !== undefined && request.reference.currentValue !== "") {
+          throw new BrowserError("invalid-action", "Cua's typed browser route cannot safely replace a known non-empty date control.");
+        }
+        // Cua's replace=true path selects the existing value before typing.
+        // Chromium date inputs do not support that text-selection operation;
+        // insert into an observed date ref instead. When Cua omits its value,
+        // the user-directed type action may still run; Anesu must re-observe
+        // the date before reporting success and must not replay an uncertain type.
+        actionOutput = gatewayValue<BrowserActionOutput>(await session.gateway.type({
+          targetId: managed.targetId,
+          tabId,
+          ref,
+          text: request.text,
+          ...(request.typingMode === undefined ? {} : { mode: request.typingMode }),
+          replace: !isDateInput,
+        }, signal), "browser_type");
       } else if (request.kind === "press") {
         if (!request.key || !SUPPORTED_BROWSER_KEYS.has(request.key)) {
           throw new BrowserError("invalid-action", "Cua browser key input is limited to Enter, Tab, Escape, Space, Backspace, Delete, and arrow keys.");

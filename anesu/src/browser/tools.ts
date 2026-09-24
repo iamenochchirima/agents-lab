@@ -27,6 +27,7 @@ import type {
   BrowserWaitResult,
   BrowserScrollDirection,
   BrowserPointerAction,
+  BrowserTypingMode,
   BrowserProfileMode,
   BrowserSearchProvider,
 } from "./contracts.js";
@@ -54,6 +55,7 @@ export interface BrowserApprovalRequest {
   /** Task grants cover routine navigation/viewport work; consequential input stays one-action approved. */
   readonly approvalScope?: "task" | "action";
   readonly inputRoute?: BrowserInputRoute;
+  readonly typingMode?: BrowserTypingMode;
   readonly reference: string;
   readonly documentId: BrowserDocumentId;
   readonly text?: string;
@@ -152,7 +154,7 @@ const BROWSER_TOOL_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
   browser_tabs: [],
   browser_snapshot: ["tabId", "scopeRef", "query", "continuation"],
   browser_click: ["ref"],
-  browser_type: ["ref", "text"],
+  browser_type: ["ref", "text", "mode"],
   browser_press: ["ref", "key"],
   browser_scroll: ["ref", "direction", "amount"],
   browser_wait: ["tabId", "milliseconds"],
@@ -230,6 +232,7 @@ function nonReplayableActionKey(
     inputRoute: request.inputRoute ?? "default",
     target,
     ...(request.text === undefined ? {} : { text: request.text }),
+    ...(request.typingMode === undefined ? {} : { typingMode: request.typingMode }),
     ...(request.key === undefined ? {} : { key: request.key }),
     ...(request.value === undefined ? {} : { value: request.value }),
     ...(request.direction === undefined ? {} : { direction: request.direction }),
@@ -243,6 +246,50 @@ function nonReplayableActionKey(
 
 function hasUncertainEffect(result: BrowserActionResult): boolean {
   return result.effect === "partial" || result.effect === "unverifiable" || result.effect === "suspected_noop";
+}
+
+function nativeDateTypingText(
+  requestedText: string,
+  references: readonly BrowserElementReference[],
+  target: BrowserElementReference,
+): string {
+  if (target.role?.trim().toLocaleLowerCase() !== "date" || !/^\d{4}-\d{2}-\d{2}$/u.test(requestedText)) {
+    return requestedText;
+  }
+
+  const [yearText, monthText, dayText] = requestedText.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const daysInMonth = month === 2
+    ? (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28)
+    : [4, 6, 9, 11].includes(month) ? 30 : 31;
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > daysInMonth) {
+    throw new BrowserError("invalid-action", `Date '${requestedText}' is not a valid calendar date; no browser input was sent.`);
+  }
+
+  const dateTargets = references.filter((reference) => reference.role?.trim().toLocaleLowerCase() === "date");
+  const dateParts = references
+    .filter((reference) => reference.role?.trim().toLocaleLowerCase() === "spinbutton")
+    .map((reference): "day" | "month" | "year" | undefined => {
+      const tokens = reference.name?.trim().toLocaleLowerCase().match(/[a-z]+/gu) ?? [];
+      const matches = new Set(tokens.filter((token) => token === "day" || token === "month" || token === "year"));
+      if (matches.size !== 1) return undefined;
+      for (const part of ["day", "month", "year"] as const) if (matches.has(part)) return part;
+      return undefined;
+    });
+  const parts = new Set(dateParts);
+  if (dateTargets.length !== 1 || dateTargets[0]?.value !== target.value
+    || dateParts.length !== 3 || parts.size !== 3
+    || !parts.has("day") || !parts.has("month") || !parts.has("year")) {
+    throw new BrowserError(
+      "invalid-action",
+      "Cua's current snapshot does not expose one unambiguous Day/Month/Year component group for this date field; no browser input was sent.",
+    );
+  }
+
+  const values = { year: yearText!, month: monthText!, day: dayText! };
+  return dateParts.map((part) => values[part!]).join("/");
 }
 
 function safeText(value: string, secrets: readonly string[]): string {
@@ -384,18 +431,18 @@ export const BROWSER_TOOL_DEFINITIONS = [
   },
   {
     name: "browser_snapshot",
-    description: "Return a bounded semantic_v2 snapshot of the active browser tab. A query, scope reference, or one single-use continuation may narrow the read. If using scopeRef, pass a full reference exactly as returned by the most recent snapshot; omit scopeRef for a full-page snapshot. Returned element references are short-lived. After a new user turn or a link that may open a tab, use a current opaque tab ID from browser_tabs; omit tabId to inspect the active tab when Cua has already identified it. If Cua refuses because the live page origin is outside the manifest, Anesu may return an origin handoff from a fresh exact bind. Use that result if present; do not repeat the prior action. If rebinding or URL validation is unavailable, stop and report the limitation.",
+    description: "Return a bounded semantic_v2 snapshot of the active browser tab. A query, scope reference, or one single-use continuation may narrow the read. If using scopeRef, pass a full reference exactly as returned by the most recent snapshot; omit scopeRef for a full-page snapshot. Refs expire at the end of each user turn and every newer snapshot invalidates older refs. Before the first action in each turn, use a fresh snapshot; use only refs from that snapshot. After a new user turn or a link that may open a tab, use a current opaque tab ID from browser_tabs; omit tabId to inspect the active tab when Cua has already identified it. The result includes Anesu's configured click route so the model can account for its limits. If Cua refuses because the live page origin is outside the manifest, Anesu may return an origin handoff from a fresh exact bind. Use that result if present; do not repeat the URL that led to the refusal or retry the preceding click. If rebinding or URL validation is unavailable, stop and report the limitation.",
     inputSchema: { type: "object", properties: { tabId: { type: "string", description: "Opaque tab ID exactly as returned by browser_tabs, never a numeric position. Omit to inspect the current active tab." }, scopeRef: { type: "string" }, query: { type: "string" }, continuation: { type: "string" } }, additionalProperties: false },
   },
   {
     name: "browser_click",
-    description: "Click an element from the latest browser snapshot. A bounded browser-task approval may cover an observed link; buttons and other controls require approval for this exact action and target. After a link click, inspect the current tabs and take a fresh snapshot. If Cua reports partial, unverifiable, or suspected-no-op effect, do not repeat that action; use fresh page evidence to decide what to do next. A dispatched click alone does not prove navigation.",
+    description: "Click an element from the latest browser snapshot. A bounded browser-task approval may cover an observed link; buttons and other controls require approval for this exact action and target. After a link click, inspect the current tabs and take a fresh snapshot. If Cua reports partial, unverifiable, or suspected-no-op effect, do not repeat that action; use fresh page evidence to decide what to do next. The configured dom_event route is synthetic and may not activate native controls that require trusted input. Check the fresh checked/selected state before continuing, and report a route limitation if it did not change. For a native date ref that declares type, prefer browser_type directly rather than opening its picker just to enter a known date; on the current Cua/Chromium route, typing with the picker open did not change the field. A dispatched click alone does not prove navigation or selection.",
     inputSchema: { type: "object", properties: { ref: { type: "string" } }, required: ["ref"], additionalProperties: false },
   },
   {
     name: "browser_type",
-    description: "Fill an element from the latest browser snapshot. The exact target and text require one-action approval; an approved browser task does not authorize typing. This tool never reads the existing field value.",
-    inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" } }, required: ["ref", "text"], additionalProperties: false },
+    description: "Fill an editable element using a current ref from the latest browser snapshot. The exact target and value require one-action approval; an approved browser task does not authorize typing. Use only text the user supplied. Ordinary text uses Cua's insert_text mode. For a native date ref that declares type, type directly into that ref before opening its picker; typing while the picker is open may leave the field unchanged. Native date refs use Cua keystrokes; when the user value is YYYY-MM-DD and this snapshot exposes one unambiguous Day/Month/Year spinbutton group, Anesu converts it to that observed component order before approval. The approval shows the exact text sent. After typing, take a fresh snapshot and verify the date field's canonical value exactly, not the calendar's focused day. If its parts are unavailable or the observed value differs, stop and report that evidence. If another control does not support typing, use a different operation only when a fresh snapshot exposes it. This tool never reads the existing field value.",
+    inputSchema: { type: "object", properties: { ref: { type: "string" }, text: { type: "string" }, mode: { type: "string", enum: ["insert_text", "keystrokes"] } }, required: ["ref", "text"], additionalProperties: false },
   },
   {
     name: "browser_press",
@@ -478,7 +525,6 @@ export class BrowserTools {
         case "browser_click": return await this.approvedAction("click", callId, args, context);
         case "browser_type": return await this.approvedAction("type", callId, args, context);
         case "browser_press": return await this.approvedAction("press", callId, args, context);
-        case "browser_select": return await this.approvedAction("select", callId, args, context);
         case "browser_scroll": return await this.approvedAction("scroll", callId, args, context);
         case "browser_pointer": return await this.approvedAction("pointer", callId, args, context);
         case "browser_wait": return await this.wait(args, context.signal);
@@ -905,6 +951,7 @@ export class BrowserTools {
     const secrets = this.options.redactionSecrets ?? [];
     const safeSnapshot = {
       ...snapshot,
+      ...(this.options.inputRoute === undefined ? {} : { configuredInputRoute: this.options.inputRoute }),
       url: safeUrl(snapshot.url, secrets),
       title: safeText(snapshot.title, secrets),
       content: `[Untrusted page content begins]\n${safeText(snapshot.content, secrets)}\n[Untrusted page content ends]`,
@@ -1305,7 +1352,8 @@ export class BrowserTools {
     if (!snapshot || snapshot.sessionId !== sessionId) {
       throw new BrowserError("stale-reference", "Take a browser snapshot before using an element reference.");
     }
-    const text = action === "type" ? stringArgument(args, "text", true) : undefined;
+    const requestedText = action === "type" ? stringArgument(args, "text", true) : undefined;
+    const requestedTypingMode = action === "type" ? args.mode as BrowserTypingMode | undefined : undefined;
     const key = action === "press" ? stringArgument(args, "key", true) : undefined;
     const value = action === "select" ? stringArgument(args, "value", true) : undefined;
     const direction = action === "scroll" ? args.direction as BrowserScrollDirection : undefined;
@@ -1315,8 +1363,20 @@ export class BrowserTools {
     if (value !== undefined && (value.length === 0 || value.length > 256)) {
       throw new ToolExecutionError("Tool argument 'value' must contain between 1 and 256 characters.");
     }
+    if (requestedTypingMode !== undefined && requestedTypingMode !== "insert_text" && requestedTypingMode !== "keystrokes") {
+      throw new ToolExecutionError("Tool argument 'mode' must be insert_text or keystrokes.");
+    }
     const declaredAction = action === "pointer" ? pointerAction : action;
     const currentReference = this.currentReference(snapshot, ref, declaredAction ?? action);
+    const text = action === "type" && requestedText !== undefined
+      ? nativeDateTypingText(requestedText, snapshot.references, currentReference)
+      : requestedText;
+    // Cua's bulk Input.insertText route does not reliably set segmented native
+    // date controls. Translate the observed semantic role to Cua's documented
+    // key-event mode here; the model still chooses the target and user value.
+    const typingMode = action === "type" && currentReference?.role?.toLocaleLowerCase() === "date"
+      ? "keystrokes" as const
+      : requestedTypingMode;
     if (action === "pointer" && pointerAction === "drag") {
       if (!destinationReference) throw new BrowserError("invalid-action", "A browser drag requires a current destination reference.");
       if (currentReference?.destinationRef !== destinationReference) {
@@ -1341,6 +1401,7 @@ export class BrowserTools {
       reference: ref,
       documentId: asBrowserDocumentId(snapshot.documentId),
       ...(text !== undefined ? { text } : {}),
+      ...(typingMode !== undefined ? { typingMode } : {}),
       ...(key !== undefined ? { key } : {}),
       ...(value !== undefined ? { value } : {}),
       ...(direction !== undefined ? { direction } : {}),
@@ -1382,6 +1443,7 @@ export class BrowserTools {
       ...(destination ? { destinationReference: destination } : {}),
       ...(pointerAction !== undefined ? { pointerAction } : {}),
       ...(text !== undefined ? { text } : {}),
+      ...(typingMode !== undefined ? { typingMode } : {}),
       ...(key !== undefined ? { key } : {}),
       ...(value !== undefined ? { value } : {}),
       ...(direction !== undefined ? { direction } : {}),

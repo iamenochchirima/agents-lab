@@ -292,6 +292,13 @@ unproven. No estimate guarantees an upstream Cua or provider change.
 - [x] A real TUI task fills a current text field with the value intended by the
       user, verifies it from a fresh semantic snapshot, and does not submit the
       form unless submission was requested and approved.
+- [x] Generic form controls beyond text entry are covered by the separate
+      [browser form-controls plan](anesu-browser-form-controls.md): a checkbox,
+      custom dropdown, and native date input passed a natural-language fill-only
+      TUI run with fresh-state confirmation. Native `<select>` activation and
+      date-picker navigation remain unavailable on the current Ubuntu/Cua
+      route; radio controls and multiple date fields were not live-tested. The
+      text-field acceptance above is not the evidence for those controls.
 - [x] On a user-named public site, a real TUI request follows a link and uses
       a supported page control through current Cua references, then reports
       the observed result or an explicit unknown outcome.

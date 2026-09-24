@@ -98,14 +98,37 @@ first tab in a list.
 
 The current public Cua TypeScript SDK does not expose the trusted MCP-host approval
 evidence required for browser downloads. Downloads are therefore not registered as a
-model-facing tool and cannot reserve or create an artifact. Screenshots and native
-select controls are also unavailable through this typed slice. The upload tool is
-implemented for exact regular workspace files with size and identity checks. Name the
-workspace path in the request (quote it if the path contains spaces); Anesu resolves it
-inside the workspace and asks for approval of that path and size. The model should use
-the observed file input's `upload` action directly, then take a fresh snapshot. The tool
-result identifies page verification as pending; a Cua dispatch acknowledgement alone is
-not proof that the file appears in the page.
+model-facing tool and cannot reserve or create an artifact. The typed API can expose
+native `<select>` options as semantic refs, but this does not make them operable on the
+default Ubuntu route: Cua's synthetic `dom_event` click left the option unselected in a
+fresh snapshot, and its trusted click route refuses standalone Linux Chromium rather than
+activating the window. The pinned semantic action contract offers a native select or its
+option refs as click targets, not editable/type targets; Anesu's `browser_press` is
+implemented through Cua `browser_type` keystrokes and still requires a current ref that
+declares the operation. There is no supported keyboard-selection primitive for this
+control in the current typed API. Do not claim selection from an exposed option ref alone
+or guess a sequence of arrow keys.
+
+Common form controls were verified through the real TUI and typed Cua browser API on
+2026-09-24: a text field, checkbox, custom accessible dropdown, and a native date input.
+For a date input, the model may choose the current `date` ref and Anesu sends Cua's
+documented `keystrokes` mode. When the user supplied an ISO date and the fresh snapshot
+exposes one unambiguous Day/Month/Year spinbutton group, Anesu translates it to that
+observed order before showing the exact text for approval. The live Ubuntu fixture
+accepted `12/10/2026` and a fresh snapshot reported the canonical value `2026-10-12`.
+Prefer typing directly into the date ref before opening its picker: typing after opening
+the picker did not change the field in a live attempt. A highlighted calendar day is not
+evidence of the field's stored value. Native date-picker month navigation and native
+`<select>` activation remain unavailable through the current Ubuntu input route. Multiple
+date fields in one snapshot and localized date-part labels have not been verified.
+
+Screenshots remain unavailable through this typed slice. The upload tool is implemented
+for exact regular workspace files with size and identity checks. Name the workspace path
+in the request (quote it if the path contains spaces); Anesu resolves it inside the
+workspace and asks for approval of that path and size. The model should use the observed
+file input's `upload` action directly, then take a fresh snapshot. The tool result
+identifies page verification as pending; a Cua dispatch acknowledgement alone is not
+proof that the file appears in the page.
 
 Cua refusals remain typed at the gateway boundary, including setup or consent
 requirements, unsupported products, origin violations, ambiguous binding, stale refs,
@@ -146,6 +169,28 @@ required by the acceptance path.
   choice admitted only this bounded task. This passes the verified form-entry acceptance
   item. Focused TUI tests also verify that approval/activity output uses target names and
   roles rather than opaque Cua element, document, or session IDs.
+- On 2026-09-24, a disposable Ubuntu/GNOME X11 TUI run on the checked-in `/form-controls`
+  fixture filled First name with `Ada`, checked the terms box, and selected `Product` in
+  the custom accessible Company type dropdown. A later fresh snapshot confirmed those
+  values, left Industry at `Choose an industry`, and showed `Not submitted`. An incorrect
+  proposed click on the native `Technology` option was denied before dispatch; the model
+  then selected the requested custom `Product` option.
+- On 2026-09-24, a combined natural-language fill-only TUI request on the same fixture
+  set First name to `Amina`, checked the terms box, selected `Product`, and set Preferred
+  date to `2026-10-12`. The model initially proposed opening the date picker; after that
+  action was denied, it used the current date ref and Cua `keystrokes` with the observed
+  Day/Month/Year order. A fresh snapshot confirmed all requested values; a separate
+  read-only turn reconfirmed them, left Industry unchanged, and confirmed the form was not
+  submitted. This proves the tested fixture/control combination, not every site's widget.
+- The same Cua 0.28.2 runtime exposed `Technology` and `Design` as refs after opening the
+  fixture's native `<select>`, but a `dom_event` click did not change the selected state in
+  the next snapshot. In a separate date attempt, Cua opened the native date picker but
+  refused its `Show next month` action; typing while that picker was open also did not
+  change the field. Direct date-ref typing is now separately verified. Cua's [browser
+  input guide](https://github.com/trycua/cua/blob/main/docs/content/docs/how-to-guides/driver/drive-a-web-page.mdx)
+  documents `dom_event` as synthetic and says trusted clicks refuse standalone Linux
+  Chromium. Native select activation and date-picker navigation remain unsupported on this
+  route. This does not establish a limitation for Windows or another Cua input mode.
 - On `https://httpbin.org`, following a link to another origin was refused by the
   immutable exact-origin Cua manifest. The result was not treated as successful
   navigation. Cross-origin continuation remains an open implementation requirement.

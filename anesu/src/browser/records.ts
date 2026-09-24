@@ -1,4 +1,4 @@
-import type { BrowserActionEffect, BrowserActionRoute, BrowserApprovalAction, BrowserDeliveryMode, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserEscalationReason, BrowserEscalationTarget, BrowserInputRoute, BrowserScrollDirection, BrowserSessionId, BrowserTabId } from "./contracts.js";
+import type { BrowserActionEffect, BrowserActionRoute, BrowserApprovalAction, BrowserDeliveryMode, BrowserDialogDecision, BrowserDialogObservation, BrowserDocumentId, BrowserEscalationReason, BrowserEscalationTarget, BrowserInputRoute, BrowserScrollDirection, BrowserSessionId, BrowserTabId, BrowserTypingMode } from "./contracts.js";
 import type { BrowserDiagnostic, BrowserErrorCode } from "./errors.js";
 import type { CorrelationId } from "../runtime/contracts.js";
 import { assertLifecycleTransition } from "../runtime/lifecycle.js";
@@ -25,6 +25,7 @@ export interface BrowserActionRecord {
   readonly action: BrowserApprovalAction;
   /** The host-selected Cua delivery route is durable approval evidence. */
   readonly inputRoute?: BrowserInputRoute;
+  readonly typingMode?: BrowserTypingMode;
   /** Bounded identity of the high-level task that authorized this action. */
   readonly taskId?: string;
   readonly grantHash?: string;
@@ -86,6 +87,7 @@ export function assertBrowserActionTransition(previous: BrowserActionRecord, nex
     previous.tabId !== next.tabId ? "tabId" : undefined,
     previous.action !== next.action ? "action" : undefined,
     previous.inputRoute !== next.inputRoute ? "inputRoute" : undefined,
+    previous.typingMode !== next.typingMode ? "typingMode" : undefined,
     previous.taskId !== next.taskId ? "taskId" : undefined,
     previous.grantHash !== next.grantHash ? "grantHash" : undefined,
     JSON.stringify(previous.allowedTaskActions) !== JSON.stringify(next.allowedTaskActions) ? "allowedTaskActions" : undefined,

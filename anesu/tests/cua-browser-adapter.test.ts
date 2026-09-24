@@ -144,7 +144,7 @@ class FakeCuaRuntime {
         outline: this.omitRefValue ? 'Example\n- textbox "Message": outlined value [editable=plaintext]' : "Example",
         refs: [
           { ref: "p1:1", role: "button", name: "Continue", actions: ["click"], frame: "main", visibility: "in_viewport" },
-          { ref: "p1:2", role: "textbox", name: "Message", ...(this.omitRefValue ? {} : { value: "existing value" }), actions: ["type"], frame: "main", visibility: "in_viewport" },
+          { ref: "p1:2", role: "textbox", name: "Message", ...(this.omitRefValue ? {} : { value: "existing value" }), actions: ["type"], states: { required: true, disabled: false }, frame: "main", visibility: "in_viewport" },
           { ref: "p1:4", role: "button", name: "Hidden", actions: ["click"], frame: "main", visibility: "css_hidden" },
           { ref: "p1:5", role: "region", name: "Article content", actions: ["pointer"], frame: "main", visibility: "in_viewport" },
         ],
@@ -154,7 +154,7 @@ class FakeCuaRuntime {
     if (name === "browser_navigate") {
       return result({ status: "ok", target_id: this.navigateTargetId, tab_id: "tab-1", url: input.url, refs_invalidated: this.navigateRefsInvalidated });
     }
-    if (name === "browser_click" || name === "browser_type" || name === "browser_pointer") {
+    if (["browser_click", "browser_type", "browser_pointer"].includes(name)) {
       const response = this.actionResponse ?? { structured: { status: "ok", effect: "confirmed", route: "trusted_input" } };
       return result(response.structured, response.text === undefined ? {} : { text: response.text });
     }
@@ -454,6 +454,24 @@ test("Cua browser preflight rejects a contradictory read-only annotation", async
   );
 });
 
+test("Cua semantic control states survive the browser gateway and adapter", async () => {
+  const driver = new FakeCuaRuntime();
+  const adapter = new CuaBrowserAdapter({
+    driver,
+    inputRoute: "dom_event",
+    urlPolicy: new BrowserUrlPolicy({ dnsLookup: async () => ["93.184.216.34"] }),
+  });
+  const sessionId = asBrowserSessionId("browser_semantic_control_states");
+
+  await adapter.startSession({ sessionId, profileDirectory: ".anesu-browser/browser_semantic_control_states" });
+  const page = await adapter.open(sessionId, "https://example.test/");
+  const snapshot = await adapter.snapshot(sessionId, page.tabId);
+  const message = snapshot.references.find((reference) => reference.name === "Message");
+
+  assert.deepEqual(message?.states, { required: true, disabled: false });
+  assert.equal(driver.calls.some((call) => call.name === "get_window_state"), false);
+});
+
 test("Cua browser adapter prepares, binds, snapshots, navigates, and acts without a second browser backend", async () => {
   const driver = new FakeCuaRuntime();
   const adapter = new CuaBrowserAdapter({
@@ -722,6 +740,48 @@ test("Cua browser adapter refuses synthetic typing when the installed type contr
   );
   assert.equal(driver.calls.filter((call) => call.name === "browser_type").length, 0);
   await adapter.closeSession(sessionId);
+});
+
+test("Cua browser adapter inserts into an empty or unreported date input but refuses a known non-empty value", async () => {
+  for (const [index, currentValue] of ["", undefined, "2026-10-12"].entries()) {
+    const driver = new FakeCuaRuntime();
+    const adapter = new CuaBrowserAdapter({ driver, inputRoute: "trusted" });
+    const sessionId = asBrowserSessionId(`browser_date_insert_${index}`);
+    const tabId = asBrowserTabId("tab-1");
+
+    await adapter.startSession({ sessionId, profileDirectory: `.anesu-browser/browser_date_insert_${index}` });
+    const snapshot = await adapter.snapshot(sessionId, tabId);
+    const reference = {
+      value: "p1:date",
+      documentId: snapshot.documentId,
+      role: "date",
+      actions: ["type"],
+      ...(currentValue === undefined ? {} : { currentValue }),
+    };
+    if (currentValue === "" || currentValue === undefined) {
+      await adapter.act(sessionId, tabId, { kind: "type", reference, text: "2026-10-12", typingMode: "keystrokes" });
+      const call = driver.calls.find((entry) => entry.name === "browser_type");
+      assert.ok(call);
+      assert.deepEqual(JSON.parse(call.argumentsJson), {
+        target_id: "target-1",
+        tab_id: "tab-1",
+        ref: "p1:date",
+        text: "2026-10-12",
+        mode: "keystrokes",
+        replace: false,
+        session: `browser_date_insert_${index}`,
+      });
+    } else {
+      await assert.rejects(
+        adapter.act(sessionId, tabId, { kind: "type", reference, text: "2026-10-12" }),
+        (error: unknown) => error instanceof BrowserError
+          && error.browserCode === "invalid-action"
+          && /known non-empty date/u.test(error.message),
+      );
+      assert.equal(driver.calls.some((entry) => entry.name === "browser_type"), false);
+    }
+    await adapter.closeSession(sessionId);
+  }
 });
 
 test("Cua browser uploads use a private staged copy inside the manifest read root", async () => {
