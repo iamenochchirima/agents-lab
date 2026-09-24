@@ -691,6 +691,39 @@ test("Cua browser adapter propagates bounded action effect, route, delivery, and
   await adapter.closeSession(sessionId);
 });
 
+test("Cua browser Enter dispatch uses the installed newline keystroke encoding", async () => {
+  const driver = new FakeCuaRuntime();
+  const adapter = new CuaBrowserAdapter({ driver, inputRoute: "trusted" });
+  const sessionId = asBrowserSessionId("browser_enter_key");
+  const tabId = asBrowserTabId("tab-1");
+
+  await adapter.startSession({ sessionId, profileDirectory: ".anesu-browser/browser_enter_key" });
+  const snapshot = await adapter.snapshot(sessionId, tabId);
+  const reference = snapshot.references.find((candidate) => candidate.name === "Message");
+  assert.ok(reference);
+
+  await assert.rejects(
+    adapter.act(sessionId, tabId, { kind: "press", reference, key: "ArrowDown" }),
+    (error: unknown) => error instanceof BrowserError
+      && error.browserCode === "invalid-action"
+      && /limited to Enter/u.test(error.message),
+  );
+  assert.equal(driver.calls.filter((call) => call.name === "browser_type").length, 0);
+
+  await adapter.act(sessionId, tabId, { kind: "press", reference, key: "Enter" });
+  const call = [...driver.calls].reverse().find((candidate) => candidate.name === "browser_type");
+  assert.ok(call);
+  assert.deepEqual(JSON.parse(call.argumentsJson), {
+    target_id: "target-1",
+    tab_id: "tab-1",
+    ref: "p1:2",
+    text: "\n",
+    mode: "keystrokes",
+    session: "browser_enter_key",
+  });
+  await adapter.closeSession(sessionId);
+});
+
 test("Cua browser adapter sends the selected semantic ref for scroll through browser_pointer", async () => {
   const driver = new FakeCuaRuntime();
   const adapter = new CuaBrowserAdapter({ driver, inputRoute: "dom_event" });

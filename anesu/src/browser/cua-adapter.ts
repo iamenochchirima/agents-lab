@@ -22,7 +22,7 @@ import type {
   BrowserProfileMode,
 } from "./contracts.js";
 import type { BrowserDownloadTarget, BrowserScreenshotTarget } from "./artifacts.js";
-import { asBrowserDocumentId, asBrowserTabId } from "./contracts.js";
+import { asBrowserDocumentId, asBrowserTabId, SUPPORTED_BROWSER_PRESS_KEYS } from "./contracts.js";
 import { BrowserUrlPolicy } from "./policy.js";
 import {
   CuaBrowserGateway,
@@ -106,7 +106,6 @@ function supportedBrowserProduct(appName: string): "chrome" | "edge" | undefined
 }
 const DEFAULT_MAX_SNAPSHOT_CHARS = 16_000;
 const DEFAULT_MAX_STAGED_UPLOAD_BYTES = 4 * 1024 * 1024;
-const SUPPORTED_BROWSER_KEYS = new Set(["Enter", "Tab", "Escape", "Space", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 const REQUIRED_BROWSER_TOOLS = [
   "browser_prepare",
   "get_browser_state",
@@ -883,14 +882,15 @@ export class CuaBrowserAdapter implements BrowserAdapter {
           replace: !isDateInput,
         }, signal), "browser_type");
       } else if (request.kind === "press") {
-        if (!request.key || !SUPPORTED_BROWSER_KEYS.has(request.key)) {
-          throw new BrowserError("invalid-action", "Cua browser key input is limited to Enter, Tab, Escape, Space, Backspace, Delete, and arrow keys.");
+        if (!request.key || !SUPPORTED_BROWSER_PRESS_KEYS.includes(request.key as typeof SUPPORTED_BROWSER_PRESS_KEYS[number])) {
+          throw new BrowserError("invalid-action", "Cua browser key input is limited to Enter on editable refs.");
         }
         const inputRoute = request.inputRoute ?? this.inputRoute;
         if (inputRoute !== "trusted") {
           throw new BrowserError("browser-input-trust-unavailable", "Cua's installed browser_type contract has no synthetic DOM input route; the task must use trusted browser key input.");
         }
-        actionOutput = gatewayValue<BrowserActionOutput>(await session.gateway.type({ targetId: managed.targetId, tabId, ref, text: request.key, mode: "keystrokes" }, signal), "browser_type");
+        const text = request.key === "Enter" ? "\n" : "";
+        actionOutput = gatewayValue<BrowserActionOutput>(await session.gateway.type({ targetId: managed.targetId, tabId, ref, text, mode: "keystrokes" }, signal), "browser_type");
       } else if (request.kind === "select") {
         throw new BrowserError("invalid-action", "Native select controls are not exposed by Cua's typed browser tool surface.");
       } else {

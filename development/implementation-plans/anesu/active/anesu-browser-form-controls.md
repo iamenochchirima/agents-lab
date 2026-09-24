@@ -136,8 +136,9 @@ current per-action evidence and ambiguity semantics.
       normal observed semantic refs.
       The pinned semantic contract exposes the native select/option refs as
       click targets rather than editable refs. Anesu's `browser_press` delegates
-      to Cua `browser_type` keystrokes, which requires a current editable ref;
-      it is not a keyboard-selection route for a native select.
+      Enter to Cua `browser_type` as a newline on a current editable ref; other
+      keys are not supported by this typed route. It is not a keyboard-selection
+      route for a native select.
 
 ### 2. Make current form state usable by the model
 
@@ -246,10 +247,17 @@ changes remain outside that commit and untouched.
   the date-part order is ambiguous. The focused browser tool, adapter, gateway,
   and continuation suites pass 87/87; `pnpm run build` passes.
 - The full Anesu suite ran 756 tests: 755 passed and one failed in the already
-  modified `tests/computer-task.test.ts`. That native-task assertion expects
-  `select` in the allowed action list, while the current compiler omits it.
-  This browser form change does not touch the native task compiler or that test;
-  the focused browser suites and live form acceptance pass.
+  modified `tests/computer-task.test.ts`. The changed assertion expected a
+  `select` task grant even though no executable browser-select operation is
+  registered. The expectation was corrected to match the actual tool inventory;
+  this does not implement native `<select>`. The full suite then passed 756/756.
+- A later browser input correction stopped passing the literal string `Enter`
+  to Cua's text-typing route. `browser_press` now maps Enter to Cua's documented
+  newline keystroke on a current editable ref and refuses unsupported keys
+  before approval. Browser tool and adapter regressions cover the mapping and
+  refusal. The current full Anesu suite passes 758/758; this is code-level
+  validation, not a new live form acceptance, and does not enable native
+  `<select>`.
 - Cua `semantic_v2` returns bounded state and current refs. The browser gateway
   and adapter preserve those fields for model-visible snapshots. A dispatched
   `dom_event` click or `browser_type` action can still be `unverifiable`; only a
@@ -272,6 +280,13 @@ changes remain outside that commit and untouched.
   not currently supply the missing native-select route. See the [official
   releases](https://github.com/trycua/cua/releases) and the
   [0.28.3 nightly browser tool source](https://github.com/trycua/cua/blob/nightly-cua-driver-rs-v0.28.3-nightly.20260919.35421378483/libs/cua-driver/rust/crates/cua-driver-core/src/browser/tools.rs).
+- A 2026-09-25 inspection of current upstream `main` confirms the same boundary:
+  Cua's [registered browser tools](https://github.com/trycua/cua/blob/main/libs/cua-driver/rust/crates/cua-driver-core/src/browser/tools.rs)
+  include state, prepare, navigate, click, type, dialog, file assignment,
+  download, and pointer, but no native-select operation. Its
+  [semantic snapshot contract](https://github.com/trycua/cua/blob/main/docs/content/docs/reference/cua-driver/browser-semantic-snapshots.mdx)
+  defines the closed action set as click/type/upload. Therefore Anesu cannot
+  implement native HTML `<select>` through the current origin-scoped typed API.
 - Anesu pins `@trycua/cua-driver` 0.28.2. The separately installed `cua-driver`
   CLI is 0.23.2 and is not the runtime used by Anesu.
 
@@ -321,18 +336,25 @@ Status: complete for this control set; not a claim of support for every widget.
 Last verified checkpoint: combined real-TUI fill-only request and a separate
 fresh read-only snapshot confirmed the requested text, checkbox, custom
 dropdown, and date; no form submission occurred.
+The subsequent Enter-key correction passes the current full Anesu suite
+758/758, but has not yet been exercised in a new live TUI form task.
 
 ## Blockers
 
 No functional blocker remains for the accepted control set. Native `<select>`
 activation and date-picker navigation are unavailable on this route; radio
 controls, multiple date controls in one snapshot, and localized date-part labels
-remain unproven. The full suite has one unrelated failure described above.
+remain unproven. Integrated validation now passes: `pnpm test` 756/756,
+`pnpm run typecheck`, build, and `git diff --check`. After the Enter-key
+correction, the full Anesu suite and build pass 758/758; live form acceptance
+after that change remains unrun.
 
 ## Completion record
 
 The supported-control acceptance passed on 2026-09-24 and the focused
 implementation was committed as `9435485`. This plan remains linked from the
 active general browser-use plan as its completed form-control evidence. The
-separate native-task suite failure is recorded but is outside this plan. This
-plan does not claim all website widgets or native `<select>` support.
+task-action assertion mismatch was corrected without granting unsupported
+native-select behavior. The full suite now passes. This plan remains limited to
+the tested control set and does not claim all website widgets or native
+`<select>` support.

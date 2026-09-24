@@ -22,6 +22,7 @@ export type BrowserProfileMode = "isolated_new" | "existing_profile";
 export type BrowserSearchProvider = "bing" | "duckduckgo" | "google";
 export type BrowserScrollDirection = "up" | "down" | "left" | "right";
 export type BrowserInputRoute = "trusted" | "dom_event";
+export const SUPPORTED_BROWSER_PRESS_KEYS = ["Enter"] as const;
 export type BrowserTypingMode = "insert_text" | "keystrokes";
 export type BrowserPointerAction = "hover" | "right_click" | "double_click" | "drag";
 export type BrowserActionKind = "click" | "type" | "press" | "select" | "scroll" | "upload" | "download" | "pointer";

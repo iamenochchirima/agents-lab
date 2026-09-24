@@ -103,11 +103,10 @@ native `<select>` options as semantic refs, but this does not make them operable
 default Ubuntu route: Cua's synthetic `dom_event` click left the option unselected in a
 fresh snapshot, and its trusted click route refuses standalone Linux Chromium rather than
 activating the window. The pinned semantic action contract offers a native select or its
-option refs as click targets, not editable/type targets; Anesu's `browser_press` is
-implemented through Cua `browser_type` keystrokes and still requires a current ref that
-declares the operation. There is no supported keyboard-selection primitive for this
-control in the current typed API. Do not claim selection from an exposed option ref alone
-or guess a sequence of arrow keys.
+option refs as click targets, not editable/type targets. Anesu's `browser_press` currently
+supports only Enter, delivered through Cua `browser_type` as a newline on a current editable
+ref; Cua does not expose a typed route for arrow keys or keyboard selection of a native
+select. Do not claim selection from an exposed option ref alone or guess a sequence of keys.
 
 Common form controls were verified through the real TUI and typed Cua browser API on
 2026-09-24: a text field, checkbox, custom accessible dropdown, and a native date input.

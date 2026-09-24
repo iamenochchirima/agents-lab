@@ -35,7 +35,7 @@ import type { BrowserArtifactInfo } from "./artifacts.js";
 import { BrowserError, type BrowserDiagnostic, type BrowserErrorCode } from "./errors.js";
 import { sameBrowserFileIdentity } from "./files.js";
 import { BrowserSessionManager } from "./session.js";
-import { asBrowserDocumentId } from "./contracts.js";
+import { asBrowserDocumentId, SUPPORTED_BROWSER_PRESS_KEYS } from "./contracts.js";
 import type { ComputerRuntimeEvidence, ComputerTaskContext } from "../computer/contracts.js";
 import { approveComputerTaskGrant, authorizeComputerTaskMutation, type ComputerTaskApprovalDecision, type ComputerTaskApprovalRequest, type ComputerTaskMutation } from "../computer/task.js";
 import type { CuaAuthorizationCallback } from "./cua-authorization.js";
@@ -421,7 +421,7 @@ export const BROWSER_TOOL_DEFINITIONS = [
   },
   {
     name: "browser_open",
-    description: "Open an allowed HTTP or HTTPS URL, starting the isolated browser session if needed, then wait briefly and return a fresh semantic snapshot of the page. The result includes observed page content; the requested URL or a navigation acknowledgement alone is not proof that the page loaded. Public HTTPS tasks may move to a newly validated public origin by replacing the Cua session with a fresh session bound to the exact visited origins; local and HTTP tasks remain exact-origin. If the result has status 'origin_handoff_required', call browser_open once with the exact observedTab.url; do not repeat the URL that led to the refusal or retry the preceding click. Then inspect the fresh snapshot. Unsafe schemes, credentials, private targets, and unsafe redirects are rejected.",
+    description: "Open an allowed HTTP or HTTPS URL, starting the isolated browser session if needed, then wait briefly and return a fresh semantic snapshot of the page. Navigation is only a first step when the user requested further browser work: continue from this observation with the current typed browser tools until the requested outcome is observed or a concrete blocker is reached. The requested URL or a navigation acknowledgement alone is not proof that the page loaded. Public HTTPS tasks may move to a newly validated public origin by replacing the Cua session with a fresh session bound to the exact visited origins; local and HTTP tasks remain exact-origin. If the result has status 'origin_handoff_required', call browser_open once with the exact observedTab.url; do not repeat the URL that led to the refusal or retry the preceding click. Then inspect the fresh snapshot. Unsafe schemes, credentials, private targets, and unsafe redirects are rejected.",
     inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: false },
   },
   {
@@ -446,8 +446,8 @@ export const BROWSER_TOOL_DEFINITIONS = [
   },
   {
     name: "browser_press",
-    description: "Press a key on an element from the latest browser snapshot. The exact target and key require one-action approval; an approved browser task does not authorize key presses.",
-    inputSchema: { type: "object", properties: { ref: { type: "string" }, key: { type: "string" } }, required: ["ref", "key"], additionalProperties: false },
+    description: "Press Enter on an editable element from the latest browser snapshot. Cua delivers it through a trusted keystroke to a ref that declares 'type'. This can submit a form, so use it only when the user requested submission. The exact target and key require one-action approval; an approved browser task does not authorize key presses. The installed Cua browser route does not support arrow, Tab, Escape, Backspace, or Delete keys here, and this tool cannot operate click-only controls such as native HTML selects.",
+    inputSchema: { type: "object", properties: { ref: { type: "string" }, key: { type: "string", enum: SUPPORTED_BROWSER_PRESS_KEYS } }, required: ["ref", "key"], additionalProperties: false },
   },
   {
     name: "browser_scroll",
@@ -559,6 +559,9 @@ export class BrowserTools {
           throw new ToolExecutionError(`Tool argument '${key}' must be a non-empty string when provided.`);
         }
       }
+    }
+    if (name === "browser_press" && !SUPPORTED_BROWSER_PRESS_KEYS.includes(args.key as typeof SUPPORTED_BROWSER_PRESS_KEYS[number])) {
+      throw new ToolExecutionError("Tool argument 'key' must be one of: " + SUPPORTED_BROWSER_PRESS_KEYS.join(", ") + ". The installed Cua browser route supports Enter only on editable refs.");
     }
     if (name === "browser_wait") {
       const maximum = this.options.maxWaitMs ?? 10_000;
@@ -1366,7 +1369,7 @@ export class BrowserTools {
     if (requestedTypingMode !== undefined && requestedTypingMode !== "insert_text" && requestedTypingMode !== "keystrokes") {
       throw new ToolExecutionError("Tool argument 'mode' must be insert_text or keystrokes.");
     }
-    const declaredAction = action === "pointer" ? pointerAction : action;
+    const declaredAction = action === "pointer" ? pointerAction : action === "press" ? "type" : action;
     const currentReference = this.currentReference(snapshot, ref, declaredAction ?? action);
     const text = action === "type" && requestedText !== undefined
       ? nativeDateTypingText(requestedText, snapshot.references, currentReference)

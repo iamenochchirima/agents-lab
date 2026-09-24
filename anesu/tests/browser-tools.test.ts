@@ -60,7 +60,7 @@ class ToolTestAdapter implements BrowserAdapter {
     const references: BrowserSnapshot["references"][number][] = [{
       value: "@e1",
       documentId: tab.documentId,
-      actions: ["click", "type", "press", "upload", "hover", "right_click", "double_click", "drag"],
+      actions: ["click", "type", "upload", "hover", "right_click", "double_click", "drag"],
     }];
     if (new URL(tab.url).pathname === "/scroll") {
       references.push({
@@ -937,6 +937,10 @@ test("browser tools expose only the implemented model-facing surface", () => {
   const click = tools.definitions.find((definition) => definition.name === "browser_click");
   assert.ok(click);
   assert.match(click.description, /prefer browser_type directly rather than opening its picker/u);
+  const press = tools.definitions.find((definition) => definition.name === "browser_press");
+  assert.ok(press);
+  assert.deepEqual(press.inputSchema.properties?.key, { type: "string", enum: ["Enter"] });
+  assert.match(press.description, /cannot operate click-only controls such as native HTML selects/u);
   const type = tools.definitions.find((definition) => definition.name === "browser_type");
   assert.ok(type);
   assert.deepEqual(type.inputSchema.properties?.mode, { type: "string", enum: ["insert_text", "keystrokes"] });
@@ -982,6 +986,32 @@ test("browser mutations reject refs that do not declare the selected action", as
     tools.execute("browser_type", "call_undeclared_action", { ref: "@e1", text: "not allowed" }, { approveBrowser: async () => ({ decision: "allow-once" }) }),
     /does not declare 'type'/u,
   );
+});
+
+test("browser_press accepts Enter on a current editable ref and rejects unsupported keys before approval", async () => {
+  const adapter = new ToolTestAdapter();
+  const tools = createTools(adapter);
+  await tools.execute("browser_open", "press_open", { url: "http://127.0.0.1:4173/form" }, {});
+  await tools.execute("browser_snapshot", "press_snapshot", {}, {});
+
+  let approvalCount = 0;
+  await assert.rejects(
+    tools.execute("browser_press", "press_arrow_down", { ref: "@e1", key: "ArrowDown" }, {
+      approveBrowser: async () => { approvalCount += 1; return { decision: "allow-once" }; },
+    }),
+    /supports Enter only on editable refs/u,
+  );
+  assert.equal(approvalCount, 0, "unsupported keys are rejected before asking the user to approve them");
+  assert.equal(adapter.actionCount, 0);
+
+  const result = await tools.execute("browser_press", "press_enter", { ref: "@e1", key: "Enter" }, {
+    approveBrowser: async () => { approvalCount += 1; return { decision: "allow-once" }; },
+  });
+  assert.equal(result.ok, true, result.content);
+  assert.equal(approvalCount, 1);
+  assert.equal(adapter.actionCount, 1);
+  assert.equal(adapter.lastAction?.kind, "press");
+  assert.equal(adapter.lastAction?.key, "Enter");
 });
 
 test("browser date refs use Cua keystrokes while the model still selects the field and value", async () => {
