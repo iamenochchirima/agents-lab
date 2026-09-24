@@ -78,7 +78,9 @@ Implementation rules:
   observed target and origin rather than guessing risk from prompt keywords.
   A new public HTTPS destination uses a fresh exact-origin Cua session; do not
   widen an existing manifest or infer a destination from an ambiguous refusal.
-  Link-click and redirect continuation must still be proven in the live loop.
+  Live link-click and redirect continuation are recorded in the acceptance
+  evidence below; an ambiguous click remains ambiguous even when later fresh
+  destination evidence lets the model complete the user's task.
 - Return typed failures and current observations to the model when safe to
   continue. Never convert a refusal into success or replay an action whose
   effect is uncertain.
@@ -672,6 +674,13 @@ recovered through `browser_tabs` and read the same managed browser. This exposed
 an intent-parser bug: “current browser” was treated as a request for the user's
 personal profile. The parser now requires explicit personal or already-open
 profile wording, with a task-compiler regression and full TUI continuation test.
+
+An earlier full-suite run after transcript restoration found two TUI test
+fixtures without the new `readTranscript()` method. The fixtures were updated;
+their focused suites passed 23/23. Final validation on 2026-09-24 then passed
+`pnpm --dir anesu test` (751/751), `pnpm --dir anesu run typecheck`,
+`pnpm --dir anesu run build`, and `git diff --check`. The verified documentation
+checkpoint is `f2fa3a0`; the fixture checkpoint is `13272b8`.
 
 A separate live example.org → IANA link action caused Cua to return an
 ambiguous click result while the origin-protected snapshot failed. Fresh exact
