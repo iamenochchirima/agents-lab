@@ -45,7 +45,13 @@ refs are read-only. Navigation, reconnect, a newer snapshot, and session termina
 invalidate older refs; stale or ambiguous bindings fail closed. The host validates each
 action against the current snapshot and Cua declaration, then returns the typed result or
 refusal to the model. A Cua dispatch acknowledgement is not proof of a consequential
-result; uncertain actions invalidate their refs and are not replayed.
+result. After an `unverifiable` dispatch, Anesu makes one bounded read-only
+snapshot and includes it in the same tool result if the tab remains on the
+approved origin. The action remains ambiguous and non-replayable; the new
+snapshot is evidence for the model's next choice, not proof of the click.
+If that read fails or the tab changes origin, Anesu returns the ambiguous
+outcome without exposing a new-origin snapshot. Other ambiguous failures still
+require an explicit fresh snapshot.
 
 Listing tabs also refreshes Cua's exact browser binding and can invalidate element refs
 from the previous snapshot. After `browser_tabs`, take a fresh `browser_snapshot` for the

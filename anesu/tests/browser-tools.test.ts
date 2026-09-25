@@ -214,6 +214,19 @@ class UnverifiableEffectToolAdapter extends ToolTestAdapter {
   }
 }
 
+class UnverifiableRedirectToolAdapter extends UnverifiableEffectToolAdapter {
+  override async act(
+    sessionId: ReturnType<typeof asBrowserSessionId>,
+    tabId: ReturnType<typeof asBrowserTabId>,
+    request: BrowserActionRequest,
+  ): Promise<BrowserActionResult> {
+    const result = await super.act(sessionId, tabId, request);
+    const tab = { ...result.tab, url: "http://127.0.0.1:4174/other" };
+    this.tabs.set(sessionId, tab);
+    return { ...result, tab };
+  }
+}
+
 class ExplicitRefusalToolAdapter extends ChangingReferenceToolAdapter {
   async act(): Promise<never> {
     this.actionCount += 1;
@@ -1471,6 +1484,9 @@ test("an unverifiable Cua dispatch is shown as ambiguous and the same action is 
   assert.match(first.content, /do not repeat it/iu);
   assert.match(first.content, /continue the user's original task/u);
   assert.match(first.content, /do not submit unless asked/u);
+  const observed = JSON.parse(first.content) as { postActionObservation?: { content?: string; url?: string } };
+  assert.equal(observed.postActionObservation?.url, "http://127.0.0.1:4173/tabs");
+  assert.match(observed.postActionObservation?.content ?? "", /button Continue/u);
   const completion = events.find((event) => event.type === "completed");
   assert.ok(completion && completion.type === "completed");
   assert.equal(completion.ok, false);
@@ -1479,12 +1495,30 @@ test("an unverifiable Cua dispatch is shown as ambiguous and the same action is 
   assert.equal(adapter.actionCount, 1);
   assert.equal(approvalCalls, 1);
 
-  await tools.execute("browser_snapshot", "unverifiable_snapshot_2", {}, {});
   const second = await tools.execute("browser_click", "unverifiable_click_2", { ref: "@e1" }, { approveBrowser });
   assert.equal(second.errorCode, "browser-ambiguous");
   assert.match(second.content, /did not send it again/u);
   assert.equal(adapter.actionCount, 1, "a fresh ref cannot authorize replay after Cua reported an unverifiable effect");
   assert.equal(approvalCalls, 1, "known uncertain actions do not ask for approval again");
+});
+
+test("an uncertain cross-origin click does not attach the new page to the old action grant", async () => {
+  const tools = createTools(new UnverifiableRedirectToolAdapter());
+  await tools.execute("browser_start", "redirect_start", {}, {});
+  await tools.execute("browser_open", "redirect_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+  await tools.execute("browser_snapshot", "redirect_snapshot", {}, {});
+
+  const outcome = await tools.execute("browser_click", "redirect_click", { ref: "@e1" }, {
+    approveBrowser: async () => ({ decision: "allow-once" }),
+  });
+  assert.equal(outcome.errorCode, "browser-ambiguous");
+  assert.equal((JSON.parse(outcome.content) as { postActionObservation?: unknown }).postActionObservation, undefined);
+  await assert.rejects(
+    tools.execute("browser_click", "redirect_old_ref", { ref: "@e1" }, {
+      approveBrowser: async () => ({ decision: "allow-once" }),
+    }),
+    (error: unknown) => error instanceof BrowserError && error.browserCode === "stale-reference",
+  );
 });
 
 test("an ambiguous browser action stays non-replayable after its Cua session is replaced", async () => {

@@ -931,7 +931,7 @@ export class BrowserTools {
     return { ok: true, content: bounded(stableStringify(tabs.map((tab) => safeTab(tab, secrets))), this.options.maxOutputBytes), summary: `Listed ${tabs.length} browser tab${tabs.length === 1 ? "" : "s"}.` };
   }
 
-  private async snapshot(args: ToolArguments, signal?: AbortSignal): Promise<BrowserToolOutcome> {
+  private async snapshot(args: ToolArguments, signal?: AbortSignal, maxOutputBytes = this.options.maxOutputBytes): Promise<BrowserToolOutcome> {
     const sessionId = this.requireSession();
     const tabId = (stringArgument(args, "tabId", false) ?? this.activeTabId);
     if (!tabId) throw new BrowserError("tab-not-found", "No active browser tab exists; open a page first.");
@@ -966,7 +966,7 @@ export class BrowserTools {
     const headingLabel = `${headingCount} heading${headingCount === 1 ? "" : "s"}`;
     const completeness = snapshot.complete === undefined ? "completeness unknown" : snapshot.complete ? "complete" : "partial";
     const summary = `Captured ${title || origin} from ${origin}: ${Buffer.byteLength(snapshot.content, "utf8")} content bytes, ${referenceLabel}, ${headingLabel}, ${completeness}.`;
-    return { ok: true, content: boundedSnapshotJson(safeSnapshot, this.options.maxOutputBytes), summary };
+    return { ok: true, content: boundedSnapshotJson(safeSnapshot, maxOutputBytes), summary };
   }
 
   private async wait(args: ToolArguments, signal?: AbortSignal): Promise<BrowserToolOutcome> {
@@ -1291,7 +1291,7 @@ export class BrowserTools {
     context: BrowserToolContext,
     additionalEvidence: Readonly<Record<string, unknown>> = {},
   ): Promise<BrowserToolOutcome> {
-    const message = `Cua reported effect '${result.effect}' for browser ${request.action}. The action may have changed the page. Anesu did not verify it; do not repeat it. Take a fresh browser snapshot, then continue the user's original task from current evidence. Do not pivot to unrelated searches or reopen pages already reached without evidence. For forms, use only values the user supplied, ask for missing required values, and do not submit unless asked.`;
+    const message = `Cua reported effect '${result.effect}' for browser ${request.action}. The action may have changed the page. Anesu did not verify it; do not repeat it. ${additionalEvidence.postActionObservation ? "Inspect the attached fresh page observation" : "Take a fresh browser snapshot"}, then continue the user's original task from current evidence. Do not pivot to unrelated searches or reopen pages already reached without evidence. For forms, use only values the user supplied, ask for missing required values, and do not submit unless asked.`;
     const visibleResult = {
       ...result,
       tab: safeTab(result.tab, this.options.redactionSecrets ?? []),
@@ -1459,7 +1459,21 @@ export class BrowserTools {
     try {
       const result = await this.options.manager.act(sessionId, tabId, actionRequest, context.signal, this.dialogApproval(request, context));
       if (hasUncertainEffect(result)) {
-        return await this.uncertainActionOutcome(request, nonReplayableKey, result, context);
+        let postActionObservation: Record<string, unknown> | undefined;
+        try {
+          // One read-only observation can save a model round without treating an
+          // uncertain input as success. Never expose a redirected origin through
+          // the original action grant or retain its refs for another action.
+          const fresh = await this.snapshot({}, context.signal, Math.floor(this.options.maxOutputBytes * 0.75));
+          const observed = JSON.parse(fresh.content) as Record<string, unknown>;
+          if (this.snapshots.get(tabId)?.origin === request.origin) postActionObservation = observed;
+          else this.snapshots.delete(tabId);
+        } catch {
+          // The original side effect is still ambiguous if the follow-up read
+          // fails. Report it as such; the model can request a new snapshot.
+        }
+        return await this.uncertainActionOutcome(request, nonReplayableKey, result, context,
+          postActionObservation ? { postActionObservation } : {});
       }
       const visibleResult = { ...result, tab: safeTab(result.tab, this.options.redactionSecrets ?? []), summary: safeText(result.summary, this.options.redactionSecrets ?? []) };
       const outcome = { ok: true, content: stableStringify(visibleResult), summary: visibleResult.summary } as const;
