@@ -16,11 +16,12 @@ import {
   SlidersHorizontal,
   Wrench,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router";
 
 import "./studio-prototype.css";
+import { getStudioApiHealth } from "./studioApi";
 
 type StudioVariant = "command" | "focus" | "map";
 
@@ -57,6 +58,28 @@ function parseVariant(value: string | null): StudioVariant {
 
 function StudioFrame({ children }: { children: ReactNode }) {
   return <div className="studio-content">{children}</div>;
+}
+
+function StudioApiConnection() {
+  const [status, setStatus] = useState<"checking" | "connected" | "unavailable">("checking");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getStudioApiHealth(controller.signal)
+      .then(() => setStatus("connected"))
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("unavailable");
+      });
+    return () => controller.abort();
+  }, []);
+
+  const label = status === "checking"
+    ? "Studio API: checking"
+    : status === "connected"
+      ? "Studio API: connected"
+      : "Studio API: unavailable";
+
+  return <div aria-live="polite" className={`studio-api-connection is-${status}`} role="status">{label}</div>;
 }
 
 function SectionHeading({ eyebrow, title, action }: { eyebrow: string; title: string; action?: ReactNode }) {
@@ -215,6 +238,7 @@ export function StudioPrototypePage() {
 
   return (
     <div className="studio-prototype">
+      <StudioApiConnection />
       {variant === "command" && <CommandCenter onOpenComponents={() => selectVariant("focus")} />}
       {variant === "focus" && <StudioFrame><ContextFocus onBack={() => selectVariant("command")} /></StudioFrame>}
       {variant === "map" && <SystemMap onOpenComponents={() => selectVariant("focus")} />}

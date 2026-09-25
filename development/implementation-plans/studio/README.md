@@ -1,19 +1,31 @@
 # Studio implementation plans
 
-This directory contains plans for Studio, the workspace for studying individual
-harness components under controlled conditions. Studio plans cover component
-experiments, comparison strategies, Studio-owned APIs, evidence, and the Studio user
-surface.
+This directory contains plans for Studio, a browser-accessible laboratory for
+developing agent modules independently, assembling them into complete agents, and
+inspecting run evidence.
 
 Studio does not own complete platform execution and does not replace Anesu. Platform
 plans live in [the platform plan directory](../platforms/README.md).
 
-## Studio roadmap
+The [modular agent Studio program](modular-agent-studio.md) is the current forward
+plan. Its first slice covered package ownership, module interfaces, and a
+representative standalone example; that foundation plan is complete. Stage 2 will
+add the remaining role implementations through separate focused plans.
+The [component assembly discovery note](../../../docs/planning/studio-assembly-discovery.md)
+records the earlier discussion that led to this direction.
 
-Studio is implemented in separate plans. Each plan finishes one concrete slice before
-the next component strategy is added. The backend kernel is complete; the current UI
-plan is still active and must consume the backend contract rather than invent a second
-execution path.
+## Program sequence
+
+The current sequence is recorded in the [program plan](modular-agent-studio.md).
+Stage 2 does not yet have an active focused plan. The earlier UI preview plan is
+listed separately and will be reconciled before run-facing browser work. Later
+stages will each receive their own scoped plan before work begins.
+
+## Historical roadmap for the server-hosted implementation
+
+The list below records the previous implementation sequence. The modular agent
+Studio program supersedes it as the forward direction; completed plans remain useful
+as a record of the current implementation.
 
 1. **Foundation kernel:** compose one complete deterministic agent turn through all
    twelve component slots, with baseline adapters, Context strategies, evidence, and
@@ -35,15 +47,17 @@ execution path.
 9. **Model and observability:** add provider routing, cost/latency studies,
    distributed traces, and richer model-backed experiments.
 
-The roadmap describes the intended order. The active plan defines the work that may
-be implemented now.
-
 ## Active plans
 
 - [Component Lab UI foundation](active/component-lab-ui.md)
 
+The existing UI foundation plan predates the separate Studio API decision. Its
+configuration-only preview remains distinct from run execution; reconcile it with the
+program before implementing the run-facing browser workflow.
+
 ## Completed plans
 
+- [Studio module package and interface foundation](completed/studio-module-foundation.md)
 - [Studio backend completion and UI readiness](completed/studio-backend-ui-readiness.md)
 - [Studio Memory runtime](completed/studio-memory-runtime.md)
 - [Studio backend runtime foundation](completed/studio-backend.md)

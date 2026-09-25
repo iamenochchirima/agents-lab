@@ -1,5 +1,7 @@
 packages:
   - apps/*
+  - studio/*
+  - studio/modules/*
   - anesu
   - server
   - server/src/platforms/*

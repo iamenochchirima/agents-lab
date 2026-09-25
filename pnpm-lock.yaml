@@ -24,8 +24,33 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  apps/studio-api:
+    dependencies:
+      '@agent-harness-lab/studio-http-contract':
+        specifier: workspace:*
+        version: link:../../studio/http-contract
+      '@fastify/cors':
+        specifier: ^11.3.0
+        version: 11.3.0
+      fastify:
+        specifier: ^5.12.4
+        version: 5.12.4
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.2
+        version: 22.20.2
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   apps/web:
     dependencies:
+      '@agent-harness-lab/studio-http-contract':
+        specifier: workspace:*
+        version: link:../../studio/http-contract
       '@fontsource-variable/ibm-plex-sans':
         specifier: 5.3.0
         version: 5.3.0
@@ -266,6 +291,148 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@26.5.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1))
+
+  studio/agent-kernel:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/agent-protocol:
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/http-contract:
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/computer-use:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/context:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/control:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/execution-environment:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/input:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/memory:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/model-interface:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/observability:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/output-actions:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/planning:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/safety:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/modules/tool-use:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
 packages:
 

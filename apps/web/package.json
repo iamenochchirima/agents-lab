@@ -8,12 +8,13 @@
   },
   "scripts": {
     "generate:docs": "node scripts/generate-doc-catalog.mjs",
-    "dev": "pnpm run generate:docs && vite",
-    "build": "pnpm run typecheck && vite build",
+    "dev": "pnpm --filter @agent-harness-lab/studio-http-contract run build && pnpm run generate:docs && vite",
+    "build": "pnpm --filter @agent-harness-lab/studio-http-contract run build && pnpm run typecheck && vite build",
     "preview": "vite preview",
     "typecheck": "pnpm run generate:docs && tsc --noEmit --pretty false && tsc --project tsconfig.node.json --noEmit --pretty false"
   },
   "dependencies": {
+    "@agent-harness-lab/studio-http-contract": "workspace:*",
     "@fontsource-variable/ibm-plex-sans": "5.3.0",
     "@fontsource/ibm-plex-mono": "5.3.0",
     "@radix-ui/react-slot": "1.2.4",

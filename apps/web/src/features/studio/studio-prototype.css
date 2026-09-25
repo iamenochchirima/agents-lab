@@ -5,6 +5,23 @@
   padding-bottom: 72px;
 }
 
+.studio-api-connection {
+  color: var(--text-3);
+  font-size: 0.68rem;
+  margin: 0 auto;
+  max-width: 1320px;
+  padding: 12px 0 0;
+  text-align: right;
+}
+
+.studio-api-connection.is-connected {
+  color: var(--success, var(--text-2));
+}
+
+.studio-api-connection.is-unavailable {
+  color: var(--text-2);
+}
+
 .studio-status {
   align-items: center;
   background: var(--surface-2);

@@ -1,8 +1,12 @@
 ---
-status: accepted
+status: superseded
 ---
 
 # Keep Studio as a module family in the Lab server
+
+This decision was superseded by [ADR 0005](0005-studio-package-tree-and-api-host.md)
+when the Studio modular package direction was adopted. The completed plans that
+followed this decision remain historical records of the earlier implementation.
 
 Studio will use the existing Lab server process and Fastify application while
 remaining a separately owned module family. Its routes, domain records, runtime

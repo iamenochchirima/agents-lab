@@ -10,7 +10,10 @@ Open `/studio` to inspect three local-only views:
 - `?variant=focus` — Context Management inside Studio
 - `?variant=map` — complete agent execution path
 
-The prototype does not call a server, persist configuration, create runs, or display benchmark data. Its purpose is to settle the shape of one Studio interface before the system is implemented.
+The page checks the separate Studio API host through a small JSON health contract.
+That request only reports whether the host is reachable. The prototype does not
+send selections, persist configuration, create runs, or display benchmark data.
+See the [Studio API README](../../../../studio-api/README.md) for local startup.
 
 The Context focus view keeps a compact component-area rail for moving between the
 twelve harness areas. The environment inspector was
