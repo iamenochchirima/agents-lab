@@ -2,6 +2,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import type { AppConfig } from "../config/config.js";
 import { BrowserArtifactStore, BrowserFilePolicy, BrowserSessionManager, BrowserUrlPolicy, CuaBrowserAdapter, DEFAULT_CUA_BROWSER_ORIGINS, cleanupOrphanedBrowserProfiles, createCuaBrowserManifest, type BrowserApprovalDecision, type BrowserApprovalRequest, type BrowserInputRoute } from "../browser/index.js";
+import { installedCuaSupportsBrowserSelectOption } from "../browser/cua-manifest.js";
 import { createModelProvider } from "../models/factory.js";
 import { listModelProviderSummaries, type ModelProviderSummary } from "../models/registry.js";
 import { SessionStore } from "../persistence/session-store.js";
@@ -153,6 +154,9 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       outputPath: path.join(config.stateDir, "cua", `browser-capabilities-${browserSessionRoot}.yaml`),
       uploadRoot: path.join(config.stateDir, "cua", "browser-uploads", browserSessionRoot),
       existingProfileEnabled: config.computerExistingProfileEnabled,
+      selectOptionAvailable: config.computerEnabled
+        ? await installedCuaSupportsBrowserSelectOption()
+        : false,
     });
     const browserAdapter = new CuaBrowserAdapter({
       manifestPath: browserManifest.manifestPath,

@@ -4,8 +4,45 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { CuaDriver, SessionPermissionMode } from "@trycua/cua-driver";
-import { createCuaBrowserManifest, createCuaBrowserTaskManifest } from "../src/browser/cua-manifest.js";
+import { createCuaBrowserManifest, createCuaBrowserTaskManifest, installedCuaSupportsBrowserSelectOption } from "../src/browser/cua-manifest.js";
 import { createCuaNativeManifest } from "../src/computer/cua-manifest.js";
+
+test("browser select is admitted only when the installed Cua inventory declares it", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "anesu-cua-select-manifest-"));
+  try {
+    const basePath = path.join(process.cwd(), "config", "cua-browser-capabilities.yaml");
+    const available = await installedCuaSupportsBrowserSelectOption();
+    const ordinary = await createCuaBrowserManifest({
+      basePath,
+      outputPath: path.join(root, "ordinary.yaml"),
+      uploadRoot: path.join(root, "ordinary-uploads"),
+      selectOptionAvailable: available,
+    });
+    assert.equal(/^    - browser_select_option\s*$/mu.test(await readFile(ordinary.manifestPath, "utf8")), available);
+    const driver = CuaDriver.createConfigured({
+      claudeCodeCompatibility: false,
+      authorization: {
+        allowedModes: [SessionPermissionMode.Bounded],
+        compatibilityMode: SessionPermissionMode.Bounded,
+        compatibilityCapabilityManifestPath: ordinary.manifestPath,
+        unrestrictedAcknowledged: false,
+        maxSessionTtlSeconds: 8n * 60n * 60n,
+        maxIdleTtlSeconds: 30n * 60n,
+      },
+    });
+    await driver.shutdown();
+
+    const withSelect = await createCuaBrowserManifest({
+      basePath,
+      outputPath: path.join(root, "select.yaml"),
+      uploadRoot: path.join(root, "select-uploads"),
+      selectOptionAvailable: true,
+    });
+    assert.match(await readFile(withSelect.manifestPath, "utf8"), /^    - browser_select_option\s*$/mu);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("derived Cua browser manifest adds one canonical upload read root", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "anesu-cua-manifest-"));

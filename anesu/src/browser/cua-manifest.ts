@@ -8,6 +8,8 @@ export interface CuaBrowserManifestOptions {
   readonly uploadRoot: string;
   /** Adds the stronger existing-profile ceiling only for an explicit deployment opt-in. */
   readonly existingProfileEnabled?: boolean;
+  /** Enable only after inspecting the installed native Cua tool inventory. */
+  readonly selectOptionAvailable?: boolean;
 }
 
 export interface CuaBrowserManifestResult {
@@ -36,6 +38,32 @@ function addExistingProfileCapability(manifest: string): string {
   if (!entry) throw new Error("The isolated browser profile entry could not be read.");
   const indentation = entry[1] ?? "";
   return manifest.replace(entry[0], `${indentation}- kind: isolated\n${indentation}- kind: existing_profile`);
+}
+
+/** Probe before creating a bounded manifest: unknown tool names make Cua refuse the whole driver. */
+export async function installedCuaSupportsBrowserSelectOption(): Promise<boolean> {
+  const { CuaDriver } = await import("@trycua/cua-driver");
+  const driver = CuaDriver.create(undefined);
+  try {
+    const inventory: unknown = JSON.parse(await driver.listToolsJson());
+    if (!inventory || typeof inventory !== "object" || Array.isArray(inventory)) return false;
+    const record = inventory as { readonly schema_version?: unknown; readonly tools?: unknown };
+    return record.schema_version === "1"
+      && Array.isArray(record.tools)
+      && record.tools.some((tool) => tool && typeof tool === "object" && !Array.isArray(tool)
+        && (tool as { readonly name?: unknown }).name === "browser_select_option");
+  } finally {
+    await driver.shutdown();
+    if ("uniffiDestroy" in driver && typeof driver.uniffiDestroy === "function") driver.uniffiDestroy();
+  }
+}
+
+function addSelectOptionCapability(manifest: string): string {
+  const typeTool = /^    - browser_type\n/gmu;
+  if (Array.from(manifest.matchAll(typeTool)).length !== 1 || /^    - browser_select_option\s*$/mu.test(manifest)) {
+    throw new Error("The base Cua browser manifest must contain browser_type once and must not already admit browser_select_option.");
+  }
+  return manifest.replace(typeTool, "    - browser_type\n    - browser_select_option\n");
 }
 
 function canonicalTaskOrigins(origins: readonly string[]): readonly string[] {
@@ -100,7 +128,10 @@ export async function createCuaBrowserManifest(options: CuaBrowserManifestOption
   const withProfileCeiling = options.existingProfileEnabled === true
     ? addExistingProfileCapability(normalized)
     : normalized;
-  const derived = `${withProfileCeiling}  files:\n    read:\n      - dir: ${yamlString(uploadRoot)}\n        recursive: true\n`;
+  const withOptionalTool = options.selectOptionAvailable === true
+    ? addSelectOptionCapability(withProfileCeiling)
+    : withProfileCeiling;
+  const derived = `${withOptionalTool}  files:\n    read:\n      - dir: ${yamlString(uploadRoot)}\n        recursive: true\n`;
   await writeFile(manifestPath, derived, { encoding: "utf8", mode: 0o600 });
   return { manifestPath, uploadRoot };
 }
