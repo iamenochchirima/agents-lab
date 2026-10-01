@@ -15,3 +15,5 @@ export function isStudioApiHealth(value: unknown): value is StudioApiHealth {
     && health.status === "ok"
     && health.apiVersion === STUDIO_API_VERSION;
 }
+
+export * from "./chat.js";

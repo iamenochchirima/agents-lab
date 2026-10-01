@@ -1,4 +1,4 @@
-import type { JsonValue, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
+import type { CapabilityDescriptor, JsonValue, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
 import type { ComputerUseConfig } from "./config.js";
 
 export type ComputerObservationKind = "accessibility-tree" | "dom" | "screenshot-reference";
@@ -49,6 +49,8 @@ export interface ComputerEnvironmentCapability {
 
 export interface ComputerUseModule {
   readonly identity: ModuleIdentity;
+  /** Environment grants required before any observation or action is attempted. */
+  requiredCapabilities(): readonly CapabilityDescriptor[];
   observe(scope: RunScope, signal: AbortSignal): Promise<ComputerObservation>;
   act(action: ComputerAction, scope: RunScope, signal: AbortSignal): Promise<ComputerActionResult>;
 }
@@ -61,7 +63,15 @@ export interface ComputerUseDependencies {
 
 export type ComputerUseFactory = (config: ComputerUseConfig, dependencies: ComputerUseDependencies) => ComputerUseModule;
 
-export type ComputerUseErrorCode = "COMPUTER_USE_CANCELLED" | "ENVIRONMENT_UNAVAILABLE" | "COMPUTER_ACTION_FAILED" | "COMPUTER_OUTCOME_UNKNOWN";
+export type ComputerUseErrorCode =
+  | "COMPUTER_USE_CANCELLED"
+  | "ENVIRONMENT_UNAVAILABLE"
+  | "COMPUTER_ACTION_FAILED"
+  | "COMPUTER_OUTCOME_UNKNOWN"
+  | "INVALID_COMPUTER_INPUT"
+  | "COMPUTER_ACTION_LIMIT_EXCEEDED"
+  | "COMPUTER_OBSERVATION_INVALID"
+  | "COMPUTER_OBSERVATION_TOO_LARGE";
 
 export class ComputerUseError extends Error {
   constructor(readonly code: ComputerUseErrorCode, message: string) {

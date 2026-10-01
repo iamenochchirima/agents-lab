@@ -11,6 +11,6 @@ test("tool-use config supplies defaults and accepts bounded overrides", () => {
 test("tool-use config rejects invalid bounds, types, and unknown settings", () => {
   assert.throws(() => parseToolUseConfig({ timeoutMs: 0 }), ToolUseConfigError);
   assert.throws(() => parseToolUseConfig({ timeoutMs: null }), ToolUseConfigError);
-  assert.throws(() => parseToolUseConfig({ maxCallsPerTurn: "3" }), ToolUseConfigError);
+  assert.throws(() => parseToolUseConfig({ maxCallsPerTurn: 3 }), /not a supported setting/);
   assert.throws(() => parseToolUseConfig({ allowedRisk: ["write"] }), ToolUseConfigError);
 });

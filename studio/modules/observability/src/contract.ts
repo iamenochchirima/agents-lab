@@ -1,4 +1,5 @@
 import type { AgentEvent, JsonValue, ModuleCancellation, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
+import type { ObservabilityConfig } from "./config.js";
 
 export interface ModuleDetail {
   readonly module: ModuleIdentity;
@@ -23,9 +24,35 @@ export interface ObservationFlushReceipt {
   readonly failure?: { readonly code: string; readonly message: string; readonly retryable: boolean };
 }
 
-/** Records normalized events without discarding each module's useful detail. */
+/**
+ * Records normalized events without discarding module detail. Implementations
+ * may throw a typed error before accepting an event when their backing store
+ * cannot initialize; an uncertain post-dispatch write must instead be
+ * represented in the append or flush receipt.
+ */
 export interface ObservabilityModule {
   readonly identity: ModuleIdentity;
   append(input: ObservedEvent, signal: ModuleCancellation): Promise<ObservationAppendReceipt>;
   flush(scope: RunScope, signal: ModuleCancellation): Promise<ObservationFlushReceipt>;
+}
+
+/** Host supplies a run-scoped directory; storage and writer exclusivity are implementation-specific. */
+export interface ObservabilityDependencies {
+  readonly rootDirectory: string;
+  readonly scope: RunScope;
+}
+
+export type ObservabilityFactory = (config: ObservabilityConfig, dependencies: ObservabilityDependencies) => ObservabilityModule;
+
+export type ObservabilityErrorCode =
+  | "INVALID_OBSERVABILITY_INPUT"
+  | "OBSERVABILITY_CANCELLED"
+  | "OBSERVABILITY_STORAGE_FAILURE"
+  | "OBSERVABILITY_RUN_MISMATCH";
+
+export class ObservabilityError extends Error {
+  constructor(readonly code: ObservabilityErrorCode, message: string) {
+    super(message);
+    this.name = "ObservabilityError";
+  }
 }

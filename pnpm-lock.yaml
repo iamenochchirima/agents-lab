@@ -26,6 +26,30 @@ importers:
 
   apps/studio-api:
     dependencies:
+      '@agent-harness-lab/agent-kernel':
+        specifier: workspace:*
+        version: link:../../studio/agent-kernel
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../studio/agent-protocol
+      '@agent-harness-lab/module-context':
+        specifier: workspace:*
+        version: link:../../studio/modules/context
+      '@agent-harness-lab/module-control':
+        specifier: workspace:*
+        version: link:../../studio/modules/control
+      '@agent-harness-lab/module-input':
+        specifier: workspace:*
+        version: link:../../studio/modules/input
+      '@agent-harness-lab/module-memory':
+        specifier: workspace:*
+        version: link:../../studio/modules/memory
+      '@agent-harness-lab/module-output-actions':
+        specifier: workspace:*
+        version: link:../../studio/modules/output-actions
+      '@agent-harness-lab/reference-agent-assembly':
+        specifier: workspace:*
+        version: link:../../studio/assemblies/reference-agent
       '@agent-harness-lab/studio-http-contract':
         specifier: workspace:*
         version: link:../../studio/http-contract
@@ -127,6 +151,21 @@ importers:
       vite:
         specifier: 8.3.0
         version: 8.3.0(@types/node@22.20.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+
+  development/playground/studio-input-context:
+    dependencies:
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../../studio/agent-protocol
+      '@agent-harness-lab/module-context':
+        specifier: workspace:*
+        version: link:../../../studio/modules/context
+      '@agent-harness-lab/module-input':
+        specifier: workspace:*
+        version: link:../../../studio/modules/input
+      '@agent-harness-lab/module-memory':
+        specifier: workspace:*
+        version: link:../../../studio/modules/memory
 
   server:
     dependencies:
@@ -297,12 +336,97 @@ importers:
       '@agent-harness-lab/agent-protocol':
         specifier: workspace:*
         version: link:../agent-protocol
+      '@agent-harness-lab/module-computer-use':
+        specifier: workspace:*
+        version: link:../modules/computer-use
+      '@agent-harness-lab/module-context':
+        specifier: workspace:*
+        version: link:../modules/context
+      '@agent-harness-lab/module-control':
+        specifier: workspace:*
+        version: link:../modules/control
+      '@agent-harness-lab/module-execution-environment':
+        specifier: workspace:*
+        version: link:../modules/execution-environment
+      '@agent-harness-lab/module-input':
+        specifier: workspace:*
+        version: link:../modules/input
+      '@agent-harness-lab/module-memory':
+        specifier: workspace:*
+        version: link:../modules/memory
+      '@agent-harness-lab/module-model-interface':
+        specifier: workspace:*
+        version: link:../modules/model-interface
+      '@agent-harness-lab/module-observability':
+        specifier: workspace:*
+        version: link:../modules/observability
+      '@agent-harness-lab/module-output-actions':
+        specifier: workspace:*
+        version: link:../modules/output-actions
+      '@agent-harness-lab/module-planning':
+        specifier: workspace:*
+        version: link:../modules/planning
+      '@agent-harness-lab/module-safety':
+        specifier: workspace:*
+        version: link:../modules/safety
+      '@agent-harness-lab/module-tool-use':
+        specifier: workspace:*
+        version: link:../modules/tool-use
     devDependencies:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
 
   studio/agent-protocol:
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  studio/assemblies/reference-agent:
+    dependencies:
+      '@agent-harness-lab/agent-kernel':
+        specifier: workspace:*
+        version: link:../../agent-kernel
+      '@agent-harness-lab/agent-protocol':
+        specifier: workspace:*
+        version: link:../../agent-protocol
+      '@agent-harness-lab/module-computer-use':
+        specifier: workspace:*
+        version: link:../../modules/computer-use
+      '@agent-harness-lab/module-context':
+        specifier: workspace:*
+        version: link:../../modules/context
+      '@agent-harness-lab/module-control':
+        specifier: workspace:*
+        version: link:../../modules/control
+      '@agent-harness-lab/module-execution-environment':
+        specifier: workspace:*
+        version: link:../../modules/execution-environment
+      '@agent-harness-lab/module-input':
+        specifier: workspace:*
+        version: link:../../modules/input
+      '@agent-harness-lab/module-memory':
+        specifier: workspace:*
+        version: link:../../modules/memory
+      '@agent-harness-lab/module-model-interface':
+        specifier: workspace:*
+        version: link:../../modules/model-interface
+      '@agent-harness-lab/module-observability':
+        specifier: workspace:*
+        version: link:../../modules/observability
+      '@agent-harness-lab/module-output-actions':
+        specifier: workspace:*
+        version: link:../../modules/output-actions
+      '@agent-harness-lab/module-planning':
+        specifier: workspace:*
+        version: link:../../modules/planning
+      '@agent-harness-lab/module-safety':
+        specifier: workspace:*
+        version: link:../../modules/safety
+      '@agent-harness-lab/module-tool-use':
+        specifier: workspace:*
+        version: link:../../modules/tool-use
     devDependencies:
       typescript:
         specifier: 7.0.2
@@ -390,6 +514,9 @@ importers:
         specifier: workspace:*
         version: link:../../agent-protocol
     devDependencies:
+      '@types/node':
+        specifier: 22.20.2
+        version: 22.20.2
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -10011,7 +10138,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 26.5.1
+      '@types/node': 22.20.2
 
   '@types/d3-array@3.2.2': {}
 
@@ -10169,7 +10296,7 @@ snapshots:
 
   '@types/memcached@2.2.10':
     dependencies:
-      '@types/node': 26.5.1
+      '@types/node': 22.20.2
 
   '@types/ms@2.1.0': {}
 
@@ -10195,7 +10322,7 @@ snapshots:
 
   '@types/pg@8.15.6':
     dependencies:
-      '@types/node': 26.5.1
+      '@types/node': 22.20.2
       pg-protocol: 1.16.0
       pg-types: 2.2.0
 
@@ -12852,7 +12979,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 26.5.1
+      '@types/node': 22.20.2
       merge-stream: 2.0.0
       supports-color: 8.1.1
 

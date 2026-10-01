@@ -1,6 +1,8 @@
 packages:
   - apps/*
+  - development/playground/studio-input-context
   - studio/*
+  - studio/assemblies/*
   - studio/modules/*
   - anesu
   - server

@@ -2,7 +2,7 @@
 
 **Created:** `2026-09-25T00:48:15+02:00`
 
-**Last updated:** `2026-09-25T02:54:44+02:00`
+**Last updated:** `2026-09-26T00:00:00+02:00`
 
 **Status:** Program plan
 
@@ -10,10 +10,11 @@
 
 Studio will be a browser-accessible laboratory for learning how agent harnesses
 work by developing their modules independently, assembling them into a complete
-agent, and inspecting the evidence from real runs. The first implementation will
-establish the repository structure and role-specific module interfaces, then prove
-the package pattern with a narrow example. Later focused plans will implement the
-other roles, connect a complete assembly, and add controlled alternatives.
+agent, and inspecting the evidence from real runs. The first implementation
+establishes the repository structure and role-specific module interfaces. The first
+standalone implementation for each role is now connected through one fixed reference
+assembly. Later focused plans will review those seams, expand run inspection where
+needed, and add controlled alternatives.
 
 This is an umbrella plan. It records the shared direction and sequence. Each
 implementation stage must have its own bounded plan before that stage begins.
@@ -82,11 +83,21 @@ and do not expose internal runtime types.
 
 ## Program stages
 
-Stage 1, the package and interface foundation, is complete. Stage 2 does not yet
-have an active focused implementation plan. The earlier configuration-only UI
-preview plan remains separately listed in the Studio index and must be reconciled
-before run-facing browser work. Later stages describe the sequence, not permission
-to implement them all at once.
+Stage 1, the package and interface foundation, and Stage 2, the first standalone
+module baselines, are complete. Stage 2 began with the
+[Input and Context baseline slice](completed/studio-input-context-baselines.md).
+The completed [chat test slice](completed/studio-chat-test-slice.md) pulls a small
+fixed integration forward: it adds minimal Control and deterministic Replay
+baselines so Input, Memory, and Context can be exercised through the browser. Its
+completed [tool round-trip follow-up](completed/studio-tool-roundtrip.md) adds one
+bounded Tool Use, Safety, and Execution Environment exchange. These are deliberate
+early integration steps, not the general run system. The existing static Components
+preview remains separately scoped. The completed
+[kernel and reference assembly plan](completed/studio-kernel-reference-assembly.md)
+connects all twelve initial implementations through one fixed deterministic cycle,
+with local text, calculator, and controlled-computer scenarios plus saved run
+evidence. It is a reference assembly, not a general plugin loader or production run
+manager.
 
 1. **Workspace architecture and module interfaces.** Establish package and app
    ownership, the shared protocol, twelve role-specific interfaces, and the package
@@ -95,23 +106,32 @@ to implement them all at once.
    [completed foundation plan](completed/studio-module-foundation.md).
 2. **Standalone module baselines.** Implement one small, independently checked
    behavior for each role. Split this work into focused plans by module or related
-   module group. Do not assemble them yet.
-3. **Kernel and reference assembly.** Implement assembly loading, compatibility
-   checks, module wiring, run lifecycle, cancellation, and a complete first agent
-   cycle using the standalone implementations.
-4. **Studio run API and browser inspection.** Expose assembly selection, run start
-   and cancellation, status, events, and evidence through HTTP. Connect the existing
-   web application without moving module code into the browser.
-5. **Reproducibility and failure behavior.** Add controlled scenarios, durable run
-   records, implementation/configuration provenance, and checks for failure,
-   cancellation, restart, and side effects where they apply.
+   module group. The first slice, [Input and Context](completed/studio-input-context-baselines.md),
+   is complete. A minimal Control and Replay implementation is pulled forward by the
+   completed [chat test slice](completed/studio-chat-test-slice.md) to exercise an
+   integrated path. The completed [remaining role baselines plan](completed/studio-remaining-module-baselines.md)
+   adds Planning, Computer Use, Output Actions, and Observability.
+3. **Kernel and reference assembly.** Complete. The fixed kernel composition
+   validates the twelve-component descriptor, owns run lifecycle and cancellation,
+   and preserves role-specific contracts. Alternatives still need separate evidence
+   that they conform and compose correctly.
+4. **Studio run API and browser inspection.** The browser chats only with the Studio
+   API, which exposes the reference assembly and returns a safe run projection. The
+   first slice persists config, events, and results together. A general run manager,
+   live status stream, and broader evidence inspection remain later focused work.
+5. **Reproducibility and failure behavior.** The first controlled text, calculator,
+   and computer fixtures record implementation/configuration provenance and terminal
+   evidence. Run records are local; process restart clears chat and Memory, and an
+   abrupt process failure can leave an incomplete run. Broader restart, recovery,
+   and remote-storage work needs its own plan.
 6. **Component alternatives and experiments.** Add alternative implementations and
    comparison procedures only after the first assembly exposes useful seams. Keep the
    changed variable and interpretation limits explicit.
 
-Each stage will have its own implementation plan, acceptance checks, documentation,
-and handoff. A stage may be split further if its implementation has independent
-contracts or validation.
+Each stage has its own implementation plan, acceptance checks, documentation, and
+handoff. The next planning step is to review the reference assembly's module seams
+and run evidence, then choose a bounded plan for the highest-value follow-up before
+adding variations.
 
 ## Completion direction
 
@@ -127,12 +147,9 @@ is universally best.
 
 ## Decisions to make in focused plans
 
-- The minimal inputs, outputs, state, configuration, lifecycle, capability
-  requirements, errors, and evidence for each of the twelve role interfaces.
-- Which small behavior each first implementation will support and which dependencies
-  it needs.
-- How assembly compatibility is represented and reported.
-- Which run data is durable, where it is stored, and how incomplete runs appear.
+- How to broaden assembly compatibility beyond the first fixed reference descriptor.
+- Which additional run data is needed for broader comparisons, and how incomplete
+  runs should be inspected after a process restart.
 - How the browser is served alongside the separate Studio API in development and
   deployment.
 - When to retire or migrate the existing server-hosted Studio routes and storage.
@@ -146,6 +163,6 @@ in the relevant focused plan or decision record.
 The [component assembly discovery note](../../../docs/planning/studio-assembly-discovery.md)
 records the original direction. The completed Studio plans describe the existing
 server-hosted implementation and remain useful as inspected prior work. They do not
-constrain this program's package layout or runtime design. The existing server
-ownership decision must be reconciled with this program before Studio API code is
-implemented.
+constrain this program's package layout or runtime design. The ownership decision is
+implemented: the Studio API lives in `apps/studio-api/`, the browser remains in
+`apps/web/`, and the existing `server/` continues to serve the Platform Lab.

@@ -1,12 +1,10 @@
 export interface ToolUseConfig {
-  readonly maxCallsPerTurn: number;
   readonly maxArgumentBytes: number;
   readonly maxResultBytes: number;
   readonly timeoutMs: number;
 }
 
 export const DEFAULT_TOOL_USE_CONFIG: ToolUseConfig = Object.freeze({
-  maxCallsPerTurn: 12,
   maxArgumentBytes: 16_384,
   maxResultBytes: 65_536,
   timeoutMs: 30_000,
@@ -23,9 +21,8 @@ export class ToolUseConfigError extends Error {
 
 export function parseToolUseConfig(value: unknown = {}): ToolUseConfig {
   const record = objectValue(value);
-  rejectUnknownKeys(record, ["maxCallsPerTurn", "maxArgumentBytes", "maxResultBytes", "timeoutMs"]);
+  rejectUnknownKeys(record, ["maxArgumentBytes", "maxResultBytes", "timeoutMs"]);
   return Object.freeze({
-    maxCallsPerTurn: integerValue(record, "maxCallsPerTurn", DEFAULT_TOOL_USE_CONFIG.maxCallsPerTurn, 1, 10_000),
     maxArgumentBytes: integerValue(record, "maxArgumentBytes", DEFAULT_TOOL_USE_CONFIG.maxArgumentBytes, 1, 10_000_000),
     maxResultBytes: integerValue(record, "maxResultBytes", DEFAULT_TOOL_USE_CONFIG.maxResultBytes, 1, 100_000_000),
     timeoutMs: integerValue(record, "timeoutMs", DEFAULT_TOOL_USE_CONFIG.timeoutMs, 1, 3_600_000),

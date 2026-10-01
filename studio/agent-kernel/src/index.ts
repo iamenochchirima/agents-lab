@@ -1,4 +1,6 @@
 import type { JsonValue, ModuleIdentity } from "@agent-harness-lab/agent-protocol";
+export * from "./text-turn.js";
+export * from "./run-observability.js";
 
 export const MODULE_AREAS = [
   "input",
@@ -23,7 +25,7 @@ export interface ModuleSelection {
   readonly configuration: JsonValue;
 }
 
-/** Declarative only in this stage; the kernel does not yet load or execute it. */
+/** Full-area assembly metadata; defining it does not instantiate or execute packages. */
 export interface AgentAssemblyDefinition {
   readonly schemaVersion: 1;
   readonly id: string;

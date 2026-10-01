@@ -1,4 +1,5 @@
 import type { JsonValue, ModuleCancellation, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
+import type { OutputActionsConfig } from "./config.js";
 
 export interface OutputActionRequest {
   readonly actionId: string;
@@ -29,4 +30,31 @@ export interface OutputActionsModule {
     readonly proposal: OutputActionProposal;
     readonly idempotencyKey?: string;
   }, signal: ModuleCancellation): Promise<OutputActionReceipt>;
+}
+
+/** Host-owned destination for a prepared output. The module does not choose a sink. */
+export interface OutputActionSink {
+  deliver(input: {
+    readonly scope: RunScope;
+    readonly proposal: OutputActionProposal;
+    readonly idempotencyKey?: string;
+  }, signal: ModuleCancellation): Promise<OutputActionReceipt>;
+}
+
+export interface OutputActionsDependencies {
+  readonly sink: OutputActionSink;
+}
+
+export type OutputActionsFactory = (config: OutputActionsConfig, dependencies: OutputActionsDependencies) => OutputActionsModule;
+
+export type OutputActionsErrorCode =
+  | "INVALID_OUTPUT_ACTION_INPUT"
+  | "OUTPUT_ACTION_TOO_LARGE"
+  | "OUTPUT_ACTION_CANCELLED";
+
+export class OutputActionsError extends Error {
+  constructor(readonly code: OutputActionsErrorCode, message: string) {
+    super(message);
+    this.name = "OutputActionsError";
+  }
 }

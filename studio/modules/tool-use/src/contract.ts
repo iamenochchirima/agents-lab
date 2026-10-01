@@ -1,4 +1,4 @@
-import type { JsonValue, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
+import type { CapabilityDescriptor, JsonValue, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
 import type { ToolUseConfig } from "./config.js";
 
 export type ToolArguments = Readonly<Record<string, JsonValue>>;
@@ -12,6 +12,10 @@ export interface ToolDefinition {
   readonly description: string;
   readonly risk: ToolRisk;
   readonly inputSchema: ToolArguments;
+  /** Explicit capability identity shared with Safety and the execution environment. */
+  readonly capability?: CapabilityDescriptor;
+  /** Operation selected from `capability.operations`; avoids deriving it from the tool name. */
+  readonly capabilityOperation?: string;
 }
 
 /** Raw model-proposed arguments remain unknown until runtime validation succeeds. */

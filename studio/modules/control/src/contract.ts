@@ -1,16 +1,11 @@
-import type { JsonValue, ModuleCancellation, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
+import type { AgentMessage, AgentToolCall, JsonValue, ModuleCancellation, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
 
 export interface ControlTask {
   /** Text normalized by the Input module for this first control contract. */
   readonly prompt: string;
 }
 
-export interface ControlModelMessage {
-  readonly role: "system" | "developer" | "user" | "assistant" | "tool";
-  readonly content: string | null;
-  readonly name?: string;
-  readonly toolCallId?: string;
-}
+export interface ControlModelMessage extends AgentMessage {}
 
 export interface ControlModelTool {
   readonly name: string;
@@ -28,11 +23,7 @@ export interface PreparedModelTurn {
   readonly turnId?: string;
 }
 
-export interface ControlToolCall {
-  readonly callId: string;
-  readonly name: string;
-  readonly arguments: JsonValue;
-}
+export interface ControlToolCall extends AgentToolCall {}
 
 export interface ControlModelResponse {
   readonly text: string | null;

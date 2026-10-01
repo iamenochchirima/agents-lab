@@ -1,0 +1,16 @@
+{
+  "name": "@agent-harness-lab/studio-input-context-playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:modules": "pnpm --filter @agent-harness-lab/agent-protocol build && pnpm --filter @agent-harness-lab/module-input build && pnpm --filter @agent-harness-lab/module-memory build && pnpm --filter @agent-harness-lab/module-context build",
+    "start": "pnpm run build:modules && node run.mjs"
+  },
+  "dependencies": {
+    "@agent-harness-lab/agent-protocol": "workspace:*",
+    "@agent-harness-lab/module-context": "workspace:*",
+    "@agent-harness-lab/module-input": "workspace:*",
+    "@agent-harness-lab/module-memory": "workspace:*"
+  }
+}

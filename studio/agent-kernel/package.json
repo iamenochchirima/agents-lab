@@ -1,6 +1,6 @@
 {
   "name": "@agent-harness-lab/agent-kernel",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,10 +11,23 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "@agent-harness-lab/agent-protocol": "workspace:*"
+    "@agent-harness-lab/agent-protocol": "workspace:*",
+    "@agent-harness-lab/module-computer-use": "workspace:*",
+    "@agent-harness-lab/module-context": "workspace:*",
+    "@agent-harness-lab/module-control": "workspace:*",
+    "@agent-harness-lab/module-execution-environment": "workspace:*",
+    "@agent-harness-lab/module-input": "workspace:*",
+    "@agent-harness-lab/module-memory": "workspace:*",
+    "@agent-harness-lab/module-model-interface": "workspace:*",
+    "@agent-harness-lab/module-observability": "workspace:*",
+    "@agent-harness-lab/module-output-actions": "workspace:*",
+    "@agent-harness-lab/module-planning": "workspace:*",
+    "@agent-harness-lab/module-safety": "workspace:*",
+    "@agent-harness-lab/module-tool-use": "workspace:*"
   },
   "devDependencies": {
     "typescript": "7.0.2"

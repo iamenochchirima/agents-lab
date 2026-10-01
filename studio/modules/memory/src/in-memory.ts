@@ -2,14 +2,14 @@ import type { ModuleIdentity } from "@agent-harness-lab/agent-protocol";
 import { MemoryError, type MemoryCandidate, type MemoryObservation, type MemoryOperationScope, type MemoryRecord, type MemoryRecallRequest, type MemoryRecallResult, type MemoryObserveRequest, type MemorySession, type MemorySessionScope, type MemoryWriteReceipt } from "./contract.js";
 import { parseMemoryConfig, type MemoryConfig } from "./config.js";
 
-const IDENTITY: ModuleIdentity = Object.freeze({ id: "in-memory-session", version: "0.1.0" });
+export const IN_MEMORY_SESSION_IDENTITY: ModuleIdentity = Object.freeze({ id: "in-memory-session", version: "0.1.0" });
 
 /**
  * Deterministic session-scoped reference implementation. State lives only in this
  * object and is lost on close or process exit; it is not a durable store.
  */
 class InMemorySessionImpl implements MemorySession {
-  readonly identity = IDENTITY;
+  readonly identity = IN_MEMORY_SESSION_IDENTITY;
   readonly scope: MemorySessionScope;
   private readonly records = new Map<string, MemoryRecord>();
   private readonly observationIds = new Set<string>();

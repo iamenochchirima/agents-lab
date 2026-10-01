@@ -26,5 +26,27 @@ pnpm --filter @agent-harness-lab/module-planning typecheck
 pnpm --filter @agent-harness-lab/module-planning test
 ```
 
-This package defines the interface and configuration contract; it does not yet
-include a planning algorithm.
+## Initial implementation: single-step response planner
+
+`createSingleStepResponsePlanner` creates a deterministic baseline with identity
+`single-step-response-planner@0.1.0`. For any valid task, it proposes one
+`respond` step. It does not interpret task meaning, choose tools, assess whether
+the task is complete, or decide whether the agent should continue. Control must
+decide whether and how to execute the proposal.
+
+The implementation validates the supplied scope, task, context messages,
+observations, and optional previous plan. It does not use their semantic content
+to change its fixed proposal. Evidence lists distinct source IDs from context
+messages followed by observation source IDs. A previous plan is validated but
+does not alter this baseline's proposal. The deterministic plan ID is a stable
+non-cryptographic hash scoped to the supplied run and input; it is not a security
+token or a globally unique identifier.
+
+`maxSteps` must permit the one required step. `maxDescriptionBytes` applies to
+each generated summary, step description, and completion condition, measured in
+UTF-8 bytes. If those fixed strings do not fit, the planner throws
+`PlanningError` with `PLAN_LIMIT_EXCEEDED`. Invalid input throws
+`INVALID_PLANNING_INPUT`. Cancellation before or after proposal construction
+throws an `AbortError`; callers discard the proposal. The implementation has no
+durable state or external effects. Its output is a contract baseline, not
+evidence of planning quality.

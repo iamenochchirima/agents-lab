@@ -1,6 +1,10 @@
 # Model interface module
 
-This module sends a normalized model request to a selected provider adapter and returns text, structured tool calls, provider identity, usage, and useful provider detail. Provider SDKs and credentials stay inside the implementation or host, not in the shared protocol or browser.
+This module accepts a normalized model request containing shared `AgentMessage`
+and `AgentToolCall` protocol values. It returns text, structured tool calls,
+provider identity, usage, and useful provider detail. Provider SDKs and
+credentials stay inside an implementation or host, not in the shared protocol or
+browser.
 
 ## Interface
 
@@ -10,6 +14,27 @@ This module sends a normalized model request to a selected provider adapter and 
 const result = await model.generate({ scope, model, messages, parameters: {} }, signal);
 if (result.outcome === "completed") inspect(result.response.toolCalls, result.response.usage);
 ```
+
+## Initial implementation: deterministic replay
+
+`createReplayModelInterface(config?)` implements the public contract without contacting a provider. Requests must select `model.provider: "replay"`. The adapter returns a deterministic summary of the request shape: the number of model messages and an estimate for the latest user message. This is useful for exercising and inspecting a harness; it does not answer questions, follow instructions, or simulate tool calls. Tool definitions are accepted as request metadata, but the replay always returns an empty `toolCalls` list.
+
+The adapter echoes the requested provider and model names and identifies itself as `deterministic-replay-model@0.1.0`. Its request ID is a stable hash of the validated request. Usage is a rough estimate from UTF-8 message-content bytes divided by four; it excludes message framing and provider tokenization, so it must not be treated as measured usage. The configured output bound uses the same estimate and truncates text with `finishReason: "length"` when reached.
+
+Package version `0.4.0` adds `createReferenceModelInterface(config)`, a
+deterministic implementation selected by the Studio reference assembly. It keeps
+one adapter identity and routes ordinary tasks to Replay. Two exact named scenario
+tasks use local scripts that emit a fixed calculator or controlled computer tool
+call, then check the correlated result before returning their fixed text. These
+scripts make no provider or network request; they exercise the Model Interface
+contract with the rest of the assembly. They are not general reasoning models or
+model-quality alternatives.
+
+The lower-level `createReplayModelInterface(config?)` remains independently
+available as a diagnostic implementation. It never emits calls, even when a
+request includes tool definitions.
+
+Invalid requests and requests without a text-bearing user message return `invalid-request` with `dispatchOutcome: "not-sent"`. A signal already aborted when generation begins returns `cancelled`, also `not-sent`. The implementation is local and synchronous once called, so it does not emulate network delays, in-flight cancellation, provider errors, or retries. `requestTimeoutMs` and `maxAttempts` do not affect this replay implementation.
 
 ## Lifecycle and retry semantics
 
@@ -28,6 +53,4 @@ pnpm --filter @agent-harness-lab/module-model-interface typecheck
 pnpm --filter @agent-harness-lab/module-model-interface test
 ```
 
-Build the shared protocol package first in a fresh checkout because the emitted declarations are a package dependency.
-
-This package defines the interface and config parser only. A provider adapter still needs tests for tool-call parsing, cancellation, timeouts, provider errors, usage availability, and unknown dispatch outcomes.
+Build the shared protocol package first in a fresh checkout because the emitted declarations are a package dependency. This replay does not make a real provider request. A real provider adapter still needs separate checks for tool-call parsing, in-flight cancellation, timeouts, provider errors, and unknown dispatch outcomes.

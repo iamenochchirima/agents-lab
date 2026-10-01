@@ -1,13 +1,8 @@
-import type { JsonValue, ModuleCancellation, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
+import type { AgentMessage, AgentToolCall, JsonValue, ModuleCancellation, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
 
-export type ModelMessageRole = "system" | "developer" | "user" | "assistant" | "tool";
+export type ModelMessageRole = AgentMessage["role"];
 
-export interface ModelMessage {
-  readonly role: ModelMessageRole;
-  readonly content: string | null;
-  readonly name?: string;
-  readonly toolCallId?: string;
-}
+export interface ModelMessage extends AgentMessage {}
 
 export interface ModelToolDefinition {
   readonly name: string;
@@ -24,10 +19,7 @@ export interface ModelRequest {
   readonly idempotencyKey?: string;
 }
 
-export interface ModelToolCall {
-  readonly callId: string;
-  readonly name: string;
-  readonly arguments: JsonValue;
+export interface ModelToolCall extends AgentToolCall {
   /** Retains provider text when argument parsing or normalization matters to evidence. */
   readonly rawArguments?: string;
 }

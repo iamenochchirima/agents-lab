@@ -42,6 +42,22 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
+/** A normalized call proposed in an assistant message. */
+export interface AgentToolCall {
+  readonly callId: string;
+  readonly name: string;
+  readonly arguments: JsonValue;
+}
+
+/** Provider-neutral message shape shared by Context, Control, and Model Interface. */
+export interface AgentMessage {
+  readonly role: "system" | "developer" | "user" | "assistant" | "tool";
+  readonly content: string | null;
+  readonly name?: string;
+  readonly toolCallId?: string;
+  readonly toolCalls?: readonly AgentToolCall[];
+}
+
 export interface CapabilityDescriptor {
   readonly id: string;
   readonly version: string;
