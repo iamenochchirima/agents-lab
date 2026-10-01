@@ -27,6 +27,7 @@ therefore report `degraded` while `/ready` and the priority platform health endp
 are ready. Services can also be selected explicitly:
 
 ```bash
+./scripts/run_local_stack.sh studio
 ./scripts/run_local_stack.sh frontend
 ./scripts/run_local_stack.sh server
 # `api` remains a compatibility alias:
@@ -39,6 +40,20 @@ are ready. Services can also be selected explicitly:
 ./scripts/run_local_stack.sh check-temporal
 ./scripts/run_local_stack.sh --help
 ```
+
+The `studio` profile starts the Studio API and the shared web app, waits for both
+to become ready, and stops both when you press Ctrl-C. It does not start the
+Platform Lab server or its workflow services. Add future Studio services to this
+profile with their own readiness checks so this remains the single command for
+starting the Studio experience.
+
+The web app defaults to `127.0.0.1:5173`; the Studio API defaults to
+`127.0.0.1:4320`. Configure the API bind address and port with
+`AGENTLAB_STUDIO_API_HOST` and `AGENTLAB_STUDIO_API_PORT`. Set
+`AGENTLAB_STUDIO_API_URL` to the API URL the browser should call, and
+`AGENTLAB_STUDIO_WEB_ORIGIN` if the browser uses a different web origin. The
+existing `AGENTLAB_WEB_HOST` and `AGENTLAB_WEB_PORT` still configure the shared
+web app.
 
 The Hatchet baseline is also available as an optional service command. It uses
 Hatchet's embedded runtime by default and does not require Docker:

@@ -50,11 +50,17 @@ development/playground/<slice-name>/
 ```
 
 The first slices are `anesu-terminal-turn`, `anesu-browser-turn`,
-`anesu-context-management`, `temporal-baseline`, and `platform-comparison`. The Anesu slices make text-only,
-context, and browser turns observable from input through persisted session evidence. The latter makes one durable
-Temporal run observable across the API, worker, workflow, model activity, and Lab
-evidence projection. The platform-comparison slice makes one shared task and its
-independent member evidence observable across the four priority platform profiles.
+`anesu-context-management`, `studio-input-context`, `studio-chat`,
+`temporal-baseline`, and `platform-comparison`. The Input and Context slice traces
+one text request and retrieved Memory records through Input normalization and Context
+assembly. The Studio chat slice exercises the fixed Input, Memory, Context, Control,
+and Replay Model Interface assembly from the browser; its README explains how to start
+the API and inspect transient per-turn evidence. The Anesu slices make text-only,
+context, and browser turns observable from input through persisted session evidence.
+The Temporal slice makes one durable run observable across the API, worker, workflow,
+model activity, and Lab evidence projection. The platform-comparison slice makes one
+shared task and its independent member evidence observable across the four priority
+platform profiles.
 
 ## Expectations for every slice
 
@@ -74,3 +80,8 @@ When a playground exposes meaningful expected behavior, add the corresponding au
 tests in the appropriate `tests/` location. When it becomes a reusable workload, a
 failure study, or contributor-facing guide, promote it deliberately rather than quietly
 depending on the playground forever.
+
+## Studio module walkthroughs
+
+- [Studio chat: inspect the first connected modules](studio-chat/README.md)
+- [Input and Context standalone baselines](studio-input-context/README.md)

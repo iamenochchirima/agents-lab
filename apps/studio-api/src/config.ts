@@ -1,7 +1,13 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const DEFAULT_STUDIO_RUNS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..", "lab/runs");
+
 export interface StudioApiConfig {
   readonly host: string;
   readonly port: number;
   readonly webOrigin: string;
+  readonly runsRoot: string;
 }
 
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -10,6 +16,7 @@ export function parseStudioApiConfig(environment: Environment): StudioApiConfig 
   const host = environment.STUDIO_API_HOST?.trim() || "127.0.0.1";
   const portValue = environment.STUDIO_API_PORT?.trim() || "4320";
   const webOriginValue = environment.STUDIO_API_WEB_ORIGIN?.trim() || "http://localhost:5173";
+  const runsRootValue = environment.STUDIO_RUNS_ROOT?.trim() || DEFAULT_STUDIO_RUNS_ROOT;
 
   if (!/^[1-9]\d{0,4}$/.test(portValue)) {
     throw new Error("STUDIO_API_PORT must be an integer between 1 and 65535.");
@@ -20,6 +27,9 @@ export function parseStudioApiConfig(environment: Environment): StudioApiConfig 
   }
   if (!host || /\s/.test(host)) {
     throw new Error("STUDIO_API_HOST must be a non-empty host name or IP address.");
+  }
+  if (!runsRootValue || /[\u0000-\u001f\u007f]/.test(runsRootValue)) {
+    throw new Error("STUDIO_RUNS_ROOT must be a non-empty local directory path.");
   }
 
   let webOrigin: string;
@@ -33,5 +43,5 @@ export function parseStudioApiConfig(environment: Environment): StudioApiConfig 
     throw new Error("STUDIO_API_WEB_ORIGIN must be an HTTP(S) origin without a path.");
   }
 
-  return { host, port, webOrigin };
+  return { host, port, webOrigin, runsRoot: resolve(runsRootValue) };
 }

@@ -9,6 +9,7 @@ import {
   Database,
   FlaskConical,
   LockKeyhole,
+  MessageSquareText,
   Network,
   Play,
   Plus,
@@ -18,10 +19,11 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import "./studio-prototype.css";
 import { getStudioApiHealth } from "./studioApi";
+import { appPaths } from "../../routes/paths";
 
 type StudioVariant = "command" | "focus" | "map";
 
@@ -79,7 +81,12 @@ function StudioApiConnection() {
       ? "Studio API: connected"
       : "Studio API: unavailable";
 
-  return <div aria-live="polite" className={`studio-api-connection is-${status}`} role="status">{label}</div>;
+  return (
+    <div className="studio-prototype-toolbar">
+      <div aria-live="polite" className={`studio-api-connection is-${status}`} role="status">{label}</div>
+      <Link className="studio-api-chat-link" to={appPaths.studioChat}><MessageSquareText aria-hidden="true" size={14} /> Open assembly chat</Link>
+    </div>
+  );
 }
 
 function SectionHeading({ eyebrow, title, action }: { eyebrow: string; title: string; action?: ReactNode }) {

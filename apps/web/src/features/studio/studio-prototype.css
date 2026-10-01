@@ -5,13 +5,21 @@
   padding-bottom: 72px;
 }
 
+.studio-prototype-toolbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 auto;
+  max-width: 1320px;
+  min-height: 38px;
+}
+
 .studio-api-connection {
   color: var(--text-3);
   font-size: 0.68rem;
-  margin: 0 auto;
-  max-width: 1320px;
-  padding: 12px 0 0;
-  text-align: right;
+  margin: 0;
+  padding: 0;
+  text-align: left;
 }
 
 .studio-api-connection.is-connected {
@@ -20,6 +28,22 @@
 
 .studio-api-connection.is-unavailable {
   color: var(--text-2);
+}
+
+.studio-api-chat-link {
+  align-items: center;
+  color: var(--accent-strong);
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 700;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.studio-api-chat-link:hover,
+.studio-api-chat-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .studio-status {

@@ -12,6 +12,7 @@ export const appPaths = {
   settings: "/settings",
   docs: "/docs",
   studio: "/studio",
+  studioChat: "/studio/chat",
   components: "/components",
   platform: (platformId: string) => `/platforms/${platformId}`,
   platformSection: (platformId: string, section: string) => `/platforms/${platformId}/${section}`,

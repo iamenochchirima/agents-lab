@@ -2,7 +2,7 @@ import { parseStudioApiConfig } from "./config.js";
 import { createStudioApiApp } from "./http/app.js";
 
 const config = parseStudioApiConfig(process.env);
-const app = await createStudioApiApp({ webOrigin: config.webOrigin, logger: true });
+const app = await createStudioApiApp({ webOrigin: config.webOrigin, runsRoot: config.runsRoot, logger: true });
 
 try {
   await app.listen({ host: config.host, port: config.port });

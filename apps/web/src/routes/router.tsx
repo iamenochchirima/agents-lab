@@ -28,6 +28,14 @@ export const router = createBrowserRouter([
         handle: { label: "Studio" },
       },
       {
+        path: "studio/chat",
+        lazy: async () => {
+          const { StudioChatPage } = await import("../features/studio/StudioChatPage");
+          return { Component: StudioChatPage };
+        },
+        handle: { label: "Studio chat" },
+      },
+      {
         path: "coverage",
         lazy: async () => {
           const { CoveragePage } = await import("../features/coverage/CoveragePage");

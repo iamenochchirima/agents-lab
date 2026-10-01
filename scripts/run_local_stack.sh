@@ -10,6 +10,14 @@ CONTEXT_ROOT="${AGENTLAB_CONTEXT_ROOT:-$ROOT_DIR/lab/sessions}"
 
 WEB_HOST="${AGENTLAB_WEB_HOST:-127.0.0.1}"
 WEB_PORT="${AGENTLAB_WEB_PORT:-5173}"
+STUDIO_API_HOST="${AGENTLAB_STUDIO_API_HOST:-${STUDIO_API_HOST:-127.0.0.1}}"
+STUDIO_API_PORT="${AGENTLAB_STUDIO_API_PORT:-${STUDIO_API_PORT:-4320}}"
+STUDIO_API_URL="${AGENTLAB_STUDIO_API_URL:-${VITE_AGENTLAB_STUDIO_API_URL:-http://127.0.0.1:${STUDIO_API_PORT}}}"
+STUDIO_WEB_ORIGIN_HOST="$WEB_HOST"
+if [[ "$STUDIO_WEB_ORIGIN_HOST" == "0.0.0.0" || "$STUDIO_WEB_ORIGIN_HOST" == "::" ]]; then
+  STUDIO_WEB_ORIGIN_HOST="127.0.0.1"
+fi
+STUDIO_API_WEB_ORIGIN="${AGENTLAB_STUDIO_WEB_ORIGIN:-${STUDIO_API_WEB_ORIGIN:-http://${STUDIO_WEB_ORIGIN_HOST}:${WEB_PORT}}}"
 API_HOST="${AGENTLAB_API_HOST:-127.0.0.1}"
 API_PORT="${AGENTLAB_API_PORT:-4318}"
 API_ORIGIN="${AGENTLAB_API_ORIGIN:-http://${WEB_HOST}:${WEB_PORT}}"
@@ -332,6 +340,7 @@ Vercel Workflows, the Lab server, the Temporal worker, and the web app.
 
 Available services:
   all                  Start the complete local comparison stack (default)
+  studio               Start the Studio API and shared browser app
   frontend, web        Start the React/Vite frontend only
   server, api          Start the Fastify server only (api is an alias)
   worker               Start the Temporal worker only
@@ -350,6 +359,8 @@ Available services:
 
 Environment variables:
   AGENTLAB_WEB_HOST, AGENTLAB_WEB_PORT
+  AGENTLAB_STUDIO_API_HOST, AGENTLAB_STUDIO_API_PORT
+  AGENTLAB_STUDIO_API_URL, AGENTLAB_STUDIO_WEB_ORIGIN
   AGENTLAB_API_HOST, AGENTLAB_API_PORT, AGENTLAB_API_ORIGIN
   AGENTLAB_RUN_ROOT, AGENTLAB_CONTEXT_ROOT
   AGENTLAB_TEMPORAL_ENDPOINT, AGENTLAB_TEMPORAL_NAMESPACE
@@ -371,6 +382,7 @@ Environment variables:
 
 Examples:
   $0
+  $0 studio
   $0 server
   AGENTLAB_WEB_PORT=5174 $0 all
 EOF
@@ -389,6 +401,100 @@ run_frontend() {
   ensure_port_available "Frontend" "$WEB_HOST" "$WEB_PORT"
   echo "Starting Agent Harness Lab frontend at http://${WEB_HOST}:${WEB_PORT}"
   exec pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/web run dev --host "$WEB_HOST" --port "$WEB_PORT"
+}
+
+run_studio() {
+  require_command pnpm
+  require_command curl
+  require_command setsid
+  require_command pgrep
+  require_package "$WEB_DIR"
+  require_package "$ROOT_DIR/apps/studio-api"
+
+  if [[ ! -x "$WEB_DIR/node_modules/.bin/vite" || ! -x "$ROOT_DIR/apps/studio-api/node_modules/.bin/tsx" ]]; then
+    echo "Studio dependencies are incomplete or out of date." >&2
+    echo "Run: pnpm install" >&2
+    return 1
+  fi
+
+  ensure_port_available "Studio API" "$STUDIO_API_HOST" "$STUDIO_API_PORT"
+  ensure_port_available "Web app" "$WEB_HOST" "$WEB_PORT"
+
+  stack_log_directory="$(mktemp -d "${TMPDIR:-/tmp}/agentlab-studio.XXXXXX")"
+  stack_pids=()
+  stack_process_names=()
+
+  start_background() {
+    local name="$1"
+    shift
+    setsid "$@" >"$stack_log_directory/$name.log" 2>&1 &
+    stack_pids+=("$!")
+    stack_process_names+=("$name")
+  }
+
+  stack_processes_alive() {
+    local index
+    for index in "${!stack_pids[@]}"; do
+      if ! kill -0 "${stack_pids[$index]}" 2>/dev/null; then
+        echo "${stack_process_names[$index]} exited. Check $stack_log_directory/${stack_process_names[$index]}.log." >&2
+        return 1
+      fi
+    done
+  }
+
+  cleanup() {
+    trap - EXIT INT TERM
+    local index pid exit_code=$?
+    local -a cleanup_pids=("${stack_pids[@]-}")
+    for ((index = ${#cleanup_pids[@]} - 1; index >= 0; index--)); do
+      pid="${cleanup_pids[$index]}"
+      kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    done
+    for pid in "${cleanup_pids[@]}"; do
+      wait "$pid" 2>/dev/null || true
+    done
+    echo "Studio services stopped. Logs retained at $stack_log_directory"
+    exit "$exit_code"
+  }
+  trap cleanup EXIT INT TERM
+
+  echo "Starting Studio API and browser app."
+  start_background "studio-api" env \
+    STUDIO_API_HOST="$STUDIO_API_HOST" \
+    STUDIO_API_PORT="$STUDIO_API_PORT" \
+    STUDIO_API_WEB_ORIGIN="$STUDIO_API_WEB_ORIGIN" \
+    pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/studio-api run dev
+
+  local readiness_host="$STUDIO_API_HOST"
+  if [[ "$readiness_host" == "0.0.0.0" || "$readiness_host" == "::" ]]; then
+    readiness_host="127.0.0.1"
+  fi
+  if ! wait_for_http "Studio API" "http://${readiness_host}:${STUDIO_API_PORT}/health"; then
+    echo "Check $stack_log_directory/studio-api.log." >&2
+    return 1
+  fi
+  stack_processes_alive
+
+  start_background "studio-web" env \
+    VITE_AGENTLAB_STUDIO_API_URL="$STUDIO_API_URL" \
+    pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/web run dev --host "$WEB_HOST" --port "$WEB_PORT"
+  if ! wait_for_http "Studio web app" "http://${WEB_HOST}:${WEB_PORT}/studio"; then
+    echo "Check $stack_log_directory/studio-web.log." >&2
+    return 1
+  fi
+  stack_processes_alive
+
+  echo "Studio is ready."
+  echo "  Studio:    http://${WEB_HOST}:${WEB_PORT}/studio"
+  echo "  Chat:      http://${WEB_HOST}:${WEB_PORT}/studio/chat"
+  echo "  API:       $STUDIO_API_URL"
+  echo "  Logs:      $stack_log_directory"
+  echo "Press Ctrl-C to stop the Studio API and web app."
+
+  while :; do
+    stack_processes_alive
+    sleep 1
+  done
 }
 
 run_server() {
@@ -778,6 +884,9 @@ case "${1:-}" in
     ;;
   -h|--help)
     show_usage
+    ;;
+  studio)
+    run_studio
     ;;
   frontend|web)
     run_frontend
