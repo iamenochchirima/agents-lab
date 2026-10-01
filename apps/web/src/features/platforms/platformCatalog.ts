@@ -34,8 +34,8 @@ function plannedPlatform(
 
 export const platformCatalog: readonly PlatformDescriptor[] = [
   {
-    id: "anesu",
-    name: "Anesu",
+    id: "lina",
+    name: "Lina",
     role: "Independent compute-native agent product",
     description: "An independently developed compute-native harness studied through the Lab integration boundary.",
     kind: "compute-native",
@@ -47,8 +47,8 @@ export const platformCatalog: readonly PlatformDescriptor[] = [
     computerEnvironmentIds: ["local-workspace", "sandboxed-container", "remote-vm"],
     backendProfiles: [],
     infrastructure: [],
-    implementationDocumentId: "server/src/integrations/anesu/README.md",
-    variants: [{ id: "baseline", name: "Anesu baseline", description: "The external harness's first Lab-compatible release.", status: "planned" }],
+    implementationDocumentId: "server/src/integrations/lina/README.md",
+    variants: [{ id: "baseline", name: "Lina baseline", description: "The external harness's first Lab-compatible release.", status: "planned" }],
   },
   {
     ...plannedPlatform("temporal", "Temporal", "Durable workflow execution", "An agent runtime hosted in workflows and activities with durable history and recovery.", "TypeScript", "Node.js worker + Temporal", "Workflow-coordinated agent loop", "Workflow history, retries, timers, and signals", "server/src/platforms/temporal/README.md"),

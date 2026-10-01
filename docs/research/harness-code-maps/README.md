@@ -39,7 +39,7 @@ The table labels mean:
 
 ## Important reading rule
 
-Do not treat a filename as evidence of a guarantee. For example, a file named
+Do not treat a filiname as evidence of a guarantee. For example, a file named
 `retry`, `durable`, or `memory` tells us where to inspect. The implementation,
 tests, and failure behaviour decide what the project actually guarantees.
 

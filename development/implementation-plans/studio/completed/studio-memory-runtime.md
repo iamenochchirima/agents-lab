@@ -264,7 +264,7 @@ Studio evidence store
 Context strategy
   → consumes the Memory read result and owns model-visible packing/budgeting
 
-Existing Platform Lab and Anesu
+Existing Platform Lab and Lina
   → remain outside this subsystem and must not be imported as shortcuts
 ```
 
@@ -577,7 +577,7 @@ work can build on this kernel without treating local replay as a production runt
 - [x] Review integration, evidence, tests, and documentation with the behaviour they
       describe.
 - [x] Run focused checks before each coherent handoff.
-- [x] Preserve unrelated Anesu, Platform Lab, and UI changes in the worktree.
+- [x] Preserve unrelated Lina, Platform Lab, and UI changes in the worktree.
 - [x] Record changed files, validation results, and known limitations in the final
       handoff.
 

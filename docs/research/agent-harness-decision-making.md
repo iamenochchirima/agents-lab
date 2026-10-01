@@ -1,7 +1,7 @@
 # Agent harness decision-making
 
 **Research date:** 2026-09-23<br>
-**Scope:** How to keep Anesu model-directed while placing safety and reliability checks in the runtime and tool boundary. This note compares first-party agent guidance with the local Hermes and OpenClaw computer-use paths. It records design guidance, not a claim that these projects provide identical guarantees.
+**Scope:** How to keep Lina model-directed while placing safety and reliability checks in the runtime and tool boundary. This note compares first-party agent guidance with the local Hermes and OpenClaw computer-use paths. It records design guidance, not a claim that these projects provide identical guarantees.
 
 ## Finding
 
@@ -13,9 +13,9 @@ Anthropic explicitly distinguishes predefined workflows from agents whose models
 
 - **Hermes:** one generic `computer_use` tool exposes observed UI and input operations. It classifies action evidence as confirmed, unverifiable, or likely no-op. Unverifiable effects call for fresh observation; escalation advice does not authorize replay. It does not encode a separate scripted workflow for every user goal. See the [computer-use tool](https://github.com/NousResearch/hermes-agent/blob/main/tools/computer_use/tool.py) and [tool schema](https://github.com/NousResearch/hermes-agent/blob/main/tools/computer_use/schema.py).
 - **OpenClaw:** the model-facing computer action follows provider-advertised capabilities. Host code owns execution identity, target freshness, permission policy, and structured refusal/effect evidence. Its guidance says action evidence alone does not establish the user's goal, and the agent should observe again before another mutation. See [computer-use guidance](https://docs.openclaw.ai/nodes/computer-use) and the local `src/agents/tools/computer-tool-guidance.ts` and `extensions/cua-computer/src/` sources.
-- **Anesu:** its current Jev path already lets the model choose a current Cua candidate, and its runtime can validate the choice against a task grant. That is the right basic seam. The current task compiler and runner then add extra deterministic interpretation: prompt regexes choose the surface and action classes, `allowedActions` are also treated as required progress, and a regex fast path can finish before Jev sees an interaction request. Those rules are not required by Hermes or OpenClaw, and the last one is already contradicted by the link-follow regression.
+- **Lina:** its current Jev path already lets the model choose a current Cua candidate, and its runtime can validate the choice against a task grant. That is the right basic seam. The current task compiler and runner then add extra deterministic interpretation: prompt regexes choose the surface and action classes, `allowedActions` are also treated as required progress, and a regex fast path can finish before Jev sees an interaction request. Those rules are not required by Hermes or OpenClaw, and the last one is already contradicted by the link-follow regression.
 
-## Design rule for Anesu
+## Design rule for Lina
 
 Keep the division plain:
 
@@ -34,7 +34,7 @@ Errors should be returned as useful, typed tool results when it is safe to conti
 
 Before changing an agent capability:
 
-1. Read the actual reference agent loop and tool/host boundary. Record what the model chooses and what the host enforces, with source locations. Do this before designing Anesu-specific abstractions.
+1. Read the actual reference agent loop and tool/host boundary. Record what the model chooses and what the host enforces, with source locations. Do this before designing Lina-specific abstractions.
 2. For every deterministic branch, state the concrete invariant it protects. Keep it if it validates a real boundary such as identity, capability, freshness, approval, resource use, or persistence. Challenge it if it infers user intent, chooses the task sequence, requires actions merely because they are permitted, or declares completion from prompt wording.
 3. Make tools discoverable and legible: describe their real capability, arguments, observation inputs, side effects, and refusal results. Let the model use the tools iteratively. Do not synthesize a tool call merely because a regex thinks the user intended one.
 4. Test the harness loop and its boundaries, not a deterministic script for every phrasing. Use model-recording tests to prove tool results return to the model, safety tests for denied/stale/out-of-scope actions, and a small set of ordinary live prompts to prove the full path.
@@ -49,4 +49,4 @@ The practical success test is visible in the run trace: user goal reaches the mo
 - OpenAI, [Agents SDK: Running agents](https://openai.github.io/openai-agents-python/running_agents/), [Tools](https://openai.github.io/openai-agents-python/tools/), and [Guardrails](https://openai.github.io/openai-agents-python/guardrails/), accessed 2026-09-23.
 - Hermes, [computer-use tool source](https://github.com/NousResearch/hermes-agent/blob/main/tools/computer_use/tool.py) and [schema](https://github.com/NousResearch/hermes-agent/blob/main/tools/computer_use/schema.py), accessed 2026-09-23; local checkout inspected at `/home/enoch/aworkspace/agents/hermes-agent`.
 - OpenClaw, [computer-use documentation](https://docs.openclaw.ai/nodes/computer-use), accessed 2026-09-23; local checkout inspected at `/home/enoch/aworkspace/agents/openclaw`.
-- Anesu, current working tree: `src/computer/runner.ts`, `src/computer/task.ts`, `src/computer/verification.ts`, and `src/runtime/turn.ts`.
+- Lina, current working tree: `src/computer/runner.ts`, `src/computer/task.ts`, `src/computer/verification.ts`, and `src/runtime/turn.ts`.

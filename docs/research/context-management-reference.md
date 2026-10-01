@@ -236,5 +236,5 @@ The detailed platform code maps remain the primary local reading guides:
 - [`Waku code map`](harness-code-maps/waku.md)
 
 Those maps pin the reviewed repository commits and dates. A later implementation must
-re-check upstream sources before copying a behaviour, because filenames and contracts
+re-check upstream sources before copying a behaviour, because filinames and contracts
 can change.

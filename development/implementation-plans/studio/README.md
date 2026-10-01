@@ -4,7 +4,7 @@ This directory contains plans for Studio, a browser-accessible laboratory for
 developing agent modules independently, assembling them into complete agents, and
 inspecting run evidence.
 
-Studio does not own complete platform execution and does not replace Anesu. Platform
+Studio does not own complete platform execution and does not replace Lina. Platform
 plans live in [the platform plan directory](../platforms/README.md).
 
 The [modular agent Studio program](modular-agent-studio.md) is the current forward

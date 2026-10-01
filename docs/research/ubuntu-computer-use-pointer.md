@@ -2,16 +2,16 @@
 
 **Reviewed:** 2026-09-19
 **Scope:** visible cursor movement, pointer input, screen capture, and isolation for
-Anesu computer use on Ubuntu 24.04
+Lina computer use on Ubuntu 24.04
 **Evidence boundary:** Ubuntu/X.Org/Wayland/kernel documentation, Playwright and
 FFmpeg documentation, the local Hermes/OpenClaw implementations, and a direct review
 of the local CUA Driver checkout at `/home/enoch/aworkspace/agents/cua` (revision
-`9bbfa7dd3`). This note is a design input; it is not evidence that Anesu already has
+`9bbfa7dd3`). This note is a design input; it is not evidence that Lina already has
 the described native backend.
 
 ## Conclusion
 
-For the first Ubuntu implementation, Anesu should use an isolated X11 graphical
+For the first Ubuntu implementation, Lina should use an isolated X11 graphical
 session, preferably through the maintained CUA Driver Linux backend, and expose that
 session through a visible nested window or a protected VNC/noVNC viewer. The action
 executor should move a real pointer, click, drag, scroll, and type through the host
@@ -44,7 +44,7 @@ browser screenshot contains a cursor. [Playwright Mouse API](https://playwright.
 and [Chrome DevTools `Input.dispatchMouseEvent`](https://chromedevtools.github.io/devtools-protocol/1-3/Input/)
 describe page-level input, not OS-level pointer control.
 
-The current Anesu browser POC uses this semantic browser path: it selects a managed
+The current Lina browser POC uses this semantic browser path: it selects a managed
 element reference and calls the browser adapter. The browser is visible and the page
 changes, but there is no first-class OS cursor movement in that path.
 
@@ -61,7 +61,7 @@ supports absolute and relative pointer movement, clicks, button press/release, m
 location queries, and synchronization after a move. It also explicitly warns that it
 does not work correctly on Wayland. [xdotool documentation](https://github.com/jordansissel/xdotool)
 
-For Anesu, XTEST or a maintained CUA Driver backend should remain inside the environment
+For Lina, XTEST or a maintained CUA Driver backend should remain inside the environment
 adapter. The model must receive typed actions such as `move`, `click`, and `drag`; it
 must not be allowed to choose a shell command, display name, native device, or helper
 binary.
@@ -74,7 +74,7 @@ Its `-fbdir` framebuffer files include the cursor image, which is useful for con
 capture. [Ubuntu Xvfb manpage](https://manpages.ubuntu.com/manpages/resolute/man1/Xvfb.1.html)
 
 Xvfb is safe and reproducible for automated tests, but it is not visible by itself. To
-let a human watch it, Anesu would need a view-only or authenticated VNC/noVNC surface,
+let a human watch it, Lina would need a view-only or authenticated VNC/noVNC surface,
 or a separate capture/streaming layer. The viewer must preserve cursor position and
 shape rather than rendering a static screenshot only.
 
@@ -143,7 +143,7 @@ cursor cannot be implemented. The relevant local reference is:
 
 - `/home/enoch/aworkspace/agents/hermes-agent/skills/autonomous-ai-agents/computer-use/SKILL.md`
 
-The lesson for Anesu is to make visibility a host-profile choice. A development profile
+The lesson for Lina is to make visibility a host-profile choice. A development profile
 can intentionally show a disposable cursor and display; a background profile can keep
 actions isolated from the operator's cursor. Both must use the same action policy,
 freshness checks, and evidence contract.
@@ -167,7 +167,7 @@ The most relevant local sources are:
 - `/home/enoch/aworkspace/agents/cua/rfcs/3931-cua-perception-and-jev-use.md`
 - `/home/enoch/aworkspace/agents/cua/rfcs/3550-hyprland-isolated-input.md`
 
-### What Anesu should reuse
+### What Lina should reuse
 
 CUA Driver is the right host-execution boundary for the Ubuntu slice. Its Linux
 documentation describes background X11 delivery, AT-SPI element actions, X11 pixel
@@ -175,13 +175,13 @@ routes, screenshots, display/window state, keyboard and pointer actions, and exp
 background/foreground delivery modes. Its TypeScript SDK supports an in-process
 native runtime, named sessions, desktop/window observations, `moveCursor`, click,
 drag, scroll, typing, keypress, verification, and orderly shutdown. That is enough
-to avoid writing a second XTEST/uinput implementation in Anesu.
+to avoid writing a second XTEST/uinput implementation in Lina.
 
 For visible development, CUA's “agent cursor” is the relevant feature. It is a
 synthetic, session-owned overlay that glides to action targets and can show action and
 target context. It is intentionally separate from the real compositor pointer: CUA's
 default background mode can act without moving the operator's pointer or stealing
-focus. Anesu should therefore expose two honest host profiles rather than assume that
+focus. Lina should therefore expose two honest host profiles rather than assume that
 “computer use” always means moving the user's cursor:
 
 1. **Visible disposable profile:** an isolated X11 display, CUA agent-cursor overlay,
@@ -194,25 +194,25 @@ the strongest first lane; standard Wayland is compositor-dependent and refuses r
 background shapes when it cannot prove target-addressable delivery; nested or
 compositor-specific routes must not be presented as general Wayland support.
 
-### What Anesu should learn from, but not put inside CUA
+### What Lina should learn from, but not put inside CUA
 
-The CUA perception/Jev RFC is closely aligned with the Anesu boundary. It keeps CUA
+The CUA perception/Jev RFC is closely aligned with the Lina boundary. It keeps CUA
 Driver responsible for capture, target identity, coordinate transforms, action
 admission, dispatch, and verification. A client constructs complete bounded candidate
 actions; Jev may select one supplied candidate ID; the client validates it; the loop
 executes at most one action from one capture and then reobserves. Jev does not receive
 desktop authority, invent tool names, or emit unconstrained coordinates.
 
-Anesu should preserve that division:
+Lina should preserve that division:
 
-- **Anesu owns:** model/provider selection, traditional-vs-Jev strategy, candidate
+- **Lina owns:** model/provider selection, traditional-vs-Jev strategy, candidate
   construction, approval, cancellation, conversation policy, TUI, and run evidence.
 - **CUA Driver owns:** Ubuntu session/display attachment, capture, native target
   resolution, pointer/keyboard dispatch, cursor overlay, platform permissions, and
   native action results.
 - **The integration adapter owns:** CUA session lifecycle, target/frame binding,
   coordinate conversion, capability/doctor checks, and mapping CUA results into
-  Anesu's model-neutral computer-use events.
+  Lina's model-neutral computer-use events.
 
 The adapter must not pass arbitrary model-produced CUA tool calls through. It should
 construct a small allowlisted action set, bind every action to the fresh observation,
@@ -226,7 +226,7 @@ Reusing CUA still requires deliberate integration work:
 
 - pin the CUA SDK/native artifact set as one compatible release unit; do not depend on
   an untracked globally installed daemon or a moving “latest” artifact;
-- run CUA's Linux doctor/readiness checks as part of Anesu environment readiness and
+- run CUA's Linux doctor/readiness checks as part of Lina environment readiness and
   surface missing X11, AT-SPI, session-bus, native-library, or permission state;
 - retain CUA's exact target, session, generation, geometry, scale, and stale-frame
   semantics instead of reducing them to an unbound `{x, y}`;
@@ -236,11 +236,11 @@ Reusing CUA still requires deliberate integration work:
   native call is not proof that the application changed; and
 - begin with the repository's X11 lane and its fixture/evidence model. Do not claim
   CUA's broader Wayland, Hyprland, GNOME, KDE, or real-Xorg behavior until the
-  corresponding Anesu host profile has its own readiness and focused evidence.
+  corresponding Lina host profile has its own readiness and focused evidence.
 
 This confirms CUA should be our primary Ubuntu host-driver candidate and reference,
 not a reason to duplicate the lower-level desktop implementation. It does not make
-the current Anesu browser POC a native computer-use implementation; the integration,
+the current Lina browser POC a native computer-use implementation; the integration,
 visible disposable profile, approval path, verification, and evidence work remain in
 the active computer-use plan.
 
@@ -261,7 +261,7 @@ Primary sources:
 - [Local `jev-use` implementation](https://github.com/trycua/cua/tree/main/libs/cua-driver/examples/jev-use)
 - [CUA perception/Jev boundary RFC](https://github.com/trycua/cua/issues/3931)
 
-CUA-S1-FORMS is useful to Anesu as a later specialist-provider experiment, not as the
+CUA-S1-FORMS is useful to Lina as a later specialist-provider experiment, not as the
 default computer-use brain. Its documented contract is intentionally narrow: each
 actionable form element is paired with bounded options such as a supplied document
 entity, `check`, `click`, or `skip`; the model returns probabilities over those
@@ -273,7 +273,7 @@ computer use.
 The local checkout contains source, tests, training/evaluation utilities, and the
 Driver adapter, but no model weights. The official model release provides a
 `safetensors` checkpoint with a JSON sidecar and explicitly rejects pickle-based
-loading in its reference loader. Any future Anesu integration must pin and verify the
+loading in its reference loader. Any future Lina integration must pin and verify the
 exact artifact and license rather than silently downloading a model at runtime.
 
 The most valuable implementation lessons are already applicable:
@@ -290,13 +290,13 @@ The most valuable implementation lessons are already applicable:
 - verify completion through independent application state, not the model's confidence
   or the Driver acknowledgement alone.
 
-These patterns reinforce the existing Anesu plan. They do not justify adding CUA-S1 to
+These patterns reinforce the existing Lina plan. They do not justify adding CUA-S1 to
 the first general computer-use slice: the initial comparison remains traditional
 vision versus TypeSafe/Jev, while CUA-S1-FORMS can later be added as a form-specific
 local specialist behind the same candidate, approval, executor, and verification
 interfaces.
 
-## Recommended Anesu Ubuntu design
+## Recommended Lina Ubuntu design
 
 ```text
 traditional vision / Jev semantic state

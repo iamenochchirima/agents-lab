@@ -41,7 +41,7 @@ model and non-sensitive prompts.
 1. Start the native local stack without Docker:
 
    ```bash
-   temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+   temporal server start-dev --db-filiname /tmp/agent-harness-lab-temporal.db
    ./scripts/run_local_stack.sh
    ```
 

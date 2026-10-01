@@ -1,7 +1,7 @@
 # Computer-use source audit: generic controls versus app-specific workflows
 
 **Date:** 2026-09-23<br>
-**Scope:** local checked-out Hermes, OpenClaw, and Anesu source; native desktop path
+**Scope:** local checked-out Hermes, OpenClaw, and Lina source; native desktop path
 
 ## Finding
 
@@ -48,9 +48,9 @@ OpenClaw also classifies action risk in a generic policy boundary
 contract does not itself prove that an arbitrary app-specific mutation was
 saved.
 
-### Anesu now
+### Lina now
 
-Anesu deliberately has a smaller native surface:
+Lina deliberately has a smaller native surface:
 
 - `native-runner.ts:82-99` resolves only Notes, Calendar, Clocks, Calculator,
   and Settings through a fixed catalog.
@@ -61,12 +61,12 @@ Anesu deliberately has a smaller native surface:
 - `verification.ts:481-524` has app-named completion logic for Notes, Calendar,
   Clocks, and Calculator; other mutations require another dedicated verifier.
 
-So the current constraint is in Anesu's product policy and task compiler, not a
+So the current constraint is in Lina's product policy and task compiler, not a
 requirement imposed by CUA. It prevents natural-language requests for arbitrary
 installed apps even where generic CUA discovery, exact window binding, and
 bounded UI actions could support them.
 
-## Why Anesu was narrowed, and what that means
+## Why Lina was narrowed, and what that means
 
 The restriction was chosen to avoid open-ended app launch, broad desktop
 observation, wrong-window input, and claiming success without an app-owned
@@ -78,10 +78,10 @@ observe/interact tasks before their safety can be evaluated against the actual
 app/window and action.
 
 The right comparison is therefore not “Hermes/OpenClaw have a special alarm
-feature that Anesu lacks.” The checked-out computer-use paths show general UI
+feature that Lina lacks.” The checked-out computer-use paths show general UI
 controls plus live app/window targeting. Calendar event creation, alarm setup,
 and calculator use are useful end-to-end acceptance cases, but they should not
-define the entire supported-app catalog. Anesu needs a generic, bounded native
+define the entire supported-app catalog. Lina needs a generic, bounded native
 task path whose app is resolved from current CUA discovery, whose actions are
 limited by an explicit task grant and fresh references, and whose result is
 reported according to evidence. Where no reliable app-level postcondition

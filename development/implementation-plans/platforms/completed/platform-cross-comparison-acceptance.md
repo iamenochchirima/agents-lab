@@ -213,7 +213,7 @@ exactly-once delivery to a model provider or external tool.
 ## Explicitly out of scope
 
 - AWS Step Functions, new platform adapters, and hosted platform deployment.
-- Anesu, Studio, computer-native environments, browser automation, sandboxes, or VMs.
+- Lina, Studio, computer-native environments, browser automation, sandboxes, or VMs.
 - Long-term memory, retrieval, observational memory, or a new compaction algorithm.
 - Skills, plugins, MCP, OAuth, social connectors, gateways, cron, daemon supervision,
   and side-effecting external tools.
@@ -280,7 +280,7 @@ lab/runs/<run-id>/
   native/<platform>.json      # bounded platform-specific reference and native summary
 ```
 
-- [x] `comparisonId` is opaque, bounded, and safe for filenames or JSON metadata.
+- [x] `comparisonId` is opaque, bounded, and safe for filinames or JSON metadata.
 - [x] Each run has one immutable manifest and one terminal result at most.
 - [x] The server writes normalized evidence atomically and idempotently.
 - [x] Native evidence is redacted, bounded, versioned, and platform-specific.
@@ -374,7 +374,7 @@ contracts, server integration, browser integration, final acceptance, and plan a
 | LangGraph matrix | LangGraph tests/docs only | common server and web | service observations, failures, evidence |
 | Mastra matrix | Mastra tests/docs only after Mastra plan closes | common server and web | baseline observations, limitations, evidence |
 | Server comparison | `server/src/control-plane/**` and server comparison tests | platform-local runtime code | contract, API, evidence results |
-| Browser acceptance | `apps/web/src/features/platforms/**` and browser tests | server contract and Anesu/Studio UI | UI results, screenshots, console findings |
+| Browser acceptance | `apps/web/src/features/platforms/**` and browser tests | server contract and Lina/Studio UI | UI results, screenshots, console findings |
 | Experiment/playground | `lab/experiments/**`, `development/playground/**` | runtime and UI code | reproducible procedure and limitations |
 
 No workstream may silently change another platform's retry, identity, or durability
@@ -490,7 +490,7 @@ Use focused commits rather than one large comparison commit:
 5. plan completion record and move to `completed/`.
 
 Before each commit, inspect `git status`, stage only owned files, run the relevant
-narrow checks, and preserve unrelated Anesu, Studio, lockfile, and playground changes.
+narrow checks, and preserve unrelated Lina, Studio, lockfile, and playground changes.
 
 ## Completion gate
 

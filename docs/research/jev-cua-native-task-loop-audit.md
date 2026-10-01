@@ -1,10 +1,10 @@
-# Audit: Anesu Jev + Cua native task loop
+# Audit: Lina Jev + Cua native task loop
 
 **Audited:** 2026-09-20<br>
 **Scope:** Research evidence and implementation-plan requirements only<br>
 **Code changes:** None<br>
 **Verdict:** The proposed architecture is viable for a bounded Ubuntu/X11 profile, but
-the current Anesu implementation does not yet provide the promised natural-language
+the current Lina implementation does not yet provide the promised natural-language
 native task loop. The active plan is broadly sound. It needs several corrections before
 implementation starts, especially an explicit Cua runtime authorization ceiling,
 runtime health and TypeSafe model checks, precise use of generic versus typed Cua APIs,
@@ -13,7 +13,7 @@ and stronger acceptance evidence for Calendar and Clocks.
 This audit distinguishes three different claims:
 
 1. **Available upstream:** the pinned Cua or TypeSafe package exposes a capability.
-2. **Implemented in Anesu:** Anesu correctly owns and uses that capability.
+2. **Implemented in Lina:** Lina correctly owns and uses that capability.
 3. **Accepted live:** a real prompt, model, app, and disposable desktop produced durable
    evidence of the requested outcome.
 
@@ -25,10 +25,10 @@ Only first-party material was used.
 
 | Source | Version or revision checked | Relevant paths |
 | --- | --- | --- |
-| Anesu | Current working tree | `anesu/src/computer/`, `anesu/package.json`, `pnpm-lock.yaml` |
-| Installed Cua TypeScript package | `@trycua/cua-driver` `0.28.2` | `anesu/node_modules/@trycua/cua-driver/dist/native/cua_driver_sdk.d.ts`, `cua_driver_contract.d.ts` |
+| Lina | Current working tree | `lina/src/computer/`, `lina/package.json`, `pnpm-lock.yaml` |
+| Installed Cua TypeScript package | `@trycua/cua-driver` `0.28.2` | `lina/node_modules/@trycua/cua-driver/dist/native/cua_driver_sdk.d.ts`, `cua_driver_contract.d.ts` |
 | Local Cua checkout | `9bbfa7dd3e27ca7f1861ede70aaca390174493f9` | `/home/enoch/aworkspace/agents/cua/libs/cua-driver/` |
-| Installed TypeSafe package | `@typesafe-ai/sdk` `0.6.0` | `anesu/node_modules/@typesafe-ai/sdk/README.md`, `dist/index.d.mts` |
+| Installed TypeSafe package | `@typesafe-ai/sdk` `0.6.0` | `lina/node_modules/@typesafe-ai/sdk/README.md`, `dist/index.d.mts` |
 | Hermes checkout | `b6b53c69a6ed49cb099cf1bfe76b5e6edd718e5a` | `/home/enoch/aworkspace/agents/hermes-agent/tools/computer_use/` |
 | OpenClaw checkout | `912685f442286233fbbd40762482d98598299497` | `/home/enoch/aworkspace/agents/openclaw/extensions/cua-computer/src/` |
 | Official Cua docs | Current on audit date | [Jev use](https://cua.ai/docs/how-to-guides/driver/jev-use), [Linux tools](https://cua.ai/docs/reference/cua-driver/mcp-tools-linux), [in-process SDK](https://cua.ai/docs/how-to-guides/driver/use-sdk-in-process), [permission policies](https://cua.ai/docs/reference/cua-driver/permission-policies), [verification](https://cua.ai/docs/how-to-guides/driver/verify-a-desktop-action) |
@@ -50,15 +50,15 @@ The audited note is [`jev-cua-native-task-loop.md`](jev-cua-native-task-loop.md)
 
 | Existing claim | Finding | Exact evidence |
 | --- | --- | --- |
-| Linux/X11 supports app discovery, launch, window discovery, AT-SPI observation, input, verification, sessions, and an agent cursor. | Supported as an upstream Cua capability. It is not proof that Anesu uses each capability. | Cua `rust/Skills/cua-driver/LINUX.md`; installed `listToolsJson()` reports 59 tools including `list_apps`, `launch_app`, `list_windows`, `get_window_state`, `click`, `type_text`, `set_value`, `press_key`, `hotkey`, `scroll`, `invoke_menu`, `verify_state`, session and cursor tools. |
+| Linux/X11 supports app discovery, launch, window discovery, AT-SPI observation, input, verification, sessions, and an agent cursor. | Supported as an upstream Cua capability. It is not proof that Lina uses each capability. | Cua `rust/Skills/cua-driver/LINUX.md`; installed `listToolsJson()` reports 59 tools including `list_apps`, `launch_app`, `list_windows`, `get_window_state`, `click`, `type_text`, `set_value`, `press_key`, `hotkey`, `scroll`, `invoke_menu`, `verify_state`, session and cursor tools. |
 | The agent cursor is synthetic and normally does not move the real pointer. | Supported for the Linux backend. Desktop-scope `move_cursor` is an explicit real-pointer escape hatch and must stay outside the bounded profile. | Cua `LINUX.md`, "How input is delivered". |
 | Background input is the default and foreground input is an approval boundary. | Supported. `bring_to_front` is not an ordinary focus step; it is a persistent focus-proxy exception after documented failure. | Cua `LINUX.md`, "delivery_mode" and "Persistent focus-proxy exception". |
 | Jev is a bounded chooser rather than an unrestricted planner or executor. | Supported. The application owns candidates, action arguments, execution, reobservation, and completion. | Cua `examples/jev-use/typescript/core.ts`, `jev_adapter.ts`, `core.test.ts`; Cua Jev guide; Cua `skills/jev-use/SKILL.md`. |
 | Jev must not receive screenshots, driver tool names, or arbitrary action arguments. | Supported by the reference design. It receives a goal, compact observations, bounded history, candidate IDs and descriptions. | Same Jev sources as above. |
-| Anesu currently exposes only click candidates to Jev. | Supported. | `anesu/src/computer/native-strategy.ts`, `NativeSemanticCandidate` and `nativeAccessibilityCandidates`. |
-| Anesu lacks an app launch/discovery lifecycle in its Cua adapter. | Supported. | `anesu/src/computer/cua-driver.ts`, `CuaDriverClient`; `observeDesktop()` selects a current window but does not resolve or launch an app. |
-| Current native verification is too narrow for general real-app tasks. | Supported. | `anesu/src/computer/verification.ts`; its derivation is based on narrow URL, quoted-text, fixture-marker, and state-word patterns. |
-| Current approval is per action and supports only allow-once/deny/unavailable. | Supported. | `anesu/src/computer/contracts.ts`, `ComputerApprovalDecision`; `anesu/src/computer/native-runner.ts`. |
+| Lina currently exposes only click candidates to Jev. | Supported. | `lina/src/computer/native-strategy.ts`, `NativeSemanticCandidate` and `nativeAccessibilityCandidates`. |
+| Lina lacks an app launch/discovery lifecycle in its Cua adapter. | Supported. | `lina/src/computer/cua-driver.ts`, `CuaDriverClient`; `observeDesktop()` selects a current window but does not resolve or launch an app. |
+| Current native verification is too narrow for general real-app tasks. | Supported. | `lina/src/computer/verification.ts`; its derivation is based on narrow URL, quoted-text, fixture-marker, and state-word patterns. |
+| Current approval is per action and supports only allow-once/deny/unavailable. | Supported. | `lina/src/computer/contracts.ts`, `ComputerApprovalDecision`; `lina/src/computer/native-runner.ts`. |
 
 ### Claims that need correction or qualification
 
@@ -67,44 +67,44 @@ The audited note is [`jev-cua-native-task-loop.md`](jev-cua-native-task-loop.md)
 | "The typed TypeScript surface exposes app/window discovery, observation, input, cursor/session operations, and `verifyState`." | Mostly true for `0.28.2`, but incomplete. The typed interface has `listApps`, `listWindows`, `getWindowState`, input methods, sessions, cursor methods, and `verifyState`. It does **not** expose a typed `launchApp` or `setValue`. Those operations require `callTool`. Element-targeted `type_text` also has fields in the runtime JSON schema that are not present in the generated typed `TypeTextInput`, so the plan must deliberately use and validate the generic schema for that path. |
 | "Cua supports app focus." | Do not model focus as a normal lifecycle step. Cua's Linux contract prefers background operation. Foreground delivery is a per-action escalation, and persistent `bring_to_front` is an exceptional focus proxy. |
 | "The full tool surface is supported." | This is an upstream backend statement, not proof that every installed application exposes usable AT-SPI state or that the current desktop session satisfies D-Bus, accessibility, capture, and input requirements. Each target app must pass runtime health and observation checks. |
-| "The next implementation can use app/window discovery and launch." | Correct in principle, but `launch_app` is open-world, state-changing, and non-idempotent. On Linux, `launch_path` is spawned through the system shell. Anesu must round-trip an unchanged path from a fresh trusted `list_apps` record and must never pass model/user-generated command text, arguments, URLs, or paths. |
+| "The next implementation can use app/window discovery and launch." | Correct in principle, but `launch_app` is open-world, state-changing, and non-idempotent. On Linux, `launch_path` is spawned through the system shell. Lina must round-trip an unchanged path from a fresh trusted `list_apps` record and must never pass model/user-generated command text, arguments, URLs, or paths. |
 | "Independent verification proves completion." | Too broad. `verify_state` proves only one to eight bounded predicates on one exact window. Accessibility absence can remain `unknown`, and `unknown` is never success. Calendar and alarm creation need app-specific postconditions that show the durable object, not merely a transient form or a model statement. |
-| "A visible cursor demonstrates execution." | Cursor visibility is useful review evidence, not completion evidence. The Linux source supports a synthetic cursor, but Anesu must prove it in the actual Xephyr/X11 acceptance profile. |
-| "Current confidence floor is safe." | Unsupported. `0.5` in `anesu/src/computer/contracts.ts` is an uncalibrated operating threshold. TypeSafe confidence is decision evidence, not authorization or correctness. |
+| "A visible cursor demonstrates execution." | Cursor visibility is useful review evidence, not completion evidence. The Linux source supports a synthetic cursor, but Lina must prove it in the actual Xephyr/X11 acceptance profile. |
+| "Current confidence floor is safe." | Unsupported. `0.5` in `lina/src/computer/contracts.ts` is an uncalibrated operating threshold. TypeSafe confidence is decision evidence, not authorization or correctness. |
 
 ### Important omissions in the research note
 
 The note should explicitly add these facts:
 
 - Cua `0.28.2` provides `CuaDriver.createConfigured(...)` with an immutable runtime
-  authorization ceiling. `CuaDriver.create(undefined)`, which Anesu currently uses,
+  authorization ceiling. `CuaDriver.create(undefined)`, which Lina currently uses,
   does not establish the bounded policy required by the proposed security model.
 - Cua's `health_report` schema version `1` checks binary version, platform, desktop
-  session, AT-SPI, and screen capture. Checking `DISPLAY` and an Anesu isolation marker
+  session, AT-SPI, and screen capture. Checking `DISPLAY` and an Lina isolation marker
   is not a sufficient readiness test.
 - Cua recommends one in-process `CuaDriver` for the application lifetime. A named Cua
-  session should then scope each task. Current Anesu shuts down the driver around each
+  session should then scope each task. Current Lina shuts down the driver around each
   computer-tool run.
 - The runtime exposes 59 tools in the installed package. The implementation must parse
   and contract-test the live schemas of generic operations, not only their names.
 - `list_windows` order is not a focus or ownership signal when z-order is absent. The
   current "top accessible window" heuristic is unsuitable for app-scoped tasks.
-- TypeSafe SDK `0.6.0` can list available models. `jev-latest` is a moving alias; Anesu
+- TypeSafe SDK `0.6.0` can list available models. `jev-latest` is a moving alias; Lina
   must record the actual response model and test availability before task approval.
-- A bounded chooser needs both `reobserve` and `abstain`. Current native Anesu supplies
+- A bounded chooser needs both `reobserve` and `abstain`. Current native Lina supplies
   only `none`.
 - Exact task values must come from user input or deterministic normalization. Jev may
   select a candidate but must not invent alarm times, event titles, dates, note text,
   app names, commands, or paths.
 
-## Current Anesu implementation gap map
+## Current Lina implementation gap map
 
 | Area | Current behavior | Required change |
 | --- | --- | --- |
 | Runtime authorization | `CuaDriver.create(undefined)` | Create one configured runtime with an immutable bounded capability manifest before any action is accepted. Keep task approval as a narrower layer, never a way to widen the runtime ceiling. |
 | Readiness | Linux, `DISPLAY`, and isolation-marker checks | Call `health_report`; check schema/version, session, AT-SPI, capture, required tool names and required generic-tool schema fields. Fail before approval. |
-| Driver lifetime | Driver is created and shut down around a computer run | One driver owner for Anesu's process/native host; one named Cua session for each task; serialized actions; idempotent task/session cleanup. |
-| App targeting | Selects a current "top accessible window" | Fresh `list_apps` -> opaque Anesu app reference -> approved unchanged launch record -> launch/reuse -> exact PID/window selection. Never select array order or an unrelated foreground window. |
+| Driver lifetime | Driver is created and shut down around a computer run | One driver owner for Lina's process/native host; one named Cua session for each task; serialized actions; idempotent task/session cleanup. |
+| App targeting | Selects a current "top accessible window" | Fresh `list_apps` -> opaque Lina app reference -> approved unchanged launch record -> launch/reuse -> exact PID/window selection. Never select array order or an unrelated foreground window. |
 | Jev actions | Click only; `none` only | Immutable click, semantic type/set-value, safe key/hotkey, bounded scroll, `reobserve`, and `abstain` candidates. Add only operations required by admitted task profiles. |
 | Generic Cua API | Adapter omits `callTool` | Use `callTool` for `launch_app`, `set_value`, and generic element-targeted operations, with schemas captured and validated from pinned `listToolsJson()`. Prefer typed methods where their contract is complete. |
 | Action binding | Current observation plus live top-window checks | Bind task, app, process, exact window, session, observation generation, snapshot, element token, candidate ID, action arguments, and delivery mode. Invalidate the generation after every action or observation. |
@@ -116,7 +116,7 @@ The note should explicitly add these facts:
 ## Required corrections to the active implementation plan
 
 The audited plan is
-`development/implementation-plans/anesu/archived/anesu-jev-cua-native-computer-use.md`.
+`development/implementation-plans/lina/archived/lina-jev-cua-native-computer-use.md`.
 Its overall ownership model and observe/choose/execute/reobserve loop are appropriate.
 The following changes are required.
 
@@ -215,7 +215,7 @@ The following changes are required.
 
 ### Hermes
 
-Hermes provides useful patterns, but it does not already implement Anesu's proposed
+Hermes provides useful patterns, but it does not already implement Lina's proposed
 task-wide grant.
 
 - `tools/computer_use/tool.py` caches backends by session and uses per-session call
@@ -225,11 +225,11 @@ task-wide grant.
   background permission.
 - It blocks dangerous keyboard combinations and suspicious terminal commands before
   approval.
-- When no CLI callback exists, another gateway layer is expected to own approval. Anesu
+- When no CLI callback exists, another gateway layer is expected to own approval. Lina
   must not copy that behavior as a fail-open local default.
 
 Use Hermes as evidence for serialization, action/delivery scoping, pre-approval policy,
-and reacting to Cua outcomes. The task-grant identity and lifecycle remain an Anesu
+and reacting to Cua outcomes. The task-grant identity and lifecycle remain an Lina
 design that needs its own tests.
 
 ### OpenClaw
@@ -246,7 +246,7 @@ OpenClaw provides a strong reference for host-owned identity and stale-state han
 - `node-invoke-policy.ts` classifies operations before dispatch.
 
 OpenClaw is evidence for identity, generation, serialization, and dispatch policy. It is
-not evidence that the complete Jev task loop or Anesu's task approval already exists.
+not evidence that the complete Jev task loop or Lina's task approval already exists.
 
 ## Concrete acceptance evidence
 

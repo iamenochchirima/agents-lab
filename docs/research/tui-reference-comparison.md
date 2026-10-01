@@ -3,7 +3,7 @@
 Reviewed: 2026-09-15
 
 This note compares the user-facing terminal interfaces of Hermes and OpenClaw with
-Anesu's current `readline` loop. The comparison is design input only. It does
+Lina's current `readline` loop. The comparison is design input only. It does
 not recommend importing either project's UI or runtime.
 
 ## Sources
@@ -17,7 +17,7 @@ not recommend importing either project's UI or runtime.
 
 ## Comparison
 
-| Surface | Anesu now | Hermes | OpenClaw |
+| Surface | Lina now | Hermes | OpenClaw |
 | --- | --- | --- | --- |
 | Startup | Branded bordered context panel with session/model/workspace/evidence and actual tools | Banner, runtime details, tools/skills panels, first frame before full load | Connection/session startup state and model/session context |
 | Conversation | Styled `readline` composer, distinct user/assistant labels, direct output, and live activity lines | Scrollable transcript with distinct user/assistant rows and live streaming row | Scrollable chat log with user, assistant, system, and tool entries |
@@ -55,9 +55,9 @@ The useful shared pattern is a stateful presentation layer around a structured r
   integrations, approvals, and provider dashboards.
 - Hermes's large slash-command catalogue or OpenClaw's Gateway/session model.
 - Fake tool cards, fake token/cost data, or a status indicator that claims capabilities
-  the Anesu runtime does not yet provide.
+  the Lina runtime does not yet provide.
 
-## Anesu recommendation
+## Lina recommendation
 
 The current UI pass now establishes the first small terminal application surface with this
 layout:

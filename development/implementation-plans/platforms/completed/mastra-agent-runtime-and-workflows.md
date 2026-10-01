@@ -35,7 +35,7 @@ Read these before changing code:
 - [`Mastra execution semantics`](../../../../server/src/platforms/mastra/docs/semantics.md)
 - [`first-party platform source audit`](../../../../docs/research/platform-plan-source-audit.md)
 
-Existing Anesu, Studio, lockfile, and playground changes are unrelated work. Preserve
+Existing Lina, Studio, lockfile, and playground changes are unrelated work. Preserve
 them and stage only files owned by this plan.
 
 ## First-party source verification
@@ -323,7 +323,7 @@ The completed implementation must be able to:
 - Postgres, Redis, Kubernetes, autoscaling, multi-process file storage, or Docker as
   required local infrastructure.
 - Exactly-once provider calls or exactly-once external tool effects.
-- Changes to Restate, Temporal, LangGraph, Anesu, Studio, or the generic contract
+- Changes to Restate, Temporal, LangGraph, Lina, Studio, or the generic contract
   without a concrete Mastra incompatibility and an explicit boundary review.
 
 ## Architecture and ownership
@@ -380,7 +380,7 @@ Ownership rules:
 | Platform registration | `server/src/control-plane/bootstrap/`, platform registry, manifests | unrelated runner behaviour |
 | Server tests | `server/tests/platforms/mastra/**`, `server/integration-tests/mastra-*.test.ts` | production code from tests |
 | Local operation | `scripts/run_local_stack.sh`, `scripts/README.md` only when required | Docker startup and unrelated launch semantics |
-| Browser acceptance | `apps/web/src/features/platforms/**`, `apps/web/tests/browser/**` only where required | Anesu, Studio, and unrelated platform UI |
+| Browser acceptance | `apps/web/src/features/platforms/**`, `apps/web/tests/browser/**` only where required | Lina, Studio, and unrelated platform UI |
 | Documentation | `server/src/platforms/mastra/docs/**`, `server/src/platforms/mastra/README.md`, `development/playground/mastra-agent-workflows/**`, this plan, platform index/nav | runtime code |
 
 If a shared file must change, record the reason, alternatives, compatibility impact,
@@ -899,7 +899,7 @@ Use focused commits. Do not combine the entire Mastra wave into one commit:
 
 Before each commit:
 
-- [x] inspect `git status` and preserve unrelated Anesu/Studio changes;
+- [x] inspect `git status` and preserve unrelated Lina/Studio changes;
 - [x] inspect the exact staged diff and exclude secrets, local databases, generated state,
       screenshots, and temporary logs;
 - [x] run the narrow validation for the section;
@@ -917,7 +917,7 @@ resolution, final review, and release decisions.
 | Baseline conformance | `server/src/platforms/mastra/variants/baseline/**`, baseline tests | workflow variant, common contracts | event mapping, tests, limitations |
 | Workflow/storage | `server/src/platforms/mastra/variants/workflow/**`, workflow tests | baseline runtime, UI | storage path, native IDs, recovery semantics |
 | Adapter/recovery | `server/src/platforms/mastra/runner-adapter/**`, platform registration tests | other platforms | runner operations, reconciliation, evidence |
-| Browser acceptance | `apps/web/src/features/platforms/**`, Mastra browser tests | server contract and Anesu/Studio UI | UI flow, screenshots/manual results, errors |
+| Browser acceptance | `apps/web/src/features/platforms/**`, Mastra browser tests | server contract and Lina/Studio UI | UI flow, screenshots/manual results, errors |
 | Docs/playground | Mastra docs and `development/playground/mastra-agent-workflows/**` | runtime code | commands, links, known gaps |
 
 Handoffs must include exact files, tests and results, assumptions, unresolved issues,

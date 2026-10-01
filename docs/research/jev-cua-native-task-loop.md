@@ -1,11 +1,11 @@
 # Jev + Cua native task loop: verified research
 
 **Date:** 2026-09-20<br>
-**Scope:** Confirmed capabilities and implementation implications for Anesu's
+**Scope:** Confirmed capabilities and implementation implications for Lina's
 Ubuntu/X11 native computer-use path
 
-This note separates facts verified from the local Cua checkout and current Anesu
-source from design decisions that still belong to Anesu. It is not a claim that
+This note separates facts verified from the local Cua checkout and current Lina
+source from design decisions that still belong to Lina. It is not a claim that
 Jev is a general autonomous desktop planner.
 
 ## Confirmed Cua capabilities
@@ -31,14 +31,14 @@ Relevant local sources:
 - `/home/enoch/aworkspace/agents/cua/libs/cua-driver/typescript/src/native/cua_driver_sdk.ts`
 
 The Cua SDK's typed TypeScript surface exposes `callTool`, app/window discovery,
-observation, input, cursor, session, and `verifyState`. The current Anesu
+observation, input, cursor, session, and `verifyState`. The current Lina
 `CuaDriverClient` seam does not yet expose `callTool`, `launch_app`, or app/window
 launch lifecycle operations even though its pinned Cua package has the generic
 tool boundary and Cua's Linux backend supports them.
 
 ### Installed runtime check
 
-The installed Anesu dependency is `@trycua/cua-driver` `0.28.2`. On 2026-09-20,
+The installed Lina dependency is `@trycua/cua-driver` `0.28.2`. On 2026-09-20,
 `CuaDriver.create().listToolsJson()` returned 59 tools and included:
 
 - `launch_app`, `list_apps`, `list_windows`, and `get_window_state`;
@@ -52,20 +52,20 @@ The same inventory did not include `parse_visual_regions`, a capture-bound
 supports the planned AT-SPI-backed Jev path, but it does not support a visual-region or
 OCR fallback. The local Cua Jev recipe documents an optional `cua.visual_regions_v1`
 route in which Cua validates visual regions and Jev receives typed JSON metadata; this
-does not require raw screenshot bytes or an image-input TypeSafe request. Anesu must
+does not require raw screenshot bytes or an image-input TypeSafe request. Lina must
 enable that route only when the released runtime advertises both required capabilities.
 The implementation must repeat this bounded capability check at startup so a future
 dependency change fails before task approval.
 
 The runtime's `launch_app` schema describes Linux launch as open-world,
 state-changing, and not idempotent. Its preferred `launch_path` is the exact value
-returned by `list_apps`. Anesu must round-trip that host-discovered value unchanged,
+returned by `list_apps`. Lina must round-trip that host-discovered value unchanged,
 bind it into approval, and never retry an uncertain launch blindly.
 
 ### Contract corrections established by the audit
 
 The installed TypeScript interface does not expose typed `launchApp` or `setValue`
-methods. Anesu must use `callTool` for `launch_app`, `set_value`, and the runtime's
+methods. Lina must use `callTool` for `launch_app`, `set_value`, and the runtime's
 element-targeted `type_text` fields, after validating their live schemas. Typed methods
 remain preferable where the generated contract is complete.
 
@@ -98,7 +98,7 @@ than a complete planner. The natural-language task planner, candidate builder,
 approval policy, action executor, re-observation loop, and independent verifier
 remain host responsibilities.
 
-## What the current Anesu code actually does
+## What the current Lina code actually does
 
 Current native Jev integration:
 
@@ -111,7 +111,7 @@ Current native Jev integration:
 Current native task limitations:
 
 - no Jev candidates for typing, key presses, scrolling, or dragging;
-- no native app launch operation in the Anesu adapter;
+- no native app launch operation in the Lina adapter;
 - no task-scoped approval grant; approval is currently allow-once;
 - generic native goals often derive no completion verifier and therefore stop
   with `clarification-required` after a successful action;

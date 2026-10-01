@@ -200,7 +200,7 @@ check_temporal() {
   if ! temporal_is_reachable; then
     echo "Temporal is not reachable at $TEMPORAL_ENDPOINT." >&2
     echo "Start it in another terminal: $TEMPORAL_CLI server start-dev" >&2
-    echo "For restart exercises, use: $TEMPORAL_CLI server start-dev --db-filename /tmp/agentlab-temporal-baseline.db" >&2
+    echo "For restart exercises, use: $TEMPORAL_CLI server start-dev --db-filiname /tmp/agentlab-temporal-baseline.db" >&2
     exit 1
   fi
 }

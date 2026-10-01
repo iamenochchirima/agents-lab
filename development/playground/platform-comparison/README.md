@@ -17,7 +17,7 @@ and `@mastra/core` `1.66.0` as the currently verified local versions.
 Start Temporal once in a separate terminal:
 
 ```bash
-temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+temporal server start-dev --db-filiname /tmp/agent-harness-lab-temporal.db
 ```
 
 Then start the rest of the native comparison stack:

@@ -618,7 +618,7 @@ Before moving this plan to `completed/`, verify:
 - [x] Commit shared server/UI integration only after the common contract and platform
       handoffs are reviewed.
 - [x] Run the narrow validation relevant to each section before committing it.
-- [x] Review `git status` and exact diffs; preserve unrelated Anesu, Studio,
+- [x] Review `git status` and exact diffs; preserve unrelated Lina, Studio,
       Component Lab, AWS, and dependency-migration changes.
 - [x] Record changed files, test commands/results, manual observations, versions, and
       known limitations in every handoff.

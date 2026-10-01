@@ -15,7 +15,7 @@ in one model-backed run?
 From the repository root, start Temporal with persistent local history:
 
 ```bash
-temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+temporal server start-dev --db-filiname /tmp/agent-harness-lab-temporal.db
 ```
 
 In another terminal, start the Lab stack:

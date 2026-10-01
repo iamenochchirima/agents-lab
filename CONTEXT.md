@@ -13,8 +13,8 @@ _Avoid_: using "platform" when the subject is the complete runnable agent.
 
 **External integration**:
 A Lab-side boundary for starting and observing an independently owned runnable system.
-Anesu is the initial integration. Its temporary top-level project owns the
-runtime; the Lab records evidence through `server/src/integrations/anesu/`.
+Lina is the initial integration. Its temporary top-level project owns the
+runtime; the Lab records evidence through `server/src/integrations/lina/`.
 
 **Reusable capability**:
 A portable definition used by more than one platform variant, such as a skill, MCP or
@@ -22,7 +22,7 @@ OAuth connection, plugin manifest, tool schema, policy, or artifact type. Capabi
 do not own an agent loop or a platform's durability model.
 
 **Environment**:
-For Anesu, the computer in which the harness operates: local workspace
+For Lina, the computer in which the harness operates: local workspace
 process, sandboxed container, or VM/remote computer.
 _Avoid_: using "environment" for backend deployment architecture or browser tooling.
 

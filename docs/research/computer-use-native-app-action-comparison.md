@@ -5,7 +5,7 @@
 OSWorld, and Cua handle native desktop actions and verification? Does another agent
 implementation provide a proven shortcut for Calendar events or Clocks alarms?
 
-This is a source review for the Anesu Cua implementation. It distinguishes the
+This is a source review for the Lina Cua implementation. It distinguishes the
 mechanism used to deliver an input from the evidence used to claim that a task
 completed. It does not treat a model's final narration or a driver acknowledgement as
 independent proof.
@@ -28,7 +28,7 @@ The implementations fall into two broad groups:
    observations, scoped approvals or capabilities, stale-reference handling, and
    structured refusals. They still cannot invent an unsupported native semantic action.
 
-Therefore Calendar and Clocks are not blocked because Anesu chose an unusually strict
+Therefore Calendar and Clocks are not blocked because Lina chose an unusually strict
 standard. They are blocked because the current Cua/host path has not yet provided both
 the required native action and independently verifiable application state.
 
@@ -95,7 +95,7 @@ Observed implementation facts:
   and carries bounded evidence such as value readback, window change, and accessibility
   observations. It does not turn a successful dispatch response into task completion.
 
-OpenClaw therefore reinforces the Anesu direction. It is a useful reference for
+OpenClaw therefore reinforces the Lina direction. It is a useful reference for
 execution ownership, capability ceilings, lifecycle cleanup, and stale-state handling,
 but it does not demonstrate a general native Calendar or alarm action that Cua lacks.
 
@@ -116,7 +116,7 @@ does not supply a Calendar-specific or Clocks-specific committed-state verifier.
 This approach can often navigate those applications visually. That is evidence that a
 model may be able to perform a sequence of clicks and keys in a suitable environment;
 it is not evidence that the sequence is reproducible, exact, or independently verified
-for Anesu's contract.
+for Lina's contract.
 
 ## OpenAI computer use
 
@@ -134,7 +134,7 @@ allowlisting, treating screen content as untrusted, confirming consequential act
 and bounding and verifying the run.
 
 This is a valid general computer-use pattern, but the code-execution option is not a
-reason to reintroduce Playwright into Anesu. It would put arbitrary selectors, scripts,
+reason to reintroduce Playwright into Lina. It would put arbitrary selectors, scripts,
 browser lifecycle, and verification back outside the Cua authorization model. The
 structured computer-tool option still leaves native semantic action discovery and
 postcondition verification to the host application.
@@ -153,7 +153,7 @@ fixture state, accessibility state, pixel state, focus/z-order, cursor state, an
 input journals as independent oracles. A successful driver response without an observed
 effect is not a passing E2E result.
 
-That validation rule explains the current Anesu gates:
+That validation rule explains the current Lina gates:
 
 - Calendar needs a supported, snapshot-bound native action or another exact input path,
   followed by a fresh Calendar-owned event/list state proving the event was committed.
@@ -162,7 +162,7 @@ That validation rule explains the current Anesu gates:
 - A hard-coded accelerator, an array-order window choice, a stale accessibility action,
   or a tool acknowledgement cannot substitute for either proof.
 
-## Decision for Anesu
+## Decision for Lina
 
 The first conclusion from this review was too strict: an unavailable semantic action
 should not by itself prohibit low-risk native interaction. The research supports a
@@ -235,7 +235,7 @@ prerelease and is not an npm version. ([npm registry metadata](https://registry.
    [capture-bound Linux click implementation](https://github.com/trycua/cua/blob/681bc44807d1be81a4357f8e158f1c74a81d5a5b/libs/cua-driver/rust/crates/platform-linux/src/tools/impl_.rs),
    [Linux tool reference](https://github.com/trycua/cua/blob/681bc44807d1be81a4357f8e158f1c74a81d5a5b/docs/content/docs/reference/cua-driver/mcp-tools-linux.mdx))
 
-**Conclusion for Anesu:** neither requested capability is available from the currently
+**Conclusion for Lina:** neither requested capability is available from the currently
 published `@trycua/cua-driver` package. The visual path has just appeared in Cua main and
 must be rechecked after its feature release; the Linux D-Bus identity handoff remains
 absent from the reviewed current source as well as the released tag.
@@ -258,7 +258,7 @@ package](https://www.npmjs.com/package/%40trycua/cua-driver), [main commit](http
 and session. Cua documents a browser-only manifest with explicit origins,
 `existing_profile`, `desktop.display: false`, and `list_windows`. Yet Linux `list_apps`
 has no filter and returns all running/installed apps, while `list_windows` can filter only
-after a PID is known. Anesu's live 0.28.2 bounded probe refused unfiltered `list_windows`
+after a PID is known. Lina's live 0.28.2 bounded probe refused unfiltered `list_windows`
 with `desktop display observation is outside the capability manifest`. The least-privilege
 route is therefore for a trusted host to supply the exact PID/window to the bounded grant;
 Cua has no narrow Chrome-only discovery operation. Do not substitute global inventory or

@@ -5,7 +5,7 @@ server integration. It covers platform runners, native lifecycle behaviour, stat
 durability, retries, recovery, model and tool integration, evidence, and the Platform
 Lab user surface required to inspect those behaviours.
 
-It does not contain Anesu or Studio work. Those have their own plan directories.
+It does not contain Lina or Studio work. Those have their own plan directories.
 
 ## Active plans
 

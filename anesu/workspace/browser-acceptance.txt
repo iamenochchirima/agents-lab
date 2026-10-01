@@ -1,1 +1,0 @@
-Anesu browser upload acceptance fixture.

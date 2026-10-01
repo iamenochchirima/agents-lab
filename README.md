@@ -11,7 +11,7 @@ pnpm install
 pnpm run chat
 ```
 
-`pnpm run chat` forwards to the Anesu terminal. To use the configured real
-model, copy `anesu/.env.example` to `anesu/.env` once and set the
+`pnpm run chat` forwards to the Lina terminal. To use the configured real
+model, copy `lina/.env.example` to `lina/.env` once and set the
 provider, model, and API key there. The file is ignored by git. For the web app and
 Lab services, see the package README files and `scripts/run_local_stack.sh`.

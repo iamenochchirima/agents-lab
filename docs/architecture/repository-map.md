@@ -10,7 +10,7 @@ flowchart TD
   Root --> Apps[apps\nuser-facing applications]
   Root --> Server[server\nLab backend]
   Root --> Docs[docs\narchitecture and contributor guidance]
-  Root --> Anesu[compute-native\nextraction-ready agent harness]
+  Root --> Lina[compute-native\nextraction-ready agent harness]
   Root --> Lab[lab\nscenarios, experiments, and evidence]
   Root --> Tests[tests\nshared behavioural checks]
 ```
@@ -21,12 +21,12 @@ flowchart TD
 | --- | --- |
 | `apps/` | The React/Vite web application. |
 | `server/` | Lab server: shared agent host, reusable capabilities, platform variants, contracts, and deployments. |
-| `anesu/` | Temporary standalone Anesu project, structured for later repository extraction. |
+| `lina/` | Temporary standalone Lina project, structured for later repository extraction. |
 | `docs/` | Architecture, concepts, guides, research notes, and decision records. |
 | `lab/` | Scenarios, experiments, and generated run evidence. |
 | `tests/` | Contract and integration tests that cross implementation areas. |
 
-Scenarios and experiments describe work and tests under `lab/`. Anesu operates
+Scenarios and experiments describe work and tests under `lab/`. Lina operates
 within the computer host selected for a run without carrying a separate
 environment-adapter tree. Backend platform implementations under `server/src/platforms/`
 declare a server deployment and required services. The Lab server coordinates a

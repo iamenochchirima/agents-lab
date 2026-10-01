@@ -308,7 +308,7 @@ evidence.
 - Result cardinality: one terminal result per run. Repeated inspection writes identical content only.
 - Atomicity: use existing common evidence-store idempotent writes; the platform must not write run files directly.
 - Compatibility: use the generic execution-reference schema; no legacy Mastra evidence exists to migrate.
-- Allowlist: only native/mastra.json is exposed for this run. Traversal and other native filenames remain rejected.
+- Allowlist: only native/mastra.json is exposed for this run. Traversal and other native filinames remain rejected.
 - Retention: follow the existing local lab/runs policy. Provider secrets, raw headers, and internal stack traces must be redacted from retained evidence.
 - Measurements: record only real usage and duration returned by Mastra/provider metadata. Unknown token or cost values remain null.
 
@@ -446,7 +446,7 @@ tests, and documentation into one commit.
 
 Before each commit:
 
-- [x] Review git status and preserve unrelated Anesu and platform work.
+- [x] Review git status and preserve unrelated Lina and platform work.
 - [x] Review the exact staged diff and confirm no secret, generated state, or unrelated file is included.
 - [x] Run the narrow validation for each focused commit.
 - [x] Record the commit hashes in the handoff.

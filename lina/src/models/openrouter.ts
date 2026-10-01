@@ -1,0 +1,326 @@
+import { LinaError, isAbortError, ModelProviderError, redactSecrets } from "../runtime/errors.js";
+import type { ModelMessage, ModelRequest, ModelStreamEvent, ModelToolCall, ModelUsage } from "../runtime/contracts.js";
+import { OPENROUTER_CAPABILITIES, type ModelProvider } from "./provider.js";
+
+interface OpenRouterChunk {
+  readonly choices?: readonly [{ readonly delta?: { readonly content?: unknown; readonly refusal?: unknown; readonly tool_calls?: readonly OpenRouterToolCallDelta[] } }?];
+  readonly error?: { readonly code?: unknown; readonly message?: unknown };
+  readonly usage?: { readonly prompt_tokens?: unknown; readonly completion_tokens?: unknown; readonly total_tokens?: unknown };
+}
+
+interface OpenRouterToolCallDelta {
+  readonly index?: unknown;
+  readonly id?: unknown;
+  readonly function?: { readonly name?: unknown; readonly arguments?: unknown };
+}
+
+function usageTokenCount(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new ModelProviderError(`OpenRouter returned an invalid ${field} usage count.`, { code: "provider-incomplete", retryable: false });
+  }
+  return value;
+}
+
+function usageFrom(value: OpenRouterChunk["usage"]): ModelUsage | undefined {
+  if (!value) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new ModelProviderError("OpenRouter returned invalid usage metadata.", { code: "provider-incomplete", retryable: false });
+  }
+  return {
+    inputTokens: usageTokenCount(value.prompt_tokens, "prompt_tokens"),
+    outputTokens: usageTokenCount(value.completion_tokens, "completion_tokens"),
+    totalTokens: usageTokenCount(value.total_tokens, "total_tokens"),
+  };
+}
+
+function optionalStreamText(value: unknown, field: "content" | "refusal"): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new ModelProviderError(`OpenRouter returned an invalid ${field} field.`, { code: "provider-incomplete", retryable: false });
+  }
+  return value;
+}
+
+function retryableHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function providerHttpFailure(status: number, body: string): { readonly code: "provider" | "provider-context" | "provider-refusal" | "provider-auth" | "rate-limit"; readonly retryable: boolean } {
+  const normalized = body.toLowerCase();
+  if (status === 429) return { code: "rate-limit", retryable: true };
+  if (status === 401 || status === 403) return { code: "provider-auth", retryable: false };
+  if (status === 400 || status === 413) {
+    if (/context|token limit|maximum .*length|prompt .*too (large|long)|request .*too (large|long)/u.test(normalized)) {
+      return { code: "provider-context", retryable: false };
+    }
+    if (/refus|safety|content policy|blocked/u.test(normalized)) {
+      return { code: "provider-refusal", retryable: false };
+    }
+  }
+  return { code: "provider", retryable: retryableHttpStatus(status) };
+}
+
+function parseChunk(data: string, redactionSecrets: readonly string[] = []): { readonly text?: string; readonly refusal?: string; readonly usage?: ModelUsage; readonly toolCalls: readonly OpenRouterToolCallDelta[]; readonly done: boolean } | undefined {
+  if (data.length === 0) return undefined;
+  if (data === "[DONE]") return { toolCalls: [], done: true };
+  let parsed: OpenRouterChunk;
+  try {
+    const candidate = JSON.parse(data) as unknown;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) throw new Error("stream event is not an object");
+    parsed = candidate as OpenRouterChunk;
+  } catch {
+    throw new ModelProviderError("OpenRouter returned an invalid streaming event.", { code: "provider-incomplete", retryable: false });
+  }
+  if (parsed.error !== undefined) {
+    if (!parsed.error || typeof parsed.error !== "object" || Array.isArray(parsed.error) || typeof parsed.error.message !== "string") {
+      throw new ModelProviderError("OpenRouter returned an invalid streaming error.", { code: "provider-incomplete", retryable: false });
+    }
+    const message = redactSecrets(parsed.error.message.slice(0, 500), redactionSecrets);
+    const numericCode = typeof parsed.error.code === "number" && Number.isSafeInteger(parsed.error.code) ? parsed.error.code : undefined;
+    if (numericCode === 401 || numericCode === 403) {
+      throw new ModelProviderError(`OpenRouter stream error: ${message}`, { code: "provider-auth", retryable: false });
+    }
+    if (numericCode === 429) {
+      throw new ModelProviderError(`OpenRouter stream error: ${message}`, { code: "rate-limit", retryable: true });
+    }
+    throw new ModelProviderError(`OpenRouter stream error: ${message}`, { code: "provider", retryable: true });
+  }
+  if (parsed.choices !== undefined && !Array.isArray(parsed.choices)) {
+    throw new ModelProviderError("OpenRouter returned an invalid choices field.", { code: "provider-incomplete", retryable: false });
+  }
+  const firstChoice = parsed.choices?.[0];
+  if (firstChoice !== undefined && (firstChoice === null || typeof firstChoice !== "object" || Array.isArray(firstChoice))) {
+    throw new ModelProviderError("OpenRouter returned an invalid choice entry.", { code: "provider-incomplete", retryable: false });
+  }
+  const delta = firstChoice?.delta;
+  if (delta !== undefined && (delta === null || typeof delta !== "object" || Array.isArray(delta))) {
+    throw new ModelProviderError("OpenRouter returned an invalid delta.", { code: "provider-incomplete", retryable: false });
+  }
+  if (delta?.tool_calls !== undefined && !Array.isArray(delta.tool_calls)) {
+    throw new ModelProviderError("OpenRouter returned an invalid tool-call list.", { code: "provider-incomplete", retryable: false });
+  }
+  for (const toolCall of delta?.tool_calls ?? []) {
+    if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call entry.", { code: "provider-incomplete", retryable: false });
+    }
+    // Tool-call fragments are untrusted provider data; reject wrong field types here so they do not become misleading runtime tool errors later.
+    if (toolCall.index !== undefined && (!Number.isInteger(toolCall.index) || (toolCall.index as number) < 0)) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call index.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.id !== undefined && (typeof toolCall.id !== "string" || toolCall.id.length === 0)) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call ID.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.function !== undefined && (!toolCall.function || typeof toolCall.function !== "object" || Array.isArray(toolCall.function))) {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call function.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.function?.name !== undefined && typeof toolCall.function.name !== "string") {
+      throw new ModelProviderError("OpenRouter returned an invalid tool-call name.", { code: "provider-incomplete", retryable: false });
+    }
+    if (toolCall.function?.arguments !== undefined && typeof toolCall.function.arguments !== "string") {
+      throw new ModelProviderError("OpenRouter returned invalid tool-call arguments.", { code: "provider-incomplete", retryable: false });
+    }
+  }
+  const content = optionalStreamText(parsed.choices?.[0]?.delta?.content, "content");
+  const refusal = optionalStreamText(parsed.choices?.[0]?.delta?.refusal, "refusal");
+  const text = typeof content === "string" && content.length > 0 ? content : undefined;
+  const refusalText = typeof refusal === "string" && refusal.length > 0 ? refusal : undefined;
+  const usage = usageFrom(parsed.usage);
+  return { text, refusal: refusalText, usage, toolCalls: parsed.choices?.[0]?.delta?.tool_calls ?? [], done: false };
+}
+
+function toolCallFrom(index: number, value: { readonly id?: string; readonly name: string; readonly argumentsJson: string }): ModelToolCall {
+  return {
+    callId: value.id ?? `call_${index + 1}`,
+    name: value.name,
+    argumentsJson: value.argumentsJson,
+  };
+}
+
+function wireMessages(messages: readonly ModelMessage[]): readonly Record<string, unknown>[] {
+  return messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    ...(message.toolCalls ? {
+      tool_calls: message.toolCalls.map((call) => ({
+        id: call.callId,
+        type: "function",
+        function: { name: call.name, arguments: call.argumentsJson },
+      })),
+    } : {}),
+    ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
+    ...(message.name ? { name: message.name } : {}),
+  }));
+}
+
+function wireToolSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(wireToolSchema);
+  if (!value || typeof value !== "object") return value;
+  // Some OpenRouter tool providers reject string-length keywords while the
+  // local tool still enforces its argument limits. Keep the provider's schema
+  // descriptive without weakening execution-time validation.
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "minLength" && key !== "maxLength")
+    .map(([key, child]) => [key, wireToolSchema(child)]));
+}
+
+export class OpenRouterModelProvider implements ModelProvider {
+  readonly provider = "openrouter" as const;
+  readonly capabilities = OPENROUTER_CAPABILITIES;
+
+  constructor(
+    readonly model: string,
+    private readonly apiKey: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly maxOutputBytes = 256 * 1024,
+  ) {}
+
+  async *stream(request: ModelRequest, signal: AbortSignal): AsyncIterable<ModelStreamEvent> {
+    const requestStartedAt = Date.now();
+    let response: Response;
+    try {
+      response = await this.fetchImpl("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: request.model,
+          messages: wireMessages(request.messages),
+          tools: request.tools?.map((tool) => ({
+            type: "function",
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: wireToolSchema(tool.inputSchema),
+            },
+          })),
+          ...(request.toolChoice ? {
+            tool_choice: request.toolChoice,
+            parallel_tool_calls: false,
+          } : {}),
+          stream: true,
+          stream_options: { include_usage: true },
+        }),
+        signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      throw new ModelProviderError("OpenRouter request failed before a response was received.", { cause: error, retryable: true });
+    }
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      const failure = providerHttpFailure(response.status, body);
+      throw new ModelProviderError(
+        `OpenRouter returned HTTP ${response.status}: ${redactSecrets(body.slice(0, 500), [this.apiKey])}`,
+        { code: failure.code, retryable: failure.retryable },
+      );
+    }
+    if (!response.body) throw new ModelProviderError("OpenRouter returned no response stream.");
+
+    const providerRequestId = [response.headers.get("x-request-id"), response.headers.get("x-openrouter-request-id")]
+      .map((value) => value?.trim())
+      .find((value): value is string => value !== undefined && value.length > 0);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let lastUsage: ModelUsage | undefined;
+    let sawDone = false;
+    let sawOutputEvent = false;
+    let emittedStreamStarted = false;
+    let responseBytes = 0;
+    const toolCalls = new Map<number, { id?: string; name: string; argumentsJson: string }>();
+    const countResponseBytes = (value: string): void => {
+      responseBytes += Buffer.byteLength(value, "utf8");
+      if (responseBytes > this.maxOutputBytes) {
+        throw new LinaError("resource-limit", `The model response exceeded the ${this.maxOutputBytes}-byte limit.`);
+      }
+    };
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/u);
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const event = parseChunk(line.slice(5).trim(), [this.apiKey]);
+          if (!event) continue;
+          if (!emittedStreamStarted) {
+            emittedStreamStarted = true;
+            yield { type: "stream_started" };
+          }
+          if (event.done) sawDone = true;
+          if (event.refusal) throw new ModelProviderError("OpenRouter refused the request.", { code: "provider-refusal", retryable: false });
+          if (event.text) {
+            sawOutputEvent = true;
+            countResponseBytes(event.text);
+            yield { type: "text", text: event.text };
+          }
+          lastUsage = event.usage ?? lastUsage;
+          for (const delta of event.toolCalls) {
+            sawOutputEvent = true;
+            const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : toolCalls.size;
+            const existing = toolCalls.get(index) ?? { name: "", argumentsJson: "" };
+            if (typeof delta.id === "string") countResponseBytes(delta.id);
+            if (typeof delta.function?.name === "string") countResponseBytes(delta.function.name);
+            if (typeof delta.function?.arguments === "string") countResponseBytes(delta.function.arguments);
+            const id = typeof delta.id === "string" ? delta.id : existing.id;
+            const name = typeof delta.function?.name === "string" ? `${existing.name}${delta.function.name}` : existing.name;
+            const argumentsJson = typeof delta.function?.arguments === "string" ? `${existing.argumentsJson}${delta.function.arguments}` : existing.argumentsJson;
+            toolCalls.set(index, { id, name, argumentsJson });
+          }
+        }
+      }
+      const trailing = buffer.trim();
+      if (trailing.startsWith("data:")) {
+        const event = parseChunk(trailing.slice(5).trim(), [this.apiKey]);
+        if (event && !emittedStreamStarted) {
+          emittedStreamStarted = true;
+          yield { type: "stream_started" };
+        }
+        if (event?.done) sawDone = true;
+        if (event?.refusal) throw new ModelProviderError("OpenRouter refused the request.", { code: "provider-refusal", retryable: false });
+        if (event?.text) {
+          sawOutputEvent = true;
+          countResponseBytes(event.text);
+          yield { type: "text", text: event.text };
+        }
+        if (event?.usage) lastUsage = event.usage;
+        for (const delta of event?.toolCalls ?? []) {
+          sawOutputEvent = true;
+          const index = typeof delta.index === "number" && Number.isInteger(delta.index) ? delta.index : toolCalls.size;
+          const existing = toolCalls.get(index) ?? { name: "", argumentsJson: "" };
+          if (typeof delta.id === "string") countResponseBytes(delta.id);
+          if (typeof delta.function?.name === "string") countResponseBytes(delta.function.name);
+          if (typeof delta.function?.arguments === "string") countResponseBytes(delta.function.arguments);
+          const id = typeof delta.id === "string" ? delta.id : existing.id;
+          const name = typeof delta.function?.name === "string" ? `${existing.name}${delta.function.name}` : existing.name;
+          const argumentsJson = typeof delta.function?.arguments === "string" ? `${existing.argumentsJson}${delta.function.arguments}` : existing.argumentsJson;
+          toolCalls.set(index, { id, name, argumentsJson });
+        }
+      }
+    } catch (error) {
+      if (error instanceof LinaError || isAbortError(error)) throw error;
+      throw new ModelProviderError("OpenRouter response stream disconnected before completion.", {
+        cause: error,
+        retryable: !sawOutputEvent,
+      });
+    } finally {
+      reader.releaseLock();
+    }
+    if (!sawDone) throw new ModelProviderError("OpenRouter stream ended before completion.", { code: "provider-incomplete" });
+    for (const [index, value] of [...toolCalls.entries()].sort(([left], [right]) => left - right)) {
+      if (value.name.length === 0) throw new ModelProviderError("OpenRouter returned an incomplete tool call.", { code: "provider-incomplete" });
+      yield { type: "tool_call", call: toolCallFrom(index, value) };
+    }
+    yield {
+      type: "completed",
+      usage: lastUsage,
+      ...(providerRequestId ? { providerRequestId: redactSecrets(providerRequestId, [this.apiKey]).slice(0, 256) } : {}),
+      latencyMs: Math.max(0, Date.now() - requestStartedAt),
+    };
+  }
+}

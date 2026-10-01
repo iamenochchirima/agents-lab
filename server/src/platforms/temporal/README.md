@@ -73,7 +73,7 @@ its workflow executions are lost when that server process exits. For a restart
 or recovery exercise, use a deliberate local path:
 
 ```bash
-temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+temporal server start-dev --db-filiname /tmp/agent-harness-lab-temporal.db
 ```
 
 The Lab's server configuration, worker command, and local stack launcher are

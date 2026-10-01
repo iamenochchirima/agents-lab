@@ -121,7 +121,7 @@ must use the same endpoint.
 Run the native profile with:
 
 ```bash
-temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+temporal server start-dev --db-filiname /tmp/agent-harness-lab-temporal.db
 ./scripts/run_local_stack.sh
 ```
 
@@ -141,9 +141,9 @@ OAuth connections, MCP definitions, plugin manifests, policies, or artifact defi
 into every platform. The selected platform owns execution, state, durability, and its
 native telemetry behaviour.
 
-Anesu is intentionally absent from this table. It is an extraction-ready
-standalone project under [`anesu/`](../../../anesu/README.md), connected
-to the Lab through [`integrations/anesu/`](../integrations/anesu/README.md).
+Lina is intentionally absent from this table. It is an extraction-ready
+standalone project under [`lina/`](../../../lina/README.md), connected
+to the Lab through [`integrations/lina/`](../integrations/lina/README.md).
 
 When implementation starts, a harness variant may add an `agents/` directory for its
 platform-specific agent definitions. Create it only when the first concrete agent

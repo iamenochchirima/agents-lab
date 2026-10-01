@@ -126,7 +126,7 @@ future Studio UI
 ```
 
 The existing server module remains the only Studio runtime boundary. Platform Lab
-routes and Anesu execution remain outside this plan.
+routes and Lina execution remain outside this plan.
 
 ## State, persistence, and evidence
 
@@ -333,7 +333,7 @@ Before moving this plan to `completed/`, verify:
 
 - [x] Review Memory hardening, API-contract verification, and documentation as coherent
       sections. A commit is intentionally deferred because the worktree contains
-      unrelated Anesu, Platform, and UI changes that must not be committed together.
+      unrelated Lina, Platform, and UI changes that must not be committed together.
 - [x] Run the narrow validation relevant to each section before committing or handing
       off the work.
 - [x] Inspect `git status` and the exact diff; preserve unrelated user changes already

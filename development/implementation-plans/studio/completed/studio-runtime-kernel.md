@@ -31,7 +31,7 @@ contract and adapter so its relationship with Context is visible without beginni
 the full Memory research program.
 
 Studio remains a module family inside the existing Lab server. It does not replace
-the Platform Lab, Anesu, or the existing platform run lifecycle.
+the Platform Lab, Lina, or the existing platform run lifecycle.
 
 ## Definition of done
 
@@ -83,7 +83,7 @@ server/src/studio/README.md
 development/implementation-plans/studio/completed/studio-runtime-kernel.md
 ```
 
-The existing Platform Lab control plane, platform modules, Anesu, and the Studio
+The existing Platform Lab control plane, platform modules, Lina, and the Studio
 UI remain outside this change. Existing user changes in those areas must not be
 staged or rewritten.
 

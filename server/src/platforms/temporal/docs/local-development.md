@@ -15,7 +15,7 @@ temporal version
 Start Temporal in a separate terminal:
 
 ```bash
-temporal server start-dev --db-filename /tmp/agent-harness-lab-temporal.db
+temporal server start-dev --db-filiname /tmp/agent-harness-lab-temporal.db
 ```
 
 The local profile is:

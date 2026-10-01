@@ -1,7 +1,7 @@
 # Goal-oriented computer use: local Hermes and OpenClaw notes
 
 **Date:** 2026-09-20<br>
-**Scope:** local source inspection for the Anesu goal-oriented computer-use plan
+**Scope:** local source inspection for the Lina goal-oriented computer-use plan
 
 This note records implementation facts observed in the local Hermes and OpenClaw
 checkouts. It is design input, not a claim that either project provides a complete or
@@ -25,7 +25,7 @@ Observed source paths:
 - `/home/enoch/aworkspace/agents/hermes-agent/agent/iteration_budget.py`
 - `docs/research/harness-code-maps/hermes.md`
 
-Implication for Anesu: a computer-use goal should be a bounded child loop of the
+Implication for Lina: a computer-use goal should be a bounded child loop of the
 existing runtime. Step count, deadline, cancellation, and terminal settlement belong to
 code, not to instructions asking the model to behave.
 
@@ -44,7 +44,7 @@ Observed source paths:
 - `/home/enoch/aworkspace/agents/hermes-agent/tools/computer_use/permissions.py`
 - `/home/enoch/aworkspace/agents/hermes-agent/hermes_cli/subcommands/computer_use.py`
 
-Implication for Anesu: retain the existing managed browser and CUA adapters. Do not let
+Implication for Lina: retain the existing managed browser and CUA adapters. Do not let
 the goal loop call driver methods directly or use a shell command as an alternate input
 path.
 
@@ -54,7 +54,7 @@ Hermes has a separate `agent/tool_guardrails.py` seam and computer-use permissio
 handling. The model can request an action, but readiness, permissions, and host policy
 remain code-owned decisions.
 
-Implication for Anesu: Jev confidence, vision coordinates, and a model's statement that
+Implication for Lina: Jev confidence, vision coordinates, and a model's statement that
 the task is complete can inform a decision, but they cannot authorize input or establish
 success by themselves.
 
@@ -73,7 +73,7 @@ Observed source paths:
 - `/home/enoch/aworkspace/agents/openclaw/src/agents/agent-tools.execution-preparer.ts`
 - `docs/research/harness-code-maps/openclaw.md`
 
-Implication for Anesu: action retry and model/provider retry must stay separate. A
+Implication for Lina: action retry and model/provider retry must stay separate. A
 provider may be retried before input, while an input whose delivery is uncertain must
 become `outcome-unknown` or require reconciliation, never an automatic second click.
 
@@ -89,7 +89,7 @@ Observed source paths:
 - `/home/enoch/aworkspace/agents/openclaw/src/agents/agent-tools.execution-preparer.ts`
 - `/home/enoch/aworkspace/agents/openclaw/src/agents/agent-tools.execution-validation.ts`
 
-Implication for Anesu: approval must bind to one complete action identity produced from
+Implication for Lina: approval must bind to one complete action identity produced from
 one fresh observation. A later observation cannot silently mutate the approved target or
 payload.
 
@@ -108,11 +108,11 @@ Observed source paths:
 - `/home/enoch/aworkspace/agents/openclaw/extensions/cua-computer/src/driver-artifact-verification.ts`
 - `/home/enoch/aworkspace/agents/openclaw/docs/nodes/computer-use.md`
 
-Implication for Anesu: browser and native adapters should own their observation identity,
+Implication for Lina: browser and native adapters should own their observation identity,
 target freshness, artifacts, and verification facts. The shared goal loop should consume
 a normalized result while preserving adapter-specific evidence.
 
-## Decisions for Anesu
+## Decisions for Lina
 
 1. Add one bounded goal loop on top of the existing browser/native runners; do not add a
    second agent runtime.
@@ -129,7 +129,7 @@ a normalized result while preserving adapter-specific evidence.
 ## Limits of this review
 
 This review establishes loop, approval, host-boundary, and evidence patterns. It does not
-claim Hermes or OpenClaw has identical semantics to Anesu, and it does not establish
+claim Hermes or OpenClaw has identical semantics to Lina, and it does not establish
 that either project provides a general application-agnostic goal verifier. Those limits
-are why the Anesu plan requires explicit browser/native verifier contracts and honest
+are why the Lina plan requires explicit browser/native verifier contracts and honest
 `outcome-unknown` results.

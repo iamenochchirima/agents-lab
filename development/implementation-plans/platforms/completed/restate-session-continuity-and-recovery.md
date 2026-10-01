@@ -55,7 +55,7 @@ This plan preserves the following existing decisions:
 - OpenRouter is the production model path. Fake models are permitted only as explicit,
   deterministic test and failure-injection fixtures. They must not be the default
   runtime path or appear as a successful real-model result.
-- Anesu, Studio, computer-native execution, memory, MCP, OAuth, plugins, social
+- Lina, Studio, computer-native execution, memory, MCP, OAuth, plugins, social
   connectors, and other platform implementations are outside this plan.
 
 ## Research basis and important design decision
@@ -518,7 +518,7 @@ and the final release/completion record and checklist audit.
   documentation or test changes necessary to keep it accurate.
 - A new generic multi-turn runner interface. If the current interface blocks a required
   behaviour, stop and record the smallest proposed contract change before editing it.
-- Changes to Temporal, LangGraph, Mastra, Anesu, Studio, or unrelated platform runners.
+- Changes to Temporal, LangGraph, Mastra, Lina, Studio, or unrelated platform runners.
 - New tools, MCP servers, OAuth connectors, plugins, memory retrieval, subagents,
   browser automation, social integrations, or computer-native environments.
 - Streaming token delivery. The UI may poll the existing run projection and event list.
@@ -1090,7 +1090,7 @@ Use focused commits instead of one final dump. A reasonable sequence is:
 
 Before each commit:
 
-- [x] Review `git status` and preserve unrelated Anesu, Studio, lockfile, and playground
+- [x] Review `git status` and preserve unrelated Lina, Studio, lockfile, and playground
       changes.
 - [x] Run the narrow checks for the changed section.
 - [x] Inspect the complete diff and confirm no secrets or generated artifacts are staged.

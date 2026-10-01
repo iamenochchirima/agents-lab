@@ -1,10 +1,10 @@
 # Computer-use implementation research
 
 **Reviewed:** 2026-09-18
-**Scope:** whether Anesu can add computer use, what the runtime actually needs, and
+**Scope:** whether Lina can add computer use, what the runtime actually needs, and
 whether OS drivers are required
 **Evidence boundary:** official provider documentation and primary project
-documentation; this note is a design input, not evidence that a future Anesu
+documentation; this note is a design input, not evidence that a future Lina
 implementation is complete
 
 For the Ubuntu-specific pointer, display, and cursor-capture decision, see the focused
@@ -36,9 +36,9 @@ user task
   -> model request with computer capability
   -> screenshot and/or other observation
   -> model emits structured actions
-  -> Anesu validates and approves the action
+  -> Lina validates and approves the action
   -> adapter performs the action in the controlled environment
-  -> Anesu captures the new screen and result
+  -> Lina captures the new screen and result
   -> model receives that result and continues or finishes
 ```
 
@@ -84,7 +84,7 @@ For whole-desktop control, user-space libraries can send mouse and keyboard inpu
 and capture the screen. PyAutoGUI is one example that documents cross-platform
 mouse/keyboard automation and screenshots on Windows, macOS, and Linux. It has
 limitations, including primary-monitor-only support in its documented FAQ, which is
-why an Anesu adapter must declare its display/session assumptions instead of
+why an Lina adapter must declare its display/session assumptions instead of
 pretending that all desktops are equivalent. [PyAutoGUI documentation](https://pyautogui.readthedocs.io/en/latest/)
 
 The actual platform requirements are therefore more likely to be:
@@ -102,13 +102,13 @@ The actual platform requirements are therefore more likely to be:
   an action stopped.
 
 A custom kernel module would increase the security and operational burden and is not
-needed for the initial Anesu slice. If a backend later needs a low-level facility,
+needed for the initial Lina slice. If a backend later needs a low-level facility,
 that should remain behind the adapter boundary and be explicitly documented as an
 optional host capability.
 
 ## Browser interaction is not the same as whole-desktop computer use
 
-Anesu already has a browser module at `anesu/src/browser/`. It owns an isolated
+Lina already has a browser module at `lina/src/browser/`. It owns an isolated
 Playwright session, bounded screenshots, accessibility-oriented snapshots, short
 life element references, navigation policy, action approval, download/upload
 handling, cancellation, crash classification, and durable browser evidence. Its
@@ -146,7 +146,7 @@ meaningful consequences; it also calls out prompt injection in pages and images.
 [OpenAI safety guidance](https://developers.openai.com/api/docs/guides/tools-computer-use),
 [Anthropic security considerations](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool)
 
-For Anesu, a reasonable first desktop slice should therefore enforce:
+For Lina, a reasonable first desktop slice should therefore enforce:
 
 - a dedicated, explicitly selected display/session rather than attaching to the
   user's personal desktop by default;
@@ -168,22 +168,22 @@ For Anesu, a reasonable first desktop slice should therefore enforce:
   result, and verification observation.
 
 The model's screenshot is observation data, not authorization. Text visible on the
-screen must never grant permission or override Anesu policy.
+screen must never grant permission or override Lina policy.
 
-## Fit with the current Anesu architecture
+## Fit with the current Lina architecture
 
 The repository already has useful plumbing:
 
-- `anesu/src/browser/` provides the semantic browser precedent and a library-neutral
+- `lina/src/browser/` provides the semantic browser precedent and a library-neutral
   adapter seam;
-- `anesu/src/process/` provides bounded real-process execution and cancellation
+- `lina/src/process/` provides bounded real-process execution and cancellation
   semantics;
-- `anesu/src/workspace/` and `anesu/src/security/` provide workspace boundaries,
+- `lina/src/workspace/` and `lina/src/security/` provide workspace boundaries,
   mutation approvals, resource limits, and evidence redaction;
-- `anesu/src/runtime/` owns tool rounds, persistence, recovery, and lifecycle
+- `lina/src/runtime/` owns tool rounds, persistence, recovery, and lifecycle
   events;
-- `anesu/src/context/` owns bounded model-visible context and source accounting; and
-- `anesu/src/cli/` owns the interactive approval and TUI surface.
+- `lina/src/context/` owns bounded model-visible context and source accounting; and
+- `lina/src/cli/` owns the interactive approval and TUI surface.
 
 The missing pieces are a desktop observation/action contract and a model/provider
 path that can carry image observations and recognize the chosen computer-use action
@@ -225,7 +225,7 @@ When we implement this, the first slice should be deliberately narrow:
 
 This is achievable without OS-driver work. The hard part is not physically moving a
 mouse; it is maintaining a trustworthy observation/action boundary around a very
-powerful side effect. The existing browser slice gives Anesu a good pattern for that
+powerful side effect. The existing browser slice gives Lina a good pattern for that
 boundary, but desktop control should remain a separate capability with a stricter
 environment and approval contract.
 
@@ -349,15 +349,15 @@ desktop actions. Its model card reports a narrow form scope, synthetic training 
 small real evaluation, and no claim of general computer-use capability. [CUA-S1 source](https://github.com/trycua/cua/tree/main/libs/cua-s1),
 [CUA-S1 model card](https://huggingface.co/cua-ai/cua-s1-forms)
 
-This gives Anesu two useful conclusions:
+This gives Lina two useful conclusions:
 
 - adopt the `jev-use` boundary now: CUA owns capture, target binding, native dispatch,
-  and verification; Anesu owns provider selection, candidate construction, approval,
+  and verification; Lina owns provider selection, candidate construction, approval,
   cancellation, and orchestration;
 - keep CUA-S1-FORMS out of the first general computer-use slice, but preserve a
   future specialist-provider seam. Its dry-run default, explicit execute/submit
   gates, snapshot-bound tokens, abstain/reobserve choices, fail-closed handling, and
-  independent postconditions are good implementation patterns for Anesu even before
+  independent postconditions are good implementation patterns for Lina even before
   we add the model itself.
 
 The local CUA checkout contains the CUA-S1 source and tests but does not contain model
@@ -368,14 +368,14 @@ model artifact inside a privileged driver process.
 ## Browser-use `jev-ultrafast`
 
 `browser-use/jev-ultrafast` is an immediately relevant browser-only reference for
-Anesu's first computer-use stage. It is not a native desktop driver and should not
+Lina's first computer-use stage. It is not a native desktop driver and should not
 replace CUA Driver. It connects to an owned Chromium target through Browser Harness
 and builds a dynamic, indexed action space from the current DOM/accessibility-like
 state. The available operations are constrained to observed capabilities such as
 `CLICK`, `TYPE_TEXT`, `SELECT`, scrolling, waiting, `DONE`, and `BLOCKED`; target
 choices are offered only for the selected operation. [Repository README](https://github.com/browser-use/jev-ultrafast)
 
-The strongest ideas to carry into Anesu are:
+The strongest ideas to carry into Lina are:
 
 - perform one atomic browser snapshot and retain code-owned DOM node identity;
 - ask Jev for an operation and then an operation-compatible target from that same
@@ -394,11 +394,11 @@ choice construction](https://raw.githubusercontent.com/browser-use/jev-ultrafast
 [atomic DOM snapshot and guards](https://raw.githubusercontent.com/browser-use/jev-ultrafast/main/jev_ultrafast/snapshot.js),
 and [freshness/occlusion-checked execution](https://raw.githubusercontent.com/browser-use/jev-ultrafast/main/jev_ultrafast/browser.py).
 
-It should influence the Anesu browser strategy, but it should not be added as a
+It should influence the Lina browser strategy, but it should not be added as a
 runtime dependency in this slice. The project is Python-based, uses Browser Harness
 and CDP, assumes an owned Chrome profile, and has a deliberately limited MVP surface:
 shadow roots, frames, canvas, uploads, popup tabs, nested scrolling, and arbitrary
-keyboard widgets remain outside its stated coverage. Anesu already has a managed
+keyboard widgets remain outside its stated coverage. Lina already has a managed
 Playwright browser and a TypeScript/pnpm runtime, so we should port the contracts and
 tests into our existing adapter rather than introduce a second browser control stack.
 
@@ -408,7 +408,7 @@ protocol calls, while explicitly saying that this is not a general reliability
 benchmark. [Performance measurements](https://github.com/browser-use/jev-ultrafast/blob/main/docs/performance.md)
 
 The resulting decision is: use `jev-ultrafast` as the primary reference for improving
-Anesu's TypeSafe/Jev browser path; use CUA Driver as the native host executor for the
+Lina's TypeSafe/Jev browser path; use CUA Driver as the native host executor for the
 later Ubuntu desktop path; and keep the traditional vision path as the separate
 comparison strategy. These are complementary layers, not competing implementations.
 
@@ -417,7 +417,7 @@ comparison strategy. These are complementary layers, not competing implementatio
 The linked project is a small, macOS-specific alpha implementation, not evidence of
 cross-platform support or production readiness. Its README reports measured latency
 and cost for its own workload; those figures should be reproduced rather than copied
-as Anesu benchmarks. Its open issues also identify accessibility coverage and OCR
+as Lina benchmarks. Its open issues also identify accessibility coverage and OCR
 portability as unfinished areas. [Project issues](https://github.com/awlevin/typesafe-computer-use/issues)
 
 ## Hermes and OpenClaw: CLI versus desktop
@@ -497,7 +497,7 @@ not the model loop. The reasons are practical:
    an image-capable provider contract or provider-native computer tool in addition
    to the local executor.
 
-This does not mean Anesu must start with an Electron app. Anesu can start with a
+This does not mean Lina must start with an Electron app. Lina can start with a
 CLI/TUI-controlled disposable desktop backend, provided it clearly reports whether
 it is using a real interactive display or a virtual one. The CLI should not silently
 attach to the contributor's personal desktop. A later desktop UI can improve

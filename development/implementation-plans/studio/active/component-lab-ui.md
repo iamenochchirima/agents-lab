@@ -14,7 +14,7 @@ Read these before changing code:
 - [`implementation plan lifecycle`](../README.md)
 - [`Platform UI`](../../platforms/completed/platform-ui.md)
 - [`session context and compaction`](../../platforms/completed/context-management.md)
-- [`Anesu memory`](../../anesu/completed/anesu-memory.md)
+- [`Lina memory`](../../lina/completed/lina-memory.md)
 - [`browser chat surface`](../../platforms/completed/browser-chat-surface.md)
 - [`web app ownership`](../../../../apps/web/src/README.md)
 - [`route ownership`](../../../../apps/web/src/routes/README.md)
@@ -137,7 +137,7 @@ obvious. A browser refresh may clear selections because this slice has no persis
 | `apps/web/src/app/navigation/` | Studio's internal Components entry and active-state link | Component availability or execution status |
 | `docs/planning/component-lab.md` | Product vocabulary, intended comparison model, and open questions | Runtime contracts or claims about implementation status |
 | Existing Platform features | Platform runs, chat sessions, model selection, and comparisons | Studio component state |
-| `server/` and `anesu/` | Existing execution and standalone harness contracts | New UI-only Studio component state in this slice |
+| `server/` and `lina/` | Existing execution and standalone harness contracts | New UI-only Studio component state in this slice |
 
 The feature should use a small local interface rather than prematurely generalizing
 the existing coverage catalog. A shared abstraction becomes justified only when the
@@ -360,7 +360,7 @@ validation, record the exact failure and keep it separate from Component Lab cha
 - [ ] Keep catalog/types, UI views, route/navigation integration, and documentation
       changes reviewable as coherent sections.
 - [ ] Inspect `git status` and the exact diff before each commit; preserve unrelated
-      platform, model, chat, and Anesu work already present in the worktree.
+      platform, model, chat, and Lina work already present in the worktree.
 - [ ] The next plan should implement one executable Context strategy behind the future
       component-runner seam, using the fixed experiment envelope defined here.
 

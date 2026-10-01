@@ -189,7 +189,7 @@ than treated as an empty store.
 ## Kernel ownership rules
 
 The kernel is independently owned by `server/src/studio/`. It uses shared server
-contracts for Context messages and token estimation, but it does not import Anesu,
+contracts for Context messages and token estimation, but it does not import Lina,
 Platform Lab runners, or platform SDKs.
 
 `StudioComparisonService` owns comparison lifecycle and evidence publication.

@@ -11,7 +11,7 @@ This plan adds the capability layer that professional and personal agents need a
 four platform runners are comparable: tools, reusable skills, MCP connections, OAuth-backed
 accounts, direct API connections, and trusted plugins. It keeps capability definitions
 portable while leaving execution, durability, retries, and native telemetry inside each
-platform adapter. It does not make Anesu, Studio, or a computer environment part of the
+platform adapter. It does not make Lina, Studio, or a computer environment part of the
 platform runtime.
 
 ## Start here
@@ -171,8 +171,8 @@ The completed phase must be able to:
 
 ## Explicitly out of scope
 
-- Anesu computer-native tools, workspaces, sandboxes, browser automation, or VM/remote
-  computer execution. Those remain in anesu/ and its Lab integration boundary.
+- Lina computer-native tools, workspaces, sandboxes, browser automation, or VM/remote
+  computer execution. Those remain in lina/ and its Lab integration boundary.
 - Studio, component experiments, benchmark leaderboards, or a new Studio capability UI.
 - A public plugin marketplace, arbitrary third-party plugin installation, or unsigned code
   execution.
@@ -244,11 +244,11 @@ unavailable instead of silently executing it in the server process.
 
 | Workstream | Owned files/directories | Must not change without a recorded contract decision |
 | --- | --- | --- |
-| Capability contracts | server/src/capabilities/**, focused server capability tests | Anesu, Studio, platform SDK implementation |
+| Capability contracts | server/src/capabilities/**, focused server capability tests | Lina, Studio, platform SDK implementation |
 | Platform bindings | server/src/platforms/{temporal,restate,langgraph,mastra}/**, platform tests | unrelated platform implementations |
 | Connection fixtures | server/tests/fixtures/capabilities/**, local fixture scripts | production secrets or user account data |
 | Server/API/evidence | server/src/control-plane/**, smallest required shared tests | unrelated runner semantics |
-| Platform UI | apps/web/src/features/platforms/**, browser tests | Anesu/Studio UI |
+| Platform UI | apps/web/src/features/platforms/**, browser tests | Lina/Studio UI |
 | Docs/playground | platform docs, docs/architecture/, development/playground/, plan files | unsupported published claims |
 
 If a shared file is required, first add a contract test showing why the existing seam is
@@ -702,7 +702,7 @@ Use focused commits rather than one large capability commit:
 6. documentation, playground, acceptance record, and plan archive.
 
 Before every commit, inspect git status, stage only files owned by this plan, run the
-narrow validation for that section, and preserve unrelated Anesu, Studio, lockfile,
+narrow validation for that section, and preserve unrelated Lina, Studio, lockfile,
 playground, and research changes.
 
 ## Completion gate

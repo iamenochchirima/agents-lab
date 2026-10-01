@@ -2,7 +2,7 @@
 
 Reviewed: 2026-09-15
 
-This note narrows the reference set for the next Anesu implementation
+This note narrows the reference set for the next Lina implementation
 slice: safe workspace mutations and approval. Hermes and OpenClaw are the
 primary references. Waku remains useful for its small tool registry and visible
 model/tool loop, but it is not the design authority for mutation safety.
@@ -59,7 +59,7 @@ Source:
 
 - [Local Waku code map](harness-code-maps/waku.md)
 
-## Decision for Anesu
+## Decision for Lina
 
 The next slice should use specialized workspace mutation tools, with approval
 implemented as a runtime boundary rather than as a prompt instruction or a

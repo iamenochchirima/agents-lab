@@ -194,7 +194,7 @@ The completed implementation must be able to:
   human-in-the-loop interrupt UX, background cron, or long-running external workflows.
 - Long-term memory stores, vector search, MCP, OAuth, plugins, social connectors,
   browser automation, filesystem/computer environments, and the general skill system.
-- Changes to Restate, Temporal, Mastra, Anesu, Studio, or the common runner contract
+- Changes to Restate, Temporal, Mastra, Lina, Studio, or the common runner contract
   unless a concrete LangGraph incompatibility is demonstrated and separately recorded.
 - Exactly-once OpenRouter execution. Provider calls remain at-least-once or unknown
   according to the dispatch boundary and must be reported honestly.
@@ -251,10 +251,10 @@ Ownership rules:
 | TypeScript adapter | `server/src/platforms/langgraph/runner-adapter/`, LangGraph adapter tests | Restate/Temporal adapter behaviour |
 | LangGraph process tests | `server/src/platforms/langgraph/service/tests/`, `server/tests/platforms/langgraph/`, `server/integration-tests/` | Production code from tests |
 | Local operations | `scripts/run_local_stack.sh`, platform deployment/local docs | Docker requirements or unrelated launcher semantics |
-| Browser acceptance | `apps/web/tests/browser/` and existing platform feature files only when required | Anesu/Studio UI and unrelated platform behaviour |
+| Browser acceptance | `apps/web/tests/browser/` and existing platform feature files only when required | Lina/Studio UI and unrelated platform behaviour |
 | Documentation | `server/src/platforms/langgraph/docs/`, `server/src/platforms/langgraph/README.md`, `development/playground/`, this plan | Published claims about hosted LangGraph |
 
-Existing dirty Anesu, Studio, lockfile, and playground work belongs to other workstreams
+Existing dirty Lina, Studio, lockfile, and playground work belongs to other workstreams
 and must remain unstaged and unchanged.
 
 ## First implementation audit
@@ -1026,7 +1026,7 @@ Use focused commits. Do not create one large final commit.
 
 Before each commit:
 
-- [x] Review `git status` and preserve unrelated Anesu, Studio, lockfile, and playground
+- [x] Review `git status` and preserve unrelated Lina, Studio, lockfile, and playground
   changes.
 - [x] Run narrow checks for the changed section.
 - [x] Inspect the complete staged diff for secrets, generated environments, and unrelated

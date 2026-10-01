@@ -937,7 +937,7 @@ test("Platform Chat opens for every registered platform", async () => {
 
   try {
     const platforms = [
-      ["anesu", "Anesu"],
+      ["lina", "Lina"],
       ["temporal", "Temporal"],
       ["restate", "Restate"],
       ["langgraph", "LangGraph"],

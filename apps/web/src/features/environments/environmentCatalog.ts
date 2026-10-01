@@ -13,9 +13,9 @@ export interface EnvironmentDescriptor {
   workspace: string;
 }
 
-const anesuPlatformIds = ["anesu"] as const;
+const linaPlatformIds = ["lina"] as const;
 
-/** Computer environments belong to the external Anesu harness only. */
+/** Computer environments belong to the external Lina harness only. */
 export const environmentCatalog: readonly EnvironmentDescriptor[] = [
   {
     id: "local-workspace",
@@ -27,7 +27,7 @@ export const environmentCatalog: readonly EnvironmentDescriptor[] = [
     resourceControls: "Process and command timeouts",
     lifecycle: "Prepare → attach → run → inspect → reset on request",
     status: "planned",
-    compatiblePlatformIds: anesuPlatformIds,
+    compatiblePlatformIds: linaPlatformIds,
   },
   {
     id: "sandboxed-container",
@@ -39,7 +39,7 @@ export const environmentCatalog: readonly EnvironmentDescriptor[] = [
     resourceControls: "CPU, memory, disk, process, and execution-time limits",
     lifecycle: "Provision → health check → attach → collect artifacts → cleanup",
     status: "planned",
-    compatiblePlatformIds: anesuPlatformIds,
+    compatiblePlatformIds: linaPlatformIds,
   },
   {
     id: "remote-vm",
@@ -51,7 +51,7 @@ export const environmentCatalog: readonly EnvironmentDescriptor[] = [
     resourceControls: "Provider instance limits and session timeouts",
     lifecycle: "Provision → connect → run → collect → suspend or destroy",
     status: "planned",
-    compatiblePlatformIds: anesuPlatformIds,
+    compatiblePlatformIds: linaPlatformIds,
   },
 ];
 

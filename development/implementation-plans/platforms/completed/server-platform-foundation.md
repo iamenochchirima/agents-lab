@@ -110,7 +110,7 @@ This slice does not:
 - implement Restate, LangGraph, Mastra, Vercel, Inngest, Trigger.dev, DBOS, Hatchet,
   or AWS Step Functions;
 - add new model providers, tools, skills, memory, plugins, OAuth, MCP, gateways,
-  social connections, or Anesu integration;
+  social connections, or Lina integration;
 - redesign the Platform UI beyond contract compatibility or necessary labels;
 - create a generic agent-loop abstraction;
 - move Temporal workflow logic into the common server layer;
@@ -279,7 +279,7 @@ implementations get separate plans and separate commits after this seam is stabl
 
 - [x] Generalize `RunEvidenceSnapshot` and `RunView` away from `temporalReference`.
 - [x] Add safe native reference read/write by platform identifier.
-- [x] Keep evidence filenames allowlisted and reject traversal or unknown native paths.
+- [x] Keep evidence filinames allowlisted and reject traversal or unknown native paths.
 - [x] Preserve event identity, source ordering, idempotent writes, and terminal-result rules.
 - [x] Keep platform-specific event detail available without requiring it in normalized files.
 - [x] Test server restart/reconciliation using a generic runner reference.
@@ -325,7 +325,7 @@ implementations get separate plans and separate commits after this seam is stabl
 - [x] Update the Temporal architecture and local-development guides.
 - [x] Update Platform UI documentation if native reference fields or health responses change.
 - [x] Add a short comparison table showing common run records versus native platform records.
-- [x] Keep this plan focused on the server platform layer, not Anesu.
+- [x] Keep this plan focused on the server platform layer, not Lina.
 
 ## Test coverage
 

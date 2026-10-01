@@ -49,13 +49,13 @@ development/playground/<slice-name>/
   notes.md        # Maintainer observations, questions, and content ideas
 ```
 
-The first slices are `anesu-terminal-turn`, `anesu-browser-turn`,
-`anesu-context-management`, `studio-input-context`, `studio-chat`,
+The first slices are `lina-terminal-turn`, `lina-browser-turn`,
+`lina-context-management`, `studio-input-context`, `studio-chat`,
 `temporal-baseline`, and `platform-comparison`. The Input and Context slice traces
 one text request and retrieved Memory records through Input normalization and Context
 assembly. The Studio chat slice exercises the fixed Input, Memory, Context, Control,
 and Replay Model Interface assembly from the browser; its README explains how to start
-the API and inspect transient per-turn evidence. The Anesu slices make text-only,
+the API and inspect transient per-turn evidence. The Lina slices make text-only,
 context, and browser turns observable from input through persisted session evidence.
 The Temporal slice makes one durable run observable across the API, worker, workflow,
 model activity, and Lab evidence projection. The platform-comparison slice makes one

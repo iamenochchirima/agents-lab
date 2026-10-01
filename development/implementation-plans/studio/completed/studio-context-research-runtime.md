@@ -267,7 +267,7 @@ Validated on `2026-09-20`:
 - The focused Studio and Memory suites passed: 80 tests.
 - The Platform Lab adapter regression suite passed: 194 tests, 2 existing native
   integration tests skipped, 0 failures.
-- The repository build passed, including Anesu, the server, and web typechecks/build.
+- The repository build passed, including Lina, the server, and web typechecks/build.
 - The Context HTTP fixture completed six strategy trials with one fixed Memory
   policy, identical fixed-control fingerprints, separate Context/Memory evidence,
   and no fixed-Memory writes.

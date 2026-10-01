@@ -16,7 +16,7 @@ test("local server environment loads supported values and preserves explicit val
       "AGENTLAB_MASTRA_WORKFLOW_ENABLED=false",
       "AGENTLAB_MASTRA_STORAGE_PATH=var/mastra/workflows.db",
       "OPENROUTER_API_KEY='local-secret'",
-      "ANESU_PROVIDER=ignored",
+      "LINA_PROVIDER=ignored",
     ].join("\n"),
   );
 
@@ -31,7 +31,7 @@ test("local server environment loads supported values and preserves explicit val
   assert.equal(environment.AGENTLAB_MASTRA_WORKFLOW_ENABLED, "false");
   assert.equal(environment.AGENTLAB_MASTRA_STORAGE_PATH, "var/mastra/workflows.db");
   assert.equal(environment.OPENROUTER_API_KEY, "explicit-secret");
-  assert.equal(environment.ANESU_PROVIDER, undefined);
+  assert.equal(environment.LINA_PROVIDER, undefined);
 });
 
 test("missing local server environment is a no-op", () => {

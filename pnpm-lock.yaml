@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  anesu:
+  lina:
     dependencies:
       '@trycua/cua-driver':
         specifier: 0.28.2
@@ -709,7 +709,7 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
-  '@balena/dockerignore@1.0.2':
+  '@balina/dockerignore@1.0.2':
     resolution: {integrity: sha512-wMue2Sy4GAVTk6Ic4tJVcnfdau+gx2EnG7S+uAEe+TWJFqE4YoWN4/H8MSLj4eYJKxGg26lZwboEniNiNwZQ6Q==}
 
   '@borewit/text-codec@0.2.2':
@@ -4826,11 +4826,11 @@ packages:
   filelist@1.0.6:
     resolution: {integrity: sha512-5giy2PkLYY1cP39p17Ech+2xlpTRL9HLspOfEgm0L6CwBXBTgsK5ou0JtzYuepxkaQ/tvhCFIJ5uXo0OrM2DxA==}
 
-  filename-reserved-regex@4.0.1:
+  filiname-reserved-regex@4.0.1:
     resolution: {integrity: sha512-qUet2faQFKvtvVUsEf7wCrTURwxBOIZpspsLHGifw9QCWk55ITE2FrG8XhfQqG/uxMA1xEGFVQbL+Yfm0O94+Q==}
     engines: {node: '>=20'}
 
-  filenamify@7.0.3:
+  filinamify@7.0.3:
     resolution: {integrity: sha512-Pf0dwHrWs1GcIK15ps304fmxp2AOcfNR6vOIMvCPEy6ZztKYxzRQHlOuPVWo2HRjbCLHaRTY+kD8n3RbQ0A/fw==}
     engines: {node: '>=20'}
 
@@ -7785,7 +7785,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@balena/dockerignore@1.0.2': {}
+  '@balina/dockerignore@1.0.2': {}
 
   '@borewit/text-codec@0.2.2': {}
 
@@ -11103,7 +11103,7 @@ snapshots:
       content-disposition: 2.0.1
       ext-name: 5.0.0
       file-type: 21.3.4
-      filenamify: 7.0.3
+      filinamify: 7.0.3
       got: 14.6.6
     transitivePeerDependencies:
       - bare-abort-controller
@@ -12055,7 +12055,7 @@ snapshots:
 
   dockerode@4.0.12:
     dependencies:
-      '@balena/dockerignore': 1.0.2
+      '@balina/dockerignore': 1.0.2
       '@grpc/grpc-js': 1.14.4
       '@grpc/proto-loader': 0.7.15
       docker-modem: 5.0.7
@@ -12067,7 +12067,7 @@ snapshots:
 
   dockerode@5.0.1:
     dependencies:
-      '@balena/dockerignore': 1.0.2
+      '@balina/dockerignore': 1.0.2
       '@grpc/grpc-js': 1.14.4
       '@grpc/proto-loader': 0.7.15
       docker-modem: 5.0.7
@@ -12478,11 +12478,11 @@ snapshots:
     dependencies:
       minimatch: 5.1.9
 
-  filename-reserved-regex@4.0.1: {}
+  filiname-reserved-regex@4.0.1: {}
 
-  filenamify@7.0.3:
+  filinamify@7.0.3:
     dependencies:
-      filename-reserved-regex: 4.0.1
+      filiname-reserved-regex: 4.0.1
 
   fill-range@7.1.1:
     dependencies:
@@ -14848,7 +14848,7 @@ snapshots:
 
   testcontainers@11.14.0:
     dependencies:
-      '@balena/dockerignore': 1.0.2
+      '@balina/dockerignore': 1.0.2
       '@types/dockerode': 4.0.1
       archiver: 7.0.1
       async-lock: 1.4.1
@@ -14871,7 +14871,7 @@ snapshots:
 
   testcontainers@12.1.0:
     dependencies:
-      '@balena/dockerignore': 1.0.2
+      '@balina/dockerignore': 1.0.2
       '@types/dockerode': 4.0.1
       archiver: 7.0.1
       async-lock: 1.4.1
