@@ -153,6 +153,16 @@ function wireMessages(messages: readonly ModelMessage[]): readonly Record<string
   }));
 }
 
+function wireToolSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(wireToolSchema);
+  if (!value || typeof value !== "object") return value;
+  // Some OpenRouter tool providers reject string-length keywords while the
+  // local tool still enforces its argument limits. Keep the provider's schema
+  // descriptive without weakening execution-time validation.
+  return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "minLength" && key !== "maxLength")
+    .map(([key, child]) => [key, wireToolSchema(child)]));
+}
+
 export class OpenRouterModelProvider implements ModelProvider {
   readonly provider = "openrouter" as const;
   readonly capabilities = OPENROUTER_CAPABILITIES;
@@ -182,7 +192,7 @@ export class OpenRouterModelProvider implements ModelProvider {
             function: {
               name: tool.name,
               description: tool.description,
-              parameters: tool.inputSchema,
+              parameters: wireToolSchema(tool.inputSchema),
             },
           })),
           ...(request.toolChoice ? {

@@ -59,6 +59,9 @@ class FakeCuaRuntime {
   snapshotTitle = "Example";
   uploadTargetId = "target-1";
   windowAppName = "Google Chrome";
+  selectAvailable = false;
+  selectPermissionDenied = false;
+  stringControlStates = false;
   private activeTargetId = "target-1";
   private bindCount = 0;
 
@@ -69,6 +72,7 @@ class FakeCuaRuntime {
       browser_navigate: ["session", "tab_id", "target_id", "url"],
       browser_click: ["input_route", "ref", "session", "tab_id", "target_id"],
       browser_type: ["mode", "ref", "replace", "session", "tab_id", "target_id", "text"],
+      browser_select_option: ["label", "ref", "session", "tab_id", "target_id", "value"],
       browser_pointer: ["action", "destination_ref", "input_route", "ref", "session", "tab_id", "target_id"],
       browser_dialog: ["action", "dialog_id", "prompt_text", "session", "tab_id", "target_id"],
       browser_set_input_files: ["files", "ref", "session", "tab_id", "target_id"],
@@ -79,6 +83,7 @@ class FakeCuaRuntime {
       "browser_navigate",
       "browser_click",
       "browser_type",
+      ...(this.selectAvailable ? ["browser_select_option"] : []),
       "browser_pointer",
       "browser_dialog",
       "browser_set_input_files",
@@ -145,8 +150,10 @@ class FakeCuaRuntime {
         refs: [
           { ref: "p1:1", role: "button", name: "Continue", actions: ["click"], frame: "main", visibility: "in_viewport" },
           { ref: "p1:2", role: "textbox", name: "Message", ...(this.omitRefValue ? {} : { value: "existing value" }), actions: ["type"], states: { required: true, disabled: false }, frame: "main", visibility: "in_viewport" },
+          ...(this.stringControlStates ? [{ ref: "p1:7", role: "checkbox", name: "Consent", actions: ["click"], states: { checked: "true", required: "false", focusable: true }, frame: "main", visibility: "in_viewport" }] : []),
           { ref: "p1:4", role: "button", name: "Hidden", actions: ["click"], frame: "main", visibility: "css_hidden" },
           { ref: "p1:5", role: "region", name: "Article content", actions: ["pointer"], frame: "main", visibility: "in_viewport" },
+          ...(this.selectAvailable ? [{ ref: "p1:6", role: "combobox", name: "Industry", actions: ["select"], frame: "main", visibility: "in_viewport" }] : []),
         ],
         content_refs: [{ ref: "p1:3", role: "heading", name: "Example", actions: [], frame: "main", visibility: "in_viewport" }],
       });
@@ -157,6 +164,10 @@ class FakeCuaRuntime {
     if (["browser_click", "browser_type", "browser_pointer"].includes(name)) {
       const response = this.actionResponse ?? { structured: { status: "ok", effect: "confirmed", route: "trusted_input" } };
       return result(response.structured, response.text === undefined ? {} : { text: response.text });
+    }
+    if (name === "browser_select_option" && this.selectAvailable) {
+      if (this.selectPermissionDenied) return result({ status: "refused", refusal: { code: "permission_denied", message: "Tool is outside the capability manifest." } });
+      return result({ status: "ok", target_id: "target-1", tab_id: "tab-1", ref: "p1:6", selected_value: "retail", input_route: "dom_event" });
     }
     if (name === "browser_set_input_files") {
       return result({ status: "ok", target_id: this.uploadTargetId, tab_id: "tab-1", ref: "p1:2", file_count: 1 });
@@ -456,6 +467,7 @@ test("Cua browser preflight rejects a contradictory read-only annotation", async
 
 test("Cua semantic control states survive the browser gateway and adapter", async () => {
   const driver = new FakeCuaRuntime();
+  driver.stringControlStates = true;
   const adapter = new CuaBrowserAdapter({
     driver,
     inputRoute: "dom_event",
@@ -469,6 +481,8 @@ test("Cua semantic control states survive the browser gateway and adapter", asyn
   const message = snapshot.references.find((reference) => reference.name === "Message");
 
   assert.deepEqual(message?.states, { required: true, disabled: false });
+  const consent = snapshot.references.find((reference) => reference.name === "Consent");
+  assert.deepEqual(consent?.states, { checked: true, required: false });
   assert.equal(driver.calls.some((call) => call.name === "get_window_state"), false);
 });
 
@@ -545,6 +559,36 @@ test("Cua browser adapter prepares, binds, snapshots, navigates, and acts withou
   await adapter.shutdown();
   assert.equal(driver.ended, 1);
   assert.equal(driver.shutdowns, 1);
+});
+
+test("Cua browser adapter selects a native option through the discovered typed tool", async () => {
+  const driver = new FakeCuaRuntime();
+  driver.selectAvailable = true;
+  const adapter = new CuaBrowserAdapter({ driver, inputRoute: "dom_event", urlPolicy: new BrowserUrlPolicy({ dnsLookup: async () => ["93.184.216.34"] }) });
+  const sessionId = asBrowserSessionId("browser_select_option_test");
+  const tabId = asBrowserTabId("tab-1");
+  await adapter.startSession({ sessionId });
+  await adapter.open(sessionId, "https://example.test/");
+  const snapshot = await adapter.snapshot(sessionId, tabId);
+  const reference = snapshot.references.find((item) => item.value === "p1:6");
+  assert.ok(reference);
+  assert.deepEqual(reference?.actions, ["select"]);
+
+  const selected = await adapter.act(sessionId, tabId, {
+    kind: "select", reference, value: "Retail",
+  });
+  assert.equal(selected.route, "dom_event");
+  const call = driver.calls.find((item) => item.name === "browser_select_option");
+  assert.ok(call);
+  assert.equal(JSON.parse(call.argumentsJson).label, "Retail");
+  assert.equal(JSON.parse(call.argumentsJson).value, undefined);
+  driver.selectPermissionDenied = true;
+  const fresh = await adapter.snapshot(sessionId, tabId);
+  await assert.rejects(
+    adapter.act(sessionId, tabId, { kind: "select", reference: fresh.references.find((item) => item.value === "p1:6"), value: "Retail" }),
+    (error: unknown) => error instanceof BrowserError && error.browserCode === "browser-action-refused" && error.cuaCode === "permission_denied",
+  );
+  await adapter.closeSession(sessionId);
 });
 
 test("Cua browser adapter does not expose about:blank as the title of a navigated page", async () => {

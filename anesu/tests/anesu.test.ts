@@ -72,6 +72,7 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.timeoutMs, 30_000);
   assert.equal(deterministic.computerDurationMs, 30_000);
   assert.equal(deterministic.approvalTimeoutMs, 120_000);
+  assert.equal(deterministic.computerTaskDurationMs, 300_000);
   assert.equal(deterministic.modelRetryAttempts, 2);
   assert.equal(deterministic.modelRetryBackoffMs, 250);
   assert.equal(deterministic.maxModelRequestBytes, 512 * 1024);
@@ -89,7 +90,7 @@ test("configuration has safe deterministic defaults and rejects missing OpenRout
   assert.equal(deterministic.processMode, "approval");
   assert.equal(deterministic.processDurationMs, 60_000);
   assert.equal(deterministic.processCallsPerTurn, 4);
-  assert.equal(deterministic.maxModelToolRounds, 8);
+  assert.equal(deterministic.maxModelToolRounds, 16);
   assert.equal(deterministic.browserMaxTabs, 8);
   assert.equal(deterministic.browserActionTimeoutMs, 30_000);
   assert.equal(deterministic.browserEnabled, true);
@@ -1205,11 +1206,12 @@ test("resuming a session sends bounded transcript history to the next model requ
       yield { type: "completed" };
     },
   };
-  await runTurn({ session, provider, config: config(stateDir), userPrompt: "first" });
-  await runTurn({ session, provider, config: config(stateDir), userPrompt: "second" });
+  const firstTurn = await runTurn({ session, provider, config: config(stateDir), userPrompt: "first" });
+  const secondTurn = await runTurn({ session, provider, config: config(stateDir), userPrompt: "second" });
   const workspaceRules = await readFile(path.join(process.cwd(), "AGENTS.md"), "utf8");
+  assert.equal(requests[0]?.messages[0]?.content, `${config(stateDir).initialInstruction}\n\nCurrent UTC date and time: ${firstTurn.startedAt}.`);
   assert.deepEqual(requests[1]?.messages.map((message) => message.content), [
-    config(stateDir).initialInstruction,
+    `${config(stateDir).initialInstruction}\n\nCurrent UTC date and time: ${secondTurn.startedAt}.`,
     `<workspace-resource path="AGENTS.md" trust="workspace" instructions="untrusted-data">\n${workspaceRules}\n</workspace-resource>`,
     "first",
     "answer",
@@ -2493,6 +2495,31 @@ test("OpenRouter adapter normalizes streamed tool calls and serializes the provi
   ]);
 });
 
+test("OpenRouter sends browser tool parameters without provider-rejected string length keywords", async () => {
+  let sentSchema: Record<string, unknown> | undefined;
+  const provider = new OpenRouterModelProvider("qwen/qwen3.8-27b:free", "test-key", async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as { tools: Array<{ function: { parameters: Record<string, unknown> } }> };
+    sentSchema = body.tools[0]?.function.parameters;
+    const query = (sentSchema?.properties as Record<string, Record<string, unknown>>)?.query;
+    if (query?.minLength !== undefined || query?.maxLength !== undefined) {
+      return new Response("unsupported schema keyword minLength", { status: 400 });
+    }
+    return new Response('data: {"choices":[{"delta":{"content":"ready"}}]}\n\ndata: [DONE]\n\n', { status: 200 });
+  });
+  const request: ModelRequest = {
+    sessionId: asSessionId("session_schema"),
+    turnId: asTurnId("turn_schema"),
+    provider: "openrouter",
+    model: "qwen/qwen3.8-27b:free",
+    messages: [{ role: "user", content: "Search the web." }],
+    tools: [{ name: "browser_search", description: "Search the web.", inputSchema: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 512 } }, required: ["query"], additionalProperties: false } }],
+  };
+  const events = [];
+  for await (const event of provider.stream(request, new AbortController().signal)) events.push(event);
+  assert.equal(events.some((event) => event.type === "text" && event.text === "ready"), true);
+  assert.deepEqual(sentSchema, { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false });
+});
+
 test("OpenRouter adapter reports a stream start before a slow buffered tool call completes", async () => {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -2851,7 +2878,7 @@ test("provider doctor reports bounded deterministic connectivity without creatin
   const cli = path.resolve("dist/src/cli/main.js");
   const result = await execFileAsync(process.execPath, [cli, "doctor", "--provider", "deterministic", "--state-dir", stateDir, "--workspace", tempDirectory()]);
   assert.match(result.stdout, /provider: deterministic/);
-  assert.match(result.stdout, /model\/tool rounds: 8/);
+  assert.match(result.stdout, /model\/tool rounds: 16/);
   assert.match(result.stdout, /browser: enabled/);
   assert.match(result.stdout, /browser max tabs: 8/);
   assert.match(result.stdout, /browser session timeout: 1800000ms/);

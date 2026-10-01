@@ -7,6 +7,7 @@ import { createModelProvider } from "../models/factory.js";
 import { listModelProviderSummaries, type ModelProviderSummary } from "../models/registry.js";
 import { SessionStore } from "../persistence/session-store.js";
 import { ProcessApprovalPermissions } from "../persistence/process-approval-permissions.js";
+import { ComputerApprovalPermissions } from "../persistence/computer-approval-permissions.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { LocalProcessRunner } from "../process/local-runner.js";
 import { reconcileRunningProcess } from "../process/recovery.js";
@@ -46,6 +47,7 @@ export interface ChatApplication {
   readonly workspaceRoot: string;
   readonly evidenceDirectory: string;
   readonly processPermissions?: ProcessApprovalPermissions;
+  readonly computerPermissions?: ComputerApprovalPermissions;
   readonly toolNames: readonly string[];
   readonly computer: ComputerUiStatus;
   readonly readMemoryStatus?: () => Promise<MemoryStatus>;
@@ -99,6 +101,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
     session.metadata.sessionId,
     session.metadata.profileId,
   );
+  const computerPermissions = new ComputerApprovalPermissions(session.sessionDirectory, session.metadata.sessionId);
   let memory: MemoryStore | undefined;
   let nativeCuaOwner: CuaNativeDriverOwner | undefined;
   try {
@@ -149,14 +152,15 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
     const nativeRunExclusive = createComputerRunQueue();
     const computerRunExclusive = createComputerRunQueue();
     const browserSessionRoot = createHash("sha256").update(session.metadata.sessionId, "utf8").digest("hex").slice(0, 32);
+    const selectOptionAvailable = config.browserEnabled
+      ? await installedCuaSupportsBrowserSelectOption()
+      : false;
     const browserManifest = await createCuaBrowserManifest({
       basePath: path.join(process.cwd(), "config", "cua-browser-capabilities.yaml"),
       outputPath: path.join(config.stateDir, "cua", `browser-capabilities-${browserSessionRoot}.yaml`),
       uploadRoot: path.join(config.stateDir, "cua", "browser-uploads", browserSessionRoot),
       existingProfileEnabled: config.computerExistingProfileEnabled,
-      selectOptionAvailable: config.computerEnabled
-        ? await installedCuaSupportsBrowserSelectOption()
-        : false,
+      selectOptionAvailable,
     });
     const browserAdapter = new CuaBrowserAdapter({
       manifestPath: browserManifest.manifestPath,
@@ -220,9 +224,11 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       ? {
           manager: browserSessions,
           maxOutputBytes: config.maxToolOutputBytes,
+          selectOptionAvailable,
           maxWaitMs: config.browserWaitMaxMs,
           inputRoute: browserInputRoute,
           searchProvider: config.browserSearchProvider,
+          ...(config.typeSafeApiKey ? { jev: { apiKey: config.typeSafeApiKey, model: config.computerTypesafeModel } } : {}),
           runtimeEvidence: () => browserAdapter.runtimeEvidence(),
           resolveUpload: browserFilePolicy.resolveUpload.bind(browserFilePolicy),
           redactionSecrets: [config.openRouterApiKey ?? "", config.computerOpenRouterApiKey ?? process.env.OPENROUTER_API_KEY ?? "", config.typeSafeApiKey ?? process.env.TYPESAFE_API_KEY ?? ""].filter(Boolean),
@@ -379,6 +385,7 @@ export async function openChatApplication(config: AppConfig, requestedSessionId?
       workspaceRoot: config.workspaceRoot,
       evidenceDirectory: session.sessionDirectory,
       processPermissions,
+      computerPermissions,
       toolNames: tools.definitions.map((definition) => definition.name),
       computer,
       readMemoryStatus: activeMemory ? () => activeMemory.status() : undefined,

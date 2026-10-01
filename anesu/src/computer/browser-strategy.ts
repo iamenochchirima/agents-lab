@@ -209,8 +209,7 @@ function operationFor(role: string, type?: string): { readonly operation: Comput
   if (role === "button" || role === "a" || role === "link" || role === "checkbox" || role === "radio") {
     return { operation: "click" };
   }
-  if (role === "select") return { operation: "blocked", reason: "native select controls are not exposed by the typed Cua browser surface" };
-  if (role === "combobox") return { operation: "blocked", reason: "combobox selection is not available until its option semantics are observed" };
+  if (role === "select" || role === "combobox") return { operation: "blocked", reason: "select controls require a current typed Cua selection action" };
   if (role === "textarea") return { operation: "type" };
   if (role !== "input") return undefined;
   if (type === "button" || type === "submit" || type === "reset") return { operation: "click" };
@@ -252,7 +251,9 @@ export function buildBrowserActionSpace(snapshot: BrowserStrategySnapshot): read
     const reference = referenceById.get(ref);
     if (!reference) continue;
     const role = normalizeRole(parsed.role);
-    const operation = operationFor(role, parsed.type);
+    const operation = (role === "select" || role === "combobox") && declared(reference, "select") === true
+      ? { operation: "select" as const }
+      : operationFor(role, parsed.type);
     const uploadDeclared = declared(reference, "upload") === true;
     // semantic_v2's action declaration is authoritative. Some Chromium
     // accessibility projections expose a file input as a generic `input`

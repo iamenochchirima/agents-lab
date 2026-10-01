@@ -42,19 +42,26 @@ function addExistingProfileCapability(manifest: string): string {
 
 /** Probe before creating a bounded manifest: unknown tool names make Cua refuse the whole driver. */
 export async function installedCuaSupportsBrowserSelectOption(): Promise<boolean> {
-  const { CuaDriver } = await import("@trycua/cua-driver");
-  const driver = CuaDriver.create(undefined);
   try {
-    const inventory: unknown = JSON.parse(await driver.listToolsJson());
-    if (!inventory || typeof inventory !== "object" || Array.isArray(inventory)) return false;
-    const record = inventory as { readonly schema_version?: unknown; readonly tools?: unknown };
-    return record.schema_version === "1"
-      && Array.isArray(record.tools)
-      && record.tools.some((tool) => tool && typeof tool === "object" && !Array.isArray(tool)
-        && (tool as { readonly name?: unknown }).name === "browser_select_option");
-  } finally {
-    await driver.shutdown();
-    if ("uniffiDestroy" in driver && typeof driver.uniffiDestroy === "function") driver.uniffiDestroy();
+    const { CuaDriver } = await import("@trycua/cua-driver");
+    const driver = CuaDriver.create(undefined);
+    try {
+      const inventory: unknown = JSON.parse(await driver.listToolsJson());
+      if (!inventory || typeof inventory !== "object" || Array.isArray(inventory)) return false;
+      const record = inventory as { readonly schema_version?: unknown; readonly tools?: unknown };
+      return record.schema_version === "1"
+        && Array.isArray(record.tools)
+        && record.tools.some((tool) => tool && typeof tool === "object" && !Array.isArray(tool)
+          && (tool as { readonly name?: unknown }).name === "browser_select_option");
+    } finally {
+      await driver.shutdown();
+      if ("uniffiDestroy" in driver && typeof driver.uniffiDestroy === "function") driver.uniffiDestroy();
+    }
+  } catch {
+    // Capability discovery must not prevent ordinary chat from starting when
+    // the optional Cua native runtime is unavailable. Browser preflight reports
+    // that runtime failure if the user actually requests browser work.
+    return false;
   }
 }
 

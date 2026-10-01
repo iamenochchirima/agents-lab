@@ -2,8 +2,8 @@ version: 3
 expires_after: 8h
 idle_timeout: 30m
 
-# This is the browser runtime ceiling. It is intentionally origin-scoped, so
-# generic desktop input and native window observation are not allowed here.
+# This is the origin-scoped browser runtime ceiling. Native desktop tools are
+# intentionally absent: they bypass Cua's typed browser-origin adapter.
 allow:
   tools:
     - start_session

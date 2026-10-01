@@ -41,6 +41,12 @@ bounded error outcomes. A disconnect before output may be retried by the runtime
 disconnect after output is not retried because the provider may already have accepted
 and partially executed the request.
 
+Some OpenRouter tool providers reject JSON Schema `minLength` and `maxLength` in
+function parameters. The adapter omits those two keywords only from the wire
+schema. Anesu's tool handlers retain their nonempty and byte-limit checks before
+execution. A provider rate limit or another unsupported schema keyword still
+produces an explicit provider failure; the adapter does not switch models.
+
 For tool-call responses, the adapter may receive several streamed fragments before it
 has a complete executable call. It emits a non-executable `stream_started` event as
 soon as the first valid SSE frame arrives, so the runtime's first-event watchdog does

@@ -1280,6 +1280,7 @@ function assertComputerRunRecord(
     || (candidate.taskSurface !== undefined && candidate.taskSurface !== "browser" && candidate.taskSurface !== "native")
     || !validOrigins
     || (candidate.inputRoute !== undefined && candidate.inputRoute !== "trusted" && candidate.inputRoute !== "dom_event")
+    || (candidate.typingMode !== undefined && candidate.typingMode !== "insert_text" && candidate.typingMode !== "keystrokes")
     || (candidate.taskExpiresAtMs !== undefined && (!Number.isSafeInteger(candidate.taskExpiresAtMs) || (candidate.taskExpiresAtMs as number) <= 0))
     || !validTypeSafeModel
     || !validStatus

@@ -11,6 +11,7 @@ order is recorded in the [Anesu follow-on queue](anesu-follow-on-queue.md).
 ## Active plans
 
 - [Browser use](active/anesu-browser-use.md)
+- [Browser form controls](active/anesu-browser-form-controls.md)
 - [Model-directed desktop use](active/anesu-model-directed-desktop-use.md)
 - [Core hardening and production foundation](active/anesu-core-hardening.md)
 - [Production-readiness gaps](active/anesu-production-readiness-gaps.md)

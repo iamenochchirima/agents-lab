@@ -27,8 +27,9 @@ Usage: chat-cua-xvfb.sh [--fixture] [--acceptance] [--window-manager NAME]
                   Select the installed Cua browser for --fixture; auto prefers Chrome.
   --              End launcher options; remaining arguments go to `pnpm run chat`.
 
-The acceptance service uses http://127.0.0.1:4173 by default because that origin is
-already present in Anesu's immutable Cua browser manifest.
+The acceptance service uses http://127.0.0.1:4173 by default. Set
+ANESU_CUA_ACCEPTANCE_PORT to another local port if 4173 is already in use; the
+browser task manifest is bound to the exact loopback origin for each task.
 EOF
 }
 

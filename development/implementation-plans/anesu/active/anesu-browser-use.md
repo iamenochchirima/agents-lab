@@ -300,6 +300,12 @@ unproven. No estimate guarantees an upstream Cua or provider change.
       date-picker navigation remain unavailable on the current Ubuntu/Cua
       route; radio controls and multiple date fields were not live-tested. The
       text-field acceptance above is not the evidence for those controls.
+- [ ] The reported Kasitek early-access form can be filled from a natural
+      request in the real TUI, without a site-specific script or unrequested
+      submission. Fresh page state confirms each supplied value and choice;
+      missing required values are requested from the user. An uncertain click
+      remains uncertain in its action record even if later state proves task
+      progress. The earlier fixture pass does not satisfy this item.
 - [x] On a user-named public site, a real TUI request follows a link and uses
       a supported page control through current Cua references, then reports
       the observed result or an explicit unknown outcome.
@@ -600,10 +606,151 @@ coverage remain open questions.
 - [x] Update the browser guide and record the exact live-supported operations,
       Cua limitations, provider failures, and reproduction commands.
 
+### 6. Fix the reported live form failure first
+
+The reported run clicked `Company type`, received Cua `unverifiable`, took a
+fresh but partial 16 KB/247-ref snapshot, attempted the same click again, and
+exhausted an eight-round model/tool budget without typing into the form. The
+full post-click snapshot and model decision are not in that screenshot. Cua's
+Linux `dom_event` route reports `unverifiable` after a successful synthetic
+dispatch, whether or not the page reacted. The current Anesu default is 16
+model/tool rounds; determine why the reported run used eight rather than
+assuming a larger limit will fix the widget. Source-level comparison:
+[Hermes exposes snapshot/click/fill/general key tools](https://github.com/NousResearch/hermes-agent/blob/main/tools/browser_tool.py);
+[OpenClaw's main browser tool exposes select and press](https://github.com/openclaw/openclaw/blob/main/extensions/browser/src/browser-tool.schema.ts)
+through a different backend; its
+[Cua plugin](https://github.com/openclaw/openclaw/blob/main/extensions/cua-computer/src/browser-actions.ts)
+does not supply a missing Cua select/key operation. See the
+[form-failure source check](../../../../docs/research/anesu-browser-form-failure-reference-check-2026-09-25.md).
+
+#### [ ] Slice 6A: the model can advance the actual combobox and finish the form
+
+**Risk:** normal. **Planned new-test budget:** up to two focused cases. One
+real-TUI run is mandatory and does not count against that budget.
+
+Acceptance: a normal prompt with harmless user-supplied values reaches the
+Kasitek early-access form, chooses `Company type` and the other requested
+controls through current Cua state, and leaves the requested values visible in
+a fresh observation. It asks for any missing required value and does not submit
+unless expressly asked. The model does not repeat an uncertain click, search
+for a field label elsewhere, reopen an already reached page, or run out of
+rounds while supported form controls remain available. The result distinguishes
+verified fields from unsupported or unknown ones. No Kasitek-specific code.
+
+- [ ] Reproduce the exact failure through the current Anesu TUI, isolated Cua
+      browser, and configured model. Record the effective model-round and task-
+      action limits, input route, redacted model-visible snapshots before and
+      after the first combobox click, expanded/selected state, option refs,
+      completeness/continuation, model-selected next call, and final outcome.
+      Make one short repeatable check fail on the inability to advance the form.
+      Do not retain personal values, credentials, or raw screenshots.
+- [ ] Classify that control from the evidence: custom listbox with actionable
+      option refs; native HTML `<select>`; snapshot omitted the relevant refs;
+      or synthetic click with no observed effect. Do not implement a select
+      operation based only on the word `combobox` or Cua's `unverifiable` label.
+- [ ] When Cua dispatched a click but cannot verify its effect, keep the durable
+      action marked uncertain and prohibit replay. Obtain one fresh read-only
+      Cua observation and return the current page state with a clear
+      `pending verification` result to the normal model loop. Do not present
+      dispatch uncertainty as proof that the task failed or that the control
+      opened. Preserve exact-origin handoff and refusal handling if the page
+      navigated. If the needed control is absent from a partial snapshot, use
+      existing scoped/query/continuation reads or improve the bounded
+      model-visible observation only as the reproduction requires.
+- [ ] Use current option refs when the menu opened; if it did not, identify a
+      Cua-supported input route that actually changes the control and obtain
+      any separate foreground approval it requires. Never silently switch
+      route, invent a coordinate, replay an ambiguous action, or fall back to
+      Playwright/native desktop input. If Cua has no such operation, record the
+      precise Cua capability needed and keep this slice open.
+- [ ] Check that a realistic field sequence fits the effective round/action
+      budgets. Remove needless observe-only model turns where one safe tool
+      result can carry fresh state; adjust configurable limits only if the
+      measured task still needs them. Do not replace the agent loop with a
+      scripted form planner or merely raise a limit to hide a no-op.
+- [ ] Add at most the focused regression for the observed failure and any
+      boundary exposed by the chosen fix. Run the affected compiled tests, then
+      rerun the same natural-language fill-only request through the real TUI.
+      Inspect the final page state and model reply. A fake-driver pass alone
+      cannot close this slice.
+
+Checkpoint: pending. Evidence: pending.
+
+### 7. Close other Cua browser gaps after the form works
+
+This is open implementation work. The pinned Cua `0.28.2` typed browser route
+cannot complete native `<select>`, live multi-tab creation, or downloads through
+Anesu. The inspected Cua checkout at `9bbfa7dd3` confirms that `browser_type`
+accepts only focused editable refs, tab IDs are minted for discovered page
+targets without a typed tab-creation tool, and `browser_download` receives its
+approval evidence only through the MCP host path. Changes to Cua's public tool
+contract must follow that repository's issue or RFC process. A local build may
+prove the integration, but the final Anesu dependency must be reproducibly
+pinned rather than depend on a contributor's sibling checkout.
+
+#### [ ] Slice 7A: select a native HTML option
+
+Native selection is a separate general form capability. Slice 6A determines
+whether it is required for the reported combobox; do not assume that in advance.
+If native selection is required by that form, complete this part before marking
+Slice 6A done. Otherwise this work follows the confirmed Kasitek form result:
+
+- [ ] In a disposable isolated Chrome session, prove whether Cua can focus one
+      fresh `<select>` ref, deliver ArrowDown/Enter through its existing CDP
+      connection, and read the changed selected value. Record the actual input
+      effect and refusal. This is a feasibility check, not acceptance from a
+      synthetic click or a model assertion.
+- [ ] Based on that result, add one Cua typed browser operation for current-ref
+      key input or option selection. Require the exact session, target, tab,
+      current ref, and supported key or option; revalidate the frame and return
+      a typed effect or refusal. Keep the operation generic across sites.
+- [ ] Wire that operation into Anesu's existing browser tools and per-action
+      approval. Let the conversation model choose the current control and
+      option, then take a fresh snapshot and check the saved selected value.
+      Pass one natural-language, real-TUI fill-only task mixing a native select
+      with the already supported controls.
+
+#### [ ] Slice 7B: use multiple real tabs
+
+- [ ] Prove tab creation in a Cua-owned isolated Chromium profile and that the
+      new page belongs to the same attested browser window. Add a typed Cua
+      creation/open operation that returns an opaque tab ID and preserves the
+      existing origin and session checks. Do not infer an active tab from list
+      order or treat an `unverifiable` link click as proof of a new tab.
+- [ ] Expose the operation to Anesu's normal model/tool loop. Use existing
+      `browser_tabs` and `browser_snapshot(tabId)` to choose between two real
+      tabs, invalidate stale refs on rebinding, and verify both tabs' fresh
+      URLs/content in one real-TUI task. Record whether either tab is visibly
+      active; background targeting alone does not prove foreground selection.
+- [ ] Preserve both tabs across a move to a second public HTTPS origin. Anesu
+      currently replaces the Cua session during cross-origin handoff, which
+      closes the first tab. Prove a Cua-supported way to extend the exact-origin
+      task scope after URL validation without losing the original tab; add it
+      where required. A same-origin two-tab pass alone does not close this item.
+
+#### [ ] Slice 7C: save an approved browser download
+
+- [ ] Prove that a Cua-supported MCP-host download call can use the same exact
+      session, target, and tab as Anesu's typed browser path after a real host
+      approval. If it cannot, define a public Cua host-approval integration
+      before wiring downloads. Never supply Cua's private approval marker from
+      Anesu.
+- [ ] After that proof, have Anesu approve the exact download target and
+      managed destination, call Cua once, and verify the resulting bounded file
+      in its artifact store. Reconcile an uncertain result without replaying
+      the download. Pass one real-TUI approved download task.
+
+- [ ] For each new Cua operation, run a focused contract test and the relevant
+      Ubuntu browser smoke. Run Anesu's focused tool/adapter tests and one live
+      task for each capability, then run its full suite once at handoff. Record
+      the tested Cua version or commit, Chrome result, and Edge result when Edge
+      is installed; report unavailable hosts explicitly. Update the browser
+      guide and tool inventory to match only the proven operations.
+
 ## Test budget and deferred hardening
 
-The first priority is a working model-driven end-to-end path, followed by
-focused tests for the permission, identity, approval, and lifecycle rules
+The first priority is a working real-site form path, followed by focused tests
+for the permission, identity, approval, and lifecycle rules
 above. Do not generate
 an exhaustive matrix of websites, browsers, page widgets, timing variations,
 or injected failures before the basic public-site path works. Keep those
@@ -624,11 +771,13 @@ separate task for a different origin closes the old scoped session and starts a
 new Cua session for that origin. This was live-verified on
 `example.org` → same-origin follow-up → `example.com`.
 
-The reported form-task drift after an ambiguous action is now addressed by
-generic uncertain-action guidance, not a site-specific sequence. The focused
+The earlier form-task drift after an ambiguous action has generic continuation
+guidance, not a site-specific sequence. The focused
 tool-loop regression passes, and the 2026-09-24 real-TUI local-form run
 continued from a fresh snapshot, entered the user-provided value, re-observed
-it, and left the form unsubmitted. The TUI transcript visibility follow-up is
+it, and left the form unsubmitted. This did not reproduce or complete the
+reported Kasitek form. Slice 6A is now the first open acceptance gate. The TUI
+transcript visibility follow-up is
 also implemented. On 2026-09-24, two read-only browser turns on Python
 documentation showed each request before the browser events and each answer
 after them in terminal scrollback. A click returned `unverifiable`; the model
@@ -711,3 +860,12 @@ snapshot; the form was not submitted.
 
 The worktree contains substantial pre-existing changes. Preserve them and
 stage only files that belong to this browser work.
+
+2026-09-25 integrated code validation after the Enter-key correction: from
+`anesu/`, `pnpm test` builds and passes 758/758, and `git diff --check` passes.
+The correction is committed as `95a155a`. It does not implement native HTML
+`<select>`. Live multi-tab creation/selection and downloads remain open. The
+current Cua tool contract and native-select evidence are recorded in the
+[form-controls plan](anesu-browser-form-controls.md). Section 6 above addresses
+the reported form failure; section 7 covers native `<select>`, tabs, and
+downloads only after the form's actual failure mechanism is known.

@@ -204,7 +204,7 @@ export class ApprovalPrompt {
       const conversationChoice = options.allowConversation ? " · [c] approve for this conversation" : "";
       const localChoice = options.allowLocalLabel ? ` · [l] ${options.allowLocalLabel}` : "";
       const instruction = options.taskOnly
-        ? "Choice [t] approve this task · [d] deny · [v] details · Esc cancel"
+        ? `Choice [t] approve this task${conversationChoice}${localChoice} · [d] deny · [v] details · Esc cancel`
         : `Choice [a] approve once${taskChoice}${conversationChoice}${localChoice} · [d] deny · [v] details · Esc cancel`;
       const answer = await this.readAnswer(instruction, options);
       if (answer.kind === "cancelled") {
@@ -318,7 +318,7 @@ export class ApprovalPrompt {
   ): Promise<"approve" | "task" | "conversation" | "local" | "deny" | "cancel"> {
     type Choice = "approve" | "task" | "conversation" | "local" | "deny";
     const choices: readonly Choice[] = taskOnly
-      ? ["task", "deny"]
+      ? ["task", ...(allowConversation ? ["conversation" as const] : []), ...(allowLocalLabel ? ["local" as const] : []), "deny"]
       : ["approve", ...(allowTask ? ["task" as const] : []), ...(allowConversation ? ["conversation" as const] : []), ...(allowLocalLabel ? ["local" as const] : []), "deny"];
     const defaultChoice = choices[0] ?? "deny";
     let selected = 0;

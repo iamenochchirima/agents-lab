@@ -26,6 +26,10 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
   let onForm = false;
   let firstName = "";
   let email = "";
+  let acceptedTerms = false;
+  let companyType = "";
+  let companyMenuOpen = false;
+  let preferredDate = "";
   const openedUrls: string[] = [];
   const dispatched: Array<{ readonly kind: string; readonly ref?: string; readonly text?: string }> = [];
   const adapter: BrowserAdapter = {
@@ -56,11 +60,18 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
       }
       return {
         ...tab,
-        content: `[@first] input First name value=${firstName || "empty"}\n[@last] input Last name required value=empty\n[@email] input Email value=${email || "empty"}\n[@submit] button Submit`,
+        content: `[@first] input First name value=${firstName || "empty"}\n[@last] input Last name required value=empty\n[@email] input Email value=${email || "empty"}\n[@terms] checkbox Agree to terms checked=${acceptedTerms}\n[@company] button Company type value=${companyType || "empty"} expanded=${companyMenuOpen}${companyMenuOpen ? "\n[@product] option Product\n[@services] option Services" : ""}\n[@date] input Preferred date value=${preferredDate || "empty"}\n[@submit] button Submit`,
         references: [
           { value: "@first", documentId: tab.documentId, role: "input", name: "First name", actions: ["type"], currentValue: firstName },
           { value: "@last", documentId: tab.documentId, role: "input", name: "Last name", actions: ["type"] },
           { value: "@email", documentId: tab.documentId, role: "input", name: "Email", actions: ["type"], currentValue: email },
+          { value: "@terms", documentId: tab.documentId, role: "checkbox", name: "Agree to terms", actions: ["click"], states: { checked: acceptedTerms } },
+          { value: "@company", documentId: tab.documentId, role: "button", name: "Company type", actions: ["click"], currentValue: companyType, states: { expanded: companyMenuOpen } },
+          ...(companyMenuOpen ? [
+            { value: "@product", documentId: tab.documentId, role: "option", name: "Product", actions: ["click"], states: { selected: false } },
+            { value: "@services", documentId: tab.documentId, role: "option", name: "Services", actions: ["click"], states: { selected: false } },
+          ] : []),
+          { value: "@date", documentId: tab.documentId, role: "input", type: "date", name: "Preferred date", actions: ["type"], currentValue: preferredDate },
           { value: "@submit", documentId: tab.documentId, role: "button", name: "Submit", actions: ["click"] },
         ],
       };
@@ -82,6 +93,13 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
       }
       if (request.kind === "type" && request.reference?.value === "@first") firstName = request.text ?? "";
       else if (request.kind === "type" && request.reference?.value === "@email") email = request.text ?? "";
+      else if (request.kind === "click" && request.reference?.value === "@terms") acceptedTerms = !acceptedTerms;
+      else if (request.kind === "click" && request.reference?.value === "@company") companyMenuOpen = !companyMenuOpen;
+      else if (request.kind === "click" && request.reference?.value === "@product") {
+        companyType = "Product";
+        companyMenuOpen = false;
+      }
+      else if (request.kind === "type" && request.reference?.value === "@date") preferredDate = request.text ?? "";
       else throw new Error(`Unexpected browser action: ${request.kind} ${request.reference?.value ?? ""}`);
       return { sessionId: activeSessionId, tab, summary: `Filled ${request.reference?.name ?? "field"}.` };
     },
@@ -129,7 +147,7 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
     browser: browserOptions,
   });
 
-  const prompt = "Open https://example.com, follow the Early access link, and fill First name with Ada and Email with ada@example.test. Do not submit the form.";
+  const prompt = "Open https://example.com, follow the Early access link, and fill First name with Ada, Email with ada@example.test, agree to the terms, choose Product for Company type, and set Preferred date to 2026-10-12. Do not submit the form.";
   const requests: ModelRequest[] = [];
   const toolSequence: string[] = [];
   const provider = {
@@ -148,6 +166,7 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
       } else if (round === 2) {
         assert.equal(prior?.role, "tool");
         assert.match(prior.content ?? "", /Early access/u);
+        assert.match(request.messages[0]?.content ?? "", /When the user only asks to open or navigate to a page, confirm the destination briefly; do not summarize the page unless they ask/u);
         toolSequence.push("browser_click");
         yield { type: "tool_call", call: { callId: "form_click", name: "browser_click", argumentsJson: JSON.stringify({ ref: "@early" }) } };
       } else if (round === 3) {
@@ -161,6 +180,9 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
         assert.match(prior?.content ?? "", /First name/u);
         assert.match(prior?.content ?? "", /Last name required/u);
         assert.match(prior?.content ?? "", /Email/u);
+        assert.match(prior?.content ?? "", /checkbox Agree to terms checked=false/u);
+        assert.match(prior?.content ?? "", /button Company type/u);
+        assert.match(prior?.content ?? "", /Preferred date/u);
         toolSequence.push("browser_type");
         yield { type: "tool_call", call: { callId: "form_type_first", name: "browser_type", argumentsJson: JSON.stringify({ ref: "@first", text: "Ada" }) } };
       } else if (round === 5) {
@@ -172,13 +194,45 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
         yield { type: "tool_call", call: { callId: "form_type_email", name: "browser_type", argumentsJson: JSON.stringify({ ref: "@email", text: "ada@example.test" }) } };
       } else if (round === 7) {
         toolSequence.push("browser_snapshot");
+        yield { type: "tool_call", call: { callId: "form_snapshot_email", name: "browser_snapshot", argumentsJson: "{}" } };
+      } else if (round === 8) {
+        assert.match(prior?.content ?? "", /First name value=Ada/u);
+        toolSequence.push("browser_click");
+        yield { type: "tool_call", call: { callId: "form_accept_terms", name: "browser_click", argumentsJson: JSON.stringify({ ref: "@terms" }) } };
+      } else if (round === 9) {
+        toolSequence.push("browser_snapshot");
+        yield { type: "tool_call", call: { callId: "form_snapshot_terms", name: "browser_snapshot", argumentsJson: "{}" } };
+      } else if (round === 10) {
+        assert.match(prior?.content ?? "", /checkbox Agree to terms checked=true/u);
+        toolSequence.push("browser_click");
+        yield { type: "tool_call", call: { callId: "form_open_company", name: "browser_click", argumentsJson: JSON.stringify({ ref: "@company" }) } };
+      } else if (round === 11) {
+        toolSequence.push("browser_snapshot");
+        yield { type: "tool_call", call: { callId: "form_snapshot_company", name: "browser_snapshot", argumentsJson: "{}" } };
+      } else if (round === 12) {
+        assert.match(prior?.content ?? "", /button Company type value=empty expanded=true/u);
+        assert.match(prior?.content ?? "", /\[@product\] option Product/u);
+        toolSequence.push("browser_click");
+        yield { type: "tool_call", call: { callId: "form_choose_product", name: "browser_click", argumentsJson: JSON.stringify({ ref: "@product" }) } };
+      } else if (round === 13) {
+        toolSequence.push("browser_snapshot");
+        yield { type: "tool_call", call: { callId: "form_snapshot_company_selected", name: "browser_snapshot", argumentsJson: "{}" } };
+      } else if (round === 14) {
+        assert.match(prior?.content ?? "", /Company type value=Product expanded=false/u);
+        toolSequence.push("browser_type");
+        yield { type: "tool_call", call: { callId: "form_type_date", name: "browser_type", argumentsJson: JSON.stringify({ ref: "@date", text: "2026-10-12" }) } };
+      } else if (round === 15) {
+        toolSequence.push("browser_snapshot");
         yield { type: "tool_call", call: { callId: "form_snapshot_final", name: "browser_snapshot", argumentsJson: "{}" } };
       } else {
-        assert.equal(round, 8);
+        assert.equal(round, 16);
         assert.match(prior?.content ?? "", /First name value=Ada/u);
         assert.match(prior?.content ?? "", /Email value=ada@example\.test/u);
         assert.match(prior?.content ?? "", /Last name required value=empty/u);
-        yield { type: "text", text: "I filled in the first name and email. The form also requires a last name; what should I enter? I have not submitted it." };
+        assert.match(prior?.content ?? "", /checkbox Agree to terms checked=true/u);
+        assert.match(prior?.content ?? "", /Company type value=Product/u);
+        assert.match(prior?.content ?? "", /Preferred date value=2026-10-12/u);
+        yield { type: "text", text: "I filled in the first name and email, accepted the terms, chose Product, and set the date. The form also requires a last name; what should I enter? I have not submitted it." };
       }
       yield { type: "completed" };
     },
@@ -195,18 +249,25 @@ test("the normal browser loop resumes an uncertain click, fills supplied fields,
       approveBrowser: async () => ({ decision: "allow-once" }),
     });
 
-    assert.equal(result.status, "completed");
+    assert.equal(result.status, "completed", JSON.stringify(result));
     assert.match(result.assistantText ?? "", /what should I enter\?/u);
-    assert.deepEqual(toolSequence, ["browser_open", "browser_click", "browser_snapshot", "browser_type", "browser_snapshot", "browser_type", "browser_snapshot"]);
+    assert.deepEqual(toolSequence, ["browser_open", "browser_click", "browser_snapshot", "browser_type", "browser_snapshot", "browser_type", "browser_snapshot", "browser_click", "browser_snapshot", "browser_click", "browser_snapshot", "browser_click", "browser_snapshot", "browser_type", "browser_snapshot"]);
     assert.deepEqual(openedUrls, ["https://example.com/"], "the loop must not reopen a reached page or launch search");
     assert.deepEqual(dispatched, [
       { kind: "click", ref: "@early" },
       { kind: "type", ref: "@first", text: "Ada" },
       { kind: "type", ref: "@email", text: "ada@example.test" },
+      { kind: "click", ref: "@terms" },
+      { kind: "click", ref: "@company" },
+      { kind: "click", ref: "@product" },
+      { kind: "type", ref: "@date", text: "2026-10-12" },
     ]);
     assert.equal(firstName, "Ada");
     assert.equal(email, "ada@example.test");
-    assert.equal(requests.length, 8, "the tool loop leaves a final user-facing response round");
+    assert.equal(acceptedTerms, true);
+    assert.equal(companyType, "Product");
+    assert.equal(preferredDate, "2026-10-12");
+    assert.equal(requests.length, 16, "the form requires more than eight rounds and leaves a final user-facing response round");
   } finally {
     await manager.closeAll();
     await rm(root, { recursive: true, force: true });

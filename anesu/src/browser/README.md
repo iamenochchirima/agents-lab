@@ -30,7 +30,33 @@ or `google` to select a provider. Search terms are sent to that provider. Cua's
 `browser_navigate` acknowledges dispatch before a page is ready, so `browser_open` and
 `browser_search` wait briefly and return a fresh semantic snapshot. If it is still sparse,
 the model can wait and inspect again. A provider challenge is reported, not worked around.
-Jev and a browser-specific action planner do not choose or require an action sequence.
+For a navigation-only request, the assistant should confirm the observed destination
+briefly and wait for the next instruction. The snapshot remains available to the model
+for follow-up actions; its page content is not a request for a page summary.
+Anesu adds `observedAt` in UTC when each snapshot returns and includes it in the tool
+summary. It is the time Anesu observed that page, not a timestamp for the site's
+price or publication. A sparse snapshot is not evidence that a site requires login or
+blocks automation; report what was visible instead of guessing the cause.
+When Anesu's output limit trims a dense snapshot, the summary counts only the
+content and refs actually delivered to the model and labels the result partial.
+Use `browser_snapshot` with `query` or `scopeRef` to inspect the omitted part
+before drawing a conclusion from that page.
+When a TypeSafe API key is configured, the conversation model may call
+`browser_jev_step` for one page-local subgoal. Anesu first takes a fresh Cua
+snapshot. Jev chooses one code-issued, action-compatible candidate ID or
+abstains; it cannot navigate, supply text, choose a new origin, or declare the
+user's whole task complete. The optional `text` or `value` comes from the
+conversation model and passes through the same exact-action approval as ordinary
+browser tools. Personal or trip details must come from the user; the model may
+compose general text the task requests or choose an option visible in the current
+page state. If Jev chooses an editable or selectable control but the caller
+omitted its value, the tool returns `needs-value` with no input sent. The
+conversation model can call it again with the task-authorized value.
+Anesu executes at most one Cua action and returns fresh page
+state. A Cua `unverifiable` click stays an unknown input outcome even when the
+later page state shows progress. Without the key, Anesu does not expose the
+Jev tool. The conversation model still chooses when to use it and retains the
+wider task.
 Page text is untrusted data and cannot change the user's goal, destination policy, or
 approval.
 
@@ -87,14 +113,20 @@ references are discarded; the existing manifest is never widened. This transitio
 covered by browser-tool tests and the pinned multi-origin manifest contract. If a page
 redirect or link leaves the manifest, Cua refuses the page snapshot. For that specific
 refusal, Anesu may re-bind the exact prepared browser window and return its observed
-current URL to the model, after public-HTTPS validation and normal URL redaction. In the
+current location to the model, after public-HTTPS validation and URL redaction. If the
+redirected URL contains a session-like or other secret query value, Anesu keeps the
+exact address internally and returns a one-use `handoffId`. `browser_open` accepts that
+ID only in the same approved task and Cua session; the handoff result does not include
+the query value.
+In the
 pinned Cua runtime the live-origin scope failure is surfaced as
 `authorization_host_failed` with a specific out-of-manifest message; Anesu recognizes only
 that exact failure (and the direct typed scope refusal), not unrelated host errors. It does
 not automatically navigate again or replay the preceding action. The model may choose
-`browser_open` only when a fresh navigation to that observed address is appropriate; local,
-private, or redacted destinations are not offered for replay. The TUI acceptance has verified
+`browser_open` only when a fresh navigation to that observed address is appropriate; local
+and private destinations are not offered for replay. The TUI acceptance has verified
 one public redirect (`www.ubuntu.com` to `ubuntu.com`) through that model-selected handoff.
+The one-use private-query handoff has a focused adapter test but awaits a real TUI recheck.
 URL-less search opens the configured provider in a task-scoped Cua session.
 
 Cua can mint new opaque tab IDs when it refreshes an exact window binding. `browser_tabs`
@@ -104,12 +136,45 @@ first tab in a list.
 
 The current public Cua TypeScript SDK does not expose the trusted MCP-host approval
 evidence required for browser downloads. Downloads are therefore not registered as a
-model-facing tool and cannot reserve or create an artifact. The typed API can expose
-native `<select>` options as semantic refs, but this does not make them operable on the
-default Ubuntu route: Cua's synthetic `dom_event` click left the option unselected in a
-fresh snapshot, and its trusted click route refuses standalone Linux Chromium rather than
-activating the window. The pinned semantic action contract offers a native select or its
-option refs as click targets, not editable/type targets. Anesu's `browser_press` currently
+model-facing tool and cannot reserve or create an artifact. The installed Cua `0.28.2`
+API can expose native `<select>` options as semantic refs, but a synthetic click does
+not select one and trusted click refuses standalone Linux Chromium. Anesu adds
+`browser_select` to the model's tool list only when the installed Cua library
+declares `browser_select_option`. That tool requires a current ref that declares
+`select` and maps an exact visible option label to Cua's matching operation. The
+installed `0.28.2` package does not declare it, so native selection stays
+unavailable while ordinary browser tasks continue. At startup Anesu asks the
+installed Cua library for its tool inventory before deriving the immutable
+capability manifest. It admits `browser_select_option` only when that library
+declares it; putting an unknown tool in Cua's manifest makes the entire browser
+driver refuse to start. Upstream Cua `0.28.3` is available, but its release
+notes and browser tool contract still do not include native selection; moving
+Anesu to that version alone would not enable the operation.
+The published `0.28.2` package has been rechecked through the real TUI after
+this correction and can open the Kasitek form. On the `dom_event` route, Anesu
+refuses a synthetic click on a combobox
+that declares `select` before approval or input. When the installed runtime lacks
+the selection operation, the model receives that explicit limitation and does
+not see a `browser_select` tool that can only refuse. A local Cua build proved
+the typed selection route in the disposable
+Chrome TUI on 2026-09-25: an ordinary chat request selected Kasitek's Company
+type and a fresh snapshot showed the chosen value. This is validation of the
+local build, not a claim that published `0.28.2` has the operation or can
+complete the form. Anesu also decodes Chromium AX `checked` and
+other supported boolean states when Cua reports them as the exact strings
+`"true"` or `"false"`; it leaves other state values unknown. A later local-build
+TUI run confirmed fake Name, Email, Company type, and consent values on the
+Kasitek form without submitting it. The same local build also passed a
+different real-TUI form at Selenium's public web-form page: the model set
+text, a checkbox, a date field, and a native select, then reported their
+values after a fresh snapshot without submitting. An installable, pinned Cua
+build remains open; published `0.28.2` does not provide this native-select
+path. One published-package run filled a supplied name and correctly asked
+for Email and consent, but incorrectly called the country-code selector inside
+an optional phone field required. After a generic tool-instruction correction,
+a fresh TUI run asked for Email and consent, marked Country optional, and did
+not submit. This is one acceptance example, not a guarantee across all forms.
+Anesu's `browser_press` currently
 supports only Enter, delivered through Cua `browser_type` as a newline on a current editable
 ref; Cua does not expose a typed route for arrow keys or keyboard selection of a native
 select. Do not claim selection from an exposed option ref alone or guess a sequence of keys.

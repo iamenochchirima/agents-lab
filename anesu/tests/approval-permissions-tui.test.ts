@@ -9,6 +9,8 @@ import { ApprovalPrompt, type ApprovalPanel } from "../src/cli/approval.js";
 import { TerminalUi } from "../src/cli/tui.js";
 import type { CuaAuthorizationDecision, CuaAuthorizationRequestView } from "../src/browser/cua-authorization.js";
 import { ProcessApprovalPermissions } from "../src/persistence/process-approval-permissions.js";
+import { ComputerApprovalPermissions } from "../src/persistence/computer-approval-permissions.js";
+import { compileComputerTask, computerTaskApprovalRequest, type ComputerTaskApprovalDecision, type ComputerTaskApprovalRequest } from "../src/computer/task.js";
 import { SessionStore } from "../src/persistence/session-store.js";
 import type { ModelProvider } from "../src/models/provider.js";
 import type { ProcessApprovalRequest, ProcessToolEvent } from "../src/process/process.js";
@@ -158,6 +160,102 @@ test("process approval picker offers once, conversation, and exact local permiss
   assert.match(chunks.join(""), /4\. Deny/u);
   input.write("\u001b[B\u001b[B\r");
   assert.deepEqual(await pending, { decision: "allow-local" });
+});
+
+test("browser task conversation approval is reused, listed, and revocable in the same TUI session", { timeout: 5_000 }, async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "anesu-browser-conversation-permission-"));
+  t.after(async () => await rm(root, { recursive: true, force: true }));
+  const sessionId = "session_browser_permission";
+  const permissions = new ComputerApprovalPermissions(root, sessionId);
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
+  input.isTTY = true;
+  input.setRawMode = () => undefined;
+  const { output, chunks } = captureOutput();
+  const decisions: ComputerTaskApprovalDecision[] = [];
+  let calls = 0;
+  const application = {
+    sessionId,
+    modelLabel: "test/model",
+    providerLabel: "test/model",
+    providerName: "deterministic",
+    workspaceRoot: root,
+    evidenceDirectory: root,
+    toolNames: ["browser_open"],
+    computer: { enabled: true },
+    computerPermissions: permissions,
+    readContextSnapshot: async () => undefined,
+    readTranscript: async () => [],
+    recoverInterruptedTurns: async () => [],
+    runTurn: async (message: string, ...args: unknown[]) => {
+      calls += 1;
+      const task = compileComputerTask({
+        taskId: `task-browser-permission-${calls}`,
+        goal: message,
+        surface: "browser",
+        browserAgentMode: true,
+        allowedOrigins: [],
+        maxActions: calls === 3 ? 8 : 4,
+        nowMs: 1_000 + calls,
+        deadlineMs: 30_000,
+      });
+      const approve = args[15] as ((request: ComputerTaskApprovalRequest) => Promise<ComputerTaskApprovalDecision>) | undefined;
+      assert.ok(approve);
+      decisions.push(await approve(computerTaskApprovalRequest(task)));
+      return {
+        schemaVersion: 1,
+        sessionId: asSessionId(sessionId),
+        turnId: `turn_${calls}` as never,
+        status: "completed",
+        provider: "deterministic",
+        model: "test/model",
+        startedAt: new Date(0).toISOString(),
+        finishedAt: new Date(1).toISOString(),
+        assistantText: "done",
+      };
+    },
+    close: async () => undefined,
+  } as unknown as ChatApplication;
+  const ui = new TerminalUi(application, output, true);
+  const running = ui.runInteractive(input);
+
+  input.write("Open https://example.com\n");
+  await waitFor(() => chunks.join("").includes("Approve for this conversation"), "browser conversation choice");
+  input.write("\u001b[B\r");
+  await waitFor(() => decisions.length === 1, "first approved task");
+  const saved = (await permissions.list())[0];
+  assert.ok(saved);
+  assert.match(chunks.join(""), /permission saved for this conversation/u);
+
+  const reuseStart = chunks.join("").length;
+  input.write("Read https://other.example\n");
+  await waitFor(() => decisions.length === 2, "matching second task");
+  assert.match(chunks.join("").slice(reuseStart), /allowed by conversation permission/u);
+  assert.doesNotMatch(chunks.join("").slice(reuseStart), /Choose an action/u);
+
+  const changedStart = chunks.join("").length;
+  input.write("Open https://third.example\n");
+  await waitFor(() => chunks.join("").slice(changedStart).includes("task-browser-permission-3"), "wider task approval prompt");
+  assert.doesNotMatch(chunks.join("").slice(changedStart), /allowed by conversation permission/u);
+  input.write("\u001b[B\u001b[B\r");
+  await waitFor(() => decisions.length === 3, "wider task denial");
+  assert.equal(decisions[2]?.decision, "deny");
+
+  input.write("/permissions\n");
+  await waitFor(() => chunks.join("").includes(`Saved computer permissions`), "computer permission listing");
+  assert.match(chunks.join(""), new RegExp(saved.id, "u"));
+  input.write(`/permissions revoke ${saved.id}\n`);
+  await waitFor(() => chunks.join("").includes(`Revoked saved computer permission ${saved.id}`), "computer permission revocation");
+
+  const revokedStart = chunks.join("").length;
+  input.write("Open https://fourth.example\n");
+  await waitFor(() => chunks.join("").slice(revokedStart).includes("task-browser-permission-4"), "revoked task approval prompt");
+  input.write("\u001b[B\u001b[B\r");
+  await waitFor(() => decisions.length === 4, "revoked task denial");
+  assert.equal(decisions[3]?.decision, "deny");
+
+  input.end("/quit\n");
+  await running;
+  await ui.close();
 });
 
 test("TUI saves, reuses, and revokes an exact conversation process permission", { timeout: 5_000 }, async (t) => {

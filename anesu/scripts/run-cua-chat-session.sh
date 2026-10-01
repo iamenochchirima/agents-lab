@@ -282,9 +282,8 @@ if [[ "$fixture" == true || "$mode" == acceptance ]]; then
     echo "ANESU_CUA_ACCEPTANCE_HOST and ANESU_CUA_ACCEPTANCE_PORT must identify a valid local HTTP endpoint." >&2
     exit 2
   fi
-  if [[ "$acceptance_host" != 127.0.0.1 || "$acceptance_port" != 4173 ]]; then
-    echo "The deterministic Cua harness is pinned to http://127.0.0.1:4173 because that exact origin is in the checked-in browser manifest." >&2
-    echo "Update the Cua manifest and acceptance evidence before selecting another host or port." >&2
+  if [[ "$acceptance_host" != 127.0.0.1 ]]; then
+    echo "The deterministic Cua harness must bind to 127.0.0.1; selecting another host could expose the fixture beyond this machine." >&2
     exit 2
   fi
   acceptance_url="http://${acceptance_host}:${acceptance_port}"
@@ -362,6 +361,50 @@ document.getElementById('reveal').addEventListener('click',()=>{document.getElem
             return
         if path == '/tabs/second':
             self.respond(200, page('Second tab acceptance', '<h1>Second tab</h1>'))
+            return
+        if path == '/form-controls':
+            self.respond(200, page('Form controls acceptance', '''
+<h1>Form controls acceptance</h1>
+<form id="form-controls">
+<label for="first-name">First name</label><br>
+<input id="first-name" name="first_name" autocomplete="off"><br>
+<label><input id="agree-terms" name="agree_terms" type="checkbox"> I agree to the terms</label><br>
+<label for="company-type">Company type</label><br>
+<button id="company-type" type="button" role="combobox" aria-label="Company type" aria-haspopup="listbox" aria-expanded="false" aria-controls="company-options">Choose a type</button>
+<div id="company-options" role="listbox" aria-label="Company type options" hidden>
+<button type="button" role="option" aria-selected="false" data-value="product">Product</button>
+<button type="button" role="option" aria-selected="false" data-value="services">Services</button>
+</div><input id="company-type-value" name="company_type" type="hidden"><br>
+<label for="industry">Industry (native select capability probe)</label><br>
+<select id="industry" name="industry">
+<option value="">Choose an industry</option><option value="technology">Technology</option><option value="design">Design</option>
+</select><br>
+<label for="preferred-date">Preferred date</label><br>
+<input id="preferred-date" name="preferred_date" type="date"><br>
+<button id="form-submit" type="submit">Submit form</button>
+</form>
+<p id="submission-state" class="result" aria-live="polite">Not submitted</p>
+<script>
+document.getElementById('form-controls').addEventListener('submit', event => {
+  event.preventDefault();
+  document.getElementById('submission-state').textContent = 'Submitted';
+});
+const company = document.getElementById('company-type');
+const options = document.getElementById('company-options');
+company.addEventListener('click', () => {
+  const expanded = company.getAttribute('aria-expanded') !== 'true';
+  company.setAttribute('aria-expanded', String(expanded));
+  options.hidden = !expanded;
+});
+options.querySelectorAll('[role="option"]').forEach(option => option.addEventListener('click', () => {
+  const value = option.dataset.value || '';
+  company.textContent = option.textContent || '';
+  document.getElementById('company-type-value').value = value;
+  options.querySelectorAll('[role="option"]').forEach(item => item.setAttribute('aria-selected', String(item === option)));
+  company.setAttribute('aria-expanded', 'false');
+  options.hidden = true;
+}));
+</script>'''))
             return
         if path == '/contact':
             self.respond(200, page('Contact acceptance', '''
@@ -465,7 +508,7 @@ PY
     acceptance_path="/"
     export ANESU_CUA_ACCEPTANCE_URL="$acceptance_url"
     echo "Deterministic Cua acceptance service: $acceptance_url"
-    echo "  routes: /, /contact, /files, /tabs"
+    echo "  routes: /, /contact, /files, /form-controls, /tabs"
   else
     native_fixture="$(cd "$script_dir/../src/computer/fixtures" && pwd)/native.html"
     if [[ ! -f "$native_fixture" ]]; then

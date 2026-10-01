@@ -197,6 +197,25 @@ test("a task-only approval names the grant accurately and defaults to the task",
   assert.deepEqual(await pending, { decision: "allow-task" });
 });
 
+test("a browser task can offer a conversation grant through the shared approval menu", async () => {
+  const { output, chunks } = captureOutput();
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => void };
+  input.isTTY = true;
+  input.setRawMode = () => undefined;
+  const prompt = new ApprovalPrompt({ output, colour: false });
+  const pending = prompt.ask(panel, {
+    question: () => undefined,
+    rawInput: input,
+    taskOnly: true,
+    allowConversation: true,
+  });
+
+  assert.match(chunks.join(""), /Approve this task \(selected · default\)/u);
+  assert.match(chunks.join(""), /Approve for this conversation/u);
+  input.write("\u001b[B\r");
+  assert.deepEqual(await pending, { decision: "allow-conversation" });
+});
+
 test("task-only line-input approval explicitly requires the task choice", async () => {
   const { output } = captureOutput();
   const prompt = new ApprovalPrompt({ output, colour: false });

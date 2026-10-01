@@ -78,9 +78,11 @@ never retries the input. The
 complete computer-tool call has its own bounded deadline, configured with
 `ANESU_COMPUTER_DURATION_MS` (30 seconds by default), so a slower real vision or
 accessibility provider is not cut off by the ordinary 10-second metadata-tool limit.
-When computer use is enabled, the enclosing model turn defaults to 120 seconds so
-the model can produce the computer call before the computer deadline begins; an
-explicit `ANESU_TIMEOUT_MS` still overrides that default.
+When computer use is enabled, the enclosing model turn defaults to at least the
+configured browser-task duration plus 60 seconds. This leaves time for model
+rounds before the task and a final reply after it. An explicit `ANESU_TIMEOUT_MS`
+still overrides that default, including with a shorter value that can end a
+browser task early.
 Before starting the native session, the adapter checks the installed Cua tool inventory
 and requires a passing structured health report. A missing operation or failed health
 check stops admission before the app is launched or input is dispatched.

@@ -161,11 +161,13 @@ test("gateway models click, type, and pointer as coarse action results", async (
   driver.responses.set("browser_click", result(action));
   driver.responses.set("browser_type", result({ status: "ok", route: "trusted_input" }));
   driver.responses.set("browser_pointer", result({ status: "ok", effect: "confirmed", route: "trusted_input" }));
+  driver.responses.set("browser_select_option", result({ status: "ok", target_id: "target-1", tab_id: "tab-1", ref: "p1:4", selected_value: "retail", input_route: "dom_event" }));
   const gateway = new CuaBrowserGateway(driver, "browser_actions_1");
 
   const click = await gateway.click({ targetId: "target-1", tabId: "tab-1", ref: "p1:1", inputRoute: "dom_event" });
   const typed = await gateway.type({ targetId: "target-1", tabId: "tab-1", ref: "p1:2", text: "hello", mode: "keystrokes", replace: true });
   const pointer = await gateway.pointer({ targetId: "target-1", tabId: "tab-1", action: "hover", ref: "p1:3" });
+  const selected = await gateway.selectOption({ targetId: "target-1", tabId: "tab-1", ref: "p1:4", label: "Retail" });
   const scrolled = await gateway.pointer({ targetId: "target-1", tabId: "tab-1", action: "scroll", ref: "p1:5", deltaY: 400, inputRoute: "dom_event" });
 
   assert.deepEqual(click, {
@@ -183,6 +185,11 @@ test("gateway models click, type, and pointer as coarse action results", async (
   assert.equal(JSON.parse(typeCall.argumentsJson).input_route, undefined);
   assert.equal(JSON.parse(typeCall.argumentsJson).mode, "keystrokes");
   assert.deepEqual(pointer, { kind: "ok", value: { effect: "confirmed", route: "trusted_input" } });
+  assert.deepEqual(selected, { kind: "ok", value: { targetId: "target-1", tabId: "tab-1", ref: "p1:4", selectedValue: "retail", inputRoute: "dom_event" } });
+  const selectCall = driver.calls.find((call) => call.name === "browser_select_option");
+  assert.ok(selectCall);
+  assert.equal(JSON.parse(selectCall.argumentsJson).label, "Retail");
+  assert.equal(JSON.parse(selectCall.argumentsJson).value, undefined);
   assert.deepEqual(scrolled, { kind: "ok", value: { effect: "confirmed", route: "trusted_input" } });
   const scrollCall = driver.calls.find((call) => call.name === "browser_pointer" && JSON.parse(call.argumentsJson).action === "scroll");
   assert.ok(scrollCall);

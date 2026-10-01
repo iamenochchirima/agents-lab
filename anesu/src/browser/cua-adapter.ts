@@ -30,6 +30,7 @@ import {
   type BrowserDialogOutput,
   type BrowserNavigateOutput,
   type BrowserSetInputFilesOutput,
+  type BrowserSelectOptionOutput,
   type BrowserSnapshotOutput,
   type CuaBrowserDriver,
 } from "./cua-browser-gateway.js";
@@ -127,6 +128,7 @@ const REQUIRED_BROWSER_SCHEMA_PROPERTIES: Readonly<Record<string, readonly strin
   // contract; a task explicitly configured for synthetic DOM delivery must
   // stop rather than silently changing route.
   browser_type: ["mode", "ref", "replace", "session", "tab_id", "target_id", "text"],
+  browser_select_option: ["label", "ref", "session", "tab_id", "target_id", "value"],
   browser_pointer: ["action", "destination_ref", "input_route", "ref", "session", "tab_id", "target_id"],
   browser_dialog: ["action", "dialog_id", "prompt_text", "session", "tab_id", "target_id"],
   browser_set_input_files: ["files", "ref", "session", "tab_id", "target_id"],
@@ -136,6 +138,7 @@ const REQUIRED_BROWSER_SCHEMA_FIELDS: Readonly<Record<string, readonly string[]>
   browser_navigate: ["target_id", "tab_id", "url"],
   browser_click: ["target_id", "tab_id"],
   browser_type: ["target_id", "tab_id", "ref", "text"],
+  browser_select_option: ["target_id", "tab_id", "ref"],
   browser_pointer: ["target_id", "tab_id", "action"],
   browser_dialog: ["target_id", "tab_id", "action"],
   browser_set_input_files: ["target_id", "tab_id", "ref", "files"],
@@ -182,7 +185,7 @@ function gatewayValue<T = Record<string, unknown>>(response: unknown, operation:
         ? "navigation-policy"
         : code.includes("input_trust")
           ? "browser-input-trust-unavailable"
-          : code === "browser_action_refused"
+          : code === "browser_action_refused" || code === "permission_denied"
             ? "browser-action-refused"
           : "adapter-failure";
     throw new BrowserError(browserCode, `${message} (${code}).`, { cuaCode: code });
@@ -412,7 +415,7 @@ function driverOptions(signal?: AbortSignal): { readonly signal: AbortSignal } |
   return signalOptions(signal);
 }
 
-async function assertBrowserCapabilities(driver: CuaRuntimeDriver): Promise<ComputerRuntimeEvidence | undefined> {
+async function assertBrowserCapabilities(driver: CuaRuntimeDriver): Promise<{ readonly evidence: ComputerRuntimeEvidence; readonly selectOptionAvailable: boolean }> {
   if (!driver.listToolsJson) {
     throw new BrowserError("adapter-failure", "Cua browser capability discovery is unavailable; refusing to run without the installed tool contract.");
   }
@@ -445,7 +448,9 @@ async function assertBrowserCapabilities(driver: CuaRuntimeDriver): Promise<Comp
   if (missing.length > 0) {
     throw new BrowserError("adapter-failure", `Cua browser runtime is missing required operations: ${missing.join(", ")}.`);
   }
-  for (const name of REQUIRED_BROWSER_TOOLS) {
+  const selectOptionAvailable = names.has("browser_select_option");
+  const inspectedTools = [...REQUIRED_BROWSER_TOOLS, ...(selectOptionAvailable ? ["browser_select_option"] : [])];
+  for (const name of inspectedTools) {
     const schema = objectValue(records.get(name)?.inputSchema);
     const properties = objectValue(schema?.properties);
     if (schema?.type !== "object" || !properties) {
@@ -476,7 +481,7 @@ async function assertBrowserCapabilities(driver: CuaRuntimeDriver): Promise<Comp
       if (idempotentHint !== undefined && typeof idempotentHint !== "boolean") throw new BrowserError("adapter-failure", `Cua browser operation '${name}' exposed an invalid idempotentHint annotation.`);
     }
   }
-  const fingerprint = createHash("sha256").update(stableStringify(REQUIRED_BROWSER_TOOLS.map((name) => ({ name, inputSchema: records.get(name)?.inputSchema }))), "utf8").digest("hex");
+  const fingerprint = createHash("sha256").update(stableStringify(inspectedTools.map((name) => ({ name, inputSchema: records.get(name)?.inputSchema }))), "utf8").digest("hex");
   const evidence: ComputerRuntimeEvidence = {
     provider: "cua",
     schemaVersion: "1",
@@ -484,7 +489,7 @@ async function assertBrowserCapabilities(driver: CuaRuntimeDriver): Promise<Comp
     capabilityFingerprint: fingerprint,
     requiredOperations: [...REQUIRED_BROWSER_TOOLS],
   };
-  return addCuaRuntimeIdentity(evidence, await readCuaRuntimeIdentity(driver));
+  return { evidence: addCuaRuntimeIdentity(evidence, await readCuaRuntimeIdentity(driver)), selectOptionAvailable };
 }
 
 function assertBrowserAdapterMethods(driver: CuaRuntimeDriver): void {
@@ -538,6 +543,7 @@ export class CuaBrowserAdapter implements BrowserAdapter {
   private sdk: CuaSdk | undefined;
   private preflighted = false;
   private capabilityEvidence: ComputerRuntimeEvidence | undefined;
+  private selectOptionAvailable = false;
   private readonly pendingExistingProfileAuthorizations = new Map<BrowserSessionId, CuaAuthorizationCallback>();
 
   constructor(options: CuaBrowserAdapterOptions = {}) {
@@ -553,7 +559,9 @@ export class CuaBrowserAdapter implements BrowserAdapter {
     if (this.preflighted) return;
     const driver = await this.requireDriver();
     assertBrowserAdapterMethods(driver);
-    this.capabilityEvidence = await assertBrowserCapabilities(driver);
+    const capabilities = await assertBrowserCapabilities(driver);
+    this.capabilityEvidence = capabilities.evidence;
+    this.selectOptionAvailable = capabilities.selectOptionAvailable;
     await assertBrowserHealth(driver);
     this.preflighted = true;
   }
@@ -892,7 +900,16 @@ export class CuaBrowserAdapter implements BrowserAdapter {
         const text = request.key === "Enter" ? "\n" : "";
         actionOutput = gatewayValue<BrowserActionOutput>(await session.gateway.type({ targetId: managed.targetId, tabId, ref, text, mode: "keystrokes" }, signal), "browser_type");
       } else if (request.kind === "select") {
-        throw new BrowserError("invalid-action", "Native select controls are not exposed by Cua's typed browser tool surface.");
+        if (!this.selectOptionAvailable) {
+          throw new BrowserError("browser-action-refused", "The installed Cua browser runtime has no native select operation; this input was not sent.");
+        }
+        if (!request.value) throw new BrowserError("invalid-action", "A native select requires an exact observed option label.");
+        const selected = gatewayValue<BrowserSelectOptionOutput>(await session.gateway.selectOption({
+          targetId: managed.targetId, tabId, ref, label: request.value,
+        }, signal), "browser_select_option");
+        assertBoundResponse(selected, managed.targetId, tabId, "browser_select_option");
+        if (selected.ref !== ref) throw new BrowserError("adapter-failure", "Cua native select returned a different element ref.");
+        actionOutput = { route: selected.inputRoute };
       } else {
         throw new BrowserError("invalid-action", `Cua browser action '${request.kind}' is not supported by this adapter.`);
       }

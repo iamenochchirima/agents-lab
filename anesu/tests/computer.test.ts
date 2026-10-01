@@ -21,7 +21,9 @@ const actionId = `click:${candidateId}`;
 test("agent instructions keep native computer and browser tools distinct", () => {
   assert.match(DEFAULT_INITIAL_INSTRUCTION, /typed browser tools for websites/u);
   assert.match(DEFAULT_INITIAL_INSTRUCTION, /computer tool only for supported native desktop work/u);
-  assert.match(DEFAULT_INITIAL_INSTRUCTION, /A dispatched click alone does not prove navigation, so inspect tabs and take a fresh snapshot/u);
+  assert.match(DEFAULT_INITIAL_INSTRUCTION, /opening or inspecting a page is not task completion/u);
+  assert.match(DEFAULT_INITIAL_INSTRUCTION, /continue with available tools while the original request is unfinished/u);
+  assert.match(DEFAULT_INITIAL_INSTRUCTION, /A dispatched click alone does not prove navigation or selection/u);
   assert.match(DEFAULT_INITIAL_INSTRUCTION, /If a tool reports an action outcome as unknown, do not say that action succeeded; describe later observed state separately/u);
   assert.match(COMPUTER_TOOL_DEFINITION.description, /native desktop apps/u);
   assert.match(COMPUTER_TOOL_DEFINITION.description, /For websites, use the browser tools instead/u);
@@ -378,7 +380,7 @@ test("computer configuration is opt-in and validates its selected provider key",
   );
   const configured = loadConfig({ computerEnabled: true, computerStrategy: "typesafe", typeSafeApiKey: "typesafe-test-secret" }, {});
   assert.equal(configured.computerEnabled, true);
-  assert.equal(configured.timeoutMs, 120_000);
+  assert.ok(configured.timeoutMs >= configured.computerTaskDurationMs + 60_000, "the default turn must outlive its browser task grant and leave time for the final model response");
   assert.equal(loadConfig({ computerEnabled: true, computerStrategy: "typesafe", typeSafeApiKey: "typesafe-test-secret" }, { ANESU_TIMEOUT_MS: "30000" }).timeoutMs, 30_000);
   assert.equal(configured.computerStrategy, "typesafe");
   assert.equal(configured.computerMaxActions, 8);
@@ -492,7 +494,7 @@ test("the structured browser action space keeps operations compatible with obser
     "blocked:@e4:document_actions",
   ]);
   assert.equal(actions[1]?.ref, "@e2");
-  assert.equal(actions[2]?.reason, "native select controls are not exposed by the typed Cua browser surface");
+  assert.equal(actions[2]?.reason, "select controls require a current typed Cua selection action");
   assert.equal(actions[3]?.reason, "sensitive input or file control is not available to the computer strategy");
   for (const action of actions) {
     assert.equal("selector" in action, false);
@@ -677,7 +679,7 @@ test("browser computer use blocks native select controls before approval", async
   const result = await runner.run("computer_select_test", 'Open https://example.com and select "South Africa" in Country.', { approveBrowser: allowBrowser() });
   assert.equal(result.ok, false, result.content);
   assert.equal(result.errorCode, "computer-blocked");
-  assert.match(result.summary, /native select controls are not exposed/u);
+  assert.match(result.summary, /select controls require a current typed Cua selection action/u);
   assert.deepEqual(browser.selectedValues, []);
 });
 

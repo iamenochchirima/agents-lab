@@ -157,6 +157,21 @@ test("browser strategy does not map a Cua searchbox without a declared type acti
   assert.deepEqual(actions, []);
 });
 
+test("browser strategy offers a native select only when the current Cua ref declares selection", () => {
+  const actions = buildBrowserActionSpace({
+    documentId,
+    content: "[p1:select] combobox Company type\n[p1:custom] combobox Category",
+    references: [
+      { value: "p1:select", documentId, role: "combobox", name: "Company type", actions: ["click", "select"] },
+      { value: "p1:custom", documentId, role: "combobox", name: "Category", actions: ["click"] },
+    ],
+  });
+
+  assert.deepEqual(actions.map(({ operation, ref }) => ({ operation, ref })), [
+    { operation: "select", ref: "p1:select" },
+  ]);
+});
+
 class PointerAndUploadBrowser implements ComputerBrowser {
   readonly calls: Array<{ readonly name: string; readonly args: Readonly<Record<string, unknown>> }> = [];
   constructor(readonly selectedAction: string) {}

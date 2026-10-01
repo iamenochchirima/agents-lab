@@ -78,6 +78,17 @@ bounded Cua candidates. Traditional vision, compare mode, and automatic fallback
 retired from production admission; their isolated strategy tests remain for regression
 coverage only. The production path shares approval, execution, freshness, post-action
 verification, cancellation, and restart recovery.
+The TUI uses one arrow-key/Enter approval menu across tools. For an eligible
+isolated browser or native task, choose the default approval for this task,
+allow the displayed matching task scope for this conversation, or deny. A
+conversation permission survives `/resume` for that conversation only; use
+`/permissions` to inspect it and `/permissions revoke <id>` to remove it.
+Personal browser profiles, mixed browser/native tasks, uploads, and tasks
+without a stable match do not offer that reusable choice. A browser task
+permission covers routine links and scrolling, not form typing, button clicks,
+select controls, uploads, or page dialogs: those actions still prompt
+separately. Changing the approved app, browser policy, input route, action
+classes, or task limits also requires a new approval.
 An open-only computer request can open one user-requested public URL through the
 managed browser policy and return a fresh-snapshot `opened` result without forcing a
 local fixture action. An explicit Ubuntu/X11 profile connects the native path to the

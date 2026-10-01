@@ -27,6 +27,7 @@ export type BrowserToolName =
   | "browser_navigate"
   | "browser_click"
   | "browser_type"
+  | "browser_select_option"
   | "browser_pointer"
   | "browser_dialog"
   | "browser_set_input_files";
@@ -188,6 +189,21 @@ export interface BrowserTypeInput {
   readonly text: string;
   readonly mode?: "insert_text" | "keystrokes";
   readonly replace?: boolean;
+}
+
+export interface BrowserSelectOptionInput {
+  readonly targetId: string;
+  readonly tabId: string;
+  readonly ref: string;
+  readonly label: string;
+}
+
+export interface BrowserSelectOptionOutput {
+  readonly targetId: string;
+  readonly tabId: string;
+  readonly ref: string;
+  readonly selectedValue: string;
+  readonly inputRoute: "dom_event";
 }
 
 export type BrowserPointerInput =
@@ -357,7 +373,15 @@ function decodeSemanticRef(value: unknown, index: number): BrowserSemanticRef {
   const rawStates = isRecord(value.states) ? value.states : undefined;
   const stateNames = ["checked", "selected", "expanded", "disabled", "required"] as const;
   const states = rawStates
-    ? Object.fromEntries(stateNames.flatMap((name) => typeof rawStates[name] === "boolean" ? [[name, rawStates[name]]] : [])) as Partial<Record<typeof stateNames[number], boolean>>
+    ? Object.fromEntries(stateNames.flatMap((name) => {
+      const state = rawStates[name];
+      // Chromium AX serializes some boolean states as the strings "true" and
+      // "false". Preserve only those exact values; "mixed" stays unknown.
+      if (typeof state === "boolean") return [[name, state]];
+      if (state === "true") return [[name, true]];
+      if (state === "false") return [[name, false]];
+      return [];
+    })) as Partial<Record<typeof stateNames[number], boolean>>
     : undefined;
   return {
     ref: boundedString(value.ref, `refs[${index}].ref`, MAX_ID_BYTES),
@@ -616,6 +640,20 @@ export class CuaBrowserGateway {
       ...(input.mode === undefined ? {} : { mode: input.mode }), ...(input.replace === undefined ? {} : { replace: input.replace }),
     };
     return this.call("browser_type", args, (result) => decodeAction(result, "browser_type"), signal);
+  }
+
+  async selectOption(input: BrowserSelectOptionInput, signal?: AbortSignal): Promise<BrowserGatewayResponse<BrowserSelectOptionOutput>> {
+    const args = {
+      target_id: id(input.targetId, "targetId"), tab_id: id(input.tabId, "tabId"),
+      ref: id(input.ref, "ref"), label: boundedInputString(input.label, "label", 256),
+    } satisfies Record<string, CuaJsonValue>;
+    return this.call("browser_select_option", args, (result) => decodeRefusal(result, "browser_select_option", (structured) => ({
+      targetId: boundedString(structured.target_id, "target_id", MAX_ID_BYTES),
+      tabId: boundedString(structured.tab_id, "tab_id", MAX_ID_BYTES),
+      ref: boundedString(structured.ref, "ref", MAX_ID_BYTES),
+      selectedValue: boundedString(structured.selected_value, "selected_value", MAX_TEXT_BYTES),
+      inputRoute: actionField(structured.input_route, "input_route", ["dom_event"] as const),
+    })), signal);
   }
 
   async pointer(input: BrowserPointerInput, signal?: AbortSignal): Promise<BrowserGatewayResponse<BrowserActionOutput>> {

@@ -86,6 +86,7 @@ export interface ComputerTaskApprovalRequest {
   readonly surface: ComputerTaskSurface;
   readonly originalGoal: string;
   readonly applicationName?: string;
+  readonly applicationLaunchPath?: string;
   readonly applicationArguments?: readonly string[];
   readonly profileMode: ComputerTaskSpec["profile"]["mode"];
   readonly browserOriginPolicy?: ComputerBrowserOriginPolicy;
@@ -164,6 +165,7 @@ export function computerTaskApprovalRequest(task: ComputerTaskSpec): ComputerTas
     surface: task.surface,
     originalGoal: task.originalGoal,
     ...(task.application ? { applicationName: task.application.name } : {}),
+    ...(task.application ? { applicationLaunchPath: task.application.launchPath } : {}),
     ...(task.application?.launchArguments ? { applicationArguments: task.application.launchArguments } : {}),
     profileMode: task.profile.mode,
     ...(task.browserOriginPolicy ? { browserOriginPolicy: task.browserOriginPolicy } : {}),
@@ -178,6 +180,34 @@ export function computerTaskApprovalRequest(task: ComputerTaskSpec): ComputerTas
     expiresAtMs: task.expiresAtMs,
     completion: task.completion,
     grantHash: task.grantHash,
+  };
+}
+
+/** A reusable approval matches trusted task constraints, never goal text or page refs. */
+export function computerConversationPermission(request: ComputerTaskApprovalRequest): { readonly identityHash: string; readonly label: string } | undefined {
+  if (request.profileMode !== "isolated_new" || request.surface === "mixed" || request.values.file !== undefined || request.allowedActions.includes("upload")) return undefined;
+  if (request.surface === "browser" && !request.browserOriginPolicy) return undefined;
+  if (request.surface === "native" && !request.applicationLaunchPath) return undefined;
+  const origins = request.browserOriginPolicy === "public-web" ? [] : [...request.allowedOrigins].sort();
+  const actions = [...new Set(request.allowedActions)].sort();
+  const matcher = {
+    surface: request.surface,
+    applicationLaunchPath: request.surface === "native" ? request.applicationLaunchPath : undefined,
+    applicationArguments: request.surface === "native" ? request.applicationArguments ?? [] : undefined,
+    browserOriginPolicy: request.browserOriginPolicy,
+    allowedOrigins: origins,
+    allowedActions: actions,
+    inputRoute: request.inputRoute,
+    nativeFallbackRoutes: request.nativeFallbackRoutes ?? [],
+    maxActions: request.maxActions,
+    deadlineMs: request.deadlineMs,
+  };
+  const scope = request.surface === "browser"
+    ? request.browserOriginPolicy === "public-web" ? "isolated browser on public HTTPS sites" : `isolated browser on ${origins.join(", ")}`
+    : `native app ${request.applicationName ?? request.applicationLaunchPath}`;
+  return {
+    identityHash: createHash("sha256").update(stableStringify(matcher), "utf8").digest("hex"),
+    label: `${scope}; ${actions.join(", ")}; ${request.inputRoute}; up to ${request.maxActions} actions per task; ${request.deadlineMs}ms per task`,
   };
 }
 
@@ -313,9 +343,16 @@ export class ComputerTaskCompileError extends Error {
   }
 }
 
-const URL_PATTERN = /(?<url>(?:https?:\/\/)?(?:(?:localhost|127(?:\.\d{1,3}){3})|(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,})(?::\d{1,5})?(?:\/[^\s<>"']*)?)/iu;
+// A bare host inside an email address is not a requested browser destination.
+const URL_PATTERN = /(?<![\w@.-])(?<url>(?:https?:\/\/)?(?:(?:localhost|127(?:\.\d{1,3}){3})|(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,})(?::\d{1,5})?(?:\/[^\s<>"']*)?)/giu;
+const BARE_HOST_REQUEST_CUE = /\b(?:open|visit|browse|load|check|read|navigate(?:\s+to)?|go\s+to)\s+$/iu;
 const SENSITIVE_VALUE_PATTERN = /\b(?:password|passcode|one[- ]?time[- ]?code|otp|api[- ]?key|access[- ]?token|secret|private[- ]?key|credential)\b/iu;
-const UNSUPPORTED_INTENT_PATTERN = /\bdownload(?:s|ed|ing)?\b/iu;
+export function containsSensitiveComputerText(value: string): boolean {
+  return SENSITIVE_VALUE_PATTERN.test(value);
+}
+// A page about downloads is readable; only a request to perform the unsupported
+// action should prevent the task from starting.
+const REQUESTED_DOWNLOAD_PATTERN = /(?:^|[.!?]\s+|\b(?:please|to)\s+|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?)download\b|\bdownload\s+(?:the|a|an|this|that|my|your)\b/iu;
 const LOCAL_FORM_ORIGINS = new Set(["http://anesu.test", "http://127.0.0.1:4173", "http://localhost:4173"]);
 // A reference to the current page usually means Anesu's managed browser. Treat
 // profile attachment as a separate, opt-in request only when the user clearly
@@ -335,37 +372,42 @@ function canonicalOrigin(value: string): string {
 }
 
 function parseUrl(goal: string, allowedOrigins: readonly string[]): ComputerTaskValue | undefined {
-  const match = URL_PATTERN.exec(goal);
-  if (!match?.groups?.url) return undefined;
-  // The bare-host branch must not turn "ftp://example.com" into an HTTPS task.
-  if (/(?:^|\s)[a-z][a-z0-9+.-]*:\/\/$/iu.test(goal.slice(0, match.index))) {
-    throw new ComputerTaskCompileError("origin-not-allowed", "Only HTTP and HTTPS browser URLs are supported.");
-  }
-  if (goal[match.index + match[0].length] === ":") {
-    throw new ComputerTaskCompileError("origin-not-allowed", "The requested browser URL is not valid.");
-  }
-  const raw = match.groups.url.replace(/[),.!?]+$/u, "");
-  const source = sourceSpan(goal, { ...match, 0: match[0].slice(0, match[0].length - (match[0].length - raw.length)) } as RegExpExecArray);
-  const explicitScheme = /^https?:\/\//iu.test(raw);
-  let candidate = raw;
-  if (!explicitScheme) {
-    const parsedHost = new URL(`https://${raw}`);
-    const matchingOrigins = allowedOrigins.filter((origin) => {
-      const parsedOrigin = new URL(origin);
-      return parsedOrigin.hostname === parsedHost.hostname && parsedOrigin.port === parsedHost.port;
-    });
-    if (matchingOrigins.length > 1) {
-      throw new ComputerTaskCompileError("origin-not-allowed", `The bare browser host '${parsedHost.hostname}' matches multiple approved schemes; specify http:// or https:// explicitly.`);
+  for (const match of goal.matchAll(URL_PATTERN)) {
+    if (!match.groups?.url) continue;
+    const raw = match.groups.url.replace(/[),.!?]+$/u, "");
+    const explicitScheme = /^https?:\/\//iu.test(raw);
+    // Product names such as Node.js are domain-shaped text. A bare host needs
+    // an address cue; an explicit URL or www host carries its own evidence.
+    if (!explicitScheme && !/^www\./iu.test(raw) && !BARE_HOST_REQUEST_CUE.test(goal.slice(0, match.index))) continue;
+    // The bare-host branch must not turn "ftp://example.com" into an HTTPS task.
+    if (/(?:^|\s)[a-z][a-z0-9+.-]*:\/\/$/iu.test(goal.slice(0, match.index))) {
+      throw new ComputerTaskCompileError("origin-not-allowed", "Only HTTP and HTTPS browser URLs are supported.");
     }
-    candidate = matchingOrigins[0]
-      ? `${matchingOrigins[0]}${parsedHost.pathname}${parsedHost.search}${parsedHost.hash}`
-      : `https://${raw}`;
+    if (goal[match.index + match[0].length] === ":") {
+      throw new ComputerTaskCompileError("origin-not-allowed", "The requested browser URL is not valid.");
+    }
+    const source = sourceSpan(goal, { ...match, 0: match[0].slice(0, raw.length) } as RegExpExecArray);
+    let candidate = raw;
+    if (!explicitScheme) {
+      const parsedHost = new URL(`https://${raw}`);
+      const matchingOrigins = allowedOrigins.filter((origin) => {
+        const parsedOrigin = new URL(origin);
+        return parsedOrigin.hostname === parsedHost.hostname && parsedOrigin.port === parsedHost.port;
+      });
+      if (matchingOrigins.length > 1) {
+        throw new ComputerTaskCompileError("origin-not-allowed", `The bare browser host '${parsedHost.hostname}' matches multiple approved schemes; specify http:// or https:// explicitly.`);
+      }
+      candidate = matchingOrigins[0]
+        ? `${matchingOrigins[0]}${parsedHost.pathname}${parsedHost.search}${parsedHost.hash}`
+        : `https://${raw}`;
+    }
+    try {
+      return { value: new URL(candidate).toString(), source: { ...source, text: raw, end: source.start + raw.length } };
+    } catch {
+      throw new ComputerTaskCompileError("origin-not-allowed", "The requested browser URL is not valid.");
+    }
   }
-  try {
-    return { value: new URL(candidate).toString(), source: { ...source, text: raw, end: source.start + raw.length } };
-  } catch {
-    throw new ComputerTaskCompileError("origin-not-allowed", "The requested browser URL is not valid.");
-  }
+  return undefined;
 }
 
 function parseQuotedValue(goal: string): ComputerTaskValue | undefined {
@@ -422,6 +464,7 @@ function actionClasses(
       "navigate",
       "click",
       "type",
+      "select",
       "press",
       "scroll",
       ...(file ? ["upload" as const] : []),
@@ -510,7 +553,7 @@ export function compileComputerTask(input: CompileComputerTaskInput): ComputerTa
       throw new ComputerTaskCompileError("unsupported-intent", "Browser form submission is limited to the deterministic local acceptance origins in the current Cua task contract.");
     }
   }
-  if (UNSUPPORTED_INTENT_PATTERN.test(goal)) throw new ComputerTaskCompileError("unsupported-intent", "Browser downloads are not admitted by the current Cua task contract.");
+  if (input.surface === "browser" && REQUESTED_DOWNLOAD_PATTERN.test(goal)) throw new ComputerTaskCompileError("unsupported-intent", "Browser downloads are not admitted by the current Cua task contract.");
   const quotedValue = parseQuotedValue(goal);
   const browserUpload = input.surface === "browser" && hasBrowserUploadIntent(goal);
   const text = browserUpload ? undefined : quotedValue;

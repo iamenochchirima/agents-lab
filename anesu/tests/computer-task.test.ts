@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { compileComputerTask, ComputerTaskCompileError, authorizeComputerTaskMutation, computerTaskValueEvidence, type ComputerTaskGrantState } from "../src/computer/task.js";
+import { compileComputerTask, ComputerTaskCompileError, authorizeComputerTaskMutation, computerConversationPermission, computerTaskApprovalRequest, computerTaskValueEvidence, type ComputerTaskGrantState } from "../src/computer/task.js";
 import { ComputerRouter } from "../src/computer/router.js";
 import { NATIVE_APPLICATION_CATALOG, resolveNativeApplication } from "../src/computer/native-runner.js";
 
@@ -99,6 +99,22 @@ test("a browser follow-up without a URL inherits only the freshly observed curre
   );
 });
 
+test("a form email address does not become the browser task URL", () => {
+  const task = compileComputerTask({
+    taskId: "task-form-email-follow-up",
+    goal: "Put ada@example.com in Email on the current form; do not submit.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    currentBrowserOrigin: "https://kasitek.co.za/early-access",
+    maxActions: 4,
+    nowMs: 1_000,
+    deadlineMs: 30_000,
+  });
+  assert.equal(task.values.url, undefined);
+  assert.deepEqual(task.allowedOrigins, ["https://kasitek.co.za"]);
+});
+
 test("a model-directed browser task may start without a URL and grants no initial site origin", () => {
   const task = compileComputerTask({
     taskId: "task-browser-search",
@@ -123,6 +139,27 @@ test("a model-directed browser task may start without a URL and grants no initia
     nowMs: 1_000,
     deadlineMs: 30_000,
   }), /HTTP\(S\) URL or an active browser page/u);
+});
+
+test("a conversation permission matches the browser envelope, not the prompt or current public site", () => {
+  const makeTask = (taskId: string, goal: string, currentBrowserOrigin?: string, maxActions = 4) => compileComputerTask({
+    taskId,
+    goal,
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    ...(currentBrowserOrigin ? { currentBrowserOrigin } : {}),
+    maxActions,
+    nowMs: 1_000,
+    deadlineMs: 30_000,
+  });
+  const first = computerConversationPermission(computerTaskApprovalRequest(makeTask("browser-1", "Open https://example.com", undefined)));
+  const later = computerConversationPermission(computerTaskApprovalRequest(makeTask("browser-2", "Read this page", "https://other.example")));
+  const wider = computerConversationPermission(computerTaskApprovalRequest(makeTask("browser-3", "Read this page", "https://other.example", 8)));
+  assert.ok(first);
+  assert.equal(first.identityHash, later?.identityHash);
+  assert.notEqual(first.identityHash, wider?.identityHash);
+  assert.match(first.label, /isolated browser on public HTTPS sites/u);
 });
 
 test("public-web task grants admit only URL-policy-validated public HTTPS origins", () => {
@@ -487,7 +524,7 @@ test("native calendar compilation preserves a model-normalized single-quoted tit
 });
 
 test("task compilation rejects malformed and non-HTTP URLs", () => {
-  for (const goal of ["Open ftp://www.mozilla.org and tell me the heading.", "Open https://www.mozilla.org:abc and tell me the heading.", "Open https://www.mozilla.org:99999 and tell me the heading."]) {
+  for (const goal of ["Open ftp://www.mozilla.org and tell me the heading.", "Open ftp://example.com and tell me the heading.", "Open https://www.mozilla.org:abc and tell me the heading.", "Open https://www.mozilla.org:99999 and tell me the heading."]) {
     assert.throws(
       () => compileComputerTask({
         taskId: "task-invalid-url",
@@ -502,6 +539,49 @@ test("task compilation rejects malformed and non-HTTP URLs", () => {
       goal,
     );
   }
+});
+
+test("browser research may inspect download pages without requesting a download", () => {
+  for (const conjunction of ["or", "and"]) {
+    const task = compileComputerTask({
+      taskId: "task-release-research",
+      goal: `Compare the latest stable Python and Node.js releases using their official release ${conjunction} download pages. Give each version and release date if shown.`,
+      surface: "browser",
+      browserAgentMode: true,
+      allowedOrigins: [],
+      maxActions: 8,
+      nowMs: 0,
+      deadlineMs: 30_000,
+    });
+    assert.equal(task.completion.kind, "none");
+    assert.ok(task.allowedActions.includes("navigate"));
+  }
+});
+
+test("software names in research prompts do not become browser destinations", () => {
+  const task = compileComputerTask({
+    taskId: "task-release-comparison",
+    goal: "Compare the latest stable Python and Node.js releases using their official pages.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    maxActions: 8,
+    nowMs: 0,
+    deadlineMs: 30_000,
+  });
+  assert.equal(task.values.url, undefined);
+  assert.deepEqual(task.allowedOrigins, []);
+  const explicit = compileComputerTask({
+    taskId: "task-release-source",
+    goal: "Compare Node.js releases at https://nodejs.org/en/download/.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    maxActions: 8,
+    nowMs: 0,
+    deadlineMs: 30_000,
+  });
+  assert.equal(explicit.values.url?.value, "https://nodejs.org/en/download/");
 });
 
 test("task compilation rejects missing application identity, unsupported downloads, and unverifiable goals", () => {
@@ -543,7 +623,11 @@ test("task compilation rejects missing application identity, unsupported downloa
     deadlineMs: 1_000,
   });
   assert.equal(modelDirectedRead.completion.kind, "none");
-  assert.deepEqual(modelDirectedRead.allowedActions, ["prepare", "navigate", "click", "type", "press", "scroll", "dialog"]);
+  assert.deepEqual(
+    modelDirectedRead.allowedActions,
+    ["prepare", "navigate", "click", "type", "select", "press", "scroll", "dialog"],
+    "The model may choose select, but only a current Cua select ref and installed typed operation can execute it.",
+  );
   assert.throws(
     () => compileComputerTask({
       taskId: "task-calendar-no-verifier",

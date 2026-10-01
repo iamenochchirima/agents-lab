@@ -424,7 +424,8 @@ test("browser_search opens the real configured search page with the model's quer
     assert.equal(opened.searchParams.get("q"), "local astronomy clubs");
     assert.match(result.content, /Tools fixture/u, "search returns a fresh semantic snapshot with the opened page");
     assert.match(result.content, /Untrusted page content begins/u);
-    assert.match(result.summary, /Captured Tools fixture from https:\/\/www\.google\.com: \d+ content bytes, 1 semantic ref, 0 headings, completeness unknown/u);
+    assert.match(result.summary, /Captured Tools fixture from https:\/\/www\.google\.com: \d+ delivered content bytes, 1 semantic ref, 0 headings, completeness unknown, observed at \d{4}-\d\d-\d\dT/u);
+    assert.match(result.summary, /linked source pages have not been visited/u);
   } finally {
     await tools.execute("browser_close", "search-close", {}, context);
   }
@@ -474,8 +475,8 @@ test("browser_search builds a Bing results URL and browser tools describe curren
     assert.match(String(tabs?.description), /opaque identifiers, not tab numbers/u);
     const tabIdDescription = (snapshot?.inputSchema as { readonly properties?: { readonly tabId?: { readonly description?: string } } } | undefined)?.properties?.tabId?.description;
     assert.match(tabIdDescription ?? "", /never a numeric position/u);
-    assert.match(String(open?.description), /exact observedTab\.url/u);
-    assert.match(String(open?.description), /do not repeat the URL/u);
+    assert.match(String(open?.description), /current handoffId/u);
+    assert.match(String(open?.description), /do not repeat the URL/iu);
     assert.match(String(snapshot?.description), /end of each user turn/u);
     assert.match(String(click?.description), /do not repeat that action/u);
     assert.match(String(click?.description), /fresh page evidence/u);
@@ -493,7 +494,11 @@ test("browser snapshot tells the model the configured Cua click route", async ()
 
   const result = await tools.execute("browser_snapshot", "route_snapshot", {}, {});
   assert.equal(result.ok, true, result.content);
-  assert.equal((JSON.parse(result.content) as { readonly configuredInputRoute?: string }).configuredInputRoute, "dom_event");
+  const snapshot = JSON.parse(result.content) as { readonly configuredInputRoute?: string; readonly observedAt?: string };
+  assert.equal(snapshot.configuredInputRoute, "dom_event");
+  assert.match(snapshot.observedAt ?? "", /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/u);
+  assert.equal(Number.isNaN(Date.parse(snapshot.observedAt ?? "")), false);
+  assert.equal(result.summary.endsWith(`observed at ${snapshot.observedAt}.`), true);
 });
 
 test("listing Cua tabs invalidates old refs and requires a fresh snapshot before clicking", async () => {
@@ -625,13 +630,41 @@ test("a Cua origin refusal exposes the exact redirected tab so the model can cho
     assert.equal(adapter.opened.length, 2, "the model's explicit browser_open creates one fresh scoped navigation");
     assert.equal(adapter.actionCount, 0, "no page click or other input is replayed during origin recovery");
 
-    adapter.observedUrl = "https://example.com/path?access_token=do-not-expose";
+    adapter.observedUrl = "https://example.com/path?session_handoff=do-not-expose&userSessionDataId=also-private";
     adapter.shouldRefuseSnapshot = true;
     const redacted = await tools.execute("browser_snapshot", "origin-recovery-redaction", {}, context);
     assert.equal(redacted.ok, true, redacted.content);
     assert.match(redacted.content, /"urlRedacted":true/u);
-    assert.doesNotMatch(redacted.content, /do-not-expose|access_token/u);
+    assert.doesNotMatch(`${redacted.content} ${redacted.summary}`, /do-not-expose|also-private/u);
+    const protectedHandoff = JSON.parse(redacted.content) as { observedTab?: { handoffId?: string } };
+    assert.match(protectedHandoff.observedTab?.handoffId ?? "", /^[0-9a-f-]{36}$/u);
     assert.equal(adapter.opened.length, 2, "the redacted address is not automatically replayed");
+    const otherTask = compileComputerTask({
+      taskId: "different-browser-task",
+      goal: "Open a public page.",
+      surface: "browser",
+      browserAgentMode: true,
+      allowedOrigins: [],
+      maxActions: 4,
+      nowMs: Date.now(),
+      deadlineMs: 30_000,
+    });
+    await assert.rejects(
+      tools.execute("browser_open", "origin-recovery-wrong-task", { handoffId: protectedHandoff.observedTab!.handoffId! }, {
+        taskContext: { task: otherTask, grant: { approved: true, actionCount: 0, taskHashes: [otherTask.grantHash] } },
+      }),
+      /handoff.*unavailable|invalid.*handoff/iu,
+    );
+    assert.equal(adapter.opened.length, 2, "a different task cannot consume the handoff");
+    adapter.shouldRefuseSnapshot = false;
+    const continued = await tools.execute("browser_open", "origin-recovery-protected-open", { handoffId: protectedHandoff.observedTab!.handoffId! }, context);
+    assert.equal(continued.ok, true, continued.content);
+    assert.equal(adapter.opened[2], adapter.observedUrl, "only Anesu passes the exact private URL to Cua");
+    assert.doesNotMatch(`${continued.content} ${continued.summary}`, /do-not-expose|also-private/u);
+    await assert.rejects(
+      tools.execute("browser_open", "origin-recovery-reused-handoff", { handoffId: protectedHandoff.observedTab!.handoffId! }, context),
+      /handoff.*unavailable|invalid.*handoff/iu,
+    );
   } finally {
     await tools.execute("browser_close", "origin-recovery-close", {}, context);
   }
@@ -923,6 +956,7 @@ test("browser tools expose only the implemented model-facing surface", () => {
     "browser_snapshot",
     "browser_click",
     "browser_type",
+    "browser_select",
     "browser_press",
     "browser_scroll",
     "browser_wait",
@@ -936,8 +970,8 @@ test("browser tools expose only the implemented model-facing surface", () => {
   const open = tools.definitions.find((definition) => definition.name === "browser_open");
   assert.ok(open);
   assert.match(open.description, /starting the isolated browser session if needed/u);
-  assert.match(open.description, /status 'origin_handoff_required'/u);
-  assert.match(open.description, /do not repeat the URL/u);
+  assert.match(open.description, /origin_handoff_required/u);
+  assert.match(open.description, /do not repeat the URL/iu);
   const upload = tools.definitions.find((definition) => definition.name === "browser_upload");
   assert.ok(upload);
   assert.match(upload.description, /directly to a current file input/u);
@@ -961,6 +995,195 @@ test("browser tools expose only the implemented model-facing surface", () => {
   assert.match(type.description, /unambiguous Day\/Month\/Year spinbutton group/u);
   assert.match(type.description, /approval shows the exact text sent/u);
   assert.match(type.description, /not the calendar's focused day/u);
+});
+
+test("Jev selects one fresh Cua browser action through the ordinary approval path", async () => {
+  const adapter = new ToolTestAdapter();
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => asBrowserSessionId("browser_jev_test"),
+    urlPolicy: new BrowserUrlPolicy({ allowedLocalHosts: ["127.0.0.1"], dnsLookup: async () => ["127.0.0.1"] }),
+  });
+  const requests: Record<string, unknown>[] = [];
+  let selectedChoice = "candidate_1";
+  const tools = new BrowserTools({
+    manager,
+    maxOutputBytes: 32_000,
+    jev: {
+      apiKey: "test-key",
+      model: "jev-latest",
+      fetchImpl: async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: selectedChoice, confidence: 0.98, probabilities: { [selectedChoice]: 0.98 } } } }), { status: 200, headers: { "content-type": "application/json" } });
+      },
+    },
+  });
+  const task = compileComputerTask({
+    taskId: "task-jev-page-step",
+    goal: "Open http://127.0.0.1:4173/fixture and click Continue.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    maxActions: 4,
+    nowMs: Date.now(),
+    deadlineMs: 30_000,
+  });
+  const approvals: string[] = [];
+  const context: BrowserToolContext = {
+    taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+    approveBrowser: async (request) => { approvals.push(request.action); return { decision: "allow-once" }; },
+  };
+  try {
+    assert.ok(tools.definitions.some((definition) => definition.name === "browser_jev_step"));
+    assert.equal((await tools.execute("browser_open", "jev-open", { url: "http://127.0.0.1:4173/fixture" }, context)).ok, true);
+    const result = await tools.execute("browser_jev_step", "jev-step", { goal: "Click Continue on this page." }, context);
+    assert.equal(result.ok, true, result.content);
+    assert.equal(adapter.actionCount, 1);
+    assert.equal(adapter.lastAction?.kind, "click");
+    assert.deepEqual(approvals, ["click"]);
+    assert.match(result.content, /"operation":"click"/u);
+    assert.equal(requests.length, 1);
+    assert.deepEqual(Object.keys((requests[0]?.questions as Record<string, unknown>) ?? {}), ["target"]);
+    selectedChoice = "abstain";
+    const abstained = await tools.execute("browser_jev_step", "jev-abstain", { goal: "Only act if another safe page control is relevant." }, context);
+    assert.equal(abstained.ok, true);
+    assert.match(abstained.summary, /abstained/u);
+    assert.equal(adapter.actionCount, 1, "an abstention must never replay or invent input");
+    await assert.rejects(() => tools.execute("browser_jev_step", "jev-secret", { goal: "Enter the password in this page." }, context), /credential or secret task/u);
+    assert.equal(requests.length, 2, "credential wording must not reach the external Jev request");
+  } finally {
+    await manager.closeAll();
+  }
+});
+
+test("Jev can identify an editable target without input, then type task-authored text after approval", async () => {
+  class EditablePageAdapter extends ToolTestAdapter {
+    override async snapshot(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, signal?: AbortSignal): Promise<BrowserSnapshot> {
+      const snapshot = await super.snapshot(sessionId, tabId, signal);
+      return {
+        ...snapshot,
+        content: "[@e1] input text Message\n[@e2] link Early access",
+        references: [
+          { value: "@e1", documentId: snapshot.documentId, role: "input", type: "text", name: "Message", actions: ["type"] },
+          { value: "@e2", documentId: snapshot.documentId, role: "link", name: "Early access", actions: ["click"] },
+        ],
+      };
+    }
+  }
+
+  const adapter = new EditablePageAdapter();
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => asBrowserSessionId("browser_jev_editable"),
+    urlPolicy: new BrowserUrlPolicy({ allowedLocalHosts: ["127.0.0.1"], dnsLookup: async () => ["127.0.0.1"] }),
+  });
+  const requests: Record<string, unknown>[] = [];
+  const tools = new BrowserTools({
+    manager,
+    maxOutputBytes: 32_000,
+    jev: {
+      apiKey: "test-key",
+      model: "jev-latest",
+      fetchImpl: async (_url, init) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "candidate_1", confidence: 0.98, probabilities: { candidate_1: 0.98 } } } }), { status: 200, headers: { "content-type": "application/json" } });
+      },
+    },
+  });
+  const task = compileComputerTask({
+    taskId: "task-jev-editable",
+    goal: "Open http://127.0.0.1:4173/fixture and write a short greeting in the Message field.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    maxActions: 4,
+    nowMs: Date.now(),
+    deadlineMs: 30_000,
+  });
+  const context: BrowserToolContext = {
+    taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+    approveBrowser: async () => { throw new Error("missing text must not reach approval"); },
+  };
+  try {
+    assert.equal((await tools.execute("browser_open", "jev-edit-open", { url: "http://127.0.0.1:4173/fixture" }, context)).ok, true);
+    const result = await tools.execute("browser_jev_step", "jev-edit-step", { goal: "Write a short greeting in the Message field." }, context);
+    assert.equal(requests.length, 1, "Jev must see the editable candidate alongside the unrelated link");
+    assert.equal(result.ok, true);
+    assert.match(result.content, /"status":"needs-value"/u);
+    assert.equal(adapter.actionCount, 0);
+    const entered = await tools.execute("browser_jev_step", "jev-edit-value", {
+      goal: "Write a short greeting in the Message field.",
+      text: "Hello there!",
+    }, {
+      ...context,
+      approveBrowser: async (request) => {
+        assert.equal(request.action, "type");
+        assert.equal(request.reference, "@e1");
+        assert.equal(request.text, "Hello there!");
+        return { decision: "allow-once" };
+      },
+    });
+    assert.equal(entered.ok, true);
+    assert.equal(adapter.actionCount, 1);
+    assert.equal(adapter.lastAction?.text, "Hello there!");
+  } finally {
+    await manager.closeAll();
+  }
+});
+
+test("Jev selects a current native option absent from the user's wording through exact-action approval", async () => {
+  class SelectPageAdapter extends ToolTestAdapter {
+    override async snapshot(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, signal?: AbortSignal): Promise<BrowserSnapshot> {
+      const snapshot = await super.snapshot(sessionId, tabId, signal);
+      return {
+        ...snapshot,
+        content: "[@e1] combobox Industry: Retail, Services, Other",
+        references: [{ value: "@e1", documentId: snapshot.documentId, role: "combobox", name: "Industry", actions: ["select"] }],
+      };
+    }
+  }
+
+  const adapter = new SelectPageAdapter();
+  const manager = new BrowserSessionManager(adapter, {
+    createSessionId: () => asBrowserSessionId("browser_jev_select"),
+    urlPolicy: new BrowserUrlPolicy({ allowedLocalHosts: ["127.0.0.1"], dnsLookup: async () => ["127.0.0.1"] }),
+  });
+  const tools = new BrowserTools({
+    manager,
+    maxOutputBytes: 32_000,
+    jev: {
+      apiKey: "test-key",
+      model: "jev-latest",
+      fetchImpl: async () => new Response(JSON.stringify({ model: "jev-latest", answers: { target: { type: "choice", choice: "candidate_1", confidence: 0.98, probabilities: { candidate_1: 0.98 } } } }), { status: 200, headers: { "content-type": "application/json" } }),
+    },
+  });
+  const task = compileComputerTask({
+    taskId: "task-jev-select",
+    goal: "Open http://127.0.0.1:4173/fixture and choose the industry for a shop.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: [],
+    maxActions: 4,
+    nowMs: Date.now(),
+    deadlineMs: 30_000,
+  });
+  const context: BrowserToolContext = {
+    taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+    approveBrowser: async (request) => {
+      assert.equal(request.action, "select");
+      assert.equal(request.reference, "@e1");
+      assert.equal(request.value, "Retail");
+      return { decision: "allow-once" };
+    },
+  };
+  try {
+    assert.equal((await tools.execute("browser_open", "jev-select-open", { url: "http://127.0.0.1:4173/fixture" }, context)).ok, true);
+    const result = await tools.execute("browser_jev_step", "jev-select-step", { goal: "Choose the observed option for a shop.", value: "Retail" }, context);
+    assert.equal(result.ok, true);
+    assert.equal(adapter.actionCount, 1);
+    assert.equal(adapter.lastAction?.kind, "select");
+    assert.equal(adapter.lastAction?.value, "Retail");
+  } finally {
+    await manager.closeAll();
+  }
 });
 
 test("legacy browser_open_and_click is not exposed or executable", async () => {
@@ -1089,12 +1312,67 @@ test("browser date refs refuse ISO typing when Cua does not identify the date-pa
   assert.equal(adapter.actionCount, 0);
 });
 
-test("browser native select controls remain unavailable through the Cua model-facing surface", async () => {
-  const tools = createTools(new ToolTestAdapter());
+test("browser native select binds an observed control and exact option to approval and Cua", async () => {
+  class NativeSelectToolAdapter extends ToolTestAdapter {
+    override async snapshot(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, signal?: AbortSignal): Promise<BrowserSnapshot> {
+      const snapshot = await super.snapshot(sessionId, tabId, signal);
+      return { ...snapshot, references: [{ ...snapshot.references[0]!, role: "combobox", name: "Industry", actions: ["select"] }] };
+    }
+  }
+  const adapter = new NativeSelectToolAdapter();
+  const tools = createTools(adapter);
+  await tools.execute("browser_start", "select_start", {}, {});
+  await tools.execute("browser_open", "select_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+  await tools.execute("browser_snapshot", "select_snapshot", {}, {});
+  const task = compileComputerTask({
+    taskId: "native_select_browser_task",
+    goal: "Fill the form with Industry Retail, but do not submit it.",
+    surface: "browser",
+    browserAgentMode: true,
+    allowedOrigins: ["http://127.0.0.1:4173"],
+    currentBrowserOrigin: "http://127.0.0.1:4173",
+    maxActions: 4,
+    nowMs: Date.now(),
+    deadlineMs: 30_000,
+  });
+  assert.deepEqual(task.allowedOrigins, ["http://127.0.0.1:4173"]);
+
+  const selected = await tools.execute("browser_select", "select_option", { ref: "@e1", value: "Retail" }, {
+    taskContext: { task, grant: { approved: true, actionCount: 0, taskHashes: [task.grantHash] } },
+    approveBrowser: async (request) => {
+      assert.equal(request.action, "select");
+      assert.equal(request.reference, "@e1");
+      assert.equal(request.targetRole, "combobox");
+      assert.equal(request.value, "Retail");
+      return { decision: "allow-once" };
+    },
+  });
+  assert.equal(selected.ok, true);
+  assert.equal(adapter.lastAction?.kind, "select");
+  assert.equal(adapter.lastAction?.value, "Retail");
+});
+
+test("browser synthetic click redirects a native select to the typed select tool before approval", async () => {
+  class NativeSelectToolAdapter extends ToolTestAdapter {
+    override async snapshot(sessionId: ReturnType<typeof asBrowserSessionId>, tabId: ReturnType<typeof asBrowserTabId>, signal?: AbortSignal): Promise<BrowserSnapshot> {
+      const snapshot = await super.snapshot(sessionId, tabId, signal);
+      return { ...snapshot, references: [{ ...snapshot.references[0]!, role: "combobox", name: "Company type", actions: ["click", "select"] }] };
+    }
+  }
+  const adapter = new NativeSelectToolAdapter();
+  const tools = createTools(adapter, undefined, undefined, undefined, 32_000, "bing", "dom_event");
+  await tools.execute("browser_start", "select_click_start", {}, {});
+  await tools.execute("browser_open", "select_click_open", { url: "http://127.0.0.1:4173/fixture" }, {});
+  await tools.execute("browser_snapshot", "select_click_snapshot", {}, {});
   await assert.rejects(
-    tools.execute("browser_select", "call_select", { ref: "@e1", value: "Product" }, {}),
-    /Unknown browser tool 'browser_select'/u,
+    tools.execute("browser_click", "select_click", { ref: "@e1" }, {
+      approveBrowser: async () => { throw new Error("synthetic native-select click must not reach approval"); },
+    }),
+    (error: unknown) => error instanceof BrowserError
+      && error.browserCode === "invalid-action"
+      && /browser_select/u.test(error.message),
   );
+  assert.equal(adapter.actionCount, 0);
 });
 
 test("browser scroll binds a current scroll ref and bounded direction and amount to approval and Cua", async () => {
@@ -1298,6 +1576,9 @@ test("oversized browser snapshots remain valid JSON and preserve current element
   assert.deepEqual(snapshot.references?.map(({ value, currentValue }) => ({ value, currentValue })), [
     { value: "@search", currentValue: "Anesu browser check" },
   ]);
+  assert.match(outcome.summary, /partial/u);
+  assert.match(outcome.summary, /query or scopeRef/u);
+  assert.doesNotMatch(outcome.summary, /complete, observed/u);
 });
 
 test("browser dialog outcomes fail closed, remain ambiguous, and preserve redaction", async () => {
@@ -1383,7 +1664,7 @@ test("approved side-effect timeouts are reported as ambiguous with the underlyin
   assert.match(outcome.content, /Underlying browser outcome: browser-timeout/u);
   assert.match(outcome.content, /The action outcome is unknown\. Do not repeat it\./u);
   assert.match(outcome.content, /Take a fresh browser snapshot, then continue the user's original task/u);
-  assert.match(outcome.content, /ask for missing required values/u);
+  assert.match(outcome.content, /ask for fields the page actually marks required/u);
   const completed = events.find((event) => event.type === "completed");
   assert.ok(completed && completed.type === "completed");
   assert.equal(completed.errorCode, "browser-ambiguous");

@@ -8,7 +8,7 @@ import type { ProcessToolEvent } from "../tools/registry.js";
 import type { BrowserApprovalDecision, BrowserApprovalRequest, BrowserToolEvent } from "../browser/index.js";
 import type { ComputerEvent } from "../computer/runner.js";
 import type { ComputerApprovalDecision, ComputerApprovalEvent, ComputerApprovalRequest, ComputerEnvironmentReadiness } from "../computer/contracts.js";
-import type { ComputerNativeFallbackRoute, ComputerTaskApprovalDecision, ComputerTaskApprovalRequest } from "../computer/task.js";
+import { computerConversationPermission, type ComputerNativeFallbackRoute, type ComputerTaskApprovalDecision, type ComputerTaskApprovalRequest } from "../computer/task.js";
 import type { CuaAuthorizationDecision, CuaAuthorizationRequestView } from "../browser/cua-authorization.js";
 import type { MemoryApproval, MemoryApprovalDecision, MemoryApprovalRequest, MemoryEvent, MemorySearchEvidence } from "../memory/contracts.js";
 import type { SkillCatalog } from "../skills/index.js";
@@ -352,7 +352,7 @@ export class TerminalUi {
     this.write(`  ${this.style("33", "/memory")}     Show bounded durable-memory status\n`);
     this.write(`  ${this.style("33", "/computer")}   Inspect computer environment, strategy, and readiness\n`);
     this.write(`  ${this.style("33", "/evidence")}   Show the durable evidence directory\n`);
-    this.write(`  ${this.style("33", "/permissions")}  List saved process permissions\n`);
+    this.write(`  ${this.style("33", "/permissions")}  List saved process and computer permissions\n`);
     this.write(`  ${this.style("33", "/permissions revoke <permission-id>")}  Revoke one saved permission\n`);
     this.write(`  ${this.style("33", "/clear")}      Redraw the console\n`);
     this.write(`  ${this.style("33", "/quit")}       Close the session\n\n`);
@@ -597,26 +597,40 @@ export class TerminalUi {
   }
 
   private async printPermissions(): Promise<void> {
-    const permissions = this.application.processPermissions;
-    if (!permissions) {
+    const processPermissions = this.application.processPermissions;
+    const computerPermissions = this.application.computerPermissions;
+    if (!processPermissions && !computerPermissions) {
       this.write(`\n${this.style("31", "Saved permissions are unavailable in this invocation.")}\n\n`);
       return;
     }
     try {
-      const grants = await permissions.list();
-      this.write("\n");
-      this.printPanel("Saved process permissions", [
-        ["scope", "current conversation and local profile"],
-        ["matching", "exact command, arguments, directory, environment, limits, and executable version"],
-      ]);
-      if (grants.length === 0) {
-        this.write(`  ${this.style("2", "No saved process permissions.")}\n\n`);
-        return;
+      if (processPermissions) {
+        const grants = await processPermissions.list();
+        this.write("\n");
+        this.printPanel("Saved process permissions", [
+          ["scope", "current conversation and local profile"],
+          ["matching", "exact command, arguments, directory, environment, limits, and executable version"],
+        ]);
+        if (grants.length === 0) this.write(`  ${this.style("2", "No saved process permissions.")}\n\n`);
+        for (const grant of grants) {
+          this.write(`  ${this.style("36", grant.id)} · ${grant.scope === "conversation" ? "this conversation" : "local profile"}\n`);
+          this.write(`    ${sanitizeTerminalSingleLine(grant.label)}\n`);
+          this.write(`    created ${grant.createdAt}${grant.lastUsedAt ? ` · last used ${grant.lastUsedAt}` : " · not used yet"}\n`);
+        }
       }
-      for (const grant of grants) {
-        this.write(`  ${this.style("36", grant.id)} · ${grant.scope === "conversation" ? "this conversation" : "local profile"}\n`);
-        this.write(`    ${sanitizeTerminalSingleLine(grant.label)}\n`);
-        this.write(`    created ${grant.createdAt}${grant.lastUsedAt ? ` · last used ${grant.lastUsedAt}` : " · not used yet"}\n`);
+      if (computerPermissions) {
+        const grants = await computerPermissions.list();
+        this.write("\n");
+        this.printPanel("Saved computer permissions", [
+          ["scope", "this conversation"],
+          ["matching", "task action, target/profile, input route, and per-task limits"],
+        ]);
+        if (grants.length === 0) this.write(`  ${this.style("2", "No saved computer permissions.")}\n\n`);
+        for (const grant of grants) {
+          this.write(`  ${this.style("36", grant.id)} · this conversation\n`);
+          this.write(`    ${sanitizeTerminalSingleLine(grant.label)}\n`);
+          this.write(`    created ${grant.createdAt}${grant.lastUsedAt ? ` · last used ${grant.lastUsedAt}` : " · not used yet"}\n`);
+        }
       }
       this.write(`\n${this.style("2", "Revoke with /permissions revoke <permission-id>.")}\n\n`);
     } catch (error) {
@@ -625,7 +639,7 @@ export class TerminalUi {
   }
 
   private async revokePermission(permissionId: string): Promise<void> {
-    const permissions = this.application.processPermissions;
+    const permissions = permissionId.startsWith("computer_") ? this.application.computerPermissions : this.application.processPermissions;
     if (!permissions) {
       this.write(`\n${this.style("31", "Saved permissions are unavailable in this invocation.")}\n\n`);
       return;
@@ -633,8 +647,8 @@ export class TerminalUi {
     try {
       const revoked = await permissions.revoke(permissionId);
       this.write(revoked
-        ? `\n${this.style("32;1", `Revoked saved process permission ${permissionId}. Future matching commands will ask again.`)}\n\n`
-        : `\n${this.style("31", `No saved process permission '${permissionId}' was found for this conversation or local profile.`)}\n\n`);
+        ? `\n${this.style("32;1", `Revoked saved ${permissionId.startsWith("computer_") ? "computer" : "process"} permission ${permissionId}. Future matching requests will ask again.`)}\n\n`
+        : `\n${this.style("31", `No saved permission '${permissionId}' was found for this conversation or local profile.`)}\n\n`);
     } catch (error) {
       this.write(`\n${this.style("31", `Permission was not revoked: ${safeErrorMessage(error)}`)}\n\n`);
     }
@@ -1272,6 +1286,7 @@ export class TerminalUi {
     const preview = [
       request.origin === undefined ? undefined : `site: ${request.origin}`,
       request.text === undefined ? undefined : `text: ${request.text}`,
+      request.typingMode === undefined ? undefined : `typing mode: ${request.typingMode}`,
       request.key === undefined ? undefined : `key: ${request.key}`,
       request.value === undefined ? undefined : `value: ${request.value}`,
       request.direction === undefined ? undefined : `direction: ${request.direction}`,
@@ -1298,6 +1313,7 @@ export class TerminalUi {
         ...(targetLabel === undefined ? [] : [["target name", targetLabel] as const]),
         ...(request.origin === undefined ? [] : [["site", request.origin] as const]),
         ...(request.text === undefined ? [] : [["text", request.text] as const]),
+        ...(request.typingMode === undefined ? [] : [["typing mode", request.typingMode] as const]),
         ...(request.key === undefined ? [] : [["key", request.key] as const]),
         ...(request.value === undefined ? [] : [["value", request.value] as const]),
         ...(request.direction === undefined ? [] : [["direction", request.direction] as const]),
@@ -1318,6 +1334,7 @@ export class TerminalUi {
         ...(request.targetRole === undefined ? [] : [`target role: ${sanitizeTerminalSingleLine(request.targetRole).slice(0, 64)}`]),
         ...(targetLabel === undefined ? [] : [`target name: ${targetLabel}`]),
         request.text === undefined ? undefined : `text: ${request.text}`,
+        request.typingMode === undefined ? undefined : `typing mode: ${request.typingMode}`,
         request.key === undefined ? undefined : `key: ${request.key}`,
         request.value === undefined ? undefined : `value: ${request.value}`,
         request.direction === undefined ? undefined : `direction: ${request.direction}`,
@@ -1451,6 +1468,20 @@ export class TerminalUi {
     signal?: AbortSignal,
     cancelQuestion?: () => void,
   ): Promise<ComputerTaskApprovalDecision> {
+    const permissions = this.application.computerPermissions;
+    const conversationRule = permissions ? computerConversationPermission(request) : undefined;
+    if (conversationRule && permissions) {
+      try {
+        const saved = await permissions.find(conversationRule.identityHash);
+        if (saved) {
+          this.write(`${this.style("32;1", `✓ allowed by conversation permission ${saved.id}`)}\n`);
+          return { decision: "allow-task", grantHash: request.grantHash };
+        }
+      } catch (error) {
+        this.write(`${this.style("31", `Saved computer permissions could not be checked: ${safeErrorMessage(error)}`)}\n`);
+        return { decision: "unavailable", reason: "Saved computer permissions could not be safely checked." };
+      }
+    }
     const target = request.surface === "native"
       ? request.applicationName ?? "approved native application"
       : request.profileMode === "existing_profile"
@@ -1476,6 +1507,7 @@ export class TerminalUi {
       expiry: new Date(request.expiresAtMs).toISOString(),
       extra: [
         ["grant scope", "this bounded task only"],
+        ...(conversationRule ? [["conversation rule", conversationRule.label] as const] : []),
         ...(request.surface === "browser" && request.browserOriginPolicy === "public-web"
           ? [["browser sites", "public HTTPS destinations · private/local blocked"] as const]
           : []),
@@ -1497,6 +1529,7 @@ export class TerminalUi {
         `surface: ${request.surface}`,
         `target: ${target}`,
         "grant scope: this bounded task only",
+        ...(conversationRule ? [`conversation rule: ${conversationRule.label}`] : []),
         `profile: ${request.profileMode}`,
         `input route: ${request.inputRoute}`,
         ...(request.surface === "browser" && request.browserOriginPolicy === "public-web"
@@ -1525,7 +1558,18 @@ export class TerminalUi {
       pauseRawInput: this.pauseApprovalInput,
       resumeRawInput: this.resumeApprovalInput,
       taskOnly: true,
+      allowConversation: conversationRule !== undefined,
     });
+    if (answer.decision === "allow-conversation" && conversationRule && permissions) {
+      try {
+        const saved = await permissions.save(conversationRule.identityHash, conversationRule.label);
+        this.write(`${this.style("32;1", `✓ permission saved for this conversation · ${saved.id}`)}\n`);
+        return { decision: "allow-task", grantHash: request.grantHash };
+      } catch (error) {
+        this.write(`${this.style("31", `Permission was not saved; the computer task was not started: ${safeErrorMessage(error)}`)}\n`);
+        return { decision: "unavailable", reason: "The conversation permission could not be saved safely." };
+      }
+    }
     if (answer.decision === "allow-task") {
       this.write(`${this.style("32;1", "✓ approved for this task")}\n`);
       return { decision: "allow-task", grantHash: request.grantHash };
