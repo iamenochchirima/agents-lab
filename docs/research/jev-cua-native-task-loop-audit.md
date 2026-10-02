@@ -25,10 +25,10 @@ Only first-party material was used.
 
 | Source | Version or revision checked | Relevant paths |
 | --- | --- | --- |
-| Lina | Current working tree | `lina/src/computer/`, `lina/package.json`, `pnpm-lock.yaml` |
-| Installed Cua TypeScript package | `@trycua/cua-driver` `0.28.2` | `lina/node_modules/@trycua/cua-driver/dist/native/cua_driver_sdk.d.ts`, `cua_driver_contract.d.ts` |
+| Lina | Sibling checkout at audit time | `../lina/src/computer/`, `../lina/package.json`, `../lina/pnpm-lock.yaml` |
+| Installed Cua TypeScript package | `@trycua/cua-driver` `0.28.2` | `../lina/node_modules/@trycua/cua-driver/dist/native/cua_driver_sdk.d.ts`, `cua_driver_contract.d.ts` |
 | Local Cua checkout | `9bbfa7dd3e27ca7f1861ede70aaca390174493f9` | `/home/enoch/aworkspace/agents/cua/libs/cua-driver/` |
-| Installed TypeSafe package | `@typesafe-ai/sdk` `0.6.0` | `lina/node_modules/@typesafe-ai/sdk/README.md`, `dist/index.d.mts` |
+| Installed TypeSafe package | `@typesafe-ai/sdk` `0.6.0` | `../lina/node_modules/@typesafe-ai/sdk/README.md`, `dist/index.d.mts` |
 | Hermes checkout | `b6b53c69a6ed49cb099cf1bfe76b5e6edd718e5a` | `/home/enoch/aworkspace/agents/hermes-agent/tools/computer_use/` |
 | OpenClaw checkout | `912685f442286233fbbd40762482d98598299497` | `/home/enoch/aworkspace/agents/openclaw/extensions/cua-computer/src/` |
 | Official Cua docs | Current on audit date | [Jev use](https://cua.ai/docs/how-to-guides/driver/jev-use), [Linux tools](https://cua.ai/docs/reference/cua-driver/mcp-tools-linux), [in-process SDK](https://cua.ai/docs/how-to-guides/driver/use-sdk-in-process), [permission policies](https://cua.ai/docs/reference/cua-driver/permission-policies), [verification](https://cua.ai/docs/how-to-guides/driver/verify-a-desktop-action) |
@@ -55,10 +55,10 @@ The audited note is [`jev-cua-native-task-loop.md`](jev-cua-native-task-loop.md)
 | Background input is the default and foreground input is an approval boundary. | Supported. `bring_to_front` is not an ordinary focus step; it is a persistent focus-proxy exception after documented failure. | Cua `LINUX.md`, "delivery_mode" and "Persistent focus-proxy exception". |
 | Jev is a bounded chooser rather than an unrestricted planner or executor. | Supported. The application owns candidates, action arguments, execution, reobservation, and completion. | Cua `examples/jev-use/typescript/core.ts`, `jev_adapter.ts`, `core.test.ts`; Cua Jev guide; Cua `skills/jev-use/SKILL.md`. |
 | Jev must not receive screenshots, driver tool names, or arbitrary action arguments. | Supported by the reference design. It receives a goal, compact observations, bounded history, candidate IDs and descriptions. | Same Jev sources as above. |
-| Lina currently exposes only click candidates to Jev. | Supported. | `lina/src/computer/native-strategy.ts`, `NativeSemanticCandidate` and `nativeAccessibilityCandidates`. |
-| Lina lacks an app launch/discovery lifecycle in its Cua adapter. | Supported. | `lina/src/computer/cua-driver.ts`, `CuaDriverClient`; `observeDesktop()` selects a current window but does not resolve or launch an app. |
-| Current native verification is too narrow for general real-app tasks. | Supported. | `lina/src/computer/verification.ts`; its derivation is based on narrow URL, quoted-text, fixture-marker, and state-word patterns. |
-| Current approval is per action and supports only allow-once/deny/unavailable. | Supported. | `lina/src/computer/contracts.ts`, `ComputerApprovalDecision`; `lina/src/computer/native-runner.ts`. |
+| Lina currently exposes only click candidates to Jev. | Supported at the audited revision. | `../lina/src/computer/native-strategy.ts`, `NativeSemanticCandidate` and `nativeAccessibilityCandidates`. |
+| Lina lacks an app launch/discovery lifecycle in its Cua adapter. | Supported at the audited revision. | `../lina/src/computer/cua-driver.ts`, `CuaDriverClient`; `observeDesktop()` selects a current window but does not resolve or launch an app. |
+| Current native verification is too narrow for general real-app tasks. | Supported at the audited revision. | `../lina/src/computer/verification.ts`; its derivation is based on narrow URL, quoted-text, fixture-marker, and state-word patterns. |
+| Current approval is per action and supports only allow-once/deny/unavailable. | Supported at the audited revision. | `../lina/src/computer/contracts.ts`, `ComputerApprovalDecision`; `../lina/src/computer/native-runner.ts`. |
 
 ### Claims that need correction or qualification
 
@@ -70,7 +70,7 @@ The audited note is [`jev-cua-native-task-loop.md`](jev-cua-native-task-loop.md)
 | "The next implementation can use app/window discovery and launch." | Correct in principle, but `launch_app` is open-world, state-changing, and non-idempotent. On Linux, `launch_path` is spawned through the system shell. Lina must round-trip an unchanged path from a fresh trusted `list_apps` record and must never pass model/user-generated command text, arguments, URLs, or paths. |
 | "Independent verification proves completion." | Too broad. `verify_state` proves only one to eight bounded predicates on one exact window. Accessibility absence can remain `unknown`, and `unknown` is never success. Calendar and alarm creation need app-specific postconditions that show the durable object, not merely a transient form or a model statement. |
 | "A visible cursor demonstrates execution." | Cursor visibility is useful review evidence, not completion evidence. The Linux source supports a synthetic cursor, but Lina must prove it in the actual Xephyr/X11 acceptance profile. |
-| "Current confidence floor is safe." | Unsupported. `0.5` in `lina/src/computer/contracts.ts` is an uncalibrated operating threshold. TypeSafe confidence is decision evidence, not authorization or correctness. |
+| "Current confidence floor is safe." | Unsupported. `0.5` in `../lina/src/computer/contracts.ts` is an uncalibrated operating threshold. TypeSafe confidence is decision evidence, not authorization or correctness. |
 
 ### Important omissions in the research note
 
@@ -116,7 +116,7 @@ The note should explicitly add these facts:
 ## Required corrections to the active implementation plan
 
 The audited plan is
-`development/implementation-plans/lina/archived/lina-jev-cua-native-computer-use.md`.
+`../lina/development/implementation-plans/lina/archived/lina-jev-cua-native-computer-use.md`.
 Its overall ownership model and observe/choose/execute/reobserve loop are appropriate.
 The following changes are required.
 

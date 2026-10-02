@@ -13,8 +13,8 @@ _Avoid_: using "platform" when the subject is the complete runnable agent.
 
 **External integration**:
 A Lab-side boundary for starting and observing an independently owned runnable system.
-Lina is the initial integration. Its temporary top-level project owns the
-runtime; the Lab records evidence through `server/src/integrations/lina/`.
+No external harness integration is currently implemented. A future adapter must use a
+versioned contract and keep the external runtime outside this repository.
 
 **Reusable capability**:
 A portable definition used by more than one platform variant, such as a skill, MCP or
@@ -22,8 +22,9 @@ OAuth connection, plugin manifest, tool schema, policy, or artifact type. Capabi
 do not own an agent loop or a platform's durability model.
 
 **Environment**:
-For Lina, the computer in which the harness operates: local workspace
-process, sandboxed container, or VM/remote computer.
+The execution context in which a harness operates, such as a local process,
+container, or remote machine. Record its boundaries and lifecycle separately from
+backend deployment profiles.
 _Avoid_: using "environment" for backend deployment architecture or browser tooling.
 
 **Backend deployment profile**:

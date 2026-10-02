@@ -141,10 +141,6 @@ OAuth connections, MCP definitions, plugin manifests, policies, or artifact defi
 into every platform. The selected platform owns execution, state, durability, and its
 native telemetry behaviour.
 
-Lina is intentionally absent from this table. It is an extraction-ready
-standalone project under [`lina/`](../../../lina/README.md), connected
-to the Lab through [`integrations/lina/`](../integrations/lina/README.md).
-
 When implementation starts, a harness variant may add an `agents/` directory for its
 platform-specific agent definitions. Create it only when the first concrete agent
 definition exists. Research, coding, transactional work, and other reusable workloads

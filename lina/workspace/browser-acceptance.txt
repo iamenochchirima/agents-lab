@@ -1,1 +1,0 @@
-Lina browser upload acceptance fixture.

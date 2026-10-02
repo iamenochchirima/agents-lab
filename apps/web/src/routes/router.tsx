@@ -108,22 +108,6 @@ export const router = createBrowserRouter([
         ],
       },
       {
-        path: "environments",
-        lazy: async () => {
-          const { EnvironmentsPage } = await import("../features/environments/EnvironmentPages");
-          return { Component: EnvironmentsPage };
-        },
-        handle: { label: "Environments" },
-      },
-      {
-        path: "environments/:environmentId",
-        lazy: async () => {
-          const { EnvironmentDetailPage } = await import("../features/environments/EnvironmentPages");
-          return { Component: EnvironmentDetailPage };
-        },
-        handle: { label: "Environment profile" },
-      },
-      {
         path: "scenarios",
         lazy: async () => {
           const { ScenariosPage } = await import("../features/workspace/WorkspacePages");

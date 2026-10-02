@@ -10,8 +10,7 @@ route error boundary gives failed lazy loads and loader errors a deliberate UI.
 
 `/platforms/:platformId` is a nested platform workspace route. Its layout resolves one
 typed platform descriptor and provides it to focused child views. `/compare` builds a
-shared comparison configuration, while `/environments` exposes the reusable environment
-profiles outside a particular platform.
+shared comparison configuration across registered platforms.
 
 `paths.ts` is the small public-path contract used by navigation and feature links.
 Keep route-specific document paths in the documentation feature because they depend

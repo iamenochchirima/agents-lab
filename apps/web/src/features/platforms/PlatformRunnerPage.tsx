@@ -1,9 +1,8 @@
 import { ChevronDown, LoaderCircle, MessageSquare, Play, Settings2, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useOutletContext, useSearchParams } from "react-router";
 
-import { environmentCatalog } from "../environments/environmentCatalog";
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { ModelPicker } from "../models/ModelPicker";
@@ -20,7 +19,6 @@ export function PlatformRunnerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [task, setTask] = useState("");
   const [scenarioId, setScenarioId] = useState(scenarioCatalog[0].id);
-  const [environmentId, setEnvironmentId] = useState(platform.computerEnvironmentIds[0] ?? "");
   const [backendProfileId, setBackendProfileId] = useState(platform.backendProfiles[0]?.id ?? "");
   const [variantId, setVariantId] = useState(platform.variants[0].id);
   const [infrastructureId, setInfrastructureId] = useState(platform.infrastructure[0]?.id ?? "none");
@@ -43,11 +41,6 @@ export function PlatformRunnerPage() {
   const runIdFromUrl = searchParams.get("run");
   const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id);
 
-  const environments = useMemo(
-    () => environmentCatalog.filter((environment) => platform.computerEnvironmentIds.includes(environment.id)),
-    [platform.computerEnvironmentIds],
-  );
-
   const hasRunnableVariant = isRunnableVariant(platform, variantId);
   const isRunnable = hasRunnableVariant && platformConnectivity?.reachable === true;
   const taskError = task.trim().length === 0 ? "Enter a task prompt." : null;
@@ -60,7 +53,6 @@ export function PlatformRunnerPage() {
       nextSearchParams.delete("run");
       setSearchParams(nextSearchParams, { replace: true });
     }
-    setEnvironmentId(platform.computerEnvironmentIds[0] ?? "");
     setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
     setVariantId(platform.variants[0]?.id ?? "baseline");
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
@@ -166,7 +158,6 @@ export function PlatformRunnerPage() {
         ...(preservesSession && sessionId ? { sessionId } : {}),
         selection: {
           scenarioId,
-          ...(environmentId ? { environmentId } : {}),
           ...(backendProfileId ? { backendProfileId } : {}),
           ...(infrastructureId !== "none" ? { infrastructureId } : {}),
           ...(experimentId !== "none" ? { experimentId } : {}),
@@ -263,15 +254,9 @@ export function PlatformRunnerPage() {
             <small className={isRunnable ? "runner-connected" : undefined}>{runAvailabilityStatus({ connectivityError, hasRunnableVariant, isRunnable, platformConnectivity })}</small>
           </div>
           <div className="runner-control-grid">
-            {platform.kind === "compute-native" ? (
-              <CompactSelect label="Computer environment" value={environmentId} onChange={setEnvironmentId}>
-                {environments.map((environment) => <option key={environment.id} value={environment.id}>{environment.name}</option>)}
-              </CompactSelect>
-            ) : (
-              <CompactSelect label="Server" value={backendProfileId} onChange={setBackendProfileId}>
-                {platform.backendProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
-              </CompactSelect>
-            )}
+            <CompactSelect label="Server" value={backendProfileId} onChange={setBackendProfileId}>
+              {platform.backendProfiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+            </CompactSelect>
             <CompactSelect label="Variant" value={variantId} onChange={setVariantId}>
               {platform.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.name}</option>)}
             </CompactSelect>

@@ -1,7 +1,5 @@
 import type { PlatformDescriptor } from "./platformTypes";
 
-const noComputerEnvironment: readonly string[] = [];
-
 function plannedPlatform(
   id: string,
   name: string,
@@ -18,13 +16,11 @@ function plannedPlatform(
     name,
     role,
     description,
-    kind: "backend",
     language,
     runtime,
     executionModel,
     durabilityModel,
     status: "planned",
-    computerEnvironmentIds: noComputerEnvironment,
     backendProfiles: [],
     infrastructure: [],
     implementationDocumentId,
@@ -33,23 +29,6 @@ function plannedPlatform(
 }
 
 export const platformCatalog: readonly PlatformDescriptor[] = [
-  {
-    id: "lina",
-    name: "Lina",
-    role: "Independent compute-native agent product",
-    description: "An independently developed compute-native harness studied through the Lab integration boundary.",
-    kind: "compute-native",
-    language: "TypeScript",
-    runtime: "Independent local or remote runner",
-    executionModel: "Compute-native model and tool loop",
-    durabilityModel: "Owned by the external harness",
-    status: "planned",
-    computerEnvironmentIds: ["local-workspace", "sandboxed-container", "remote-vm"],
-    backendProfiles: [],
-    infrastructure: [],
-    implementationDocumentId: "server/src/integrations/lina/README.md",
-    variants: [{ id: "baseline", name: "Lina baseline", description: "The external harness's first Lab-compatible release.", status: "planned" }],
-  },
   {
     ...plannedPlatform("temporal", "Temporal", "Durable workflow execution", "An agent runtime hosted in workflows and activities with durable history and recovery.", "TypeScript", "Node.js worker + Temporal", "Workflow-coordinated agent loop", "Workflow history, retries, timers, and signals", "server/src/platforms/temporal/README.md"),
     status: "ready",
@@ -138,7 +117,6 @@ export function isRunnableBaseline(platform: PlatformDescriptor): boolean {
 }
 
 export function isRunnableVariant(platform: PlatformDescriptor, variantId: string): boolean {
-  return platform.kind === "backend"
-    && platform.status === "ready"
+  return platform.status === "ready"
     && platform.variants.some((variant) => variant.id === variantId && variant.status === "ready");
 }

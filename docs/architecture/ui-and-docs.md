@@ -24,12 +24,11 @@ application destinations:
 - **Runs:** the future home for concrete executions and their evidence.
 - **Experiments:** the future home for hypotheses, variables, controls, and failure conditions.
 - **Platforms:** the main operational workspace. Platform tabs select the runtime;
-  Lina exposes a computer-environment choice, while server platforms expose
-  a server alongside their infrastructure, variant, model, and
-  experiment controls.
+  server platforms expose a server alongside their infrastructure, variant, model,
+  and experiment controls.
 - **Compare:** opens from a platform task surface. It configures one shared scenario,
-  model, and experiment for multiple platforms. Computer environments and backend
-  profiles remain implementation-specific while runners are unavailable.
+  model, and experiment for multiple platforms. Backend profiles remain
+  implementation-specific while runners are unavailable.
 - **Scenarios:** the future home for canonical workloads.
 - **Docs:** a conventional documentation view with its own document navigation on the left and a reading column on the right.
 
@@ -47,13 +46,10 @@ documents and run evidence that justify a claim. Missing assessment means not as
 and verified status requires every checklist gate plus linked evidence. The first
 version is deliberately read-only so status changes remain inspectable in source control.
 
-The platform UI also uses typed catalogues. `platformCatalog.ts` owns the platform facts
-used by the platform workspace and coverage screen. `environmentCatalog.ts` owns
-computer-environment profiles and their operational facts. The UI keeps Computer
-Native's computer environment separate from the server deployments required by
-other platform implementations. The runner can collect configuration before an
-execution API exists, but its start controls remain unavailable until they can create
-real evidence.
+The platform UI also uses a typed catalogue. `platformCatalog.ts` owns the platform
+facts used by the platform workspace and coverage screen. The runner collects a
+platform's server profile, infrastructure, variant, model, and experiment configuration;
+its start controls remain unavailable until they can create real evidence.
 
 Platform Chat and Compare consume server-owned capability profiles. Chat shows the
 selected model, capability names, tool/connection activity, approval state, context-window

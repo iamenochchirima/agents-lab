@@ -44,12 +44,7 @@
     {
       "title": "External integrations",
       "documents": [
-        "server/src/integrations/README.md",
-        "server/src/integrations/lina/README.md",
-        "lina/README.md",
-        "lina/docs/README.md",
-        "lina/docs/quick-start.md",
-        "lina/docs/turn-lifecycle.md"
+        "server/src/integrations/README.md"
       ]
     },
     {
@@ -103,13 +98,7 @@
         "development/implementation-plans/platforms/README.md",
         "development/implementation-plans/platforms/completed/openrouter-model-selection.md",
         "development/implementation-plans/platforms/completed/context-management.md",
-        "development/implementation-plans/lina/README.md",
-        "development/implementation-plans/lina/lina-follow-on-queue.md",
-        "development/implementation-plans/lina/completed/lina-browser-interaction.md",
-        "development/implementation-plans/lina/completed/lina-process-execution.md",
         "development/implementation-plans/platforms/completed/platform-parallel-implementation.md",
-        "development/implementation-plans/lina/completed/lina-workspace-actions.md",
-        "development/implementation-plans/lina/completed/lina-workspace-filesystem.md",
         "development/implementation-plans/platforms/completed/restate-baseline.md",
         "development/implementation-plans/platforms/completed/langgraph-agent-execution-and-recovery.md",
         "development/implementation-plans/platforms/completed/restate-session-continuity-and-recovery.md",
@@ -124,8 +113,6 @@
         "development/implementation-plans/platforms/completed/platform-cross-comparison-acceptance.md",
         "development/implementation-plans/platforms/completed/platform-capabilities-and-integrations.md",
         "development/implementation-plans/platforms/active/aws-step-functions-baseline.md",
-        "development/implementation-plans/lina/completed/lina-reliable-terminal-and-workspace-inspection.md",
-        "development/implementation-plans/lina/completed/lina-tui.md",
         "development/implementation-plans/platforms/completed/lab-server-temporal-baseline.md",
         "development/implementation-plans/platforms/completed/platform-ui.md",
         "development/implementation-plans/studio/README.md"

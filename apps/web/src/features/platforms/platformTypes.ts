@@ -1,5 +1,4 @@
 export type Availability = "planned" | "in-progress" | "ready";
-export type PlatformKind = "backend" | "compute-native";
 
 export interface BackendProfileDescriptor {
   description: string;
@@ -25,7 +24,6 @@ export interface PlatformInfrastructureDescriptor {
 
 export interface PlatformDescriptor {
   backendProfiles: readonly BackendProfileDescriptor[];
-  computerEnvironmentIds: readonly string[];
   description: string;
   durabilityModel: string;
   executionModel: string;
@@ -34,7 +32,6 @@ export interface PlatformDescriptor {
   infrastructure: readonly PlatformInfrastructureDescriptor[];
   language: string;
   name: string;
-  kind: PlatformKind;
   role: string;
   runtime: string;
   status: Availability;

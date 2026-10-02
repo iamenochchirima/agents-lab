@@ -937,7 +937,6 @@ test("Platform Chat opens for every registered platform", async () => {
 
   try {
     const platforms = [
-      ["lina", "Lina"],
       ["temporal", "Temporal"],
       ["restate", "Restate"],
       ["langgraph", "LangGraph"],
@@ -960,6 +959,9 @@ test("Platform Chat opens for every registered platform", async () => {
       assert.equal(route.name, platformName);
       assert.equal(route.setupHref, `/platforms/${platformId}`);
     }
+
+    await navigate(browser.cdp, "/platforms/lina/chat");
+    await waitForText(browser.cdp, "Platform not found");
 
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
     assert.equal(browser.dialogs.length, 0, "Chat must not open native browser dialogs");

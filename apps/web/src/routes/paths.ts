@@ -5,7 +5,6 @@ export const appPaths = {
   runs: "/runs",
   experiments: "/experiments",
   platforms: "/platforms",
-  environments: "/environments",
   scenarios: "/scenarios",
   architecture: "/architecture",
   repository: "/repository",
@@ -16,6 +15,5 @@ export const appPaths = {
   components: "/components",
   platform: (platformId: string) => `/platforms/${platformId}`,
   platformSection: (platformId: string, section: string) => `/platforms/${platformId}/${section}`,
-  environment: (environmentId: string) => `/environments/${environmentId}`,
   component: (areaId: string) => `/components/${areaId}`,
 } as const;

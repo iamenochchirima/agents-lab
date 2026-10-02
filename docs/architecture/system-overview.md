@@ -4,11 +4,9 @@ The laboratory has one server and several replaceable implementation areas.
 
 ## What makes a runnable harness
 
-A platform alone is not a runnable implementation. A backend-platform configuration
-selects a variant, agent definition, backend deployment profile, required services,
-model, and the context, memory, tool, and observability strategies needed for that run.
-Lina receives a resolved Lab run through an integration seam and operates
-within the selected computer host without a dedicated environment-adapter subtree.
+A platform alone is not a runnable implementation. A platform configuration selects a
+variant, agent definition, backend deployment profile, required services, model, and
+the context, memory, tool, and observability strategies needed for that run.
 
 Agent definitions stay local to their harness variant because their construction uses
 platform-specific concepts. Scenarios remain separate. A single-agent LangGraph
@@ -38,17 +36,14 @@ flowchart TD
   Configuration --> Harness
 ```
 
-The platform directory owns backend-platform integrations and their variants.
-`lina/` owns the compute-native runtime, while
-`server/src/integrations/lina/` owns only the Lab-facing adapter. Backend variants
-declare which deployment profiles and service combinations they support.
+The platform directory owns backend-platform integrations and their variants. Each
+variant declares which deployment profiles and service combinations it supports.
 
 ## How the laboratory runs it
 
 The UI or command line selects an implementation, scenario, and experiment. The Lab
 server resolves and validates that combination, creates an immutable run manifest,
-dispatches to the selected runner, and records evidence. The runner may be a backend
-platform service or Lina through its integration adapter. Evaluation reads
+dispatches to the selected platform runner, and records evidence. Evaluation reads
 the recorded evidence and produces metrics.
 
 ```mermaid
@@ -59,7 +54,7 @@ flowchart LR
   Server[Fastify Lab server]
   Config[Resolved run manifest]
   Runner[Registered runner adapter]
-  Implementation[Backend platform or Lina]
+  Implementation[Selected platform variant]
   Scenario[Scenario]
   Experiment[Experiment]
   Telemetry[Telemetry]

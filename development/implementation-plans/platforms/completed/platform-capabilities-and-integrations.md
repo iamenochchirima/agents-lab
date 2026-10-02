@@ -172,7 +172,7 @@ The completed phase must be able to:
 ## Explicitly out of scope
 
 - Lina computer-native tools, workspaces, sandboxes, browser automation, or VM/remote
-  computer execution. Those remain in lina/ and its Lab integration boundary.
+  computer execution. Those remain in Lina's repository and its Lab integration boundary.
 - Studio, component experiments, benchmark leaderboards, or a new Studio capability UI.
 - A public plugin marketplace, arbitrary third-party plugin installation, or unsigned code
   execution.

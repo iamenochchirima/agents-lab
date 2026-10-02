@@ -108,7 +108,7 @@ optional host capability.
 
 ## Browser interaction is not the same as whole-desktop computer use
 
-Lina already has a browser module at `lina/src/browser/`. It owns an isolated
+Lina has a browser module in its sibling checkout at `../lina/src/browser/`. It owns an isolated
 Playwright session, bounded screenshots, accessibility-oriented snapshots, short
 life element references, navigation policy, action approval, download/upload
 handling, cancellation, crash classification, and durable browser evidence. Its
@@ -174,16 +174,16 @@ screen must never grant permission or override Lina policy.
 
 The repository already has useful plumbing:
 
-- `lina/src/browser/` provides the semantic browser precedent and a library-neutral
+- `../lina/src/browser/` provides the semantic browser precedent and a library-neutral
   adapter seam;
-- `lina/src/process/` provides bounded real-process execution and cancellation
+- `../lina/src/process/` provides bounded real-process execution and cancellation
   semantics;
-- `lina/src/workspace/` and `lina/src/security/` provide workspace boundaries,
+- `../lina/src/workspace/` and `../lina/src/security/` provide workspace boundaries,
   mutation approvals, resource limits, and evidence redaction;
-- `lina/src/runtime/` owns tool rounds, persistence, recovery, and lifecycle
+- `../lina/src/runtime/` owns tool rounds, persistence, recovery, and lifecycle
   events;
-- `lina/src/context/` owns bounded model-visible context and source accounting; and
-- `lina/src/cli/` owns the interactive approval and TUI surface.
+- `../lina/src/context/` owns bounded model-visible context and source accounting; and
+- `../lina/src/cli/` owns the interactive approval and TUI surface.
 
 The missing pieces are a desktop observation/action contract and a model/provider
 path that can carry image observations and recognize the chosen computer-use action

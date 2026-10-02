@@ -1,35 +1,13 @@
 # Local development
 
-The repository uses one pnpm workspace. Install dependencies from the repository root:
+The Lab uses one pnpm workspace. Install its dependencies from the repository root:
 
 ```bash
 pnpm install
 ```
 
-The workspace includes the Lina harness, Lab server, web app, and the
-platform packages under `server/src/platforms/`. They share `pnpm-lock.yaml`; do not
-create package-local lockfiles.
-
-## Lina
-
-For the daily standalone agent path:
-
-```bash
-cd lina
-pnpm run chat
-```
-
-Copy `lina/.env.example` to `lina/.env` once if you want to keep a
-real provider, model, and API key between runs. That file is ignored by git. The same
-command also works from the repository root as `pnpm run chat`.
-
-Run its checks from the root with filters:
-
-```bash
-pnpm --filter @agent-harness-lab/lina run typecheck
-pnpm --filter @agent-harness-lab/lina test
-pnpm --filter @agent-harness-lab/lina coverage
-```
+The workspace includes the Lab server, web app, and platform packages under
+`server/src/platforms/`.
 
 ## Lab server and web app
 

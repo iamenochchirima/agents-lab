@@ -6,13 +6,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "chat": "pnpm --filter @agent-harness-lab/lina run build && cd lina && node dist/src/cli/main.js chat",
-    "chat:cua-xvfb": "pnpm --filter @agent-harness-lab/lina run chat:cua-xvfb",
-    "chat:cua-xephyr": "pnpm --filter @agent-harness-lab/lina run chat:cua-xephyr",
     "typecheck": "pnpm --recursive --if-present typecheck",
     "build": "pnpm --recursive --if-present build",
     "test": "pnpm --recursive --if-present test",
-    "coverage": "pnpm --filter @agent-harness-lab/lina coverage",
     "dev": "pnpm --filter @agent-harness-lab/web dev",
     "stack": "./scripts/run_local_stack.sh"
   }

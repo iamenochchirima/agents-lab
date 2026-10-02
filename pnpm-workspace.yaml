@@ -4,6 +4,5 @@ packages:
   - studio/*
   - studio/assemblies/*
   - studio/modules/*
-  - lina
   - server
   - server/src/platforms/*

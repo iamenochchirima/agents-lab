@@ -4,9 +4,9 @@ status: accepted
 
 # Use TypeScript for the laboratory core and platform-native languages for variants
 
-Agent Harness Lab will use TypeScript for the laboratory server, runner, CLI,
-local-development services, and the Lina Lab integration. The React/Vite application
-uses the same TypeScript workspace. Scenarios and experiments are language-neutral
+Agent Harness Lab uses TypeScript for the laboratory server, runner, CLI, and
+local-development services. The React/Vite application uses the same TypeScript
+workspace. Scenarios and experiments are language-neutral
 definitions wherever practical, rather than being owned by the server language.
 
 Each platform variant uses its most representative supported language. The initial

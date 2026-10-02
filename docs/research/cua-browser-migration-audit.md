@@ -4,6 +4,10 @@ Date: 2026-09-20
 
 This note audits the browser migration requested for Lina. It uses only the local first-party checkouts listed below. It does not claim that Lina has completed the migration or passed live browser acceptance.
 
+Historical snapshot: the Lina paths and implementation description below refer to the
+source revision in the table, before the later Cua browser migration and extraction to the
+standalone Lina repository. They are not a description of the current Lina tree.
+
 ## Source revisions
 
 | Project | Revision | Scope read |
@@ -127,7 +131,7 @@ The target for this migration should be Linux X11 with Chrome, Chromium, or Edge
 
 Sources: `platform-linux/src/browser_platform.rs`, `browser/pointer.rs`, `browser/tools.rs`, `docs/browser-tool-implementation-journal.md`, and `docs/browser-existing-profile-attachment-plan.md`.
 
-## Current Lina implementation
+## Lina implementation at the audited revision
 
 Lina currently has two browser paths that duplicate Cua responsibility:
 

@@ -9,7 +9,6 @@ organized by the product they change.
 ```text
 implementation-plans/
 ├── platforms/       # Temporal, Restate, LangGraph, Mastra, and other platforms
-├── lina/           # Computer Native agent
 ├── studio/          # Studio and component experiments
 ├── README.md
 └── TEMPLATE.md
@@ -30,7 +29,6 @@ Timestamps use ISO 8601 with a timezone. Start a new plan from
 ## Product indexes
 
 - [Platforms](platforms/README.md)
-- [Lina](lina/README.md)
 - [Studio](studio/README.md)
 
 The product indexes are the authoritative lists of active and completed plans. Do not
