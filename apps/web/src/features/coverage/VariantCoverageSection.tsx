@@ -80,10 +80,12 @@ export function VariantCoverageSection({
             <summary>Agent definitions <span>{variant.agentDefinitions.length}</span></summary>
             <CoverageCollection emptyMessage="No agent definitions declared." items={variant.agentDefinitions} />
           </details>
-          <details className="coverage-subsection">
-            <summary>Environment combinations <span>{visibleEnvironments.length}</span></summary>
-            <CoverageCollection emptyMessage="This environment is not declared for the variant." items={visibleEnvironments} />
-          </details>
+          {visibleEnvironments.length > 0 ? (
+            <details className="coverage-subsection">
+              <summary>Environment combinations <span>{visibleEnvironments.length}</span></summary>
+              <CoverageCollection emptyMessage="This environment is not declared for the variant." items={visibleEnvironments} />
+            </details>
+          ) : null}
           <details className="coverage-subsection">
             <summary>Infrastructure requirements <span>{variant.infrastructure.length}</span></summary>
             <div className="coverage-collection">

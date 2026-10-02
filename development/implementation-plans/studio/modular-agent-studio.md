@@ -37,7 +37,7 @@ implementation stage must have its own bounded plan before that stage begins.
   method.
 - Treat filesystem, browser, and backend access as capabilities selected by an
   assembly, not as the organizing principle for all module packages. Sharing code
-  with future agents such as Lina or business agents is optional and should follow
+  with future independently owned harnesses or business agents is optional and should follow
   demonstrated reuse.
 - Keep all modules in this monorepo at first. A package may move to a separate
   repository or process when its release, dependency, ownership, or isolation needs

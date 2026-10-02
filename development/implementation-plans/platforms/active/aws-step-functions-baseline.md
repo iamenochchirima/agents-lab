@@ -60,7 +60,7 @@ development/playground/aws-step-functions-baseline/**
 ```
 
 The common control plane, root/server manifests, startup scripts, UI/catalog,
-documentation navigation, and Lina files are deliberately outside
+documentation navigation, and standalone harness repositories are deliberately outside
 this change. The platform-owned `package.json` and lockfile are the dependency
 boundary; no shared package file is changed.
 

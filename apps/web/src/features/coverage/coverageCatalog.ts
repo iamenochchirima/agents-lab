@@ -1,6 +1,5 @@
 import { capabilityCatalog, capabilityGroups } from "./capabilityCatalog";
 import { platformCatalog } from "../platforms/platformCatalog";
-import { environmentCatalog } from "../environments/environmentCatalog";
 import type {
   CoverageCatalog,
   CoverageLink,
@@ -47,15 +46,6 @@ function documentLink(documentId: string, label: string): CoverageLink {
   return { documentId, label };
 }
 
-function unassessedEnvironments(environmentIds: readonly string[]): readonly EnvironmentCoverage[] {
-  return environmentCatalog.filter((environment) => environmentIds.includes(environment.id)).map((environment) => ({
-    id: environment.id,
-    name: environment.name,
-    notes: "No environment adapter has been selected for this harness variant.",
-    status: "not-assessed",
-  }));
-}
-
 function unassessedWorkloads(
   definitions: ReadonlyArray<readonly [string, string]>,
 ): readonly WorkloadCoverage[] {
@@ -94,15 +84,13 @@ interface BaselineOptions {
   agentName: string;
   agentNotes: string;
   agentTopology: string;
-  environmentIds: readonly string[];
   infrastructure?: readonly InfrastructureCoverage[];
   platformId: string;
   platformName: string;
-  variantDocumentId?: string;
 }
 
 function baselineVariant(options: BaselineOptions): HarnessVariantCoverage {
-  const variantDocumentId = options.variantDocumentId ?? `server/src/platforms/${options.platformId}/variants/baseline/README.md`;
+  const variantDocumentId = `server/src/platforms/${options.platformId}/variants/baseline/README.md`;
 
   return {
     id: "baseline",
@@ -119,7 +107,7 @@ function baselineVariant(options: BaselineOptions): HarnessVariantCoverage {
         topology: options.agentTopology,
       },
     ],
-    environments: unassessedEnvironments(options.environmentIds),
+    environments: [] as readonly EnvironmentCoverage[],
     infrastructure: [...(options.infrastructure ?? []), ...commonInfrastructure()],
     strategies: unassessedStrategies(),
     scenarios: unassessedWorkloads(scenarioNames),
@@ -151,8 +139,6 @@ const platforms: readonly PlatformCoverage[] = platformCatalog.map((descriptor) 
     })),
     platformId: descriptor.id,
     platformName: descriptor.name,
-    environmentIds: descriptor.computerEnvironmentIds,
-    variantDocumentId: descriptor.kind === "compute-native" ? descriptor.implementationDocumentId : undefined,
   })],
 }));
 

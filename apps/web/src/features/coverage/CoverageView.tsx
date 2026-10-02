@@ -130,13 +130,15 @@ export function CoverageView({ catalog }: CoverageViewProps) {
               {catalog.platforms.map((platform) => <option key={platform.id} value={platform.id}>{platform.name}</option>)}
             </select>
           </label>
-          <label>
-            <span>Environment</span>
-            <select value={environmentId} onChange={(event) => setEnvironmentId(event.target.value)}>
-              <option value="all">All environments</option>
-              {environmentOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-            </select>
-          </label>
+          {environmentOptions.length > 0 ? (
+            <label>
+              <span>Environment</span>
+              <select value={environmentId} onChange={(event) => setEnvironmentId(event.target.value)}>
+                <option value="all">All environments</option>
+                {environmentOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label>
             <span>Status</span>
             <select value={status} onChange={(event) => setStatus(event.target.value as CoverageStatus | "all")}>
@@ -144,7 +146,7 @@ export function CoverageView({ catalog }: CoverageViewProps) {
               {filterableStatuses.map((item) => <option key={item} value={item}>{coverageStatusLabels[item]}</option>)}
             </select>
           </label>
-          <span className="coverage-filter-mark"><Filter aria-hidden="true" size={15} /> Platform scopes sections, environment scopes combinations, and search and status scope capabilities.</span>
+          <span className="coverage-filter-mark"><Filter aria-hidden="true" size={15} /> Platform scopes sections; declared environments scope combinations, and search and status scope capabilities.</span>
         </div>
 
         <div className="coverage-platform-list">
