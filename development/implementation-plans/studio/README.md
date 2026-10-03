@@ -64,11 +64,13 @@ as a record of the current implementation.
 
 ## Active plans
 
+- [Studio Context component experiment](active/context-component-experiment.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
 
 The existing UI foundation plan predates the separate Studio API decision. Its
 configuration-only preview remains distinct from run execution. The chat uses a
-separate route and the Studio API.
+separate route and the Studio API. The Context experiment plan is the next slice to
+connect the preview to an executable, inspectable comparison.
 
 ## Completed plans
 

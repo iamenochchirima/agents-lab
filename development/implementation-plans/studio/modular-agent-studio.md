@@ -126,12 +126,14 @@ manager.
    and remote-storage work needs its own plan.
 6. **Component alternatives and experiments.** Add alternative implementations and
    comparison procedures only after the first assembly exposes useful seams. Keep the
-   changed variable and interpretation limits explicit.
+   changed variable and interpretation limits explicit. The first bounded comparison
+   is the [Context component experiment](active/context-component-experiment.md): the
+   budget-fitted recent-history implementation versus a fixed recent-message window.
 
 Each stage has its own implementation plan, acceptance checks, documentation, and
-handoff. The next planning step is to review the reference assembly's module seams
-and run evidence, then choose a bounded plan for the highest-value follow-up before
-adding variations.
+handoff. The next implementation is to execute the Context component experiment plan,
+which turns the current Context preview into one reproducible comparison before
+adding further alternatives.
 
 ## Completion direction
 
