@@ -76,7 +76,7 @@ export interface ContextAssemblyInput {
 
 export interface ContextOmission {
   readonly sourceId: string;
-  readonly reason: "budget" | "invalid-source";
+  readonly reason: "budget" | "invalid-source" | "window";
 }
 
 export interface ContextSourceEvidence {

@@ -84,7 +84,12 @@ function StudioApiConnection() {
   return (
     <div className="studio-prototype-toolbar">
       <div aria-live="polite" className={`studio-api-connection is-${status}`} role="status">{label}</div>
-      <Link className="studio-api-chat-link" to={appPaths.studioChat}><MessageSquareText aria-hidden="true" size={14} /> Open assembly chat</Link>
+      <div className="studio-entry-links">
+        <Link className="studio-api-chat-link" to={appPaths.studioLina}><Network aria-hidden="true" size={14} /> Lina architecture</Link>
+        <Link className="studio-api-chat-link" to={appPaths.studioComparison}><Plus aria-hidden="true" size={14} /> Comparison table</Link>
+        <Link className="studio-api-chat-link" to={appPaths.studioExplorers}><Network aria-hidden="true" size={14} /> System explorers</Link>
+        <Link className="studio-api-chat-link" to={appPaths.studioChat}><MessageSquareText aria-hidden="true" size={14} /> Open assembly chat</Link>
+      </div>
     </div>
   );
 }

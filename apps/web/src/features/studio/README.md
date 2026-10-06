@@ -20,3 +20,28 @@ twelve harness areas. The environment inspector was
 removed so the experiment controls remain the visual centre of the page. The view
 only shows the currently supported old-important-fact case; unsupported scenarios
 are not presented as selectable controls.
+
+## Hermes simulation
+
+Hermes remains available through System explorers at `/studio/hermes`, a source-grounded whole-agent
+walkthrough with selectable paths and node inspection. See the
+[simulation README](../hermes-simulation/README.md) for scope and source revision.
+
+## Source system explorers
+
+The **System explorers** entry opens `/studio/explorers`, with separate maps for
+OpenClaw, Pi, Waku Agent and the existing Hermes study. These are source-based
+learning pages; they do not configure or execute Studio assemblies. See
+`../system-explorer/README.md` for ownership, interactions and scope.
+
+## Manual comparison
+
+The Comparison table opens `/studio/comparison`, a four-agent study table with fixed
+topic rows and initially empty per-agent item lists. See [ownership and persistence](../system-comparison/README.md).
+
+## Lina architecture
+
+**Lina architecture** opens `/studio/lina`, an empty editable design canvas with
+component notes, directed connections, source studies and experiment ideas. It saves
+explicit document revisions through the local Studio API; see
+[the workspace guide](../lina/README.md). It is separate from the executable reference assembly.

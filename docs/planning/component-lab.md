@@ -94,6 +94,14 @@ outputs, old but important facts, irrelevant history, and strict token budgets.
 The experiment should show both the final answer and the selected, removed, or
 summarized context that produced it.
 
+Studio now has a bounded Context retention experiment comparing budget-fitted
+recent history with a fixed recent-message window on one deterministic case. The
+[active implementation plan](../../development/implementation-plans/studio/active/context-component-experiment.md)
+documents its fixed controls, evidence, persistence lifecycle, and interpretation
+limits. This first slice demonstrates source selection and omission evidence; it
+does not establish answer quality or cover the other Context strategies listed
+above.
+
 ### Planning and reasoning
 
 Possible strategies include ReAct-style interleaving, plan-then-execute, graph
@@ -275,9 +283,12 @@ component strategy identity remain separate fields in the experiment configurati
 
 ## Suggested first slice
 
-Start with Context management using deterministic inputs and a deterministic model
-fixture. Implement a small number of strategies, such as full history, sliding
-window, and relevance-ranked retention.
+The first bounded Context slice is the
+[Context retention experiment](../../development/implementation-plans/studio/active/context-component-experiment.md).
+It uses deterministic inputs and Replay to compare budget-fitted recent history with
+a fixed recent-message window. The broader strategy set below remains future work;
+the current experiment does not implement full-history or relevance-ranked
+retention.
 
 The first slice should make it possible to inspect:
 

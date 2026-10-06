@@ -1,6 +1,11 @@
 import type { JsonValue, ModuleIdentity, RunScope } from "@agent-harness-lab/agent-protocol";
 import { createScopedComputerUse, SCOPED_COMPUTER_USE_IDENTITY } from "@agent-harness-lab/module-computer-use";
-import { createContextAssembler, type ContextTokenCounter } from "@agent-harness-lab/module-context";
+import {
+  createContextAssembler,
+  createFixedRecentMessageWindowAssembler,
+  parseFixedRecentMessageWindowConfig,
+  type ContextTokenCounter,
+} from "@agent-harness-lab/module-context";
 import { createSingleTurnControl } from "@agent-harness-lab/module-control";
 import { CALCULATOR_CAPABILITY, COMPUTER_FIXTURE_CAPABILITY, createControlledReferenceExecutionEnvironment } from "@agent-harness-lab/module-execution-environment";
 import { createTextInputNormalizer } from "@agent-harness-lab/module-input";
@@ -29,10 +34,17 @@ export interface ReferenceAssemblyComponent {
 export interface ReferenceChatAssembly {
   readonly schemaVersion: 1;
   readonly id: "studio-reference-agent";
-  readonly version: "0.5.0";
+  readonly version: "0.6.0";
   readonly mode: "deterministic-reference";
   readonly components: readonly ReferenceAssemblyComponent[];
   readonly limitations: readonly string[];
+}
+
+export type ReferenceContextStrategy = "deterministic-context-assembler" | "fixed-recent-message-window";
+
+export interface ReferenceAssemblyContextSelection {
+  readonly contextStrategy: ReferenceContextStrategy;
+  readonly maxRecentMessages?: number;
 }
 
 export interface ReferenceAgent {
@@ -41,6 +53,10 @@ export interface ReferenceAgent {
   createObservability(scope: RunScope, rootDirectory: string): ObservabilityModule;
   runTurn(request: Omit<TextTurnRequest, "memory"> & { readonly memory: MemorySession }): Promise<TextTurnResult>;
 }
+
+const ASSEMBLY_ID = "studio-reference-agent" as const;
+const ASSEMBLY_VERSION = "0.6.0" as const;
+const ASSEMBLY_MODE = "deterministic-reference" as const;
 
 const CONFIG = Object.freeze({
   input: { maxTextBytes: 16_000, maxAttachments: 0 },
@@ -84,49 +100,97 @@ const AREAS: readonly ReferenceAssemblyArea[] = Object.freeze([
   "control", "execution-environment", "output-actions", "safety", "model-interface", "observability",
 ]);
 
-/** One static, known-good descriptor. Its constructors are compiled into Studio packages. */
-export const REFERENCE_ASSEMBLY_DESCRIPTOR: ReferenceChatAssembly = Object.freeze({
-  schemaVersion: 1,
-  id: "studio-reference-agent",
-  version: "0.5.0",
-  mode: "deterministic-reference",
-  components: Object.freeze([
-    component("input", "@agent-harness-lab/module-input", "0.1.0", { id: "text-input-normalizer", version: "0.1.0" }, CONFIG.input),
-    component("context", "@agent-harness-lab/module-context", "0.5.0", { id: "deterministic-context-assembler", version: "0.4.0" }, {
-      ...CONFIG.context,
-      budget: { contextWindowTokens: 8_192, reservedOutputTokens: 512, safetyMarginTokens: 256, tokenizer: "utf8-bytes-div4-estimate-v1" },
-    }),
-    component("planning", "@agent-harness-lab/module-planning", "0.1.0", { id: "single-step-response-planner", version: "0.1.0" }, CONFIG.planning),
-    component("memory", "@agent-harness-lab/module-memory", "0.1.0", IN_MEMORY_SESSION_IDENTITY, CONFIG.memory),
-    component("tool-use", "@agent-harness-lab/module-tool-use", "0.2.0", { id: "strict-tool-use", version: "0.2.0" }, CONFIG.toolUse),
-    component("computer-use", "@agent-harness-lab/module-computer-use", "0.2.0", SCOPED_COMPUTER_USE_IDENTITY, CONFIG.computerUse),
-    component("control", "@agent-harness-lab/module-control", "0.3.0", { id: "bounded-single-turn-control", version: "0.2.0" }, CONFIG.control),
-    component("execution-environment", "@agent-harness-lab/module-execution-environment", "0.2.0", { id: "controlled-reference-environment", version: "0.2.0" }, CONFIG.executionEnvironment),
-    component("output-actions", "@agent-harness-lab/module-output-actions", "0.1.0", { id: "text-output-actions", version: "0.1.0" }, CONFIG.outputActions),
-    component("safety", "@agent-harness-lab/module-safety", "0.2.0", { id: "allowlist-safety", version: "0.2.0" }, CONFIG.safety),
-    component("model-interface", "@agent-harness-lab/module-model-interface", "0.4.0", REFERENCE_MODEL_IDENTITY, CONFIG.model),
-    component("observability", "@agent-harness-lab/module-observability", "0.1.0", { id: "jsonl-observability-recorder", version: "0.1.0" }, CONFIG.observability),
-  ]),
-  limitations: Object.freeze([
-    "The model interface uses deterministic replay and two exact scripted scenario tasks; it does not call an LLM or answer semantically.",
-    "Memory and conversation history live in the Studio API process and are cleared when that process restarts.",
-    "Computer Use acts only on the controlled in-process fixture page; it does not connect to a real browser or desktop.",
-    "The Execution Environment supports only fixture arithmetic and fixture computer operations; it has no filesystem, process, or network access.",
-    "Planning proposes one advisory plan per turn; Control retains bounded loop and termination ownership.",
-  ]),
+const CONTEXT_BUDGET = Object.freeze({
+  contextWindowTokens: 8_192,
+  reservedOutputTokens: 512,
+  safetyMarginTokens: 256,
+  tokenizer: "utf8-bytes-div4-estimate-v1",
 });
 
+const LIMITATIONS = Object.freeze([
+  "The model interface uses deterministic replay and two exact scripted scenario tasks; it does not call an LLM or answer semantically.",
+  "Memory and conversation history live in the Studio API process and are cleared when that process restarts.",
+  "Computer Use acts only on the controlled in-process fixture page; it does not connect to a real browser or desktop.",
+  "The Execution Environment supports only fixture arithmetic and fixture computer operations; it has no filesystem, process, or network access.",
+  "Planning proposes one advisory plan per turn; Control retains bounded loop and termination ownership.",
+]);
+
+const BASE_COMPONENTS: readonly ReferenceAssemblyComponent[] = Object.freeze([
+  component("input", "@agent-harness-lab/module-input", "0.1.0", { id: "text-input-normalizer", version: "0.1.0" }, CONFIG.input),
+  contextComponent("deterministic-context-assembler"),
+  component("planning", "@agent-harness-lab/module-planning", "0.1.0", { id: "single-step-response-planner", version: "0.1.0" }, CONFIG.planning),
+  component("memory", "@agent-harness-lab/module-memory", "0.1.0", IN_MEMORY_SESSION_IDENTITY, CONFIG.memory),
+  component("tool-use", "@agent-harness-lab/module-tool-use", "0.2.0", { id: "strict-tool-use", version: "0.2.0" }, CONFIG.toolUse),
+  component("computer-use", "@agent-harness-lab/module-computer-use", "0.2.0", SCOPED_COMPUTER_USE_IDENTITY, CONFIG.computerUse),
+  component("control", "@agent-harness-lab/module-control", "0.3.0", { id: "bounded-single-turn-control", version: "0.2.0" }, CONFIG.control),
+  component("execution-environment", "@agent-harness-lab/module-execution-environment", "0.2.0", { id: "controlled-reference-environment", version: "0.2.0" }, CONFIG.executionEnvironment),
+  component("output-actions", "@agent-harness-lab/module-output-actions", "0.1.0", { id: "text-output-actions", version: "0.1.0" }, CONFIG.outputActions),
+  component("safety", "@agent-harness-lab/module-safety", "0.2.0", { id: "allowlist-safety", version: "0.2.0" }, CONFIG.safety),
+  component("model-interface", "@agent-harness-lab/module-model-interface", "0.4.0", REFERENCE_MODEL_IDENTITY, CONFIG.model),
+  component("observability", "@agent-harness-lab/module-observability", "0.1.0", { id: "jsonl-observability-recorder", version: "0.1.0" }, CONFIG.observability),
+]);
+
 const STATIC_IMPLEMENTATION_REGISTRY = new Map(
-  REFERENCE_ASSEMBLY_DESCRIPTOR.components.map((entry) => [entry.area, entry] as const),
+  BASE_COMPONENTS.filter((entry) => entry.area !== "context").map((entry) => [entry.area, entry] as const),
 );
 
-validateDescriptor(REFERENCE_ASSEMBLY_DESCRIPTOR);
+/** Build one of the two statically compiled Context choices with all other selections fixed. */
+export function createReferenceAssemblyDescriptor(
+  selection: ReferenceAssemblyContextSelection = { contextStrategy: "deterministic-context-assembler" },
+): ReferenceChatAssembly {
+  if (!isRecord(selection)) throw new Error("A Context strategy selection object is required.");
+  for (const key of Object.keys(selection)) {
+    if (key !== "contextStrategy" && key !== "maxRecentMessages") {
+      throw new Error(`Unsupported reference Context selection field ${JSON.stringify(key)}.`);
+    }
+  }
+  let selectedContext: ReferenceAssemblyComponent;
+  if (selection.contextStrategy === "deterministic-context-assembler") {
+    if (selection.maxRecentMessages !== undefined) {
+      throw new Error("maxRecentMessages is only valid for fixed-recent-message-window.");
+    }
+    selectedContext = contextComponent("deterministic-context-assembler");
+  } else if (selection.contextStrategy === "fixed-recent-message-window") {
+    const fixedConfig = parseFixedRecentMessageWindowConfig({
+      ...CONFIG.context,
+      maxRecentMessages: selection.maxRecentMessages,
+    });
+    selectedContext = contextComponent("fixed-recent-message-window", fixedConfig.maxRecentMessages);
+  } else {
+    throw new Error("The reference assembly supports only its two registered Context strategies.");
+  }
 
-/** Create the one fixed assembly used by ordinary chat and controlled action scenarios. */
+  const descriptor: ReferenceChatAssembly = Object.freeze({
+    schemaVersion: 1,
+    id: ASSEMBLY_ID,
+    version: ASSEMBLY_VERSION,
+    mode: ASSEMBLY_MODE,
+    components: Object.freeze(BASE_COMPONENTS.map((entry) => entry.area === "context" ? selectedContext : entry)),
+    limitations: LIMITATIONS,
+  });
+  validateReferenceAssemblyDescriptor(descriptor);
+  return descriptor;
+}
+
+/** Default Context selection used by ordinary chat and controlled action scenarios. */
+export const REFERENCE_ASSEMBLY_DESCRIPTOR = createReferenceAssemblyDescriptor();
+/** Default fixed-window descriptor, useful for inspecting the registered alternative. */
+export const FIXED_WINDOW_REFERENCE_ASSEMBLY_DESCRIPTOR = createReferenceAssemblyDescriptor({
+  contextStrategy: "fixed-recent-message-window",
+});
+
+/** Create the selected assembly, after validating its descriptor against the static registry. */
 export function createReferenceAgent(descriptor: unknown = REFERENCE_ASSEMBLY_DESCRIPTOR): ReferenceAgent {
   validateReferenceAssemblyDescriptor(descriptor);
   const input = createTextInputNormalizer(CONFIG.input);
-  const context = createContextAssembler(CONFIG.context, { tokenCounter: createTokenCounter() });
+  const contextSelection = descriptor.components.find((entry) => entry.area === "context")!;
+  const contextDependencies = { tokenCounter: createTokenCounter() };
+  const context = contextSelection.implementation.id === "fixed-recent-message-window"
+    ? createFixedRecentMessageWindowAssembler({
+      ...CONFIG.context,
+      maxRecentMessages: (contextSelection.configuration as Record<string, unknown>).maxRecentMessages as number,
+    }, contextDependencies)
+    : createContextAssembler(CONFIG.context, contextDependencies);
   const planning = createSingleStepResponsePlanner(CONFIG.planning);
   const control = createSingleTurnControl(CONFIG.control);
   const model = createReferenceModelInterface(CONFIG.model);
@@ -157,7 +221,7 @@ export function createReferenceAgent(descriptor: unknown = REFERENCE_ASSEMBLY_DE
   };
 
   return Object.freeze({
-    assembly: REFERENCE_ASSEMBLY_DESCRIPTOR,
+    assembly: descriptor,
     createMemorySession(scope: MemorySessionScope) {
       return createInMemorySession(scope, CONFIG.memory);
     },
@@ -184,14 +248,27 @@ function component(
   return Object.freeze({ area, packageName, packageVersion, implementation, configuration: configuration as JsonValue });
 }
 
-function validateDescriptor(descriptor: ReferenceChatAssembly): void {
-  validateReferenceAssemblyDescriptor(descriptor);
+function contextComponent(strategy: ReferenceContextStrategy, maxRecentMessages?: number): ReferenceAssemblyComponent {
+  const configuration = {
+    ...CONFIG.context,
+    ...(strategy === "fixed-recent-message-window" ? { maxRecentMessages: maxRecentMessages ?? 4 } : {}),
+    budget: CONTEXT_BUDGET,
+  };
+  return component(
+    "context",
+    "@agent-harness-lab/module-context",
+    "0.6.0",
+    strategy === "deterministic-context-assembler"
+      ? { id: strategy, version: "0.4.0" }
+      : { id: strategy, version: "0.1.0" },
+    configuration,
+  );
 }
 
 /** Reject unknown or incompatible selections before resolving any module factories. */
 export function validateReferenceAssemblyDescriptor(value: unknown): asserts value is ReferenceChatAssembly {
-  if (!isRecord(value) || value.schemaVersion !== 1 || value.id !== REFERENCE_ASSEMBLY_DESCRIPTOR.id
-    || value.version !== REFERENCE_ASSEMBLY_DESCRIPTOR.version || value.mode !== REFERENCE_ASSEMBLY_DESCRIPTOR.mode
+  if (!isRecord(value) || value.schemaVersion !== 1 || value.id !== ASSEMBLY_ID
+    || value.version !== ASSEMBLY_VERSION || value.mode !== ASSEMBLY_MODE
     || !Array.isArray(value.components) || !Array.isArray(value.limitations)) {
     throw new Error("The reference assembly descriptor has an unsupported identity, version, or shape.");
   }
@@ -203,7 +280,7 @@ export function validateReferenceAssemblyDescriptor(value: unknown): asserts val
       throw new Error("The reference assembly contains an invalid module selection.");
     }
     const area = raw.area as ReferenceAssemblyArea;
-    const expected = STATIC_IMPLEMENTATION_REGISTRY.get(area);
+    const expected = area === "context" ? expectedContextComponent(raw) : STATIC_IMPLEMENTATION_REGISTRY.get(area);
     if (!expected || selected.has(area)) throw new Error(`The reference assembly has no unique registered implementation for ${area}.`);
     if (raw.packageName !== expected.packageName || raw.packageVersion !== expected.packageVersion
       || raw.implementation.id !== expected.implementation.id || raw.implementation.version !== expected.implementation.version) {
@@ -220,6 +297,24 @@ export function validateReferenceAssemblyDescriptor(value: unknown): asserts val
   if (!value.limitations.every((limitation) => typeof limitation === "string")) {
     throw new Error("The reference assembly limitations must be text values.");
   }
+}
+
+function expectedContextComponent(raw: Record<string, unknown>): ReferenceAssemblyComponent | undefined {
+  if (raw.packageName !== "@agent-harness-lab/module-context" || raw.packageVersion !== "0.6.0"
+    || !isRecord(raw.implementation) || !isRecord(raw.configuration)) return undefined;
+  const id = raw.implementation.id;
+  const version = raw.implementation.version;
+  if (id === "deterministic-context-assembler" && version === "0.4.0") {
+    return contextComponent("deterministic-context-assembler");
+  }
+  if (id === "fixed-recent-message-window" && version === "0.1.0") {
+    const maxRecentMessages = raw.configuration.maxRecentMessages;
+    if (typeof maxRecentMessages !== "number" || !Number.isInteger(maxRecentMessages) || maxRecentMessages < 1 || maxRecentMessages > 12) {
+      return undefined;
+    }
+    return contextComponent("fixed-recent-message-window", maxRecentMessages);
+  }
+  return undefined;
 }
 
 function canonicalJson(value: unknown): string {

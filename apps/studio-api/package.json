@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.13.0 || >=23.4.0"
   },
   "scripts": {
     "build": "pnpm --filter @agent-harness-lab/studio-http-contract build && pnpm --filter @agent-harness-lab/reference-agent-assembly... build && tsc -p tsconfig.json",
@@ -21,7 +21,9 @@
     "@agent-harness-lab/module-input": "workspace:*",
     "@agent-harness-lab/module-memory": "workspace:*",
     "@agent-harness-lab/module-output-actions": "workspace:*",
+    "@agent-harness-lab/module-tool-use": "workspace:*",
     "@agent-harness-lab/reference-agent-assembly": "workspace:*",
+    "@agent-harness-lab/scenario-context-stress": "workspace:*",
     "@agent-harness-lab/studio-http-contract": "workspace:*",
     "@fastify/cors": "^11.3.0",
     "fastify": "^5.12.4"

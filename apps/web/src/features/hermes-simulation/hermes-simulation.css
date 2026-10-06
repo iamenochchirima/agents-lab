@@ -1,0 +1,53 @@
+.hermes-page { padding: 28px 30px; max-width: 1800px; margin: 0 auto; }
+.hermes-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 24px; }
+.hermes-heading h1 { margin: 9px 0 6px; font-size: 28px; font-weight: 500; letter-spacing: -.04em; }
+.hermes-heading p { margin: 0; color: var(--text-2); font-size: 14px; }
+.hermes-back, .hermes-reading-link { display: inline-flex; align-items: center; gap: 7px; color: var(--text-2); text-decoration: none; font-size: 13px; }
+.hermes-back:hover, .hermes-reading-link:hover { color: var(--accent-strong); }
+.hermes-toolbar { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.hermes-toolbar label { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--text-2); }
+.hermes-toolbar select { background: var(--surface); color: var(--text-1); border: 1px solid var(--border-strong); border-radius: 7px; padding: 8px 32px 8px 12px; font: inherit; min-width: 220px; }
+.hermes-step-controls { display: flex; gap: 5px; }
+.hermes-step-controls button { display: inline-flex; gap: 7px; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 7px; min-height: 35px; padding: 7px 10px; background: var(--surface); color: var(--text-1); font: inherit; font-size: 13px; cursor: pointer; }
+.hermes-step-controls button:hover:enabled { background: var(--surface-2); }
+.hermes-step-controls button:disabled { opacity: .4; cursor: default; }
+.hermes-step-controls .hermes-play { background: var(--text-1); color: var(--surface); border-color: var(--text-1); min-width: 78px; }
+.hermes-step-controls .hermes-play:hover:enabled { background: var(--text-2); }
+.hermes-position { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.hermes-path-description { display: flex; gap: 20px; justify-content: space-between; color: var(--text-2); font-size: 12px; margin: 14px 0 18px; }
+.hermes-source-mode { white-space: nowrap; color: var(--text-2); }
+.hermes-workbench { display: grid; grid-template-columns: minmax(0, 1fr) 310px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.hermes-canvas { min-width: 0; background: var(--bg); }
+.hermes-canvas-legend { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; padding: 13px 18px; color: var(--text-2); font-size: 11px; border-bottom: 1px solid var(--border); }
+.hermes-canvas-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.hermes-canvas-legend i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-2); }
+.hermes-canvas-legend .hermes-legend-current { background: var(--accent); }
+.hermes-canvas-scroll { height: min(640px, calc(100vh - 300px)); min-height: 360px; overflow: auto; padding: 0 8px; }
+.hermes-flow-svg { width: 100%; display: block; }
+.hermes-edge { fill: none; stroke: var(--border-strong); stroke-width: 1.5px; }
+.hermes-edge.is-visited { stroke: var(--text-2); }
+.hermes-node-shape { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1px; }
+.hermes-flow-node.is-visited .hermes-node-shape { fill: var(--surface-2); }
+.hermes-flow-node.is-current .hermes-node-shape { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2px; }
+.hermes-node-index, .hermes-node-phase { font-family: var(--font-mono); font-size: 11px; fill: var(--text-2); }
+.hermes-node-label { font-family: var(--font-sans); font-size: 13px; font-weight: 500; fill: var(--text-1); }
+.hermes-node-hit { display: block; width: 100%; height: 100%; background: transparent; border: none; border-radius: 10px; cursor: pointer; }
+.hermes-node-hit:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.hermes-inspector { padding: 22px; border-left: 1px solid var(--border); min-width: 0; }
+.hermes-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hermes-eyebrow { color: var(--text-2); font-size: 11px; letter-spacing: .03em; }
+.hermes-step-number { font-size: 11px; font-family: var(--font-mono); color: var(--text-2); }
+.hermes-inspector h2 { margin: 12px 0; font-size: 20px; letter-spacing: -.025em; font-weight: 500; }
+.hermes-node-detail { color: var(--text-2); font-size: 13px; line-height: 1.65; margin-bottom: 24px; }
+.hermes-io { margin: 0; }
+.hermes-io dt { margin-top: 18px; font-size: 11px; color: var(--text-2); }
+.hermes-io dd { margin: 6px 0 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.hermes-source-list { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 18px; }
+.hermes-source-list h3 { font-size: 11px; font-weight: 400; color: var(--text-2); margin: 0 0 12px; }
+.hermes-source-list a { position: relative; display: block; text-decoration: none; color: var(--text-1); padding: 8px 18px 8px 0; font-size: 12px; overflow-wrap: anywhere; }
+.hermes-source-list code { display: block; color: var(--text-2); font-size: 11px; margin-top: 5px; }
+.hermes-source-list svg { position: absolute; right: 0; top: 9px; color: var(--text-2); }
+.hermes-source-list a:hover { color: var(--accent-strong); }
+.hermes-footer { color: var(--text-2); font-size: 11px; margin-top: 14px; line-height: 1.6; }
+@media (max-width: 1000px) { .hermes-workbench { grid-template-columns: minmax(0, 1fr) 270px; } .hermes-page { padding: 22px 18px; } .hermes-inspector { padding: 18px; } }
+@media (max-width: 760px) { .hermes-workbench { grid-template-columns: minmax(0, 1fr); } .hermes-inspector { border-left: none; border-top: 1px solid var(--border); } .hermes-path-description { flex-direction: column; gap: 5px; } .hermes-heading { align-items: start; } .hermes-reading-link { font-size: 12px; } .hermes-toolbar { gap: 12px; } .hermes-page { padding: 20px 14px; } }

@@ -5,15 +5,29 @@ Context selects model-visible material for one request. It owns the neutral
 making this package depend on either module. This package does not call a model,
 write Memory, summarize conversation history, or persist state.
 
-## Deterministic baseline
+## Implementations
 
-`createContextAssembler(config, dependencies)` returns a `ContextAssembler` with
-`assemble(input, signal)`. The implementation has ID
-`deterministic-context-assembler` version `0.2.0`. It is stateless: each call
+`createContextAssembler(config, dependencies)` and
+`createFixedRecentMessageWindowAssembler(config, dependencies)` return a
+`ContextAssembler` with `assemble(input, signal)`. Both are stateless: each call
 creates a fresh ordered message list and source ledger. Retrying with the same
 input, configuration, and token counter yields the same result. Cancellation
 before or during assembly throws `AbortError`; callers never receive a partial
 result.
+
+The deterministic baseline has identity
+`deterministic-context-assembler@0.4.0`. It first retains the most recent
+contiguous suffix of prior turns that fits the token budget and `maxMessages`; an
+older turn is omitted after the first turn that cannot fit.
+
+The fixed-window implementation has identity
+`fixed-recent-message-window@0.1.0`. It first selects the newest configured number
+of prior Context messages, then keeps that selection in chronological model order
+and applies the same token budget and Memory rules as the baseline. A source outside
+the selected window is recorded in both `omissions` and `sourceLedger` with reason
+`window`. Sources inside the window can still be omitted for `budget` or
+`invalid-source`. The window counts individual prior messages, not user/assistant
+conversation turns.
 
 The supported inputs are:
 
@@ -32,9 +46,10 @@ The supported inputs are:
 
 Instructions and turns are ordered by sequence then source ID. Instructions, the
 current task, any supplied Planning proposal, and tool exchanges are mandatory.
-Context first retains the most recent contiguous suffix of prior turns that fits
-both the token budget and `maxMessages`; it omits older turns after the first turn
-that cannot fit. Required tool exchanges are
+The deterministic baseline retains the most recent contiguous suffix of prior turns
+that fits both the token budget and `maxMessages`. The fixed-window strategy first
+limits the eligible turn list by `maxRecentMessages`, then uses that same fitting
+and ordering logic within the selected range. Required tool exchanges are
 never budget-omitted because dropping either side would break call/result
 association; if the required exchange does not fit, Context fails the assembly.
 Memory candidates are then selected greedily in retrieval-rank order without
@@ -84,14 +99,32 @@ values outside these bounds are rejected.
 | `maxSourceBytes` | 2,000,000 | 1–100,000,000 |
 | `minAvailableInputTokens` | 1 | 0–1,000,000 |
 
+`parseFixedRecentMessageWindowConfig` accepts the same three settings plus
+`maxRecentMessages`, which defaults to four and must be an integer from 1 through
+12. The number applies to prior Context messages individually. Both parsers reject
+unknown settings.
+
+```ts
+import {
+  createFixedRecentMessageWindowAssembler,
+  parseFixedRecentMessageWindowConfig,
+} from "@agent-harness-lab/module-context";
+
+const fixedWindow = createFixedRecentMessageWindowAssembler(
+  parseFixedRecentMessageWindowConfig({ maxRecentMessages: 4 }),
+  { tokenCounter },
+);
+```
+
 The `ContextAssemblyInput.task` contract changed from plain text to a
 `ContextMaterial` (`kind: "task"`, `role: "user"`) in package version `0.2.0`.
-Bounded turn support was added in package version `0.3.0` and implementation
-version `0.2.0`. Package version `0.4.0` adds the structured `toolExchanges`
-contract; implementation version `0.3.0`. Package version `0.5.0` adds the
-optional, required-if-present `planningProposal`; implementation version `0.4.0`.
-Under the Studio pre-1.0 rule, breaking public contract changes increment the
-minor version.
+Bounded turn support was added in package version `0.3.0`; package version `0.4.0`
+added structured `toolExchanges`; package version `0.5.0` added the optional,
+required-if-present `planningProposal`. Package version `0.6.0` adds the `window`
+omission reason and fixed-window implementation. The baseline implementation remains
+`deterministic-context-assembler@0.4.0`; the alternative is
+`fixed-recent-message-window@0.1.0`. Under the Studio pre-1.0 rule, breaking public
+contract changes increment the minor version.
 
 ## Example
 

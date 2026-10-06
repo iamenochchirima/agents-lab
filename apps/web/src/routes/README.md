@@ -15,3 +15,17 @@ shared comparison configuration across registered platforms.
 `paths.ts` is the small public-path contract used by navigation and feature links.
 Keep route-specific document paths in the documentation feature because they depend
 on the generated document catalog.
+
+`/studio/hermes` lazily loads the Hermes agent flow simulation within the shared
+application shell. Its source model is browser-local; it requires no agent backend.
+
+`/studio/explorers` indexes source-based agent studies. `/studio/openclaw`,
+`/studio/pi` and `/studio/waku` lazily load the shared system explorer with
+repository-specific graph data. These routes do not invoke the Studio API or
+execute the studied harnesses.
+
+`/studio/comparison` lazily loads the manual four-agent comparison page in the
+main shell. Entries are manual study notes saved through the Studio API in SQLite, separate from experiment records.
+
+`/studio/lina` lazily loads the Lina architecture workspace. It authors a design
+document through the local Studio API, without executing an agent.

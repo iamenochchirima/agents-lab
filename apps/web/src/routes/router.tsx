@@ -28,6 +28,62 @@ export const router = createBrowserRouter([
         handle: { label: "Studio" },
       },
       {
+        path: "studio/hermes",
+        lazy: async () => {
+          const { HermesSimulationPage } = await import("../features/hermes-simulation/HermesSimulationPage");
+          return { Component: HermesSimulationPage };
+        },
+        handle: { label: "Studio / Hermes simulation" },
+      },
+      {
+        path: "studio/lina",
+        lazy: async () => {
+          const { LinaPage } = await import("../features/lina/LinaPage");
+          return { Component: LinaPage };
+        },
+        handle: { label: "Studio / Lina architecture" },
+      },
+      {
+        path: "studio/explorers",
+        lazy: async () => {
+          const { SystemExplorerIndex } = await import("../features/system-explorer/SystemExplorerIndex");
+          return { Component: SystemExplorerIndex };
+        },
+        handle: { label: "Studio / System explorers" },
+      },
+      {
+        path: "studio/comparison",
+        lazy: async () => {
+          const { SystemComparisonPage } = await import("../features/system-comparison/SystemComparisonPage");
+          return { Component: SystemComparisonPage };
+        },
+        handle: { label: "Studio / System comparison" },
+      },
+      {
+        path: "studio/openclaw",
+        lazy: async () => {
+          const { OpenClawExplorerPage } = await import("../features/system-explorer/OpenClawExplorerPage");
+          return { Component: OpenClawExplorerPage };
+        },
+        handle: { label: "Studio / OpenClaw explorer" },
+      },
+      {
+        path: "studio/pi",
+        lazy: async () => {
+          const { PiExplorerPage } = await import("../features/system-explorer/PiExplorerPage");
+          return { Component: PiExplorerPage };
+        },
+        handle: { label: "Studio / Pi explorer" },
+      },
+      {
+        path: "studio/waku",
+        lazy: async () => {
+          const { WakuExplorerPage } = await import("../features/system-explorer/WakuExplorerPage");
+          return { Component: WakuExplorerPage };
+        },
+        handle: { label: "Studio / Waku Agent explorer" },
+      },
+      {
         path: "studio/chat",
         lazy: async () => {
           const { StudioChatPage } = await import("../features/studio/StudioChatPage");

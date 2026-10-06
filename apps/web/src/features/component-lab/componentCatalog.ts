@@ -2,7 +2,6 @@ import type {
   ComponentAreaDescriptor,
   ComponentCaseDescriptor,
   ComponentStrategyDescriptor,
-  ContextEnvelopeField,
   ContextEvidenceItem,
 } from "./componentTypes";
 
@@ -23,9 +22,9 @@ export const componentAreas: readonly ComponentAreaDescriptor[] = [
   {
     id: "context-management",
     name: "Context management",
-    summary: "Decide which instructions, history, memory, and tool results reach the model.",
-    status: "designing",
-    nextAction: "Connect the preview envelope to one executable context strategy.",
+    summary: "Inspect which prior messages reach the model under two Context selection policies.",
+    status: "implemented",
+    nextAction: "Compare the two available Context implementations against the fixed old-fact case.",
     document: proposalDocument,
   },
   {
@@ -112,6 +111,48 @@ export const componentAreas: readonly ComponentAreaDescriptor[] = [
 
 export const contextStrategies: readonly ComponentStrategyDescriptor[] = [
   {
+    id: "deterministic-context-assembler",
+    name: "Budget-fitted recent history",
+    summary: "Consider the ordered prior messages, then retain complete messages that fit the shared context budget.",
+    status: "implemented",
+    identity: {
+      packageName: "@agent-harness-lab/module-context",
+      packageVersion: "0.6.0",
+      implementation: { id: "deterministic-context-assembler", version: "0.4.0" },
+    },
+    parameters: [{
+      id: "selection-policy",
+      label: "Selection policy",
+      description: "This implementation applies the shared token budget to recent history.",
+      options: ["Budget-fitted recent history"],
+      defaultValue: "Budget-fitted recent history",
+    }],
+    inputs: ["Fixed prior-message fixture", "Current task", "Shared token budget"],
+    outputs: ["Exact model messages", "Included and omitted source IDs", "Token estimate and basis"],
+    limitations: ["Replay describes the request shape; it does not establish answer quality."],
+  },
+  {
+    id: "fixed-recent-message-window",
+    name: "Fixed recent-message window",
+    summary: "Keep the newest configured number of prior messages before applying the shared token budget.",
+    status: "implemented",
+    identity: {
+      packageName: "@agent-harness-lab/module-context",
+      packageVersion: "0.6.0",
+      implementation: { id: "fixed-recent-message-window", version: "0.1.0" },
+    },
+    parameters: [{
+      id: "maxRecentMessages",
+      label: "Recent prior messages",
+      description: "The run control sets this from 1 to 12 prior messages. The default is four.",
+      options: Array.from({ length: 12 }, (_, index) => String(index + 1)),
+      defaultValue: "4",
+    }],
+    inputs: ["Fixed prior-message fixture", "Current task", "Recent-message count", "Shared token budget"],
+    outputs: ["Exact model messages", "Included and omitted source IDs with reasons", "Token estimate and basis"],
+    limitations: ["An older relevant message can be omitted by the window.", "Replay does not measure answer quality."],
+  },
+  {
     id: "full-history",
     name: "Full history",
     summary: "Pass the available conversation history into the request until the budget is reached.",
@@ -126,22 +167,6 @@ export const contextStrategies: readonly ComponentStrategyDescriptor[] = [
     inputs: ["System instructions", "Ordered conversation history", "Tool-result fixture"],
     outputs: ["Retained source IDs", "Budget estimate", "Overflow decision"],
     limitations: ["Context grows with the transcript.", "It does not rank older material by relevance."],
-  },
-  {
-    id: "sliding-window",
-    name: "Sliding window",
-    summary: "Keep the newest turns inside a configured window while preserving required instructions.",
-    status: "planned",
-    parameters: [{
-      id: "window",
-      label: "Recent turns",
-      description: "The number of recent conversational turns the future adapter should retain.",
-      options: ["4 turns", "8 turns", "12 turns"],
-      defaultValue: "8 turns",
-    }],
-    inputs: ["System instructions", "Ordered conversation history", "Window size"],
-    outputs: ["Retained source IDs", "Omitted source IDs", "Budget estimate"],
-    limitations: ["An old relevant fact may be omitted.", "Recency is not the same as importance."],
   },
   {
     id: "relevance-ranked",
@@ -205,10 +230,14 @@ export const contextCases: readonly ComponentCaseDescriptor[] = [
   {
     id: "old-important-fact",
     name: "Old important fact",
-    task: "Use a preference stated early in the conversation when answering a later request.",
-    fixtureSummary: "An important preference appears early, followed by several unrelated turns.",
-    intendedObservation: "Whether the strategy keeps or reconstructs an old but relevant fact.",
-    controls: ["Same preference", "Same distractor turns", "Same grading question"],
+    scenarioId: "context-stress",
+    fixtureId: "old-important-fact",
+    fixtureVersion: "1",
+    taskId: "old-important-fact:task:v1",
+    task: "Using the prior conversation, identify the preference stated for future meal suggestions.",
+    fixtureSummary: "Six synthetic prior messages contain an early meal preference followed by unrelated garden and desk-light details.",
+    intendedObservation: "Compare the source messages each policy passes to Replay; this is a selection-boundary observation, not an answer-quality measure.",
+    controls: ["Same six prior messages", "Same task and Replay model", "Same empty Memory state", "Same reference assembly and token budget"],
   },
   {
     id: "conflicting-instructions",
@@ -236,49 +265,21 @@ export const contextCases: readonly ComponentCaseDescriptor[] = [
   },
 ] as const;
 
-export const contextEnvelopeFields: readonly ContextEnvelopeField[] = [
-  {
-    label: "Case fixture",
-    value: "Selected case",
-    detail: "The source conversation or tool result stays the same across slots.",
-  },
-  {
-    label: "Task",
-    value: "Selected case task",
-    detail: "Every strategy receives the same question and grading target.",
-  },
-  {
-    label: "Model and settings",
-    value: "Connected later",
-    detail: "The model is a future fixed control, not a value produced by this preview.",
-  },
-  {
-    label: "Budget",
-    value: "Explicit assumption",
-    detail: "Window size and reserved output belong to the shared envelope.",
-  },
-  {
-    label: "Changed variable",
-    value: "Context strategy",
-    detail: "Only the strategy and its named parameters vary between comparison slots.",
-  },
-] as const;
-
 export const contextEvidenceItems: readonly ContextEvidenceItem[] = [
   {
-    label: "Source decisions",
-    description: "Which source IDs were retained, omitted, or represented by a summary.",
+    label: "Source ledger",
+    description: "Included and omitted source IDs, including whether the window or token budget omitted a message.",
   },
   {
-    label: "Budget record",
-    description: "Estimated input, reserved output, remaining budget, and count quality.",
+    label: "Token count and basis",
+    description: "The context token count and the estimator basis reported by the Context module.",
   },
   {
-    label: "Strategy detail",
-    description: "The ranking, window, summary, or allocation decision made by the implementation.",
+    label: "Implementation used",
+    description: "The Context package and implementation identity, configuration, and shared reference assembly.",
   },
   {
-    label: "Task result",
-    description: "The eventual model result, graded separately from context-selection behaviour.",
+    label: "Replay request evidence",
+    description: "The exact messages sent to deterministic Replay and its output; this is not an answer-quality grade.",
   },
 ] as const;

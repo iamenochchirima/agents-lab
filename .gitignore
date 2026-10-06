@@ -39,3 +39,6 @@ server/lab/runs/*
 !server/lab/runs/README.md
 server/lab/sessions/*
 !server/lab/sessions/README.md
+
+# Local Studio database and SQLite journal files
+lab/state/*.sqlite*

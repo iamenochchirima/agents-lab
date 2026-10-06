@@ -1,5 +1,8 @@
 # Hermes code map
 
+For a newer, focused source trace, see the [Hermes context lifecycle](../context-lifecycles/hermes.md)
+reviewed on 2026-10-04. This broader map retains its original source snapshot.
+
 ## Source snapshot
 
 | Field | Value |

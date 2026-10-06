@@ -1,5 +1,10 @@
 import type { ModuleIdentity } from "@agent-harness-lab/agent-protocol";
-import { parseContextConfig, type ContextConfig } from "./config.js";
+import {
+  parseContextConfig,
+  parseFixedRecentMessageWindowConfig,
+  type ContextConfig,
+  type FixedRecentMessageWindowConfig,
+} from "./config.js";
 import {
   ContextAssemblyError,
   type ContextAssemblyInput,
@@ -18,6 +23,7 @@ import {
 } from "./contract.js";
 
 const IDENTITY: ModuleIdentity = Object.freeze({ id: "deterministic-context-assembler", version: "0.4.0" });
+const FIXED_WINDOW_IDENTITY: ModuleIdentity = Object.freeze({ id: "fixed-recent-message-window", version: "0.1.0" });
 
 /**
  * Create a request-scoped Context assembler with deterministic ordering and
@@ -25,13 +31,35 @@ const IDENTITY: ModuleIdentity = Object.freeze({ id: "deterministic-context-asse
  */
 export function createContextAssembler(config: ContextConfig, dependencies: ContextDependencies): ContextAssembler {
   const parsedConfig = parseContextConfig(config);
+  return createAssembler(parsedConfig, dependencies, IDENTITY);
+}
+
+/**
+ * Create an assembler that first selects the newest configured number of prior
+ * messages, then applies the same token-budget and Memory rules as the baseline.
+ */
+export function createFixedRecentMessageWindowAssembler(
+  config: FixedRecentMessageWindowConfig,
+  dependencies: ContextDependencies,
+): ContextAssembler {
+  const parsedConfig = parseFixedRecentMessageWindowConfig(config);
+  const { maxRecentMessages, ...contextConfig } = parsedConfig;
+  return createAssembler(contextConfig, dependencies, FIXED_WINDOW_IDENTITY, maxRecentMessages);
+}
+
+function createAssembler(
+  parsedConfig: ContextConfig,
+  dependencies: ContextDependencies,
+  identity: ModuleIdentity,
+  maxRecentMessages?: number,
+): ContextAssembler {
   if (!dependencies || !dependencies.tokenCounter || typeof dependencies.tokenCounter.count !== "function") {
     throw new TypeError("Context dependencies require a tokenCounter.count function.");
   }
 
   const tokenCounter = dependencies.tokenCounter;
   return Object.freeze({
-    identity: IDENTITY,
+    identity,
     async assemble(input: ContextAssemblyInput, signal: AbortSignal): Promise<ContextAssemblyResult> {
       if (!signal || typeof signal.aborted !== "boolean") throw invalidInput("A valid AbortSignal is required.");
       assertNotAborted(signal, "Context assembly was cancelled before it began.");
@@ -43,15 +71,19 @@ export function createContextAssembler(config: ContextConfig, dependencies: Cont
       const planningProposal = input.planningProposal === undefined
         ? undefined
         : validatePlanningMaterial(input.planningProposal);
-      const turns = [...input.turns].map((material) => validateMaterial(material, "turn"));
-      turns.sort(compareSequenceThenSource);
+      const suppliedTurns = [...input.turns].map((material) => validateMaterial(material, "turn"));
+      suppliedTurns.sort(compareSequenceThenSource);
+      const firstWindowedIndex = maxRecentMessages === undefined
+        ? 0
+        : Math.max(0, suppliedTurns.length - maxRecentMessages);
+      const turns = suppliedTurns.slice(firstWindowedIndex);
       const candidates = [...input.memoryCandidates].map((material) => validateMaterial(material, "memory"));
       candidates.sort(compareSequenceThenSource);
       const toolExchanges = input.toolExchanges.map(validateToolExchange)
         .sort((left, right) => compareSequenceThenSource(left.assistant, right.assistant));
       const toolExchangeMaterials = toolExchanges.flatMap(({ assistant, results }) => [assistant, ...results]);
 
-      const all = [...instructions, ...candidates, ...turns, task, ...(planningProposal ? [planningProposal] : []), ...toolExchangeMaterials];
+      const all = [...instructions, ...candidates, ...suppliedTurns, task, ...(planningProposal ? [planningProposal] : []), ...toolExchangeMaterials];
       assertUniqueSourceIds(all);
       const availableInputTokens = input.budget.contextWindowTokens
         - input.budget.reservedOutputTokens
@@ -65,7 +97,7 @@ export function createContextAssembler(config: ContextConfig, dependencies: Cont
         assertNotAborted(signal, "Context assembly was cancelled while validating Memory candidates.");
         if (utf8Bytes(candidate.content) > parsedConfig.maxSourceBytes) oversizedCandidates.add(candidate.sourceId);
       }
-      for (const turn of turns) {
+      for (const turn of suppliedTurns) {
         assertNotAborted(signal, "Context assembly was cancelled while validating conversation turns.");
         if (utf8Bytes(turn.content) > parsedConfig.maxSourceBytes) oversizedCandidates.add(turn.sourceId);
       }
@@ -94,11 +126,14 @@ export function createContextAssembler(config: ContextConfig, dependencies: Cont
         throw budgetError("Trusted instructions, the current task, Planning proposal, and tool exchanges do not fit the available input-token budget.");
       }
 
-      const dispositions = new Map<string, { readonly status: "included" } | { readonly status: "omitted"; readonly reason: "budget" | "invalid-source" }>();
+      const dispositions = new Map<string, { readonly status: "included" } | { readonly status: "omitted"; readonly reason: "budget" | "invalid-source" | "window" }>();
       for (const instruction of instructions) dispositions.set(instruction.sourceId, { status: "included" });
       for (const material of toolExchangeMaterials) dispositions.set(material.sourceId, { status: "included" });
       dispositions.set(task.sourceId, { status: "included" });
       if (planningProposal) dispositions.set(planningProposal.sourceId, { status: "included" });
+      for (const turn of suppliedTurns.slice(0, firstWindowedIndex)) {
+        dispositions.set(turn.sourceId, { status: "omitted", reason: "window" });
+      }
 
       const selectedTurnsNewestFirst: ContextMaterial[] = [];
       let historyBoundaryReached = false;

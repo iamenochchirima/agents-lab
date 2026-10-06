@@ -1,4 +1,4 @@
-export const STUDIO_CHAT_API_VERSION = "5" as const;
+export const STUDIO_CHAT_API_VERSION = "6" as const;
 
 export type StudioChatRole = "system" | "developer" | "user" | "assistant" | "tool";
 export type StudioChatMaterialKind = "instruction" | "task" | "turn" | "memory" | "planning" | "tool-result";
@@ -108,7 +108,7 @@ export interface StudioChatObservabilityEvidence {
 export interface StudioChatContextAssembly {
   readonly messages: readonly StudioChatMessage[];
   readonly includedSourceIds: readonly string[];
-  readonly omissions: readonly { readonly sourceId: string; readonly reason: "budget" | "invalid-source" }[];
+  readonly omissions: readonly { readonly sourceId: string; readonly reason: "budget" | "invalid-source" | "window" }[];
   readonly sourceLedger: readonly StudioChatContextSource[];
   readonly tokenCount: { readonly value: number; readonly basis: string; readonly quality: "exact" | "estimated" };
 }
@@ -121,7 +121,7 @@ export interface StudioChatContextSource {
   readonly provenance: Readonly<Record<string, string>>;
   readonly disposition: { readonly status: "included" } | {
     readonly status: "omitted";
-    readonly reason: "budget" | "invalid-source";
+    readonly reason: "budget" | "invalid-source" | "window";
   };
 }
 
@@ -216,7 +216,7 @@ export interface StudioChatTurnResponse {
   readonly context: {
     readonly messages: readonly StudioChatMessage[];
     readonly includedSourceIds: readonly string[];
-    readonly omissions: readonly { readonly sourceId: string; readonly reason: "budget" | "invalid-source" }[];
+    readonly omissions: readonly { readonly sourceId: string; readonly reason: "budget" | "invalid-source" | "window" }[];
     readonly sourceLedger: readonly StudioChatContextSource[];
     readonly tokenCount: { readonly value: number; readonly basis: string; readonly quality: "exact" | "estimated" };
   };
@@ -396,9 +396,30 @@ function isStudioChatPlanningEvidence(value: unknown): value is StudioChatPlanni
 function isStudioChatContextAssembly(value: unknown): value is StudioChatContextAssembly {
   return isRecord(value) && Array.isArray(value.messages) && value.messages.every(isStudioChatMessage)
     && Array.isArray(value.includedSourceIds) && value.includedSourceIds.every((sourceId) => typeof sourceId === "string")
-    && Array.isArray(value.omissions) && Array.isArray(value.sourceLedger)
+    && Array.isArray(value.omissions) && value.omissions.every(isStudioChatContextOmission)
+    && Array.isArray(value.sourceLedger) && value.sourceLedger.every(isStudioChatContextSource)
     && isRecord(value.tokenCount) && typeof value.tokenCount.value === "number"
     && typeof value.tokenCount.basis === "string" && ["exact", "estimated"].includes(String(value.tokenCount.quality));
+}
+
+function isStudioChatContextOmission(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["sourceId", "reason"])
+    && typeof value.sourceId === "string"
+    && ["budget", "invalid-source", "window"].includes(String(value.reason));
+}
+
+function isStudioChatContextSource(value: unknown): value is StudioChatContextSource {
+  if (!isRecord(value) || !hasExactKeys(value, ["sourceId", "kind", "role", "trust", "provenance", "disposition"])
+    || typeof value.sourceId !== "string"
+    || !["instruction", "task", "turn", "memory", "planning", "tool-result"].includes(String(value.kind))
+    || !["system", "developer", "user", "assistant", "tool"].includes(String(value.role))
+    || !["trusted", "untrusted"].includes(String(value.trust))
+    || !isRecord(value.provenance) || !Object.values(value.provenance).every((item) => typeof item === "string")
+    || !isRecord(value.disposition)) return false;
+  if (value.disposition.status === "included") return hasExactKeys(value.disposition, ["status"]);
+  return value.disposition.status === "omitted"
+    && hasExactKeys(value.disposition, ["status", "reason"])
+    && ["budget", "invalid-source", "window"].includes(String(value.disposition.reason));
 }
 
 function isStudioChatMessage(value: unknown): value is StudioChatMessage {

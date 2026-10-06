@@ -19,6 +19,18 @@
     {
       "title": "Research",
       "documents": [
+        "docs/research/system-explorers/README.md",
+        "docs/research/system-explorers/audits/README.md",
+        "docs/research/system-explorers/audits/hermes.md",
+        "docs/research/system-explorers/audits/openclaw.md",
+        "docs/research/system-explorers/audits/pi.md",
+        "docs/research/system-explorers/audits/waku.md",
+        "docs/research/system-explorers/hermes.md",
+        "docs/research/system-explorers/openclaw.md",
+        "docs/research/system-explorers/pi.md",
+        "docs/research/system-explorers/waku.md",
+        "docs/research/context-lifecycles/README.md",
+        "docs/research/context-lifecycles/hermes.md",
         "docs/research/context-engineering-2026.md",
         "docs/research/context-engineering-ecosystem-2026.md",
         "docs/research/context-memory-reading-list.md",

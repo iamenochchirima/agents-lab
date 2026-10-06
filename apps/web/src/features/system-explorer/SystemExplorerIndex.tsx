@@ -1,0 +1,10 @@
+import { ArrowLeft, ArrowUpRight } from 'lucide-react';
+import { Link } from 'react-router';
+import { architectureNodes, architectureGroups } from '../hermes-simulation/hermesArchitecture';
+import { sourceCommit } from '../hermes-simulation/hermesFlow';
+import { explorerGraphs } from './graphs';
+import './system-explorer.css';
+
+export function SystemExplorerIndex() {
+  return <div className="system-explorer"><header className="explorer-header"><div><Link className="explorer-back" to="/studio"><ArrowLeft size={14} /> Studio</Link><h1>Agent system explorers</h1><p>Study how each implementation is built, then follow a message through its components.</p></div><Link className="explorer-reading" to="/studio/comparison">Comparison table <ArrowUpRight size={14} /></Link></header><div className="explorer-index-grid">{explorerGraphs.map(g => <Link key={g.id} to={`/studio/${g.id}`}><div><h2>{g.name}</h2><ArrowUpRight size={18} /></div><p>{g.description}</p><span>{g.nodes.length} nodes · {g.groups.length} regions · {g.traces.length} example traces</span><code>{g.commit.slice(0, 8)}</code></Link>)}<Link to="/studio/hermes"><div><h2>Hermes</h2><ArrowUpRight size={18} /></div><p>The existing surface map and ordered execution walkthrough. Detailed node studies remain pending.</p><span>{architectureNodes.length} nodes · {architectureGroups.length} regions</span><code>{sourceCommit.slice(0, 8)}</code></Link></div><section className="explorer-index-note"><h2>Reading the maps</h2><p>Start with the whole system, choose a region to see readable component names, and select a node for its inputs, outputs, conditions and source owners. Select a relationship to inspect the code behind that connection.</p><p>Follow a message shows illustrative paths through the same map. Outcomes are assumed for learning; these pages do not execute agents. Each explorer lists its coverage and collapsed boundaries.</p><Link to="/docs/research/system-explorers/README.md">Read the source study index <ArrowUpRight size={13} /></Link></section></div>;
+}

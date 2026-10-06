@@ -1,15 +1,16 @@
 # Reference Studio assembly
 
-`createReferenceAgent()` constructs the one fixed, versioned Studio reference
-assembly. Its descriptor selects one implementation and configuration for all
-twelve module areas. A static registry rejects unknown identities, duplicate or
-missing areas, altered configurations, and unsupported descriptor versions before
-the assembly is resolved.
+`createReferenceAgent()` constructs the versioned Studio reference assembly. Its
+default descriptor selects the budget-fitted Context baseline. The static registry
+also permits the fixed recent-message window through
+`createReferenceAssemblyDescriptor`; every other component remains fixed. Unknown
+identities, duplicate or missing areas, altered configurations, and unsupported
+descriptor versions are rejected before module factories are resolved.
 
 | Area | Selected baseline | Responsibility in this assembly |
 | --- | --- | --- |
 | Input | `text-input-normalizer@0.1.0` | Converts submitted text and host provenance to a task. |
-| Context | `deterministic-context-assembler@0.4.0` | Orders messages, applies the configured budget, and records included or omitted sources. |
+| Context | `deterministic-context-assembler@0.4.0` or `fixed-recent-message-window@0.1.0` | Selects prior messages, applies the shared configured budget, and records included or omitted sources. |
 | Planning | `single-step-response-planner@0.1.0` | Proposes one advisory response plan from the initial Context. |
 | Memory | `in-memory-session@0.1.0` | Recalls and writes session-scoped episode records. |
 | Tool Use | `strict-tool-use@0.2.0` | Validates `calculator.add` and `computer.click` calls. |
@@ -22,6 +23,33 @@ the assembly is resolved.
 | Observability | `jsonl-observability-recorder@0.1.0` | Stores ordered protocol events and module-specific evidence. |
 
 ## Controlled runs
+
+The package is `@agent-harness-lab/reference-agent-assembly@0.4.0`; its assembly
+descriptor version is `0.6.0`. The context module package is
+`@agent-harness-lab/module-context@0.6.0`.
+
+Use the descriptor builder to select the fixed window. Its unit is prior Context
+messages, and the default window is four:
+
+```ts
+import {
+  createReferenceAgent,
+  createReferenceAssemblyDescriptor,
+} from "@agent-harness-lab/reference-agent-assembly";
+
+const descriptor = createReferenceAssemblyDescriptor({
+  contextStrategy: "fixed-recent-message-window",
+  maxRecentMessages: 4,
+});
+const agent = createReferenceAgent(descriptor);
+```
+
+`maxRecentMessages` accepts integers from 1 through 12. Omitting it uses four; it is
+rejected for the deterministic baseline. The fixed-window Context config contains
+this value alongside the shared Context limits and the same reported budget of
+8,192 context-window tokens, 512 reserved output tokens, 256 safety-margin tokens,
+and tokenizer `utf8-bytes-div4-estimate-v1`. Both descriptors select the same twelve
+areas and differ only in Context identity and configuration.
 
 - Ordinary chat sends free text through the full selected assembly. The Replay
   behavior reports the model request shape; it does not answer semantically.

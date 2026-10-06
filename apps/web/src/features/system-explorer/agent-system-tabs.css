@@ -1,0 +1,5 @@
+.agent-system-tabs{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:18px 0;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.agent-system-tabs>a{display:inline-flex;align-items:center;gap:6px;padding:9px 12px;border-radius:5px;color:var(--text-2);text-decoration:none;font:12px var(--font-sans)}
+.agent-system-tabs>a:hover{color:var(--text-1);background:var(--surface-2)}
+.agent-system-tabs>a[aria-current=page]{color:var(--text-1);background:var(--surface-2)}
+.agent-system-tabs>a.explorer-revision{margin-left:auto;font-size:10px}

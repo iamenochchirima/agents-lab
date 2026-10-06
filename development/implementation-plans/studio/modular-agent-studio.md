@@ -91,13 +91,16 @@ fixed integration forward: it adds minimal Control and deterministic Replay
 baselines so Input, Memory, and Context can be exercised through the browser. Its
 completed [tool round-trip follow-up](completed/studio-tool-roundtrip.md) adds one
 bounded Tool Use, Safety, and Execution Environment exchange. These are deliberate
-early integration steps, not the general run system. The existing static Components
-preview remains separately scoped. The completed
+early integration steps, not the general run system. The Components UI began as a
+static preview; the active Context experiment adds one bounded comparison on that
+surface. The completed
 [kernel and reference assembly plan](completed/studio-kernel-reference-assembly.md)
 connects all twelve initial implementations through one fixed deterministic cycle,
 with local text, calculator, and controlled-computer scenarios plus saved run
 evidence. It is a reference assembly, not a general plugin loader or production run
-manager.
+manager. The active Context experiment extends the Components workspace with one
+controlled comparison and a separate saved comparison manifest without changing the
+Platform Lab.
 
 1. **Workspace architecture and module interfaces.** Establish package and app
    ownership, the shared protocol, twelve role-specific interfaces, and the package
@@ -131,9 +134,10 @@ manager.
    budget-fitted recent-history implementation versus a fixed recent-message window.
 
 Each stage has its own implementation plan, acceptance checks, documentation, and
-handoff. The next implementation is to execute the Context component experiment plan,
-which turns the current Context preview into one reproducible comparison before
-adding further alternatives.
+handoff. The current focused implementation is the Context component experiment,
+which turns the Context workspace into one reproducible comparison before adding
+further alternatives. It remains active until its implementation and acceptance
+checks are reviewed.
 
 ## Completion direction
 

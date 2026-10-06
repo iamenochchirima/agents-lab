@@ -31,9 +31,15 @@ importers:
       '@agent-harness-lab/module-output-actions':
         specifier: workspace:*
         version: link:../../studio/modules/output-actions
+      '@agent-harness-lab/module-tool-use':
+        specifier: workspace:*
+        version: link:../../studio/modules/tool-use
       '@agent-harness-lab/reference-agent-assembly':
         specifier: workspace:*
         version: link:../../studio/assemblies/reference-agent
+      '@agent-harness-lab/scenario-context-stress':
+        specifier: workspace:*
+        version: link:../../lab/scenarios/context-stress
       '@agent-harness-lab/studio-http-contract':
         specifier: workspace:*
         version: link:../../studio/http-contract
@@ -150,6 +156,8 @@ importers:
       '@agent-harness-lab/module-memory':
         specifier: workspace:*
         version: link:../../../studio/modules/memory
+
+  lab/scenarios/context-stress: {}
 
   server:
     dependencies:

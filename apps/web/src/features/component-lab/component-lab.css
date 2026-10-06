@@ -771,3 +771,537 @@
     justify-self: start;
   }
 }
+
+.context-api-health,
+.context-comparison-notice,
+.context-comparison-error {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-2);
+  display: flex;
+  font-size: 0.74rem;
+  gap: 9px;
+  padding: 11px 13px;
+}
+
+.context-api-health.is-available {
+  color: var(--success);
+}
+
+.context-api-health.is-unavailable,
+.context-comparison-error,
+.context-variant-failure {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  color: var(--danger);
+}
+
+.context-api-health > span:nth-child(2) {
+  flex: 1;
+}
+
+.context-api-health strong,
+.context-comparison-error strong {
+  color: var(--text-1);
+}
+
+.context-health-dot {
+  background: var(--success);
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.context-spinner {
+  animation: context-spin 1s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes context-spin {
+  to { transform: rotate(360deg); }
+}
+
+.context-case-description {
+  color: var(--text-2);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  margin: 12px 0;
+}
+
+.context-fixed-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.context-fixed-controls .context-envelope-field > strong {
+  overflow-wrap: anywhere;
+}
+
+.context-active-strategy-grid,
+.context-planned-strategy-list,
+.context-variant-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 15px;
+}
+
+.context-strategy-card {
+  cursor: default;
+  min-width: 0;
+}
+
+.context-strategy-card.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.context-strategy-card.is-unavailable {
+  background: var(--surface);
+  border-color: var(--border);
+  opacity: 0.78;
+}
+
+.context-strategy-identity,
+.context-strategy-unavailable {
+  color: var(--text-3);
+  font-size: 0.63rem;
+  overflow-wrap: anywhere;
+}
+
+.context-strategy-unavailable {
+  color: var(--warning);
+}
+
+.context-window-run-control {
+  align-items: end;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 17px;
+}
+
+.context-window-input {
+  display: grid;
+  gap: 6px;
+  max-width: 270px;
+  width: 100%;
+}
+
+.context-window-input > span {
+  color: var(--text-2);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.context-window-input input {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text-1);
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.context-window-input small,
+.context-run-action > span {
+  color: var(--text-3);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.context-run-action {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-run-action button {
+  min-height: 38px;
+}
+
+.context-run-action button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.context-planned-strategies {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 13px;
+}
+
+.context-planned-strategies > summary,
+.context-json-detail > summary {
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.context-planned-strategy-list {
+  margin-top: 5px;
+}
+
+.context-comparison-notice {
+  justify-content: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.context-comparison-notice code,
+.context-comparison-error code {
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
+.context-comparison-error {
+  align-items: flex-start;
+}
+
+.context-comparison-error > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.context-comparison-error p {
+  color: var(--text-2);
+  line-height: 1.45;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.context-comparison-error small {
+  color: var(--text-3);
+}
+
+.context-result-summary {
+  align-items: start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(210px, 0.8fr);
+  padding: 17px 18px;
+}
+
+.context-result-summary.status-partial,
+.context-result-summary.status-interrupted,
+.context-result-summary.status-unknown,
+.context-result-summary.status-failed,
+.context-result-summary.status-cancelled {
+  border-left-color: var(--warning);
+}
+
+.context-result-summary h2 {
+  font-size: 1.1rem;
+  margin: 5px 0;
+}
+
+.context-result-summary p {
+  color: var(--text-2);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.context-result-summary dl,
+.context-variant-identities,
+.context-persistence-facts {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.context-result-summary dt,
+.context-variant-identities dt,
+.context-persistence-facts dt {
+  color: var(--text-3);
+  font-size: 0.61rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.context-result-summary dd,
+.context-variant-identities dd,
+.context-persistence-facts dd {
+  color: var(--text-1);
+  font-size: 0.67rem;
+  line-height: 1.45;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.context-results {
+  display: grid;
+  gap: 12px;
+}
+
+.context-variant-grid {
+  align-items: start;
+  margin-top: 0;
+}
+
+.context-variant-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+  padding: 17px;
+}
+
+.context-variant-heading {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding-bottom: 13px;
+}
+
+.context-variant-heading h3 {
+  font-size: 0.95rem;
+  margin: 4px 0 5px;
+}
+
+.context-variant-heading code,
+.context-variant-identities code {
+  color: var(--text-3);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.context-run-status {
+  background: var(--surface-2);
+  border-radius: 999px;
+  color: var(--text-2);
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  font-weight: 750;
+  padding: 6px 8px;
+}
+
+.context-run-status.status-completed {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.context-run-status.status-failed,
+.context-run-status.status-cancelled,
+.context-run-status.status-partial,
+.context-run-status.status-interrupted,
+.context-run-status.status-unknown {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.context-variant-identities {
+  margin-top: 12px;
+}
+
+.context-variant-section {
+  border-top: 1px solid var(--border);
+  margin-top: 13px;
+  padding-top: 12px;
+}
+
+.context-variant-section h4 {
+  color: var(--text-1);
+  font-size: 0.72rem;
+  margin: 0 0 9px;
+}
+
+.context-variant-section h5 {
+  align-items: center;
+  color: var(--text-2);
+  display: flex;
+  font-size: 0.65rem;
+  gap: 4px;
+  margin: 0 0 6px;
+}
+
+.context-replay-output {
+  background: var(--surface-2);
+  border-radius: 7px;
+  color: var(--text-1);
+  font-size: 0.73rem;
+  line-height: 1.5;
+  margin: 0 0 6px;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.context-variant-section > small {
+  color: var(--text-3);
+  font-size: 0.62rem;
+}
+
+.context-source-groups {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.context-source-groups > div {
+  background: var(--surface-2);
+  border-radius: 7px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.context-source-groups ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.context-source-groups li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.context-source-groups li code {
+  color: var(--text-1);
+  font-size: 0.59rem;
+  overflow-wrap: anywhere;
+}
+
+.context-source-groups li span,
+.context-evidence-empty,
+.context-token-count,
+.context-evidence-warning {
+  color: var(--text-3);
+  font-size: 0.61rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.context-exact-messages {
+  display: grid;
+  gap: 7px;
+  list-style-position: inside;
+  margin: 0;
+  padding: 0;
+}
+
+.context-exact-messages li {
+  background: var(--surface-2);
+  border-radius: 7px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.context-exact-messages li > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.context-exact-messages li strong {
+  color: var(--text-1);
+  font-size: 0.63rem;
+}
+
+.context-exact-messages li span {
+  color: var(--text-3);
+  font-size: 0.58rem;
+  overflow-wrap: anywhere;
+}
+
+.context-exact-messages pre,
+.context-json-detail pre {
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  line-height: 1.45;
+  margin: 5px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.context-token-count {
+  margin-top: 7px;
+}
+
+.context-persistence-facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.context-evidence-warning {
+  color: var(--warning);
+  margin-top: 8px;
+}
+
+.context-json-detail {
+  margin-top: 8px;
+}
+
+.context-json-detail pre {
+  background: var(--surface-2);
+  border-radius: 7px;
+  max-height: 260px;
+  padding: 9px;
+}
+
+.context-variant-failure {
+  align-items: flex-start;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 7px;
+  display: flex;
+  font-size: 0.67rem;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 9px;
+}
+
+.context-variant-failure span {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 850px) {
+  .context-result-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .context-active-strategy-grid,
+  .context-planned-strategy-list,
+  .context-variant-grid,
+  .context-fixed-controls,
+  .context-source-groups {
+    grid-template-columns: 1fr;
+  }
+
+  .context-window-run-control,
+  .context-api-health,
+  .context-comparison-error {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .context-run-action {
+    align-items: flex-start;
+  }
+
+  .context-variant-identities,
+  .context-persistence-facts,
+  .context-result-summary dl {
+    grid-template-columns: 1fr 1fr;
+  }
+}

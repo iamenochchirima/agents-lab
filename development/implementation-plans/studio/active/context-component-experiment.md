@@ -1,7 +1,7 @@
 # Studio Context component experiment
 
 **Created:** `2026-10-02T23:52:59+02:00`<br>
-**Last updated:** `2026-10-03T00:20:30+02:00`<br>
+**Last updated:** `2026-10-03T10:27:44+02:00`<br>
 **Status:** Active<br>
 **Owner:** Agent Harness Lab
 
@@ -339,37 +339,37 @@ manifest groups two ordinary run records:
 
 ### 1. Define the scenario and experiment
 
-- [ ] Inspect the existing `context-stress` scenario and Context fixture conventions.
-- [ ] Add a small scenario workspace package at `lab/scenarios/context-stress/` and
+- [x] Inspect the existing `context-stress` scenario and Context fixture conventions.
+- [x] Add a small scenario workspace package at `lab/scenarios/context-stress/` and
       include that exact package in `pnpm-workspace.yaml`. Export the versioned
       `old-important-fact-v1` task and prior messages as plain data with no Studio or
       Context imports.
 - [ ] Add scenario tests for stable source IDs, sequence ordering, synthetic content,
       exact task text, and fixture version.
-- [ ] Add `lab/experiments/context-retention/README.md` with the hypothesis, case,
+- [x] Add `lab/experiments/context-retention/README.md` with the hypothesis, case,
       fixed controls, changed variable, procedure, expected observations, and limits.
-- [ ] Record the design choice: keep the reusable fixture in the scenario package;
+- [x] Record the design choice: keep the reusable fixture in the scenario package;
       keep only the comparison procedure and strategy pair in the experiment/API.
       This avoids embedding a scenario in a Context implementation or HTTP route.
 
 ### 2. Add the Context implementation and evidence contract
 
-- [ ] Preserve the current assembler behavior and identity. Add a fixed-window
+- [x] Preserve the current assembler behavior and identity. Add a fixed-window
       assembler that implements the same `ContextAssembler` interface and reports its
       own stable identity and version.
-- [ ] Define the fixed-window unit as prior Context messages, not conversation turns.
+- [x] Define the fixed-window unit as prior Context messages, not conversation turns.
       Validate `maxRecentMessages` as an integer from 1 through 12.
-- [ ] Select the newest configured number of prior messages, retain chronological
+- [x] Select the newest configured number of prior messages, retain chronological
       model order, then apply the existing complete-message token budget and Memory
       selection rules. Required instructions, the current task, Planning proposal,
       and correlated tool exchanges keep their existing handling.
-- [ ] Add `window` to the omission-reason union. Distinguish messages omitted by the
+- [x] Add `window` to the omission-reason union. Distinguish messages omitted by the
       fixed window from those omitted by token budget or invalid source data in both
       module evidence and the HTTP `omissions` and `sourceLedger` records.
-- [ ] Bump `module-context` from `0.5.0` to `0.6.0`, update the workspace lockfile,
+- [x] Bump `module-context` from `0.5.0` to `0.6.0`, update the workspace lockfile,
       document both implementations and their configuration, and retain the existing
       package's pre-1.0 minor-version rule.
-- [ ] Bump `reference-agent-assembly` from `0.3.0` to `0.4.0` and its reported
+- [x] Bump `reference-agent-assembly` from `0.3.0` to `0.4.0` and its reported
       descriptor from `0.5.0` to `0.6.0`; preserve the baseline identity and report
       the fixed window as `fixed-recent-message-window@0.1.0`.
 - [ ] Add tests for stable ordering, inclusion within the window, `window` omission
@@ -378,19 +378,19 @@ manifest groups two ordinary run records:
 
 ### 3. Make Context selection static and replaceable in the reference assembly
 
-- [ ] Refactor the reference assembly's one-entry-per-area registry into an explicit
+- [x] Refactor the reference assembly's one-entry-per-area registry into an explicit
       static allowlist for the two Context constructors while keeping every other
       area fixed.
-- [ ] Keep the kernel's existing 8,192/512/256 budget as the shared runtime value;
+- [x] Keep the kernel's existing 8,192/512/256 budget as the shared runtime value;
       ensure the assembly descriptor reports that same value for both strategies.
-- [ ] Resolve the selected Context identity and its validated configuration before
+- [x] Resolve the selected Context identity and its validated configuration before
       constructing run-scoped modules or writing artifacts. Reject unknown identities,
       package versions, configuration keys, and incompatible descriptors before a
       run starts.
-- [ ] Ensure both resolved assemblies report all twelve components and differ only
+- [x] Ensure both resolved assemblies report all twelve components and differ only
       in Context implementation identity/configuration. Run configs may additionally
       differ by their required run/session IDs and timestamps.
-- [ ] Keep `runTextTurn` on the existing role-specific Context interface. Do not add
+- [x] Keep `runTextTurn` on the existing role-specific Context interface. Do not add
       an experiment-only branch to the kernel.
 - [ ] Add reference-assembly tests for both allowlisted selections, exact descriptor
       reporting, shared non-Context selections, and rejection of arbitrary or altered
@@ -398,43 +398,43 @@ manifest groups two ordinary run records:
 
 ### 4. Add the versioned API and durable comparison lifecycle
 
-- [ ] Define request, response, error, status, and runtime validator types in a new
+- [x] Define request, response, error, status, and runtime validator types in a new
       `studio/http-contract` Context experiment module. Add an independent schema
       version for this endpoint family. Use the exact DTO fields and nullability
       specified in the HTTP contract section; validate response projections too.
-- [ ] Bump `studio-http-contract` from `0.2.0` to `0.3.0` and update the workspace
+- [x] Bump `studio-http-contract` from `0.2.0` to `0.3.0` and update the workspace
       lockfile for the additive contract exports.
-- [ ] Bump `STUDIO_CHAT_API_VERSION` from `"5"` to `"6"` for the additive Context
+- [x] Bump `STUDIO_CHAT_API_VERSION` from `"5"` to `"6"` for the additive Context
       omission reason and update its runtime validators and contract tests; preserve
       ordinary `/chat` behavior.
-- [ ] Implement `POST /context-experiments` with `comparisonId`, the fixed case ID,
+- [x] Implement `POST /context-experiments` with `comparisonId`, the fixed case ID,
       and bounded `maxRecentMessages`; the server always runs the current baseline
       and fixed-window alternative as the pair.
-- [ ] Implement `GET /context-experiments/:comparisonId` with UUID validation and a
+- [x] Implement `GET /context-experiments/:comparisonId` with UUID validation and a
       safe projection reconstructed from the manifest and its run records.
-- [ ] Add a comparison store under `STUDIO_RUNS_ROOT/context-comparisons/` with
+- [x] Add a comparison store under `STUDIO_RUNS_ROOT/context-comparisons/` with
       private directories, exclusive creation, atomic status updates, request
       fingerprint checks, file sync, symlink checks, and size limits.
-- [ ] Allocate a distinct run ID for each strategy and record it in the manifest
+- [x] Allocate a distinct run ID for each strategy and record it in the manifest
       before run creation. Extend the run execution helper to accept the allocated ID
       and comparison metadata without changing existing chat routes.
-- [ ] Keep one internal variant-runner seam at the route registrar for deterministic
+- [x] Keep one internal variant-runner seam at the route registrar for deterministic
       API tests. Production always supplies the static reference runner; do not add
       runner selection to `StudioApiAppOptions` or the HTTP request.
-- [ ] Adapt the scenario package's neutral messages into Context materials at the API
+- [x] Adapt the scenario package's neutral messages into Context materials at the API
       adapter. Give both variants identical fixture source IDs, task, budget, empty
       Memory state, deterministic Replay model, and non-Context configuration.
-- [ ] Run variants serially with independent empty Memory sessions and no Memory
+- [x] Run variants serially with independent empty Memory sessions and no Memory
       writes (`remember: false`). Persist the standard config, ordered events, and
       terminal result for each run.
-- [ ] Add idempotent duplicate handling: identical active requests share one
+- [x] Add idempotent duplicate handling: identical active requests share one
       operation, identical terminal requests return saved data, and ID reuse with a
       different fingerprint returns 409. Do not retry a failed or interrupted ID.
-- [ ] Preserve per-run failed and cancelled outcomes plus Observability `partial` and
+- [x] Preserve per-run failed and cancelled outcomes plus Observability `partial` and
       `unknown` receipts.
       Do not start a second variant after request cancellation or an unsafe persistence
       failure.
-- [ ] On API restart, report a manifest left in `running` as interrupted when no
+- [x] On API restart, report a manifest left in `running` as interrupted when no
       local operation owns it. Do not resume or rerun automatically.
 - [ ] Add API tests using temporary run roots for successful comparison, reopening
       after API recreation, idempotent duplicate requests, conflicting ID reuse,
@@ -446,37 +446,37 @@ manifest groups two ordinary run records:
 
 ### 5. Connect the Context workspace
 
-- [ ] Add typed client functions for POST and GET using the new HTTP contract.
-- [ ] Check the existing `/health` route when the Context workspace opens and provide
+- [x] Add typed client functions for POST and GET using the new HTTP contract.
+- [x] Check the existing `/health` route when the Context workspace opens and provide
       a retry action; show the API as unavailable and disable Run until health is
       confirmed.
-- [ ] Update `contextStrategies` and status labels so the two implemented choices
+- [x] Update `contextStrategies` and status labels so the two implemented choices
       have accurate names, identities, parameters, and evidence; keep unsupported
       choices marked planned.
-- [ ] Add the bounded recent-message control and a Run comparison action. Disable the
+- [x] Add the bounded recent-message control and a Run comparison action. Disable the
       action while running or when the API is unavailable.
-- [ ] Show the fixed controls and changed variable before execution, then show the
+- [x] Show the fixed controls and changed variable before execution, then show the
       actual two run results, source-ledger differences, exact model messages, token
       basis, run IDs, and persistence status after execution.
-- [ ] Put the comparison ID in the page query string and load saved evidence on direct
+- [x] Put the comparison ID in the page query string and load saved evidence on direct
       navigation or refresh. Show missing, interrupted, and partial results plainly.
-- [ ] Generate a fresh UUID for each new Run action. Changing the window value creates
+- [x] Generate a fresh UUID for each new Run action. Changing the window value creates
       a new comparison ID; reloading an existing comparison performs GET only.
-- [ ] Keep all strategy constructors and authoritative status in the API. Preserve the
+- [x] Keep all strategy constructors and authoritative status in the API. Preserve the
       current `/studio/chat` behavior and other component-area planned views.
 - [ ] Add a Chromium browser acceptance check for run, side-by-side evidence,
       refresh/reopen, API unavailable, and no fabricated score.
 
 ### 6. Document and validate the slice
 
-- [ ] Update `studio/modules/context/README.md`,
+- [x] Update `studio/modules/context/README.md`,
       `studio/assemblies/reference-agent/README.md`,
       `studio/http-contract/README.md`, `apps/studio-api/README.md`,
       `apps/web/src/features/component-lab/README.md`, and
       `docs/planning/component-lab.md` to match the implementation and its limits.
-- [ ] Document the scenario package and experiment in their own READMEs. Keep the
+- [x] Document the scenario package and experiment in their own READMEs. Keep the
       scenario definition independent from the experiment procedure.
-- [ ] Update the Studio program and product plan indexes with the implementation
+- [x] Update the Studio program and product plan indexes with the implementation
       results and any follow-up needed for broader Context strategies.
 - [ ] Run the narrow module, scenario, assembly, HTTP contract, and API test suites.
 - [ ] Run web typecheck and production build, then the Studio Context browser check
@@ -585,4 +585,7 @@ inspecting its records.
 
 ## Completion record
 
-Not completed. Fill this section when the plan passes its completion gate.
+Implementation and documentation are present, but this plan remains active because
+the listed automated checks and browser acceptance checks have not been completed in
+this pass. No tests, typechecks, builds, or browser checks were run. Complete those
+checks and review their results before moving the plan to `completed/`.

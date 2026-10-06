@@ -33,6 +33,11 @@ export interface ComponentStrategyDescriptor {
   name: string;
   summary: string;
   status: ComponentLabStatus;
+  identity?: {
+    packageName: string;
+    packageVersion: string;
+    implementation: { id: string; version: string };
+  };
   parameters: readonly StrategyParameter[];
   inputs: readonly string[];
   outputs: readonly string[];
@@ -41,17 +46,15 @@ export interface ComponentStrategyDescriptor {
 
 export interface ComponentCaseDescriptor {
   id: string;
+  scenarioId?: string;
+  fixtureId?: string;
+  fixtureVersion?: string;
+  taskId?: string;
   name: string;
   task: string;
   fixtureSummary: string;
   intendedObservation: string;
   controls: readonly string[];
-}
-
-export interface ContextEnvelopeField {
-  label: string;
-  value: string;
-  detail: string;
 }
 
 export interface ContextEvidenceItem {

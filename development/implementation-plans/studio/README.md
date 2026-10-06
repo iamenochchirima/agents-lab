@@ -31,10 +31,11 @@ all twelve selected areas and persists run evidence.
 The current sequence is recorded in the [program plan](modular-agent-studio.md).
 Stage 2 began with the completed [Input and Context baseline slice](completed/studio-input-context-baselines.md).
 The completed [Studio chat test slice](completed/studio-chat-test-slice.md) is the
-browser chat foundation. The
-[Components UI preview](active/component-lab-ui.md) remains a separate static
-catalog and strategy preview; the chat adds a run-facing surface without changing
-that preview's scope.
+browser chat foundation. The [Components UI foundation](active/component-lab-ui.md)
+introduced the catalog and strategy preview. The active
+[Context component experiment](active/context-component-experiment.md) connects the
+Context workspace to a bounded, saved two-strategy comparison; its completion gate
+still includes dedicated checks and browser inspection.
 
 ## Historical roadmap for the server-hosted implementation
 
@@ -67,10 +68,10 @@ as a record of the current implementation.
 - [Studio Context component experiment](active/context-component-experiment.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
 
-The existing UI foundation plan predates the separate Studio API decision. Its
-configuration-only preview remains distinct from run execution. The chat uses a
-separate route and the Studio API. The Context experiment plan is the next slice to
-connect the preview to an executable, inspectable comparison.
+The existing UI foundation plan predates the separate Studio API decision. It
+documents the catalog and preview; run execution uses the Studio API. The active
+Context experiment plan connects that workspace to one executable, inspectable
+comparison. Other components and Context alternatives remain planned.
 
 ## Completed plans
 

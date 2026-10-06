@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - development/playground/studio-input-context
+  - lab/scenarios/context-stress
   - studio/*
   - studio/assemblies/*
   - studio/modules/*

@@ -14,6 +14,12 @@
   min-height: 38px;
 }
 
+.studio-entry-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
 .studio-api-connection {
   color: var(--text-3);
   font-size: 0.68rem;

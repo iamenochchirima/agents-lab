@@ -1,5 +1,6 @@
 # Context Stress fixtures
 
-Contains small, deterministic inputs for the context-stress scenario.
-
-Fixtures must be safe to commit and must not depend on a live external system.
+The versioned `old-important-fact` fixture is exported by the
+`@agent-harness-lab/scenario-context-stress` package at the scenario root. It contains
+one fixed task and six ordered prior messages with stable source IDs. Its content is
+synthetic and safe to commit; it does not connect to a live external system.
