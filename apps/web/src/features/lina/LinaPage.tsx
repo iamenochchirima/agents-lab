@@ -1,14 +1,18 @@
 import { AgentSystemTabs } from '../system-explorer/AgentSystemTabs';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { ArrowLeft, Download, Save, Undo2, PanelLeft, PanelRight, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Download, Save, Undo2, PanelLeft, PanelRight, RotateCcw, RefreshCw } from 'lucide-react';
 import { emptyLina, type LinaDocument, type LinaNode } from './linaModel';
 import { linaInputBlock } from './inputBlock';
+import { LinaExecutionPath } from './LinaExecutionPath';
+import { routeLinaEdge, LINA_NODE_WIDTH, LINA_NODE_HEIGHT } from './edgeRouting';
 import './lina.css';
 
 const api = (import.meta.env.VITE_AGENTLAB_STUDIO_API_URL || 'http://127.0.0.1:4320').replace(/\/$/, '');
 const draftKey = `agents-lab.lina.draft:${api}`;
 const panelsKey = 'agents-lab.lina.panels';
+const layoutKey = `${draftKey}:compact-layout-applied`;
+const layoutRevision = 'compact-2026-10-06';
 function savedPanels(): { left: boolean; right: boolean } {
   try {
     const value = JSON.parse(localStorage.getItem(panelsKey) || 'null');
@@ -30,7 +34,7 @@ function isDocument(value: unknown): value is LinaDocument {
     && d.edges.every(e => e && ['id','source','target','label'].every(k => typeof e[k as keyof typeof e] === 'string'));
 }
 
-/** Refresh maintained documentation without changing user-arranged positions or edges.
+/** Refresh maintained notes and routes while retaining user-arranged positions.
  * Only empty, unconnected placeholders created by the former add button are removed. */
 function refreshDocumentation(document: LinaDocument): LinaDocument {
   const defaults = new Map(linaInputBlock.nodes.map(n => [n.id, n]));
@@ -42,7 +46,17 @@ function refreshDocumentation(document: LinaDocument): LinaDocument {
       return maintained ? { ...n, purpose: maintained.purpose, inputs: maintained.inputs,
         outputs: maintained.outputs, decisions: maintained.decisions, references: maintained.references } : n;
     });
-  return { ...document, nodes };
+  // Source-maintained connections evolve with the reviewed design. Preserve any
+  // unrelated connections; missing maintained nodes get collision-free positions.
+  for (const maintained of linaInputBlock.nodes) {
+    if (nodes.some(n => n.id === maintained.id)) continue;
+    let x = maintained.x;
+    while (nodes.some(n => x < n.x + LINA_NODE_WIDTH + 40 && n.x < x + LINA_NODE_WIDTH + 40
+      && maintained.y < n.y + LINA_NODE_HEIGHT + 40 && n.y < maintained.y + LINA_NODE_HEIGHT + 40)) x += LINA_NODE_WIDTH + 80;
+    nodes.push({ ...maintained, x });
+  }
+  const customEdges = document.edges.filter(edge => !edge.id.startsWith('lina-input-edge-'));
+  return { ...document, nodes, edges: [...linaInputBlock.edges, ...customEdges] };
 }
 
 /** Editable architecture workspace. Explicit save commits a revision; edits made
@@ -58,6 +72,8 @@ export function LinaPage() {
   const [selected, setSelected] = useState('');
   const [tab, setTab] = useState<'design'|'study'|'experiment'>('design');
   const [zoom, setZoom] = useState(1);
+  const [view, setView] = useState<'map' | 'path'>('map');
+  const [executionTrail, setExecutionTrail] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState(savedPanels);
   useEffect(() => {
     try { localStorage.setItem(panelsKey, JSON.stringify(collapsed)); }
@@ -113,10 +129,11 @@ export function LinaPage() {
     const target = doc.nodes.find(n => n.id === id);
     if (!target) return;
     selectNode(id);
-    const scale = zoom;
+    const scale = Math.max(.85, zoom);
+    if (scale !== zoom) zoomMap(scale);
     requestAnimationFrame(() => {
       const viewport = mapScroll.current;
-      if (viewport) viewport.scrollTo(Math.max(0, (target.x + 110) * scale - viewport.clientWidth / 2), Math.max(0, (target.y + 56) * scale - viewport.clientHeight / 2));
+      if (viewport) viewport.scrollTo(Math.max(0, (target.x + LINA_NODE_WIDTH / 2) * scale - viewport.clientWidth / 2), Math.max(0, (target.y + LINA_NODE_HEIGHT / 2) * scale - viewport.clientHeight / 2));
     });
   }
   function selectNode(id: string) {
@@ -126,7 +143,7 @@ export function LinaPage() {
   function resetInputLayout() {
     const defaults = new Map(linaInputBlock.nodes.map(n => [n.id, n]));
     const outside = doc.nodes.filter(n => !defaults.has(n.id));
-    const offset = outside.length ? Math.max(...outside.map(n => n.x + 300)) : 0;
+    const offset = outside.length ? Math.max(...outside.map(n => n.x + LINA_NODE_WIDTH + 200)) : 0;
     const next = { ...doc, nodes: doc.nodes.map(n => {
       const position = defaults.get(n.id);
       return position ? { ...n, x: position.x + offset, y: position.y } : n;
@@ -145,17 +162,46 @@ export function LinaPage() {
       if (draft && (!Number.isInteger(draft.revision) || !isDocument(draft.document))) throw new Error('The local draft has an invalid format. It has been preserved.');
       const original = draft?.document ?? saved.document ?? emptyLina;
       if (!isDocument(original)) throw new Error('The database returned an invalid design.');
-      const next = refreshDocumentation(original);
+      let next = refreshDocumentation(original);
+      // Apply this requested layout update once, even when a browser draft is older
+      // than the stored design. Retain its positions for undo and back up the draft.
+      if (localStorage.getItem(layoutKey) !== layoutRevision && next.nodes.some(n => n.id.startsWith('lina-input-'))) {
+        localStorage.setItem(`${draftKey}:before-layout-update`, JSON.stringify({ revision: draft?.revision ?? saved.revision, document: original }));
+        const defaults = new Map(linaInputBlock.nodes.map(n => [n.id, n]));
+        const outside = next.nodes.filter(n => !defaults.has(n.id));
+        const offset = outside.length ? Math.max(...outside.map(n => n.x + LINA_NODE_WIDTH + 200)) : 0;
+        setLayoutUndo(original.nodes.filter(n => defaults.has(n.id)).map(n => ({ id: n.id, x: n.x, y: n.y })));
+        next = { ...next, nodes: next.nodes.map(n => {
+          const position = defaults.get(n.id);
+          return position ? { ...n, x: position.x + offset, y: position.y } : n;
+        }) };
+        localStorage.setItem(layoutKey, layoutRevision);
+      }
       const updated = JSON.stringify(next) !== JSON.stringify(original);
-      if (updated) localStorage.setItem(draftKey, JSON.stringify({ revision: draft ? draft.revision : saved.revision, document: next }));
-      live.current = next; setDoc(next); setRevision(draft ? draft.revision : saved.revision);
-      setDirty(!!draft || updated); setReady(true);
-      if (draft && draft.revision !== saved.revision) setError('The database has a newer revision. Download your draft before loading the database copy.');
+      // An old draft can safely adopt the saved revision only when refresh produces
+      // identical content, connections, and positions. Distinct edits still conflict.
+      const reconciled = !!draft && draft.revision !== saved.revision
+        && JSON.stringify(next) === JSON.stringify(refreshDocumentation(saved.document ?? emptyLina));
+      const baseRevision = !draft || reconciled ? saved.revision : draft.revision;
+      const savedMatch = JSON.stringify(next) === JSON.stringify(saved.document);
+      if (savedMatch && reconciled) localStorage.removeItem(draftKey);
+      else if (updated || reconciled) localStorage.setItem(draftKey, JSON.stringify({ revision: baseRevision, document: next }));
+      live.current = next; setDoc(next); setRevision(baseRevision);
+      setDirty(!savedMatch || (!!draft && !reconciled)); setReady(true);
+      requestAnimationFrame(() => {
+        const viewport = mapScroll.current;
+        if (!viewport || !next.nodes.length) return;
+        const w = Math.max(1600, ...next.nodes.map(n => n.x + LINA_NODE_WIDTH + 500));
+        const h = Math.max(1000, ...next.nodes.map(n => n.y + LINA_NODE_HEIGHT + 300));
+        const scale = Math.min(1, Math.max(.05, Math.min(viewport.clientWidth / w, viewport.clientHeight / h)));
+        zoomValue.current = scale; setZoom(scale); viewport.scrollTo(0, 0);
+      });
+      if (draft && draft.revision !== saved.revision && !reconciled) setError('The database has a newer revision. Download your draft before loading the database copy.');
       if (databaseOnly) { if (!updated) localStorage.removeItem(draftKey); setSelected(''); }
     } catch (e) { setError(e instanceof Error ? e.message : 'Database unavailable.'); }
     finally { setBusy(false); }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [linaInputBlock]);
   function change(next: LinaDocument) {
     try { localStorage.setItem(draftKey, JSON.stringify({ revision, document: next })); }
     catch { setError('The browser could not back up this edit. The change was not accepted.'); return; }
@@ -176,8 +222,11 @@ export function LinaPage() {
     const url = URL.createObjectURL(new Blob([JSON.stringify({ revision, document: doc }, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a'); a.href = url; a.download = 'lina-architecture.json'; a.click(); URL.revokeObjectURL(url);
   }
-  const width = Math.max(1300, ...doc.nodes.map(n => n.x + 300));
-  const height = Math.max(850, ...doc.nodes.map(n => n.y + 220));
+  const routedConnections = useMemo(() => doc.edges.map((edge, index) => ({
+    edge, route: routeLinaEdge(edge, doc.nodes, index),
+  })), [doc.nodes, doc.edges]);
+  const width = Math.max(1600, ...doc.nodes.map(n => n.x + LINA_NODE_WIDTH + 500));
+  const height = Math.max(1000, ...doc.nodes.map(n => n.y + LINA_NODE_HEIGHT + 300));
   const field = (key: 'purpose'|'inputs'|'outputs'|'decisions'|'references'|'experiments', label: string) => {
     const value = node?.[key]?.trim();
     if (!value) return null;
@@ -191,13 +240,15 @@ export function LinaPage() {
     <header className="lina-header"><div><Link to="/studio" className="lina-back"><ArrowLeft size={14} /> Studio</Link><div className="lina-heading"><h1>Lina</h1><span>Architecture workspace</span></div><p>Study the architecture one component at a time.</p></div>
       <div className="lina-actions"><span role="status">{busy ? 'Connecting…' : error ? 'Needs attention' : dirty ? 'Draft · not saved to database' : ready ? `Saved to database · v${revision}` : 'Database unavailable'}</span><button onClick={download} disabled={!ready} title="Download architecture backup"><Download size={14} /> Export</button><button className="lina-primary" onClick={() => void save()} disabled={!ready || busy || !dirty}><Save size={14} /> Save design</button></div></header>
     <AgentSystemTabs active="lina"><Link to="/studio/comparison">Comparison</Link></AgentSystemTabs>
-    <div className="lina-block-tools"><span>Input block · design draft</span><button disabled={!ready || busy || inputNodes.length === 0} onClick={resetInputLayout}><RotateCcw size={14}/> Reset input layout</button><div className="lina-panel-controls"><button aria-label={collapsed.left ? 'Expand components sidebar' : 'Collapse components sidebar'} aria-expanded={!collapsed.left} aria-controls="lina-components" onClick={() => setCollapsed(v => ({ ...v, left: !v.left }))}><PanelLeft size={14}/> Components</button><button aria-label={collapsed.right ? 'Expand inspector sidebar' : 'Collapse inspector sidebar'} aria-expanded={!collapsed.right} aria-controls="lina-inspector" onClick={() => setCollapsed(v => ({ ...v, right: !v.right }))}><PanelRight size={14}/> Inspector</button></div></div>
+    <div className="lina-view-tabs" aria-label="Architecture views"><button aria-pressed={view === 'map'} onClick={() => { setView('map'); setExecutionTrail([]); }}>Architecture map</button><button aria-pressed={view === 'path'} onClick={() => setView('path')}>Follow a message</button></div>
+    {view === 'path' && ready && <LinaExecutionPath document={doc} onFocus={focusNode} onTrail={setExecutionTrail}/>}
+    <div className="lina-block-tools"><span>Input block · design draft</span><button disabled={busy} onClick={() => void load()} title="Reload stored design while preserving the browser draft"><RefreshCw size={14}/> Reload design</button><button disabled={!ready || busy || inputNodes.length === 0} onClick={resetInputLayout}><RotateCcw size={14}/> Reset input layout</button><div className="lina-panel-controls"><button aria-label={collapsed.left ? 'Expand components sidebar' : 'Collapse components sidebar'} aria-expanded={!collapsed.left} aria-controls="lina-components" onClick={() => setCollapsed(v => ({ ...v, left: !v.left }))}><PanelLeft size={14}/> Components</button><button aria-label={collapsed.right ? 'Expand inspector sidebar' : 'Collapse inspector sidebar'} aria-expanded={!collapsed.right} aria-controls="lina-inspector" onClick={() => setCollapsed(v => ({ ...v, right: !v.right }))}><PanelRight size={14}/> Inspector</button></div></div>
     {error && <div role="alert" className="lina-error">{error}<button disabled={busy} onClick={() => void (ready ? save() : load())}>Retry</button>{ready && <button disabled={busy} onClick={() => void load(true)}>Load database copy (discard draft)</button>}</div>}
     <div className={`lina-workspace ${collapsed.left ? 'left-collapsed' : ''} ${collapsed.right ? 'right-collapsed' : ''}`}><aside id="lina-components" hidden={collapsed.left} className="lina-index"><div className="lina-section-title"><h2>Components</h2></div>
       {doc.nodes.length === 0 ? <p className="lina-muted">Your architecture starts here.</p> : doc.nodes.map(n => <button className={`lina-index-node ${selected === n.id ? 'is-selected' : ''}`} key={n.id} onClick={() => focusNode(n.id)}><span className={`lina-dot ${n.status}`} /><span>{n.title}<small>{n.area}</small></span></button>)}
       <div className="lina-index-footer">{doc.nodes.length} components · {doc.edges.length} connections<div><span className="lina-dot proposed" /> Proposed <span className="lina-dot studying" /> Studying <span className="lina-dot decided" /> Decided</div></div></aside>
       <section className="lina-map" aria-label="Lina architecture canvas"><div className="lina-map-toolbar"><span>Architecture map</span><div><button onClick={() => zoomMap(zoom / 1.2)} disabled={zoom <= .05} aria-label="Zoom out">−</button><span>{Math.round(zoom*100)}%</span><button onClick={() => zoomMap(zoom * 1.2)} disabled={zoom >= 2} aria-label="Zoom in">+</button><button onClick={fitMap}>Fit</button></div></div>
-        {layoutUndo && <div className="lina-layout-undo">Input layout reset.<button onClick={() => {
+        {layoutUndo && <div className="lina-layout-undo">Layout updated. Previous positions kept.<button onClick={() => {
           const positions = new Map(layoutUndo.map(n => [n.id, n]));
           change({ ...doc, nodes: doc.nodes.map(n => { const p = positions.get(n.id); return p ? { ...n, x: p.x, y: p.y } : n; }) });
           setLayoutUndo(null);
@@ -223,7 +274,7 @@ export function LinaPage() {
           onPointerCancel={() => { pan.current = null; setPanning(false); }}
           onLostPointerCapture={() => { pan.current = null; setPanning(false); }}
         ><div style={{ width: width*zoom, height:height*zoom }}><div className="lina-canvas" style={{ width,height,transform:`scale(${zoom})`,transformOrigin:'top left' }}>
-          {inputNodes.length > 0 && <div className="lina-block-region" style={{ left: Math.min(...inputNodes.map(n => n.x))-25, top: Math.min(...inputNodes.map(n => n.y))-75, width: Math.max(...inputNodes.map(n => n.x+220))-Math.min(...inputNodes.map(n => n.x))+50, height: Math.max(...inputNodes.map(n => n.y+112))-Math.min(...inputNodes.map(n => n.y))+100 }}><button className="lina-block-handle" aria-label="Drag input block" disabled={!ready || busy}
+          {inputNodes.length > 0 && <div className="lina-block-region" style={{ left: Math.min(...inputNodes.map(n => n.x))-25, top: Math.min(...inputNodes.map(n => n.y))-75, width: Math.max(...inputNodes.map(n => n.x+LINA_NODE_WIDTH))-Math.min(...inputNodes.map(n => n.x))+50, height: Math.max(...inputNodes.map(n => n.y+LINA_NODE_HEIGHT))-Math.min(...inputNodes.map(n => n.y))+100 }}><button className="lina-block-handle" aria-label="Drag input block" disabled={!ready || busy}
               onPointerDown={e => {
                 if (e.button !== 0) return;
                 e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId);
@@ -243,8 +294,12 @@ export function LinaPage() {
               onPointerCancel={() => { blockDrag.current = null; }}
               onLostPointerCapture={() => { blockDrag.current = null; }}
             >01 · Input and admission <span>Drag block</span></button><p>Adapters → identity and access → durable input → dispatch branches. Execution and delivery are external handoffs.</p></div>}
-          <svg width={width} height={height} aria-label="Component connections"><defs><marker id="lina-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor" /></marker></defs>{doc.edges.map(e => { const a=doc.nodes.find(n=>n.id===e.source),b=doc.nodes.find(n=>n.id===e.target); if(!a||!b)return null; const sideways = Math.abs(a.x-b.x) > Math.abs(a.y-b.y); const right=b.x>a.x; const down=b.y>a.y; const x1=sideways?a.x+(right?220:0):a.x+110,y1=sideways?a.y+56:a.y+(down?112:0),x2=sideways?b.x+(right?0:220):b.x+110,y2=sideways?b.y+56:b.y+(down?0:112); return <g key={e.id}><path d={!sideways && Math.abs(y2-y1)>100 ? `M${x1},${y1} H${x1+145} V${y2-24} H${x2} V${y2}` : sideways?`M${x1},${y1} H${(x1+x2)/2} V${y2} H${x2}`:`M${x1},${y1} V${(y1+y2)/2} H${x2} V${y2}`} markerEnd="url(#lina-arrow)" /><text x={(x1+x2)/2+8} y={(y1+y2)/2}>{e.label}</text></g>; })}</svg>
-          {doc.nodes.map(n => <button key={n.id} aria-label={`Select ${n.title}`} className={`lina-canvas-node ${n.status} ${selected===n.id?'is-selected':''}`} style={{ left:n.x,top:n.y }} onClick={()=>selectNode(n.id)} onPointerDown={e=>{ if(e.button!==0)return; e.currentTarget.setPointerCapture(e.pointerId); drag.current={id:n.id,startX:e.clientX,startY:e.clientY,x:n.x,y:n.y}; selectNode(n.id); }} onPointerMove={e=>{ const d=drag.current;if(!d||d.id!==n.id)return; const x=Math.max(20,Math.round(d.x+(e.clientX-d.startX)/zoom)),y=Math.max(20,Math.round(d.y+(e.clientY-d.startY)/zoom));change({...live.current,nodes:live.current.nodes.map(v=>v.id===d.id?{...v,x,y}:v)}); }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><small>{n.area}</small><strong>{n.title}</strong><span><i className={`lina-dot ${n.status}`} />{n.status}</span></button>)}
+          <svg width={width} height={height} aria-label="Component connections"><defs><marker id="lina-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor" /></marker></defs>{routedConnections.map(({ edge, route }) => {
+            if (!route.path) return null;
+            const traversed = executionTrail.some((id, step) => id === edge.source && executionTrail[step + 1] === edge.target);
+            return <g key={edge.id} className={traversed ? 'lina-traversed-edge' : undefined}><path d={route.path} markerEnd="url(#lina-arrow)"/><text x={route.labelX} y={route.labelY} textAnchor={route.labelAnchor ?? 'middle'}>{edge.label}</text></g>;
+          })}</svg>
+          {doc.nodes.map(n => <button key={n.id} aria-label={`Select ${n.title}`} className={`lina-canvas-node ${n.status} ${selected===n.id?'is-selected':''} ${executionTrail.includes(n.id)?'is-visited':''}`} style={{ left:n.x,top:n.y }} onClick={()=>selectNode(n.id)} onPointerDown={e=>{ if(e.button!==0)return; e.currentTarget.setPointerCapture(e.pointerId); drag.current={id:n.id,startX:e.clientX,startY:e.clientY,x:n.x,y:n.y}; selectNode(n.id); }} onPointerMove={e=>{ const d=drag.current;if(!d||d.id!==n.id)return; const x=Math.max(20,Math.round(d.x+(e.clientX-d.startX)/zoom)),y=Math.max(20,Math.round(d.y+(e.clientY-d.startY)/zoom));change({...live.current,nodes:live.current.nodes.map(v=>v.id===d.id?{...v,x,y}:v)}); }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><small>{n.area}</small><strong>{n.title}</strong><span><i className={`lina-dot ${n.status}`} />{n.status}</span></button>)}
           {doc.nodes.length===0 && <div className="lina-empty"><h2>No architecture components yet.</h2><p>Components will be added as we develop the design together.</p></div>}
         </div></div></div></section>
       <aside id="lina-inspector" hidden={collapsed.right} className="lina-inspector">{node ? <>

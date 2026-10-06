@@ -79,7 +79,7 @@ queue. They still require authorization.
 | Input | Handling |
 | --- | --- |
 | Status | Answer immediately without starting an agent turn. |
-| Queue, Steer, Interrupt, Stop | Route to the service's authorized turn-control handler. Detailed execution rules remain proposed. |
+| Explicit Queue, Steer, Interrupt, Stop action | Route to the authorized turn-control handler outside ordinary batching. Queue targets the conversation; the other actions target an exact active turn. Execution rules remain proposed. |
 | Approval or denial | Require an explicit approval control or `/approve <id>` or `/deny <id>`. Check permission and resolve the specific pending approval. A plain yes or no does not grant approval. |
 | Clarification answer | Deliver to the specific waiting question. Accept plain text when the target is unambiguous. |
 | Ordinary message | Apply the conversation's busy-input policy. |
@@ -164,7 +164,7 @@ Queue does not change the current model request, tools, or subagents.
 
 ### Steering boundaries
 
-The proposal adopts OpenClaw's built-in runtime rules.
+The draft uses OpenClaw's built-in runtime rules as candidate behavior. Adoption remains open.
 
 | Current activity | Proposed behavior |
 | --- | --- |
@@ -189,23 +189,49 @@ Cancellation cannot undo completed side effects. A tool can finish despite a
 cancellation request. A timeout does not prove that work stopped or that a
 replacement turn can safely use the same resources.
 
+An explicit Queue action submits work to the conversation queue without changing
+the active turn. An ordinary message can also select Queue, Steer, or Interrupt
+as its busy policy. That selection is checked at conversation admission; it is
+distinct from an explicit control action.
+
 Target Steer, Interrupt, and Stop at a specific active turn ID. A stale request
 must not silently affect a newer turn. Status requests, approval responses, and
 clarification answers remain accessible while work runs.
 
 ## Input block in Studio
 
-The first architecture block is available at `/studio/lina`. It contains 22
-documented nodes and 30 design connections. It is a proposed responsibility map,
-not an executable workflow or a claim that source agents use the same ordering.
+The first architecture block is available at `/studio/lina`. It is a proposed
+responsibility map, not an executable workflow or a claim that source agents use
+the same ordering.
 
-| Part | Nodes |
+| Part | Responsibility |
 | --- | --- |
-| Entry | CLI, WhatsApp, Telegram adapters; input envelope |
-| Admission | Identity resolver, access policy, pairing/refusal, conversation router, input identity claim, existing-input status |
-| Preparation and persistence | Intent/permission, attachment custody, durable acceptance, input recovery |
-| Dispatch | Accepted-input dispatcher, messaging burst collector, conversation admission, turn control, pending-prompt resolver, command handler |
-| External boundaries | Execution handoff, reply-delivery handoff |
+| Entry | Adapters preserve transport facts; the envelope validates structure. |
+| Admission | Identity can be known or unknown. Access policy pairs or refuses unknown senders. The activation gate passes DMs/CLI and addressed group messages; unaddressed group input ends without execution or a reply. Conversation routing checks access to the selected history. |
+| Receipt and preparation | Atomically claim source identity. Return existing status only after checking access to the stored input's original conversation. Acquire required originals before accepting responsibility. |
+| Failure | Show malformed, unauthorized, attachment, or acceptance failures. Record a terminal or retryable receipt outcome when storage permits. Failure is not acceptance. |
+| Dispatch | Explicit controls and waiting answers bypass ordinary batching. Ordinary messages enter collection and conversation admission. |
+| Waiting | Queue eligible work. Owner release or an explicit resume triggers a drain that rechecks authorization and ownership before admission. |
+| Recovery | Restore unstarted accepted input through dispatch, interrupted execution through a safe runtime checkpoint, and saved answers through delivery. Uncertain execution enters reconciliation. |
+| Boundaries | Execution, delivery, and reconciliation have explicit handoffs. Their internal implementations remain outside this block. |
+
+### Proposed receipt lifecycle
+
+These states make retry ownership explicit. Transaction details and reclaim
+mechanisms remain open.
+
+| State | Meaning and next action |
+| --- | --- |
+| Claimed | A preparation owner holds the source identity. Another delivery returns status while that owner is active. |
+| Retryable preparation failure | Responsibility has not been accepted. An eligible retry must obtain a fresh claim after checking the prior owner's release and current authorization. |
+| Rejected | A terminal refusal is recorded where possible. Redelivery returns that result. |
+| Accepted | Responsibility is durable. Redelivery returns status; execution and delivery have separate progress states. |
+| Uncertain preparation or acceptance | Inspect persisted state and custody outcomes. Do not reclaim based only on elapsed time or blindly repeat an external operation. |
+
+Preaccept claim recovery handles abandoned or failed preparation. It does not
+turn an accepted input into a fresh event. A storage outage can prevent recording
+failure; no acceptance promise is sent in that case.
+
 
 Each node's Study notes name corresponding Hermes and OpenClaw explorer nodes
 and source owners. Pi and Waku supply supplementary entry/runtime comparisons.
@@ -213,14 +239,23 @@ Mappings identify shared responsibilities, not identical components. Lina's
 durable acceptance and service-wide persistent duplicate claim have no universal
 equivalent inferred from either source explorer.
 
-Controls and prompt answers bypass burst collection and ordinary execution
-admission. Attachment-free input bypasses custody. Invalid or unauthorized input
+Explicit controls and prompt answers bypass burst collection and ordinary
+execution admission. Ordinary busy-policy selections are evaluated at admission. Attachment-free input bypasses custody. Invalid or unauthorized input
 does not enter execution. Recovery restores eligible accepted work after current
 authorization and outcome checks.
 
 Decided is a design status, not implementation status. Node boundaries and edge
 ordering remain reviewable, especially duplicate claims, attachment failures,
 immediate control persistence, and conversation ownership.
+
+### Message walkthrough
+
+The Lina page's **Follow a message** view follows the input block's existing
+connections. Scenarios cover normal channel input and alternate admission,
+control, and recovery routes. Route choices highlight the path on the map.
+These are design walkthroughs. Failure outcomes and control details remain open
+where this document says so; downstream execution is a boundary, not an invented
+model or tool lifecycle.
 
 ## Decisions still open
 
@@ -263,8 +298,10 @@ either reference system.
 Duplicate and burst policies draw on Hermes's [persisted Telegram receipts](https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/plugins/platforms/telegram/update_admission.py#L1)
 and [text debounce](https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/gateway/platforms/base.py#L3815),
 and OpenClaw's [inbound deduplication and batching](https://github.com/openclaw/openclaw/blob/e40ed06f23cb8bd939c9a6ff537eba7136074686/docs/concepts/messages.md#L29).
-Service-wide persistent duplicate admission is Lina's selected design, not a
-universal guarantee of either reference system.
+OpenClaw also checks [durable recovery identity and pending-input reclaim](https://github.com/openclaw/openclaw/blob/e40ed06f23cb8bd939c9a6ff537eba7136074686/src/auto-reply/reply/dispatch-from-config.prepare-context.ts#L325)
+in its surrounding dispatch preparation. Its in-memory helper does not describe
+all dedupe behavior. Lina's service-wide claim and status contract remains a
+selected design, not a universal guarantee of either reference system.
 
 Attachment responsibilities follow Hermes's [adapter download and caching](https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/gateway/run_inbound.py#L51)
 and [gateway transcription](https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/gateway/run_inbound.py#L2062),
@@ -294,8 +331,9 @@ See the pinned [steering contract](https://github.com/openclaw/openclaw/blob/e40
 and [queue modes](https://github.com/openclaw/openclaw/blob/e40ed06f23cb8bd939c9a6ff537eba7136074686/docs/concepts/queue.md).
 
 Hermes steering waits for tool-batch completion. Its separate redirect can cancel
-a model request within the same turn or request tool yield. The gateway falls back
-to queueing during active subagents or compression. See pinned
+a model request within the same turn or request tool yield. Busy interrupt mode
+falls back to queueing during active subagents or compression. Steering has its
+own availability checks and is not subject to those two interrupt demotions. See pinned
 [interrupt control](https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/agent/interrupt_control.py#L250)
 and [busy-input handling](https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/gateway/run_busy.py#L583).
 
