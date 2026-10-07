@@ -42,6 +42,15 @@ export interface RestateWorkflowInput {
   };
 }
 
+/** Bounded native events visible while the workflow is still executing. */
+export interface RestateWorkflowProgress {
+  readonly schemaVersion: 1;
+  readonly runId: string;
+  readonly startedAt: string;
+  readonly truncated: boolean;
+  readonly eventIntents: readonly RunEventIntent[];
+}
+
 export interface RestateWorkflowResult extends RunResult {
   readonly eventIntents: readonly RunEventIntent[];
   readonly trajectory: RunTrajectory;

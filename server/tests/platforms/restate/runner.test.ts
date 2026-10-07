@@ -331,3 +331,38 @@ test("manifest configuration remains safe when OpenRouter is enabled", () => {
   assert.deepEqual(runner.manifestConfiguration(), safeManifestConfiguration(config));
   assert.equal(JSON.stringify(runner.manifestConfiguration()).includes("secret-value"), false);
 });
+
+test("runner preserves native progress before and after an asynchronous cancellation", async () => {
+  const runId = "restate-progress-cancel-test";
+  const startedAt = "2026-10-08T00:00:00.000Z";
+  const events = [
+    { source: "restate-workflow", sourceSequence: 1, kind: "AgentStarted", runId, occurredAt: startedAt, payload: {} },
+    { source: "restate-workflow", sourceSequence: 2, kind: "ModelRequested", runId, occurredAt: startedAt, payload: { round: 1, attempt: 1 } },
+  ];
+  let cancelled = false;
+  const client: RestateWorkflowClient = {
+    workflowSubmit: async () => ({ invocationId: "inv-progress", status: "Accepted", attachable: true }),
+    workflowOutput: async () => ({ ready: false }),
+    progress: async () => ({ schemaVersion: 1, runId, startedAt, truncated: false, eventIntents: events }),
+  };
+  const runner = RestateBaselineRunner.fromOptions({
+    config: loadRestateConfig({}), ingress: new FakeIngress(client),
+    fetchImplementation: async (_url, init) => {
+      if (String(_url).endsWith("/query")) return response({ rows: [{ id: "inv-progress", status: cancelled ? "cancelled" : "running", retry_count: 0, modified_at: "2026-10-08T00:00:01.000Z" }] });
+      assert.equal(init?.method, "PATCH");
+      cancelled = true;
+      return response({});
+    },
+  });
+  const reference = await runner.start(manifestFor(runner, runId));
+  const active = await runner.inspect(reference);
+  assert.equal(active.status, "running");
+  assert.equal(active.result, null);
+  assert.deepEqual(active.eventIntents, events);
+  assert.equal((await runner.cancel(reference, "test cancellation")).accepted, true);
+  const terminal = await runner.inspect(reference);
+  assert.equal(terminal.status, "cancelled");
+  assert.deepEqual(terminal.eventIntents.slice(0, 2), events);
+  assert.deepEqual(terminal.eventIntents.slice(2).map(event => event.kind), ["AgentCancelled", "RunCancelled"]);
+  assert.equal(terminal.metrics?.modelCallCount, 1);
+});

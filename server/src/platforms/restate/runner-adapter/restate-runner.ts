@@ -17,7 +17,7 @@ import {
   type RestateConfig,
 } from "../config.js";
 import { restateServices } from "../service/baseline-service.js";
-import type { RestateWorkflowInput, RestateWorkflowResult } from "../variants/baseline/contracts.js";
+import type { RestateWorkflowInput, RestateWorkflowResult, RestateWorkflowProgress } from "../variants/baseline/contracts.js";
 import { workflowInputFromManifest } from "../variants/baseline/contracts.js";
 
 const WORKFLOW_KEY_PREFIX = "agentlab:";
@@ -33,6 +33,7 @@ export interface RestateWorkflowSubmission {
 export interface RestateWorkflowClient {
   workflowSubmit(input: RestateWorkflowInput, options?: unknown): Promise<RestateWorkflowSubmission>;
   workflowOutput(): Promise<{ readonly ready: boolean; readonly result?: RestateWorkflowResult }>;
+  progress?(): Promise<RestateWorkflowProgress | null>;
 }
 
 export interface RestateIngress {
@@ -229,17 +230,34 @@ export class RestateBaselineRunner implements PlatformRunner {
       lastModifiedAt: invocation.modifiedAt,
     });
     const nativeStatus = mapNativeStatus(invocation.status, invocation.completionResult);
+    const progress = await this.readProgress(native.workflowKey);
     if (nativeStatus === "cancelled" || isRestateCancellationError(terminalOutputError)) {
-      return cancellationInspection(updatedReference, native, invocation);
+      return cancellationInspection(updatedReference, native, invocation, progress);
     }
     return {
       status: nativeStatus,
       reference: updatedReference,
-      eventIntents: [],
+      eventIntents: progress?.eventIntents ?? [],
       result: null,
       trajectory: null,
       metrics: null,
     };
+  }
+
+  private async readProgress(workflowKey: string): Promise<RestateWorkflowProgress | null> {
+    try {
+      const client = this.workflowClient(workflowKey);
+      // Older deployments and test clients can lack this additive read handler.
+      if (!client.progress) return null;
+      const value = await client.progress();
+      if (!value || value.schemaVersion !== 1 || value.runId !== workflowKey.replace(/^agentlab:/, "") || !Array.isArray(value.eventIntents)
+        || value.eventIntents.length > 256 || new TextEncoder().encode(JSON.stringify(value)).byteLength > 1_100_000) return null;
+      return value;
+    } catch {
+      // Missing progress never turns an accepted invocation into invented failure.
+      // Terminal output and native introspection remain independently authoritative.
+      return null;
+    }
   }
 
   private requireIngress(): RestateIngress {
@@ -416,12 +434,14 @@ function cancellationInspection(
   reference: PlatformExecutionReference,
   native: NativeRestateReference,
   invocation: InvocationRecord,
+  progress: RestateWorkflowProgress | null = null,
 ): RunnerInspection {
   const runId = reference.executionId.replace(/^agentlab:/, "");
   const finishedAt = invocation.modifiedAt ?? native.terminalObservedAt ?? new Date().toISOString();
   const terminalReference = updateReference(reference, { terminalObservedAt: finishedAt });
   const attemptCount = Math.max(1, (invocation.retryCount ?? 0) + 1);
   const eventIntents: RunEventIntent[] = [
+    ...(progress?.eventIntents ?? []),
     {
       source: "restate-runner",
       sourceSequence: 1,
@@ -443,7 +463,7 @@ function cancellationInspection(
     schemaVersion: 1,
     runId,
     status: "cancelled",
-    startedAt: null,
+    startedAt: progress?.startedAt ?? null,
     finishedAt,
     output: null,
     error: {
@@ -461,8 +481,8 @@ function cancellationInspection(
     runId,
     status: "cancelled",
     durationMs: null,
-    modelCallCount: 0,
-    modelAttemptCount: attemptCount,
+    modelCallCount: new Set((progress?.eventIntents ?? []).filter(event => event.kind === "ModelRequested").map(event => event.payload.round)).size,
+    modelAttemptCount: progress ? progress.eventIntents.filter(event => event.kind === "ModelRequested").length : attemptCount,
     inputTokens: null,
     outputTokens: null,
     totalTokens: null,

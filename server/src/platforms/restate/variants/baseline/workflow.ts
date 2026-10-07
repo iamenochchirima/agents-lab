@@ -35,6 +35,7 @@ import {
   type ModelSuccess,
   type RestateWorkflowInput,
   type RestateWorkflowResult,
+  type RestateWorkflowProgress,
 } from "./contracts.js";
 import { createRestateModel } from "./models/factory.js";
 
@@ -47,6 +48,9 @@ const DEFAULT_TOOL_CONFIGURATION = Object.freeze({
 export const baselineWorkflow = restate.workflow({
   name: RESTATE_SERVICE_NAME,
   handlers: {
+    progress: restate.handlers.workflow.shared(async (ctx: restate.WorkflowSharedContext): Promise<RestateWorkflowProgress | null> => {
+      return ctx.get<RestateWorkflowProgress>("progress");
+    }),
     run: async (ctx: restate.WorkflowContext, input: RestateWorkflowInput): Promise<RestateWorkflowResult> => {
       const events: RunEventIntent[] = [];
       const phases: Array<RunTrajectory["phases"][number]> = [];
@@ -82,6 +86,12 @@ export const baselineWorkflow = restate.workflow({
           occurredAt: await ctx.date.toJSON(),
           payload,
         });
+        // Shared readers see actual recorded events before the next native action.
+        // Full events remain in the authoritative final output; only progress is bounded.
+        const recent = events.slice(-256);
+        while (recent.length > 0 && new TextEncoder().encode(JSON.stringify(recent)).byteLength > 1_048_576) recent.shift();
+        ctx.set("progress", { schemaVersion: 1, runId: input.runId, startedAt,
+          truncated: recent.length !== events.length, eventIntents: recent } satisfies RestateWorkflowProgress);
       };
 
       const recordTool = async (kind: string, call: ToolCall, payload: ToolEventDetails): Promise<void> => {
