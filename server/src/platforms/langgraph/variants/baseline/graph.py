@@ -1197,7 +1197,10 @@ def execute_connection_tool(
                 connection = {"requestId": request_id, "status": "completed", "attemptCount": len(attempts), "providerRequestIds": provider_request_ids, "errorCode": None}
                 return ToolExecution(json.dumps(body["body"], separators=(",", ":")), connection=connection)
             if not retryable or attempt == max_attempts:
-                message = f"The local connection failed with HTTP {status_code}."
+                # Preserve actionable read feedback from the owned fixture. An
+                # unsuccessful write keeps the original terminal error policy.
+                detail = body["body"].get("error")
+                message = _bounded_text(detail, 512) if read_only and isinstance(detail, str) and detail else f"The local connection failed with HTTP {status_code}."
                 connection = {"requestId": request_id, "status": "failed", "attemptCount": len(attempts), "providerRequestIds": provider_request_ids, "errorCode": f"HTTP_{status_code}"}
                 return ToolExecution(_tool_error(f"HTTP_{status_code}", message), connection=connection, status="failed", error_code=f"HTTP_{status_code}", error_message=message)
         except OutcomeUnknownError:

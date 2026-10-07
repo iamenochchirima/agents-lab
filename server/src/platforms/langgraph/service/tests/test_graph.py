@@ -854,3 +854,19 @@ def test_behaviour_fixture_requires_correlated_feedback_and_observes_native_dead
     with pytest.raises(OutcomeUnknownError, match="invalid response shape"):
         graph_module.complete_fake("fake-eval-behaviour", malformed, 1, lambda: False, 500)
     assert malformed["_behaviour_fault_kind"] == "malformed"
+
+
+def test_failed_connection_read_preserves_actionable_feedback_without_retrying_or_completing() -> None:
+    response_body = json.dumps({"providerRequestId": "local-fault-1", "statusCode": 400,
+                                "body": {"error": "This record moved. Read the alternate project record."}}).encode()
+    with patch.object(graph_module.urllib_request, "urlopen", return_value=_FakeProviderResponse(response_body)) as transport:
+        result = graph_module.execute_connection_tool(
+            "fixture_lookup", "fixture.lookup", {"key": "project"}, read_only=True,
+            connection_url="http://owned-fixture.test", connection_bindings=[{"toolName": "fixture_lookup", "connectionRef": "conn_local_fixture", "operations": ["lookup"]}],
+            run_id="read-error-probe", turn_id="turn-1", tool_call_id="call-1", is_cancelled=lambda: False, timeout_ms=500,
+        )
+    assert result.status == "failed"
+    assert result.error_code == "HTTP_400"
+    assert json.loads(result.content)["error"] == "This record moved. Read the alternate project record."
+    assert result.connection["attemptCount"] == 1
+    assert transport.call_count == 1
