@@ -469,3 +469,24 @@ async function runWorkflow(
   };
   return workflowRun(context, input);
 }
+
+
+test("eval fixtures retain actual model requests and calculator results in native loop events", async () => {
+  const result = await runWorkflow("fake-eval-tool");
+  assert.equal(result.status, "completed");
+  assert.equal(result.output, "42");
+  const requests = result.eventIntents.filter((event) => event.kind === "EvalModelObserved");
+  assert.equal(requests.length, 2);
+  const second = requests[1]?.payload.observation as { messages: { role: string; content: string }[] };
+  assert.equal(second.messages[0]?.content, "Use tools when appropriate.");
+  assert.equal(second.messages.find((message) => message.role === "tool")?.content, '{"value":42}');
+  const tools = result.eventIntents.filter((event) => event.kind === "EvalToolObserved");
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0]?.payload.output, '{"value":42}');
+  assert.equal(tools[0]?.payload.toolCallId, "eval-calculator-1");
+  const limited = await runWorkflow("fake-eval-loop", { maxCalls: 1, maxRounds: 3 });
+  assert.equal(limited.error?.code, "TOOL_CALL_LIMIT_EXCEEDED");
+  assert.equal(limited.eventIntents.filter((event) => event.kind === "EvalToolObserved").length, 1);
+  const ordinary = await runWorkflow("fake-tool-call");
+  assert.equal(ordinary.eventIntents.some((event) => event.kind.startsWith("Eval")), false);
+});

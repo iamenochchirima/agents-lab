@@ -159,6 +159,9 @@ export const baselineWorkflow = restate.workflow({
               toolCount: toolDefinitions.length,
             });
             modelResult = await requestModel(ctx, input, round, attempt, messages, toolDefinitions);
+            if (modelResult.kind === "success" && modelResult.evalObservation) {
+              await record("EvalModelObserved", { round, attempt, observation: modelResult.evalObservation });
+            }
 
             if (modelResult.kind === "failure" && isContextOverflow(modelResult) && input.context && !contextRecoveryUsed) {
               contextRecoveryUsed = true;
@@ -426,6 +429,9 @@ export const baselineWorkflow = restate.workflow({
             );
             await completePhase(toolPhase);
             await recordTool(toolEventKind(toolResult), call, toolPayload(toolResult, round));
+            if (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-")) {
+              await record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
+            }
             messages = [...messages, toolResultMessage(resultId, call.name, toolResult.content)];
 
             if (toolResult.status !== "completed") {

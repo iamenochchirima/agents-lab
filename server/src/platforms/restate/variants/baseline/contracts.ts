@@ -71,6 +71,12 @@ export interface ModelToolCall {
 }
 
 export interface ModelSuccess {
+  /** Present only for explicitly selected synthetic eval fixtures. */
+  readonly evalObservation?: {
+    readonly messages: readonly ModelMessage[];
+    readonly systemInstruction: string;
+    readonly toolCalls: readonly ModelToolCall[];
+  };
   readonly kind: "success";
   readonly output: string | null;
   readonly toolCalls: readonly ModelToolCall[];
