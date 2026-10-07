@@ -81,32 +81,63 @@ may still be scaffolds and require concrete fixtures, graders, and fault injecto
 
 ## Current implementation map
 
-The executable four-case slice uses [SDK-free definitions and strict graders](baseline-evals.mjs)
-and the [development evaluator](../../experiments/agent-harness-baseline/development-evals.md).
-Mastra and an isolated LangGraph profile have one recorded passing development
-trial per case; Temporal and Restate default services were blocked. See the
-[implementation handoff](../../../development/implementation-plans/platforms/active/agent-harness-baseline-evals.md)
-for commands and evidence. This does not establish full baseline readiness.
+All B01–B12 definitions and graders are executable through the
+[development evaluator](../../experiments/agent-harness-baseline/development-evals.md).
+The [SDK-free version-2 contracts](behaviour-evals.mjs) extend the
+[version-1 four-case contracts](baseline-evals.mjs), preserving historical report
+semantics. B07 now includes a native deadline probe in addition to call/round limits.
+The [driver](../../../server/src/evals/behaviour.ts) defaults to all twelve cases;
+`--cases` selects a subset, `--platforms` selects up to four distinct native profiles,
+and `--trials` accepts 1–5. No core case makes a live-provider call.
 
-Additional existing code anchors:
+| Cases | Implementation owners and retained proof |
+| --- | --- |
+| B01–B03 | Native mapped requests, calculator dispatch/feedback and shared-context continuation; original acceptance rules retained |
+| B04/B10 | Actual interleaved session requests and canonical replay/conflict admission through `RunService` |
+| B05/B06 | Native tool rejection, capability catalog/profile/approval decisions and independent disposable fixture state/effect counts |
+| B07 | Separate budget probes and a measured 200 ms native execution/activity/model-operation deadline |
+| B08/B09 | Native provider decoder/failure policy, actual failed read feedback and dispatched/completed/repeated cancellation |
+| B11 | Evidence-file inspection plus existing projection APIs exercised with bounded duplicate/out-of-order controls |
+| B12 | Refused selected-runner readiness endpoint and reference persistence fault after actual native acceptance, reconciled using the same identity |
 
-- B01–B03: [`workload.ts`](../../../server/tests/platform-conformance/workload.ts)
-  defines the original cases; [`workload.test.ts`](../../../server/tests/platform-conformance/workload.test.ts)
-  checks request construction and selected evidence assertions. These tests alone
-  do not run every native platform.
-- B04/B10: [`session-store.test.ts`](../../../server/tests/context/session-store.test.ts)
-  and [`run-service.test.ts`](../../../server/tests/control-plane/run-service.test.ts)
-  supply session/admission coverage to audit and reuse.
-- B05/B06: [`tools.test.ts`](../../../server/tests/capabilities/tools.test.ts),
-  [`policies.test.ts`](../../../server/tests/capabilities/policies.test.ts), and the
-  [native capability matrix](../../../server/integration-tests/platform-capability-matrix.test.ts)
-  provide useful starting checks.
-- B08/B09/B12: platform-owned tests under `server/tests/platforms/` and run-service
-  tests cover selected failure/cancellation/reconciliation behavior.
-- B11: [`evidence-store.test.ts`](../../../server/tests/control-plane/evidence-store.test.ts)
-  covers common evidence storage. Add grading against observed tool/fixture state.
+B06/B08 use the evaluator-owned local fixture on port `9191`; workers must use the
+same endpoint. Fresh namespaces keep effects independent. Named `local-safe` and
+`local-write-approved` profiles go through normal catalog admission. A write control
+requires a valid scoped approval rather than bypassing policy.
 
-Before declaring coverage, map each case assertion to a named test and retained native
-run. Existing tests, previous completion plans, or a directory's presence are not a
-current all-platform pass result. B07 covers call/round budgets only; its slow-call
-deadline case, the live companions, and extensions still need implementation.
+Native policies remain explicit. Invalid inputs do not dispatch tools. Known failed
+reads can become correlated model feedback; uncertain writes are not blindly retried.
+Mastra may omit feedback for an unregistered tool and reach its native round limit.
+Malformed Temporal/Restate responses retain their decoder error; LangGraph preserves
+its native unknown outcome. Restate's shared progress handler retains actual
+in-flight dispatch evidence through cancellation. Native deadline evidence is
+separate from the evaluator's observation timeout.
+
+The B12 unavailability control targets a refused loopback readiness endpoint and
+does not stop services or alter production configuration. Its acknowledgement-loss
+control injects failure at execution-reference persistence after native acceptance,
+then restores that accepted identity for inspection. It does not simulate every
+possible lost external acknowledgement or establish exactly-once effects.
+
+Useful focused implementation checks remain:
+
+- [`behaviour-graders.test.ts`](../../../server/tests/platform-conformance/behaviour-graders.test.ts)
+  for passing/failing observation controls and subcase distinctions;
+- [`session-store.test.ts`](../../../server/tests/context/session-store.test.ts) and
+  [`run-service.test.ts`](../../../server/tests/control-plane/run-service.test.ts)
+  for session/admission identity guarantees;
+- [`tools.test.ts`](../../../server/tests/capabilities/tools.test.ts) and
+  [`policies.test.ts`](../../../server/tests/capabilities/policies.test.ts)
+  for validation, capability decisions and approval boundaries;
+- [`evidence-store.test.ts`](../../../server/tests/control-plane/evidence-store.test.ts)
+  for retained storage and projection contracts;
+- platform-owned tests under `server/tests/platforms/` for native failure,
+  cancellation, progress and connection behavior.
+
+Implementation coverage and observed acceptance are separate. Map each assertion to
+retained native runs before reporting a platform as passed. Commands, current results
+and environmental blockers are recorded in the
+[development milestone record](../../../development/implementation-plans/platforms/active/cross-platform-agent-behaviour-milestone.md).
+Full readiness still follows the experiment protocol. The broader M02 correction
+measurement and optional X01–X05 capability extensions are not implied by this core
+implementation.

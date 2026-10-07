@@ -11,9 +11,10 @@ Temporal, Restate, LangGraph, and Mastra.
 ## Workload cases
 
 The research-backed [baseline eval specification](eval-cases.md) extends these
-three implemented workload definitions into shared-core acceptance, live-model
-measurements, and optional capability tests. The expanded suite is a development
-target; consult its implementation map before claiming coverage.
+three original workload definitions into shared-core acceptance, live-model
+measurements, and optional capability tests. B01–B12 are executable through the
+native development evaluator; consult its implementation map and retained
+observations before claiming acceptance.
 
 ### 1. Prompt completion
 
@@ -63,7 +64,7 @@ The expected observations are:
 The case verifies context delivery and evidence identity. It does not claim that a
 deterministic fixture demonstrates model reasoning quality.
 
-## Executable four-case definitions
+## Historical four-case definitions
 
 [`baseline-evals.mjs`](baseline-evals.mjs) owns the synthetic inputs and pure
 B01, B02, B03, and focused B07 graders. Its
@@ -97,8 +98,9 @@ pnpm --filter @agent-harness-lab/lab-server run build
 node --test server/dist/tests/platform-conformance/baseline-graders.test.js
 ```
 
-These pure tests validate grading, not native platform acceptance. B04, B05, B06,
-and B08 through B12 remain unimplemented in this executable slice.
+These pure tests validate the historical four-case grading, not native platform
+acceptance. Version-1 saved reports retain these original meanings. The expanded
+executable suite below provides the remaining core cases and the native B07 deadline.
 
 ## Expanded behaviour contracts
 
@@ -108,10 +110,16 @@ version `1`, extends B07 with a native deadline probe, and grades the additional
 session, validation, permission, failure, cancellation, identity, evidence and
 uncertainty cases. Its [declarations](behaviour-evals.d.mts) define the receipt types.
 
-These contracts are not yet wired to `eval:baseline`. The module performs no
-execution. The eventual driver must collect actual requests, dispatches,
-rejections, fixture snapshots and lifecycle evidence through native runners.
-Integrity receipts must come from inspecting retained files and projection output.
+`eval:baseline` now runs these contracts through the
+[behaviour driver](../../../server/src/evals/behaviour.ts). It defaults to all twelve
+cases on Mastra; `--cases B04,B05` selects cases and
+`--platforms mastra,langgraph,temporal,restate` selects up to four native profiles.
+Use `--trials 1` for initial development observations; 1–5 trials are supported.
+
+The SDK-independent module performs no execution. The driver collects actual
+mapped requests, dispatches, rejections, independent fixture state and lifecycle
+evidence through native runners. Integrity receipts inspect retained files and
+projection output.
 A missing required subcase fails; an unrelated failure does not satisfy an expected
 failure category. Repeated cancellation needs evidence of repeated requests.
 
@@ -125,8 +133,13 @@ Run the focused contract controls after building the server:
 node --test server/dist/tests/platform-conformance/behaviour-graders.test.js server/dist/tests/control-plane/eval-report.test.js
 ```
 
-This validates the pure grading and report contracts. It establishes no new native
-platform acceptance results.
+This validates pure grading and report contracts. It does not replace an actual
+native acceptance invocation. Follow the [development evaluator guide](../../experiments/agent-harness-baseline/development-evals.md)
+for service setup, disposable fixture port `9191`, selected capability/approval
+profiles, native deadline accounting and platform-specific failure policies.
+B12 refuses a loopback readiness endpoint without changing production endpoints;
+its lost-reference control preserves the actual accepted identity and reconciles
+without redispatch. Broad crash matrices and optional X01–X05 remain separate.
 
 ## Controls
 
@@ -134,8 +147,9 @@ platform acceptance results.
   timeout for each platform in a comparison.
 - Keep automated tests deterministic and offline. Fake models are test fixtures only;
   they must exercise the real selected platform runner and agent lifecycle.
-- Use a real OpenRouter model only for explicit manual acceptance. Record the model ID,
-  provider outcome, runtime versions, and evidence path.
+- Use the separate free-only live evaluator for real-model decision probes.
+  Record the exact model ID, provider outcome, runtime versions and evidence path.
+  Scripted core cases make no provider calls.
 - Run each platform with its documented native local profile. Missing services produce an
   unavailable result; they are not replaced by a fake successful run.
 - Preserve platform-native execution IDs, checkpoints, journal/workflow details, and

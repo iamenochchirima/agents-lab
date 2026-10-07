@@ -1,54 +1,116 @@
-# Run the first development evals
+# Run development agent evals
 
-The executable slice covers B01 response/instructions, B02 calculator feedback,
-B03 two-turn context, and B07 call/round limits. The eight remaining core cases,
-all live-model companions, and optional extensions remain unimplemented by this
-command. One trial helps development; it does not satisfy the full protocol's
-three-trial readiness gate.
+`eval:baseline` executes the version-2 B01–B12 core suite through the selected
+platform's native agent loop. Synthetic model responses control the requests and
+faults; native runners still perform admission, context delivery, validation,
+permission enforcement, tool execution and lifecycle handling. This command
+makes no live-provider call. Real model decisions use the separate `eval:live`
+command below.
 
-## Run
+One trial is a development observation. It does not satisfy the full protocol's
+three-trial readiness gate or establish broad reliability.
+
+## Run the core suite
 
 From the repository root with dependencies installed:
 
 ```bash
-pnpm --filter @agent-harness-lab/lab-server run eval:baseline -- --platform mastra
+pnpm --filter @agent-harness-lab/lab-server run eval:baseline -- --platform mastra --trials 1
+pnpm --filter @agent-harness-lab/lab-server run eval:baseline -- --platforms mastra,langgraph,temporal,restate --trials 1
+pnpm --filter @agent-harness-lab/lab-server run eval:baseline -- --platform langgraph --cases B04,B05,B08 --trials 1
 ```
 
-Mastra executes its real SDK locally. The other choices are `temporal`, `restate`,
-and `langgraph`; each needs its documented native service and current code.
-The driver always selects scripted models and disables connected capabilities.
-It makes no live-provider call. Only the pure calculator is enabled for tool cases.
+The default platform is Mastra and the default selection is all twelve core cases.
+`--platform` or `--platforms` accepts a comma-separated selection of up to four
+distinct profiles. `--cases` accepts distinct B01–B12 IDs. Profiles run sequentially
+with a separate invocation summary each. Selection is checked before dispatch.
+`--trials` accepts 1–5, default 1; `--deadline-ms` accepts 100–120000, default
+30000. This observation deadline is distinct from B07's native operation deadline.
 
-Optional arguments are `--trials 2` and `--deadline-ms 30000`. Trials must be 1–20;
-the per-run observation deadline must be 100–120000 milliseconds. Each trial uses
-fresh sessions and run identities. B03 shares one session across its two turns.
-B07 uses separate call and round probes, requesting one call/four rounds and
-eight calls/two rounds respectively. These separate probes distinguish which
-budget stopped execution. B07's slow-call deadline specification is deferred.
+Mastra executes its SDK locally. Temporal needs a reachable server and worker on
+the configured task queue. Restate needs its native server and registered baseline
+service; LangGraph needs its Python service. Missing services block selected cases
+without fabricated run artifacts. See [Temporal setup](../../../server/src/platforms/temporal/README.md),
+[Restate setup](../../../server/src/platforms/restate/README.md) and
+[LangGraph setup](../../../server/src/platforms/langgraph/README.md).
 
-Platform services must share the absolute `AGENTLAB_CONTEXT_ROOT` with the driver.
-The command resolves default run/context paths from the repository root even when
-launched through the server package. To use an existing LangGraph service:
+Each service and the driver must share an absolute `AGENTLAB_CONTEXT_ROOT`:
 
 ```bash
 AGENTLAB_LANGGRAPH_SERVICE_URL=http://127.0.0.1:2024 \
 AGENTLAB_CONTEXT_ROOT="$PWD/lab/sessions" \
-pnpm --filter @agent-harness-lab/lab-server run eval:baseline -- --platform langgraph
+pnpm --filter @agent-harness-lab/lab-server run eval:baseline -- --platform langgraph --cases B04,B10
 ```
 
-See the [LangGraph setup](../../../server/src/platforms/langgraph/README.md),
-[Temporal setup](../../../server/src/platforms/temporal/README.md), and
-[Restate setup](../../../server/src/platforms/restate/README.md). The evaluator
-checks connectivity before admission. An absent service gives four blocked rows,
-no fabricated runs, and a retained invocation summary. A reachable Temporal
-server also needs its worker listening on the configured task queue.
+B06 and B08 use a disposable fixture service owned by the evaluator on port `9191`.
+Workers must use `AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191`. An occupied
+port blocks these cases rather than resetting another service. Each probe gets a
+fresh namespace. The driver seeds and inspects only its namespaces and closes only
+the service it created. Connected capabilities are enabled only through the named
+`local-safe` and `local-write-approved` profiles and actual catalog admission.
+The approved-write control supplies a scoped capability-version, operation and
+connection approval; other probes do not gain that grant.
+
+## What the core cases execute
+
+| Cases | Actual execution and evidence |
+| --- | --- |
+| B01–B03 | Completion, calculator feedback and retained context, preserving the original acceptance rules |
+| B04 | Two interleaved fresh sessions with separate markers and actual mapped requests |
+| B05 | Invalid calculator arguments rejected before tool dispatch |
+| B06 | Disabled write, unapproved write and separately approved write, with independent fixture state/effect counts |
+| B07 | Separate call-limit, round-limit and native slow-operation deadline probes |
+| B08 | Provider rejection, malformed decoding and failed read feedback, retaining actual error codes and attempts |
+| B09 | Cancellation after model dispatch, after completion and repeated cancellation |
+| B10 | Canonical session/client-turn replay and conflicting reuse without another dispatch |
+| B11 | Retained config/events/trajectory/metrics/result, projection duplicate/order controls and credential-redaction sentinel |
+| B12 | Refused readiness endpoint and acknowledgement persistence loss after actual native acceptance |
+
+B07's call probe requests a maximum of one tool call and four model rounds; its
+round probe requests eight calls and two rounds. The deadline probe selects a
+200 ms native execution/activity/model-operation deadline and attempts slow work.
+Mastra uses its execution abort; Temporal uses its Activity timeout; LangGraph uses
+its model-node timeout; Restate uses an abortable adapter operation. A driver
+polling timeout alone cannot pass the native deadline assertion. A sent request
+whose outcome remains unknown is reported as unknown, not a fabricated rollback.
+
+The [case definitions](../../scenarios/platform-agent-conformance/behaviour-evals.mjs)
+are SDK-independent. The [driver](../../../server/src/evals/behaviour.ts) arranges
+probes through normal `RunService` admission and selected runners; it does not
+replace the native agent loop.
+
+### Native failure policies
+
+- Invalid calculator input produces actual rejection feedback with zero dispatches.
+  Mastra records SDK schema rejection even when it occurs before its execute callback.
+- A known failed `fixture_lookup` or `mcp_fixture_lookup` read may become correlated
+  feedback for another model step. The fixture error includes actionable detail.
+  Writes with unknown effects remain terminal or require reconciliation.
+- Mastra can omit feedback for an unregistered tool. Its scripted denial probe may
+  exhaust the native round budget; the permission grader checks rejection and zero
+  effects rather than requiring invented feedback or a uniform final status.
+- Malformed Temporal/Restate provider responses retain `OPENROUTER_INVALID_RESPONSE`.
+  LangGraph's real decoder retains `LANGGRAPH_OUTCOME_UNKNOWN` and its native unknown
+  outcome. Mastra retains the SDK generation error. The injected fault kind and
+  original category are separate observations.
+- Restate's registered shared progress handler exposes actual workflow events while
+  work is in flight, preserving dispatch evidence if cancellation prevents final
+  workflow output. Older deployments require registration of the updated manifest.
+
+B12 changes the selected evaluator runner's readiness check to a refused loopback
+endpoint at `127.0.0.1:65534`. It does not stop a service or change production
+endpoints. If that endpoint unexpectedly responds, the unavailability control
+cannot pass. Its acknowledgement-loss fault occurs while persisting the execution
+reference, after the real native runner has accepted the execution. The run first
+becomes reconciliation-required; the driver restores the same captured reference
+and inspects it. It never submits a second execution to resolve this fault. This
+measures reference-persistence loss, not every possible provider acknowledgement loss.
 
 ## Read the result
 
-The command prints each verdict, its report path, failed assertions, category
-counts, and an invocation summary path. Exit code is zero only when every
-implemented case passed. Failures, blocked services, and driver errors exit with
-code one. The unimplemented cases always remain listed separately.
+The command prints case verdicts, failed assertions and an invocation summary path.
+Exit code is zero only when all selected cases pass. Failed, blocked and driver-error
+outcomes exit with code one. Core acceptance does not imply that the M or X cases ran.
 
 ```text
 lab/runs/<run-id>/
@@ -63,33 +125,31 @@ lab/runs/<run-id>/
 lab/runs/.evals/<invocation-id>/summary.json
 ```
 
-`artifacts/eval.json` contains schema/suite/grader versions, trial identity,
-correlated run IDs, assertion verdicts and expected/observed values, and synthetic
-model/tool observations. Its metadata records revision, dirty state, installed
-SDK versions, native runtime versions when supplied, timestamps, and trial count.
-Resolved tools, policies, context and limits remain in the ordinary configuration
-and context records. A dirty revision identifies an unfinished checkout; retain
-its patch separately when publishing a reproducible comparison.
+The first admitted run owns the case report and references its other probes.
+Reports retain schema/suite/grader versions, trial/run identities, assertion
+expected/observed values, model/tool observations, fixture snapshots and relevant
+lifecycle receipts. Metadata and ordinary manifests retain revision, runtime
+versions, timestamps, model selection, capability grants, context and limits.
+Invocation summaries retain the selected cases/platform, fault placement and
+blocked cases with no admitted runs. An incomplete invocation stays incomplete;
+it is not silently resumed or redispatched.
 
-B03 and B07 reports live in the first run directory and reference both runs.
-The driver retains earlier evidence if a later turn fails. Reports do not rewrite
-run status. In B07, a truthful failed run can produce a passing eval verdict.
-Inspect `observations[0].requests` for delivered inputs, `tools` for actual
-execution results, and `assertions` for the checks. Ordinary events retain the
-original native receipts on Temporal, Restate, and LangGraph. Mastra's observers
-capture only synthetic inputs for this evaluator and are disabled by default.
+Inspect `observations[0].requests` for actual delivered model inputs, `tools` for
+real dispatch outcomes and `assertions` for the checks. Reports never rewrite run
+status: an expected failure or deadline can yield a passing eval verdict. Missing
+usage stays `null`; a missing observation cannot be inferred from final text.
+Reports are immutable and bounded to 256 KiB. Storage/driver errors remain in
+summaries if a report cannot be written.
 
-A deadline preserves the latest observed view, requests cancellation of the
-admitted run, and records an error. Cancellation does not prove external rollback.
-Polling never resubmits a task. Reports are bounded to 256 KiB and immutable;
-summary records retain driver/storage errors when a report cannot be written.
+Version-1 four-case reports remain readable with their original B07 call/round
+meaning. New reports use suite/grader version `2`; their B07 additionally includes
+the native deadline probe. Compare versions and controls before combining results.
 
 ## Inspect a passing and failing control
 
-Set `EVAL_REPORT` to the B02 report printed by a completed invocation. This
-example regrades the retained observations, then removes tool feedback from a
-copy to demonstrate the failed assertion. It leaves original evidence untouched.
-The negative control is a grader check, not another native run.
+Set `EVAL_REPORT` to a B02 report printed by a completed invocation. The unchanged
+B02 grader can regrade its observations and demonstrate missing feedback without
+editing retained evidence or performing another native run:
 
 ```bash
 EVAL_REPORT=/absolute/path/to/run/artifacts/eval.json node --input-type=module <<'JS'
@@ -109,19 +169,16 @@ console.log(failed.assertions.filter(assertion => !assertion.passed));
 JS
 ```
 
-For an actual failed eval, inspect its printed failed assertions and corresponding
-observations in the same way. A correct-looking answer cannot compensate for
-missing execution receipts or context. Missing observations fail rather than
-being inferred from final text.
-
 ## Limits on interpretation
 
-These scripts test the platform-owned execution path and observable contract.
-They do not measure reasoning quality, live-provider reliability, recovery across
-crashes, security, production readiness, or cost. No platform ranking follows
-from four passing rows. The [full protocol](README.md) and
-[case specification](../../scenarios/platform-agent-conformance/eval-cases.md)
-remain the broader development targets.
+Core probes measure the platform-owned execution path under controlled synthetic
+requests. They do not measure real-model decision quality, hosted production
+behavior, broad crash recovery, injection resistance or exactly-once external
+effects. Actual platform acceptance needs retained executions, not only pure
+contract tests. Recorded commands, results and external blockers belong in the
+[development milestone record](../../../development/implementation-plans/platforms/active/cross-platform-agent-behaviour-milestone.md).
+The [full protocol](README.md) defines the wider readiness procedure; one development
+invocation does not establish a platform ranking.
 
 ## Real free-model development evals
 

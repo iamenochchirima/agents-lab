@@ -19,10 +19,35 @@ export function scriptedMastraModel(manifest: RunManifest, captures: CapturedReq
   let sequence = 0;
   return {
     specificationVersion: "v2", provider: "agentlab.eval", modelId: manifest.model.model, supportedUrls: {},
-    doGenerate: async ({ prompt }: { prompt: unknown }) => {
+    doGenerate: async ({ prompt, abortSignal }: { prompt: unknown; abortSignal?: AbortSignal }) => {
       const messages = normalizeMastraPrompt(prompt);
       const request: CapturedRequest = { runId: manifest.runId, sequence: ++sequence, messages, responseToolCalls: [] };
       captures.push(request);
+      if (manifest.model.model === "fake-eval-behaviour") {
+        const match = manifest.task.prompt.match(/\[eval-behaviour:([A-Za-z0-9_-]+)\]/);
+        if (!match) throw new Error("A behaviour eval requires a directive.");
+        const directive = JSON.parse(Buffer.from(match[1]!, "base64url").toString("utf8")) as {
+          action: string; toolName?: string; input?: unknown; text?: string; delayMs?: number; marker?: string;
+        };
+        if (directive.action === "provider-error") { const error = new Error("Controlled provider rejection."); error.name = "ProviderError"; throw error; }
+        if (directive.action === "malformed") return { content: null, finishReason: "stop", usage: { inputTokens: undefined, outputTokens: undefined }, warnings: [] };
+        if (directive.action === "slow") await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(done, Math.min(60_000, Math.max(1, directive.delayMs ?? 10_000)));
+          function done() { abortSignal?.removeEventListener("abort", aborted); resolve(); }
+          function aborted() { clearTimeout(timer); reject(abortSignal?.reason ?? new Error("Model cancelled.")); }
+          if (abortSignal?.aborted) aborted(); else abortSignal?.addEventListener("abort", aborted, { once: true });
+        });
+        const feedback = [...messages].reverse().find(message => message.role === "tool" && message.toolCallId?.startsWith("eval-behaviour-call-"));
+        if (directive.action === "tool" && !feedback) {
+          const call = { callId: `eval-behaviour-call-${sequence}`, toolName: directive.toolName ?? "calculator", input: directive.input ?? {} };
+          request.responseToolCalls.push(call);
+          return response([{ type: "tool-call", toolCallId: call.callId, toolName: call.toolName, input: JSON.stringify(call.input) }], "tool-calls");
+        }
+        const retained = messages.filter(message => message.role === "user").map(message => message.content.replace(/\[eval-behaviour:[A-Za-z0-9_-]+\]/g, "")).join("\n");
+        const text = directive.action === "context" ? directive.marker && retained.includes(directive.marker) ? directive.marker : "No retained marker."
+          : directive.action === "tool" ? `Tool feedback: ${feedback?.content}` : directive.text ?? "Behaviour eval completed.";
+        return { ...response([{ type: "text", text }], "stop"), usage: { inputTokens: undefined, outputTokens: undefined, totalTokens: undefined } };
+      }
       const isTool = manifest.model.model === "fake-tool-call";
       const isLimit = manifest.task.prompt.includes("[baseline-limit:");
       const feedback = [...messages].reverse().find((message) => message.role === "tool");
