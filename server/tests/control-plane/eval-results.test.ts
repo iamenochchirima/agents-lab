@@ -8,7 +8,7 @@ import { readEvalResults, readEvalTrialDetail } from "../../src/control-plane/ap
 const summary = { schemaVersion: 1, invocationId: "scripted-one", platform: "mastra",
   startedAt: "2026-10-07T00:00:00Z", completedAt: "2026-10-07T00:00:10Z",
   profile: { apiKey: "private-test-key" }, counts: { pass: 99, fail: 0, blocked: 0, error: 0 },
-  cases: [{ caseId: "B01", trial: 1, verdict: "pass", runIds: ["run-one"], evidence: "/private/local/run-one/artifacts/eval.json" }] };
+  cases: [{ caseId: "B01", trial: 1, verdict: "pass", runIds: ["run-one"], evidence: "/private/local/run-one/eval.json" }] };
 
 async function save(root: string, id: string, value: unknown) {
   const directory = join(root, ".evals", id);
@@ -79,8 +79,17 @@ test("trial detail is anchored to summary runs, bounds artifacts and retains mat
     const unsafe = await readEvalTrialDetail(root, evidence, "scripted-one", "B01", 1);
     assert.equal(unsafe.runs[0].artifacts["context.json"], undefined);
     assert.match(unsafe.runs[0].issues.join(" "), /unsafe/);
+    await save(root, "regraded-trial", { ...summary, invocationId: "regraded-trial", sourceInvocationId: "scripted-one", graderVersion: "3", cases: [{ ...summary.cases[0], evidence: "/private/local/run-one/artifacts/eval-grader-3.json" }] });
+    artifacts["artifacts/eval-grader-3.json"] = JSON.stringify({ ownerRunId: "run-one", caseId: "B01", runIds: ["run-one"], graderVersion: "3", assertions: [{ id: "revised", passed: true }], observations: [] });
+    await writeFile(join(root, "run-one", "artifacts/eval-grader-3.json"), artifacts["artifacts/eval-grader-3.json"]);
+    const original = artifacts["artifacts/eval.json"];
+    const revised = await readEvalTrialDetail(root, evidence, "regraded-trial", "B01", 1);
+    assert.equal(revised.case.evidence, "artifacts/eval-grader-3.json");
+    assert.equal(revised.invocation.sourceInvocationId, "scripted-one");
+    assert.equal((revised.report as { graderVersion: string }).graderVersion, "3");
+    assert.equal(artifacts["artifacts/eval.json"], original, "regrading does not overwrite the original report");
     await save(root, "different-platform", { ...summary, invocationId: "different-platform", platform: "temporal", suiteVersion: "core-v2", comparisonControls: controls });
     const list = await readEvalResults(root);
-    assert.equal(list.invocations[0].comparisonKey, list.invocations[1].comparisonKey);
+    assert.equal(list.invocations.find(item => item.invocationId === "scripted-one")?.comparisonKey, list.invocations.find(item => item.invocationId === "different-platform")?.comparisonKey);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

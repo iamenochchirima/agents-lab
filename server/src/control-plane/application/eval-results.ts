@@ -16,7 +16,7 @@ export interface EvalResultCase {
   readonly verdict: Verdict;
   readonly runIds: readonly string[];
   /** A safe report marker, never the writer's local absolute path. */
-  readonly evidence: "artifacts/eval.json" | null;
+  readonly evidence: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | null;
   readonly reason?: string;
   readonly reviewRequired?: boolean;
 }
@@ -27,6 +27,8 @@ export interface EvalResultInvocation {
   readonly platform: string;
   readonly modelId: string | null;
   readonly suiteVersion?: string;
+  readonly graderVersion?: string;
+  readonly sourceInvocationId?: string;
   readonly comparisonKey?: string | null;
   readonly comparisonIssue?: string;
   readonly controls?: Record<string, unknown>;
@@ -121,13 +123,15 @@ function projectSummary(value: unknown, invocationId: string, secrets: readonly 
     const verdict = item.verdict as Verdict;
     counts[verdict]++;
     return { caseId: item.caseId as string, trial: item.trial as number, verdict,
-      runIds: item.runIds as string[], evidence: item.evidence ? "artifacts/eval.json" as const : null,
+      runIds: item.runIds as string[], evidence: reportMarker(item.evidence),
       ...(item.reviewRequired === true ? { reviewRequired: true } : {}),
       ...(item.reason ? { reason: safeReason(item.reason as string, secrets) } : {}) };
   });
   const incomplete = value.completedAt === null;
   return { invocationId, mode, platform: String(value.platform), modelId,
     ...(text(value.suiteVersion) ? { suiteVersion: value.suiteVersion } : {}),
+    ...(text(value.graderVersion) ? { graderVersion: value.graderVersion } : {}),
+    ...(typeof value.sourceInvocationId === "string" && idPattern.test(value.sourceInvocationId) ? { sourceInvocationId: value.sourceInvocationId } : {}),
     ...comparisonControls(value, mode, modelId, secrets),
     startedAt: value.startedAt as string, completedAt: value.completedAt as string | null,
     status: incomplete ? "incomplete" : "complete",
@@ -156,7 +160,7 @@ function comparisonControls(value: Record<string, unknown>, mode: string, modelI
   }
   const controls = Object.fromEntries(["modelSettings", "context", "toolConfiguration", "faultConfiguration", "profile"].map(key => [key, sanitizeDetail(source[key], secrets)]));
   const canonical = (item: unknown): string => Array.isArray(item) ? `[${item.map(canonical).join(",")}]` : record(item) ? `{${Object.keys(item).sort().map(key => `${JSON.stringify(key)}:${canonical(item[key])}`).join(",")}}` : JSON.stringify(item);
-  return { controls, comparisonKey: createHash("sha256").update(canonical({ suiteVersion: value.suiteVersion, mode, modelId, controls })).digest("hex") };
+  return { controls, comparisonKey: createHash("sha256").update(canonical({ suiteVersion: value.suiteVersion, graderVersion: text(value.graderVersion) ? value.graderVersion : null, mode, modelId, controls })).digest("hex") };
 }
 
 async function readInvocation(root: string, id: string, secrets: readonly string[]): Promise<EvalResultInvocation> {
@@ -188,7 +192,7 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
   const item = invocation.cases.find(value => value.caseId === caseId && value.trial === trial);
   if (!item) throw new Error("Retained eval trial was not found.");
   const root = await realpath(runsRoot);
-  const read = async (runId: string, file: "artifacts/eval.json" | "events.jsonl" | "context.json" | "trajectory.json" | "result.json") => {
+  const read = async (runId: string, file: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | "events.jsonl" | "context.json" | "trajectory.json" | "result.json") => {
     const path = join(runsRoot, runId, file);
     for (const directory of [join(runsRoot, runId), ...(file.startsWith("artifacts/") ? [join(runsRoot, runId, "artifacts")] : [])]) {
       const info = await lstat(directory);
@@ -205,9 +209,10 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
   const issues: string[] = [];
   if (item.evidence && item.runIds[0]) {
     try {
-      report = await read(item.runIds[0], "artifacts/eval.json");
+      report = await read(item.runIds[0], item.evidence);
       if (!record(report) || report.ownerRunId !== item.runIds[0] || report.caseId !== caseId ||
-          !Array.isArray(report.runIds) || report.runIds.some(id => !item.runIds.includes(String(id)))) {
+          !Array.isArray(report.runIds) || report.runIds.some(id => !item.runIds.includes(String(id))) ||
+          invocation.graderVersion !== undefined && report.graderVersion !== invocation.graderVersion) {
         report = null; issues.push("Retained report does not match this trial's run identities.");
       }
     } catch { issues.push("Verdict report is missing, incomplete, oversized, or unsafe to read."); }
@@ -230,4 +235,16 @@ function sanitizeDetail(value: unknown, secrets: readonly string[], depth = 0): 
   if (record(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
     /api.?key|authorization|password|secret|access.?token|credential/i.test(key) ? "[REDACTED]" : sanitizeDetail(item, secrets, depth + 1)]));
   return value;
+}
+
+
+/** Historical writers saved absolute report paths. Project only supported filenames,
+ * never accept a caller-selected directory or an arbitrary grader revision.
+ */
+function reportMarker(value: unknown): EvalResultCase["evidence"] {
+  if (!value) return null;
+  if (typeof value !== "string") invalid();
+  if (value === "artifacts/eval-grader-3.json" || value.endsWith("/artifacts/eval-grader-3.json")) return "artifacts/eval-grader-3.json";
+  if (value === "eval.json" || value === "artifacts/eval.json" || value.endsWith("/eval.json")) return "artifacts/eval.json";
+  return invalid();
 }
