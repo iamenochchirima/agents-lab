@@ -5,15 +5,28 @@ specification. The page never starts evaluations. Refresh reloads the latest 25
 invocations from `GET /api/evals?limit=25` on the existing lab control-plane server,
 configured by `VITE_AGENTLAB_API_URL` and defaulting to port 4318.
 
-Filter saved results by live or scripted execution. Expand a trial to inspect its
-failure reason and open retained verdicts, assertions, trajectories, model/tool
-events, and context through the existing run-evidence API. Blocked trials with no
+Filter saved results by execution mode, platform and task. Cross-platform comparison
+includes only matching retained suite, model, settings, context, tool, fault and
+profile controls. Historical summaries without those controls stay readable and
+are labelled not comparable. Comparison shows individual observations, not rankings.
+
+Expand a trial to load its assertions inline with expected and observed values,
+recorded events in their original order, call/result identities, terminal outcome,
+context and native trajectory. Full event payloads and task/fixture observations
+are available through progressive disclosure. Pending human assessment is shown as
+review required while the verdict remains blocked. Raw supported artifact links
+remain available alongside the inline view. Blocked trials with no
 admitted run show their reason without invented evidence links. Empty results and
 an unavailable server remain explicit. Interrupted or malformed summaries show an
 incomplete invocation, without a fabricated pass. The API scans at most 500 index
 entries, returns at most 50 invocations, bounds each summary to 256 KiB, rejects
 linked files/directories, and projects safe fields rather than raw configuration
-or local evidence paths. Summaries describe observed development
+or local evidence paths. The detail endpoint is
+`GET /api/evals/:invocationId/cases/:caseId/trials/:trial`. It anchors access to the
+retained summary's run identities, uses the supported evidence reader and bounds
+each inline artifact to 256 KiB. Missing, oversized, malformed or linked artifacts
+show explicit unavailable messages. Secret fields and configured credential values
+are redacted. Summaries describe observed development
 trials; their counts do not establish platform reliability or complete readiness.
 
 Below the saved results, select core harness, real-model, or platform capability

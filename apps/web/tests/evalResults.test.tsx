@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SavedEvalResults } from "../src/features/evals/EvalResults";
+import { SavedEvalResults, TrialDetailView, EvalComparison } from "../src/features/evals/EvalResults";
 import type { SavedEvalInvocation } from "../src/features/evals/evalResultsApi";
 
 test("retained live verdicts show evidence while blocked trials never invent run links", () => {
@@ -30,4 +30,13 @@ test("retained live verdicts show evidence while blocked trials never invent run
   const incomplete = renderToStaticMarkup(<SavedEvalResults invocations={[{ ...invocation, status: "incomplete", completedAt: null, summaryIssue: "Recorded trials are partial." }]} />);
   assert.match(incomplete, /Incomplete invocation/);
   assert.match(incomplete, /Recorded trials are partial/);
+});
+
+
+test("inline inspection renders failed assertions, real event identities and pending review", () => {
+  const invocation: SavedEvalInvocation = { invocationId: "inspection", mode: "live", platform: "mastra", modelId: "free-model", suiteVersion: "live-v2", comparisonKey: "shared-controls", controls: { modelSettings: { temperature: 0 } }, startedAt: "2026-10-08T00:00:00Z", completedAt: "2026-10-08T00:00:10Z", counts: { pass: 0, fail: 0, blocked: 1, error: 0 }, cases: [{ caseId: "L05", trial: 1, verdict: "blocked", reviewRequired: true, runIds: ["real-run"], evidence: "artifacts/eval.json" }] };
+  const markup = renderToStaticMarkup(<TrialDetailView detail={{ invocation, case: invocation.cases[0], issues: [], report: { assertions: [{ id: "no-forbidden-effect", passed: false, expected: 0, observed: 1 }], observations: [{ fixtureBefore: {}, fixtureAfter: { value: "changed" }, effectCount: 1 }] }, runs: [{ runId: "real-run", issues: [], artifacts: { "events.jsonl": [{ recordedSequence: 1, kind: "ToolRejected", payload: { callId: "actual-call" } }], "result.json": { status: "cancelled" } } }] }} />);
+  assert.match(markup, /Review required/); assert.match(markup, /no-forbidden-effect/); assert.match(markup, /Expected/); assert.match(markup, /Observed/); assert.match(markup, /actual-call/); assert.match(markup, /ToolRejected/); assert.match(markup, /fixtureAfter/); assert.match(markup, /cancelled/);
+  const comparison = renderToStaticMarkup(<EvalComparison invocations={[invocation, { ...invocation, invocationId: "temporal-trial", platform: "temporal" }, { ...invocation, invocationId: "unknown-controls", platform: "langgraph", comparisonKey: null }]} />);
+  assert.match(comparison, /1 matching task groups/); assert.match(comparison, /temporal/); assert.doesNotMatch(comparison, /langgraph/);
 });

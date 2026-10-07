@@ -65,3 +65,16 @@
   .evals-invocation > header { flex-direction: column; }
   .evals-invocation summary { flex-wrap: wrap; padding: 14px 12px; }
 }
+.evals-result-controls { flex-wrap: wrap; }
+.evals-comparison-status { padding: 0 20px; font-size: .75rem; color: var(--text-3); }
+.evals-inspector { margin-top: 20px; }
+.evals-inspector pre, .evals-comparisons pre { max-height: 360px; overflow: auto; padding: 12px; background: var(--surface-2); font-size: .72rem; white-space: pre-wrap; }
+.evals-inspector h4, .evals-inspector h5 { margin: 18px 0 10px; }
+.evals-assertion-values { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 12px; }
+.evals-timeline { margin: 0; padding-left: 24px; }
+.evals-timeline summary { padding: 8px; }
+.evals-comparisons { margin-top: 20px; border: 1px solid var(--border); padding: 14px; border-radius: var(--radius); }
+.evals-comparisons > summary { cursor: pointer; }
+.evals-comparisons table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.evals-comparisons th, .evals-comparisons td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+@media (max-width: 760px) { .evals-assertion-values { grid-template-columns: minmax(0, 1fr); } }

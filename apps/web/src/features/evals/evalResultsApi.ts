@@ -6,6 +6,7 @@ export interface SavedEvalCase {
   readonly trial: number;
   readonly verdict: EvalVerdict;
   readonly reason?: string;
+  readonly reviewRequired?: boolean;
   readonly runIds: readonly string[];
   readonly evidence: string | null;
 }
@@ -17,6 +18,9 @@ export interface SavedEvalInvocation {
   readonly platform: string;
   readonly modelId: string | null;
   readonly suiteVersion?: string;
+  readonly comparisonKey?: string | null;
+  readonly comparisonIssue?: string;
+  readonly controls?: Record<string, unknown>;
   readonly startedAt: string;
   readonly completedAt: string | null;
   readonly status?: "complete" | "incomplete";
@@ -36,4 +40,19 @@ export async function getSavedEvals(signal: AbortSignal): Promise<{ invocations:
 
 export function evalEvidenceUrl(runId: string, file: "artifacts/eval.json" | "trajectory.json" | "context.json" | "events.jsonl"): string {
   return `${baseUrl}/api/runs/${encodeURIComponent(runId)}/evidence/${file}`;
+}
+
+
+export interface EvalTrialDetail {
+  invocation: SavedEvalInvocation;
+  case: SavedEvalCase;
+  report: { assertions?: readonly { id: string; passed: boolean; expected: unknown; observed: unknown; observationRefs?: unknown }[]; observations?: readonly unknown[]; reviewRequired?: boolean } | null;
+  runs: readonly { runId: string; artifacts: Record<string, unknown>; issues: readonly string[] }[];
+  issues: readonly string[];
+}
+
+export async function getEvalTrialDetail(invocationId: string, caseId: string, trial: number, signal: AbortSignal): Promise<EvalTrialDetail> {
+  const response = await fetch(`${baseUrl}/api/evals/${encodeURIComponent(invocationId)}/cases/${encodeURIComponent(caseId)}/trials/${trial}`, { signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]) });
+  if (!response.ok) throw new Error(`Trial details are unavailable. Server returned ${response.status}.`);
+  return await response.json() as EvalTrialDetail;
 }
