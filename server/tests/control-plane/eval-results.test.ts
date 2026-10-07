@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { readEvalResults } from "../../src/control-plane/application/eval-results.js";
+import { readEvalResults, readEvalTrialDetail } from "../../src/control-plane/application/eval-results.js";
 
 const summary = { schemaVersion: 1, invocationId: "scripted-one", platform: "mastra",
   startedAt: "2026-10-07T00:00:00Z", completedAt: "2026-10-07T00:00:10Z",
@@ -55,4 +55,32 @@ test("malformed, oversized, and linked summaries cannot masquerade as passes or 
     await assert.rejects(() => readEvalResults(root, 0), /between 1 and 50/);
     await assert.rejects(() => readEvalResults(root, 51), /between 1 and 50/);
   } finally { await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
+
+test("trial detail is anchored to summary runs, bounds artifacts and retains matching comparison controls", async () => {
+  const root = await mkdtemp(join(tmpdir(), "eval-detail-"));
+  const controls = { modelSettings: { temperature: 0 }, context: { tokens: 4096 }, toolConfiguration: ["calculator"], faultConfiguration: {}, profile: "baseline" };
+  try {
+    await save(root, "scripted-one", { ...summary, suiteVersion: "core-v2", comparisonControls: controls });
+    await mkdir(join(root, "run-one", "artifacts"), { recursive: true });
+    const artifacts: Record<string, string> = { "artifacts/eval.json": JSON.stringify({ ownerRunId: "run-one", caseId: "B01", runIds: ["run-one"], assertions: [], observations: [{ secret: "sentinel", text: "Bearer secret-token" }] }), "events.jsonl": JSON.stringify({ kind: "ToolRejected", payload: { callId: "call-one" } }) + "\n", "context.json": "{}", "trajectory.json": "{}", "result.json": JSON.stringify({ status: "cancelled" }) };
+    for (const [file, raw] of Object.entries(artifacts)) await writeFile(join(root, "run-one", file), raw);
+    const evidence = { readAllowlistedFile: async (id: string, file: string) => { assert.equal(id, "run-one"); return artifacts[file]; } };
+    const detail = await readEvalTrialDetail(root, evidence, "scripted-one", "B01", 1);
+    assert.equal(detail.runs.length, 1);
+    assert.equal(detail.issues.length, 0);
+    assert.match(detail.invocation.comparisonKey!, /^[a-f0-9]{64}$/);
+    assert.doesNotMatch(JSON.stringify(detail), /sentinel|secret-token/);
+    await assert.rejects(() => readEvalTrialDetail(root, evidence, "scripted-one", "B02", 1), /not found/);
+    await assert.rejects(() => readEvalTrialDetail(root, evidence, "..", "B01", 1), /identity/);
+    await rm(join(root, "run-one", "context.json"));
+    await symlink(join(root, "run-one", "result.json"), join(root, "run-one", "context.json"));
+    const unsafe = await readEvalTrialDetail(root, evidence, "scripted-one", "B01", 1);
+    assert.equal(unsafe.runs[0].artifacts["context.json"], undefined);
+    assert.match(unsafe.runs[0].issues.join(" "), /unsafe/);
+    await save(root, "different-platform", { ...summary, invocationId: "different-platform", platform: "temporal", suiteVersion: "core-v2", comparisonControls: controls });
+    const list = await readEvalResults(root);
+    assert.equal(list.invocations[0].comparisonKey, list.invocations[1].comparisonKey);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

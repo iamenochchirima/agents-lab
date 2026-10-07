@@ -14,7 +14,7 @@ import type { RunView } from "../application/run-service.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
 import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 import { validateCapabilityApproval } from "../../capabilities/validation.js";
-import { readEvalResults } from "../application/eval-results.js";
+import { readEvalResults, readEvalTrialDetail } from "../application/eval-results.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
@@ -114,6 +114,18 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
       }
       return reply.send(await readEvalResults(dependencies.config.runsRoot, value === undefined ? 25 : Number(value), [dependencies.config.openRouter.apiKey ?? ""]));
     } catch (error) { return sendError(reply, error); }
+  });
+
+  app.get<{ Params: { invocationId: string; caseId: string; trial: string } }>("/api/evals/:invocationId/cases/:caseId/trials/:trial", async (request, reply) => {
+    const { invocationId, caseId, trial } = request.params;
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(invocationId) || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(caseId) || !/^\d+$/.test(trial) || Number(trial) < 1 || Number(trial) > 100) {
+      return reply.code(400).send({ error: { code: "INVALID_REQUEST", message: "Invalid retained eval trial identity." } });
+    }
+    try {
+      return reply.send(await readEvalTrialDetail(dependencies.config.runsRoot, dependencies.evidence, invocationId, caseId, Number(trial), [dependencies.config.openRouter.apiKey ?? ""]));
+    } catch {
+      return reply.code(404).send({ error: { code: "EVAL_DETAIL_UNAVAILABLE", message: "Retained eval trial is unavailable or unsafe to read." } });
+    }
   });
 
   app.post("/api/runs", async (request, reply) => {
