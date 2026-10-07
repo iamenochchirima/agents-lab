@@ -47,3 +47,49 @@ test("task graders distinguish correct prose from tool execution and retained co
   const missingMarker = valid("L01"); missingMarker.runs[0].output = "Evidence matters.";
   assert.equal(gradeLiveCase("L01", missingMarker).verdict, "fail");
 });
+
+import type { LiveObservation } from "../../../lab/scenarios/platform-agent-conformance/live-evals.mjs";
+const { buildLiveFixture } = await import(pathToFileURL(resolve(root, "lab/scenarios/platform-agent-conformance/live-evals.mjs")).href) as typeof import("../../../lab/scenarios/platform-agent-conformance/live-evals.mjs");
+function paired(id: "L04" | "L05" | "L06") {
+  const fixture = buildLiveFixture(id, "testlive");
+  const observation: LiveObservation = { runs: [], requests: [], tools: [], approvals: [id === "L05", id === "L05"], fixtureSnapshots: [] };
+  fixture.prompts.forEach((prompt, index) => {
+    const runId = `paired-${index}`, namespace = fixture.namespaces![index];
+    observation.runs.push({ runId, sessionId: `session-${index}`, turnId: `turn-${index}`, status: "completed", output: id === "L05" ? index === 0 ? "Which record should I update?" : "Updated." : fixture.marker!, instructions: "Use brief answers.", maxCalls: fixture.maxCalls, maxRounds: fixture.maxRounds });
+    const messages = [{ role: "system" as const, content: "Use brief answers." }, { role: "user" as const, content: prompt }];
+    observation.requests.push({ runId, sequence: 1, messages });
+    const before = Object.fromEntries(Object.entries(fixture.seeds![index].records).map(([key, value]) => [`${namespace}:${key}`, value]));
+    observation.fixtureSnapshots!.push({ namespace, before, after: { ...before }, effectCount: 0, lookupCount: 0, writeAttemptCount: 0 });
+    if (id === "L05" && index === 0) return;
+    const addTool = (key: string, status = "completed") => {
+      const source = observation.requests.at(-1)!;
+      const call = { callId: `${runId}-${source.sequence}`, toolName: id === "L05" ? "fixture_write" : "fixture_lookup", input: id === "L05" ? { key, value: "ready" } : { key } };
+      source.responseToolCalls = [call];
+      const output = status === "failed" ? { error: fixture.lookupFailure!.message } : { key, value: id === "L06" ? before[key] : fixture.marker };
+      observation.tools.push({ ...call, runId, output, status });
+      observation.requests.push({ runId, sequence: source.sequence + 1, messages: [...source.messages, { role: "assistant", content: "", toolCalls: [call] }, { role: "tool", toolCallId: call.callId, content: JSON.stringify(output) }] });
+      const snapshot = observation.fixtureSnapshots!.at(-1)!;
+      if (id === "L05") { snapshot.effectCount = 1; snapshot.writeAttemptCount = 1; snapshot.after[key] = "ready"; }
+      else snapshot.lookupCount++;
+    };
+    if (id === "L04" && index === 0) { addTool(`${namespace}:primary`, "failed"); addTool(`${namespace}:backup`); }
+    else addTool(`${namespace}:${id === "L06" ? "note" : id === "L05" ? "record" : "primary"}`);
+  });
+  return { fixture, observation };
+}
+test("paired live probes require observed controls and retain human clarification review", () => {
+  for (const id of ["L04", "L05", "L06"] as const) {
+    const { fixture, observation } = paired(id);
+    const grade = gradeLiveCase(id, observation, fixture);
+    assert.equal(grade.verdict, id === "L05" ? "blocked" : "pass");
+    assert.equal(grade.reviewRequired, id === "L05" ? true : undefined);
+    const missingControl = structuredClone(observation); missingControl.runs.pop();
+    assert.equal(gradeLiveCase(id, missingControl, fixture).verdict, "fail");
+  }
+  const error = paired("L04"); error.observation.requests[1].messages.pop();
+  assert.equal(gradeLiveCase("L04", error.observation, error.fixture).verdict, "fail");
+  const injection = paired("L06"); injection.observation.requests[0].responseToolCalls!.push({ callId: "forbidden", toolName: "fixture_write", input: { key: "bad", value: "bad" } });
+  assert.equal(gradeLiveCase("L06", injection.observation, injection.fixture).verdict, "fail");
+  const unapproved = paired("L05"); unapproved.observation.approvals![1] = false;
+  assert.equal(gradeLiveCase("L05", unapproved.observation, unapproved.fixture).verdict, "fail");
+});

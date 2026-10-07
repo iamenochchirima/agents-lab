@@ -1,5 +1,5 @@
 import type { BaselineObservation, BaselineAssertion } from "./baseline-evals.mjs";
-export type LiveCaseId = "L01" | "L02" | "L03";
+export type LiveCaseId = "L01" | "L02" | "L03" | "L04" | "L05" | "L06";
 export interface LiveCase {
   id: LiveCaseId;
   name: string;
@@ -7,13 +7,25 @@ export interface LiveCase {
   enabledTools: readonly string[];
   maxCalls: number;
   maxRounds: number;
+  paired?: boolean;
+  probes?: readonly string[];
+  namespaces?: readonly string[];
+  seeds?: readonly { namespace: string; records: Readonly<Record<string, string>> }[];
+  lookupFailure?: { key: string; message: string; count: number };
+  marker?: string;
+  reviewRubric?: string;
 }
-export interface LiveGrade { caseId: LiveCaseId; verdict: "pass" | "fail"; assertions: BaselineAssertion[] }
-export const LIVE_SUITE_VERSION: "1";
-export const LIVE_GRADER_VERSION: "1";
+export interface LiveObservation extends BaselineObservation {
+  fixtureSnapshots?: { namespace: string; before: Record<string, string>; after: Record<string, string>; effectCount: number; lookupCount: number; writeAttemptCount: number }[];
+  approvals?: boolean[];
+}
+export interface LiveGrade { caseId: LiveCaseId; verdict: "pass" | "fail" | "blocked"; reviewRequired?: true; assertions: BaselineAssertion[] }
+export const LIVE_SUITE_VERSION: "2";
+export const LIVE_GRADER_VERSION: "2";
 export const LIVE_MARKER: "live-conformance-5831";
 export const LIVE_INSTRUCTIONS: string;
 export const LIVE_CASES: readonly LiveCase[];
 export function liveCase(id: LiveCaseId): LiveCase;
-/** Objective development grading; accepts varied answer wording and requires actual tool/context evidence. */
-export function gradeLiveCase(id: LiveCaseId, observation: BaselineObservation): LiveGrade;
+export function buildLiveFixture(id: LiveCaseId, namespace: string): LiveCase;
+/** Objective development grading. L05 text interpretation remains explicitly pending human review. */
+export function gradeLiveCase(id: LiveCaseId, observation: LiveObservation, fixture?: LiveCase): LiveGrade;
