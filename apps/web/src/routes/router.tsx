@@ -108,6 +108,14 @@ export const router = createBrowserRouter([
         handle: { label: "Runs" },
       },
       {
+        path: "evals",
+        lazy: async () => {
+          const { EvalsPage } = await import("../features/evals/EvalsPage");
+          return { Component: EvalsPage };
+        },
+        handle: { label: "Agent evals" },
+      },
+      {
         path: "experiments",
         lazy: async () => {
           const { ExperimentsPage } = await import("../features/workspace/WorkspacePages");

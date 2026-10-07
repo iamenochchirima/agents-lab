@@ -1,5 +1,6 @@
 import {
   FlaskConical,
+  ClipboardCheck,
   Layers3,
   LayoutDashboard,
   ListChecks,
@@ -23,6 +24,7 @@ export const mainNavigation: readonly MainNavigationItem[] = [
   { label: "Coverage", icon: ListChecks, to: appPaths.coverage },
   { label: "Runs", icon: Play, to: appPaths.runs },
   { label: "Experiments", icon: FlaskConical, to: appPaths.experiments },
+  { label: "Agent evals", icon: ClipboardCheck, to: appPaths.evals },
   { label: "Platforms", icon: Layers3, to: appPaths.platforms },
   { label: "Scenarios", icon: ListTodo, to: appPaths.scenarios },
 ];

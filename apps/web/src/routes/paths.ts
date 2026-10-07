@@ -4,6 +4,7 @@ export const appPaths = {
   coverage: "/coverage",
   runs: "/runs",
   experiments: "/experiments",
+  evals: "/evals",
   platforms: "/platforms",
   scenarios: "/scenarios",
   architecture: "/architecture",

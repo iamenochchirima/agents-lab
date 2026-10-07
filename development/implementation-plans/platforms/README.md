@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [First executable agent evals](active/agent-harness-baseline-evals.md) — four-case
+  development implementation complete: Mastra and LangGraph trials passed;
+  Temporal/Restate native rollout is blocked by absent services. Full readiness
+  and broader hardening remain deferred.
+
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
 

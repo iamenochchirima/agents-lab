@@ -1,7 +1,7 @@
 # Research for a shared platform agent baseline
 
-**Research date:** 2026-10-07  
-**Status:** Design input. No platform has been evaluated by this note.  
+**Research date:** 2026-10-07
+**Status:** Design input. No platform has been evaluated by this note.
 **Question:** Which expectations should guide the first working agent harness on each platform, before experiments explore platform-specific capabilities?
 
 The useful target is a small, explicit Lab contract with executable evidence. There is no universal checklist that establishes a perfect agent. Tasks, permissions, execution models, and failure guarantees differ. Passing a baseline establishes only the behavior covered by its fixtures and graders.

@@ -19,6 +19,11 @@
     {
       "title": "Research",
       "documents": [
+        "docs/research/platform-agent-evals.md",
+        "docs/research/platform-eval-readiness.md",
+        "docs/research/platform-readiness-priority.md",
+        "docs/research/platform-readiness-extensions.md",
+        "docs/research/platform-readiness-methodology.md",
         "docs/research/system-explorers/README.md",
         "docs/research/system-explorers/audits/README.md",
         "docs/research/system-explorers/audits/hermes.md",
@@ -63,13 +68,17 @@
     {
       "title": "Scenarios",
       "documents": [
-        "docs/scenarios.md"
+        "docs/scenarios.md",
+        "lab/scenarios/platform-agent-conformance/README.md",
+        "lab/scenarios/platform-agent-conformance/eval-cases.md"
       ]
     },
     {
       "title": "Experiments",
       "documents": [
-        "docs/experiments.md"
+        "docs/experiments.md",
+        "lab/experiments/agent-harness-baseline/README.md",
+        "lab/experiments/agent-harness-baseline/development-evals.md"
       ]
     },
     {
@@ -109,6 +118,7 @@
         "development/implementation-plans/README.md",
         "development/implementation-plans/TEMPLATE.md",
         "development/implementation-plans/platforms/README.md",
+        "development/implementation-plans/platforms/active/agent-harness-baseline-evals.md",
         "development/implementation-plans/platforms/completed/openrouter-model-selection.md",
         "development/implementation-plans/platforms/completed/context-management.md",
         "development/implementation-plans/platforms/completed/platform-parallel-implementation.md",

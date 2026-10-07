@@ -1,0 +1,36 @@
+.evals-page { gap: 24px; }
+.evals-status { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 14px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); font-size: .84rem; }
+.evals-status span { color: var(--text-2); }
+.evals-status a { color: var(--accent); }
+.evals-groups { display: flex; flex-wrap: wrap; gap: 8px; }
+.evals-groups button { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 11px 16px; background: var(--surface); color: var(--text-2); cursor: pointer; font: inherit; font-size: .86rem; }
+.evals-groups button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.evals-groups button span { font-size: .75rem; font-family: var(--font-mono); }
+.evals-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; }
+.evals-heading h2 { margin: 0 0 8px; }
+.evals-heading p { color: var(--text-2); max-width: 700px; margin: 0; }
+.evals-heading label { display: grid; gap: 6px; color: var(--text-2); font-size: .75rem; min-width: 230px; }
+.evals-heading input { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 10px 12px; color: var(--text-1); font: inherit; }
+.evals-count { color: var(--text-3); font-size: .75rem; margin: 16px 0 10px; }
+.evals-list { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.evals-list details + details { border-top: 1px solid var(--border); }
+.evals-list summary { display: flex; align-items: center; gap: 16px; padding: 18px 20px; cursor: pointer; }
+.evals-list summary code { color: var(--accent); font-size: .78rem; }
+.evals-list summary strong { font-size: .9rem; }
+.evals-list summary > span { margin-left: auto; color: var(--text-3); font-size: .72rem; }
+.evals-list details[open] summary { background: var(--surface-2); }
+.evals-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 28px; padding: 20px; }
+.evals-detail h3 { color: var(--text-3); font-size: .73rem; margin: 0 0 8px; }
+.evals-detail p { margin: 0; color: var(--text-2); font-size: .86rem; line-height: 1.7; overflow-wrap: anywhere; }
+.evals-detail a, .evals-docs a { color: var(--accent); }
+.evals-empty { padding: 20px; color: var(--text-2); }
+.evals-docs { display: flex; flex-wrap: wrap; gap: 12px 24px; font-size: .8rem; padding-top: 6px; }
+.evals-docs > span { color: var(--text-3); }
+.evals-page :is(button, input, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 760px) {
+  .evals-heading { flex-direction: column; }
+  .evals-heading label { width: 100%; min-width: 0; }
+  .evals-detail { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .evals-list summary { padding: 16px 12px; gap: 10px; }
+  .evals-list summary > span { display: none; }
+}
