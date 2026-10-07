@@ -227,9 +227,27 @@ export class MastraBaselineRunner implements PlatformRunner {
         } : {}),
         maxSteps: configuration.maxToolRounds,
         onStepFinish: (step) => {
+          // Mastra can reject schema-invalid or absent tools before our execute
+          // callback. Normalize those observed SDK calls without inventing dispatch.
+          const sdk = step as unknown as { toolCalls?: readonly { payload?: { toolCallId?: string; toolName?: string; args?: unknown } }[];
+            toolResults?: readonly { payload?: { toolCallId?: string; result?: { error?: boolean; message?: string; validationErrors?: unknown } } }[] };
+          for (const entry of sdk.toolCalls ?? []) {
+            const call = entry.payload;
+            if (!call?.toolCallId || !call.toolName || record.events.some(event => event.kind === "ToolCallRequested" && event.payload.toolCallId === call.toolCallId)) continue;
+            const nativeResult = sdk.toolResults?.find(result => result.payload?.toolCallId === call.toolCallId)?.payload?.result;
+            const enabled = record.manifest.capabilities?.tools.enabledNames ?? ["calculator"];
+            const disabled = !enabled.includes(call.toolName);
+            if (!disabled && nativeResult?.error !== true) continue;
+            const payload = { toolCallId: call.toolCallId, toolName: call.toolName, round: record.events.filter(event => event.kind === "AgentStepCompleted").length + 1,
+              argumentBytes: new TextEncoder().encode(JSON.stringify(call.args ?? null)).byteLength, nativeBoundary: "mastra-sdk" };
+            this.addEvent(record, "ToolCallRequested", payload);
+            this.addEvent(record, "ToolCallRejected", { ...payload,
+              code: disabled ? "TOOL_NOT_ENABLED" : nativeResult?.validationErrors ? "INVALID_ARGUMENTS" : "MASTRA_NATIVE_TOOL_REJECTED",
+              message: disabled ? "The native SDK did not register the requested tool." : "The native SDK rejected the tool input before execution." });
+          }
           this.addEvent(record, "AgentStepCompleted", {
             finishReason: safeValue(step, "finishReason"),
-            usage: safeUsage(safeValue(step, "usage")),
+            usage: safeUsage((step as unknown as { usage?: unknown }).usage),
           });
         },
       });
@@ -498,10 +516,16 @@ function failureFor(record: MastraExecutionRecord, error: unknown): NonNullable<
 function normalizeUsage(value: unknown): RunUsage {
   if (!value || typeof value !== "object") return emptyUsage();
   const usage = value as Record<string, unknown>;
+  const raw = usage.raw && typeof usage.raw === "object" ? usage.raw as Record<string, unknown> : null;
+  const inputTokens = raw?.inputTokens === null ? null : numberOrNull(usage.inputTokens);
+  const outputTokens = raw?.outputTokens === null ? null : numberOrNull(usage.outputTokens);
+  const totalTokens = raw?.totalTokens === null ? null : numberOrNull(usage.totalTokens);
   return {
-    inputTokens: numberOrNull(usage.inputTokens),
-    outputTokens: numberOrNull(usage.outputTokens),
-    totalTokens: numberOrNull(usage.totalTokens),
+    inputTokens,
+    outputTokens,
+    // Mastra aggregates absent native usage into total=0. Preserve absence
+    // unless both components actually establish a measured zero total.
+    totalTokens: totalTokens === 0 && (inputTokens === null || outputTokens === null) ? null : totalTokens,
   };
 }
 

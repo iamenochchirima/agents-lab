@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { MastraModelConfig } from "@mastra/core/llm";
 
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
@@ -343,3 +344,42 @@ async function waitForTerminal(
   }
   throw new Error("Mastra test execution did not reach a terminal state.");
 }
+
+test("native SDK rejections retain call evidence before any execute callback", async () => {
+  for (const toolName of ["calculator", "fixture_write"]) {
+    let requests = 0;
+    const runner = new MastraBaselineRunner({ modelFactory: () => ({
+      specificationVersion: "v2", provider: "agentlab.fake", modelId: "sdk-rejection-probe", supportedUrls: {},
+      doGenerate: async () => ({
+        content: ++requests === 1 ? [{ type: "tool-call" as const, toolCallId: "sdk-rejected-call", toolName,
+          input: JSON.stringify(toolName === "calculator" ? { operation: "add", left: "invalid", right: 25 } : { key: "alpha", value: "forbidden" }) }]
+          : [{ type: "text" as const, text: "The rejected action did not execute." }],
+        finishReason: requests === 1 ? "tool-calls" as const : "stop" as const,
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, warnings: [],
+      }),
+    } as unknown as MastraModelConfig) });
+    const manifest = manifestFor(runner, "fake-eval-behaviour", "fake", `mastra-sdk-rejection-${toolName}`);
+    assert.equal(runner.validate(manifest).valid, true);
+    const inspection = await waitForTerminal(runner, await runner.start(manifest));
+    assert.equal(inspection.result?.status, "completed");
+    assert.equal(inspection.eventIntents.filter(event => event.kind === "ToolExecutionStarted").length, 0);
+    const rejected = inspection.eventIntents.find(event => event.kind === "ToolCallRejected");
+    assert.equal(rejected?.payload.code, toolName === "calculator" ? "INVALID_ARGUMENTS" : "TOOL_NOT_ENABLED");
+    assert.equal(rejected?.payload.nativeBoundary, "mastra-sdk");
+  }
+});
+
+test("missing provider usage stays unknown while measured zero usage remains zero", async () => {
+  for (const measured of [false, true]) {
+    const usage = measured ? { inputTokens: 0, outputTokens: 0, totalTokens: 0 } : { inputTokens: null, outputTokens: null, totalTokens: null };
+    const runner = new MastraBaselineRunner({ modelFactory: () => ({
+      specificationVersion: "v2", provider: "agentlab.fake", modelId: "usage-preservation-probe", supportedUrls: {},
+      doGenerate: async () => ({ content: [{ type: "text", text: "Completed." }], finishReason: "stop", usage, warnings: [] }),
+    } as unknown as MastraModelConfig) });
+    const manifest = manifestFor(runner, "fake-success", "fake", `mastra-usage-${measured}`);
+    const inspection = await waitForTerminal(runner, await runner.start(manifest));
+    assert.deepEqual(inspection.result?.usage, usage);
+    assert.deepEqual(inspection.eventIntents.find(event => event.kind === "ModelCompleted")?.payload.usage, usage);
+    assert.deepEqual(inspection.eventIntents.find(event => event.kind === "AgentStepCompleted")?.payload.usage, usage);
+  }
+});

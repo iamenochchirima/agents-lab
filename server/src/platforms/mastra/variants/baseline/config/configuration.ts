@@ -17,6 +17,7 @@ export const DETERMINISTIC_FAKE_MODELS = [
   "fake-mcp-connected-tool",
   "fake-connected-write",
   "fake-context",
+  "fake-eval-behaviour",
 ] as const;
 
 export type MastraProvider = "fake" | "openrouter";
