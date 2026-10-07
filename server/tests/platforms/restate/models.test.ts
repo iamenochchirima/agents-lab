@@ -338,3 +338,19 @@ test("OpenRouter adapter rejects oversized provider response and tool payloads",
   assert.equal(oversizedProviderId.kind, "failure");
   assert.equal(oversizedProviderId.kind === "failure" ? oversizedProviderId.code : null, "OPENROUTER_PROVIDER_ID_TOO_LARGE");
 });
+
+test("behaviour fixture pairs real feedback and enforces an abortable operation deadline", async () => {
+  const model = new FakeRestateModel();
+  const directive = (value: unknown) => `[eval-behaviour:${Buffer.from(JSON.stringify(value)).toString("base64url")}]`;
+  const request = { ...input, model: "fake-eval-behaviour", prompt: directive({ action: "tool", toolName: "fixture_lookup", input: { key: "missing" } }) };
+  const first = await model.complete(request, new AbortController().signal);
+  assert.equal(first.kind, "success");
+  if (first.kind !== "success") return;
+  assert.equal(first.output, null);
+  assert.equal(first.toolCalls[0]?.name, "fixture_lookup");
+  const second = await model.complete({ ...request, messages: [...input.messages, { role: "tool", name: "fixture_lookup", toolCallId: "eval-behaviour-call-1", content: '{"error":"missing"}' }] }, new AbortController().signal);
+  assert.equal(second.kind === "success" ? second.output : null, 'Tool feedback: {"error":"missing"}');
+  const deadline = await model.complete({ ...input, model: "fake-eval-behaviour", prompt: directive({ action: "slow", delayMs: 100, timeoutMs: 10 }) }, new AbortController().signal);
+  assert.equal(deadline.kind === "failure" ? deadline.failureKind : null, "timeout");
+  assert.equal(deadline.evalObservation?.errorCode, "FAKE_MODEL_DEADLINE_EXCEEDED");
+});

@@ -88,3 +88,33 @@ Start with:
 The exact local commands and opt-in acceptance checks are in
 [local development](./docs/local-development.md). The native binary is the required
 local profile; Docker is only an optional compatibility profile.
+
+### Running alongside an occupied default ingress
+
+The existing official `@restatedev/restate-server` package pins native Restate
+1.7.10. If another application owns port 8080, use isolated ports rather than
+stopping that application. For example:
+
+```bash
+AGENTLAB_RESTATE_DATA_DIR=/tmp/agentlab-restate-eval-data \
+RESTATE_ADMIN__BIND_ADDRESS=127.0.0.1:19070 \
+RESTATE_INGRESS__BIND_ADDRESS=127.0.0.1:18080 \
+RESTATE_BIFROST__BIND_ADDRESS=127.0.0.1:19522 \
+./scripts/run_local_stack.sh restate-server
+
+AGENTLAB_RESTATE_INGRESS_URL=http://127.0.0.1:18080 \
+AGENTLAB_RESTATE_ADMIN_URL=http://127.0.0.1:19070 \
+AGENTLAB_RESTATE_SERVICE_URL=http://127.0.0.1:19080 \
+AGENTLAB_RESTATE_SERVICE_PORT=19080 \
+./scripts/run_local_stack.sh restate
+
+curl --fail --request POST http://127.0.0.1:19070/deployments \
+  --header 'content-type: application/json' \
+  --data '{"uri":"http://127.0.0.1:19080"}'
+```
+
+Pass the same ingress/admin/service environment variables to eval commands.
+Set `AGENTLAB_CONTEXT_ROOT` to the same absolute directory in the driver and
+service, and `AGENTLAB_LOCAL_FIXTURE_URL` to the eval fixture endpoint when using
+connected-tool probes. Preserve the native data directory until inspecting or
+reconciling any unfinished workflow.

@@ -434,7 +434,7 @@ export const baselineWorkflow = restate.workflow({
             }
             messages = [...messages, toolResultMessage(resultId, call.name, toolResult.content)];
 
-            if (toolResult.status !== "completed") {
+            if (toolResult.status !== "completed" && !(toolResult.status === "failed" && ["fixture_lookup", "mcp_fixture_lookup"].includes(call.name))) {
               executionHalted = true;
               toolOutcomeUnknown ||= toolResult.status === "unknown";
               toolCancelled ||= toolResult.status === "cancelled";
