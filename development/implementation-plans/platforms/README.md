@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Cross-platform agent behaviour milestone](active/cross-platform-agent-behaviour-milestone.md) —
+  planned substantial milestone covering core B01–B12, richer live decisions, native
+  integrations including Restate setup, and frontend comparison/evidence inspection.
+  Includes commit checkpoints and focused validation; kept outside curated Docs.
+
 - [Free-model live agent evals](active/free-model-live-evals.md) — implemented:
   three real-model tasks passed on Mastra, LangGraph and Temporal; Restate remains
   blocked by its unavailable native service. Retained evidence is visible in Evals.
