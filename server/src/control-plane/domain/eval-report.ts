@@ -21,13 +21,15 @@ export interface RunEvalReport {
   readonly schemaVersion: 1;
   readonly suiteVersion: string;
   readonly graderVersion: string;
-  readonly caseId: "B01" | "B02" | "B03" | "B07";
+  readonly caseId: "B01" | "B02" | "B03" | "B07" | "L01" | "L02" | "L03";
+  /** Absent on historical reports means scripted. Live case IDs require explicit classification. */
+  readonly mode?: "scripted" | "live";
   readonly trialId: string;
   readonly ownerRunId: string;
   readonly runIds: readonly string[];
   readonly verdict: "pass" | "fail" | "blocked" | "error";
   readonly assertions: readonly EvalAssertion[];
-  /** Safe synthetic fixture captures only. Do not put real provider prompts or credentials here. */
+  /** Eval-owned synthetic tasks only, including sanitized live captures. Never retain unrelated prompts or credentials. */
   readonly observations: readonly EvalJson[];
   readonly metadata: {
     readonly revision: string | null;
@@ -36,21 +38,27 @@ export interface RunEvalReport {
     readonly startedAt: string;
     readonly completedAt: string;
     readonly trialCount: number;
+    /** JSON-only model identity, settings, routing controls and environment for live trials. */
+    readonly model?: EvalJson;
+    readonly environment?: EvalJson;
   };
 }
 
 /** Reject unsupported schema versions and malformed verdicts before storing or consuming evidence. */
 export function assertRunEvalReport(value: unknown): asserts value is RunEvalReport {
   if (!record(value) || value.schemaVersion !== 1 ||
-      !["B01", "B02", "B03", "B07"].includes(String(value.caseId)) ||
+      !["B01", "B02", "B03", "B07", "L01", "L02", "L03"].includes(String(value.caseId)) ||
       !["pass", "fail", "blocked", "error"].includes(String(value.verdict))) invalid();
+  const liveCase = ["L01", "L02", "L03"].includes(String(value.caseId));
+  if ((value.mode !== undefined && value.mode !== "scripted" && value.mode !== "live") ||
+      (liveCase ? value.mode !== "live" : value.mode === "live")) invalid();
   for (const key of ["suiteVersion", "graderVersion", "trialId", "ownerRunId"]) {
     if (!text(value[key])) invalid();
   }
   if (!Array.isArray(value.runIds) || value.runIds.length === 0 || value.runIds.length > 2 ||
       value.runIds.some((id) => !text(id)) || new Set(value.runIds).size !== value.runIds.length ||
       !value.runIds.includes(value.ownerRunId) ||
-      (!["B03", "B07"].includes(String(value.caseId)) && value.runIds.length !== 1)) invalid();
+      (!["B03", "B07", "L03"].includes(String(value.caseId)) && value.runIds.length !== 1)) invalid();
   if (!Array.isArray(value.assertions) || value.assertions.length > 128 ||
       !Array.isArray(value.observations)) invalid();
   for (const assertion of value.assertions) {
@@ -75,7 +83,9 @@ export function assertRunEvalReport(value: unknown): asserts value is RunEvalRep
       !Object.values(metadata.versions).every(text) ||
       !date(metadata.startedAt) || !date(metadata.completedAt) ||
       Date.parse(String(metadata.completedAt)) < Date.parse(String(metadata.startedAt)) ||
-      !Number.isSafeInteger(metadata.trialCount) || Number(metadata.trialCount) < 1) invalid();
+      !Number.isSafeInteger(metadata.trialCount) || Number(metadata.trialCount) < 1 ||
+      (metadata.model !== undefined && !json(metadata.model)) ||
+      (metadata.environment !== undefined && !json(metadata.environment))) invalid();
 }
 
 function record(value: unknown): value is Record<string, unknown> {
