@@ -107,7 +107,9 @@ requires a valid scoped approval rather than bypassing policy.
 
 Native policies remain explicit. Invalid inputs do not dispatch tools. Known failed
 reads can become correlated model feedback; uncertain writes are not blindly retried.
-Mastra may omit feedback for an unregistered tool and reach its native round limit.
+Mastra may omit SDK feedback for an unregistered tool. The synthetic B06 protocol
+continues after its actual rejection receipt without fabricating a tool result;
+repeated demands can still reach the native round limit.
 Malformed Temporal/Restate responses retain their decoder error; LangGraph preserves
 its native unknown outcome. Restate's shared progress handler retains actual
 in-flight dispatch evidence through cancellation. Native deadline evidence is

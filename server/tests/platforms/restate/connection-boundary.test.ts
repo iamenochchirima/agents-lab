@@ -92,12 +92,25 @@ test("Restate native MCP action crosses the local Streamable HTTP boundary", asy
   }
 });
 
-test("Restate preserves a known MCP failure without changing its native lifecycle", async () => {
-  const result = await runMcpWorkflow("restate-mcp-failure", { mcpCallBehavior: "error" });
-  assert.equal(result.status, "failed");
-  assert.equal(result.error?.failureKind, "provider");
+test("Restate preserves a known failed MCP read as correlated model feedback", async () => {
+  const result = await runMcpWorkflow("restate-mcp-failure", { mcpCallBehavior: "error" }, undefined, true);
+  assert.equal(result.status, "completed");
+  assert.equal(result.error, null);
   const failure = result.eventIntents.find((event) => event.kind === "ToolExecutionFailed");
   assert.equal(failure?.payload.connection && (failure.payload.connection as { errorCode?: string }).errorCode, "MCP_CALL_FAILED");
+  const tool = result.eventIntents.find(event => event.kind === "EvalToolObserved");
+  assert.equal(tool?.payload.status, "failed");
+  const requests = result.eventIntents.filter(event => event.kind === "EvalModelObserved");
+  assert.equal(requests.length, 2);
+  const next = requests[1]?.payload.observation as { messages?: { role: string; toolCallId?: string; content?: string }[] };
+  const feedback = next.messages?.find(message => message.role === "tool" && message.toolCallId === tool?.payload.toolCallId);
+  assert.equal(feedback?.content, tool?.payload.output);
+  assert.deepEqual(JSON.parse(feedback?.content ?? "null"), {
+    error: "The deterministic MCP fixture rejected the call.", code: "TOOL_EXECUTION_FAILED",
+  });
+  assert.equal(result.output, `Tool feedback: ${feedback?.content}`);
+  assert.equal(result.eventIntents.filter(event => event.kind === "ToolExecutionStarted").length, 1);
+  assert.equal(result.eventIntents.filter(event => event.kind === "ToolExecutionCompleted").length, 0);
 });
 
 test("Restate preserves an ambiguous MCP dispatch and does not retry it", async () => {
@@ -125,6 +138,7 @@ async function runMcpWorkflow(
   runId: string,
   fixtureOptions: { readonly mcpCallBehavior: "error" | "disconnect" | "delay"; readonly mcpCallDelayMs?: number },
   signal = new AbortController().signal,
+  observeFeedback = false,
 ) {
   const fixture = await createLocalFixtureServer({ host: "127.0.0.1", port: 0, ...fixtureOptions });
   const previousFixtureUrl = process.env.AGENTLAB_LOCAL_FIXTURE_URL;
@@ -132,9 +146,10 @@ async function runMcpWorkflow(
   try {
     return await workflowRun(createContext(signal), {
       runId,
-      prompt: "Read the alpha fixture through MCP.",
+      prompt: observeFeedback ? `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: "mcp_fixture_lookup", input: { key: "alpha" } })).toString("base64url")}]`
+        : "Read the alpha fixture through MCP.",
       systemInstruction: "Use the selected MCP connection.",
-      model: { provider: "fake", model: "fake-mcp-connected-tool" },
+      model: { provider: "fake", model: observeFeedback ? "fake-eval-behaviour" : "fake-mcp-connected-tool" },
       tools: { enabledNames: ["mcp_fixture_lookup"], maxRounds: 3, maxCalls: 2 },
       connections: [{
         toolName: "mcp_fixture_lookup",
