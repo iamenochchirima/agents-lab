@@ -1,3 +1,4 @@
+import { OpenRouterModelAdapter } from "./openrouter.js";
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
 
 const FIXTURE_DELAY_MS = 60_000;
@@ -18,9 +19,15 @@ export class FakeModelAdapter implements ModelAdapter {
       const messages = input.messages ?? [];
       const observation = { messages: JSON.parse(JSON.stringify(messages)), systemInstruction: input.systemInstruction, toolCalls: [] as { toolCallId: string; name: string; arguments: unknown }[] };
       if (directive.action === "provider-error" || directive.action === "malformed") {
-        const code = directive.action === "malformed" ? "FAKE_MALFORMED_RESPONSE" : "FAKE_PROVIDER_FAILURE";
-        return { kind: "failure", failureKind: "provider", code, message: "Controlled behaviour model rejection.", requestSent: true,
-          evalObservation: { ...observation, errorCode: code } };
+        // Inject at the provider transport seam, then use the real native decoder.
+        // No network is contacted and the fake credential is never retained.
+        const malformed = directive.action === "malformed";
+        const decoder = new OpenRouterModelAdapter({ apiKey: "synthetic-parser-fixture", fetchImplementation: async () =>
+          new Response(malformed ? "{malformed" : '{"error":{"message":"Controlled provider rejection."}}',
+            { status: malformed ? 200 : 403, headers: { "content-type": "application/json" } }) });
+        const result = await decoder.complete({ ...input, liveEval: false }, signal);
+        return { ...result, evalObservation: { ...observation, faultKind: malformed ? "malformed" : "provider",
+          ...(result.kind === "failure" ? { errorCode: result.code } : {}) } };
       }
       if (directive.action === "slow") await cancellableDelay(Math.min(60_000, Math.max(1, directive.delayMs ?? 10_000)), signal);
       const feedback = [...messages].reverse().find(message => message.role === "tool" && message.toolCallId === "eval-behaviour-call-1");

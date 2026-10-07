@@ -344,5 +344,9 @@ test("behaviour fixtures retain actual provider failures and require correlated 
   assert.equal(second.kind === "success" ? second.output : null, 'Tool feedback: {"code":"INVALID_INPUT"}');
   const failure = await adapter.complete({ ...input, model: "fake-eval-behaviour", prompt: directive({ action: "provider-error" }) }, new AbortController().signal);
   assert.equal(failure.kind, "failure");
-  assert.equal(failure.evalObservation?.errorCode, "FAKE_PROVIDER_FAILURE");
+  assert.equal(failure.evalObservation?.errorCode, "OPENROUTER_HTTP_403");
+  assert.equal(failure.evalObservation?.faultKind, "provider");
+  const malformed = await adapter.complete({ ...input, model: "fake-eval-behaviour", prompt: directive({ action: "malformed" }) }, new AbortController().signal);
+  assert.equal(malformed.kind === "failure" ? malformed.code : null, "OPENROUTER_INVALID_RESPONSE");
+  assert.equal(malformed.evalObservation?.faultKind, "malformed");
 });

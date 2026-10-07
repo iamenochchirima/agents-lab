@@ -174,6 +174,7 @@ export type TemporalToolExecutionResult = ToolExecutionResult;
 
 /** Bounded synthetic eval evidence, never authentication headers. */
 export interface ModelEvalObservation {
+  readonly faultKind?: "provider" | "malformed";
   readonly messages: readonly TemporalModelMessage[];
   readonly systemInstruction: string;
   readonly toolCalls: readonly TemporalModelToolCall[];

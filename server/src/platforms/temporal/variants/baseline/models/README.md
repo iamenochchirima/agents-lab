@@ -47,3 +47,9 @@ Known failed `fixture_lookup` and `mcp_fixture_lookup` reads become correlated
 model feedback. Failed writes, cancellations, timeouts and unknown external
 outcomes retain the native terminal policy; no uncertain write is retried by
 this continuation rule.
+
+Provider rejection and malformed-response directives use an injected local
+transport response with the actual OpenRouter adapter decoder. No external
+provider request is made. The observation retains `faultKind` separately from
+the original decoder error code (`OPENROUTER_HTTP_403` or
+`OPENROUTER_INVALID_RESPONSE`).
