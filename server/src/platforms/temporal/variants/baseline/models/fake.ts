@@ -8,6 +8,35 @@ const FIXTURE_DELAY_MS = 60_000;
  */
 export class FakeModelAdapter implements ModelAdapter {
   async complete(input: ModelRequestInput, signal: AbortSignal): Promise<ModelCallResult> {
+    if (input.model === "fake-eval-behaviour") {
+      const match = input.prompt.match(/\[eval-behaviour:([A-Za-z0-9_-]+)\]/);
+      if (!match) throw new Error("A behaviour eval requires a bounded directive.");
+      const directive = JSON.parse(Buffer.from(match[1]!, "base64url").toString("utf8")) as {
+        action: "complete" | "tool" | "provider-error" | "malformed" | "slow" | "context";
+        toolName?: string; input?: unknown; text?: string; delayMs?: number; marker?: string;
+      };
+      const messages = input.messages ?? [];
+      const observation = { messages: JSON.parse(JSON.stringify(messages)), systemInstruction: input.systemInstruction, toolCalls: [] as { toolCallId: string; name: string; arguments: unknown }[] };
+      if (directive.action === "provider-error" || directive.action === "malformed") {
+        const code = directive.action === "malformed" ? "FAKE_MALFORMED_RESPONSE" : "FAKE_PROVIDER_FAILURE";
+        return { kind: "failure", failureKind: "provider", code, message: "Controlled behaviour model rejection.", requestSent: true,
+          evalObservation: { ...observation, errorCode: code } };
+      }
+      if (directive.action === "slow") await cancellableDelay(Math.min(60_000, Math.max(1, directive.delayMs ?? 10_000)), signal);
+      const feedback = [...messages].reverse().find(message => message.role === "tool" && message.toolCallId === "eval-behaviour-call-1");
+      if (directive.action === "tool" && !feedback) {
+        const toolCalls = [{ toolCallId: "eval-behaviour-call-1", name: directive.toolName ?? "calculator", arguments: directive.input ?? {} }];
+        return { kind: "success", output: null, toolCalls, providerRequestId: null,
+          usage: { inputTokens: null, outputTokens: null, totalTokens: null }, evalObservation: { ...observation, toolCalls } };
+      }
+      // Context fixtures inspect retained messages, never the hidden directive marker.
+      const retained = messages.filter(message => message.role === "user").map(message => (message.content ?? "").replace(/\[eval-behaviour:[A-Za-z0-9_-]+\]/g, "")).join("\n");
+      const output = directive.action === "context" ? (directive.marker && retained.includes(directive.marker) ? directive.marker : "No retained marker.")
+        : directive.action === "tool" ? `Tool feedback: ${feedback?.content}` : directive.text ?? "Behaviour eval completed.";
+      return { kind: "success", output, toolCalls: [], providerRequestId: null,
+        usage: { inputTokens: null, outputTokens: null, totalTokens: null }, evalObservation: { ...observation, output } };
+    }
+
     if (["fake-eval-completion", "fake-eval-tool", "fake-eval-context", "fake-eval-loop"].includes(input.model)) {
       const messages = input.messages ?? [];
       const toolResult = [...messages].reverse().find((message) => message.role === "tool");

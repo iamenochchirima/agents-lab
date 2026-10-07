@@ -28,3 +28,22 @@ and disabled provider fallback. The native model loop still decides and executes
 its tool steps. Provider failures and context overflow end the trial without
 an automatic retry or a paid substitute. Ordinary interactive runs keep their
 existing provider configuration and telemetry.
+
+## Behaviour milestone fixtures
+
+`fake-eval-behaviour` is an explicitly selected synthetic fixture. Its current
+user prompt contains `[eval-behaviour:<base64url JSON>]`; the decoded directive
+selects `complete`, `tool`, `context`, `provider-error`, `malformed`, or `slow`.
+Tool directives use `toolName` and `input`; the final response follows only an
+actual matching `eval-behaviour-call-1` tool result. Context directives use
+`marker` and inspect retained user content with directive envelopes removed.
+They cannot pass recall by reading the hidden directive itself.
+
+The model node retains actual request observations, including controlled
+provider rejections. Slow fixtures use `delayMs` and observe native cancellation.
+These probes do not change real-provider selection or provide paid fallback.
+
+Known failed `fixture_lookup` and `mcp_fixture_lookup` reads become correlated
+model feedback. Failed writes, cancellations, timeouts and unknown external
+outcomes retain the native terminal policy; no uncertain write is retried by
+this continuation rule.

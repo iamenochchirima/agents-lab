@@ -332,3 +332,17 @@ test("eval fixtures capture mapped messages and consume actual tool feedback", a
   const normal = await adapter.complete(input, new AbortController().signal);
   assert.equal(normal.kind === "success" && normal.evalObservation !== undefined, false);
 });
+
+test("behaviour fixtures retain actual provider failures and require correlated tool feedback", async () => {
+  const adapter = new FakeModelAdapter();
+  const directive = (value: unknown) => `[eval-behaviour:${Buffer.from(JSON.stringify(value)).toString("base64url")}]`;
+  const request = { ...input, model: "fake-eval-behaviour", prompt: directive({ action: "tool", toolName: "calculator", input: { left: "invalid" } }) };
+  const first = await adapter.complete(request, new AbortController().signal);
+  assert.equal(first.kind === "success" ? first.output : "failure", null);
+  assert.equal(first.kind === "success" ? first.toolCalls?.[0]?.name : null, "calculator");
+  const second = await adapter.complete({ ...request, messages: [{ role: "tool", name: "calculator", toolCallId: "eval-behaviour-call-1", content: '{"code":"INVALID_INPUT"}' }] }, new AbortController().signal);
+  assert.equal(second.kind === "success" ? second.output : null, 'Tool feedback: {"code":"INVALID_INPUT"}');
+  const failure = await adapter.complete({ ...input, model: "fake-eval-behaviour", prompt: directive({ action: "provider-error" }) }, new AbortController().signal);
+  assert.equal(failure.kind, "failure");
+  assert.equal(failure.evalObservation?.errorCode, "FAKE_PROVIDER_FAILURE");
+});

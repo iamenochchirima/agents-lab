@@ -439,6 +439,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
         }
         continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];
+        if (toolResult.status === "failed" && ["fixture_lookup", "mcp_fixture_lookup"].includes(call.name)) continue;
         if (toolResult.status !== "completed") {
           const failure = temporalFailure(
             toolResult.error?.code ?? "TOOL_EXECUTION_FAILED",
