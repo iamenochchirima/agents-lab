@@ -54,6 +54,7 @@ def test_baseline_graph_uses_real_langgraph_and_persists_checkpoint(tmp_path: Pa
     assert snapshot.values["model_name"] == "fake-success"
     assert snapshot.values["usage"] == {"inputTokens": None, "outputTokens": None, "totalTokens": None}
     assert any(kind == "ModelRequested" for kind, _ in events)
+    assert not any(kind.startswith("Eval") for kind, _ in events)
 
     with SqliteSaver.from_conn_string(str(database)) as reopened:
         assert reopened.get_tuple({"configurable": {"thread_id": "thread-graph-test"}}) is not None
@@ -756,3 +757,41 @@ def test_openrouter_maps_internal_tool_messages_to_chat_completion_messages() ->
         "name": "calculator",
         "content": '{"value":42}',
     }
+
+
+@pytest.mark.parametrize("fixture,max_calls,max_rounds,expected", [
+    ("fake-eval-completion", 8, 6, "Baseline eval completed."),
+    ("fake-eval-tool", 2, 4, "42"),
+    ("fake-eval-context", 8, 6, "conformance-4318"),
+    ("fake-eval-loop", 1, 4, None),
+    ("fake-eval-loop", 8, 1, None),
+])
+def test_development_eval_captures_native_requests_and_dispatches(fixture: str, max_calls: int, max_rounds: int, expected: str | None) -> None:
+    events: list[tuple[str, dict]] = []
+    messages = [{"role": "system", "content": "Recorded instruction."}, {"role": "user", "content": "Answer the task."}]
+    if fixture == "fake-eval-context":
+        messages = [messages[0], {"role": "user", "content": "Remember conformance-4318."},
+                    {"role": "assistant", "content": "Stored the test value."}, messages[-1]]
+    with SqliteSaver.from_conn_string(":memory:") as checkpointer:
+        graph = build_baseline_graph(
+            ModelConfig(provider="fake", model=fixture, api_key=None, timeout_ms=5_000),
+            lambda kind, payload: events.append((kind, payload)), lambda: False,
+            "run-eval-test", 1, checkpointer, max_calls=max_calls, max_rounds=max_rounds,
+        )
+        initial = {"prompt": "Answer the task.", "system_instruction": "Recorded instruction.", "messages": messages}
+        config = {"configurable": {"thread_id": "thread-eval-test"}, "run_id": "run-eval-test"}
+        if expected is None:
+            with pytest.raises(ProviderError, match="limit"):
+                graph.invoke(initial, config)
+        else:
+            assert graph.invoke(initial, config)["output"] == expected
+    requests = [payload for kind, payload in events if kind == "EvalModelObserved"]
+    assert requests[0]["observation"]["messages"] == messages
+    assert len(requests) <= max_rounds
+    tools = [payload for kind, payload in events if kind == "EvalToolObserved"]
+    assert len(tools) <= max_calls
+    if fixture == "fake-eval-tool":
+        assert tools[0]["output"] == '{"value":42}'
+        result = next(message for message in requests[1]["observation"]["messages"] if message["role"] == "tool")
+        assert result["toolCallId"] == tools[0]["toolCallId"]
+        assert result["content"] == tools[0]["output"]

@@ -23,6 +23,7 @@ from langgraph.types import RetryPolicy
 
 
 EventEmitter = Callable[[str, dict[str, Any]], None]
+EVAL_MODELS = {"fake-eval-completion", "fake-eval-tool", "fake-eval-context", "fake-eval-loop"}
 MAX_RESPONSE_BYTES = 1_048_576
 MAX_OUTPUT_CHARS = 100_000
 MAX_TOOL_CALLS_PER_RESPONSE = 32
@@ -245,6 +246,23 @@ def build_baseline_graph(
             },
         )
         response = complete_model(model, {**state, "messages": messages}, attempt, is_cancelled, enabled_tools, approved_tools)
+        if model.provider == "fake" and model.model in EVAL_MODELS:
+            # Capture only explicit synthetic fixtures at the actual model node.
+            emit("EvalModelObserved", {
+                "round": round_number, "attempt": attempt,
+                "observation": {
+                    "systemInstruction": state.get("system_instruction", ""),
+                    "messages": [
+                        {"role": message["role"], "content": message.get("content") or "",
+                         **({"toolCallId": message["tool_call_id"]} if "tool_call_id" in message else {}),
+                         **({"toolCalls": [{"toolCallId": call["id"], "name": call["name"], "arguments": call["arguments"]}
+                                           for call in message["tool_calls"]]} if message.get("tool_calls") else {})}
+                        for message in messages
+                    ],
+                    "toolCalls": [{"toolCallId": call.tool_call_id, "name": call.name, "arguments": call.arguments}
+                                  for call in response.tool_calls],
+                },
+            })
         assistant: dict[str, Any] = {"role": "assistant", "content": response.output}
         if response.tool_calls:
             assistant["tool_calls"] = [
@@ -332,6 +350,11 @@ def build_baseline_graph(
                 message = _bounded_text(str(exc), 512)
                 emit("ToolExecutionFailed", {**payload, "code": "TOOL_EXECUTION_FAILED", "message": message})
                 raise ProviderError("The selected tool failed.") from exc
+            if model.provider == "fake" and model.model in EVAL_MODELS:
+                emit("EvalToolObserved", {
+                    "toolCallId": call.tool_call_id, "name": call.name, "arguments": call.arguments,
+                    "round": state.get("round_count", 0), "status": result.status, "output": result.content,
+                })
             if result.status != "completed":
                 event_kind = "ToolExecutionUnknown" if result.status == "unknown" else "ToolExecutionFailed"
                 emit(event_kind, {
@@ -398,6 +421,19 @@ def complete_fake(
         raise CancellationError("Cancellation was requested before the model call started.")
     messages = [] if isinstance(state, str) else state.get("messages", [])
     prompt = state if isinstance(state, str) else state.get("prompt", "")
+    if model in EVAL_MODELS:
+        tool_results = [message for message in messages if message.get("role") == "tool"]
+        if model == "fake-eval-loop" or (model == "fake-eval-tool" and not tool_results):
+            return ModelResponse(None, [
+                ToolCall(f"eval-calculator-{len(tool_results) + 1}", "calculator", {"operation": "add", "left": 17, "right": 25})
+            ], empty_usage())
+        if model == "fake-eval-tool":
+            return ModelResponse(str(json.loads(tool_results[-1]["content"]).get("value", "Missing tool result.")), [], empty_usage())
+        if model == "fake-eval-context":
+            remembered = any(message.get("role") == "user" and "conformance-4318" in str(message.get("content", "")) for message in messages)
+            output = "Stored the test value." if prompt.startswith("Remember") else "conformance-4318" if remembered else "The test value was not present in the context."
+            return ModelResponse(output, [], empty_usage())
+        return ModelResponse("Baseline eval completed.", [], empty_usage())
     if model == "fake-success":
         return ModelResponse(f"Fake response: {prompt}", [], empty_usage())
     if model == "fake-pre-dispatch-retry":
