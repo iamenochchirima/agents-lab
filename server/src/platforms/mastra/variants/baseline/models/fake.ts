@@ -8,6 +8,8 @@ export interface DeterministicFakeModelOptions {
   readonly toolCall?: boolean;
   readonly toolName?: "calculator" | "fixture_lookup" | "fixture_write" | "mcp_fixture_lookup";
   readonly contextAware?: boolean;
+  /** Synthetic request observer for local fixtures; never attached to real providers. */
+  readonly onRequest?: (prompt: unknown) => void;
 }
 
 /**
@@ -24,6 +26,7 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
     modelId: options.modelId,
     supportedUrls: {},
     doGenerate: async ({ abortSignal, prompt }: FakeGenerateOptions) => {
+      options.onRequest?.(prompt);
       if (options.delayMs && options.delayMs > 0) {
         await waitForModel(options.delayMs, abortSignal);
       }

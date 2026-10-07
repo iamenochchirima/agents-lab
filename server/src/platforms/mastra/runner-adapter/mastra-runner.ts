@@ -210,7 +210,7 @@ export class MastraBaselineRunner implements PlatformRunner {
         abortSignal: record.controller.signal,
         ...(context ? {
           context: context.messages
-            .filter((message) => message.role !== "system" && message.messageId !== context.currentMessageId)
+            .filter((message) => !(message.role === "system" && message.source === "system") && message.messageId !== context.currentMessageId)
             .map(toMastraMessage),
         } : {}),
         maxSteps: configuration.maxToolRounds,

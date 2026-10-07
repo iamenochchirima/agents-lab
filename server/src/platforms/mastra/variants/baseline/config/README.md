@@ -19,3 +19,12 @@ model step under the same condition.
 
 The execution timeout and model/provider selection remain platform configuration.
 No live provider is needed for the scripted regression tests.
+
+The agent's system instruction is exactly `manifest.context.systemInstruction`.
+Both variants forward that value, including through persisted workflow inputs.
+Prepared context retains developer instructions and compaction summaries; only
+the session's original system message is omitted because the Agent sends it as
+its instruction. The current user prompt is also omitted from historical context
+and submitted once to `generate()`. Mastra adds no hidden variant instruction.
+Older persisted workflow inputs use the common manifest default when the
+instruction field is absent.

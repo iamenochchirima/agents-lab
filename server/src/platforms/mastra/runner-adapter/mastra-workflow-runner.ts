@@ -406,7 +406,7 @@ export class MastraWorkflowRunner implements PlatformRunner {
       compacted: prepared.snapshot.compaction !== null,
     });
     return prepared.snapshot.messages
-      .filter((message) => message.role !== "system" && message.messageId !== prepared.turn.userMessageId)
+      .filter((message) => !(message.role === "system" && message.source === "system") && message.messageId !== prepared.turn.userMessageId)
       .map(toWorkflowContextMessage);
   }
 
@@ -461,6 +461,7 @@ function runIdFor(reference: PlatformExecutionReference): string {
 function inputForManifest(manifest: RunManifest, contextMessages: MastraWorkflowInput["contextMessages"]) {
   return {
     prompt: manifest.task.prompt,
+    systemInstruction: manifest.context.systemInstruction,
     modelProvider: manifest.model.provider,
     model: manifest.model.model,
     turnId: manifest.context.turnId ?? `${manifest.runId}:turn:1`,

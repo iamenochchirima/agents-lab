@@ -13,6 +13,7 @@ import { buildControlPlaneServer } from "../src/control-plane/http/server.js";
 import { ContextService } from "../src/capabilities/context/context-service.js";
 import { ContextSessionStore } from "../src/capabilities/context/session-store.js";
 import { CharacterTokenEstimator } from "../src/capabilities/context/token-counter.js";
+import { createDeterministicFakeModel } from "../src/platforms/mastra/variants/baseline/models/fake.js";
 import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mastra-runner.js";
 
 test("Mastra baseline projects a deterministic Agent.generate run through the common evidence path", async () => {
@@ -153,7 +154,13 @@ test("Mastra baseline compacts an oversized shared context before dispatch", asy
       output: `Historical response ${"y".repeat(9_000)}`,
     });
 
-    const runner = new MastraBaselineRunner({ contextRoot });
+    const requests: unknown[] = [];
+    const runner = new MastraBaselineRunner({
+      contextRoot,
+      modelFactory: (manifest) => createDeterministicFakeModel({
+        modelId: manifest.model.model, contextAware: true, onRequest: (prompt) => requests.push(prompt),
+      }),
+    });
     const evidence = new RunEvidenceStore(runRoot);
     const config = loadServerConfig({
       AGENTLAB_RUN_ROOT: runRoot,
@@ -173,6 +180,9 @@ test("Mastra baseline compacts an oversized shared context before dispatch", asy
     const completed = await waitForCompletion(service, created.runId);
 
     assert.equal(completed.status, "completed");
+    const modelMessages = requests.at(-1) as Array<{ role: string; content: unknown }>;
+    assert.equal(modelMessages.filter((message) => message.role === "system" && message.content === DEFAULT_SYSTEM_INSTRUCTION).length, 1);
+    assert.ok(JSON.stringify(modelMessages).includes("Conversation summary for context continuity:"));
     assert.equal(completed.events.some((event) => event.kind === "ContextPrepared" && event.payload.compacted === true), true);
     const snapshot = await contextStore.latestSnapshot("mastra-compaction-session");
     assert.ok(snapshot);

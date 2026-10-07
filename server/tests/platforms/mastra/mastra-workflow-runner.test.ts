@@ -12,16 +12,24 @@ import { MastraWorkflowRunner } from "../../../src/platforms/mastra/runner-adapt
 
 test("Mastra workflow completes a native stored run", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-"));
-  const runner = new MastraWorkflowRunner({ storagePath: join(root, "workflow.db") });
+  const requests: unknown[] = [];
+  const runner = new MastraWorkflowRunner({
+    storagePath: join(root, "workflow.db"),
+    modelFactory: () => createDeterministicFakeModel({ modelId: "fake-success", onRequest: (prompt) => requests.push(prompt) }),
+  });
 
   try {
-    const manifest = manifestFor(runner, "Say hello.");
+    const original = manifestFor(runner, "Say hello.");
+    const manifest = { ...original, context: { ...original.context, systemInstruction: "Follow this workflow test instruction." } };
     const reference = await runner.start(manifest);
     const inspection = await waitForTerminal(runner, reference);
 
     assert.equal(inspection.status, "completed");
     assert.equal(inspection.result?.status, "completed");
     assert.equal(inspection.result?.output, "Deterministic Mastra response.");
+    assert.deepEqual((requests[0] as Array<{ role: string; content: string }>).filter((message) => message.role === "system"), [
+      { role: "system", content: manifest.context.systemInstruction },
+    ]);
     assert.equal(inspection.reference.native.nativeStatus, "success");
     assert.equal(inspection.reference.native.evidenceSchema, "mastra.native.v2");
     assert.equal(inspection.reference.native.eventCount, inspection.eventIntents.length);

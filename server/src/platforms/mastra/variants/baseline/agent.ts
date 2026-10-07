@@ -14,9 +14,6 @@ import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
 
-export const BASELINE_AGENT_INSTRUCTIONS =
-  "You are the Agent Harness Lab Mastra baseline agent. Answer the user's prompt directly and concisely.";
-
 export interface BaselineAgentOptions {
   readonly runId: string;
   readonly turnId: string;
@@ -74,7 +71,7 @@ export function createBaselineAgent(
   return new Agent({
     id: MASTRA_AGENT_ID,
     name: "Mastra baseline agent",
-    instructions: BASELINE_AGENT_INSTRUCTIONS,
+    instructions: manifest.context.systemInstruction,
     model: modelFactory(manifest),
     ...(options ? {
       tools: {

@@ -157,6 +157,10 @@ test("Mastra Agent.generate sends the selected OpenRouter model and preserves no
     assert.equal(requests.length, 1);
     assert.equal(requests[0]?.url.endsWith("/chat/completions"), true);
     assert.equal(requests[0]?.body.model, selectedModel);
+    const messages = requests[0]?.body.messages as Array<{ role: string; content: string }>;
+    assert.deepEqual(messages.filter((message) => message.role === "system"), [
+      { role: "system", content: [{ type: "text", text: manifest.context.systemInstruction }] },
+    ]);
     assert.equal(requests[0]?.headers.get("authorization"), "Bearer test-openrouter-secret");
     assert.equal(JSON.stringify(inspection).includes("test-openrouter-secret"), false);
     assert.equal(JSON.stringify(reference).includes("test-openrouter-secret"), false);

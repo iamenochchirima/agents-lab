@@ -2,6 +2,7 @@ import { createStep, createWorkflow } from "@mastra/core/workflows";
 import type { AgentExecutionOptionsBase } from "@mastra/core/agent";
 import { z } from "zod";
 
+import { DEFAULT_SYSTEM_INSTRUCTION } from "../../../../control-plane/domain/manifest.js";
 import type { RunManifest } from "../../../../control-plane/domain/types.js";
 import type { ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { createBaselineAgent } from "../baseline/agent.js";
@@ -33,6 +34,9 @@ const workflowCapabilities = z.object({
 
 export const mastraWorkflowInputSchema = z.object({
   prompt: z.string().min(1),
+  // Existing persisted workflow inputs predate this field. Preserve resumption
+  // with the recorded common default instead of inventing a variant instruction.
+  systemInstruction: z.string().min(1).default(DEFAULT_SYSTEM_INSTRUCTION),
   modelProvider: workflowModelProvider,
   model: z.string().min(1),
   turnId: z.string().min(1),
@@ -211,7 +215,7 @@ function workflowManifest(
     variant: "workflow",
     task: { kind: "prompt", prompt: input.prompt },
     context: {
-      systemInstruction: "You are the Agent Harness Lab Mastra workflow agent.",
+      systemInstruction: input.systemInstruction,
       turnId: input.turnId,
     },
     platformConfig: {
