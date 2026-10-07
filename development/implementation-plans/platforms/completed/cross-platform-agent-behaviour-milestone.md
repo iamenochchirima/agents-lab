@@ -18,7 +18,7 @@ methodology documentation should describe the resulting feature.
 - [Repository rules](../../../../AGENTS.md)
 - [Documentation rules](../../../../docs/contributing/documentation.md)
 - [Baseline acceptance cases](../../../../lab/scenarios/platform-agent-conformance/eval-cases.md)
-- [Previous live implementation and evidence](free-model-live-evals.md)
+- [Previous live implementation and evidence](../active/free-model-live-evals.md)
 - [Current development commands](../../../../lab/experiments/agent-harness-baseline/development-evals.md)
 - [Current eval frontend](../../../../apps/web/src/features/evals/README.md)
 
@@ -390,6 +390,7 @@ The following coherent chunks followed the initial contracts and UI commits:
 | `8fa8c53` | Freeze observed denial continuation controls; verify actual failed-read correlation |
 | `c4405b9` | Show fixture effects, human rubric, final answers and grader lineage; preserve the specification parser format |
 | `8da6fde` | Document complete commands, interpretation limits and immutable regrading |
+| `98182da` | Complete and archive the checklist with native/live evidence and the audit |
 
 Existing Studio/Lina changes remain outside these commits. Generated run records,
 local service state and credentials are not committed.

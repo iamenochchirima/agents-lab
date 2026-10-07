@@ -177,7 +177,7 @@ requests. They do not measure real-model decision quality, hosted production
 behavior, broad crash recovery, injection resistance or exactly-once external
 effects. Actual platform acceptance needs retained executions, not only pure
 contract tests. Recorded commands, results and external blockers belong in the
-[development milestone record](../../../development/implementation-plans/platforms/active/cross-platform-agent-behaviour-milestone.md).
+[development milestone record](../../../development/implementation-plans/platforms/completed/cross-platform-agent-behaviour-milestone.md).
 The [full protocol](README.md) defines the wider readiness procedure; one development
 invocation does not establish a platform ranking.
 
