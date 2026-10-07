@@ -9,20 +9,16 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [Cross-platform agent behaviour milestone](active/cross-platform-agent-behaviour-milestone.md) —
-  in-progress substantial milestone covering core B01–B12, richer live decisions, native
-  integrations including Restate setup, and frontend comparison/evidence inspection.
-  Includes commit checkpoints and focused validation; kept outside curated Docs.
-
 - [Free-model live agent evals](active/free-model-live-evals.md) — implemented:
-  three real-model tasks passed on Mastra, LangGraph and Temporal; Restate remains
-  blocked by its unavailable native service. Retained evidence is visible in Evals.
+  historical first slice: three real-model tasks passed on Mastra, LangGraph and
+  Temporal; Restate was unavailable then. The completed behaviour milestone below
+  supersedes that service status. Retained evidence is visible in Evals.
   This temporary checklist is not published in the curated Docs navigation.
 
 - [First executable agent evals](active/agent-harness-baseline-evals.md) — four-case
   development implementation complete: Mastra and LangGraph trials passed;
-  Temporal/Restate native rollout is blocked by absent services. Full readiness
-  and broader hardening remain deferred.
+  Temporal/Restate services were absent then. The completed behaviour milestone
+  below supersedes that coverage and service status. Broader hardening remains deferred.
 
 - [AWS Step Functions baseline](active/aws-step-functions-baseline.md) — parked until
   its workflow-type and external-service decisions are revisited.
@@ -32,6 +28,12 @@ was the foundation for this acceptance phase and the completed Restate slice. AW
 Functions remains parked.
 
 ## Completed plans
+
+- [Cross-platform agent behaviour milestone](completed/cross-platform-agent-behaviour-milestone.md):
+  B01–B12 implemented with 48 passing native case reports across four platforms.
+  L01–L06 actual free-model trials retain 16 passes, four pending human assessments
+  and four provider/runtime errors. Includes commit checkpoints, focused checks,
+  setup and inspectable evidence. Temporary plan kept outside curated Docs.
 
 ### Platform foundations and shared capabilities
 

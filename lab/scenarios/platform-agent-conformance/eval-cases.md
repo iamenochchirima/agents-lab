@@ -139,7 +139,7 @@ Useful focused implementation checks remain:
 Implementation coverage and observed acceptance are separate. Map each assertion to
 retained native runs before reporting a platform as passed. Commands, current results
 and environmental blockers are recorded in the
-[development milestone record](../../../development/implementation-plans/platforms/active/cross-platform-agent-behaviour-milestone.md).
+[development milestone record](../../../development/implementation-plans/platforms/completed/cross-platform-agent-behaviour-milestone.md).
 Full readiness still follows the experiment protocol. The broader M02 correction
 measurement and optional X01–X05 capability extensions are not implied by this core
 implementation.
