@@ -171,6 +171,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         },
         [{
           rootDirectory: context.rootDirectory,
+          liveEval: input.liveEval,
           sessionId: context.sessionId,
           turnId: context.turnId,
           provider: input.model.provider,
@@ -267,6 +268,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
             },
             [{
               runId: input.runId,
+              liveEval: input.liveEval,
               prompt: input.prompt,
               systemInstruction: input.systemInstruction,
               provider: input.model.provider,
@@ -295,8 +297,8 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         }
         finishPhase(modelPhase);
 
+        if (result.evalObservation) record("EvalModelObserved", { round, attempt, observation: result.evalObservation });
         if (result.kind === "success") {
-          if (result.evalObservation) record("EvalModelObserved", { round, attempt, observation: result.evalObservation });
           break;
         }
 
@@ -309,7 +311,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           failureKind: result.failureKind,
           requestSent: result.requestSent,
         });
-        if (isContextOverflow(result) && input.context && !contextRecoveryUsed) {
+        if (!input.liveEval && isContextOverflow(result) && input.context && !contextRecoveryUsed) {
           contextRecoveryUsed = true;
           record("ContextOverflowDetected", { attempt, round, attemptId, contextSnapshotId });
           const recoveryPhase = { name: "context_recovery", startedAt: timestamp(), finishedAt: null as string | null };
@@ -433,7 +435,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         }
         finishPhase(toolPhase);
         record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...(toolResult.connection ? { connection: toolResult.connection } : {}), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
-        if (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-")) {
+        if (input.liveEval || (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-"))) {
           record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
         }
         continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];

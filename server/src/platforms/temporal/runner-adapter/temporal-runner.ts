@@ -207,6 +207,7 @@ function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
   const configuration = temporalConfigurationFromManifest(manifest);
   return {
     runId: manifest.runId,
+    ...(manifest.selection?.experimentId === "agent-harness-live" ? { liveEval: true } : {}),
     prompt: manifest.task.prompt,
     systemInstruction: manifest.context.systemInstruction,
     model: manifest.model,

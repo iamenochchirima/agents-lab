@@ -1,3 +1,4 @@
+import { FREE_PROVIDER_ROUTING, LIVE_MAX_OUTPUT_TOKENS, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
 import type { ToolDefinition } from "../../../../../capabilities/tools/contracts.js";
 
@@ -23,6 +24,41 @@ export class OpenRouterModelAdapter implements ModelAdapter {
   }
 
   async complete(input: ModelRequestInput, signal: AbortSignal): Promise<ModelCallResult> {
+    const requestBody = {
+          model: input.model,
+          messages: (input.messages ?? [
+            { role: "system", content: input.systemInstruction },
+            { role: "user", content: input.prompt },
+          ]).map(toOpenRouterMessage),
+          ...(input.tools && input.tools.length > 0 ? {
+            tools: input.tools.map(toOpenRouterTool),
+            tool_choice: "auto",
+          } : {}),
+        };
+    if (input.liveEval) {
+      Object.assign(requestBody, { provider: FREE_PROVIDER_ROUTING, max_tokens: LIVE_MAX_OUTPUT_TOKENS });
+      try {
+        assertFreeModelRequest(requestBody, input.model);
+      } catch {
+        return { kind: "failure", failureKind: "configuration", code: "LIVE_EVAL_FREE_MODEL_REQUIRED", message: "Live evals require the exact free model and zero-price provider routing.", requestSent: false };
+      }
+    }
+    const result = await this.execute(input, signal, requestBody);
+    if (!input.liveEval) return result;
+    return { ...result,  evalObservation: {
+      ...result.evalObservation,
+      systemInstruction: input.systemInstruction,
+      messages: input.messages ?? [{ role: "system", content: input.systemInstruction }, { role: "user", content: input.prompt }],
+      tools: input.tools ?? [],
+      providerRequest: requestBody,
+      toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
+      providerRequestId: result.kind === "success" ? result.providerRequestId : null,
+      output: result.kind === "success" ? result.output : null,
+      ...(result.kind === "failure" ? { errorCode: result.code } : {}),
+    } };
+  }
+
+  private async execute(input: ModelRequestInput, signal: AbortSignal, requestBody: Record<string, unknown>): Promise<ModelCallResult> {
     const apiKey = this.options.apiKey?.trim();
     if (!apiKey) {
       return {
@@ -42,17 +78,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
           authorization: `Bearer ${apiKey}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          model: input.model,
-          messages: (input.messages ?? [
-            { role: "system", content: input.systemInstruction },
-            { role: "user", content: input.prompt },
-          ]).map(toOpenRouterMessage),
-          ...(input.tools && input.tools.length > 0 ? {
-            tools: input.tools.map(toOpenRouterTool),
-            tool_choice: "auto",
-          } : {}),
-        }),
+        body: JSON.stringify(requestBody),
         signal,
       });
     } catch (error) {
@@ -146,6 +172,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
       output: message.output,
       ...(message.toolCalls.length > 0 ? { toolCalls: message.toolCalls } : {}),
       providerRequestId: readString(body, "id"),
+      ...(input.liveEval ? { evalObservation: { systemInstruction: input.systemInstruction, messages: input.messages ?? [], toolCalls: message.toolCalls, providerModel: readString(body, "model"), providerName: readString(body, "provider") } } : {}),
       usage: readUsage(body),
     };
   }

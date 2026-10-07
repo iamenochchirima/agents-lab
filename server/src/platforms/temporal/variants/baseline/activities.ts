@@ -20,6 +20,7 @@ export async function prepareContext(input: TemporalContextPreparationInput): Pr
   const adapter = createModelAdapter(input.provider);
   const summarizer: ContextSummaryGenerator = {
     async summarize(request) {
+      if (input.liveEval) throw new Error("LIVE_EVAL_COMPACTION_DISABLED: live development probes cannot dispatch an unobserved summary request.");
       const response = await adapter.complete({
         runId: `${input.sessionId}:context:${request.sourceRevision}`,
         prompt: formatSummaryPrompt(request.messages),

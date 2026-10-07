@@ -16,6 +16,8 @@ export type TemporalFailureKind =
   | "internal";
 
 export interface TemporalWorkflowInput {
+  /** Synthetic live evals alone may retain mapped provider requests. */
+  readonly liveEval?: boolean;
   readonly runId: string;
   readonly prompt: string;
   readonly systemInstruction: string;
@@ -41,6 +43,7 @@ export interface TemporalWorkflowInput {
 }
 
 export interface TemporalContextPreparationInput {
+  readonly liveEval?: boolean;
   readonly rootDirectory: string;
   readonly sessionId: string;
   readonly turnId: string;
@@ -116,6 +119,7 @@ export interface TemporalWorkflowResult extends TemporalWorkflowSnapshot {
 }
 
 export interface ModelRequestInput {
+  readonly liveEval?: boolean;
   readonly runId: string;
   readonly prompt: string;
   readonly systemInstruction: string;
@@ -168,13 +172,22 @@ export interface TemporalToolExecutionInput {
 
 export type TemporalToolExecutionResult = ToolExecutionResult;
 
+/** Bounded synthetic eval evidence, never authentication headers. */
+export interface ModelEvalObservation {
+  readonly messages: readonly TemporalModelMessage[];
+  readonly systemInstruction: string;
+  readonly toolCalls: readonly TemporalModelToolCall[];
+  readonly tools?: readonly ToolDefinition[];
+  readonly providerRequest?: Readonly<Record<string, unknown>>;
+  readonly providerRequestId?: string | null;
+  readonly providerModel?: string | null;
+  readonly providerName?: string | null;
+  readonly output?: string | null;
+  readonly errorCode?: string;
+}
+
 export interface ModelSuccess {
-  /** Present only for explicitly selected synthetic eval fixtures. */
-  readonly evalObservation?: {
-    readonly messages: readonly TemporalModelMessage[];
-    readonly systemInstruction: string;
-    readonly toolCalls: readonly TemporalModelToolCall[];
-  };
+  readonly evalObservation?: ModelEvalObservation;
   readonly kind: "success";
   readonly output: string | null;
   readonly toolCalls?: readonly TemporalModelToolCall[];
@@ -183,6 +196,7 @@ export interface ModelSuccess {
 }
 
 export interface ModelFailure {
+  readonly evalObservation?: ModelEvalObservation;
   readonly kind: "failure";
   readonly failureKind: Exclude<TemporalFailureKind, "cancelled" | "timeout" | "internal">;
   readonly code: string;
