@@ -42,8 +42,8 @@ export function configurationFromManifest(manifest: RunManifest): MastraBaseline
   return {
     agentId: readString(configuration, "agentId", MASTRA_AGENT_ID),
     executionTimeoutMs,
-    maxToolRounds: readBoundedInteger(configuration, "maxToolRounds", DEFAULT_MAX_TOOL_ROUNDS, 1, 32),
-    maxToolCalls: readBoundedInteger(configuration, "maxToolCalls", DEFAULT_MAX_TOOL_CALLS, 1, 64),
+    maxToolRounds: readBoundedInteger({ maxToolRounds: manifest.capabilities?.tools.maxRounds ?? configuration.maxToolRounds }, "maxToolRounds", DEFAULT_MAX_TOOL_ROUNDS, 1, 32),
+    maxToolCalls: readBoundedInteger({ maxToolCalls: manifest.capabilities?.tools.maxCalls ?? configuration.maxToolCalls }, "maxToolCalls", DEFAULT_MAX_TOOL_CALLS, 1, 64),
     contextRoot: readString(configuration, "contextRoot"),
     provider: manifest.model.provider,
     model: manifest.model.model,

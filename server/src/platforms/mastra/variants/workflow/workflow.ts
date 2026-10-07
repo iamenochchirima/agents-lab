@@ -126,6 +126,8 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         options.eventSink?.(runId, kind, payload);
       };
       let unknownToolOutcome = false;
+      let callLimitExceeded = false;
+      let modelRounds = 0;
       emit("ModelRequested", {
         model: input.model,
         provider: input.modelProvider,
@@ -139,6 +141,7 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         connectionBindings: input.capabilities.connections,
         onToolEvent: (kind, payload) => {
           unknownToolOutcome ||= kind === "ToolExecutionUnknown";
+          callLimitExceeded ||= kind === "ToolCallRejected" && payload.code === "TOOL_CALL_LIMIT_EXCEEDED";
           emit(kind, payload as unknown as Record<string, unknown>);
         },
       });
@@ -147,10 +150,13 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         abortSignal,
         context: input.contextMessages.map(toAgentContextMessage),
         maxSteps: input.capabilities.tools.maxRounds,
-        onStepFinish: (step) => emit("AgentStepCompleted", {
-          finishReason: safeValue(step, "finishReason"),
-          usage: safeUsage(safeValue(step, "usage")),
-        }),
+        onStepFinish: (step) => {
+          modelRounds += 1;
+          emit("AgentStepCompleted", {
+            finishReason: safeValue(step, "finishReason"),
+            usage: safeUsage(safeValue(step, "usage")),
+          });
+        },
       });
 
       if (unknownToolOutcome) {
@@ -159,6 +165,11 @@ export function createMastraWorkflow(options: MastraWorkflowOptions) {
         throw error;
       }
 
+      if (callLimitExceeded || (output.finishReason === "tool-calls" && modelRounds >= input.capabilities.tools.maxRounds)) {
+        const error = new Error("The Mastra execution reached its configured limit.");
+        error.name = callLimitExceeded ? "MASTRA_TOOL_CALL_LIMIT_EXCEEDED" : "MASTRA_MODEL_ROUND_LIMIT_EXCEEDED";
+        throw error;
+      }
       const usage = normalizeUsage(output.totalUsage ?? output.usage);
       emit("ModelCompleted", {
         finishReason: output.finishReason ?? null,

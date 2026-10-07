@@ -66,6 +66,11 @@ export function createBaselineAgent(
   registry.register(fixtureWriteTool);
   registry.register(mcpFixtureLookupTool);
 
+  // Every wrapper shares this counter. Reserve synchronously before dispatch so
+  // parallel SDK calls cannot each consume the same remaining allowance.
+  let attemptedCalls = 0;
+  const nextToolCall = () => ++attemptedCalls;
+
   return new Agent({
     id: MASTRA_AGENT_ID,
     name: "Mastra baseline agent",
@@ -73,10 +78,10 @@ export function createBaselineAgent(
     model: modelFactory(manifest),
     ...(options ? {
       tools: {
-        ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options) } : {}),
-        ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(fixtureLookupTool, registry, options) } : {}),
-        ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(fixtureWriteTool, registry, options) } : {}),
-        ...(enabledNames.includes(mcpFixtureLookupTool.definition.name) ? { mcp_fixture_lookup: connectedAgentTool(registry, mcpFixtureLookupTool, mcpFixtureLookupInputSchema, options) } : {}),
+        ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options, nextToolCall) } : {}),
+        ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(fixtureLookupTool, registry, options, nextToolCall) } : {}),
+        ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(fixtureWriteTool, registry, options, nextToolCall) } : {}),
+        ...(enabledNames.includes(mcpFixtureLookupTool.definition.name) ? { mcp_fixture_lookup: connectedAgentTool(registry, mcpFixtureLookupTool, mcpFixtureLookupInputSchema, options, nextToolCall) } : {}),
       },
     } : {}),
     maxRetries: 0,
@@ -92,14 +97,13 @@ const fixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).st
 const fixtureWriteInputSchema = z.object({ key: z.string().min(1).max(64), value: z.string().max(512) }).strict();
 const mcpFixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).strict();
 
-function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptions) {
-  let toolCallCount = 0;
+function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptions, nextToolCall: () => number) {
   return createTool({
     id: calculatorTool.definition.name,
     description: calculatorTool.definition.description,
     inputSchema: calculatorInputSchema,
     execute: async (input, context) => {
-      toolCallCount += 1;
+      const toolCallCount = nextToolCall();
       const toolCallId = context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`;
       const call: ToolCall = {
         toolCallId,
@@ -152,12 +156,12 @@ function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptio
   });
 }
 
-function fixtureLookupAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions) {
-  return connectedAgentTool(registry, implementation, fixtureLookupInputSchema, options);
+function fixtureLookupAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions, nextToolCall: () => number) {
+  return connectedAgentTool(registry, implementation, fixtureLookupInputSchema, options, nextToolCall);
 }
 
-function fixtureWriteAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions) {
-  return connectedAgentTool(registry, implementation, fixtureWriteInputSchema, options);
+function fixtureWriteAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions, nextToolCall: () => number) {
+  return connectedAgentTool(registry, implementation, fixtureWriteInputSchema, options, nextToolCall);
 }
 
 function connectedAgentTool<TSchema extends z.ZodTypeAny>(
@@ -165,18 +169,22 @@ function connectedAgentTool<TSchema extends z.ZodTypeAny>(
   implementation: ToolImplementation,
   inputSchema: TSchema,
   options: BaselineAgentOptions,
+  nextToolCall: () => number,
 ) {
-  let toolCallCount = 0;
   return createTool({
     id: implementation.definition.name,
     description: implementation.definition.description,
     inputSchema,
     execute: async (input, context) => {
-      toolCallCount += 1;
+      const toolCallCount = nextToolCall();
       const call: ToolCall = { toolCallId: context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`, name: implementation.definition.name, arguments: input, round: toolCallCount };
       const payload = toolPayload(call);
       options.onToolEvent?.("ToolCallRequested", payload);
-      if (toolCallCount > options.maxToolCalls) throw mastraToolError("MASTRA_TOOL_CALL_LIMIT_EXCEEDED", "The Mastra baseline reached its tool-call limit.");
+      if (toolCallCount > options.maxToolCalls) {
+        const message = "The Mastra baseline reached its tool-call limit.";
+        options.onToolEvent?.("ToolCallRejected", { ...payload, code: "TOOL_CALL_LIMIT_EXCEEDED", message });
+        throw mastraToolError("MASTRA_TOOL_CALL_LIMIT_EXCEEDED", message);
+      }
       const validation = registry.validateCall(call);
       if (!validation.accepted) {
         options.onToolEvent?.("ToolCallRejected", { ...payload, code: validation.code, message: validation.message });

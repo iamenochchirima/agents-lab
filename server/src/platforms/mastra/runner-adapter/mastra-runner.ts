@@ -232,6 +232,17 @@ export class MastraBaselineRunner implements PlatformRunner {
         error.name = "TOOL_UNKNOWN";
         throw error;
       }
+      // The SDK can turn a tool exception into model feedback and return normally.
+      // Preserve the limit outcome even when a later model step returns text.
+      const callLimit = record.events.some((event) =>
+        event.kind === "ToolCallRejected" && event.payload.code === "TOOL_CALL_LIMIT_EXCEEDED");
+      const roundLimit = output.finishReason === "tool-calls"
+        && record.events.filter((event) => event.kind === "AgentStepCompleted").length >= configuration.maxToolRounds;
+      if (callLimit || roundLimit) {
+        const error = new Error("The Mastra execution reached its configured limit.");
+        error.name = callLimit ? "MASTRA_TOOL_CALL_LIMIT_EXCEEDED" : "MASTRA_MODEL_ROUND_LIMIT_EXCEEDED";
+        throw error;
+      }
       const usage = normalizeUsage(output.totalUsage ?? output.usage);
       this.addEvent(record, "ModelCompleted", { finishReason: output.finishReason ?? null, usage });
       this.addEvent(record, "AgentCompleted", { finishReason: output.finishReason ?? null });
@@ -436,6 +447,10 @@ function failureFor(record: MastraExecutionRecord, error: unknown): NonNullable<
       failureKind: "outcome_unknown",
       retryable: false,
     };
+  }
+
+  if (error instanceof Error && ["MASTRA_TOOL_CALL_LIMIT_EXCEEDED", "MASTRA_MODEL_ROUND_LIMIT_EXCEEDED"].includes(error.name)) {
+    return { code: error.name, message: error.message, failureKind: "internal", retryable: false };
   }
 
   if (error instanceof Error && error.name === "ProviderError") {

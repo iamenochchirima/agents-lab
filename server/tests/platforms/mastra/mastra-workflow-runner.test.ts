@@ -7,6 +7,7 @@ import test from "node:test";
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
 import { createLocalFixtureServer } from "../../../src/capabilities/integrations/local-fixture/service.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
+import { createDeterministicFakeModel } from "../../../src/platforms/mastra/variants/baseline/models/fake.js";
 import { MastraWorkflowRunner } from "../../../src/platforms/mastra/runner-adapter/mastra-workflow-runner.js";
 
 test("Mastra workflow completes a native stored run", async () => {
@@ -26,6 +27,43 @@ test("Mastra workflow completes a native stored run", async () => {
     assert.equal(inspection.reference.native.eventCount, inspection.eventIntents.length);
     assert.equal(inspection.reference.native.toolCallCount, 0);
     assert.ok(inspection.eventIntents.some((event) => event.kind === "WorkflowCompleted"));
+  } finally {
+    await runner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Mastra workflow shares the call budget across tools", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-mastra-workflow-budget-"));
+  let requests = 0;
+  const runner = new MastraWorkflowRunner({
+    storagePath: join(root, "workflow.db"),
+    modelFactory: () => ({
+      specificationVersion: "v2", provider: "agentlab.fake", modelId: "fake-success", supportedUrls: {},
+      doStream: async () => { throw new Error("This fixture supports generate only."); },
+      doGenerate: async () => {
+        const toolName = ["calculator", "fixture_lookup"][requests++];
+        return {
+          content: toolName ? [{
+            type: "tool-call", toolCallId: `budget-${requests}`, toolName,
+            input: JSON.stringify(toolName === "calculator" ? { operation: "add", left: 17, right: 25 } : { key: "alpha" }),
+          }] : [{ type: "text", text: "Done." }],
+          finishReason: toolName ? "tool-calls" : "stop",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, warnings: [],
+        };
+      },
+    } as ReturnType<typeof createDeterministicFakeModel>),
+  });
+  try {
+    const manifest = buildRunManifest({
+      platform: "mastra", variant: "workflow", task: { kind: "prompt", prompt: "Exercise limits." },
+      model: { provider: "fake", model: "fake-success" },
+      capabilities: { tools: { enabledNames: ["calculator", "fixture_lookup"], maxCalls: 1, maxRounds: 4 } },
+    }, { runId: "mastra-workflow-budget", platformConfig: runner.manifestConfiguration() });
+    const inspection = await waitForStatus(runner, await runner.start(manifest), "failed");
+    assert.equal(inspection.eventIntents.filter((event) => event.kind === "ToolExecutionStarted").length, 1);
+    assert.equal(inspection.eventIntents.filter((event) =>
+      event.kind === "ToolCallRejected" && event.payload.code === "TOOL_CALL_LIMIT_EXCEEDED").length, 1);
   } finally {
     await runner.close();
     await rm(root, { recursive: true, force: true });

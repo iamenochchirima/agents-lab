@@ -193,6 +193,47 @@ test("Mastra executes the shared calculator through a native Agent.generate tool
   );
 });
 
+test("Mastra enforces requested aggregate call and model-round budgets", async () => {
+  for (const scenario of [
+    { id: "repeated-tool", tools: ["calculator", "calculator"], maxCalls: 1, maxRounds: 4, code: "MASTRA_TOOL_CALL_LIMIT_EXCEEDED", dispatches: 1, rounds: 3 },
+    { id: "mixed-tool", tools: ["calculator", "fixture_lookup"], maxCalls: 1, maxRounds: 4, code: "MASTRA_TOOL_CALL_LIMIT_EXCEEDED", dispatches: 1, rounds: 3 },
+    { id: "rounds", tools: ["calculator", "calculator"], maxCalls: 8, maxRounds: 1, code: "MASTRA_MODEL_ROUND_LIMIT_EXCEEDED", dispatches: 1, rounds: 1 },
+  ]) {
+    let requests = 0;
+    const runner = new MastraBaselineRunner({
+      modelFactory: () => ({
+        specificationVersion: "v2", provider: "agentlab.fake", modelId: "fake-success", supportedUrls: {},
+        doStream: async () => { throw new Error("This fixture supports generate only."); },
+        doGenerate: async () => {
+          const toolName = scenario.tools[requests++];
+          return {
+            content: toolName ? [{
+              type: "tool-call", toolCallId: `budget-${requests}`, toolName,
+              input: JSON.stringify(toolName === "calculator" ? { operation: "add", left: 17, right: 25 } : { key: "alpha" }),
+            }] : [{ type: "text", text: "Done." }],
+            finishReason: toolName ? "tool-calls" : "stop",
+            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, warnings: [],
+          };
+        },
+      } as ReturnType<typeof createDeterministicFakeModel>),
+    });
+    const manifest = buildRunManifest({
+      platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "Exercise limits." },
+      model: { provider: "fake", model: "fake-success" },
+      capabilities: { tools: { enabledNames: ["calculator", "fixture_lookup"], maxCalls: scenario.maxCalls, maxRounds: scenario.maxRounds } },
+    }, { runId: `mastra-budget-${scenario.id}`, platformConfig: runner.manifestConfiguration() });
+    const inspection = await waitForTerminal(runner, await runner.start(manifest));
+    assert.equal(inspection.status, "failed", scenario.id);
+    assert.equal(inspection.result?.error?.code, scenario.code, scenario.id);
+    assert.equal(inspection.eventIntents.filter((event) => event.kind === "ToolExecutionStarted").length, scenario.dispatches, scenario.id);
+    assert.equal(requests, scenario.rounds, scenario.id);
+    if (scenario.maxCalls === 1) {
+      assert.equal(inspection.eventIntents.filter((event) =>
+        event.kind === "ToolCallRejected" && event.payload.code === "TOOL_CALL_LIMIT_EXCEEDED").length, 1);
+    }
+  }
+});
+
 test("Mastra executes the selected read connection through a native Agent tool", async () => {
   const runner = new MastraBaselineRunner();
   const manifest = buildRunManifest(
