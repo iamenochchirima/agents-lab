@@ -2,7 +2,7 @@
 
 **Created:** 2026-10-08
 **Last updated:** 2026-10-08
-**Status:** Planned. This change creates the checklist only.
+**Status:** In progress. Commit completed slices before starting the next checkpoint.
 
 This is one substantial implementation milestone intended for an hour-plus working
 session. Actual duration depends on native service setup and free-model availability.
@@ -77,7 +77,7 @@ blocker stays visibly unvalidated even when its adapter compiles.
       behaviour separately from missing graders or missing native evidence.
 - [ ] Freeze each platform's validation-error, tool-error, retry and cancellation
       policy before grading it. Record meaningful native differences.
-- [ ] Extend versioned case definitions, observation types and report validation.
+- [x] Extend versioned case definitions, observation types and report validation.
       Permit the actual bounded run count needed by isolation and paired controls;
       existing reports currently allow at most two runs per case.
 - [ ] Add `--cases` and bounded multi-platform selection to the existing commands so
@@ -112,7 +112,7 @@ Include any necessary runtime fixes with their focused regression checks.
       Preserve each variant's documented continuation or terminal-failure policy.
 - [ ] Implement the complete B06 protocol: disabled tool denial, enabled write denial
       without approval, and a separate valid scoped approval control that permits a write.
-- [ ] Use the existing local fixture connection/tools. Add bounded, eval-owned
+- [x] Use the existing local fixture connection/tools. Add bounded, eval-owned
       before/after state and effect-count inspection where the fixture lacks it.
 - [ ] Allocate a fresh fixture namespace per trial. Keep cleanup scoped to that
       namespace so parallel trials and unrelated local records are preserved.
@@ -205,14 +205,14 @@ do not assume that a previous blocked result permanently excuses trying to set i
 
 ### 7. Make failures and platform comparisons inspectable in Evals
 
-- [ ] Add platform, task and mode filtering to the retained result view. Keep comparisons
+- [x] Add platform, task and mode filtering to the retained result view. Keep comparisons
       grouped by case/version, model/settings and control profile; flag incomparable runs.
-- [ ] Add an inline trial inspector with failed assertions and expected/observed values.
-      Existing results only expose report links, not assertion details within the page.
+- [x] Add an inline trial inspector with failed assertions and expected/observed values.
+      Assertion details are available inline; verify them with the expanded drivers.
 - [ ] Show a compact ordered model/tool timeline, correlated call/result IDs, rejection
       feedback, cancellation and terminal outcome. Reveal full messages on demand.
 - [ ] Show fixture before/after state and effect counts for side-effect cases.
-- [ ] Extend the bounded results API with safe report/detail reads through supported
+- [x] Extend the bounded results API with safe report/detail reads through supported
       evidence access. Preserve path checks, redaction and honest missing/incomplete states.
 - [ ] Keep blocked, error, failed, passed and review-required outcomes distinct.
       Never turn absent usage into zero or unexecuted cases into readiness scores.
@@ -320,5 +320,53 @@ The existing commands above do not yet implement the expanded milestone.
 - [ ] The completion record clearly distinguishes implemented behaviour, successful
       observations, model failures, environmental blockers and deferred hardening.
 
-**Completion record:** Pending. No implementation or model calls were performed while
-creating this checklist.
+## Execution order and commit ledger
+
+Treat the sections above as one substantial milestone. A commit marks a reviewable
+checkpoint, not the end of the milestone. Finish existing work before opening another
+workstream. Keep the plan here rather than in `docs/`.
+
+| Order | Implementation chunk | Commit boundary | Minimum useful check |
+| --- | --- | --- | --- |
+| 1 | Scoped fixture state and controlled lookup errors | Controls, regression and usage note together | HTTP failure, duplicate write, isolated cleanup |
+| 2 | B01–B12 contracts and compatible report schema | Definitions, graders and schema together | Compact grader table and historical report compatibility |
+| 3 | Native scripted behaviour and read-error feedback | Runtime changes per platform | Changed native boundary and compile check |
+| 4 | Expanded driver, isolation and submission identity | Selection controls then session cases | Retained B04/B10 executions, no duplicate dispatch |
+| 5 | Permissions and independent effect checks | B05/B06 with approval controls | Invalid call, denied write, approved write |
+| 6 | Deadlines, failure and cancellation | Failure/deadline chunk, then cancellation/reconciliation | One deterministic example per distinct policy |
+| 7 | Free-model L04–L06 paired probes | Live definitions, orchestration and usage together | One real trial per task/control; retain quota blockers |
+| 8 | Retained detail API and frontend inspector | API first, frontend second | Safe detail read and rendered evidence inspection |
+| 9 | Native integration and evidence audit | Platform fixes separately, final documentation separately | Acceptance pass per available platform, relevant builds |
+
+Completed commits and evidence:
+
+- `a41fe14` created the substantial checklist with commit checkpoints. Earlier live
+  eval implementation is already committed through `187e98a`.
+- `53bc4a2` added evaluator-owned fixture seeding, snapshots, effect/request counts,
+  bounded lookup faults and namespace cleanup. The focused fixture regression passed
+  one test. This establishes fixture behaviour, not native platform acceptance.
+
+- `e33be83` committed version 2 scripted behaviour contracts and graders, bounded
+  multi-run reports and the pending-human-review marker. Twelve focused contract and
+  report checks passed; the server build passed. These graders are not yet wired to
+  the expanded driver.
+- `d28b221`, `ef3b374` and `58d5ef3` committed Temporal, Restate and LangGraph
+  scripted behaviour fixtures and recoverable read feedback. `3ffe403` committed
+  Mastra read feedback. Twenty-seven model checks and six focused Python checks
+  passed; the server build passed. Native case acceptance still needs orchestration.
+- Restate 1.7.10 was started and its service registered on isolated ports 18080,
+  19070 and 19080. Setup availability is not an eval pass.
+
+- `2ce8e0b` committed the retained-detail API; `d59a09b` committed the frontend
+  inspector and comparison view.
+  Five focused reader/render checks and both builds passed. The inspector shows
+  assertions and retained events; dedicated fixture presentation and real browser
+  acceptance remain integration work. Historical runs without comparison controls
+  are explicitly incomparable. Expanded drivers must retain those controls.
+
+Existing Studio/Lina changes belong to separate work and must not be swept into
+this milestone's commits. Work in progress is not evidence of a passed eval.
+
+**Completion record:** Pending. The expanded driver and live probes still require
+implementation, and the full native acceptance matrix has not run. Broad hardening,
+large crash matrices and paid-model calls remain deferred.
