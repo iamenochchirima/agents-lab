@@ -20,3 +20,13 @@ The MCP binding is immutable for the run. The endpoint and remote `fixture.looku
 are resolved from server configuration, not from model arguments. A provider-declared
 failure is failed, while a lost acknowledgement is `outcome_unknown`; neither is
 converted into a successful final response by the agent runner.
+
+### Synthetic live eval transport
+
+Runs selecting the `agent-harness-live` experiment use an opt-in AI SDK v2 OpenRouter
+transport inside the existing Mastra `Agent.generate()` loop. It retains actual mapped
+messages, tool definitions, responses and tool results through eval-only events, without
+authentication headers. Requests enforce the selected approved free ID, zero-price
+provider ceilings, disabled fallback and a 512-token output limit. SDK retries are zero;
+provider failures stop the trial. Context compaction is refused for these short probes.
+Ordinary interactive runs continue using the existing model router.

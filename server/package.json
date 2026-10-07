@@ -40,7 +40,8 @@
     "test:platform-mcp-matrix": "pnpm run build && AGENTLAB_RUN_PLATFORM_MCP_MATRIX=1 node --test dist/integration-tests/platform-mcp-matrix.test.js",
     "test:trigger": "pnpm run build && node --test dist/tests/platforms/trigger-dev/*.test.js dist/integration-tests/trigger-dev-baseline.test.js",
     "typecheck": "tsc --noEmit",
-    "eval:baseline": "tsx src/evals/baseline.ts"
+    "eval:baseline": "tsx src/evals/baseline.ts",
+    "eval:live": "tsx src/evals/live.ts"
   },
   "dependencies": {
     "@trigger.dev/sdk": "4.5.14",

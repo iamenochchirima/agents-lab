@@ -75,6 +75,7 @@ export function createBaselineAgent(
     name: "Mastra baseline agent",
     instructions: manifest.context.systemInstruction,
     model: modelFactory(manifest),
+    ...(manifest.selection?.experimentId === "agent-harness-live" ? { maxRetries: 0 } : {}),
     ...(options ? {
       tools: {
         ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options, nextToolCall) } : {}),

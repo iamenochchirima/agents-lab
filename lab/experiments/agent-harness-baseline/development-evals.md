@@ -122,3 +122,54 @@ crashes, security, production readiness, or cost. No platform ranking follows
 from four passing rows. The [full protocol](README.md) and
 [case specification](../../scenarios/platform-agent-conformance/eval-cases.md)
 remain the broader development targets.
+
+## Real free-model development evals
+
+The separate `eval:live` command uses actual model decisions in each platform's native
+agent loop. L01 checks prompt completion with a marker, L02 requires an actual calculator
+call for 17 + 25 and correlated feedback, and L03 checks context across two turns.
+These are development probes; only L02 maps to the M01 tool-use intent. They do not
+complete all live methodology cases or establish statistical reliability.
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server run eval:live -- --platform mastra --trials 1
+pnpm --filter @agent-harness-lab/lab-server run eval:live -- --platform langgraph --model nvidia/nemotron-3.5-lightning:free --trials 1
+```
+
+Supported profiles are `mastra`, `langgraph`, `temporal`, and `restate`. Set up their
+normal native services/workers first. The command loads the existing ignored
+`server/.env` configuration; `OPENROUTER_API_KEY` is required. The default exact model is
+`google/gemma-4-31b-it:free`; the Nemotron ID above is a separately selected comparison.
+The command freshly checks catalog availability, tool support, and zero pricing, then
+constrains actual requests to zero-price providers with fallback disabled. It never
+substitutes a paid model. If a provider rejects a request, inspect the recorded error;
+repeated trials should be deliberate new invocations.
+
+Start with one trial per task. `--trials` accepts 1–5 and `--deadline-ms` accepts
+100–120000, default 60000. The safe calculator is the only enabled tool. Model output
+is limited to 512 tokens; the tasks allow two tool calls and three model rounds.
+Short synthetic sessions use a 16384-token context window. Compaction and automatic
+context-overflow recovery are refused for these probes to keep extra model calls out
+of the experimental controls. Provider parameter defaults are not forced to arbitrary
+values; actual supplied settings are retained with each request.
+
+Evidence uses normal run directories plus `artifacts/eval.json` on the first run of
+each task. The continuation report references both runs. Live report mode and L case
+IDs distinguish these from existing scripted reports. `EvalModelObserved` events retain
+actual mapped messages, tool definitions, response calls, and provider identities when
+returned. `EvalToolObserved` records real dispatch results. Authentication headers are
+excluded. Only runs explicitly selecting the live experiment opt into these synthetic
+observations; normal interactive prompts are not collected by this feature.
+
+The invocation summary is atomically updated at
+`lab/runs/.evals/<invocation-id>/summary.json`, including blocked tasks with no admitted
+run. An interrupted invocation has no completion timestamp and remains visibly
+incomplete. No implicit resume or retry follows an ambiguous dispatch. Cancellation
+requests native cancellation and stops further admission; it cannot undo a sent request.
+
+Open **Evals** in the frontend to inspect saved live and scripted results. The read-only
+`GET /api/evals?limit=25` endpoint projects bounded summaries, omits local filesystem
+paths/configuration, and links run evidence through the existing allowlisted read API.
+Missing credentials/services or unavailable models produce blocked results; provider
+errors, task failures, and incomplete evidence remain distinct. Inspect individual
+failed assertions before interpreting an answer as evidence of a harness defect.

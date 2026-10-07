@@ -36,6 +36,7 @@ import {
   type MastraEnvironment,
 } from "../variants/baseline/config/configuration.js";
 import { createBaselineAgentRuntime } from "../variants/baseline/agent.js";
+import { liveOpenRouterModel } from "../variants/baseline/models/live-openrouter.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "../variants/baseline/models/factory.js";
 import { MASTRA_EVENT_SOURCE, type MastraExecutionRecord } from "../variants/baseline/contracts.js";
 import { createMastraContextSummaryGenerator } from "./context-summary.js";
@@ -201,13 +202,19 @@ export class MastraBaselineRunner implements PlatformRunner {
 
     try {
       const context = await this.prepareContext(record, configuration.contextRoot);
-      const runtime = createBaselineAgentRuntime(record.manifest, this.modelFactory, {
+      const liveEval = record.manifest.selection?.experimentId === "agent-harness-live";
+      const modelFactory = liveEval ? (manifest: RunManifest) => liveOpenRouterModel(manifest,
+        (observation) => this.addEvent(record, "EvalModelObserved", { observation })) : this.modelFactory;
+      const runtime = createBaselineAgentRuntime(record.manifest, modelFactory, {
         runId: record.manifest.runId,
         turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
         signal: record.controller.signal,
         maxToolCalls: configuration.maxToolCalls,
         connectionBindings: record.manifest.capabilities?.connections,
-        onToolObservation: (call, result) => this.onToolObservation?.(record.manifest.runId, call, result),
+        onToolObservation: (call, result) => {
+          this.onToolObservation?.(record.manifest.runId, call, result);
+          if (liveEval) this.addEvent(record, "EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, output: result.content, status: result.status });
+        },
         onToolEvent: (kind, payload) => this.addEvent(record, kind, payload),
       });
       const output = await runtime.agent.generate(record.manifest.task.prompt, {
@@ -286,7 +293,9 @@ export class MastraBaselineRunner implements PlatformRunner {
       new ContextSessionStore(contextRoot),
       new CharacterTokenEstimator(),
     );
-    const summarizer = createMastraContextSummaryGenerator({
+    const summarizer = record.manifest.selection?.experimentId === "agent-harness-live"
+      ? { summarize: async () => { throw new Error("Live development probes do not permit context compaction."); } }
+      : createMastraContextSummaryGenerator({
       manifest: record.manifest,
       modelFactory: this.modelFactory ?? defaultMastraModelFactory,
       signal: record.controller.signal,
@@ -443,6 +452,14 @@ function failureFor(record: MastraExecutionRecord, error: unknown): NonNullable<
       failureKind: "outcome_unknown",
       retryable: false,
     };
+  }
+
+  const liveFailure = record.events.find(event => event.kind === "EvalModelObserved"
+    && (event.payload.observation as { phase?: string } | undefined)?.phase === "error");
+  if (liveFailure) {
+    const receipt = liveFailure.payload.observation as { providerStatus?: number; error: string };
+    return { code: receipt.providerStatus ? `OPENROUTER_HTTP_${receipt.providerStatus}` : "MASTRA_OUTCOME_UNKNOWN",
+      message: receipt.error, failureKind: receipt.providerStatus ? "provider" : "outcome_unknown", retryable: false };
   }
 
   if (error instanceof Error && error.name === "TOOL_UNKNOWN") {
