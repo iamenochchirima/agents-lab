@@ -835,3 +835,18 @@ def test_live_openrouter_refuses_paid_model_before_transport_and_retains_failed_
             complete_openrouter_response(model, state, lambda: False, ["calculator"])
         assert transport.call_count == 1
     assert state["_live_eval_observation"]["providerRequest"]["model"] == model.model
+
+
+def test_behaviour_fixture_requires_correlated_feedback_and_observes_native_deadline() -> None:
+    import base64
+    directive = lambda value: "[eval-behaviour:" + base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip("=") + "]"
+    prompt = directive({"action": "tool", "toolName": "calculator", "input": {"left": "invalid"}})
+    state = {"prompt": prompt, "messages": [{"role": "user", "content": prompt}]}
+    first = graph_module.complete_fake("fake-eval-behaviour", state, 1, lambda: False, 500)
+    assert first.output is None
+    assert first.tool_calls[0].arguments == {"left": "invalid"}
+    state["messages"].append({"role": "tool", "tool_call_id": "eval-behaviour-call-1", "content": '{"code":"INVALID_INPUT"}'})
+    second = graph_module.complete_fake("fake-eval-behaviour", state, 1, lambda: False, 500)
+    assert second.output == 'Tool feedback: {"code":"INVALID_INPUT"}'
+    with pytest.raises(graph_module.TimeoutError, match="native timeout"):
+        graph_module.complete_fake("fake-eval-behaviour", {"prompt": directive({"action": "slow", "delayMs": 100})}, 1, lambda: False, 10)

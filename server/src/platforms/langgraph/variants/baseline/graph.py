@@ -9,6 +9,8 @@ subprocess access.
 
 from __future__ import annotations
 
+import base64
+import re
 import json
 import time
 from dataclasses import dataclass
@@ -23,7 +25,7 @@ from langgraph.types import RetryPolicy
 
 
 EventEmitter = Callable[[str, dict[str, Any]], None]
-EVAL_MODELS = {"fake-eval-completion", "fake-eval-tool", "fake-eval-context", "fake-eval-loop"}
+EVAL_MODELS = {"fake-eval-completion", "fake-eval-tool", "fake-eval-context", "fake-eval-loop", "fake-eval-behaviour"}
 MAX_RESPONSE_BYTES = 1_048_576
 MAX_OUTPUT_CHARS = 100_000
 MAX_TOOL_CALLS_PER_RESPONSE = 32
@@ -250,6 +252,10 @@ def build_baseline_graph(
         try:
             response = complete_model(model, request_state, attempt, is_cancelled, enabled_tools, approved_tools)
         except Exception as exc:
+            if model.provider == "fake" and model.model == "fake-eval-behaviour":
+                emit("EvalModelObserved", {"round": round_number, "attempt": attempt, "observation": {
+                    "messages": [{"role": message["role"], "content": message.get("content") or ""} for message in messages],
+                    "systemInstruction": state.get("system_instruction", ""), "toolCalls": [], "errorCode": type(exc).__name__}})
             if live_eval and request_state.get("_live_eval_observation"):
                 emit("EvalModelObserved", {"round": round_number, "attempt": attempt,
                      "observation": {**request_state["_live_eval_observation"], "errorCode": getattr(exc, "code", "LANGGRAPH_PROVIDER_ERROR")}})
@@ -376,6 +382,9 @@ def build_baseline_graph(
                 })
                 if result.status == "unknown":
                     raise OutcomeUnknownError("The selected connection write outcome is unknown.")
+                if call.name in {"fixture_lookup", "mcp_fixture_lookup"} and result.status == "failed":
+                    messages.append(tool_message(call, result.content))
+                    continue
                 raise ProviderError("The selected tool failed.")
             emit("ToolExecutionCompleted", {
                 **payload,
@@ -431,6 +440,30 @@ def complete_fake(
         raise CancellationError("Cancellation was requested before the model call started.")
     messages = [] if isinstance(state, str) else state.get("messages", [])
     prompt = state if isinstance(state, str) else state.get("prompt", "")
+    if model == "fake-eval-behaviour":
+        match = re.search(r"\[eval-behaviour:([A-Za-z0-9_-]+)\]", prompt)
+        if not match:
+            raise ConfigurationError("A behaviour eval requires a bounded directive.")
+        encoded = match.group(1)
+        directive = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        action = directive.get("action")
+        if action in {"provider-error", "malformed"}:
+            raise ProviderError("Controlled malformed response." if action == "malformed" else "Controlled provider rejection.")
+        if action == "slow":
+            started = time.monotonic()
+            delay = min(60_000, max(1, directive.get("delayMs", 10_000))) / 1000
+            while time.monotonic() - started < delay:
+                if is_cancelled():
+                    raise CancellationError("The behaviour model observed cancellation.")
+                if time.monotonic() - started >= timeout_ms / 1000:
+                    raise TimeoutError("The behaviour model exceeded its native timeout.")
+                time.sleep(0.02)
+        feedback = next((message for message in reversed(messages) if message.get("role") == "tool" and message.get("tool_call_id") == "eval-behaviour-call-1"), None)
+        if action == "tool" and feedback is None:
+            return ModelResponse(None, [ToolCall("eval-behaviour-call-1", directive.get("toolName", "calculator"), directive.get("input", {}))], empty_usage())
+        retained = "\n".join(re.sub(r"\[eval-behaviour:[A-Za-z0-9_-]+\]", "", str(message.get("content", ""))) for message in messages if message.get("role") == "user")
+        output = (directive.get("marker") if directive.get("marker") and directive["marker"] in retained else "No retained marker.") if action == "context" else f"Tool feedback: {feedback['content']}" if action == "tool" else directive.get("text", "Behaviour eval completed.")
+        return ModelResponse(output, [], empty_usage())
     if model in EVAL_MODELS:
         tool_results = [message for message in messages if message.get("role") == "tool"]
         if model == "fake-eval-loop" or (model == "fake-eval-tool" and not tool_results):
