@@ -76,6 +76,16 @@ test("retains bounded eval reports idempotently with owning and correlated run e
     assert.deepEqual(retained?.runIds, [manifest.runId, secondRunId]);
     assert.deepEqual(retained?.observations, [{ request: { role: "user", content: "marker", apiKey: "[REDACTED]" } }]);
     assert.deepEqual(JSON.parse(await store.readAllowlistedFile(manifest.runId, "artifacts/eval.json")), retained);
+    const originalText = await store.readAllowlistedFile(manifest.runId, "artifacts/eval.json");
+    const revision = { ...report, graderVersion: "3", trialId: "regraded-trial" };
+    await store.writeEvalReport(manifest.runId, revision, { graderRevision: true });
+    await store.writeEvalReport(manifest.runId, revision, { graderRevision: true });
+    assert.equal((await store.readEvalReport(manifest.runId, "artifacts/eval-grader-3.json"))?.graderVersion, "3");
+    assert.equal(await store.readAllowlistedFile(manifest.runId, "artifacts/eval.json"), originalText);
+    assert.equal(isAllowlistedEvidenceFile("artifacts/eval-grader-3.json", manifest.platform), true);
+    assert.equal(isAllowlistedEvidenceFile("artifacts/eval-grader-999.json", manifest.platform), false);
+    await assert.rejects(store.readEvalReport(manifest.runId, "../config.json" as "artifacts/eval.json"), /Unsupported eval report/);
+    await assert.rejects(store.writeEvalReport(manifest.runId, report, { graderRevision: true }), /Only the bounded grader-3/);
     assert.equal(isAllowlistedEvidenceFile("artifacts/eval.json", manifest.platform), true);
     assert.equal(isAllowlistedEvidenceFile("artifacts/other.json", manifest.platform), false);
     await assert.rejects(store.readAllowlistedFile(manifest.runId, "../config.json" as "config.json"), /Unsupported evidence file/);

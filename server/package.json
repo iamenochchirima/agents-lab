@@ -41,7 +41,8 @@
     "test:trigger": "pnpm run build && node --test dist/tests/platforms/trigger-dev/*.test.js dist/integration-tests/trigger-dev-baseline.test.js",
     "typecheck": "tsc --noEmit",
     "eval:baseline": "tsx src/evals/baseline.ts",
-    "eval:live": "tsx src/evals/live.ts"
+    "eval:live": "tsx src/evals/live.ts",
+    "eval:regrade-live": "tsx src/evals/regrade-live.ts"
   },
   "dependencies": {
     "@trigger.dev/sdk": "4.5.14",
