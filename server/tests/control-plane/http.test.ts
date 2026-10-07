@@ -202,7 +202,7 @@ test("HTTP API exposes server-owned capability profiles without secrets", async 
     const response = await app.inject({ method: "GET", url: "/api/capabilities" });
     assert.equal(response.statusCode, 200);
     const body = response.json();
-    assert.deepEqual(body.profiles.map((profile: { id: string }) => profile.id), ["local-safe", "local-write-approved"]);
+    assert.deepEqual(body.profiles.map((profile: { id: string }) => profile.id), ["local-safe", "local-write-approved", "local-mcp-safe"]);
     assert.equal(JSON.stringify(body).includes("accessToken"), false);
     assert.equal(JSON.stringify(body).includes("secret"), false);
   });
