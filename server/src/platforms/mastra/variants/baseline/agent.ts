@@ -213,6 +213,9 @@ function connectedAgentTool<TSchema extends z.ZodTypeAny>(
         resultBytes: new TextEncoder().encode(result.content).byteLength,
         ...(result.connection ? { connection: result.connection } : {}),
       });
+      // Known failed reads have no external effect and can inform a later model step.
+      // Unknown write outcomes remain terminal; they are never converted into retries.
+      if (result.status === "failed" && ["fixture_lookup", "mcp_fixture_lookup"].includes(call.name)) return result.content;
       if (result.status !== "completed") {
         if (result.status === "cancelled" || result.status === "timed_out") throw abortError();
         if (result.status === "unknown") {
