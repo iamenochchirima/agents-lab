@@ -10,6 +10,11 @@ Temporal, Restate, LangGraph, and Mastra.
 
 ## Workload cases
 
+The research-backed [baseline eval specification](eval-cases.md) extends these
+three implemented workload definitions into shared-core acceptance, live-model
+measurements, and optional capability tests. The expanded suite is a development
+target; consult its implementation map before claiming coverage.
+
 ### 1. Prompt completion
 
 Submit one ordinary prompt and record the complete model-backed response. The expected
@@ -57,6 +62,43 @@ The expected observations are:
 
 The case verifies context delivery and evidence identity. It does not claim that a
 deterministic fixture demonstrates model reasoning quality.
+
+## Executable four-case definitions
+
+[`baseline-evals.mjs`](baseline-evals.mjs) owns the synthetic inputs and pure
+B01, B02, B03, and focused B07 graders. Its
+[TypeScript declarations](baseline-evals.d.mts) describe the observation contract.
+These files import no platform SDK and perform no model or tool execution.
+The driver must supply requests captured after platform-specific model mapping,
+actual tool dispatch observations, and ordinary terminal run records.
+
+B01 requires the exact scripted completion and recorded system instructions in the
+actual request. B02 requires one completed calculator dispatch, its returned call
+identity, and the calculator payload containing `value: 42` in the next actual
+request. A final answer containing `42` alone fails. B03 requires distinct turns in
+one session and the exact user, assistant, user transcript in the second request.
+B07 uses separate call-limit and round-limit runs. The script must demand more
+work, observed dispatches and model requests must stay within the recorded limits,
+and a failed terminal result must identify the relevant limit without a fabricated
+answer. This focused B07 does not test deadlines or cancellation.
+
+Each grade retains individual assertion IDs and expected/observed values. Missing
+observations fail. A failed agent run may pass B07 because exhaustion is expected;
+a completed run may fail another case. The suite and grader versions are `1`.
+Changing these acceptance semantics requires a version change.
+
+The table-driven controls in
+[`baseline-graders.test.ts`](../../../server/tests/platform-conformance/baseline-graders.test.ts)
+check valid observations and misleading results, absent feedback, transcript
+duplication, exceeded budgets, and unrelated failures. From the repository root:
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server run build
+node --test server/dist/tests/platform-conformance/baseline-graders.test.js
+```
+
+These pure tests validate grading, not native platform acceptance. B04, B05, B06,
+and B08 through B12 remain unimplemented in this executable slice.
 
 ## Controls
 
