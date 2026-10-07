@@ -20,6 +20,7 @@ import type { ModelMetadataResolver } from "../ports/model-metadata.js";
 import type { ServerConfig } from "../bootstrap/config.js";
 import type { ContextProjection } from "../../capabilities/context/contracts.js";
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
+import { ContextSessionNotFoundError } from "../../capabilities/context/session-store.js";
 import { ContextService } from "../../capabilities/context/context-service.js";
 import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 
@@ -42,6 +43,14 @@ export class RunnerUnavailableError extends Error {
   constructor(readonly platform: string, readonly variant: string, readonly reason: "unknown" | "planned") {
     super(`Runner is not available: ${platform}/${variant} (${reason}).`);
     this.name = "RunnerUnavailableError";
+  }
+}
+
+/** A currently unreachable native service rejected admission before any new turn/run. */
+export class RunnerConnectionUnavailableError extends Error {
+  constructor(readonly platform: string, readonly variant: string) {
+    super(`Native runner connection is unavailable: ${platform}/${variant}.`);
+    this.name = "RunnerConnectionUnavailableError";
   }
 }
 
@@ -106,17 +115,38 @@ export class RunService {
       throw new Error(validation.reason ?? "Runner rejected the run manifest.");
     }
 
-    const contextTurn = await this.admitContextTurn(effectiveRequest, draftManifest.runId);
-    if (contextTurn && contextTurn.turn.runId !== draftManifest.runId) {
-      // A stable client key can replay a request after the original response was
-      // lost. Reuse the durable run instead of dispatching a second platform run.
-      // If the server crashed before creating the run record, the existing turn
-      // supplies the original run ID and the normal creation path repairs it.
+    // A retained client identity can be replayed while its platform is offline.
+    // Validate through the existing admission contract before returning that run.
+    // A new request must pass readiness before creating any session turn or run.
+    let contextTurn: Awaited<ReturnType<RunService["admitContextTurn"]>> = null;
+    if (effectiveRequest.sessionId && effectiveRequest.clientTurnId && this.dependencies.context) {
+      let existing = false;
       try {
-        return await this.getRun(contextTurn.turn.runId);
+        existing = (await this.dependencies.context.sessions.readTranscript(effectiveRequest.sessionId)).some(message =>
+          message.role === "user" && message.metadata?.clientTurnId === effectiveRequest.clientTurnId);
       } catch (error) {
-        if (!(error instanceof RunNotFoundError)) throw error;
+        if (!(error instanceof ContextSessionNotFoundError)) throw error;
       }
+      if (existing) {
+        contextTurn = await this.admitContextTurn(effectiveRequest, draftManifest.runId);
+        if (contextTurn) {
+          try { return await this.getRun(contextTurn.turn.runId); }
+          catch (error) { if (!(error instanceof RunNotFoundError)) throw error; }
+        }
+      }
+    }
+    try {
+      if (!(await runner.checkConnection()).reachable) throw new RunnerConnectionUnavailableError(request.platform, request.variant);
+    } catch (error) {
+      if (error instanceof RunnerConnectionUnavailableError) throw error;
+      throw new RunnerConnectionUnavailableError(request.platform, request.variant);
+    }
+    contextTurn ??= await this.admitContextTurn(effectiveRequest, draftManifest.runId);
+    if (contextTurn && contextTurn.turn.runId !== draftManifest.runId) {
+      // Another caller may have admitted this client key during the readiness
+      // check. Reuse its durable run, or repair an interrupted run creation.
+      try { return await this.getRun(contextTurn.turn.runId); }
+      catch (error) { if (!(error instanceof RunNotFoundError)) throw error; }
     }
     const effectiveRunId = contextTurn?.turn.runId ?? draftManifest.runId;
     const manifest = buildRunManifest(effectiveRequest, {

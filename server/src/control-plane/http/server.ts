@@ -5,7 +5,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 
 import type { ServerConfig } from "../bootstrap/config.js";
 import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
-import { RunNotFoundError, RunService, RunnerUnavailableError } from "../application/run-service.js";
+import { RunNotFoundError, RunService, RunnerUnavailableError, RunnerConnectionUnavailableError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
 import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError } from "../../capabilities/context/session-store.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
@@ -429,6 +429,9 @@ function sendError(reply: FastifyReply, error: unknown) {
   }
   if (error instanceof RunNotFoundError || error instanceof EvidenceNotFoundError) {
     return reply.code(404).send({ error: { code: "RUN_NOT_FOUND", message: "Run or evidence was not found." } });
+  }
+  if (error instanceof RunnerConnectionUnavailableError) {
+    return reply.code(503).send({ error: { code: "RUNNER_CONNECTION_UNAVAILABLE", message: error.message } });
   }
   if (error instanceof RunnerUnavailableError) {
     return reply.code(503).send({ error: { code: "RUNNER_UNAVAILABLE", message: error.message } });

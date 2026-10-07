@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,7 +15,7 @@ import type {
 } from "../../src/control-plane/domain/types.js";
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
-import { RunService } from "../../src/control-plane/application/run-service.js";
+import { RunService, RunnerConnectionUnavailableError } from "../../src/control-plane/application/run-service.js";
 import { ContextSessionBusyError, ContextSessionConflictError } from "../../src/capabilities/context/session-store.js";
 import type { ModelMetadataResolver } from "../../src/control-plane/ports/model-metadata.js";
 import type {
@@ -821,3 +821,24 @@ function calculateTestMetrics(result: RunResult) {
     costUsd: null,
   };
 }
+
+
+test("unavailable native readiness rejects new admission while offline canonical replay remains valid", async () => {
+  await withService(async (service, store, runner, root) => {
+    const request = { platform: "temporal", variant: "baseline", sessionId: "readiness-session", clientTurnId: "readiness-turn", task: { kind: "prompt" as const, prompt: "Keep canonical identity." }, model: { provider: "fake", model: "fake-success" } };
+    runner.unavailable = true;
+    await assert.rejects(() => service.createRun(request), RunnerConnectionUnavailableError);
+    assert.equal(runner.startCalls, 0);
+    assert.deepEqual(await readdir(root), [], "readiness denial must not admit run evidence or context state");
+    runner.unavailable = false;
+    const admitted = await service.createRun(request);
+    runner.unavailable = true;
+    const replay = await service.createRun(request);
+    assert.equal(replay.runId, admitted.runId);
+    assert.equal(replay.status, "completed");
+    assert.equal(runner.startCalls, 1);
+    await assert.rejects(() => service.createRun({ ...request, task: { kind: "prompt", prompt: "Conflicting content." } }), ContextSessionConflictError);
+    assert.equal(runner.startCalls, 1);
+    assert.equal((await store.readSnapshot(admitted.runId)).result?.status, "completed");
+  });
+});
