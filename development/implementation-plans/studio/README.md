@@ -75,6 +75,8 @@ comparison. Other components and Context alternatives remain planned.
 
 ## Completed plans
 
+- [Lina input simulation: first implementation](completed/lina-input-simulation.md)
+
 - [Studio chat test slice](completed/studio-chat-test-slice.md)
 - [Studio kernel and first reference assembly](completed/studio-kernel-reference-assembly.md)
 - [Studio deterministic tool round-trip](completed/studio-tool-roundtrip.md)

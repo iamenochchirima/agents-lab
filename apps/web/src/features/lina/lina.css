@@ -25,4 +25,37 @@
 .lina-view-tabs{display:flex;gap:8px;margin:14px 0}.lina-view-tabs button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
 .lina-execution{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:18px;margin-bottom:16px}.lina-execution-controls{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.lina-execution-controls label{display:flex;flex-direction:column;gap:6px;color:var(--text-2);font-size:11px;margin-right:auto}.lina-execution select{min-width:240px;max-width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-1);font:12px var(--font-sans)}.lina-execution p{font-size:12px;line-height:1.65;color:var(--text-2);margin:10px 0}.lina-execution .lina-execution-scope{font-size:11px}.lina-execution-body{display:grid;grid-template-columns:1fr 1fr;gap:28px;border-top:1px solid var(--border);padding-top:16px;margin-top:14px}.lina-execution-body small{font-size:11px;color:var(--text-2)}.lina-execution h2{font-size:20px;font-weight:500;margin:7px 0}.lina-execution h3{font-size:12px;font-weight:500;margin:0 0 10px}.lina-page .lina-route-choices button{display:flex;justify-content:space-between;text-align:left;width:100%;margin:6px 0}.lina-route-choices small{display:block;margin-top:5px}.lina-execution-outcome{border-left:2px solid var(--accent);padding-left:12px}.lina-execution-trail{display:flex;gap:6px;overflow:auto;padding-top:12px}.lina-execution-trail button{white-space:nowrap}.lina-execution-trail button[aria-current=step]{border-color:var(--accent)}.lina-canvas svg .lina-traversed-edge path{stroke:var(--accent);stroke-width:3}.lina-page .lina-canvas-node.is-visited{border-color:var(--accent)}
 @media(max-width:800px){.lina-execution-body{grid-template-columns:1fr;gap:16px}}
+.lina-map-toolbar select{max-width:155px;padding:4px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text-1);font:11px var(--font-sans)}
+.lina-map-edge{opacity:.18;color:var(--text-2)}
+.lina-map-edge.is-connected{opacity:1;color:var(--accent)}
+.lina-canvas svg .lina-map-edge.is-connected>path{stroke:var(--accent);stroke-width:2.5}
+.lina-canvas svg .lina-map-edge.is-connected>text{fill:var(--accent)}
+.lina-canvas svg .lina-map-edge.is-inspected>path{stroke-width:4}
+.lina-canvas svg .lina-map-edge path.lina-edge-hit{pointer-events:stroke;stroke:transparent;stroke-width:16;cursor:pointer}
+.lina-canvas svg .lina-map-edge path.lina-edge-hit:focus-visible{stroke:var(--accent);outline:none}
+.lina-edge-endpoints{display:flex;align-items:center;gap:8px;margin:18px 0;flex-wrap:wrap}
+.lina-simulation{display:flex;align-items:center;gap:14px;margin:12px 0;flex-wrap:wrap}
+.lina-simulation-progress{display:flex;flex-direction:column;gap:4px;min-width:180px;margin-right:auto}
+.lina-simulation-progress span{font-size:11px;color:var(--text-2)}
+.lina-simulation-progress strong{font-size:13px;font-weight:500}
+.lina-simulation-controls{display:flex;gap:6px}
+.lina-simulation-error{width:100%;color:var(--text-2);font-size:12px}
+.lina-run-dialog{width:340px;max-width:calc(100vw - 48px);padding:24px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-1);box-shadow:0 20px 80px #0004}
+.lina-run-dialog::backdrop{background:#0006}
+.lina-run-dialog h2{font-size:20px;font-weight:500;margin:0 0 24px}
+.lina-run-dialog label{display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--text-2)}
+.lina-run-dialog select{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--text-1);font:13px var(--font-sans)}
+.lina-run-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:28px}
+.lina-run-dialog .lina-playback-label{margin-top:18px}
+.lina-map-edge.is-simulation-edge{opacity:1;color:#078e9d}
+.lina-canvas svg .lina-map-edge.is-simulation-edge>path:not(.lina-edge-hit){stroke:#078e9d;stroke-width:3}
+.lina-canvas svg .lina-map-edge.is-simulation-edge>text{fill:#078e9d}
+.lina-canvas svg .lina-map-edge.is-current-transition>path:not(.lina-edge-hit){stroke-width:4;stroke-dasharray:8 5;animation:lina-flow 1s linear infinite}
+.lina-page .lina-canvas-node.is-simulation-visited{border-color:#078e9d}
+.lina-page .lina-canvas-node.is-simulation-current{border:3px solid #078e9d;box-shadow:0 0 0 5px #078e9d26}
+.lina-canvas-node.is-simulation-current::after{content:'Simulated request';position:absolute;top:-22px;left:8px;font-size:11px;color:#078e9d;background:var(--surface);padding:2px 6px;border-radius:4px}
+@keyframes lina-flow{to{stroke-dashoffset:-26}}
+@media(prefers-reduced-motion:reduce){.lina-canvas svg .lina-map-edge.is-current-transition>path{animation:none}}
 .lina-page .lina-canvas-node{width:300px;height:144px;padding:20px;box-sizing:border-box}.lina-canvas-node strong{max-width:258px;white-space:normal;overflow:visible;font-size:16px;line-height:1.4}.lina-canvas-node small{font-size:10px;line-height:1.5}.lina-canvas-node>span{font-size:11px;margin-top:4px}.lina-canvas svg text{font-size:12px;stroke-width:7px}.lina-block-region{opacity:1;background:var(--surface)}
+
+.lina-canvas[data-simulation-running=false] .is-current-transition>path{animation-play-state:paused}

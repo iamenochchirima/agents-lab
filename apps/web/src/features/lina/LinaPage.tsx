@@ -5,6 +5,8 @@ import { ArrowLeft, Download, Save, Undo2, PanelLeft, PanelRight, RotateCcw, Ref
 import { emptyLina, type LinaDocument, type LinaNode } from './linaModel';
 import { linaInputBlock } from './inputBlock';
 import { LinaExecutionPath } from './LinaExecutionPath';
+import { LinaSimulation } from './LinaSimulation';
+import { startSimulation, advanceSimulation, resetSimulation, type SimulationState, type SimulationChannel } from './inputSimulation';
 import { routeLinaEdge, LINA_NODE_WIDTH, LINA_NODE_HEIGHT } from './edgeRouting';
 import './lina.css';
 
@@ -73,7 +75,14 @@ export function LinaPage() {
   const [tab, setTab] = useState<'design'|'study'|'experiment'>('design');
   const [zoom, setZoom] = useState(1);
   const [view, setView] = useState<'map' | 'path'>('map');
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [connections, setConnections] = useState<'all' | 'selected'>('all');
+  const selectedEdge = doc.edges.find(edge => edge.id === selectedEdgeId);
   const [executionTrail, setExecutionTrail] = useState<string[]>([]);
+  const [simulation, setSimulation] = useState<SimulationState | null>(null);
+  const simulationVisible = view === 'map' && simulation !== null;
+  const simulationNode = simulationVisible ? simulation.route[simulation.step] : undefined;
+  const trail = simulationVisible ? simulation.route.slice(0, simulation.step + 1) : executionTrail;
   const [collapsed, setCollapsed] = useState(savedPanels);
   useEffect(() => {
     try { localStorage.setItem(panelsKey, JSON.stringify(collapsed)); }
@@ -125,10 +134,9 @@ export function LinaPage() {
     setZoom(Math.min(1, Math.max(.05, Math.min(viewport.clientWidth / width, viewport.clientHeight / height))));
     viewport.scrollTo(0, 0);
   }
-  function focusNode(id: string) {
+  function centerNode(id: string) {
     const target = doc.nodes.find(n => n.id === id);
     if (!target) return;
-    selectNode(id);
     const scale = Math.max(.85, zoom);
     if (scale !== zoom) zoomMap(scale);
     requestAnimationFrame(() => {
@@ -136,10 +144,29 @@ export function LinaPage() {
       if (viewport) viewport.scrollTo(Math.max(0, (target.x + LINA_NODE_WIDTH / 2) * scale - viewport.clientWidth / 2), Math.max(0, (target.y + LINA_NODE_HEIGHT / 2) * scale - viewport.clientHeight / 2));
     });
   }
+  function focusNode(id: string) {
+    selectNode(id); centerNode(id);
+  }
   function selectNode(id: string) {
     setSelected(id);
+    setSelectedEdgeId(null);
     setCollapsed(v => v.right ? { ...v, right: false } : v);
   }
+  function runSimulation(channel: SimulationChannel, automatic: boolean) {
+    setView('map'); setExecutionTrail([]);
+    setSimulation(startSimulation(channel, doc, automatic));
+  }
+  useEffect(() => {
+    if (simulationNode) centerNode(simulationNode);
+  }, [simulationNode]);
+  useEffect(() => {
+    if (view !== 'map' || !ready || simulation?.status !== 'running') return;
+    const timer = window.setTimeout(() => {
+      setSimulation(current => current?.status === 'running' ? advanceSimulation(current, live.current) : current);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [simulation, view, ready]);
+
   function resetInputLayout() {
     const defaults = new Map(linaInputBlock.nodes.map(n => [n.id, n]));
     const outside = doc.nodes.filter(n => !defaults.has(n.id));
@@ -240,14 +267,20 @@ export function LinaPage() {
     <header className="lina-header"><div><Link to="/studio" className="lina-back"><ArrowLeft size={14} /> Studio</Link><div className="lina-heading"><h1>Lina</h1><span>Architecture workspace</span></div><p>Study the architecture one component at a time.</p></div>
       <div className="lina-actions"><span role="status">{busy ? 'Connecting…' : error ? 'Needs attention' : dirty ? 'Draft · not saved to database' : ready ? `Saved to database · v${revision}` : 'Database unavailable'}</span><button onClick={download} disabled={!ready} title="Download architecture backup"><Download size={14} /> Export</button><button className="lina-primary" onClick={() => void save()} disabled={!ready || busy || !dirty}><Save size={14} /> Save design</button></div></header>
     <AgentSystemTabs active="lina"><Link to="/studio/comparison">Comparison</Link></AgentSystemTabs>
-    <div className="lina-view-tabs" aria-label="Architecture views"><button aria-pressed={view === 'map'} onClick={() => { setView('map'); setExecutionTrail([]); }}>Architecture map</button><button aria-pressed={view === 'path'} onClick={() => setView('path')}>Follow a message</button></div>
+    <div className="lina-view-tabs" aria-label="Architecture views"><button aria-pressed={view === 'map'} onClick={() => { setView('map'); setExecutionTrail([]); }}>Architecture map</button><button aria-pressed={view === 'path'} onClick={() => { setView('path'); setSimulation(current => current?.status === 'running' ? { ...current, status: 'paused' } : current); }}>Follow a message</button></div>
+    <LinaSimulation document={doc} state={simulation} active={view === 'map'} disabled={!ready || busy}
+      onStart={runSimulation}
+      onPause={() => setSimulation(current => current?.status === 'running' ? { ...current, status: 'paused' } : current)}
+      onResume={() => setSimulation(current => current?.status === 'paused' ? { ...current, status: 'running' } : current)}
+      onNext={() => setSimulation(current => current ? advanceSimulation({ ...current, status: current.status === 'running' ? 'paused' : current.status }, doc) : current)}
+      onReset={() => setSimulation(current => current ? resetSimulation(current, doc) : current)}/>
     {view === 'path' && ready && <LinaExecutionPath document={doc} onFocus={focusNode} onTrail={setExecutionTrail}/>}
     <div className="lina-block-tools"><span>Input block · design draft</span><button disabled={busy} onClick={() => void load()} title="Reload stored design while preserving the browser draft"><RefreshCw size={14}/> Reload design</button><button disabled={!ready || busy || inputNodes.length === 0} onClick={resetInputLayout}><RotateCcw size={14}/> Reset input layout</button><div className="lina-panel-controls"><button aria-label={collapsed.left ? 'Expand components sidebar' : 'Collapse components sidebar'} aria-expanded={!collapsed.left} aria-controls="lina-components" onClick={() => setCollapsed(v => ({ ...v, left: !v.left }))}><PanelLeft size={14}/> Components</button><button aria-label={collapsed.right ? 'Expand inspector sidebar' : 'Collapse inspector sidebar'} aria-expanded={!collapsed.right} aria-controls="lina-inspector" onClick={() => setCollapsed(v => ({ ...v, right: !v.right }))}><PanelRight size={14}/> Inspector</button></div></div>
     {error && <div role="alert" className="lina-error">{error}<button disabled={busy} onClick={() => void (ready ? save() : load())}>Retry</button>{ready && <button disabled={busy} onClick={() => void load(true)}>Load database copy (discard draft)</button>}</div>}
     <div className={`lina-workspace ${collapsed.left ? 'left-collapsed' : ''} ${collapsed.right ? 'right-collapsed' : ''}`}><aside id="lina-components" hidden={collapsed.left} className="lina-index"><div className="lina-section-title"><h2>Components</h2></div>
       {doc.nodes.length === 0 ? <p className="lina-muted">Your architecture starts here.</p> : doc.nodes.map(n => <button className={`lina-index-node ${selected === n.id ? 'is-selected' : ''}`} key={n.id} onClick={() => focusNode(n.id)}><span className={`lina-dot ${n.status}`} /><span>{n.title}<small>{n.area}</small></span></button>)}
       <div className="lina-index-footer">{doc.nodes.length} components · {doc.edges.length} connections<div><span className="lina-dot proposed" /> Proposed <span className="lina-dot studying" /> Studying <span className="lina-dot decided" /> Decided</div></div></aside>
-      <section className="lina-map" aria-label="Lina architecture canvas"><div className="lina-map-toolbar"><span>Architecture map</span><div><button onClick={() => zoomMap(zoom / 1.2)} disabled={zoom <= .05} aria-label="Zoom out">−</button><span>{Math.round(zoom*100)}%</span><button onClick={() => zoomMap(zoom * 1.2)} disabled={zoom >= 2} aria-label="Zoom in">+</button><button onClick={fitMap}>Fit</button></div></div>
+      <section className="lina-map" aria-label="Lina architecture canvas"><div className="lina-map-toolbar"><span>Architecture map</span><div><select aria-label="Connection visibility" value={connections} onChange={event => setConnections(event.target.value as 'all' | 'selected')}><option value="all">All relationships</option><option value="selected">Selected node only</option></select><button onClick={() => zoomMap(zoom / 1.2)} disabled={zoom <= .05} aria-label="Zoom out">−</button><span>{Math.round(zoom*100)}%</span><button onClick={() => zoomMap(zoom * 1.2)} disabled={zoom >= 2} aria-label="Zoom in">+</button><button onClick={fitMap}>Fit</button></div></div>
         {layoutUndo && <div className="lina-layout-undo">Layout updated. Previous positions kept.<button onClick={() => {
           const positions = new Map(layoutUndo.map(n => [n.id, n]));
           change({ ...doc, nodes: doc.nodes.map(n => { const p = positions.get(n.id); return p ? { ...n, x: p.x, y: p.y } : n; }) });
@@ -255,7 +288,7 @@ export function LinaPage() {
         }}><Undo2 size={13}/> Undo layout reset</button></div>}
         <div className={`lina-map-scroll ${panning ? 'is-panning' : ''}`} ref={mapScroll}
           onPointerDown={e => {
-            if (e.button !== 0 || (e.target as Element).closest('button')) return;
+            if (e.button !== 0 || (e.target as Element).closest('button, [role="button"]')) return;
             const viewport = e.currentTarget;
             pan.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
             viewport.setPointerCapture(e.pointerId); setPanning(true); e.preventDefault();
@@ -273,7 +306,7 @@ export function LinaPage() {
           }}
           onPointerCancel={() => { pan.current = null; setPanning(false); }}
           onLostPointerCapture={() => { pan.current = null; setPanning(false); }}
-        ><div style={{ width: width*zoom, height:height*zoom }}><div className="lina-canvas" style={{ width,height,transform:`scale(${zoom})`,transformOrigin:'top left' }}>
+        ><div style={{ width: width*zoom, height:height*zoom }}><div className="lina-canvas" data-simulation-running={simulationVisible && simulation.status === 'running'} style={{ width,height,transform:`scale(${zoom})`,transformOrigin:'top left' }}>
           {inputNodes.length > 0 && <div className="lina-block-region" style={{ left: Math.min(...inputNodes.map(n => n.x))-25, top: Math.min(...inputNodes.map(n => n.y))-75, width: Math.max(...inputNodes.map(n => n.x+LINA_NODE_WIDTH))-Math.min(...inputNodes.map(n => n.x))+50, height: Math.max(...inputNodes.map(n => n.y+LINA_NODE_HEIGHT))-Math.min(...inputNodes.map(n => n.y))+100 }}><button className="lina-block-handle" aria-label="Drag input block" disabled={!ready || busy}
               onPointerDown={e => {
                 if (e.button !== 0) return;
@@ -294,22 +327,40 @@ export function LinaPage() {
               onPointerCancel={() => { blockDrag.current = null; }}
               onLostPointerCapture={() => { blockDrag.current = null; }}
             >01 · Input and admission <span>Drag block</span></button><p>Adapters → identity and access → durable input → dispatch branches. Execution and delivery are external handoffs.</p></div>}
-          <svg width={width} height={height} aria-label="Component connections"><defs><marker id="lina-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor" /></marker></defs>{routedConnections.map(({ edge, route }) => {
+          <svg width={width} height={height} role="group" aria-label="Component connections"><defs><marker id="lina-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="context-stroke" /></marker></defs>{routedConnections.map(({ edge, route }) => {
             if (!route.path) return null;
-            const traversed = executionTrail.some((id, step) => id === edge.source && executionTrail[step + 1] === edge.target);
-            return <g key={edge.id} className={traversed ? 'lina-traversed-edge' : undefined}><path d={route.path} markerEnd="url(#lina-arrow)"/><text x={route.labelX} y={route.labelY} textAnchor={route.labelAnchor ?? 'middle'}>{edge.label}</text></g>;
+            const traversed = trail.some((id, step) => id === edge.source && trail[step + 1] === edge.target);
+            const connected = edge.source === selected || edge.target === selected;
+            const simulationEdge = simulationVisible && (traversed || edge.source === simulationNode && edge.target === simulation?.route[simulation.step + 1]);
+            const justTraversed = simulationVisible && simulation.step > 0 && edge.source === simulation.route[simulation.step - 1] && edge.target === simulationNode;
+            if (connections === 'selected' && !connected && !simulationEdge) return null;
+            const source = doc.nodes.find(n => n.id === edge.source), target = doc.nodes.find(n => n.id === edge.target);
+            return <g key={edge.id} className={`lina-map-edge ${connected ? 'is-connected' : ''} ${selectedEdgeId === edge.id ? 'is-inspected' : ''} ${traversed ? 'lina-traversed-edge' : ''} ${simulationEdge ? 'is-simulation-edge' : ''} ${justTraversed ? 'is-current-transition' : ''}`}>
+              <path d={route.path} markerEnd="url(#lina-arrow)"/>
+              {(connected || simulationEdge) && <text x={route.labelX} y={route.labelY} textAnchor={route.labelAnchor ?? 'middle'}>{edge.label}</text>}
+              <path className="lina-edge-hit" d={route.path} role="button" tabIndex={connected || simulationEdge ? 0 : -1}
+                aria-label={`Inspect relationship: ${source?.title ?? edge.source} to ${target?.title ?? edge.target}: ${edge.label}`}
+                onClick={() => { setSelectedEdgeId(edge.id); setCollapsed(v => ({ ...v, right: false })); }}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedEdgeId(edge.id); setCollapsed(v => ({ ...v, right: false })); } }}/>
+              <title>{source?.title} → {target?.title}: {edge.label}</title>
+            </g>;
           })}</svg>
-          {doc.nodes.map(n => <button key={n.id} aria-label={`Select ${n.title}`} className={`lina-canvas-node ${n.status} ${selected===n.id?'is-selected':''} ${executionTrail.includes(n.id)?'is-visited':''}`} style={{ left:n.x,top:n.y }} onClick={()=>selectNode(n.id)} onPointerDown={e=>{ if(e.button!==0)return; e.currentTarget.setPointerCapture(e.pointerId); drag.current={id:n.id,startX:e.clientX,startY:e.clientY,x:n.x,y:n.y}; selectNode(n.id); }} onPointerMove={e=>{ const d=drag.current;if(!d||d.id!==n.id)return; const x=Math.max(20,Math.round(d.x+(e.clientX-d.startX)/zoom)),y=Math.max(20,Math.round(d.y+(e.clientY-d.startY)/zoom));change({...live.current,nodes:live.current.nodes.map(v=>v.id===d.id?{...v,x,y}:v)}); }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><small>{n.area}</small><strong>{n.title}</strong><span><i className={`lina-dot ${n.status}`} />{n.status}</span></button>)}
+          {doc.nodes.map(n => <button key={n.id} aria-label={`Select ${n.title}`} aria-current={simulationNode === n.id ? 'step' : undefined} className={`lina-canvas-node ${n.status} ${selected===n.id?'is-selected':''} ${trail.includes(n.id)?'is-visited':''} ${simulationVisible && trail.includes(n.id) ? 'is-simulation-visited' : ''} ${simulationNode === n.id ? 'is-simulation-current' : ''}`} style={{ left:n.x,top:n.y }} onClick={()=>selectNode(n.id)} onPointerDown={e=>{ if(e.button!==0)return; e.currentTarget.setPointerCapture(e.pointerId); drag.current={id:n.id,startX:e.clientX,startY:e.clientY,x:n.x,y:n.y}; selectNode(n.id); }} onPointerMove={e=>{ const d=drag.current;if(!d||d.id!==n.id)return; const x=Math.max(20,Math.round(d.x+(e.clientX-d.startX)/zoom)),y=Math.max(20,Math.round(d.y+(e.clientY-d.startY)/zoom));change({...live.current,nodes:live.current.nodes.map(v=>v.id===d.id?{...v,x,y}:v)}); }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><small>{n.area}</small><strong>{n.title}</strong><span><i className={`lina-dot ${n.status}`} />{n.status}</span></button>)}
           {doc.nodes.length===0 && <div className="lina-empty"><h2>No architecture components yet.</h2><p>Components will be added as we develop the design together.</p></div>}
         </div></div></div></section>
-      <aside id="lina-inspector" hidden={collapsed.right} className="lina-inspector">{node ? <>
+      <aside id="lina-inspector" hidden={collapsed.right} className="lina-inspector">{selectedEdge ? <>
+        <div className="lina-section-title"><h2>Connection</h2></div>
+        <h2 className="lina-node-title">{selectedEdge.label || 'Connection'}</h2>
+        <div className="lina-edge-endpoints"><button onClick={() => focusNode(selectedEdge.source)}>{doc.nodes.find(n => n.id === selectedEdge.source)?.title ?? selectedEdge.source}</button><span>→</span><button onClick={() => focusNode(selectedEdge.target)}>{doc.nodes.find(n => n.id === selectedEdge.target)?.title ?? selectedEdge.target}</button></div>
+        <button onClick={() => setSelectedEdgeId(null)}>Return to node</button>
+      </> : node ? <>
         <div className="lina-section-title"><h2>Component documentation</h2></div>
         <h2 className="lina-node-title">{node.title}</h2>
         <div className="lina-node-meta"><span>{node.area}</span><span><i className={`lina-dot ${node.status}`}/> {node.status}</span></div>
         <div className="lina-tabs" role="tablist" aria-label="Component notes">{(['design','study','experiment'] as const).map(t=><button key={t} role="tab" aria-selected={tab===t} onClick={()=>setTab(t)}>{t==='experiment'?'Experiments':t==='study'?'Study':'Design'}</button>)}</div>
         <div role="tabpanel">{tab==='design'?<>
           {field('purpose','Responsibilities')}{field('inputs','Inputs')}{field('outputs','Outputs')}{field('decisions','Decisions and open questions')}
-          {doc.edges.some(e => e.source === selected) && <section className="lina-node-note"><h3>Outgoing connections</h3><ul>{doc.edges.filter(e=>e.source===selected).map(e=><li key={e.id}>{e.label || 'Connection'} → {doc.nodes.find(n=>n.id===e.target)?.title}</li>)}</ul></section>}
+
         </>:tab==='study'?field('references','Source mapping'):field('experiments','Alternatives and experiment ideas') || <p className="lina-muted">No experiments specified for this component yet.</p>}</div>
       </>:<div className="lina-inspector-empty"><h2>Node by node.</h2><p>Select a component to read its responsibilities, inputs, outputs, and design decisions.</p></div>}</aside>
     </div><footer className="lina-footer">Design document · local SQLite storage · hosted backup not configured</footer>

@@ -38,6 +38,38 @@ in the browser separately from the architecture document.
 
 ## Follow a message
 
+### Run an input simulation
+
+Click **Run**, choose CLI, WhatsApp, or Telegram and **Automatic** or **Manual**
+playback, then **Run simulation**. Manual starts paused at the adapter and waits
+for **Next**. Automatic advances through the applicable input nodes, with its
+current node marked in teal and its route highlighted on the graph. **Pause**
+stops playback; **Next** pauses and advances one step; **Resume** continues.
+**Reset** returns to the same adapter, paused. A new Run replaces the previous
+simulation. Switching to the illustrative walkthrough pauses the simulation.
+
+This first version uses one ordinary input with admitted access, a new message
+identity, no attachments, and an idle conversation. Telegram uses an activated
+group/topic. CLI does not batch. These are fixed simulation assumptions, not
+runtime guarantees. Completion ends at **Execution handoff**; receipt delivery,
+model calls, tools, and final replies are not simulated. A missing route blocks
+playback. Simulation state stays in page memory, clears on reload, and never
+changes the saved architecture or connects to a real channel.
+
+`inputSimulation.ts` owns deterministic progression; `LinaSimulation.tsx` owns
+the modal and controls; `LinaPage.tsx` schedules playback and renders the route.
+Automatic playback and Next use the same advance operation, once per viewing
+step. The one-second pace is not an agent latency measurement.
+
+### Inspect the graph and illustrative paths
+
+Selecting a node emphasizes its incoming and outgoing arrows on the graph and
+shows their labels. Unrelated arrows remain faint. **Selected node only** hides
+unrelated connections. Click an arrow to inspect its label and endpoints; click
+an endpoint to follow that component. Component documentation remains in the
+inspector, without a separate list of request paths. Navigation does not edit
+the saved design.
+
 **Follow a message** steps through illustrative input scenarios. **Next step**
 follows the selected scenario; route buttons explore another outgoing connection.
 **Back**, the visited-step list, and **Restart** navigate the walkthrough. The map
@@ -72,9 +104,9 @@ The version-1 document contains nodes with identity, position, area, status,
 and design notes, plus labeled edges. Stable IDs keep relationships attached when titles change.
 No dependencies or executable harness changes are introduced by this page.
 
-Validation: focused TypeScript compilation, source inspection and browser rendering.
-No test suite or agent/model/tool execution is required or performed for this design
-workspace change.
+Validation: TypeScript compilation and browser checks of node and arrow
+selection, connection highlighting, labels, and connection visibility. These
+verify design navigation; no agent/model/tool execution is performed.
 
 ## Technical design document
 
