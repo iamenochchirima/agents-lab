@@ -18,6 +18,8 @@ export interface SavedEvalInvocation {
   readonly platform: string;
   readonly modelId: string | null;
   readonly suiteVersion?: string;
+  readonly graderVersion?: string;
+  readonly sourceInvocationId?: string;
   readonly comparisonKey?: string | null;
   readonly comparisonIssue?: string;
   readonly controls?: Record<string, unknown>;
@@ -38,7 +40,7 @@ export async function getSavedEvals(signal: AbortSignal): Promise<{ invocations:
   return await response.json() as { invocations: SavedEvalInvocation[]; scanTruncated?: boolean };
 }
 
-export function evalEvidenceUrl(runId: string, file: "artifacts/eval.json" | "trajectory.json" | "context.json" | "events.jsonl"): string {
+export function evalEvidenceUrl(runId: string, file: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | "trajectory.json" | "context.json" | "events.jsonl"): string {
   return `${baseUrl}/api/runs/${encodeURIComponent(runId)}/evidence/${file}`;
 }
 

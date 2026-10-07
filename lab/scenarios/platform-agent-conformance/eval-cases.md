@@ -92,13 +92,13 @@ and `--trials` accepts 1–5. No core case makes a live-provider call.
 
 | Cases | Implementation owners and retained proof |
 | --- | --- |
-| B01–B03 | Native mapped requests, calculator dispatch/feedback and shared-context continuation; original acceptance rules retained |
-| B04/B10 | Actual interleaved session requests and canonical replay/conflict admission through `RunService` |
-| B05/B06 | Native tool rejection, capability catalog/profile/approval decisions and independent disposable fixture state/effect counts |
-| B07 | Separate budget probes and a measured 200 ms native execution/activity/model-operation deadline |
-| B08/B09 | Native provider decoder/failure policy, actual failed read feedback and dispatched/completed/repeated cancellation |
-| B11 | Evidence-file inspection plus existing projection APIs exercised with bounded duplicate/out-of-order controls |
-| B12 | Refused selected-runner readiness endpoint and reference persistence fault after actual native acceptance, reconciled using the same identity |
+| `B01–B03` | Native mapped requests, calculator dispatch/feedback and shared-context continuation; original acceptance rules retained |
+| `B04/B10` | Actual interleaved session requests and canonical replay/conflict admission through `RunService` |
+| `B05/B06` | Native tool rejection, capability catalog/profile/approval decisions and independent disposable fixture state/effect counts |
+| `B07` | Separate budget probes and a measured 200 ms native execution/activity/model-operation deadline |
+| `B08/B09` | Native provider decoder/failure policy, actual failed read feedback and dispatched/completed/repeated cancellation |
+| `B11` | Evidence-file inspection plus existing projection APIs exercised with bounded duplicate/out-of-order controls |
+| `B12` | Refused selected-runner readiness endpoint and reference persistence fault after actual native acceptance, reconciled using the same identity |
 
 B06/B08 use the evaluator-owned local fixture on port `9191`; workers must use the
 same endpoint. Fresh namespaces keep effects independent. Named `local-safe` and

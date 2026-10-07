@@ -39,21 +39,57 @@ function TrialResult({ invocation, item }: { invocation: SavedEvalInvocation; it
           {item.runIds.length === 0 ? <p>No run was admitted. There is no run evidence for this trial.</p> :
             item.runIds.map((runId, index) => <div className="evals-evidence-links" key={runId}>
               <code>Run {index + 1}: {runId}</code>
-              {index === 0 && item.evidence && <a href={evalEvidenceUrl(runId, "artifacts/eval.json")} target="_blank" rel="noreferrer">Verdict and assertions</a>}
+              {index === 0 && item.evidence && <a href={evalEvidenceUrl(runId, item.evidence === "artifacts/eval-grader-3.json" ? "artifacts/eval-grader-3.json" : "artifacts/eval.json")} target="_blank" rel="noreferrer">Verdict and assertions</a>}
               <a href={evalEvidenceUrl(runId, "trajectory.json")} target="_blank" rel="noreferrer">Trajectory</a>
               <a href={evalEvidenceUrl(runId, "events.jsonl")} target="_blank" rel="noreferrer">Model and tool events</a>
               <a href={evalEvidenceUrl(runId, "context.json")} target="_blank" rel="noreferrer">Context</a>
             </div>)}
           {expanded && item.runIds.length > 0 && <TrialInspector invocation={invocation} item={item} />}
-          <small>Invocation <code>{invocation.invocationId}</code>{invocation.suiteVersion && ` · ${invocation.suiteVersion}`}</small>
+          <small>Invocation <code>{invocation.invocationId}</code>{invocation.suiteVersion && ` · suite ${invocation.suiteVersion}`}{invocation.graderVersion && ` · grader ${invocation.graderVersion}`}{invocation.sourceInvocationId && <> · Regraded from <code>{invocation.sourceInvocationId}</code></>}</small>
         </div>
       </details>;
+}
+
+function objectValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Project only actual retained fixture receipts; absent counters stay unavailable. */
+function FixtureEvidence({ observations }: { observations: readonly unknown[] }) {
+  const snapshots = observations.filter(objectValue).flatMap(observation => Array.isArray(observation.fixtureSnapshots) ? observation.fixtureSnapshots.filter(objectValue) : []);
+  if (snapshots.length === 0) return null;
+  const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : "Unavailable";
+  return <section aria-label="Recorded fixture effects"><h4>Fixture effects</h4>
+    {snapshots.map((snapshot, index) => <details key={index}>
+      <summary>{typeof snapshot.probe === "string" ? snapshot.probe : `Fixture ${index + 1}`} · Effects: {count(snapshot.effectCount)}</summary>
+      {typeof snapshot.namespace === "string" && <p>Namespace <code>{snapshot.namespace}</code></p>}
+      {(snapshot.lookupCount !== undefined || snapshot.writeAttemptCount !== undefined) && <p>Lookups: {count(snapshot.lookupCount)} · Write attempts: {count(snapshot.writeAttemptCount)}</p>}
+      <div className="evals-assertion-values"><div><strong>Before</strong>{snapshot.before !== undefined ? <pre>{JSON.stringify(snapshot.before, null, 2)}</pre> : <p>Unavailable</p>}</div><div><strong>After</strong>{snapshot.after !== undefined ? <pre>{JSON.stringify(snapshot.after, null, 2)}</pre> : <p>Unavailable</p>}</div></div>
+    </details>)}
+  </section>;
+}
+
+function ReviewEvidence({ detail }: { detail: EvalTrialDetail }) {
+  if (!detail.case.reviewRequired && !detail.report?.reviewRequired) return null;
+  const observations = (detail.report?.observations ?? []).filter(objectValue);
+  const rubrics = [...new Set(observations.flatMap(observation => {
+    const rubric = objectValue(observation.fixture) ? observation.fixture.reviewRubric : observation.reviewRubric;
+    return typeof rubric === "string" && rubric.length > 0 ? [rubric] : [];
+  }))];
+  const answers = observations.flatMap(observation => Array.isArray(observation.runs) ? observation.runs.filter(objectValue).filter(run => typeof run.output === "string" && run.output.length > 0) : []);
+  return <details open><summary>Human review evidence</summary>
+    {rubrics.length > 0 ? rubrics.map(rubric => <p key={rubric}>{rubric}</p>) : <p>No review rubric was retained.</p>}
+    {answers.map((run, index) => <div key={index}><strong>{index === 0 ? "Challenge answer" : `Control answer ${index}`}</strong><pre>{String(run.output)}</pre></div>)}
+    {answers.length === 0 && <p>No final answer was retained in the task observations.</p>}
+  </details>;
 }
 
 export function TrialDetailView({ detail }: { detail: EvalTrialDetail }) {
   return <div className="evals-inspector">
     {detail.issues.map(issue => <p key={issue} role="status">{issue}</p>)}
     {(detail.case.reviewRequired || detail.report?.reviewRequired) && <p>Review required. This trial remains blocked until its answer is assessed.</p>}
+    <ReviewEvidence detail={detail} />
+    <FixtureEvidence observations={detail.report?.observations ?? []} />
     <h4>Assertions</h4>
     {detail.report?.assertions?.map(assertion => <details key={assertion.id} open={!assertion.passed}>
       <summary><span className={`evals-verdict evals-verdict-${assertion.passed ? "pass" : "fail"}`}>{assertion.passed ? "pass" : "fail"}</span>{assertion.id}</summary>

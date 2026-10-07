@@ -46,7 +46,7 @@ export function EvalsPage() {
       </div>
     </header>
     <EvalResults />
-    <div className="evals-status"><strong>Acceptance specification</strong><span>The four-case development command is available. Full baseline readiness remains pending.</span><Link to={pathForDocument("docs/research/platform-eval-readiness.md")}>Readiness investigation</Link></div>
+    <div className="evals-status"><strong>Acceptance specification</strong><span>Development commands cover twelve core cases and six live probes. Saved trials show measured outcomes.</span><Link to={pathForDocument("docs/research/platform-eval-readiness.md")}>Readiness investigation</Link></div>
     <nav className="evals-groups" aria-label="Evaluation groups">
       {groups.map(group => <button key={group.id} type="button" aria-pressed={selected.id === group.id}
         onClick={() => { setParams({ group: group.id }); setQuery(""); }}>
