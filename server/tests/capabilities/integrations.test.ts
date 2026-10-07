@@ -289,3 +289,18 @@ test("local fixtures exercise MCP, direct API, and OAuth through the same bounda
   await flow.complete("local-oauth", callback.state, callback.code);
   assert.match(await flow.accessToken("local-oauth"), /^local-access-/);
 });
+
+
+test("direct read errors preserve bounded actionable feedback for the tool boundary", async () => {
+  const client = new DirectApiClient({ limits, adapter: { async send() { return { providerRequestId: "lookup-error", statusCode: 400, body: { error: "Look up namespace:backup instead." } }; } } });
+  const response = await client.request(request, { readOnly: true, signal: new AbortController().signal });
+  assert.equal(response.status, "failed");
+  assert.equal(response.error?.code, "HTTP_400");
+  assert.match(response.error?.message ?? "", /Look up namespace:backup instead\./);
+  assert.equal(response.attempts.length, 1, "an actionable validation error is not retried");
+  const sensitive = new DirectApiClient({ limits, adapter: { async send() { return { providerRequestId: "lookup-sensitive", statusCode: 400, body: { error: { message: "Look up backup. Bearer fixture-token " + "x".repeat(1000) }, credentials: { apiKey: "never-return-body" } } }; } } });
+  const boundedResponse = await sensitive.request(request, { readOnly: true, signal: new AbortController().signal });
+  assert.ok((boundedResponse.error?.message.length ?? Infinity) <= 512);
+  assert.doesNotMatch(boundedResponse.error?.message ?? "", /fixture-token|never-return-body/);
+  assert.match(boundedResponse.error?.message ?? "", /Look up backup/);
+});

@@ -59,7 +59,9 @@ export class DirectApiClient {
           return result(request.requestId, "completed", attempts, response.body, null, null);
         }
         if (!retryable || attempt === request.limits.maxAttempts) {
-          return result(request.requestId, "failed", attempts, null, `HTTP_${response.statusCode}`, `Direct API request failed with HTTP ${response.statusCode}.`);
+          return result(request.requestId, "failed", attempts, null, `HTTP_${response.statusCode}`, options.readOnly
+            ? readFailureMessage(response, request.limits.maxResponseBytes)
+            : `Direct API request failed with HTTP ${response.statusCode}.`);
         }
         await delay(response.retryAfterMs ?? Math.min(250 * 2 ** (attempt - 1), 2_000), options.signal);
       } catch (error) {
@@ -144,3 +146,18 @@ async function delay(ms: number, signal: AbortSignal): Promise<void> {
 
 function safeMessage(error: unknown): string { return bounded(error instanceof Error && error.message ? error.message : "Direct API request failed."); }
 function bounded(value: string): string { return value.length <= 512 ? value : value.slice(0, 512); }
+
+
+/** Preserve actionable read errors as tool feedback without exposing a raw provider body.
+ * Side-effect uncertainty keeps its separate fixed outcome message.
+ */
+function readFailureMessage(response: DirectApiResponse, maxResponseBytes: number): string {
+  const fallback = `Direct API request failed with HTTP ${response.statusCode}.`;
+  const body = JSON.stringify(response.body);
+  if (body === undefined || new TextEncoder().encode(body).byteLength > maxResponseBytes) return fallback;
+  const error = response.body.error;
+  const value = typeof error === "string" ? error : error !== null && typeof error === "object" && "message" in error && typeof error.message === "string" ? error.message : response.body.message;
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  const message = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\bBearer\s+\S+|\bsk-(?:or-)?[A-Za-z0-9_-]+/gi, "[REDACTED]");
+  return bounded(`${fallback} ${message.trim()}`);
+}
