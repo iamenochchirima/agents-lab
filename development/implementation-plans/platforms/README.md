@@ -9,6 +9,10 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Free-model live agent evals](active/free-model-live-evals.md) — planned next slice:
+  real model decisions, native platform execution, retained evidence, and visible results.
+  This temporary checklist is not published in the curated Docs navigation.
+
 - [First executable agent evals](active/agent-harness-baseline-evals.md) — four-case
   development implementation complete: Mastra and LangGraph trials passed;
   Temporal/Restate native rollout is blocked by absent services. Full readiness
