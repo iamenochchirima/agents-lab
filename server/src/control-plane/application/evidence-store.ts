@@ -15,6 +15,7 @@ import type {
   RunTrajectory,
 } from "../domain/types.js";
 import type { ContextSnapshot } from "../../capabilities/context/contracts.js";
+import { assertRunEvalReport, type RunEvalReport } from "../domain/eval-report.js";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const EVENT_PLATFORM_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -33,6 +34,7 @@ const MAX_TRAJECTORY_BYTES = 512 * 1024;
 const MAX_METRICS_BYTES = 128 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;
 const MAX_CAPABILITIES_BYTES = 256 * 1024;
+const MAX_EVAL_REPORT_BYTES = 256 * 1024;
 const MAX_OPERATIONAL_LOG_LINE_BYTES = 32 * 1024;
 const MAX_OPERATIONAL_LOG_BYTES = 8 * 1024 * 1024;
 const OPERATIONAL_LOG_FILE = "logs/operations.jsonl" as const;
@@ -326,7 +328,51 @@ export class RunEvidenceStore {
     };
   }
 
+  /** Retains one bounded, immutable case verdict alongside its ordinary run evidence. */
+  async writeEvalReport(runId: string, report: RunEvalReport): Promise<void> {
+    assertRunEvalReport(report);
+    if (report.ownerRunId !== runId) {
+      throw new EvidenceConflictError(`Eval report belongs to a different run: ${runId}`);
+    }
+    const owner = await this.readManifest(runId);
+    for (const correlatedRunId of report.runIds) {
+      const correlated = await this.readManifest(correlatedRunId);
+      if (correlated.platform !== owner.platform || correlated.variant !== owner.variant ||
+          (report.caseId === "B03" && correlated.context.sessionId !== owner.context.sessionId)) {
+        throw new EvidenceConflictError(`Eval report correlates incompatible runs: ${correlatedRunId}`);
+      }
+    }
+    const safeReport = sanitizeEvidenceValue(report) as RunEvalReport;
+    const path = join(this.runDirectory(runId), "artifacts/eval.json");
+    assertEvidenceSize(safeReport, path, MAX_EVAL_REPORT_BYTES);
+    await this.writeIdempotent(path, safeReport);
+  }
+
+  async readEvalReport(runId: string): Promise<RunEvalReport | null> {
+    await this.readManifest(runId);
+    const path = join(this.runDirectory(runId), "artifacts/eval.json");
+    const report = await this.readOptionalJson<unknown>(path);
+    if (report === null) return null;
+    assertEvidenceSize(report, path, MAX_EVAL_REPORT_BYTES);
+    try {
+      assertRunEvalReport(report);
+      if (report.ownerRunId !== runId) throw new Error("Eval owner mismatch.");
+    } catch {
+      throw new CorruptEvidenceError(path);
+    }
+    return report;
+  }
+
   async readAllowlistedFile(runId: string, fileName: EvidenceFileName): Promise<string> {
+    const manifest = await this.readManifest(runId);
+    if (!isAllowlistedEvidenceFile(fileName, manifest.platform)) {
+      throw new Error(`Unsupported evidence file: ${fileName}`);
+    }
+    if (fileName === "artifacts/eval.json") {
+      const report = await this.readEvalReport(runId);
+      if (report === null) throw new EvidenceNotFoundError(join(this.runDirectory(runId), fileName));
+      return `${stableJson(report)}\n`;
+    }
     const path = join(this.runDirectory(runId), fileName);
     try {
       return await readFile(path, "utf8");
@@ -576,6 +622,7 @@ export type EvidenceFileName =
   | "metrics.json"
   | "context.json"
   | "result.json"
+  | "artifacts/eval.json"
   | "logs/operations.jsonl"
   | `native/${string}.json`;
 
@@ -587,6 +634,7 @@ export function isAllowlistedEvidenceFile(fileName: string, platform: string): f
     fileName === "metrics.json" ||
     fileName === "context.json" ||
     fileName === "result.json" ||
+    fileName === "artifacts/eval.json" ||
     fileName === OPERATIONAL_LOG_FILE ||
     fileName === nativeReferenceFile(platform);
 }

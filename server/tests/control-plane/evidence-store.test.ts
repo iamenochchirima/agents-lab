@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
+import type { RunEvalReport } from "../../src/control-plane/domain/eval-report.js";
 import type { ContextSnapshot } from "../../src/capabilities/context/contracts.js";
 import type { PlatformExecutionReference, RunEventIntent, RunMetrics, RunResult, RunTrajectory } from "../../src/control-plane/domain/types.js";
 import {
@@ -14,6 +15,7 @@ import {
   EventOrderingError,
   InvalidRunIdError,
   RunEvidenceStore,
+  isAllowlistedEvidenceFile,
 } from "../../src/control-plane/application/evidence-store.js";
 
 const manifest = buildRunManifest(
@@ -47,6 +49,43 @@ async function withStore(run: (store: RunEvidenceStore, root: string) => Promise
     await rm(root, { recursive: true, force: true });
   }
 }
+
+test("retains bounded eval reports idempotently with owning and correlated run evidence", async () => {
+  await withStore(async (store) => {
+    const secondRunId = "run-evidence-2";
+    await store.createRun({ ...manifest, runId: secondRunId });
+    const report: RunEvalReport = {
+      schemaVersion: 1,
+      suiteVersion: "baseline-1",
+      graderVersion: "baseline-1",
+      caseId: "B03",
+      trialId: "trial-1",
+      ownerRunId: manifest.runId,
+      runIds: [manifest.runId, secondRunId],
+      verdict: "pass",
+      assertions: [{ id: "context-marker", passed: true, expected: "marker", observed: "marker",
+        observationRefs: [{ runId: secondRunId, file: "context.json", pointer: "/messages" }] }],
+      observations: [{ request: { role: "user", content: "marker", apiKey: "fake-secret" } }],
+      metadata: { revision: null, dirty: true, versions: { node: process.version },
+        startedAt: manifest.createdAt, completedAt: manifest.createdAt, trialCount: 1 },
+    };
+    assert.equal(await store.readEvalReport(manifest.runId), null);
+    await store.writeEvalReport(manifest.runId, report);
+    await store.writeEvalReport(manifest.runId, report);
+    const retained = await store.readEvalReport(manifest.runId);
+    assert.deepEqual(retained?.runIds, [manifest.runId, secondRunId]);
+    assert.deepEqual(retained?.observations, [{ request: { role: "user", content: "marker", apiKey: "[REDACTED]" } }]);
+    assert.deepEqual(JSON.parse(await store.readAllowlistedFile(manifest.runId, "artifacts/eval.json")), retained);
+    assert.equal(isAllowlistedEvidenceFile("artifacts/eval.json", manifest.platform), true);
+    assert.equal(isAllowlistedEvidenceFile("artifacts/other.json", manifest.platform), false);
+    await assert.rejects(store.readAllowlistedFile(manifest.runId, "../config.json" as "config.json"), /Unsupported evidence file/);
+    await assert.rejects(store.writeEvalReport(secondRunId, report), EvidenceConflictError);
+    await assert.rejects(store.writeEvalReport(manifest.runId, { ...report, runIds: [manifest.runId, "missing-run"], assertions: [{ id: "marker", passed: true, expected: "marker", observed: "marker" }] }), /Evidence was not found/);
+    await assert.rejects(store.writeEvalReport(manifest.runId, { ...report, trialId: "different-trial" }), EvidenceConflictError);
+    await assert.rejects(store.writeEvalReport(manifest.runId, { ...report, schemaVersion: 2 } as unknown as RunEvalReport), /Invalid schema-v1/);
+    await assert.rejects(store.writeEvalReport(manifest.runId, { ...report, observations: ["x".repeat(256 * 1024)] }), EvidenceLimitError);
+  });
+});
 
 test("creates an immutable run record and appends source-ordered events idempotently", async () => {
   await withStore(async (store, root) => {
