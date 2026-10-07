@@ -254,8 +254,45 @@ The Lina page's **Follow a message** view follows the input block's existing
 connections. Scenarios cover normal channel input and alternate admission,
 control, and recovery routes. Route choices highlight the path on the map.
 These are design walkthroughs. Failure outcomes and control details remain open
-where this document says so; downstream execution is a boundary, not an invented
-model or tool lifecycle.
+where this document says so. This view treats downstream execution as a boundary;
+the connected simulation below covers fixed model/tool paths separately.
+
+### Connected Turn Execution design
+
+Studio now shows a separate proposed Turn Execution block after Execution
+handoff. Its [maintained graph](../../../apps/web/src/features/lina/executionBlock.ts)
+uses the [comparative execution research](turn-execution-research.md) to map
+initialization, context preparation, model calls, action decisions, tool work,
+control checkpoints, in-turn recovery, settlement and ownership release.
+This is a design model with scripted playback, not a working Lina runtime or
+agreement on the execution policies still open below.
+
+Conversation admission establishes turn identity and grants ownership authority.
+Start turn consumes that admission and initializes execution without creating
+another turn identity. Turn control targets the existing execution owner;
+matched prompt answers return to that owner's waiting work rather than entering
+Start turn. Active-work cancellation may be signalled before checkpoint
+consumption. Exact control and waiting behavior remains proposed.
+
+Settle turn hands produced output to Reply delivery handoff. Release turn emits
+the owner-release lifecycle event to Conversation queue, which retains admission
+and drain responsibility. The graph no longer emits owner release from Execution
+handoff. These connections do not imply successful delivery or automatic queue
+draining. Restart recovery and reconciliation retain an unresolved safe-resume
+entry beyond the input boundary; they must not follow Start turn as a blind
+fresh execution. The new Recover node handles in-turn model-attempt recovery,
+not restart or uncertain-side-effect replay.
+
+The page's **Run** modal chooses channel, Direct answer, Tool round or Model retry,
+and Automatic or Manual playback. A single traversal follows Input through the
+execution loop to Release turn. Manual waits for Next at each visit, including
+repeated rounds. Automatic playback and Next use the same progression;
+Pause/Resume controls automatic playback. Reset preserves
+channel and case and returns paused to the adapter. Model and tool outcomes are
+fixed fixtures. No real operation, measured lab run, queue drain, approval wait,
+steering or cancellation occurs. See the [workspace guide](../../../apps/web/src/features/lina/README.md)
+for usage and limits. The existing illustrative message walkthrough remains an
+Input-only study view.
 
 ## Decisions still open
 
@@ -339,3 +376,15 @@ and [busy-input handling](https://github.com/NousResearch/hermes-agent/blob/ddc0
 
 Lina's proposed Interrupt ends the turn. It does not adopt Hermes's same-turn
 redirect semantics.
+
+
+## Provisional node contract review
+
+The [node contract registry](node-contracts.md) gives every current Input and
+Turn Execution node schemas and reference examples, including multiple input
+forms and coordinator state. This review adds explicit adapter/identity/claim
+failure exits, retains structured actions and authorization provenance, separates
+Telegram event forms and WhatsApp delivery observations, and routes safe
+checkpoint resumes to their existing-turn execution entry. Channel-post, edit,
+provider integration and live waiting/resumption policies remain open; documented
+examples do not establish runtime support.

@@ -15,3 +15,23 @@ Supporting research and review:
 
 These reports propose questions and repairs. They do not change the agreed
 Input decisions or establish measured performance improvements.
+
+Turn execution research, before the next block is finalized:
+
+- [Comparative architecture research](turn-execution-research.md) compares
+  ownership, model/tool rounds, controls, waiting and settlement, and proposes
+  a responsibility boundary and mechanism experiments.
+- Source studies: [Hermes](turn-execution-hermes.md),
+  [OpenClaw](turn-execution-openclaw.md), [Pi](turn-execution-pi.md),
+  and [Waku](turn-execution-waku.md). These use the explorer revisions,
+  distinguish static evidence from inference, and record what remains unverified.
+
+These turn execution notes are research proposals. They do not finalize the
+next block or change Lina's agreed architecture.
+
+- [Turn Execution completeness audit](turn-execution-completeness-audit.md)
+  checks essential agent-loop and tool-lifecycle contracts against the pinned
+  sources, records graph repairs, and distinguishes future Tools internals
+  from the three currently simulated paths.
+
+- [Node contracts and reference examples](node-contracts.md): precise provisional input/output contracts, multiple input forms and corrected handoffs.

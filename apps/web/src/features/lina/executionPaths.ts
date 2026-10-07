@@ -88,6 +88,7 @@ function incoming(channel: 'cli' | 'telegram' | 'whatsapp'): LinaExecutionStep[]
     step(channel, channel === 'cli'
       ? 'The owner submits through an authenticated client connection. Authentication and reconnect details remain open.'
       : 'The adapter preserves sender, event, chat, and reply facts. Transport acknowledgement timing remains open.'),
+    ...(channel === 'telegram' ? [step('telegram-route', 'Classify the verified update as a supported DM/group/topic message. Channel posts, edits and callbacks retain their distinct policies.')] : []),
     step('envelope', 'Validate the envelope and retain original content separately from prepared model input.'),
     step('identity', 'Resolve verified channel links or CLI identity. Display names cannot establish authority.'),
     step('access', 'Check current DM or group admission. Group and DM approvals are separate.'),

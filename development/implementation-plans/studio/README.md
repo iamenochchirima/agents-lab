@@ -75,6 +75,9 @@ comparison. Other components and Context alternatives remain planned.
 
 ## Completed plans
 
+- [Lina tool outcomes and loop limits](completed/lina-tool-outcomes-and-limits.md)
+
+- [Lina turn execution and connected simulation](completed/lina-turn-execution-simulation.md)
 - [Lina input simulation: first implementation](completed/lina-input-simulation.md)
 
 - [Studio chat test slice](completed/studio-chat-test-slice.md)
