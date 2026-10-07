@@ -618,6 +618,25 @@ test("an accepted dispatch with an unretained reference is not reported as dispa
     const reconciled = await service.getRun(accepted.runId);
     assert.equal(reconciled.status, "reconciliation_required");
     assert.equal(reconciled.result?.error?.failureKind, "reconciliation");
+    const provisionalSnapshot = await store.readSnapshot(accepted.runId);
+    assert.equal(provisionalSnapshot.metrics, null, "unresolved execution must not fabricate terminal metrics");
+    assert.equal(provisionalSnapshot.trajectory, null, "unresolved execution must not freeze an empty trajectory");
+
+    // A recovered native identity reconciles the accepted execution instead of
+    // treating the provisional missing-reference result as a permanent terminal.
+    const manifest = await store.readManifest(accepted.runId);
+    await store.writeExecutionReference(accepted.runId, referenceFor(manifest));
+    runner.state = "completed";
+    const restarted = new RunService({ config, evidence: store, registry: new PlatformRegistry([runner]) });
+    const completed = await restarted.getRun(accepted.runId);
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.result?.status, "completed");
+    assert.equal(completed.executionReference?.executionId, `agentlab:${accepted.runId}`);
+    assert.equal(runner.startCalls, 1, "reconciliation must inspect the accepted execution without redispatch");
+    const completedSnapshot = await store.readSnapshot(accepted.runId);
+    assert.equal(completedSnapshot.result?.status, "completed");
+    assert.equal(completedSnapshot.metrics?.status, "completed");
+    assert.notEqual(completedSnapshot.trajectory, null);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

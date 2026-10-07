@@ -274,11 +274,11 @@ export class RunService {
 
     // A confirmed terminal result is the durable Lab record. Do not re-inspect
     // a platform execution that may have been retained only temporarily (or
-    // purged after its result was projected). An outcome-unknown submission is
-    // provisional, so it remains eligible for reconciliation by the runner.
-    const provisionalOutcomeUnknown = snapshot.result?.status === "reconciliation_required"
-      && snapshot.result.error?.failureKind === "outcome_unknown";
-    if (snapshot.result && !provisionalOutcomeUnknown) {
+    // purged after its result was projected). Reconciliation-required observations
+    // remain provisional, including a missing reference that is restored later.
+    // Inspect only the retained execution identity; never redispatch the task.
+    const provisionalReconciliation = snapshot.result?.status === "reconciliation_required";
+    if (snapshot.result && !provisionalReconciliation) {
       return toRunView(snapshot, snapshot.result.status, await this.contextProjection(snapshot.manifest));
     }
 
@@ -307,7 +307,9 @@ export class RunService {
       }
       const inspectionError = error instanceof RunnerInspectionError ? error.cause : error;
       if (isExecutionNotFoundError(inspectionError)) {
-        await this.recordReconciliationRequired(snapshot.manifest, "The retained platform execution could not be found.");
+        if (snapshot.result?.status !== "reconciliation_required") {
+          await this.recordReconciliationRequired(snapshot.manifest, "The retained platform execution could not be found.");
+        }
         const reconciled = await this.dependencies.evidence.readSnapshot(runId);
         return toRunView(reconciled, "reconciliation_required", await this.contextProjection(reconciled.manifest));
       }
@@ -597,8 +599,8 @@ export class RunService {
       usage: { inputTokens: null, outputTokens: null, totalTokens: null },
     };
     await this.dependencies.evidence.writeResult(result);
-    await this.dependencies.evidence.writeTrajectory({ schemaVersion: 1, runId: manifest.runId, phases: [] });
-    await this.dependencies.evidence.writeMetrics(calculateMetrics(result, []));
+    // The execution may still complete after its reference is recovered. Empty
+    // trajectory or zero metrics would become immutable and block that projection.
   }
 
   private async readSnapshotOrThrow(runId: string) {
