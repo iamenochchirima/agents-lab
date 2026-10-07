@@ -44,3 +44,8 @@ Known failed `fixture_lookup` and `mcp_fixture_lookup` reads become correlated
 model feedback. Failed writes, cancellations, timeouts and unknown external
 outcomes retain the native terminal policy; no uncertain write is retried by
 this continuation rule.
+
+Malformed responses pass a controlled invalid response shape through the actual
+OpenRouter decoder. Its native policy reports `LANGGRAPH_OUTCOME_UNKNOWN` rather
+than inventing provider rejection. The model observation records
+`faultKind: malformed` independently of that original failure category.

@@ -850,3 +850,7 @@ def test_behaviour_fixture_requires_correlated_feedback_and_observes_native_dead
     assert second.output == 'Tool feedback: {"code":"INVALID_INPUT"}'
     with pytest.raises(graph_module.TimeoutError, match="native timeout"):
         graph_module.complete_fake("fake-eval-behaviour", {"prompt": directive({"action": "slow", "delayMs": 100})}, 1, lambda: False, 10)
+    malformed = {"prompt": directive({"action": "malformed"})}
+    with pytest.raises(OutcomeUnknownError, match="invalid response shape"):
+        graph_module.complete_fake("fake-eval-behaviour", malformed, 1, lambda: False, 500)
+    assert malformed["_behaviour_fault_kind"] == "malformed"

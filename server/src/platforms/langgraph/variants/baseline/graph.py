@@ -255,7 +255,8 @@ def build_baseline_graph(
             if model.provider == "fake" and model.model == "fake-eval-behaviour":
                 emit("EvalModelObserved", {"round": round_number, "attempt": attempt, "observation": {
                     "messages": [{"role": message["role"], "content": message.get("content") or ""} for message in messages],
-                    "systemInstruction": state.get("system_instruction", ""), "toolCalls": [], "errorCode": type(exc).__name__}})
+                    "systemInstruction": state.get("system_instruction", ""), "toolCalls": [], "errorCode": getattr(exc, "code", type(exc).__name__),
+                    "faultKind": request_state.get("_behaviour_fault_kind")}})
             if live_eval and request_state.get("_live_eval_observation"):
                 emit("EvalModelObserved", {"round": round_number, "attempt": attempt,
                      "observation": {**request_state["_live_eval_observation"], "errorCode": getattr(exc, "code", "LANGGRAPH_PROVIDER_ERROR")}})
@@ -448,7 +449,12 @@ def complete_fake(
         directive = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
         action = directive.get("action")
         if action in {"provider-error", "malformed"}:
-            raise ProviderError("Controlled malformed response." if action == "malformed" else "Controlled provider rejection.")
+            if not isinstance(state, str):
+                state["_behaviour_fault_kind"] = "malformed" if action == "malformed" else "provider"
+            if action == "malformed":
+                # Exercise the real provider decoder with a received invalid shape.
+                return parse_openrouter_response({"choices": []}, ["calculator"])
+            raise ProviderError("Controlled provider rejection.")
         if action == "slow":
             started = time.monotonic()
             delay = min(60_000, max(1, directive.get("delayMs", 10_000))) / 1000
