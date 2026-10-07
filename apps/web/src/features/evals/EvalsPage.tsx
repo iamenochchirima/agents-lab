@@ -6,6 +6,7 @@ import specification from "../../../../../lab/scenarios/platform-agent-conforman
 import { documents } from "../../generated/document-catalog";
 import { pathForDocument } from "../documentation/documentPaths";
 import { readEvalCases, type EvalGroup } from "./evalModel";
+import { EvalResults } from "./EvalResults";
 import "./evals.css";
 
 const sourceId = "lab/scenarios/platform-agent-conformance/eval-cases.md";
@@ -41,9 +42,10 @@ export function EvalsPage() {
       <div>
         <span className="eyebrow">Platform development</span>
         <h1>Agent evals</h1>
-        <p>The behaviors we are working toward as we build each platform's agent harness.</p>
+        <p>Inspect recorded trials and the behaviors each platform's agent harness is working toward.</p>
       </div>
     </header>
+    <EvalResults />
     <div className="evals-status"><strong>Acceptance specification</strong><span>The four-case development command is available. Full baseline readiness remains pending.</span><Link to={pathForDocument("docs/research/platform-eval-readiness.md")}>Readiness investigation</Link></div>
     <nav className="evals-groups" aria-label="Evaluation groups">
       {groups.map(group => <button key={group.id} type="button" aria-pressed={selected.id === group.id}
@@ -74,7 +76,6 @@ export function EvalsPage() {
       <Link to={pathForDocument("docs/research/platform-agent-evals.md")}>Research and sources</Link>
       <Link to={pathForDocument("lab/experiments/agent-harness-baseline/README.md")}>Experiment protocol</Link>
       <Link to={pathForDocument("lab/experiments/agent-harness-baseline/development-evals.md")}>Run development evals</Link>
-      <Link to={pathForDocument("development/implementation-plans/platforms/active/agent-harness-baseline-evals.md")}>Implementation plan</Link>
     </footer>
   </div>;
 }

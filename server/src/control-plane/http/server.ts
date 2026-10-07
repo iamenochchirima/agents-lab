@@ -14,6 +14,7 @@ import type { RunView } from "../application/run-service.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
 import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 import { validateCapabilityApproval } from "../../capabilities/validation.js";
+import { readEvalResults } from "../application/eval-results.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
@@ -103,6 +104,16 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
 
   app.get("/api/capabilities", async (_request, reply) => {
     return reply.send({ profiles: dependencies.capabilities?.list() ?? [] });
+  });
+
+  app.get<{ Querystring: { limit?: string } }>("/api/evals", async (request, reply) => {
+    try {
+      const value = request.query.limit;
+      if (value !== undefined && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 50)) {
+        throw new InvalidApiRequestError("limit must be an integer between 1 and 50.");
+      }
+      return reply.send(await readEvalResults(dependencies.config.runsRoot, value === undefined ? 25 : Number(value), [dependencies.config.openRouter.apiKey ?? ""]));
+    } catch (error) { return sendError(reply, error); }
   });
 
   app.post("/api/runs", async (request, reply) => {

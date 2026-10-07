@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -505,6 +505,28 @@ test("HTTP API returns structured validation and health responses", async () => 
     const degraded = await app.inject({ method: "GET", url: "/health" });
     assert.equal(degraded.statusCode, 503);
     assert.equal(degraded.json().platforms[0].reachable, false);
+  });
+});
+
+test("eval result API returns bounded retained summaries without local evidence paths", async () => {
+  await withApp(async (app, _runner, root) => {
+    const directory = join(root, ".evals", "live-http");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "summary.json"), JSON.stringify({
+      schemaVersion: 1, mode: "live", invocationId: "live-http", platform: "mastra",
+      model: { model: "model:free" }, startedAt: "2026-10-07T00:00:00Z", completedAt: "2026-10-07T00:01:00Z",
+      cases: [{ caseId: "L01", trial: 1, verdict: "pass", runIds: ["run-http"], evidence: "/local/private/eval.json" }],
+    }));
+    const response = await app.inject({ method: "GET", url: "/api/evals?limit=1" });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().invocations[0].modelId, "model:free");
+    assert.equal(response.json().invocations[0].cases[0].evidence, "artifacts/eval.json");
+    assert.doesNotMatch(response.body, /local\/private/);
+    for (const value of ["0", "51", "../outside", "NaN"]) {
+      const invalid = await app.inject({ method: "GET", url: `/api/evals?limit=${encodeURIComponent(value)}` });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(invalid.json().error.code, "INVALID_REQUEST");
+    }
   });
 });
 
