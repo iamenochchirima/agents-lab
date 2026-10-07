@@ -172,7 +172,12 @@ test("Mastra Agent.generate sends the selected OpenRouter model and preserves no
 });
 
 test("Mastra executes the shared calculator through a native Agent.generate tool loop", async () => {
-  const runner = new MastraBaselineRunner();
+  const observations: Array<{ runId: string; callId: string; content: string }> = [];
+  const runner = new MastraBaselineRunner({
+    onToolObservation: (runId, call, result) => observations.push({
+      runId, callId: call.toolCallId, content: result.content,
+    }),
+  });
   const manifest = buildRunManifest(
     {
       platform: "mastra",
@@ -187,6 +192,9 @@ test("Mastra executes the shared calculator through a native Agent.generate tool
   const inspection = await waitForTerminal(runner, await runner.start(manifest));
   assert.equal(inspection.status, "completed");
   assert.equal(inspection.result?.output, 'The calculator returned {"value":42}.');
+  assert.deepEqual(observations, [{
+    runId: manifest.runId, callId: "mastra-calculator-1", content: '{"value":42}',
+  }]);
   assert.equal(inspection.metrics?.modelCallCount, 2);
   assert.equal(inspection.metrics?.toolCallCount, 1);
   assert.equal(inspection.metrics?.toolAttemptCount, 1);

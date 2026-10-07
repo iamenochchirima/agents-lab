@@ -21,7 +21,7 @@ import {
   ContextSessionStore,
   type ContextMessage,
 } from "../../../capabilities/context/index.js";
-import type { ToolLifecyclePayload } from "../../../capabilities/tools/contracts.js";
+import type { ToolCall, ToolExecutionResult, ToolLifecyclePayload } from "../../../capabilities/tools/contracts.js";
 import {
   configurationFromManifest,
   DEFAULT_EXECUTION_TIMEOUT_MS,
@@ -47,6 +47,8 @@ export interface MastraBaselineRunnerOptions {
   readonly environment?: MastraEnvironment;
   readonly executionTimeoutMs?: number;
   readonly modelFactory?: MastraModelFactory;
+  /** Only synthetic evaluators opt in; default execution captures no tool content. */
+  readonly onToolObservation?: (runId: string, call: ToolCall, result: ToolExecutionResult) => void;
   readonly now?: () => Date;
   readonly contextRoot?: string;
 }
@@ -73,6 +75,7 @@ export class MastraBaselineRunner implements PlatformRunner {
   private readonly environment: MastraEnvironment;
   private readonly executionTimeoutMs: number;
   private readonly modelFactory?: MastraModelFactory;
+  private readonly onToolObservation?: MastraBaselineRunnerOptions["onToolObservation"];
   private readonly now: () => Date;
   private readonly contextRoot: string;
 
@@ -80,6 +83,7 @@ export class MastraBaselineRunner implements PlatformRunner {
     this.environment = options.environment ?? safeEnvironment();
     this.executionTimeoutMs = options.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
     this.modelFactory = options.modelFactory;
+    this.onToolObservation = options.onToolObservation;
     this.now = options.now ?? (() => new Date());
     this.contextRoot = options.contextRoot ?? process.env.AGENTLAB_CONTEXT_ROOT ?? "lab/sessions";
     if (!Number.isInteger(this.executionTimeoutMs) || this.executionTimeoutMs < 1) {
@@ -203,6 +207,7 @@ export class MastraBaselineRunner implements PlatformRunner {
         signal: record.controller.signal,
         maxToolCalls: configuration.maxToolCalls,
         connectionBindings: record.manifest.capabilities?.connections,
+        onToolObservation: (call, result) => this.onToolObservation?.(record.manifest.runId, call, result),
         onToolEvent: (kind, payload) => this.addEvent(record, kind, payload),
       });
       const output = await runtime.agent.generate(record.manifest.task.prompt, {

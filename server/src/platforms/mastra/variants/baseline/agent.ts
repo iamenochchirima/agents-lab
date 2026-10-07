@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { RunManifest } from "../../../../control-plane/domain/types.js";
 import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
 import { getDefaultConnectionRuntime, type ConnectionRuntime } from "../../../../capabilities/integrations/runtime.js";
-import type { ToolCall, ToolImplementation, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
+import type { ToolExecutionResult, ToolCall, ToolImplementation, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { createFixtureTools } from "../../../../capabilities/tools/fixtures.js";
 import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
@@ -21,6 +21,8 @@ export interface BaselineAgentOptions {
   readonly maxToolCalls: number;
   readonly connectionRuntime?: ConnectionRuntime;
   readonly connectionBindings?: readonly ConnectionBinding[];
+  /** Opt-in synthetic fixture observation, not persisted or enabled by default. */
+  readonly onToolObservation?: (call: ToolCall, result: ToolExecutionResult) => void;
   readonly onToolEvent?: (kind: ToolLifecycleKind, payload: ToolLifecyclePayload) => void;
 }
 
@@ -136,6 +138,7 @@ function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptio
         turnId: options.turnId,
         signal: context.abortSignal ?? options.signal,
       });
+      options.onToolObservation?.(validation.call, result);
       const resultPayload = {
         ...toolPayload(validation.call),
         status: result.status,
@@ -201,6 +204,7 @@ function connectedAgentTool<TSchema extends z.ZodTypeAny>(
         connectionRuntime: options.connectionRuntime ?? getDefaultConnectionRuntime(),
         connectionBindings: options.connectionBindings,
       });
+      options.onToolObservation?.(validation.call, result);
       options.onToolEvent?.(toolEventKind(result.status), {
         ...payload,
         status: result.status,

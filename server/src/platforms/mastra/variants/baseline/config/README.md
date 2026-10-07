@@ -28,3 +28,8 @@ its instruction. The current user prompt is also omitted from historical context
 and submitted once to `generate()`. Mastra adds no hidden variant instruction.
 Older persisted workflow inputs use the common manifest default when the
 instruction field is absent.
+
+A scripted evaluator may opt into `MastraBaselineRunner.onToolObservation`.
+This process-local callback receives the actual call and registry result, including
+their correlation IDs. Ordinary runners capture no tool content. The evaluator
+owns filtering its synthetic observations and writing safe evidence.
