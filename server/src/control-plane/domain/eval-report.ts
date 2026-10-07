@@ -21,13 +21,15 @@ export interface RunEvalReport {
   readonly schemaVersion: 1;
   readonly suiteVersion: string;
   readonly graderVersion: string;
-  readonly caseId: "B01" | "B02" | "B03" | "B07" | "L01" | "L02" | "L03";
+  readonly caseId: "B01" | "B02" | "B03" | "B04" | "B05" | "B06" | "B07" | "B08" | "B09" | "B10" | "B11" | "B12" | "L01" | "L02" | "L03" | "L04" | "L05" | "L06";
   /** Absent on historical reports means scripted. Live case IDs require explicit classification. */
   readonly mode?: "scripted" | "live";
   readonly trialId: string;
   readonly ownerRunId: string;
   readonly runIds: readonly string[];
   readonly verdict: "pass" | "fail" | "blocked" | "error";
+  /** Pending human rubric assessment is blocked, never an automatically inferred pass. */
+  readonly reviewRequired?: boolean;
   readonly assertions: readonly EvalAssertion[];
   /** Eval-owned synthetic tasks only, including sanitized live captures. Never retain unrelated prompts or credentials. */
   readonly observations: readonly EvalJson[];
@@ -47,18 +49,20 @@ export interface RunEvalReport {
 /** Reject unsupported schema versions and malformed verdicts before storing or consuming evidence. */
 export function assertRunEvalReport(value: unknown): asserts value is RunEvalReport {
   if (!record(value) || value.schemaVersion !== 1 ||
-      !["B01", "B02", "B03", "B07", "L01", "L02", "L03"].includes(String(value.caseId)) ||
+      !["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B09", "B10", "B11", "B12", "L01", "L02", "L03", "L04", "L05", "L06"].includes(String(value.caseId)) ||
       !["pass", "fail", "blocked", "error"].includes(String(value.verdict))) invalid();
-  const liveCase = ["L01", "L02", "L03"].includes(String(value.caseId));
+  const liveCase = ["L01", "L02", "L03", "L04", "L05", "L06"].includes(String(value.caseId));
   if ((value.mode !== undefined && value.mode !== "scripted" && value.mode !== "live") ||
       (liveCase ? value.mode !== "live" : value.mode === "live")) invalid();
+  if (value.reviewRequired !== undefined && (typeof value.reviewRequired !== "boolean" ||
+      (value.reviewRequired && value.verdict !== "blocked"))) invalid();
   for (const key of ["suiteVersion", "graderVersion", "trialId", "ownerRunId"]) {
     if (!text(value[key])) invalid();
   }
-  if (!Array.isArray(value.runIds) || value.runIds.length === 0 || value.runIds.length > 2 ||
+  if (!Array.isArray(value.runIds) || value.runIds.length === 0 || value.runIds.length > 16 ||
       value.runIds.some((id) => !text(id)) || new Set(value.runIds).size !== value.runIds.length ||
       !value.runIds.includes(value.ownerRunId) ||
-      (!["B03", "B07", "L03"].includes(String(value.caseId)) && value.runIds.length !== 1)) invalid();
+      (!["B03", "B04", "B06", "B07", "B08", "B09", "B11", "B12", "L03", "L04", "L05", "L06"].includes(String(value.caseId)) && value.runIds.length !== 1)) invalid();
   if (!Array.isArray(value.assertions) || value.assertions.length > 128 ||
       !Array.isArray(value.observations)) invalid();
   for (const assertion of value.assertions) {

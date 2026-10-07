@@ -10,3 +10,11 @@ test("historical schema-v1 reports remain readable and live probes require expli
   assert.throws(() => assertRunEvalReport({ ...report, mode: "live" }), /Invalid/);
   assert.throws(() => assertRunEvalReport({ ...report, caseId: "L01", mode: "live", runIds: ["r", "r2"] }), /Invalid/);
 });
+
+test("expanded reports retain bounded controls and pending human review", () => {
+  assert.doesNotThrow(() => assertRunEvalReport({ ...report, caseId: "B04", suiteVersion: "2", runIds: ["r", "r2", "r3", "r4"] }));
+  assert.doesNotThrow(() => assertRunEvalReport({ ...report, caseId: "B07", suiteVersion: "2", runIds: ["r", "r2", "r3"] }));
+  assert.doesNotThrow(() => assertRunEvalReport({ ...report, caseId: "L05", mode: "live", verdict: "blocked", reviewRequired: true, runIds: ["r", "control"] }));
+  assert.throws(() => assertRunEvalReport({ ...report, caseId: "L05", mode: "live", reviewRequired: true }), /Invalid/);
+  assert.throws(() => assertRunEvalReport({ ...report, caseId: "B04", runIds: Array.from({ length: 17 }, (_, index) => index === 0 ? "r" : `r${index}`) }), /Invalid/);
+});

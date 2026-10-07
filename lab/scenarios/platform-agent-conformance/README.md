@@ -100,6 +100,34 @@ node --test server/dist/tests/platform-conformance/baseline-graders.test.js
 These pure tests validate grading, not native platform acceptance. B04, B05, B06,
 and B08 through B12 remain unimplemented in this executable slice.
 
+## Expanded behaviour contracts
+
+[`behaviour-evals.mjs`](behaviour-evals.mjs) provides suite and grader version `2`
+for B01 through B12. It delegates the unchanged B01 through B03 contracts to
+version `1`, extends B07 with a native deadline probe, and grades the additional
+session, validation, permission, failure, cancellation, identity, evidence and
+uncertainty cases. Its [declarations](behaviour-evals.d.mts) define the receipt types.
+
+These contracts are not yet wired to `eval:baseline`. The module performs no
+execution. The eventual driver must collect actual requests, dispatches,
+rejections, fixture snapshots and lifecycle evidence through native runners.
+Integrity receipts must come from inspecting retained files and projection output.
+A missing required subcase fails; an unrelated failure does not satisfy an expected
+failure category. Repeated cancellation needs evidence of repeated requests.
+
+Schema-v1 reports retain historical compatibility and accept expanded case IDs,
+up to sixteen referenced runs, and L04 through L06 live IDs. A human rubric still
+awaiting assessment uses `reviewRequired: true` with verdict `blocked`.
+
+Run the focused contract controls after building the server:
+
+```bash
+node --test server/dist/tests/platform-conformance/behaviour-graders.test.js server/dist/tests/control-plane/eval-report.test.js
+```
+
+This validates the pure grading and report contracts. It establishes no new native
+platform acceptance results.
+
 ## Controls
 
 - Use the same scenario inputs, model selection, enabled tool list, context policy, and
