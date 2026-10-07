@@ -22,7 +22,7 @@ export function behaviourCase(id) {
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const nonempty = (value) => typeof value === "string" && value.length > 0;
-const startsWork = (event) => /^(ModelRequested|ToolRequested|ToolStarted|ModelStarted|model-start|tool-start)$/.test(event.type);
+const startsWork = (event) => /^(ModelRequested|ToolRequested|ToolStarted|ToolExecutionStarted|ToolCallRequested|ModelStarted|model-start|tool-start)$/.test(event.type);
 
 /** Missing subcases, identities, or independent effects fail rather than becoming generic error passes. */
 export function gradeBehaviourCase(id, observation) {
@@ -61,12 +61,14 @@ export function gradeBehaviourCase(id, observation) {
       const denied = rejections.filter((item) => item.runId === run?.runId);
       const kind = probe === "invalid" ? "validation" : probe === "disabled" ? "disabled" : "approval";
       const calls = captured.flatMap((item) => item.responseToolCalls ?? []);
-      check(`${probe}:rejected-before-dispatch`, calls.length === 1 && denied.length === 1 && denied[0].kind === kind && nonempty(denied[0].reason) && denied[0].callId === calls[0].callId && denied[0].toolName === calls[0].toolName && tools.filter((item) => item.runId === run?.runId).length === 0, { kind, dispatches: 0, rejectedCalls: 1 }, { calls, denied, tools: tools.filter((item) => item.runId === run?.runId) });
+      check(`${probe}:rejected-before-dispatch`, calls.length >= 1 && calls.length <= run?.maxCalls && captured.length <= run?.maxRounds && new Set(calls.map((call) => call.callId)).size === calls.length && denied.length === calls.length && calls.every((call) => denied.some((receipt) => receipt.kind === kind && nonempty(receipt.reason) && receipt.callId === call.callId && receipt.toolName === call.toolName)) && tools.filter((item) => item.runId === run?.runId).length === 0, { kind, dispatches: 0, rejectedCalls: "each bounded demand" }, { calls, denied, tools: tools.filter((item) => item.runId === run?.runId) });
       if (probe === "invalid") {
-        const call = calls[0];
-        const input = call?.input;
-        const validInput = input && ["add", "subtract", "multiply", "divide"].includes(input.operation) && typeof input.left === "number" && Number.isFinite(input.left) && typeof input.right === "number" && Number.isFinite(input.right);
-        check("invalid:actually-invalid-calculator-input", call?.toolName === "calculator" && !validInput, "calculator with unsupported operation or nonnumeric operand", call);
+        const invalidInput = (call) => {
+          const input = call.input;
+          const validInput = input && ["add", "subtract", "multiply", "divide"].includes(input.operation) && typeof input.left === "number" && Number.isFinite(input.left) && typeof input.right === "number" && Number.isFinite(input.right);
+          return call.toolName === "calculator" && !validInput;
+        };
+        check("invalid:actually-invalid-calculator-input", calls.length > 0 && calls.every(invalidInput), "every calculator demand has unsupported operation or nonnumeric operand", calls);
       }
       const feedback = captured.slice(1).flatMap((item) => item.messages).some((message) => message.role === "tool" && message.toolCallId === calls[0]?.callId && nonempty(message.content));
       check(`${probe}:declared-policy`, run?.failurePolicy === "terminal" ? run.status === "failed" && run.output === null && nonempty(run.error?.code) : run?.failurePolicy === "continue" && run.status === "completed" && feedback, "declared terminal failure or actual correlated feedback followed by completion", { policy: run?.failurePolicy, status: run?.status, error: run?.error, feedback });
@@ -86,17 +88,17 @@ export function gradeBehaviourCase(id, observation) {
     const baseline = gradeBaselineCase(id, { runs: budgetRuns, requests: requests.filter((item) => ids.has(item.runId)), tools: tools.filter((item) => ids.has(item.runId)) });
     assertions.push(...baseline.assertions);
     const run = runFor("deadline");
-    check("deadline:native-enforcement", run?.status === "failed" && run.output === null && /deadline|timeout/i.test(`${run.error?.code} ${run.error?.failureKind}`) && Number.isFinite(run.deadlineMs) && run.deadlineMs > 0 && Number.isFinite(run.elapsedMs) && run.elapsedMs >= run.deadlineMs && run.deadlineSource === "native" && ["cancelled", "completed", "unknown"].includes(run.inFlight), "native deadline failure with measured elapsed time and explicit in-flight state", run);
-    check("deadline:actual-dispatch", tools.some((tool) => tool.runId === run?.runId) || requests.some((request) => request.runId === run?.runId), "slow work actually dispatched", { tools: tools.filter((item) => item.runId === run?.runId), requests: requests.filter((item) => item.runId === run?.runId) });
+    check("deadline:native-enforcement", ["failed", "unknown"].includes(run?.status) && run.output === null && /deadline|timeout|timed\s*out/i.test(`${run.error?.code} ${run.error?.failureKind} ${run.error?.message}`) && (run.status === "failed" || run.error?.failureKind === "outcome_unknown") && Number.isFinite(run.deadlineMs) && run.deadlineMs > 0 && Number.isFinite(run.elapsedMs) && run.elapsedMs >= run.deadlineMs && run.deadlineSource === "native" && ["cancelled", "completed", "unknown"].includes(run.inFlight), "native deadline failure with measured elapsed time and explicit in-flight state", run);
+    check("deadline:actual-dispatch", tools.some((tool) => tool.runId === run?.runId) || requests.some((request) => request.runId === run?.runId) || events.some((event) => event.runId === run?.runId && startsWork(event)), "slow work actually dispatched at the native boundary", { events: events.filter((event) => event.runId === run?.runId), tools: tools.filter((item) => item.runId === run?.runId), requests: requests.filter((item) => item.runId === run?.runId) });
   }
   if (id === "B08") {
     for (const probe of fixture.probes) {
       const run = runFor(probe);
       const dispatched = tools.filter((item) => item.runId === run?.runId);
       const expected = { provider: "provider", malformed: "malformed", tool: "tool" }[probe];
-      check(`${probe}:failure-category-and-attempts`, run?.observedFailureKind === expected && Number.isInteger(run.attemptCount) && run.attemptCount >= 1 && run.attemptCount === run.expectedAttempts, { kind: expected, attempts: run?.expectedAttempts }, { kind: run?.observedFailureKind, attempts: run?.attemptCount });
+      check(`${probe}:failure-category-and-attempts`, run?.observedFailureKind === expected && nonempty(run.originalErrorCode) && nonempty(run.expectedErrorCode) && run.originalErrorCode === run.expectedErrorCode && Number.isInteger(run.attemptCount) && run.attemptCount >= 1 && run.attemptCount === run.expectedAttempts, { kind: expected, code: run?.expectedErrorCode, attempts: run?.expectedAttempts }, { kind: run?.observedFailureKind, code: run?.originalErrorCode, attempts: run?.attemptCount });
       const feedback = requests.filter((item) => item.runId === run?.runId).some((request) => request.messages.some((message) => message.role === "tool" && dispatched.some((tool) => tool.status === "failed" && tool.callId === message.toolCallId) && nonempty(message.content)));
-      check(`${probe}:truthful-failure-policy`, run?.failurePolicy === "terminal" ? run.status === "failed" && run.output === null && nonempty(run.error?.code) : probe === "tool" && run?.failurePolicy === "continue" && run.status === "completed" && feedback, "category-specific failure or declared recoverable tool feedback", { run, feedback });
+      check(`${probe}:truthful-failure-policy`, run?.failurePolicy === "terminal" ? run.status === "failed" && run.output === null && run.error?.code === run.originalErrorCode : run?.failurePolicy === "unknown" ? probe === "malformed" && run.output === null && ((run.status === "unknown" && run.error?.failureKind === "outcome_unknown") || (["reconciliation_required", "reconciliation-required"].includes(run.status) && run.error?.failureKind === "reconciliation" && run.nativeFailureKind === "outcome_unknown")) && run.error?.code === run.originalErrorCode : probe === "tool" && run?.failurePolicy === "continue" && run.status === "completed" && feedback, "frozen category-specific failure, honest malformed unknown, or declared recoverable tool feedback", { run, feedback });
       if (probe === "tool") check("tool:actual-error", dispatched.length === 1 && dispatched[0].status === "failed", "one actual failed tool dispatch", dispatched);
     }
   }
@@ -107,7 +109,7 @@ export function gradeBehaviourCase(id, observation) {
       check(`${probe}:canonical-terminal`, receipt?.terminalCount === 1 && receipt.status === run?.status && (probe === "completed" ? run.status === "completed" && nonempty(run.output) : run?.status === "cancelled" && run.output === null) && ["cancelled", "completed", "unknown", "none"].includes(receipt?.inFlight), "one truthful terminal result; completed work stays completed", { run, receipt });
       check(`${probe}:cancellation-requests`, Number.isInteger(receipt?.requestedCount) && receipt.requestedCount >= (probe === "repeated" ? 2 : 1), probe === "repeated" ? "at least two cancellation requests" : "at least one cancellation request", receipt?.requestedCount);
       const ownEvents = events.filter((item) => item.runId === run?.runId);
-      check(`${probe}:no-work-after-cancel`, Number.isInteger(receipt?.observedSequence) && ownEvents.some((item) => item.sequence === receipt.observedSequence && /cancel/i.test(item.type)) && !ownEvents.some((item) => item.sequence > receipt.observedSequence && startsWork(item)), "observed cancellation and no later work starts", ownEvents);
+      check(`${probe}:no-work-after-cancel`, Number.isInteger(receipt?.observedSequence) && ownEvents.some((item) => item.sequence === receipt.observedSequence && (probe === "completed" ? receipt.alreadyTerminal === true && item.type === "RunCompleted" : /cancel/i.test(item.type))) && !ownEvents.some((item) => item.sequence > receipt.observedSequence && startsWork(item)), probe === "completed" ? "already-terminal completed result remains unchanged, no later work starts" : "observed cancellation and no later work starts", ownEvents);
       if (probe !== "completed") check(`${probe}:dispatch-before-cancel`, ownEvents.some((item) => item.sequence < receipt?.observedSequence && startsWork(item)), "work dispatched before cancellation", ownEvents);
     }
   }

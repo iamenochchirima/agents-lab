@@ -2,8 +2,13 @@ import type { BaselineRun, BaselineObservation, BaselineAssertion, BaselineCase 
 export type BehaviourCaseId = "B01" | "B02" | "B03" | "B04" | "B05" | "B06" | "B07" | "B08" | "B09" | "B10" | "B11" | "B12";
 export interface BehaviourRun extends Omit<BaselineRun, "probe"> {
   probe?: string;
-  failurePolicy?: "terminal" | "continue";
+  failurePolicy?: "terminal" | "continue" | "unknown";
   approvalGranted?: boolean;
+  /** Original boundary code and frozen native expectation, including parser uncertainty. */
+  originalErrorCode?: string;
+  /** Original native ModelFailed/ProviderError category before control-plane reconciliation mapping. */
+  nativeFailureKind?: string;
+  expectedErrorCode?: string;
   observedFailureKind?: "provider" | "malformed" | "tool";
   attemptCount?: number;
   expectedAttempts?: number;
@@ -27,7 +32,7 @@ export interface AdmissionReceipt {
   observedUnknown?: boolean;
   resolved?: boolean;
 }
-export interface CancellationReceipt { runId: string; probe: "during" | "completed" | "repeated"; observedSequence: number; requestedCount: number; status: string; terminalCount: number; inFlight: "cancelled" | "completed" | "unknown" | "none" }
+export interface CancellationReceipt { runId: string; probe: "during" | "completed" | "repeated"; observedSequence: number; requestedCount: number; alreadyTerminal?: boolean; status: string; terminalCount: number; inFlight: "cancelled" | "completed" | "unknown" | "none" }
 /** Driver derives these facts from the actual stored files and projection output. */
 export interface IntegrityReceipt {
   runId: string;
