@@ -78,3 +78,9 @@ abortable operation deadline combined with the Restate attempt-completed signal.
 The resulting timeout is journaled as a non-retryable model failure with its
 request observation; this measures the local adapter operation, not an overall
 Restate workflow deadline.
+
+Provider rejection and malformed-response directives use an injected local
+transport response with the actual OpenRouter adapter decoder. No external
+provider request is made. The observation retains `faultKind` separately from
+the original decoder error code (`OPENROUTER_HTTP_403` or
+`OPENROUTER_INVALID_RESPONSE`).

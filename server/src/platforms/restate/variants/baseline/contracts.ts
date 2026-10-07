@@ -75,6 +75,7 @@ export interface ModelToolCall {
 
 /** Bounded synthetic eval evidence, never authentication headers. */
 export interface ModelEvalObservation {
+  readonly faultKind?: "provider" | "malformed";
   readonly messages: readonly ModelMessage[];
   readonly systemInstruction: string;
   readonly toolCalls: readonly ModelToolCall[];
