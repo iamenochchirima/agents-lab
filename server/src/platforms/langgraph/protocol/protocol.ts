@@ -15,6 +15,7 @@ export type LangGraphFailureKind =
   | "reconciliation";
 
 export interface LangGraphStartRequest {
+  readonly liveEval?: boolean;
   readonly protocolVersion: typeof LANGGRAPH_PROTOCOL_VERSION;
   readonly runId: string;
   readonly sessionId?: string;

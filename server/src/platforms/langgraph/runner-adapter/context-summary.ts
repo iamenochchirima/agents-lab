@@ -10,6 +10,7 @@ const MAX_SUMMARY_CHARS = 100_000;
 const MAX_FAKE_SUMMARY_CHARS = 4_000;
 
 export type LangGraphContextSummaryErrorCode =
+  | "LIVE_EVAL_COMPACTION_DISABLED"
   | "OPENROUTER_API_KEY_MISSING"
   | "OPENROUTER_SUMMARY_CANCELLED"
   | "OPENROUTER_SUMMARY_OUTCOME_UNKNOWN"
@@ -30,6 +31,7 @@ export class LangGraphContextSummaryError extends Error {
 }
 
 export interface LangGraphContextSummaryOptions {
+  readonly liveEval?: boolean;
   readonly provider: "fake" | "openrouter";
   readonly model: string;
   readonly apiKey?: string;
@@ -50,6 +52,9 @@ export interface LangGraphContextSummaryOptions {
 export function createLangGraphContextSummaryGenerator(
   options: LangGraphContextSummaryOptions,
 ): ContextSummaryGenerator {
+  if (options.liveEval) {
+    return { summarize: async () => { throw new LangGraphContextSummaryError("LIVE_EVAL_COMPACTION_DISABLED", "Live development probes cannot dispatch an unobserved summary request."); } };
+  }
   if (options.provider === "fake") {
     return { summarize: (request) => Promise.resolve(extractiveSummary(request)) };
   }

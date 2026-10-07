@@ -112,6 +112,8 @@ class ConnectionBinding(ProtocolModel):
 
 
 class StartRunRequest(ProtocolModel):
+    # Only synthetic live evals opt into bounded request evidence and free routing.
+    live_eval: bool = False
     protocol_version: Literal[PROTOCOL_VERSION] = Field(default=PROTOCOL_VERSION)
     run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     session_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")

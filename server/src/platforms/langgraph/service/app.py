@@ -138,6 +138,7 @@ class LangGraphService:
             with SqliteSaver.from_conn_string(str(self.config.database_path)) as checkpointer:
                 graph = build_baseline_graph(
                     model=model,
+                    live_eval=request.live_eval,
                     emit=emit,
                     is_cancelled=cancel_event.is_set,
                     run_id=request.run_id,
@@ -390,6 +391,7 @@ def fingerprint(request: dict[str, Any]) -> str:
         key: request.get(key)
         for key in (
             "run_id",
+            "live_eval",
             "session_id",
             "client_turn_id",
             "prompt",

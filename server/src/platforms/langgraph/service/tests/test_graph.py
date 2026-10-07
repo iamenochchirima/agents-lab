@@ -795,3 +795,43 @@ def test_development_eval_captures_native_requests_and_dispatches(fixture: str, 
         result = next(message for message in requests[1]["observation"]["messages"] if message["role"] == "tool")
         assert result["toolCallId"] == tools[0]["toolCallId"]
         assert result["content"] == tools[0]["output"]
+
+
+def test_live_openrouter_records_actual_mapping_and_zero_price_controls() -> None:
+    requests: list[dict] = []
+    state = {**_openrouter_state(), "_live_eval": True}
+    model = ModelConfig(provider="openrouter", model="google/gemma-4-31b-it:free", api_key="test-secret", timeout_ms=5000)
+    body = json.dumps({"id": "provider1", "model": "actual-model", "provider": "actual-provider", "choices": [{"message": {"content": None, "tool_calls": [{"id": "call1", "function": {"name": "calculator", "arguments": '{"operation":"add","left":17,"right":25}'}}]}}]}).encode()
+
+    def transport(request, **_kwargs):
+        requests.append(json.loads(request.data))
+        return _FakeProviderResponse(body)
+
+    with patch.object(graph_module.urllib_request, "urlopen", side_effect=transport):
+        response = complete_openrouter_response(model, state, lambda: False, ["calculator"])
+    sent = requests[0]
+    assert sent["model"] == model.model
+    assert sent["max_tokens"] == 512
+    assert sent["provider"] == {"require_parameters": True, "allow_fallbacks": False, "max_price": {"prompt": 0, "completion": 0, "request": 0, "image": 0}}
+    receipt = state["_live_eval_observation"]
+    assert receipt["providerRequest"] == sent
+    assert receipt["toolCalls"][0]["arguments"] == {"operation": "add", "left": 17, "right": 25}
+    assert receipt["providerRequestId"] == "provider1"
+    assert receipt["providerModel"] == "actual-model"
+    assert receipt["providerName"] == "actual-provider"
+    assert response.tool_calls[0].tool_call_id == "call1"
+    assert "test-secret" not in json.dumps(receipt)
+
+
+def test_live_openrouter_refuses_paid_model_before_transport_and_retains_failed_request() -> None:
+    with patch.object(graph_module.urllib_request, "urlopen") as transport:
+        with pytest.raises(graph_module.ConfigurationError):
+            complete_openrouter_response(_openrouter_model(), {**_openrouter_state(), "_live_eval": True}, lambda: False, [])
+        transport.assert_not_called()
+    state = {**_openrouter_state(), "_live_eval": True}
+    model = ModelConfig(provider="openrouter", model="google/gemma-4-31b-it:free", api_key="test-secret", timeout_ms=5000)
+    with patch.object(graph_module.urllib_request, "urlopen", side_effect=graph_module.urllib_error.URLError("lost response")) as transport:
+        with pytest.raises(OutcomeUnknownError):
+            complete_openrouter_response(model, state, lambda: False, ["calculator"])
+        assert transport.call_count == 1
+    assert state["_live_eval_observation"]["providerRequest"]["model"] == model.model

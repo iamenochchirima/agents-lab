@@ -89,3 +89,10 @@ test("OpenRouter context summaries do not expose upstream error bodies", async (
       && !error.message.includes("private provider diagnostic"),
   );
 });
+
+test("live eval compaction refuses an unobserved provider dispatch", async () => {
+  let dispatched = false;
+  const summary = createLangGraphContextSummaryGenerator({ liveEval: true, provider: "openrouter", model: "google/gemma-4-31b-it:free", apiKey: "test-secret", fetchImplementation: async () => { dispatched = true; return Response.json({}); } });
+  await assert.rejects(summary.summarize(request), /unobserved summary request/);
+  assert.equal(dispatched, false);
+});

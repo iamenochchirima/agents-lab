@@ -214,6 +214,7 @@ def build_baseline_graph(
     turn_id: str | None = None,
     max_rounds: int = 6,
     max_calls: int = 8,
+    live_eval: bool = False,
 ):
     enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name in {"calculator", "fixture_lookup", "fixture_write", "mcp_fixture_lookup"}]
     approved_tools = [name for name in (approved_tool_names or []) if name in enabled_tools]
@@ -245,7 +246,16 @@ def build_baseline_graph(
                 "requestSent": model.provider == "openrouter" or not model.model.startswith("fake-pre-dispatch"),
             },
         )
-        response = complete_model(model, {**state, "messages": messages}, attempt, is_cancelled, enabled_tools, approved_tools)
+        request_state = {**state, "messages": messages, "_live_eval": live_eval}
+        try:
+            response = complete_model(model, request_state, attempt, is_cancelled, enabled_tools, approved_tools)
+        except Exception as exc:
+            if live_eval and request_state.get("_live_eval_observation"):
+                emit("EvalModelObserved", {"round": round_number, "attempt": attempt,
+                     "observation": {**request_state["_live_eval_observation"], "errorCode": getattr(exc, "code", "LANGGRAPH_PROVIDER_ERROR")}})
+            raise
+        if live_eval and request_state.get("_live_eval_observation"):
+            emit("EvalModelObserved", {"round": round_number, "attempt": attempt, "observation": request_state["_live_eval_observation"]})
         if model.provider == "fake" and model.model in EVAL_MODELS:
             # Capture only explicit synthetic fixtures at the actual model node.
             emit("EvalModelObserved", {
@@ -350,7 +360,7 @@ def build_baseline_graph(
                 message = _bounded_text(str(exc), 512)
                 emit("ToolExecutionFailed", {**payload, "code": "TOOL_EXECUTION_FAILED", "message": message})
                 raise ProviderError("The selected tool failed.") from exc
-            if model.provider == "fake" and model.model in EVAL_MODELS:
+            if live_eval or (model.provider == "fake" and model.model in EVAL_MODELS):
                 emit("EvalToolObserved", {
                     "toolCallId": call.tool_call_id, "name": call.name, "arguments": call.arguments,
                     "round": state.get("round_count", 0), "status": result.status, "output": result.content,
@@ -386,7 +396,7 @@ def build_baseline_graph(
     builder.add_node(
         "model",
         call_model,
-        retry_policy=RetryPolicy(max_attempts=max_attempts, jitter=False, retry_on=retry_on),
+        retry_policy=RetryPolicy(max_attempts=1 if live_eval else max_attempts, jitter=False, retry_on=retry_on),
     )
     builder.add_node("tools", execute_tools)
     builder.add_edge(START, "model")
@@ -535,6 +545,23 @@ def complete_openrouter_response(
     if definitions:
         payload_data["tools"] = definitions
         payload_data["tool_choice"] = "auto"
+    if state.get("_live_eval"):
+        if model.model not in {"google/gemma-4-31b-it:free", "nvidia/nemotron-3.5-lightning:free"}:
+            raise ConfigurationError("Live evals require an exact :free model ID.")
+        payload_data["provider"] = {"require_parameters": True, "allow_fallbacks": False,
+                                    "max_price": {"prompt": 0, "completion": 0, "request": 0, "image": 0}}
+        payload_data["max_tokens"] = 512
+        # This state copy is local to this call, never a persisted graph input.
+        state["_live_eval_observation"] = {
+            "systemInstruction": state.get("system_instruction", ""),
+            "messages": [
+                {"role": message["role"], "content": message.get("content") or "",
+                 **({"toolCallId": message["tool_call_id"]} if "tool_call_id" in message else {}),
+                 **({"toolCalls": [{"toolCallId": call["id"], "name": call["name"], "arguments": call["arguments"]}
+                                   for call in message["tool_calls"]]} if message.get("tool_calls") else {})}
+                for message in messages],
+            "tools": definitions, "providerRequest": payload_data, "toolCalls": [],
+        }
     payload = json.dumps(payload_data, separators=(",", ":")).encode()
     request = urllib_request.Request(
         f"{model.base_url.rstrip('/')}/chat/completions",
@@ -563,7 +590,14 @@ def complete_openrouter_response(
     except (urllib_error.URLError, TimeoutError, OSError) as exc:
         raise OutcomeUnknownError("The OpenRouter response outcome could not be established.") from exc
 
-    return parse_openrouter_response(body, tool_names)
+    result = parse_openrouter_response(body, tool_names)
+    if state.get("_live_eval_observation"):
+        state["_live_eval_observation"].update({
+            "toolCalls": [{"toolCallId": call.tool_call_id, "name": call.name, "arguments": call.arguments} for call in result.tool_calls],
+            "providerRequestId": body.get("id"), "providerModel": body.get("model"),
+            "providerName": body.get("provider"), "output": result.output,
+        })
+    return result
 
 
 def parse_openrouter_response(body: Any, tool_names: list[str]) -> ModelResponse:
