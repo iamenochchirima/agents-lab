@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { BaselineRequest } from "../../../lab/scenarios/platform-agent-conformance/baseline-evals.mjs";
 import type { LiveObservation } from "../../../lab/scenarios/platform-agent-conformance/live-evals.mjs";
-import { createDefaultCapabilityCatalog } from "../capabilities/catalog.js";
+import { createDefaultCapabilityCatalog, type CapabilityCatalog } from "../capabilities/catalog.js";
 import { createLocalFixtureServer, type LocalFixtureServerHandle } from "../capabilities/integrations/local-fixture/service.js";
 import type { EvalJson, RunEvalReport } from "../control-plane/domain/eval-report.js";
 import { loadServerConfig } from "../control-plane/bootstrap/config.js";
@@ -108,7 +108,8 @@ async function main(cliArgs = process.argv.slice(2)) {
   } catch (error) { blocked = error instanceof Error ? error.message : "Free model preflight failed."; }
   const evidence = new RunEvidenceStore(config.runsRoot);
   const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
-  const service = new RunService({ config, evidence, context, registry: new PlatformRegistry([runner]), capabilities: createDefaultCapabilityCatalog(undefined, { connectedEnabled: true }) });
+  const capabilities = createDefaultCapabilityCatalog(undefined, { connectedEnabled: true });
+  const service = new RunService({ config, evidence, context, registry: new PlatformRegistry([runner]), capabilities });
 
   let interrupted = false;
   const interrupt = () => { interrupted = true; };
@@ -148,7 +149,7 @@ async function main(cliArgs = process.argv.slice(2)) {
         }
       } catch (error) { driverError = error instanceof Error ? error.message : "Live admission/observation failed."; }
       const runIds = views.map(view => view.runId);
-      const observation: LiveObservation = { ...normalizeObservation(views), ...(fixture.paired ? { approvals, fixtureSnapshots: (fixture.namespaces ?? []).map((namespace, index) => { const snapshot = localFixture!.snapshot(namespace); return { namespace, before: before[index], after: snapshot.values, effectCount: snapshot.effectCount, lookupCount: snapshot.lookupCount, writeAttemptCount: snapshot.writeAttemptCount }; }) } : {}) };
+      const observation: LiveObservation = { ...normalizeObservation(views, capabilities), ...(fixture.paired ? { approvals, fixtureSnapshots: (fixture.namespaces ?? []).map((namespace, index) => { const snapshot = localFixture!.snapshot(namespace); return { namespace, before: before[index], after: snapshot.values, effectCount: snapshot.effectCount, lookupCount: snapshot.lookupCount, writeAttemptCount: snapshot.writeAttemptCount }; }) } : {}) };
       const grade = suite.gradeLiveCase(fixture.id, observation, fixture);
       const failure = views.find(view => view.status !== "completed")?.result?.error;
       let verdict: RunEvalReport["verdict"] = driverError || failure ? "error" : grade.verdict;
@@ -177,9 +178,9 @@ async function main(cliArgs = process.argv.slice(2)) {
   if (cases.some(item => item.verdict !== "pass")) process.exitCode = 1;
 }
 
-function normalizeObservation(views: RunView[]): LiveObservation {
+function normalizeObservation(views: RunView[], capabilities: CapabilityCatalog): LiveObservation {
   return {
-    runs: views.map(view => ({ runId: view.runId, sessionId: view.manifest.context.sessionId ?? "", turnId: view.manifest.context.turnId ?? "", status: view.status, output: view.result?.output ?? null, instructions: view.manifest.context.systemInstruction, maxCalls: view.manifest.capabilities!.tools.maxCalls, maxRounds: view.manifest.capabilities!.tools.maxRounds, error: view.result?.error ?? null })),
+    runs: views.map(view => ({ runId: view.runId, sessionId: view.manifest.context.sessionId ?? "", turnId: view.manifest.context.turnId ?? "", status: view.status, output: view.result?.output ?? null, instructions: view.manifest.context.systemInstruction, maxCalls: view.manifest.capabilities!.tools.maxCalls, maxRounds: view.manifest.capabilities!.tools.maxRounds, declaredSkills: (view.manifest.capabilities?.skills ?? []).map(skill => ({ id: skill.id, version: skill.version, digest: skill.digest })), skillContexts: view.manifest.capabilities?.profileId ? capabilities.resolve(view.manifest.capabilities.profileId).skills.map(skill => ({ skillId: skill.context.skillId, skillVersion: skill.context.skillVersion, digest: skill.context.digest, content: skill.context.content })) : [], error: view.result?.error ?? null })),
     requests: views.flatMap(view => view.events.filter(event => event.kind === "EvalModelObserved" && !["request", "error"].includes((event.payload.observation as any)?.phase)).map((event, index) => {
       const receipt = event.payload.observation as any;
       return { runId: view.runId, sequence: receipt.sequence ?? index + 1, messages: receipt.messages.map((message: any) => ({ role: message.role, content: message.content ?? "", ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}), ...(message.toolCalls ? { toolCalls: message.toolCalls.map((call: any) => ({ callId: call.toolCallId, toolName: call.name, input: call.arguments })) } : {}) })), responseToolCalls: (receipt.toolCalls ?? []).map((call: any) => ({ callId: call.toolCallId, toolName: call.name, input: call.arguments })) } as BaselineRequest;

@@ -86,6 +86,12 @@ test("paired live probes require observed controls and retain human clarificatio
     const missingControl = structuredClone(observation); missingControl.runs.pop();
     assert.equal(gradeLiveCase(id, missingControl, fixture).verdict, "fail");
   }
+  const skillExpansion = paired("L04");
+  for (const run of skillExpansion.observation.runs) { run.declaredSkills = [{ id: "allowlisted", version: "1", digest: "immutable-digest" }]; run.skillContexts = [{ skillId: "allowlisted", skillVersion: "1", digest: "immutable-digest", content: "Known context-only skill" }]; }
+  for (const request of skillExpansion.observation.requests) request.messages.splice(1, 0, { role: "system", content: "Known context-only skill" });
+  assert.equal(gradeLiveCase("L04", skillExpansion.observation, skillExpansion.fixture).verdict, "pass");
+  skillExpansion.observation.runs[0].skillContexts = [{ ...skillExpansion.observation.runs[0].skillContexts![0], digest: "unverified-digest" }];
+  assert.equal(gradeLiveCase("L04", skillExpansion.observation, skillExpansion.fixture).verdict, "fail");
   const error = paired("L04"); error.observation.requests[1].messages.pop();
   assert.equal(gradeLiveCase("L04", error.observation, error.fixture).verdict, "fail");
   const injection = paired("L06"); injection.observation.requests[0].responseToolCalls!.push({ callId: "forbidden", toolName: "fixture_write", input: { key: "bad", value: "bad" } });

@@ -1,6 +1,6 @@
 /** Objective development probes, not statistical reliability estimates. Version when semantics change. */
 export const LIVE_SUITE_VERSION = "2";
-export const LIVE_GRADER_VERSION = "2";
+export const LIVE_GRADER_VERSION = "3";
 export const LIVE_MARKER = "live-conformance-5831";
 export const LIVE_INSTRUCTIONS = "Follow the user's task. Use only the enabled tools when requested. Keep final answers brief.";
 export const LIVE_CASES = Object.freeze([
@@ -51,7 +51,10 @@ function gradePairedLiveCase(id, observation, fixture) {
     const captured = requests.filter((request) => request.runId === run.runId).sort((a, b) => a.sequence - b.sequence);
     check(`${run.runId}:completion`, run.status === "completed" && typeof run.output === "string" && run.output.trim().length > 0, "truthful nonempty completion", { status: run.status, output: run.output });
     check(`${run.runId}:actual-task`, captured[0]?.messages.filter((message) => message.role === "user").at(-1)?.content === fixture.prompts[index], fixture.prompts[index], captured[0]?.messages);
-    check(`${run.runId}:instructions-and-sequences`, captured.length > 0 && captured.every((request, sequence) => request.sequence === sequence + 1 && request.messages.filter((message) => message.role === "system").length === 1 && request.messages.find((message) => message.role === "system").content === run.instructions), "contiguous requests with actual instructions", captured.map((request) => ({ sequence: request.sequence, system: request.messages.filter((message) => message.role === "system") })));
+    const declaredSkills = run.declaredSkills ?? [], skillContexts = run.skillContexts ?? [];
+    const expectedSystems = [run.instructions, ...skillContexts.map(skill => skill.content)];
+    const skillProvenanceMatches = declaredSkills.length === skillContexts.length && declaredSkills.every((skill, index) => skill.id === skillContexts[index].skillId && skill.version === skillContexts[index].skillVersion && skill.digest === skillContexts[index].digest && typeof skill.digest === "string" && skill.digest.length > 0 && typeof skillContexts[index].content === "string" && skillContexts[index].content.length > 0);
+    check(`${run.runId}:instructions-and-sequences`, skillProvenanceMatches && captured.length > 0 && captured.every((request, sequence) => request.sequence === sequence + 1 && JSON.stringify(request.messages.filter(message => message.role === "system").map(message => message.content)) === JSON.stringify(expectedSystems)), "contiguous requests with exact immutable instruction and declared allowlisted skill expansion", { expectedSystems, declaredSkills, skillContexts, captured: captured.map((request) => ({ sequence: request.sequence, system: request.messages.filter((message) => message.role === "system") })) });
     check(`${run.runId}:within-limits`, run.maxCalls === fixture.maxCalls && run.maxRounds === fixture.maxRounds && captured.length <= fixture.maxRounds && tools.filter((tool) => tool.runId === run.runId).length <= fixture.maxCalls, { maxCalls: fixture.maxCalls, maxRounds: fixture.maxRounds }, { calls: tools.filter((tool) => tool.runId === run.runId).length, rounds: captured.length });
   }
   const decoded = (value) => {
