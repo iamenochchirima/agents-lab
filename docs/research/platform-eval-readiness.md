@@ -1,8 +1,13 @@
 # Platform eval readiness and next implementation
 
-This records the pre-implementation investigation. For the implemented four-case
-[development command and current limits](../../lab/experiments/agent-harness-baseline/development-evals.md),
-see the [implementation handoff](../../development/implementation-plans/platforms/active/agent-harness-baseline-evals.md).
+This records the pre-implementation investigation dated 2026-10-07. Its findings
+and proposed first slice remain historical evidence. The current implementation
+provides B01–B12 scripted cases and L01–L06 free-model probes on the four priority
+native profiles. See the [current commands and interpretation limits](../../lab/experiments/agent-harness-baseline/development-evals.md).
+
+Passing a development trial does not establish statistical reliability or the
+optional durability capabilities. Retained reports distinguish scripted guarantees,
+real model decisions, provider failures and pending human assessment.
 
 Investigated: 2026-10-07. Repository baseline: `main` at
 `3d89689e4df5762341f416c606475e374cdbc80b`, with existing uncommitted eval UI/docs

@@ -1,7 +1,9 @@
 # Agent harness baseline evaluation
 
-Status: protocol version 1, 2026-10-07. The four-case development slice is executable;
-full core acceptance remains pending. See [run and inspection instructions](development-evals.md). Start with the [case specification](../../scenarios/platform-agent-conformance/eval-cases.md)
+Status: protocol version 1, updated 2026-10-08. B01–B12 scripted development
+cases and L01–L06 free-model probes are executable on the four priority profiles.
+The scripted suite is version 2; live task suite version 2 uses grader version 3.
+Saved development trials establish only their observed assertions, not reliability. See [run and inspection instructions](development-evals.md). Start with the [case specification](../../scenarios/platform-agent-conformance/eval-cases.md)
 and [source research](../../../docs/research/platform-agent-evals.md).
 
 ## Question and hypothesis

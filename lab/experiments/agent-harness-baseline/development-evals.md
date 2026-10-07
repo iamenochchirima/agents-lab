@@ -86,9 +86,10 @@ replace the native agent loop.
 - A known failed `fixture_lookup` or `mcp_fixture_lookup` read may become correlated
   feedback for another model step. The fixture error includes actionable detail.
   Writes with unknown effects remain terminal or require reconciliation.
-- Mastra can omit feedback for an unregistered tool. Its scripted denial probe may
-  exhaust the native round budget; the permission grader checks rejection and zero
-  effects rather than requiring invented feedback or a uniform final status.
+- Mastra can omit SDK feedback for an unregistered tool. The B06 synthetic fixture
+  completes after the actual rejection receipt, using the declared continuation
+  policy and zero dispatches; that protocol control does not invent tool feedback.
+  A model that keeps requesting an absent tool can still exhaust the native budget.
 - Malformed Temporal/Restate provider responses retain `OPENROUTER_INVALID_RESPONSE`.
   LangGraph's real decoder retains `LANGGRAPH_OUTCOME_UNKNOWN` and its native unknown
   outcome. Mastra retains the SDK generation error. The injected fault kind and
@@ -276,3 +277,27 @@ remain terminal or require reconciliation, and are never blindly retried.
 The controls measure these bounded tasks, not broad injection resistance or overall
 model quality. Provider failures, unavailable services, model task failures and
 pending human interpretation remain distinct saved outcomes.
+
+### Regrade saved live evidence without model calls
+
+When a grader correction changes how already captured evidence is interpreted,
+create a derived invocation instead of overwriting the original report:
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server run eval:regrade-live -- --invocation retained-live-invocation-id
+```
+
+This bounded command supports grader `3`. It reads one complete live summary,
+verifies its run identities, reconstructs declared skill metadata from immutable
+manifests, and checks that current allowlisted skill content matches those exact
+recorded digests. It reuses captured model/tool observations and fixture snapshots;
+it never dispatches a model, tool or agent run. An unverifiable skill revision
+stops regrading rather than silently supplying changed instructions.
+
+Original `artifacts/eval.json` reports stay immutable. The supported evidence store
+writes a separate immutable `artifacts/eval-grader-3.json`. A new summary retains
+`sourceInvocationId`, grader version, original run IDs and comparison controls.
+Repeating the command reuses an identical grader-3 judgment; disagreement requires
+a new grader version. Original provider/runtime errors remain errors, and missing
+identity interpretation remains blocked for human review. The frontend links each
+summary to its corresponding report revision.
