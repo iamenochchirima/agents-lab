@@ -15,6 +15,8 @@ export const RESTATE_WORKFLOW_NAME = "AgentLabRestateBaseline";
 export const RESTATE_WORKFLOW_SOURCE = "restate-workflow";
 
 export interface RestateWorkflowInput {
+  /** Synthetic live evals alone may retain mapped provider requests. */
+  readonly liveEval?: boolean;
   readonly runId: string;
   readonly turnId?: string;
   readonly prompt: string;
@@ -47,6 +49,7 @@ export interface RestateWorkflowResult extends RunResult {
 }
 
 export interface ModelRequest {
+  readonly liveEval?: boolean;
   readonly runId: string;
   readonly prompt: string;
   readonly systemInstruction: string;
@@ -70,13 +73,22 @@ export interface ModelToolCall {
   readonly arguments: unknown;
 }
 
+/** Bounded synthetic eval evidence, never authentication headers. */
+export interface ModelEvalObservation {
+  readonly messages: readonly ModelMessage[];
+  readonly systemInstruction: string;
+  readonly toolCalls: readonly ModelToolCall[];
+  readonly tools?: readonly ToolDefinition[];
+  readonly providerRequest?: Readonly<Record<string, unknown>>;
+  readonly providerRequestId?: string | null;
+  readonly providerModel?: string | null;
+  readonly providerName?: string | null;
+  readonly output?: string | null;
+  readonly errorCode?: string;
+}
+
 export interface ModelSuccess {
-  /** Present only for explicitly selected synthetic eval fixtures. */
-  readonly evalObservation?: {
-    readonly messages: readonly ModelMessage[];
-    readonly systemInstruction: string;
-    readonly toolCalls: readonly ModelToolCall[];
-  };
+  readonly evalObservation?: ModelEvalObservation;
   readonly kind: "success";
   readonly output: string | null;
   readonly toolCalls: readonly ModelToolCall[];
@@ -85,6 +97,7 @@ export interface ModelSuccess {
 }
 
 export interface ModelFailure {
+  readonly evalObservation?: ModelEvalObservation;
   readonly kind: "failure";
   readonly code: string;
   readonly message: string;
@@ -112,6 +125,7 @@ export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflo
     : process.env.AGENTLAB_CONTEXT_ROOT?.trim() || "lab/sessions";
   return {
     runId: manifest.runId,
+    ...(manifest.selection?.experimentId === "agent-harness-live" ? { liveEval: true } : {}),
     turnId: manifest.context.turnId,
     prompt: manifest.task.prompt,
     systemInstruction: manifest.context.systemInstruction,

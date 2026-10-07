@@ -159,11 +159,11 @@ export const baselineWorkflow = restate.workflow({
               toolCount: toolDefinitions.length,
             });
             modelResult = await requestModel(ctx, input, round, attempt, messages, toolDefinitions);
-            if (modelResult.kind === "success" && modelResult.evalObservation) {
+            if (modelResult.evalObservation) {
               await record("EvalModelObserved", { round, attempt, observation: modelResult.evalObservation });
             }
 
-            if (modelResult.kind === "failure" && isContextOverflow(modelResult) && input.context && !contextRecoveryUsed) {
+            if (!input.liveEval && modelResult.kind === "failure" && isContextOverflow(modelResult) && input.context && !contextRecoveryUsed) {
               contextRecoveryUsed = true;
               await record("ContextOverflowDetected", {
                 code: modelResult.code,
@@ -429,7 +429,7 @@ export const baselineWorkflow = restate.workflow({
             );
             await completePhase(toolPhase);
             await recordTool(toolEventKind(toolResult), call, toolPayload(toolResult, round));
-            if (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-")) {
+            if (input.liveEval || (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-"))) {
               await record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
             }
             messages = [...messages, toolResultMessage(resultId, call.name, toolResult.content)];
@@ -541,6 +541,7 @@ async function requestModel(
       const result = await model.complete(
         {
           runId: input.runId,
+          liveEval: input.liveEval,
           prompt: input.prompt,
           systemInstruction: input.systemInstruction,
           provider: input.model.provider,
@@ -580,6 +581,7 @@ async function prepareContextSnapshot(
       const context = new ContextService(store, new CharacterTokenEstimator());
       const summarizer: ContextSummaryGenerator = {
         async summarize(request) {
+          if (input.liveEval) throw new Error("LIVE_EVAL_COMPACTION_DISABLED: live development probes cannot dispatch an unobserved summary request.");
           const adapter = createRestateModel(input.model.provider, input.model.model, {
             openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || null,
             openRouterBaseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",

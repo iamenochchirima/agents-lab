@@ -1,3 +1,4 @@
+import { FREE_PROVIDER_ROUTING, LIVE_MAX_OUTPUT_TOKENS, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type { ModelAdapter, ModelCallResult, ModelMessage, ModelRequest, ModelToolCall } from "../contracts.js";
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -24,17 +25,7 @@ export class OpenRouterRestateModel implements ModelAdapter {
   }
 
   async complete(input: ModelRequest, signal: AbortSignal): Promise<ModelCallResult> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(`${this.options.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.options.apiKey}`,
-          "content-type": "application/json",
-          "http-referer": "https://github.com/agent-harness-lab",
-          "x-title": "Agent Harness Lab",
-        },
-        body: JSON.stringify({
+    const requestBody = {
           model: input.model,
           messages: input.messages.length > 0 ? input.messages.map(toOpenRouterMessage) : [
             { role: "system", content: input.systemInstruction },
@@ -51,7 +42,42 @@ export class OpenRouterRestateModel implements ModelAdapter {
             })),
             tool_choice: "auto",
           } : {}),
-        }),
+        };
+    if (input.liveEval) {
+      Object.assign(requestBody, { provider: FREE_PROVIDER_ROUTING, max_tokens: LIVE_MAX_OUTPUT_TOKENS });
+      try {
+        assertFreeModelRequest(requestBody, input.model);
+      } catch {
+        return { kind: "failure", failureKind: "configuration", code: "LIVE_EVAL_FREE_MODEL_REQUIRED", message: "Live evals require the exact free model and zero-price provider routing.", requestSent: false, retryable: false };
+      }
+    }
+    const result = await this.execute(input, signal, requestBody);
+    if (!input.liveEval) return result;
+    return { ...result, ...(result.kind === "failure" ? { retryable: false } : {}), evalObservation: {
+      ...result.evalObservation,
+      systemInstruction: input.systemInstruction,
+      messages: input.messages ?? [{ role: "system", content: input.systemInstruction }, { role: "user", content: input.prompt }],
+      tools: input.tools ?? [],
+      providerRequest: requestBody,
+      toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
+      providerRequestId: result.kind === "success" ? result.providerRequestId : null,
+      output: result.kind === "success" ? result.output : null,
+      ...(result.kind === "failure" ? { errorCode: result.code } : {}),
+    } };
+  }
+
+  private async execute(input: ModelRequest, signal: AbortSignal, requestBody: Record<string, unknown>): Promise<ModelCallResult> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.options.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.options.apiKey}`,
+          "content-type": "application/json",
+          "http-referer": "https://github.com/agent-harness-lab",
+          "x-title": "Agent Harness Lab",
+        },
+        body: JSON.stringify(requestBody),
         signal,
       });
     } catch (error) {
@@ -126,6 +152,7 @@ export class OpenRouterRestateModel implements ModelAdapter {
       output: message.output,
       toolCalls: message.toolCalls,
       providerRequestId,
+      ...(input.liveEval ? { evalObservation: { systemInstruction: input.systemInstruction, messages: input.messages, toolCalls: message.toolCalls, providerModel: stringValue(body, "model"), providerName: stringValue(body, "provider") } } : {}),
       usage: { inputTokens, outputTokens, totalTokens },
     };
   }
