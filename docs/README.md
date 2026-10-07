@@ -17,5 +17,6 @@ reference harnesses construct, transform and persist model context. Start with H
 with interactive Studio maps of OpenClaw, Pi and Waku Agent. Each map pins its
 source revision and distinguishes optional behavior and coverage limits.
 
-[Lina input architecture](research/lina/input-design.md) records agreed decisions, draft rules, and open
-decisions alongside the Studio architecture workspace.
+[Lina architecture research](research/lina/README.md) links the agreed Input
+decisions, mechanism experiment candidates, and architecture audit alongside
+the Studio architecture workspace.
