@@ -169,6 +169,12 @@ export interface TemporalToolExecutionInput {
 export type TemporalToolExecutionResult = ToolExecutionResult;
 
 export interface ModelSuccess {
+  /** Present only for explicitly selected synthetic eval fixtures. */
+  readonly evalObservation?: {
+    readonly messages: readonly TemporalModelMessage[];
+    readonly systemInstruction: string;
+    readonly toolCalls: readonly TemporalModelToolCall[];
+  };
   readonly kind: "success";
   readonly output: string | null;
   readonly toolCalls?: readonly TemporalModelToolCall[];

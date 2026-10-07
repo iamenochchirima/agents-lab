@@ -8,6 +8,26 @@ const FIXTURE_DELAY_MS = 60_000;
  */
 export class FakeModelAdapter implements ModelAdapter {
   async complete(input: ModelRequestInput, signal: AbortSignal): Promise<ModelCallResult> {
+    if (["fake-eval-completion", "fake-eval-tool", "fake-eval-context", "fake-eval-loop"].includes(input.model)) {
+      const messages = input.messages ?? [];
+      const toolResult = [...messages].reverse().find((message) => message.role === "tool");
+      const toolCalls = input.model === "fake-eval-loop" || (input.model === "fake-eval-tool" && !toolResult)
+        ? [{ toolCallId: `eval-calculator-${messages.filter((message) => message.role === "tool").length + 1}`,
+            name: "calculator", arguments: { operation: "add", left: 17, right: 25 } }]
+        : [];
+      const output = toolCalls.length > 0 ? null
+        : input.model === "fake-eval-tool" ? String(JSON.parse(toolResult?.content ?? "null")?.value ?? "Missing tool result.")
+        : input.model === "fake-eval-context" ? input.prompt.startsWith("Remember") ? "Stored the test value."
+          : messages.some((message) => message.role === "user" && message.content.includes("conformance-4318"))
+            ? "conformance-4318" : "The test value was not present in the context."
+        : "Baseline eval completed.";
+      return {
+        kind: "success", output, toolCalls, providerRequestId: null,
+        usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+        evalObservation: { messages: JSON.parse(JSON.stringify(messages)), systemInstruction: input.systemInstruction, toolCalls },
+      };
+    }
+
     switch (input.model) {
       case "fake-success":
         return success(input, `Fake response: ${input.prompt}`);

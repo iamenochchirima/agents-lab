@@ -295,7 +295,10 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         }
         finishPhase(modelPhase);
 
-        if (result.kind === "success") break;
+        if (result.kind === "success") {
+          if (result.evalObservation) record("EvalModelObserved", { round, attempt, observation: result.evalObservation });
+          break;
+        }
 
         record("ModelFailed", {
           attempt,
@@ -430,6 +433,9 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         }
         finishPhase(toolPhase);
         record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...(toolResult.connection ? { connection: toolResult.connection } : {}), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
+        if (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-")) {
+          record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
+        }
         continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];
         if (toolResult.status !== "completed") {
           const failure = temporalFailure(

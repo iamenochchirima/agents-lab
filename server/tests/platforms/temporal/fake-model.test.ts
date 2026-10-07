@@ -303,3 +303,32 @@ test("OpenRouter adapter rejects oversized assistant output", async () => {
   assert.equal(result.kind, "failure");
   if (result.kind === "failure") assert.equal(result.code, "OPENROUTER_OUTPUT_TOO_LARGE");
 });
+
+
+test("eval fixtures capture mapped messages and consume actual tool feedback", async () => {
+  const adapter = new FakeModelAdapter();
+  const messages: NonNullable<ModelRequestInput["messages"]> = [
+    { role: "system", content: "Observed instruction." },
+    { role: "user", content: "Use the calculator." },
+  ];
+  const first = await adapter.complete({ ...input, model: "fake-eval-tool", systemInstruction: "Observed instruction.", messages }, new AbortController().signal);
+  assert.equal(first.kind, "success");
+  if (first.kind !== "success") return;
+  assert.deepEqual(first.evalObservation?.messages, messages);
+  assert.equal(first.evalObservation?.systemInstruction, "Observed instruction.");
+  assert.equal(first.toolCalls?.[0]?.toolCallId, "eval-calculator-1");
+  const feedback: NonNullable<ModelRequestInput["messages"]> = [...messages,
+    { role: "assistant", content: null, toolCalls: first.toolCalls },
+    { role: "tool", toolCallId: "eval-calculator-1", name: "calculator", content: '{"value":43}' },
+  ];
+  const second = await adapter.complete({ ...input, model: "fake-eval-tool", messages: feedback }, new AbortController().signal);
+  assert.equal(second.kind, "success");
+  if (second.kind === "success") {
+    assert.equal(second.output, "43");
+    assert.deepEqual(second.evalObservation?.messages, feedback);
+  }
+  const loop = await adapter.complete({ ...input, model: "fake-eval-loop", messages: feedback }, new AbortController().signal);
+  assert.equal(loop.kind === "success" ? loop.toolCalls?.[0]?.toolCallId : null, "eval-calculator-2");
+  const normal = await adapter.complete(input, new AbortController().signal);
+  assert.equal(normal.kind === "success" && normal.evalObservation !== undefined, false);
+});
