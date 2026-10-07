@@ -48,6 +48,11 @@ export interface LocalFixtureServerHandle {
   readonly port: number;
   /** Number of MCP tools/call requests received by this fixture. */
   readonly mcpCallCount: number;
+  /** Local evaluator controls are handle-only, never exposed as network admin routes. */
+  seed(namespace: string, records: Readonly<Record<string, string>>): void;
+  snapshot(namespace: string): { namespace: string; values: Record<string, string>; effectCount: number; lookupCount: number; writeAttemptCount: number };
+  failLookup(key: string, message: string, count?: number): void;
+  resetNamespace(namespace: string): void;
   close(): Promise<void>;
 }
 
@@ -65,6 +70,8 @@ export async function createLocalFixtureServer(options: LocalFixtureServerOption
     ["project", "Agent Harness Lab"],
   ]);
   const writes = new Map<string, StoredWrite>();
+  const lookupFailures = new Map<string, { remaining: number; message: string }>();
+  const lookupCounts = new Map<string, number>(), writeCounts = new Map<string, number>();
   const authorizationCodes = new Map<string, AuthorizationCode>();
   const refreshTokens = new Map<string, RefreshRecord>();
   const revokedTokens = new Set<string>();
@@ -73,7 +80,7 @@ export async function createLocalFixtureServer(options: LocalFixtureServerOption
   const mcpCallDelayMs = boundedDelay(options.mcpCallDelayMs ?? 250);
 
   const server = createServer((request, response) => {
-    void handleRequest(request, response, values, writes, authorizationCodes, refreshTokens, revokedTokens, mcpStats, mcpCallBehavior, mcpCallDelayMs);
+    void handleRequest(request, response, values, writes, authorizationCodes, refreshTokens, revokedTokens, mcpStats, mcpCallBehavior, mcpCallDelayMs, lookupFailures, lookupCounts, writeCounts);
   });
   await listen(server, host, port);
   const address = server.address();
@@ -84,6 +91,34 @@ export async function createLocalFixtureServer(options: LocalFixtureServerOption
     port: address.port,
     get mcpCallCount() {
       return mcpStats.callCount;
+    },
+    seed(namespace, records) {
+      assertNamespace(namespace);
+      if (Object.keys(records).length > 32) throw new Error("Fixture seeds are limited to 32 records.");
+      for (const [key, value] of Object.entries(records)) {
+        const fullKey = `${namespace}:${key}`;
+        if (!key || fullKey.length > 64 || typeof value !== "string" || value.length > 512) throw new Error("Fixture seed keys/values exceed their bounds.");
+        values.set(fullKey, value);
+      }
+    },
+    snapshot(namespace) {
+      assertNamespace(namespace);
+      const prefix = `${namespace}:`;
+      return { namespace, values: Object.fromEntries([...values].filter(([key]) => key.startsWith(prefix))),
+        effectCount: [...writes.values()].filter(write => String(JSON.parse(write.fingerprint).key).startsWith(prefix)).length,
+        lookupCount: [...lookupCounts].filter(([key]) => key.startsWith(prefix)).reduce((total, [, count]) => total + count, 0),
+        writeAttemptCount: [...writeCounts].filter(([key]) => key.startsWith(prefix)).reduce((total, [, count]) => total + count, 0) };
+    },
+    failLookup(key, message, count = 1) {
+      if (!key || key.length > 64 || !message || message.length > 256 || !Number.isSafeInteger(count) || count < 1 || count > 3) throw new Error("Invalid bounded fixture failure.");
+      lookupFailures.set(key, { remaining: count, message });
+    },
+    resetNamespace(namespace) {
+      assertNamespace(namespace);
+      const prefix = `${namespace}:`;
+      for (const key of values.keys()) if (key.startsWith(prefix)) values.delete(key);
+      for (const [id, write] of writes) if (String(JSON.parse(write.fingerprint).key).startsWith(prefix)) writes.delete(id);
+      for (const map of [lookupFailures, lookupCounts, writeCounts]) for (const key of map.keys()) if (key.startsWith(prefix)) map.delete(key);
     },
     close: () => close(server),
   };
@@ -118,6 +153,9 @@ async function handleRequest(
   mcpStats: { callCount: number },
   mcpCallBehavior: LocalFixtureServerOptions["mcpCallBehavior"],
   mcpCallDelayMs: number,
+  lookupFailures: Map<string, { remaining: number; message: string }>,
+  lookupCounts: Map<string, number>,
+  writeCounts: Map<string, number>,
 ): Promise<void> {
   if (request.method === "GET" && request.url === "/health") {
     sendJson(response, 200, { service: "local-fixture", status: "ready", protocols: ["direct-api", "mcp", "oauth"] });
@@ -146,6 +184,14 @@ async function handleRequest(
 
   try {
     const input = parseRequest(await readBody(request));
+    const key = String(input.input.key ?? "");
+    if (input.operation === "fixture.lookup") lookupCounts.set(key, (lookupCounts.get(key) ?? 0) + 1);
+    if (input.operation === "fixture.write") writeCounts.set(key, (writeCounts.get(key) ?? 0) + 1);
+    const failure = input.operation === "fixture.lookup" ? lookupFailures.get(key) : undefined;
+    if (failure && failure.remaining-- > 0) {
+      sendJson(response, 200, { providerRequestId: `local-error:${input.requestId}`, statusCode: 400, body: { error: failure.message } });
+      return;
+    }
     const result = execute(input, values, writes);
     sendJson(response, 200, result);
   } catch (error) {
@@ -436,4 +482,8 @@ function isSafe(value: unknown, pattern: RegExp): value is string {
 
 function safeMessage(error: unknown): string {
   return error instanceof Error && error.message ? error.message.slice(0, 256) : "Invalid local fixture request.";
+}
+
+function assertNamespace(namespace: string): void {
+  if (!/^[A-Za-z0-9_-]{1,32}$/.test(namespace)) throw new Error("Fixture namespace must be 1–32 safe characters.");
 }
