@@ -223,7 +223,7 @@ export function CompareRunModal(props: CompareRunModalProps) {
           <div className="modal-form-grid">
             <label className="compact-control"><span>Scenario</span><select value={scenarioId} onChange={(event) => setScenarioId(event.target.value)}>{scenarioCatalog.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.name}</option>)}</select></label>
             <ModelPicker onChange={setSelectedModel} value={selectedModel} />
-            <CapabilityPicker onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
+            <CapabilityPicker targets={platformIds.map(id => `${id}/baseline`)} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
             <label className="compact-control"><span>Experiment</span><select value={experimentId} onChange={(event) => setExperimentId(event.target.value)}>{experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}</select></label>
             <label className="compact-control compare-task-field"><span>Task</span><textarea onChange={(event) => setTask(event.target.value)} placeholder="Describe a task" rows={3} value={task} /></label>
           </div>

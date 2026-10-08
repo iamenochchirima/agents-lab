@@ -35,6 +35,10 @@ test("model-loaded skill and reference persist once into follow-up context and s
     const next = await restarted.admitTurn(session.sessionId, "run-second", "Revise the report.");
     const service = new ContextService(restarted, new CharacterTokenEstimator());
     const prepared = await service.prepareTurn(session.sessionId, next.turn.turnId, { summarize: async ({ messages }) => { assert.equal(messages.some(message => message.source === "skills"), false); return "Previous report discussion."; } }, { forceCompaction: true });
+    const projection = await service.projection(session.sessionId);
+    assert.equal(projection?.activeSkills?.length, 2);
+    assert.equal(projection?.activeSkills?.[0]?.id, "procedures.report");
+    assert.equal(JSON.stringify(projection?.activeSkills).includes("Read references/format.md"), false);
     const active = prepared.snapshot.messages.filter(message => message.source === "skills");
     assert.equal(active.length, 2); assert.equal(active.every(message => message.role === "user" && message.metadata?.authority === "none"), true);
     assert.match(active.map(message => message.content).join("\n"), /Separate facts from assumptions/);

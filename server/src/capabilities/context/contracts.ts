@@ -127,6 +127,8 @@ export interface CompactedContext {
 }
 
 export interface ContextProjection {
+  /** Safe identities of persisted skill instructions and references, without their text. */
+  readonly activeSkills?: readonly { readonly id: string; readonly version: string; readonly digest: string }[];
   /** Session projections are canonical context state; run projections are a
    * provider-reported view for one-shot platform requests. */
   readonly scope?: "session" | "run";

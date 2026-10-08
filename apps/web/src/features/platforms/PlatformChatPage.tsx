@@ -49,6 +49,7 @@ export function PlatformChatPage() {
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const [capabilityProfileId, setCapabilityProfileId] = useState("local-safe");
   const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
+  const [requestedSkillIds, setRequestedSkillIds] = useState<readonly string[]>([]);
   const [scenarioId, setScenarioId] = useState(scenarioCatalog[0].id);
   const [backendProfileId, setBackendProfileId] = useState(platform.backendProfiles[0]?.id ?? "");
   const [variantId, setVariantId] = useState(platform.variants[0]?.id ?? "baseline");
@@ -267,7 +268,7 @@ export function PlatformChatPage() {
       variant: variantId,
       task: { kind: "prompt", prompt: text },
       model: selectedModel,
-      capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, ...(capabilityApprovals.length > 0 ? { approvals: capabilityApprovals } : {}) },
+      capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, requestedSkillIds, ...(capabilityApprovals.length > 0 ? { approvals: capabilityApprovals } : {}) },
       ...(preservesSession && requestSessionId ? { sessionId: requestSessionId } : {}),
       ...(clientTurnId ? { clientTurnId } : {}),
       selection: {
@@ -458,7 +459,7 @@ export function PlatformChatPage() {
               <span className={isReady ? "chat-ready" : "chat-unavailable"}>{isReady ? "Ready" : "Unavailable"}</span>
             </div>
             <ModelPicker disabled={modelPickerDisabled} onChange={setSelectedModel} value={selectedModel} />
-            <CapabilityPicker disabled={modelPickerDisabled} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
+            <CapabilityPicker targets={[`${platform.id}/${variantId}`]} disabled={modelPickerDisabled} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} selectedSkillIds={requestedSkillIds} onSkillsChange={setRequestedSkillIds} />
             <details className="chat-options">
               <summary>Run options <ChevronDown aria-hidden="true" size={14} /></summary>
               <div className="chat-option-grid">
@@ -485,6 +486,7 @@ export function PlatformChatPage() {
           </section>
 
           {error && !latestRun && <p className="chat-availability-error" role="status">{error}</p>}
+          {(latestRun?.context?.activeSkills?.length ?? 0) > 0 && <details className="chat-session-note"><summary>Loaded skills and references</summary><ul>{latestRun!.context!.activeSkills!.map(skill => <li key={skill.id}>{skill.id} · {skill.version}</li>)}</ul></details>}
           {latestRun?.context && <ContextBudgetMeter context={latestRun.context} />}
           {latestRun && <ChatRunDetails error={error} events={latestEvents} isResuming={isResuming} onNewChat={newConversation} onResume={() => void resumeActiveRun()} run={latestRun} />}
         </aside>

@@ -268,7 +268,7 @@ export function PlatformRunnerPage() {
             <CompactSelect label="Experiment" value={experimentId} onChange={setExperimentId}>
               {experimentCatalog.map((experiment) => <option key={experiment.id} value={experiment.id}>{experiment.name}</option>)}
             </CompactSelect>
-            <CapabilityPicker onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
+            <CapabilityPicker targets={[`${platform.id}/${variantId}`]} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} />
             <ModelPicker onChange={setSelectedModel} value={selectedModel} />
           </div>
         </section>

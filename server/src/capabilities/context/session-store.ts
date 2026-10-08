@@ -512,7 +512,9 @@ export class ContextSessionStore {
   async projection(sessionId: string): Promise<ContextProjection | null> {
     const snapshot = await this.latestSnapshot(sessionId);
     if (!snapshot) return null;
+    const session = await this.read(sessionId);
     return {
+      activeSkills: (session.activeSkillContexts ?? []).map(skill => ({ id: skill.skillId, version: skill.skillVersion, digest: skill.digest })),
       scope: "session",
       sessionId: snapshot.sessionId,
       sessionRevision: snapshot.sessionRevision,

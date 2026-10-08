@@ -103,6 +103,7 @@ export interface ModelSelection {
 }
 
 export interface ContextProjection {
+  readonly activeSkills?: readonly { readonly id: string; readonly version: string; readonly digest: string }[];
   readonly scope?: "session" | "run";
   readonly sessionId: string;
   readonly sessionRevision: number;
@@ -155,6 +156,7 @@ export interface PlatformRunRequest {
 
 export interface PlatformRunCapabilities {
   readonly profileId?: string;
+  readonly requestedSkillIds?: readonly string[];
   readonly tools: {
     readonly enabledNames: readonly string[];
     readonly maxRounds: number;
@@ -176,6 +178,10 @@ export interface CapabilityApproval {
 }
 
 export interface CapabilityProfile {
+  readonly available?: boolean;
+  readonly unavailableReason?: string | null;
+  readonly availableSkills?: readonly {id:string; version:string; name:string; description:string; digest:string}[];
+  readonly supportedVariants?: readonly string[];
   readonly id: string;
   readonly version: string;
   readonly displayName: string;

@@ -7,9 +7,12 @@ interface CapabilityPickerProps {
   readonly disabled?: boolean;
   readonly onChange: (profileId: string, approvals: readonly CapabilityApproval[]) => void;
   readonly value: string;
+  readonly selectedSkillIds?: readonly string[];
+  readonly onSkillsChange?: (ids: readonly string[]) => void;
+  readonly targets?: readonly string[];
 }
 
-export function CapabilityPicker({ disabled, onChange, value }: CapabilityPickerProps) {
+export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds = [], onSkillsChange, targets = [] }: CapabilityPickerProps) {
   const dialogId = useId();
   const [profiles, setProfiles] = useState<readonly CapabilityProfile[]>([]);
   const [failed, setFailed] = useState(false);
@@ -27,10 +30,12 @@ export function CapabilityPicker({ disabled, onChange, value }: CapabilityPicker
   }, []);
 
   const selectedProfile = profiles.find((profile) => profile.id === value);
+  const supported = (profile: CapabilityProfile) => profile.available !== false && (!profile.supportedVariants || targets.every(target => profile.supportedVariants!.includes(target)));
 
   function selectProfile(profileId: string): void {
     const profile = profiles.find((candidate) => candidate.id === profileId);
-    if (!profile) return;
+    if (!profile || !supported(profile)) return;
+    onSkillsChange?.([]);
     if (profile.capabilities.some((capability) => capability.risk === "write" || capability.risk === "external")) {
       setPendingProfile(profile);
       return;
@@ -40,11 +45,11 @@ export function CapabilityPicker({ disabled, onChange, value }: CapabilityPicker
 
   function decideApproval(decision: CapabilityApproval["decision"]): void {
     if (!pendingProfile) return;
-    const writeCapability = pendingProfile.capabilities.find((capability) => capability.risk === "write" || capability.risk === "external");
-    if (!writeCapability) return;
+    const writeCapabilities = pendingProfile.capabilities.filter((capability) => capability.risk === "write" || capability.risk === "external");
+    if (writeCapabilities.length === 0) return;
     const decidedAt = new Date();
     const expiresAt = new Date(decidedAt.getTime() + 15 * 60 * 1000);
-    onChange(pendingProfile.id, [{
+    onChange(pendingProfile.id, writeCapabilities.map(writeCapability => ({
       schemaVersion: 1,
       decisionId: createApprovalId(),
       capabilityId: writeCapability.id,
@@ -53,7 +58,7 @@ export function CapabilityPicker({ disabled, onChange, value }: CapabilityPicker
       decision,
       decidedAt: decidedAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
-    }]);
+    })));
     setPendingProfile(null);
   }
 
@@ -62,11 +67,20 @@ export function CapabilityPicker({ disabled, onChange, value }: CapabilityPicker
       <div className="compact-control capability-picker">
         <label htmlFor={`${dialogId}-select`}>Capabilities</label>
         <select aria-label="Capability profile" disabled={disabled || failed || profiles.length === 0} id={`${dialogId}-select`} onChange={(event) => selectProfile(event.target.value)} value={profiles.some((profile) => profile.id === value) ? value : ""}>
-          {failed ? <option value="">Unavailable</option> : profiles.length === 0 ? <option value="">Loading</option> : profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.displayName}{profile.skills.length > 0 ? ` · ${profile.skills.length} skill` : ""}</option>)}
+          {failed ? <option value="">Unavailable</option> : profiles.length === 0 ? <option value="">Loading</option> : profiles.map((profile) => <option key={profile.id} value={profile.id} disabled={!supported(profile)}>{profile.displayName}{!supported(profile) ? " · unavailable" : profile.skills.length > 0 ? ` · ${profile.skills.length} skill` : ""}</option>)}
         </select>
         {selectedProfile && <div className="capability-picker-summary" aria-live="polite">
+          {!supported(selectedProfile) && <small>This profile is unavailable for the selected platform variant.</small>}
           <span>{selectedProfile.capabilities.map((capability) => capability.displayName).join(", ")}</span>
-          {selectedProfile.skills.length > 0 && <small>{selectedProfile.skills.map((skill) => skill.name).join(", ")}</small>}
+          {selectedProfile.skills.length > 0 && <small>Preloaded: {selectedProfile.skills.map((skill) => skill.name).join(", ")}</small>}
+          {(selectedProfile.availableSkills?.length ?? 0) > 0 && <small>Available skills: {selectedProfile.availableSkills!.map((skill) => skill.name).join(", ")}</small>}
+          {onSkillsChange && (selectedProfile.availableSkills?.length ?? 0) > 0 && <label>
+            Activate a skill
+            <select aria-label="Activate a skill" disabled={disabled} value={selectedSkillIds[0] ?? ""} onChange={event => onSkillsChange(event.target.value ? [event.target.value] : [])}>
+              <option value="">Agent chooses</option>
+              {selectedProfile.availableSkills!.map(skill => <option key={skill.id} value={skill.id}>{skill.name}</option>)}
+            </select>
+          </label>}
         </div>}
       </div>
 
@@ -74,12 +88,12 @@ export function CapabilityPicker({ disabled, onChange, value }: CapabilityPicker
         <div className="model-select-backdrop" onMouseDown={() => setPendingProfile(null)} role="presentation">
           <section aria-labelledby={`${dialogId}-approval-title`} aria-modal="true" className="capability-approval-dialog" onMouseDown={(event) => event.stopPropagation()} role="dialog">
             <header className="model-select-header">
-              <div><span className="eyebrow">Approval</span><h2 id={`${dialogId}-approval-title`}>Allow write access?</h2></div>
+              <div><span className="eyebrow">Approval</span><h2 id={`${dialogId}-approval-title`}>Allow tool actions?</h2></div>
               <button aria-label="Close approval dialog" className="icon-button" onClick={() => setPendingProfile(null)} type="button"><X aria-hidden="true" size={17} /></button>
             </header>
             <div className="capability-approval-body">
               <AlertTriangle aria-hidden="true" size={18} />
-              <p>{pendingProfile.displayName} includes a write-capable capability. Approve it for this run?</p>
+              <p>{pendingProfile.displayName} includes the actions below. Approve them for this run?</p>
               <ul>
                 {pendingProfile.capabilities.filter((capability) => capability.risk === "write" || capability.risk === "external").map((capability) => <li key={`${capability.id}@${capability.version}`}><strong>{capability.displayName}</strong><span>{capability.operations.join(", ")}</span></li>)}
               </ul>
