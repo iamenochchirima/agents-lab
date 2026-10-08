@@ -1,5 +1,5 @@
-/** Browser administration uses a same-origin, short-lived cookie session.
- * The unlock token and CSRF value are held in memory, never browser storage.
+/** The local workspace starts a same-origin request-integrity session automatically.
+ * Its CSRF value is held in memory, never browser storage.
  */
 export type Risk = "pure" | "read" | "write" | "external";
 export type Approval = "automatic" | "tool_grant" | "invocation";
@@ -37,18 +37,25 @@ let csrfToken: string | null = null;
 export class ManagementApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); this.name = "ManagementApiError"; }
 }
-async function request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function request<T>(path: string, method = "GET", body?: unknown, renewed = false): Promise<T> {
   const response = await fetch(`/api/management${path}`, { method, credentials: "same-origin", headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...(csrfToken && method !== "GET" ? { "X-Agentlab-Csrf": csrfToken } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const result: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    if (response.status === 401) csrfToken = null;
-    const message = result && typeof result === "object" && "message" in result && typeof result.message === "string" ? result.message : result && typeof result === "object" && "error" in result && typeof result.error === "string" ? result.error : response.status === 409 ? "Configuration changed. Reload and try again." : response.status === 401 ? "Unlock capability management to continue." : response.status === 502 || response.status === 503 || response.status === 504 ? "The capability service is unavailable. Check that the Lab backend is running, then try again." : "Capability management request failed.";
+    if (response.status === 401) {
+      csrfToken = null;
+      // Expired cookies and backend restarts renew silently; this is a local
+      // request-integrity session, not user authentication.
+      if (path !== "/session" && !renewed) {
+        await getManagementSession();
+        return request<T>(path, method, body, true);
+      }
+    }
+    const message = result && typeof result === "object" && "message" in result && typeof result.message === "string" ? result.message : result && typeof result === "object" && "error" in result && typeof result.error === "string" ? result.error : response.status === 409 ? "Configuration changed. Reload and try again." : response.status === 401 ? "The local management session could not be renewed. Try again." : response.status === 502 || response.status === 503 || response.status === 504 ? "The capability service is unavailable. Check that the Lab backend is running, then try again." : "Capability management request failed.";
     throw new ManagementApiError(message, response.status);
   }
   return result as T;
 }
 export async function getManagementSession(): Promise<Session> { const session = await request<Session>("/session"); csrfToken = session.csrfToken; return session; }
-export async function unlockManagement(token: string): Promise<Session> { const session = await request<Session>("/session", "POST", { token }); csrfToken = session.csrfToken; return session; }
 export function getManagementState(): Promise<ManagementState> { return request("/state"); }
 export function getSkillInspection(packageId: string, name: string): Promise<SkillInspection> { return request(`/packages/${encodeURIComponent(packageId)}/skills/${encodeURIComponent(name)}`); }
 export function saveConnection(expectedRevision: number, connection: ConnectionRecord, credential?: CredentialInput): Promise<ManagementState> { return request("/connections", "POST", { expectedRevision, connection, ...(credential ? { credential } : {}) }); }

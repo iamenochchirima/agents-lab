@@ -1,39 +1,22 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { constants } from 'node:fs';
-import { mkdir, open, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 const COOKIE = 'agentlab_capability_admin';
 const TTL_MS = 60 * 60 * 1000;
 interface Session { csrf: string; expiresAt: number }
 
-/** Local workspace administration, separate from platform-worker authentication.
- * The deployment token is private infrastructure. Cookies and CSRF values are
- * ephemeral and expire after one hour or a backend restart. This does not supply
- * hosted tenant authentication. Vite/reverse-proxy routes must be same-origin.
+/** Automatic local workspace request sessions, separate from platform-worker authentication.
+ * Cookies and CSRF values are ephemeral and expire after one hour or a backend
+ * restart. They protect local request integrity, not user identity or hosted
+ * tenant access. Vite/reverse-proxy routes must be same-origin.
  */
 export class CapabilityAdminSessions {
   private readonly sessions = new Map<string, Session>();
-  private constructor(private readonly token: string, private readonly origins: readonly string[], private readonly now: () => number) {}
+  private constructor(private readonly origins: readonly string[], private readonly now: () => number) {}
 
-  static async create(root: string, origins: readonly string[], configuredToken?: string, now = Date.now): Promise<CapabilityAdminSessions> {
-    if (!origins.length || origins.some(origin => new URL(origin).origin !== origin)) throw new Error('Capability administration requires explicit frontend origins.');
-    let token = configuredToken;
-    if (!token) {
-      await mkdir(root, { recursive: true, mode: 0o700 });
-      const path = join(root, 'admin.token');
-      try { await writeFile(path, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
-      const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-      try {
-        const stat = await handle.stat();
-        if (!stat.isFile() || stat.size > 256 || (stat.mode & 0o077) !== 0) throw new Error('Capability admin token must be a private regular file.');
-        token = (await handle.readFile('utf8')).trim();
-      } finally { await handle.close(); }
-    }
-    if (!/^[a-zA-Z0-9_-]{32,256}$/.test(token)) throw new Error('Capability admin token requires 32 to 256 safe characters.');
-    return new CapabilityAdminSessions(token, origins, now);
+  static async create(origins: readonly string[], now = Date.now): Promise<CapabilityAdminSessions> {
+    if (!origins.length || origins.some(origin => new URL(origin).origin !== origin)) throw new Error('Capability management requires explicit frontend origins.');
+    return new CapabilityAdminSessions(origins, now);
   }
 
   register(app: FastifyInstance): void {
@@ -43,38 +26,39 @@ export class CapabilityAdminSessions {
       if (!local(request.ip) || (request.headers.origin !== undefined && !this.origins.includes(String(request.headers.origin)))) {
         return reply.code(403).send({ error: 'Capability management requires the trusted local frontend.' });
       }
-      if (path === '/api/management/session' && request.method === 'POST') return;
+      if (path === '/api/management/session' && ['GET', 'POST'].includes(request.method)) return;
       // OAuth returns across sites, so it cannot rely on SameSite session cookies.
       // The callback handler verifies one-use state, PKCE and issuer instead.
       if (request.method === 'GET' && /^\/api\/management\/connections\/[a-z0-9_-]+\/callback$/.test(path)) return;
       const session = this.session(request);
-      if (!session) return reply.code(401).send({ error: 'Unlock capability management with the local administrator token.' });
+      if (!session) return reply.code(401).send({ error: 'Local management session expired. Refresh the session and retry.' });
       if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
           (!this.origins.includes(String(request.headers.origin ?? '')) || !equal(String(request.headers['x-agentlab-csrf'] ?? ''), session.csrf))) {
         return reply.code(403).send({ error: 'Capability management request could not be authorized.' });
       }
     });
-    app.post<{ Body: { token?: unknown } }>('/api/management/session', async (request, reply) => {
-      if (!local(request.ip) || !this.origins.includes(String(request.headers.origin ?? '')) || typeof request.body?.token !== 'string' || !equal(request.body.token, this.token)) {
-        return reply.code(401).send({ error: 'Capability management could not be unlocked.' });
+    // Session bootstrap is automatic: no deployment password or login UI.
+    // Reuse a live cookie so ordinary page reloads do not consume session slots.
+    const establish = async (request: FastifyRequest, reply: FastifyReply) => {
+      reply.header('cache-control', 'no-store');
+      if (request.method === 'POST' && !this.origins.includes(String(request.headers.origin ?? ''))) {
+        return reply.code(403).send({ error: 'Capability management requires the trusted local frontend.' });
       }
-      this.expire();
+      const existing = this.session(request);
+      if (existing) return { csrfToken: existing.csrf, expiresAt: new Date(existing.expiresAt).toISOString(), owner: 'local-workspace' };
       if (this.sessions.size >= 32) return reply.code(429).send({ error: 'Too many active management sessions.' });
       const cookie = randomBytes(32).toString('hex'), csrf = randomBytes(32).toString('hex');
-      this.sessions.set(hash(cookie), { csrf, expiresAt: this.now() + TTL_MS });
-      reply.header('set-cookie', `${COOKIE}=${cookie}; HttpOnly; SameSite=Strict; Path=/api/management; Max-Age=3600${String(request.headers.origin).startsWith('https:') ? '; Secure' : ''}`);
-      reply.header('cache-control', 'no-store');
-      return { csrfToken: csrf, expiresAt: new Date(this.now() + TTL_MS).toISOString(), owner: 'local-workspace' };
-    });
-    app.get('/api/management/session', async (request, reply) => {
-      const session = this.session(request)!;
-      reply.header('cache-control', 'no-store');
-      return { csrfToken: session.csrf, expiresAt: new Date(session.expiresAt).toISOString(), owner: 'local-workspace' };
-    });
+      const expiresAt = this.now() + TTL_MS;
+      this.sessions.set(hash(cookie), { csrf, expiresAt });
+      reply.header('set-cookie', `${COOKIE}=${cookie}; HttpOnly; SameSite=Strict; Path=/api/management; Max-Age=3600${String(request.headers.origin ?? request.headers.referer ?? '').startsWith('https:') ? '; Secure' : ''}`);
+      return { csrfToken: csrf, expiresAt: new Date(expiresAt).toISOString(), owner: 'local-workspace' };
+    };
+    app.get('/api/management/session', establish);
+    app.post('/api/management/session', establish);
     app.delete('/api/management/session', async (request, reply) => {
       const cookie = readCookie(request); if (cookie) this.sessions.delete(hash(cookie));
       reply.header('set-cookie', `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/api/management; Max-Age=0`);
-      return { locked: true };
+      return { cleared: true };
     });
   }
   private session(request: FastifyRequest): Session | undefined {

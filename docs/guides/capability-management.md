@@ -7,7 +7,7 @@ shared across the Lab's platform agents; their orchestration remains native.
 Saving a supported integration requires no changes to a platform's agent loop
 and no API restart.
 
-## Local setup and administration
+## Local setup
 
 The API stores managed configuration under `lab/state/capabilities` by default.
 Set `AGENTLAB_CAPABILITY_STATE_ROOT` to change this infrastructure directory.
@@ -21,26 +21,23 @@ or managed-process environment secrets. `AGENTLAB_CREDENTIAL_KEY_ID` defaults to
 restarts: losing it makes saved credentials unreadable. Without a configured key,
 the UI disables credential entry; anonymous integrations remain available.
 
-Existing connection summaries are visible without an editing session. Choose
-**Add** or a connector card to open the **Enable editing** dialog.
-Enable editing with the private token in
-`<capability-state-root>/administration/admin.token`, or the separately configured
-`AGENTLAB_CAPABILITY_ADMIN_TOKEN`. Do not put that token into screenshots, run
-prompts or source files. The browser receives an HttpOnly cookie and keeps its
-CSRF value in memory. Sessions expire after one hour or an API restart.
+The local workspace opens capability management directly. No administrator token,
+login or unlock step is required. The browser automatically establishes a local
+session for request integrity; its cookie is HttpOnly and its CSRF value stays
+in memory. Expiration and backend restarts renew the session automatically.
+This is a single-user local workspace, not a hosted account system.
 
 In development, Vite proxies `/api/management` and the safe `/api/connections` directory to `VITE_AGENTLAB_API_URL`, which
 defaults to `http://127.0.0.1:4318`. If your API runs on another port, set that
 variable when starting Vite. Account mutations use this same-origin route; public
 platform/run reads continue to use the configured API URL. A deployed frontend
 needs an equivalent reverse proxy and the explicitly allowed frontend origin.
-The administration session is for a trusted local workspace; it is not hosted
-multi-user authentication.
+Management requests are restricted to the local frontend. A hosted multi-user
+deployment needs a separate authentication and authorization system.
 
 If the capability service is unavailable, check that the Lab API is running at
 the configured URL and choose **Try again**. A failed request does not mean the
-saved connector list is empty. An expired editing session instead prompts for
-the administration token; saved connection summaries remain visible.
+saved connector list is empty. Local sessions renew automatically without a prompt.
 
 ## Connect an MCP server
 

@@ -3,22 +3,34 @@ import test from 'node:test';
 import Fastify from 'fastify';
 import { CapabilityAdminSessions } from '../../src/capabilities/management/admin-session.js';
 
-test('local management requires a private session, expected origin and CSRF, with expiry', async () => {
-  const app = Fastify(); let now = 1000; const token = 'a'.repeat(64); const origin = 'http://localhost:5173';
-  const sessions = await CapabilityAdminSessions.create('/unused', [origin], token, () => now);
-  sessions.register(app); app.post('/api/management/check', async () => ({ saved: true }));
+test('local management automatically establishes a session, retaining origin and CSRF guards', async () => {
+  const app = Fastify(); let now = 1000; const origin = 'http://localhost:5173';
+  const sessions = await CapabilityAdminSessions.create([origin], () => now);
+  sessions.register(app);
+  app.get('/api/management/state', async () => ({ connections: [] }));
+  app.post('/api/management/check', async () => ({ saved: true }));
   try {
-    assert.equal((await app.inject({ method: 'GET', url: '/api/management/session' })).statusCode, 401);
-    assert.equal((await app.inject({ method: 'POST', url: '/api/management/session', headers: { origin: 'https://foreign.example' }, payload: { token } })).statusCode, 403);
-    const unlocked = await app.inject({ method: 'POST', url: '/api/management/session', headers: { origin }, payload: { token } });
-    assert.equal(unlocked.statusCode, 200); assert(!unlocked.body.includes(token));
-    const cookie = String(unlocked.headers['set-cookie']).split(';')[0]!;
-    assert.match(String(unlocked.headers['set-cookie']), /HttpOnly; SameSite=Strict/);
-    const headers = { cookie, origin, 'x-agentlab-csrf': unlocked.json().csrfToken };
+    assert.equal((await app.inject({ method: 'GET', url: '/api/management/session', remoteAddress: '192.0.2.1' })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'GET', url: '/api/management/session', headers: { origin: 'https://foreign.example' } })).statusCode, 403);
+    const established = await app.inject({ method: 'GET', url: '/api/management/session' });
+    assert.equal(established.statusCode, 200);
+    const cookie = String(established.headers['set-cookie']).split(';')[0]!;
+    assert.match(String(established.headers['set-cookie']), /HttpOnly; SameSite=Strict/);
+    const headers = { cookie, origin, 'x-agentlab-csrf': established.json().csrfToken };
+    assert.equal((await app.inject({ method: 'GET', url: '/api/management/state', headers: { cookie } })).statusCode, 200);
+    const reused = await app.inject({ method: 'GET', url: '/api/management/session', headers: { cookie } });
+    assert.equal(reused.json().csrfToken, established.json().csrfToken);
+    assert.equal(reused.headers['set-cookie'], undefined);
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { cookie, origin } })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { cookie, 'x-agentlab-csrf': headers['x-agentlab-csrf'] } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers, payload: {} })).statusCode, 200);
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { ...headers, origin: 'https://foreign.example' } })).statusCode, 403);
     now += 3600001;
-    assert.equal((await app.inject({ method: 'GET', url: '/api/management/session', headers: { cookie } })).statusCode, 401);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers })).statusCode, 401);
+    const renewed = await app.inject({ method: 'GET', url: '/api/management/session', headers: { cookie } });
+    assert.equal(renewed.statusCode, 200);
+    assert.notEqual(renewed.json().csrfToken, established.json().csrfToken);
+    const renewedHeaders = { origin, cookie: String(renewed.headers['set-cookie']).split(';')[0]!, 'x-agentlab-csrf': renewed.json().csrfToken };
+    assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: renewedHeaders })).statusCode, 200);
   } finally { await app.close(); }
 });

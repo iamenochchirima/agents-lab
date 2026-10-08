@@ -5,8 +5,8 @@ import type { ManagedConnectionRecord, ManagedPackageRecord, ManagedProfileRecor
 import { ManagedRevisionConflict } from '../../capabilities/management/repository.js';
 import type { CredentialSecret } from '../../capabilities/management/credentials.js';
 
-/** Trusted local administration endpoints. Safe read models contain references,
- * never secret bytes. All write routes are guarded by admin-session preHandler.
+/** Trusted local management endpoints. Safe read models contain references,
+ * never secret bytes. Write routes require an automatic local session, the configured origin and CSRF.
  */
 export function registerCapabilityManagement(app: FastifyInstance, management: CapabilityManagement, sessions: CapabilityAdminSessions): void {
   sessions.register(app);

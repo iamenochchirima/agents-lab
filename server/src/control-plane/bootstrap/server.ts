@@ -116,7 +116,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
   host.register(app);
   app.get("/api/capability-packages", async (_request, reply) => reply.send({ packages: management.loaded.packages }));
-  const adminSessions = await CapabilityAdminSessions.create(join(managementRoot, "administration"), [config.api.origin], process.env.AGENTLAB_CAPABILITY_ADMIN_TOKEN);
+  const adminSessions = await CapabilityAdminSessions.create([config.api.origin]);
   registerCapabilityManagement(app, management, adminSessions);
   app.addHook("onClose", async () => { await management.close(); });
   const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });
