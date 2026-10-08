@@ -33,7 +33,20 @@ A plugin ZIP has `lab-plugin.json` at its root:
       "id": "notes-kit-provider",
       "version": "1.0.0",
       "source": "mcp",
-      "endpoint": "https://notes.example/mcp"
+      "endpoint": "https://notes.example/mcp",
+      "connectionRef": "notes-kit-account"
+    }
+  ],
+  "connections": [
+    {
+      "ref": "notes-kit-account",
+      "displayName": "Notes account",
+      "provider": "Notes",
+      "owner": "local-workspace",
+      "resource": "https://notes.example/mcp",
+      "scopes": [],
+      "enabled": false,
+      "auth": { "kind": "anonymous" }
     }
   ],
   "dependencies": [],
@@ -47,11 +60,18 @@ A plugin ZIP has `lab-plugin.json` at its root:
 ```
 
 Place skills under `skills/<skill-name>/SKILL.md`. The `packages` array contains
-MCP or HTTP source templates using the Lab package schema. Template IDs start
-with the plugin ID followed by a hyphen. Templates cannot name already connected
-accounts, enable themselves or carry credential values. Required secrets declare
+MCP or HTTP source templates using the Lab package schema. Template IDs and
+connection references start with the plugin ID followed by a hyphen. A source
+can name only a connection template declared in the same bundle. Connection
+templates are disabled, anonymous and owned by the local workspace. MCP endpoints
+match their connection resource; HTTP base URLs use the same origin. Templates
+cannot carry credential values or enable themselves. Required secrets declare
 only names and descriptions. Administrators fill them through connection setup,
 never an imported manifest.
+
+Installation prepares the declared connections alongside tools and skills.
+Updating a bundle preserves an already configured account with the same reference;
+it must not replace that account's authentication with the anonymous template.
 
 Dependencies declare exact installation IDs and versions. Import fails when a
 dependency is missing, has another version, creates a cycle or when an update
@@ -72,10 +92,12 @@ are rejected.
 
 The host fetches the pinned commit into staging and uses `git archive` to inspect
 its files. Hooks, global Git configuration, interactive authentication and inherited
-backend credentials are disabled. Git must be installed on the backend. Each Git
+backend credentials and HTTP redirects are disabled. Git must be installed on the backend. Each Git
 operation has a 60-second timeout; temporary repository data is removed afterward.
 Private-repository authentication and isolated disk quotas are not implemented by
-this importer.
+this importer. Git's own network stack does not use the integration adapter's DNS
+pinning. Use administrator-approved repository origins; this importer is not an
+isolated fetch service for untrusted arbitrary repositories.
 
 ## Limits and installation lifecycle
 

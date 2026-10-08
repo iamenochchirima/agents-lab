@@ -6,11 +6,12 @@ import { promisify } from "node:util";
 import { inflateRawSync } from "node:zlib";
 import { parseDocument } from "yaml";
 import { skillContributions } from "../extensions/skills.js";
-import { emptyManagedState, validateManagedState, type ManagedInstallationRecord, type ManagedPackageRecord } from "./records.js";
+import { emptyManagedState, validateManagedState, type ManagedConnectionRecord, type ManagedInstallationRecord, type ManagedPackageRecord } from "./records.js";
 
 export interface PluginManifest {
   schemaVersion: 1; id: string; version: string; skills?: string;
   packages?: ManagedPackageRecord[];
+  connections?: ManagedConnectionRecord[];
   dependencies?: { id: string; version: string }[];
   requiredSecrets?: { name: string; description: string }[];
 }
@@ -22,7 +23,7 @@ export interface InstallationPreview {
   requiredSecrets: { name: string; description: string }[];
 }
 export interface PreparedInstallation {
-  installation: ManagedInstallationRecord; packages: ManagedPackageRecord[]; preview: InstallationPreview;
+  installation: ManagedInstallationRecord; packages: ManagedPackageRecord[]; connections: ManagedConnectionRecord[]; preview: InstallationPreview;
 }
 export interface SkillImportIdentity { id: string; version: string }
 const MAX_ARCHIVE = 8 * 1024 * 1024, MAX_TOTAL = 16 * 1024 * 1024, MAX_FILE = 256 * 1024, MAX_FILES = 1024;
@@ -124,7 +125,8 @@ export class PackageInstaller {
       const manifest = preview.manifest;
       const packages: ManagedPackageRecord[] = (manifest.packages ?? []).map(template => ({ ...template, enabled: false, installationRef: manifest.id }));
       if (manifest.skills) packages.push({ id: manifest.id + "-skills", version: manifest.version, source: "skills", root: join(root, manifest.skills), enabled: false, installationRef: manifest.id });
-      return { installation: { id: manifest.id, version: manifest.version, digest: preview.digest, root, packageIds: packages.map(p => p.id), dependencies: manifest.dependencies ?? [], installedAt: new Date().toISOString() }, packages, preview };
+      const connections = structuredClone(manifest.connections ?? []);
+      return { installation: { id: manifest.id, version: manifest.version, digest: preview.digest, root, packageIds: packages.map(p => p.id), connectionRefs: connections.map(connection => connection.ref), dependencies: manifest.dependencies ?? [], installedAt: new Date().toISOString() }, packages, connections, preview };
     } finally { await rm(directory, { recursive: true, force: true }); }
   }
 
@@ -137,7 +139,7 @@ export class PackageInstaller {
     const directory = await mkdtemp(join(this.root, ".git-"));
     const options = { cwd: directory, timeout: 60_000, maxBuffer: MAX_ARCHIVE, encoding: "buffer" as const,
       env: { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", GIT_TERMINAL_PROMPT: "0" } };
-    const command = (...args: string[]) => run("git", ["-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never", ...args], options);
+    const command = (...args: string[]) => run("git", ["-c", "core.hooksPath=/dev/null", "-c", "protocol.file.allow=never", "-c", "http.followRedirects=false", ...args], options);
     try {
       await command("init", "--quiet");
       await command("remote", "add", "origin", source.url);
@@ -150,14 +152,25 @@ export class PackageInstaller {
 }
 
 function parseManifest(value: unknown): PluginManifest {
-  if (!object(value) || value.schemaVersion !== 1 || Object.keys(value).some(key => !["schemaVersion", "id", "version", "skills", "packages", "dependencies", "requiredSecrets"].includes(key))
+  if (!object(value) || value.schemaVersion !== 1 || Object.keys(value).some(key => !["schemaVersion", "id", "version", "skills", "packages", "connections", "dependencies", "requiredSecrets"].includes(key))
     || typeof value.id !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(value.id) || typeof value.version !== "string" || !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(value.version)) throw new Error("Plugin manifest requires schemaVersion 1, a safe ID and exact semantic version; hooks and foreign formats are unsupported.");
   if (value.skills !== undefined) { if (typeof value.skills !== "string") throw new Error("Plugin skills must name a relative directory."); safePath(value.skills); }
+  if (value.connections !== undefined) {
+    if (!Array.isArray(value.connections) || value.connections.length > 32 || value.connections.some(connection => !object(connection)
+      || typeof connection.ref !== "string" || !connection.ref.startsWith(value.id + "-") || connection.owner !== "local-workspace"
+      || connection.enabled !== false || !object(connection.auth) || connection.auth.kind !== "anonymous")) throw new Error("Plugin connections must be namespaced, disabled anonymous templates owned by the local workspace.");
+    const state = emptyManagedState(); state.connections = value.connections as ManagedConnectionRecord[]; validateManagedState(state);
+  }
   if (value.packages !== undefined) {
-    if (!Array.isArray(value.packages) || value.packages.length > 32 || value.packages.some(p => !object(p) || !["mcp", "http"].includes(String(p.source)) || p.connectionRef !== undefined || p.installationRef !== undefined || p.enabled === true)) throw new Error("Plugin source templates permit MCP/HTTP definitions only, without connected accounts or automatic enablement.");
+    if (!Array.isArray(value.packages) || value.packages.length > 32 || value.packages.some(p => !object(p) || !["mcp", "http"].includes(String(p.source)) || p.installationRef !== undefined || p.enabled === true)) throw new Error("Plugin source templates permit MCP/HTTP definitions only, without connected accounts or automatic enablement.");
     for (const pkg of value.packages) if (!object(pkg) || typeof pkg.id !== "string" || !pkg.id.startsWith(value.id + "-")) throw new Error("Plugin tool source IDs must be namespaced by the plugin ID.");
     if (value.skills && value.packages.some(pkg => object(pkg) && pkg.id === value.id + "-skills")) throw new Error("Plugin source ID collides with its generated skills package.");
-    const state = emptyManagedState(); state.packages = value.packages as ManagedPackageRecord[]; validateManagedState(state);
+    const state = emptyManagedState(); state.connections = (value.connections ?? []) as ManagedConnectionRecord[]; state.packages = value.packages as ManagedPackageRecord[]; validateManagedState(state);
+    for (const pkg of state.packages) if ('connectionRef' in pkg && pkg.connectionRef) {
+      const connection = state.connections.find(connection => connection.ref === pkg.connectionRef)!;
+      const endpoint = pkg.source === 'mcp' ? pkg.endpoint : pkg.source === 'http' ? pkg.baseUrl : undefined;
+      if (!endpoint || new URL(endpoint).origin !== new URL(connection.resource).origin || pkg.source === 'mcp' && new URL(endpoint).href !== new URL(connection.resource).href) throw new Error("Plugin source endpoint must match its declared connection resource.");
+    }
   }
   if (value.dependencies !== undefined && (!Array.isArray(value.dependencies) || value.dependencies.length > 32 || value.dependencies.some(d => !object(d) || Object.keys(d).some(key => !["id", "version"].includes(key)) || typeof d.id !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(d.id) || typeof d.version !== "string" || !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(d.version)) || new Set(value.dependencies.map(d => d.id)).size !== value.dependencies.length)) throw new Error("Plugin dependencies require distinct exact ID/version pairs.");
   if (value.requiredSecrets !== undefined && (!Array.isArray(value.requiredSecrets) || value.requiredSecrets.length > 32 || value.requiredSecrets.some(s => !object(s) || Object.keys(s).some(key => !["name", "description"].includes(key)) || typeof s.name !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(s.name) || typeof s.description !== "string" || !s.description.length || s.description.length > 1024) || new Set(value.requiredSecrets.map(s => s.name)).size !== value.requiredSecrets.length)) throw new Error("Required secrets declare names/descriptions only, never values.");

@@ -18,6 +18,11 @@ secret manager. `AGENTLAB_CREDENTIAL_KEY_HEX` accepts 64 hexadecimal characters.
 The previous `AGENTLAB_OAUTH_SECRET_KEY_HEX` setting is accepted as a fallback
 when the generic single-key setting is absent. Existing legacy OAuth record
 files need explicit migration; configuring this fallback does not move them.
+When the configured legacy reader migrates a token, published registry ancestry
+must not show that its connection reference previously belonged to a different
+resource. Legacy tokens lack resource binding; changed or removed references
+have their legacy token discarded and require fresh authorization. This also
+covers a restart after publishing a resource change before lifecycle cleanup.
 
 For more than one key, supply `AGENTLAB_CREDENTIAL_KEYRING_JSON`, an object mapping
 key IDs to hexadecimal keys. Key IDs contain letters, digits, underscores or
