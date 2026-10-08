@@ -58,7 +58,9 @@ export function gradeExtension(input: ExtensionInput): ExtensionReport {
  * events internally; no general event ordering/deduplication agent API is claimed. */
 export function baselineExtensions(platform: ExtensionPlatform, deployment: string): ExtensionReport[] {
   return (Object.keys(EXTENSION_CHECKS) as ExtensionId[]).map(caseId => gradeExtension({ caseId, platform, variant: "baseline", deployment,
-    claimed: caseId !== "X03", observations: [], reason: caseId === "X03"
+    claimed: caseId !== "X03" && !(caseId === "X01" && ["mastra", "langgraph"].includes(platform)), observations: [], reason: caseId === "X01" && ["mastra", "langgraph"].includes(platform)
+      ? "Active-generation process restart is not claimed; persisted waiting-review recovery is measured separately by X04."
+      : caseId === "X03"
       ? "No event-driven logical-input API is claimed by this baseline; telemetry deduplication is B11, not X03."
       : "Capability exists, but this exact deployment needs versioned native acceptance observations; framework branding and component tests do not pass it." }));
 }

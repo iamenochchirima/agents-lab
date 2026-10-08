@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { baselineExtensions, gradeExtension, type ExtensionInput, type ExtensionPlatform, type ExtensionObservation } from "../src/evals/extension-contracts.js";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createEffectRecoveryFixture } from "../src/evals/effect-recovery-fixture.js";
+import { installedRuntimeVersions } from "../src/evals/runtime-versions.js";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -31,6 +33,9 @@ import type { CapabilityManifest } from "../src/capabilities/contracts.js";
 test("native invocation review pauses before effects and resumes the original call", {
   skip: process.env.AGENTLAB_RUN_NATIVE_INVOCATION_REVIEW !== "1", timeout: 180_000,
 }, async t => {
+  const startedAt = new Date().toISOString();
+  const metadata = { revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim(), versions: await installedRuntimeVersions(), startedAt, model: { provider: "fake", model: "fake-eval-behaviour" }, controls: { maxCalls: 3, maxRounds: 4, reviewRenewals: 2, recovery: "explicit-provider-key-reconciliation", fixtureVersion: "effect-recovery-v1" } };
+  const effectProvider = await createEffectRecoveryFixture();
   const id = `native-review-${randomUUID()}`;
   const root = resolve("../lab/runs/.review-proof", id);
   const contextRoot = join(root, "sessions");
@@ -47,9 +52,13 @@ test("native invocation review pauses before effects and resumes the original ca
   let effects = 0;
   const captures: CapturedRequest[] = [];
   const original = contribution({ id: "review-test", version: "1.0.0" }, "assign", "Assign a fictional owner",
-    objectSchema({ owner: { type: "string" } }, ["owner"]), "write", async args => {
+    objectSchema({ owner: { type: "string" } }, ["owner"]), "write", async (args, context) => {
       effects++;
-      if (args.owner === "lose-ack") { const error = new Error("Controlled lost write acknowledgement"); error.name = "API_OUTCOME_UNKNOWN"; throw error; }
+      if (args.owner === "lose-ack") {
+        try { await effectProvider.create(context.runId, "disposable-ticket", context.signal); }
+        catch { const error = new Error("External ticket committed but acknowledgement was lost"); error.name = "API_OUTCOME_UNKNOWN"; throw error; }
+        throw new Error("Expected controlled first acknowledgement loss.");
+      }
       return JSON.stringify({ owner: args.owner, saved: true });
     }, "a".repeat(64));
   let reads = 0;
@@ -93,6 +102,7 @@ test("native invocation review pauses before effects and resumes the original ca
   const nativeProcesses = new Map<string, ChildProcess>();
   const runners: PlatformRunner[] = [];
   const reports: unknown[] = [];
+  const effectObservations = new Map<string, ExtensionObservation[]>();
   const extensionObservations = new Map<string, ExtensionObservation[]>();
   const observe = (platform: string, checks: readonly string[], runId: string) => {
     const observations = extensionObservations.get(platform) ?? [];
@@ -248,10 +258,10 @@ test("native invocation review pauses before effects and resumes the original ca
       assert.match(feedback.find(value => value.toolCallId === "mixed-write-second")!.content, /TOOL_APPROVAL_DENIED/);
       reports.push({ platform: "mastra", outcome: "mixed-batch", runId: created.runId, effects: effects - before, reads: reads - beforeReads });
     });
-    if (mastra) await t.test("unknown effect stops Mastra inference", async () => {
+    for (const effectRunner of runners) await t.test(`${effectRunner.platform} external effect acknowledgement recovery`, async () => {
       const before = effects;
       const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "lose-ack" } })).toString("base64url")}]`;
-      const created = await service.createRun({ platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt },
+      const created = await service.createRun({ platform: effectRunner.platform, variant: "baseline", task: { kind: "prompt", prompt },
         model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16_384 },
         capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
       await waitFor(service, created.runId, view => view.status === "suspended");
@@ -259,15 +269,26 @@ test("native invocation review pauses before effects and resumes the original ca
       await service.decideAction(created.runId, pending.requestId, { requestId: pending.requestId, revision: pending.revision,
         argumentDigest: pending.argumentDigest, decisionId: randomUUID(), decision: "approved" });
       const failed = await waitFor(service, created.runId, view => !!view.result);
-      assert.equal(failed.status, "failed");
-      assert.equal(failed.result?.error?.failureKind, "outcome_unknown");
+      assert.equal(failed.status, effectRunner.platform === "langgraph" ? "reconciliation_required" : "failed");
+      assert.equal(failed.result?.error?.failureKind, effectRunner.platform === "langgraph" ? "reconciliation" : "outcome_unknown");
+      if (effectRunner.platform === "langgraph") assert.equal(failed.result?.error?.code, "LANGGRAPH_OUTCOME_UNKNOWN");
       assert.equal(effects, before + 1);
       const uncertainCalls = failed.events.filter(event => event.kind === "ToolExecutionUnknown");
       assert.equal(uncertainCalls.length, 1);
       assert.equal(uncertainCalls[0]!.payload.toolCallId, pending.call.toolCallId);
-      assert.equal(captures.filter(value => value.runId === created.runId).length, 1,
-        "The SDK must not call the model after an unknown effect");
-      reports.push({ platform: "mastra", outcome: "unknown", runId: created.runId, effects: 1, status: failed.status });
+      if (effectRunner.platform === "mastra") assert.equal(captures.filter(value => value.runId === created.runId).length, 1, "The SDK must not call the model after an unknown effect");
+      const committed = effectProvider.snapshot(created.runId);
+      assert.equal(committed.effectCount, 1);
+      assert.equal(committed.attempts, 1, "Unknown effect must not cause blind native redispatch");
+      const receipt = await effectProvider.create(created.runId, "disposable-ticket");
+      const recovered = effectProvider.snapshot(created.runId);
+      assert.equal(receipt.id, committed.ticket?.id);
+      assert.equal(recovered.effectCount, 1);
+      assert.equal(recovered.attempts, 2);
+      const providerPath = join(root, created.runId, "artifacts", "external-effect-recovery.json");
+      await writeFile(providerPath, JSON.stringify({ fixtureVersion: "effect-recovery-v1", idempotencyContract: "same-key-same-content-replays-receipt; conflicting-content-rejects", committed, recovered, receipt }, null, 2));
+      effectObservations.set(effectRunner.platform, ["externalEffectCommitted", "acknowledgementLost", "providerIdempotencyDeclared", "sameKeyRecovery", "independentSingleEffect", "recoveredReceipt"].map(check => ({ check, observed: true, sources: [providerPath, `${root}/${created.runId}/events.jsonl`] })));
+      reports.push({ platform: effectRunner.platform, outcome: "unknown-reconciled", runId: created.runId, effects: 1, status: failed.status });
     });
     for (const reviewRunner of runners) for (const outcome of ["deny", "cancel"] as const) await t.test(`${reviewRunner.platform} ${outcome}`, async () => {
       const before = effects;
@@ -284,18 +305,19 @@ test("native invocation review pauses before effects and resumes the original ca
       const settled = await waitFor(service, created.runId, view => !!view.result);
       assert.equal(effects, before);
       assert.equal(settled.status, outcome === "deny" ? "completed" : "cancelled", JSON.stringify(settled.result));
-      if (outcome === "deny") assert.match(settled.result?.output ?? "", /TOOL_APPROVAL_DENIED/);
+      if (outcome === "deny") assert.match(settled.result?.output ?? "", reviewRunner.platform === "langgraph" ? /INVOCATION_DENIED/ : /TOOL_APPROVAL_DENIED/);
       observe(reviewRunner.platform, outcome === "deny" ? ["deniedNoEffect", "denialFeedback"] : ["cancelledNoEffect"], created.runId);
       reports.push({ platform: reviewRunner.platform, outcome, runId: created.runId, effects: 0, status: settled.status });
     });
   } finally {
-    const extensionInputs: ExtensionInput[] = [...selected].flatMap(platform => baselineExtensions(platform as ExtensionPlatform, "isolated-native-review").map(report => ({ ...report, observations: report.caseId === "X04" ? extensionObservations.get(platform) ?? [] : [] })));
+    const extensionInputs: ExtensionInput[] = [...selected].flatMap(platform => baselineExtensions(platform as ExtensionPlatform, "isolated-native-review").map(report => ({ ...report, observations: report.caseId === "X04" ? extensionObservations.get(platform) ?? [] : report.caseId === "X02" ? effectObservations.get(platform) ?? [] : [] })));
     await writeFile(join(root, "extension-observations.json"), JSON.stringify(extensionInputs, null, 2));
-    await writeFile(join(root, "extensions.json"), JSON.stringify({ schemaVersion: 1, reports: extensionInputs.map(gradeExtension) }, null, 2));
+    await writeFile(join(root, "extensions.json"), JSON.stringify({ schemaVersion: 1, mode: "scripted-native", metadata: { ...metadata, completedAt: new Date().toISOString() }, reports: extensionInputs.map(gradeExtension) }, null, 2));
     await writeFile(join(root, "summary.json"), JSON.stringify({ mode: "scripted-native", reports }, null, 2));
     await Promise.allSettled(runners.map(runner => runner.close?.()));
     await Promise.all(children.map(stop));
     await app.close();
+    await effectProvider.close();
     await rm(secrets, { recursive: true, force: true });
     if (prior.url === undefined) delete process.env.AGENTLAB_CAPABILITY_HOST_URL; else process.env.AGENTLAB_CAPABILITY_HOST_URL = prior.url;
     if (prior.key === undefined) delete process.env.AGENTLAB_CAPABILITY_HOST_KEY_FILE; else process.env.AGENTLAB_CAPABILITY_HOST_KEY_FILE = prior.key;

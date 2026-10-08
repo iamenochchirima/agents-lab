@@ -14,5 +14,6 @@ test("baseline capability claims do not become passes from brand or unrelated te
   const cases = baselineExtensions("temporal", "local-persistent");
   assert.equal(cases.find(value => value.caseId === "X03")?.verdict, "not-applicable");
   assert.equal(cases.filter(value => value.verdict === "incomplete").length, 4);
+  assert.equal(baselineExtensions("mastra", "local-persistent").find(value => value.caseId === "X01")?.verdict, "not-applicable");
   assert.throws(() => gradeExtension({ ...input, observations: [{ check: "B11-dedup", observed: true, sources: ["events"] }] }), /supported/);
 });
