@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 
 import type { ServerConfig } from "../bootstrap/config.js";
+import { trustedFrontendOrigins } from "../bootstrap/frontend-origins.js";
 import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError, RunnerConnectionUnavailableError, RunnerCancellationUnconfirmedError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
@@ -37,13 +38,14 @@ export class InvalidApiRequestError extends Error {
 }
 
 export function buildControlPlaneServer(dependencies: ControlPlaneServerDependencies): FastifyInstance {
+  const frontendOrigins = trustedFrontendOrigins(dependencies.config.api.origin);
   const app = Fastify({
     logger: false,
     genReqId: (request) => request.headers["x-request-id"]?.toString() || cryptoRandomRequestId(),
   });
 
   app.register(cors, {
-    origin: dependencies.config.api.origin,
+    origin: frontendOrigins,
     methods: ["GET", "POST", "OPTIONS"],
   });
 
@@ -150,7 +152,7 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
 
   // Local deployment ownership is the authority; a reviewer label is not authentication.
   app.post<{ Params: { invocationId: string; caseId: string; trial: string } }>("/api/evals/:invocationId/cases/:caseId/trials/:trial/assessments", async (request, reply) => {
-    if (request.headers.origin && request.headers.origin !== dependencies.config.api.origin) {
+    if (request.headers.origin && !frontendOrigins.includes(request.headers.origin)) {
       return reply.code(403).send({ error: { code: "ASSESSMENT_ORIGIN_DENIED", message: "Assessment must originate from the configured local frontend." } });
     }
     try {

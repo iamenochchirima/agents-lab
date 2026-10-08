@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 
 import { loadServerConfig, type ServerConfig } from "./config.js";
 import { loadLocalServerEnvironment } from "./local-env.js";
+import { trustedFrontendOrigins } from "./frontend-origins.js";
 import { RunEvidenceStore } from "../application/evidence-store.js";
 import { PlatformRegistry } from "../application/platform-registry.js";
 import { RunService } from "../application/run-service.js";
@@ -116,7 +117,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
   host.register(app);
   app.get("/api/capability-packages", async (_request, reply) => reply.send({ packages: management.loaded.packages }));
-  const adminSessions = await CapabilityAdminSessions.create([config.api.origin]);
+  const adminSessions = await CapabilityAdminSessions.create(trustedFrontendOrigins(config.api.origin));
   registerCapabilityManagement(app, management, adminSessions);
   app.addHook("onClose", async () => { await management.close(); });
   const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });

@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Fastify from 'fastify';
 import { CapabilityAdminSessions } from '../../src/capabilities/management/admin-session.js';
+import { trustedFrontendOrigins } from '../../src/control-plane/bootstrap/frontend-origins.js';
 
 test('local management automatically establishes a session, retaining origin and CSRF guards', async () => {
   const app = Fastify(); let now = 1000; const origin = 'http://localhost:5173';
-  const sessions = await CapabilityAdminSessions.create([origin], () => now);
+  const sessions = await CapabilityAdminSessions.create(trustedFrontendOrigins(origin), () => now);
   sessions.register(app);
   app.get('/api/management/state', async () => ({ connections: [] }));
   app.post('/api/management/check', async () => ({ saved: true }));
@@ -24,6 +25,8 @@ test('local management automatically establishes a session, retaining origin and
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { cookie, origin } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { cookie, 'x-agentlab-csrf': headers['x-agentlab-csrf'] } })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers, payload: {} })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { ...headers, origin: 'http://127.0.0.1:5173' }, payload: {} })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { ...headers, origin: 'http://127.0.0.1:5174' }, payload: {} })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers: { ...headers, origin: 'https://foreign.example' } })).statusCode, 403);
     now += 3600001;
     assert.equal((await app.inject({ method: 'POST', url: '/api/management/check', headers })).statusCode, 401);

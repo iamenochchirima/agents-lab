@@ -162,6 +162,19 @@ async function withApp(
   }
 }
 
+test("HTTP CORS accepts loopback aliases and rejects different ports and hosted origins", async () => {
+  await withApp(async (app) => {
+    for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173", "http://[::1]:5173"]) {
+      const response = await app.inject({ method: "GET", url: "/ready", headers: { origin } });
+      assert.equal(response.headers["access-control-allow-origin"], origin);
+    }
+    for (const origin of ["http://127.0.0.1:5174", "https://foreign.example"]) {
+      const response = await app.inject({ method: "GET", url: "/ready", headers: { origin } });
+      assert.equal(response.headers["access-control-allow-origin"], undefined);
+    }
+  });
+});
+
 test("HTTP API exposes only safe, searchable OpenRouter model metadata", async () => {
   const modelCatalog: OpenRouterCatalogClient = {
     async list(query = "") {
