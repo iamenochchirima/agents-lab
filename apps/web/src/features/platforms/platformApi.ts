@@ -351,6 +351,11 @@ export function getRunEvidenceUrl(runId: string, fileName: RunEvidenceFile): str
   return `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/evidence/${fileName}`;
 }
 
+/** Server derives the protected receipt filename from the exact call identity. */
+export function getRunToolReceiptUrl(runId: string, toolCallId: string): string {
+  return `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/tool-receipts/${encodeURIComponent(toolCallId)}`;
+}
+
 export async function cancelRun(runId: string, reason: string, signal?: AbortSignal): Promise<RunView> {
   return requestJson<RunView>(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
     body: JSON.stringify({ reason }),

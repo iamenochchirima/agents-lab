@@ -24,3 +24,12 @@ Focused validation:
 pnpm --filter @agent-harness-lab/lab-server exec tsx --test tests/control-plane/eval-results.test.ts
 pnpm --filter @agent-harness-lab/lab-server exec tsx --test --test-name-pattern 'eval result API' tests/control-plane/http.test.ts
 ```
+
+## Hosted tool receipt inspection
+
+`GET /api/runs/:runId/tool-receipts/:toolCallId` returns `{runId,receipt}` from
+an existing hashed call receipt. It exposes pending/complete status, effect and
+presentation evidence and sanitized source attempts. It does not retry, reconcile
+or change an external operation. Action-review raw arguments are separate and are
+not exposed by this route. Unknown runs/calls return 404; invalid call IDs return
+400. Reads are bounded and reject linked receipt files/directories.

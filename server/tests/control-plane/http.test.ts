@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -278,6 +279,31 @@ test("HTTP API accepts a run, exposes events, and reads only safe evidence", asy
 
     const traversal = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/../config.json` });
     assert.notEqual(traversal.statusCode, 200);
+  });
+});
+
+test("tool receipt inspection returns pending and complete evidence without dispatch", async () => {
+  await withApp(async (app, runner, root) => {
+    const created = await app.inject({method: "POST", url: "/api/runs", payload: {
+      platform: "temporal", variant: "baseline", task: {kind: "prompt", prompt: "Inspect receipt"}, model: {provider: "fake", model: "fake-success"},
+    }});
+    const runId = created.json().runId;
+    const toolCallId = "call:original";
+    const directory = join(root, runId, "artifacts/capability-calls");
+    await mkdir(directory, {recursive: true});
+    const path = join(directory, `${createHash("sha256").update(toolCallId).digest("hex")}.json`);
+    const pending = {schemaVersion: 1, status: "pending", toolCallId, toolName: "fictional_update", catalogRevision: "original", fingerprint: "original"};
+    await writeFile(path, JSON.stringify(pending));
+    const url = `/api/runs/${runId}/tool-receipts/${encodeURIComponent(toolCallId)}`;
+    assert.equal((await app.inject({method: "GET", url})).json().receipt.status, "pending");
+    await writeFile(path, JSON.stringify({...pending, status: "complete", result: {status: "unknown", content: "Inspect provider state", effect: {state: "unknown"}}, connectionResults: [{providerRequestId: "provider-1", accessToken: "private-token"}]}));
+    const response = await app.inject({method: "GET", url});
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.json().receipt.result.effect.state, "unknown");
+    assert.equal(response.body.includes("private-token"), false);
+    assert.equal(runner.startCalls, 1);
+    assert.equal((await app.inject({method: "GET", url: `/api/runs/${runId}/tool-receipts/missing`})).statusCode, 404);
+    assert.equal((await app.inject({method: "GET", url: `/api/runs/${runId}/tool-receipts/${encodeURIComponent("../config")}`})).statusCode, 400);
   });
 });
 

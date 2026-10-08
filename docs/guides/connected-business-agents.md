@@ -80,7 +80,11 @@ authority, and cannot silently use a changed account or source.
 Each run retains configuration, events, trajectory, metrics, result and source
 receipts. Reviews live under `artifacts/action-reviews/`; tool receipts live under
 `artifacts/capability-calls/`. Check actual provider state independently of the
-assistant's answer. Unknown effects need reconciliation and stop continuation.
+assistant's answer. Chat's tool activity distinguishes a known no-change rejection from an acknowledged
+write with an invalid result and an uncertain effect. Expand an entry to inspect
+response validity, effect evidence, provider request IDs and returned data. Its
+source receipt link opens the protected record, including retained source attempts
+and replies. Unknown effects need reconciliation and stop continuation.
 Same-call receipt replay and provider idempotency do not establish exactly-once
 business effects across independently generated actions.
 

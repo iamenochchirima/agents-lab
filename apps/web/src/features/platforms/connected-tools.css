@@ -18,3 +18,12 @@
 .invocation-arguments dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .invocation-review-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .invocation-review-actions small { margin-right: auto; color: var(--muted-foreground); }
+
+.tool-outcome-details { width: 100%; min-width: 0; }
+.tool-outcome-details > summary { display: flex; flex-wrap: wrap; gap: .4rem .8rem; cursor: pointer; }
+.tool-outcome-details > summary > span { color: var(--muted-foreground); font-size: .8rem; }
+.tool-outcome-details dl > div { display: grid; grid-template-columns: 6rem 1fr; gap: .5rem; margin: .5rem 0; }
+.tool-outcome-details dt { color: var(--muted-foreground); }
+.tool-outcome-details dd { margin: 0; overflow-wrap: anywhere; }
+.tool-outcome-details p, .tool-outcome-details a { font-size: .8rem; }
+.tool-outcome-details pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }

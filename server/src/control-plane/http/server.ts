@@ -212,6 +212,16 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     }
   });
 
+  app.get<{ Params: { runId: string; toolCallId: string } }>("/api/runs/:runId/tool-receipts/:toolCallId", async (request, reply) => {
+    try {
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.params.toolCallId)) {
+        throw new InvalidApiRequestError("Invalid tool call identity.");
+      }
+      const receipt = await dependencies.evidence.readToolReceipt(request.params.runId, request.params.toolCallId);
+      return reply.send({ runId: request.params.runId, receipt });
+    } catch (error) { return sendError(reply, error); }
+  });
+
   app.get<{ Params: { runId: string; "*": string } }>("/api/runs/:runId/evidence/*", async (request, reply) => {
     try {
       const fileName = request.params["*"];

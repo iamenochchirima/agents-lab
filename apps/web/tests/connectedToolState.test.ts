@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReviewAction, defaultBusinessProfile, invocationDecision, requiresUpfrontApproval } from "../src/features/platforms/connectedToolState";
+import { canReviewAction, defaultBusinessProfile, invocationDecision, requiresUpfrontApproval, toolOutcomeView } from "../src/features/platforms/connectedToolState";
 import type { CapabilityProfile, InvocationReviewView } from "../src/features/platforms/platformApi";
 
 const capability: CapabilityProfile["capabilities"][number] = { id: "assign", version: "1.0.0", kind: "tool", displayName: "Assign", description: "Assign a record", risk: "write", operations: ["execute"] };
@@ -17,4 +17,15 @@ test("invocation policy skips blanket approval and exact action review retains r
   assert.deepEqual(invocationDecision(action, "approved", "stable-decision-id"), { requestId: "action-one", revision: 3, argumentDigest: "current-arguments", decisionId: "stable-decision-id", decision: "approved", reason: "Action approved from Chat." });
   for (const platform of ["mastra", "langgraph", "temporal", "restate"]) assert.equal(defaultBusinessProfile(platform, "baseline"), "business-agent");
   assert.equal(defaultBusinessProfile("mastra", "workflow"), "local-safe"); assert.equal(defaultBusinessProfile("inngest", "baseline"), "local-safe");
+});
+
+
+test("tool outcomes distinguish rejection, invalid acknowledgement and uncertainty without inferring legacy effects", () => {
+  assert.equal(toolOutcomeView({ effect: { state: "rejected", evidence: "Provider rejected mutation" }, presentation: "not_declared" }, "ToolExecutionFailed").label, "Rejected · No change");
+  const invalid = toolOutcomeView({ effect: { state: "acknowledged", evidence: "HTTP 200" }, presentation: "invalid" }, "ToolExecutionUnknown");
+  assert.equal(invalid.label, "Acknowledged · Invalid result"); assert.equal(invalid.presentation, "Result schema invalid"); assert.equal(invalid.uncertain, true);
+  assert.equal(toolOutcomeView({ effect: { state: "unknown" } }, "ToolExecutionUnknown").label, "Uncertain · Needs reconciliation");
+  assert.equal(toolOutcomeView({}, "ToolExecutionCompleted").label, null);
+  assert.equal(toolOutcomeView({ effect: { state: "acknowledged" }, presentation: "valid" }, "ToolExecutionCompleted").label, "Acknowledged");
+  assert.equal(toolOutcomeView({ effect: { state: "confirmed" }, presentation: "invalid" }, "ToolExecutionUnknown").label, "Effect confirmed");
 });

@@ -7,7 +7,7 @@ import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
 import { CapabilityPicker } from "./CapabilityPicker";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
-import { defaultBusinessProfile } from "./connectedToolState";
+import { defaultBusinessProfile, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -20,6 +20,7 @@ import {
   getRun,
   getRunEvents,
   getRunEvidenceUrl,
+  getRunToolReceiptUrl,
   PlatformApiError,
   resumeRun,
   type ModelSelection,
@@ -543,7 +544,8 @@ function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
     : event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionCancelled" || event.kind === "ToolPolicyDenied" || event.kind === "ToolCallRejected"
       ? "failed"
       : "active";
-  const label = state === "completed" ? `${toolName} · Completed` : state === "unknown" ? `${toolName} · Needs reconciliation` : state === "failed" ? `${toolName} · Stopped` : `${toolName} · Running`;
+  const outcome = toolOutcomeView(event.payload, event.kind);
+  const label = outcome.label ? `${toolName} · ${outcome.label}` : state === "completed" ? `${toolName} · Completed` : state === "unknown" ? `${toolName} · Needs reconciliation` : state === "failed" ? `${toolName} · Stopped` : `${toolName} · Running`;
   return <div aria-live="polite" className={`chat-tool-activity chat-tool-${state}`} role="status"><Wrench aria-hidden="true" size={13} /> {label}</div>;
 }
 
@@ -590,7 +592,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun,
         {run.projection.state === "stale" && <p className="chat-availability-error"><CircleAlert aria-hidden="true" size={14} /> {run.projection.reason ?? "The latest platform state is unavailable."}</p>}
         <details className="chat-activity" open={toolEvents.length > 0}>
           <summary><Wrench aria-hidden="true" size={13} /> Tool activity <small>{toolEvents.length}</small></summary>
-          {toolEvents.length === 0 ? <p>No tool activity recorded.</p> : <ol>{toolEvents.map((event) => <li key={event.eventId}><strong>{formatEventKind(event.kind)}</strong><small>{event.source}</small></li>)}</ol>}
+          {toolEvents.length === 0 ? <p>No tool activity recorded.</p> : <ol>{toolEvents.map((event) => <li key={event.eventId}><ToolOutcomeDetails event={event} runId={run.runId} /></li>)}</ol>}
         </details>
         <details className="chat-activity">
           <summary><span>Run timeline</span><small>{events.length}</small></summary>
@@ -603,6 +605,26 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun,
       </div>
     </details>
   );
+}
+
+function ToolOutcomeDetails({ event, runId }: { event: RunEvent; runId: string }) {
+  const outcome = toolOutcomeView(event.payload, event.kind);
+  const connection = isRecord(event.payload.connection) ? event.payload.connection : null;
+  const callId = typeof event.payload.toolCallId === "string" ? event.payload.toolCallId : null;
+  const name = typeof event.payload.toolName === "string" ? event.payload.toolName : formatEventKind(event.kind);
+  if (!outcome.label && !outcome.presentation && !connection) return <><strong>{formatEventKind(event.kind)}</strong><small>{event.source}</small></>;
+  return <details className="tool-outcome-details">
+    <summary><strong>{name}</strong><span>{outcome.label ?? formatEventKind(event.kind)}</span></summary>
+    <dl>
+      {outcome.presentation && <div><dt>Response</dt><dd>{outcome.presentation}</dd></div>}
+      {outcome.evidence && <div><dt>Evidence</dt><dd>{outcome.evidence}</dd></div>}
+      {connection && typeof connection.requestId === "string" && <div><dt>Request</dt><dd>{connection.requestId}</dd></div>}
+      {connection && Array.isArray(connection.providerRequestIds) && connection.providerRequestIds.length > 0 && <div><dt>Provider receipt</dt><dd>{connection.providerRequestIds.filter(value => typeof value === "string").join(", ")}</dd></div>}
+    </dl>
+    {outcome.uncertain && <p>Inspect the provider state before repeating this action.</p>}
+    {callId && connection && <a href={getRunToolReceiptUrl(runId, callId)} target="_blank" rel="noreferrer">Inspect source receipt</a>}
+    {event.payload.structuredContent !== undefined && <details><summary>Returned data</summary><pre>{JSON.stringify(event.payload.structuredContent, null, 2)}</pre></details>}
+  </details>;
 }
 
 function McpConnectionDetails({ events }: { events: readonly RunEvent[] }) {

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFile, lstat, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, join } from "node:path";
@@ -387,6 +387,35 @@ export class RunEvidenceStore {
       if (report.ownerRunId !== runId || (fileName === "artifacts/eval-grader-3.json" && report.graderVersion !== "3")) throw new Error("Eval owner or grader mismatch.");
     } catch { throw new CorruptEvidenceError(path); }
     return report;
+  }
+
+  /** Inspect an already-retained hosted call. Reading never retries execution.
+   * Raw action-review arguments are stored separately and are not exposed here.
+   */
+  async readToolReceipt(runId: string, toolCallId: string): Promise<Readonly<Record<string, unknown>>> {
+    await this.readManifest(runId);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(toolCallId)) throw new Error("Invalid tool call identity.");
+    const directory = join(this.runDirectory(runId), "artifacts/capability-calls");
+    const path = join(directory, `${createHash("sha256").update(toolCallId).digest("hex")}.json`);
+    try {
+      for (const ancestor of [dirname(directory), directory]) {
+        const info = await lstat(ancestor);
+        if (!info.isDirectory() || info.isSymbolicLink()) throw new CorruptEvidenceError(path);
+      }
+      const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const info = await handle.stat();
+        if (!info.isFile()) throw new CorruptEvidenceError(path);
+        if (info.size > 16 * 1024 * 1024) throw new EvidenceLimitError(path, 16 * 1024 * 1024);
+        const receipt: unknown = JSON.parse(await handle.readFile("utf8"));
+        if (!isRecord(receipt) || receipt.schemaVersion !== 1 || receipt.toolCallId !== toolCallId ||
+            !["pending", "complete"].includes(String(receipt.status))) throw new CorruptEvidenceError(path);
+        return sanitizeEvidenceValue(receipt) as Readonly<Record<string, unknown>>;
+      } finally { await handle.close(); }
+    } catch (error) {
+      if (isNodeError(error, "ENOENT")) throw new EvidenceNotFoundError(path);
+      throw error;
+    }
   }
 
   async readAllowlistedFile(runId: string, fileName: EvidenceFileName): Promise<string> {
