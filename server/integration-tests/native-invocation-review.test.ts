@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { baselineExtensions, gradeExtension, type ExtensionInput, type ExtensionPlatform, type ExtensionObservation } from "../src/evals/extension-contracts.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -92,6 +93,12 @@ test("native invocation review pauses before effects and resumes the original ca
   const nativeProcesses = new Map<string, ChildProcess>();
   const runners: PlatformRunner[] = [];
   const reports: unknown[] = [];
+  const extensionObservations = new Map<string, ExtensionObservation[]>();
+  const observe = (platform: string, checks: readonly string[], runId: string) => {
+    const observations = extensionObservations.get(platform) ?? [];
+    for (const check of checks) observations.push({ check, observed: true, sources: [`${root}/${runId}/events.jsonl`, `${root}/summary.json`] });
+    extensionObservations.set(platform, observations);
+  };
   const selected = new Set((process.env.AGENTLAB_REVIEW_PLATFORMS ?? "mastra,temporal,langgraph,restate").split(","));
   try {
     const config = loadServerConfig(environment, resolve(".."));
@@ -206,6 +213,7 @@ test("native invocation review pauses before effects and resumes the original ca
       const completedCalls = completed.events.filter(event => event.kind === "ToolExecutionCompleted");
       assert.equal(completedCalls.length, 1);
       assert.equal(completedCalls[0]!.payload.toolCallId, initialCallId);
+      observe(runner.platform, ["noEffectBeforeApproval", "exactArgumentsRetained", "nativeWaitingRecovery", "hostWaitingRecovery", "sameNativeIdentity", "expiryNoEffect", "renewalNoRedispatch", "approvedSingleEffect"], created.runId);
       reports.push({ platform: runner.platform, runId: created.runId, status: completed.status, effects: effects - before, waitingRestart: !!worker || runner.platform === "mastra", apiHostRestart: true, reviewRenewals: 2 });
     });
     const mastra = runners.find(value => value.platform === "mastra");
@@ -261,8 +269,7 @@ test("native invocation review pauses before effects and resumes the original ca
         "The SDK must not call the model after an unknown effect");
       reports.push({ platform: "mastra", outcome: "unknown", runId: created.runId, effects: 1, status: failed.status });
     });
-    const reviewRunner = runners.find(value => value.platform === "temporal") ?? runners[0];
-    if (reviewRunner) for (const outcome of ["deny", "cancel"] as const) await t.test(outcome, async () => {
+    for (const reviewRunner of runners) for (const outcome of ["deny", "cancel"] as const) await t.test(`${reviewRunner.platform} ${outcome}`, async () => {
       const before = effects;
       const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "Declined" } })).toString("base64url")}]`;
       const created = await service.createRun({ platform: reviewRunner.platform, variant: "baseline", task: { kind: "prompt", prompt },
@@ -278,9 +285,13 @@ test("native invocation review pauses before effects and resumes the original ca
       assert.equal(effects, before);
       assert.equal(settled.status, outcome === "deny" ? "completed" : "cancelled", JSON.stringify(settled.result));
       if (outcome === "deny") assert.match(settled.result?.output ?? "", /TOOL_APPROVAL_DENIED/);
+      observe(reviewRunner.platform, outcome === "deny" ? ["deniedNoEffect", "denialFeedback"] : ["cancelledNoEffect"], created.runId);
       reports.push({ platform: reviewRunner.platform, outcome, runId: created.runId, effects: 0, status: settled.status });
     });
   } finally {
+    const extensionInputs: ExtensionInput[] = [...selected].flatMap(platform => baselineExtensions(platform as ExtensionPlatform, "isolated-native-review").map(report => ({ ...report, observations: report.caseId === "X04" ? extensionObservations.get(platform) ?? [] : [] })));
+    await writeFile(join(root, "extension-observations.json"), JSON.stringify(extensionInputs, null, 2));
+    await writeFile(join(root, "extensions.json"), JSON.stringify({ schemaVersion: 1, reports: extensionInputs.map(gradeExtension) }, null, 2));
     await writeFile(join(root, "summary.json"), JSON.stringify({ mode: "scripted-native", reports }, null, 2));
     await Promise.allSettled(runners.map(runner => runner.close?.()));
     await Promise.all(children.map(stop));
