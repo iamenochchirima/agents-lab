@@ -4,7 +4,7 @@ import {
 } from './schema';
 import {
   attachmentRef, attachmentRouted, claim, content, destination, envelope, failure, identity, operation, outputRecord,
-  routed, source, person, operationAuthorization, ordinaryOperation, queueOperation, stopOperation, promptOperation, commandOperation,
+  routed, source, person, operationAuthorization, ordinaryOperation, queueOperation, stopOperation, promptOperation, approvalOperation, commandOperation,
 } from './shared';
 
 // Provisional design contracts. The service must verify these facts; examples are synthetic.
@@ -120,7 +120,7 @@ const telegramForms = [
   { label: 'Other Telegram update', value: telegramOther, id: 'other' },
 ];
 
-const approvalAnswer = object({ kind: fixed('prompt-answer'), promptId: text('prompt-001'), targetTurnId: text('turn-001'), answer: fixed('approve') });
+const approvalAnswer = approvalOperation;
 function telegramRequest(scope: 'personal' | 'group', topic = false, callback = false, media: Payload | null = null, album = false, supergroup = false): Payload {
   const chatId = scope === 'personal' ? '123456' : topic || supergroup ? '-100987654' : '-100123456';
   return object({
@@ -560,8 +560,41 @@ export const inputAdmissionContracts: ContractDefinition[] = [
       output('input-intent-steer', 'Authorized exact-turn Steer', authorizedFor(steerOperation), inputEdges(12), 'An explicitly authorized compatible Steer retains guidance and the exact active-turn target.'),
       output('input-intent-interrupt', 'Authorized exact-turn Interrupt', authorizedFor(interruptOperation, 'Replace the current task with this revised request.'), inputEdges(12), 'An explicitly authorized Interrupt preserves the replacement task and exact active-turn target.'),
       output('input-intent-stop', 'Authorized exact-turn Stop', authorizedFor(stopOperation), inputEdges(12), 'An explicitly authorized Stop targets an exact active turn and requires no attachment custody.'),
+      output('input-intent-operation-approval', 'Typed four-choice operation review', authorizedFor(approvalOperation), inputEdges(12), 'Explicit operation review retains its displayed scope, wait revision and selected lifetime; Input acceptance grants no execution authority.'),
       output('input-intent-prompt-answer', 'Authorized prompt answer', authorizedFor(promptOperation), inputEdges(12), 'An explicit valid prompt answer retains exact prompt and owning-turn targets.'),
       output('input-intent-command', 'Authorized command', authorizedFor(commandOperation), inputEdges(12), 'A recognized command passes its specific permission and busy-policy checks.'),
     ],
   },
 ];
+
+// Bindings are service-owned facts. An untrusted channel event cannot choose
+// another account's credentials or manufacture transport verification.
+const channelBinding = (channel: string) => object({ connectionId: text(`conn-${channel}-demo`), adapterRef: text(`adapter:${channel}:v1`), accountId: text('account-demo'), ownerScopeRef: text('owner:person-demo'), configurationRevision: count(2), readinessGeneration: count(4), credentialRef: channel === 'cli' ? fixed(null) : text(`credential:${channel}-demo`), state: choice(['ready', 'authentication-required', 'unavailable', 'disabled']) });
+const dependencyEnrich = (value: Payload, fields: Record<string, Payload>) => object({ ...Object.fromEntries(Object.entries(value.schema.properties ?? {}).map(([key, schema]) => [key, { schema, example: (value.example as Record<string, Json>)[key] }])), ...fields });
+for (const definition of inputAdmissionContracts) {
+  const channel = definition.nodeId.replace('lina-input-', '');
+  if (['cli', 'whatsapp', 'telegram'].includes(channel)) {
+    const fields = { channelBinding: channelBinding(channel), authenticityEvidenceRef: text('ingress-verification:update-001') };
+    definition.context = dependencyEnrich(definition.context, fields);
+    definition.contextExamples = definition.contextExamples?.map(example => ({ ...example, value: dependencyEnrich(example.value, fields) }));
+    definition.contextExamples ??= [];
+    definition.contextExamples.push({ label: 'Disabled configured account refuses intake', value: replaceField(definition.context, 'channelBinding', replaceField(channelBinding(channel), 'state', fixed('disabled'))) });
+    definition.rules.push('Only a ready owner/account-scoped binding permits intake. Authenticate transport independently from chat admission; channel bindings do not use MCP negotiation.', 'Attachment retrieval remains bound to the original account and generation. Rotated or disabled bindings require owner inspection, not silent substitution.');
+  }
+  if (['lina-input-access', 'lina-input-conversation', 'lina-input-intent'].includes(definition.nodeId)) {
+    const fields = { policyDecision: object({ decisionId: text(`policy:${channel}:001`), policyRevision: count(2), subjectRef: text('person:person-demo'), resourceRef: text('conversation:conversation-demo'), action: text(channel === 'intent' ? 'issue-operation' : channel === 'access' ? 'admit-source' : 'route-conversation'), checkedAt: text('2026-10-08T10:00:00Z'), expiresAt: sample(nullable(text('2026-10-08T10:05:00Z')), null) }) };
+    definition.context = dependencyEnrich(definition.context, fields);
+    definition.contextExamples = definition.contextExamples?.map(example => ({ ...example, value: dependencyEnrich(example.value, fields) }));
+    definition.rules.push('Source admission, conversation routing and operation authorization are separate policy decisions. OAuth account access cannot substitute for any of them.');
+  }
+}
+for (const definition of inputAdmissionContracts) {
+  if (['lina-input-envelope', 'lina-input-identity', 'lina-input-telegram-route'].includes(definition.nodeId)) {
+    const fields = { trustedBindingRef: text('binding:origin-account:g4'), bindingGeneration: count(4), authenticityEvidenceRef: text('ingress-verification:update-001') };
+    definition.context = dependencyEnrich(definition.context, fields);
+    definition.contextExamples = definition.contextExamples?.map(example => ({ ...example, value: dependencyEnrich(example.value, fields) }));
+    definition.rules.push('Retain service-owned account binding and authenticity evidence through normalization/routing; source payloads cannot override these identities.');
+  }
+  if (definition.nodeId === 'lina-input-duplicate') definition.rules.push('A duplicate source event while an existing turn waits reports the original status; it does not restart the turn, repeated call or queue drain. Account and transport scope remain part of uniqueness.');
+  if (definition.nodeId === 'lina-input-claim-recovery') definition.rules.push('Recover exact receipt identity with state revision and owner fence. Unknown commit requires inspection; taking a new lease does not authorize another accepted operation.');
+}

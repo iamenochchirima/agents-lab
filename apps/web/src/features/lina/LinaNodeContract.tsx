@@ -4,24 +4,26 @@ import type { Json, Schema, ContractOutput } from './contracts/schema';
 
 /** Native disclosure controls keep every nested object/array independently keyboard accessible. */
 function JsonField({ value, name, comma = false, root = false }: { value: unknown; name?: string; comma?: boolean; root?: boolean }) {
+  const [expanded, setExpanded] = useState(root);
   const prefix = name === undefined ? null : <><span className="lina-json-key">{JSON.stringify(name)}</span><span className="lina-json-punctuation">: </span></>;
   const suffix = comma ? ',' : '';
   if (value !== null && typeof value === 'object') {
     const array = Array.isArray(value);
-    const entries = array ? value.map((item, index) => [String(index), item] as const) : Object.entries(value);
+    // Optional fixture fields follow JSON serialization: omit undefined object fields.
+    const entries = array ? value.map((item, index) => [String(index), item ?? null] as const) : Object.entries(value).filter(([, item]) => item !== undefined);
     const open = array ? '[' : '{';
     const close = array ? ']' : '}';
     if (!entries.length) return <div className="lina-json-line">{prefix}<span className="lina-json-punctuation">{open}{close}{suffix}</span></div>;
-    return <details className="lina-json-branch" open={root}>
+    return <details className="lina-json-branch" open={expanded} onToggle={event => { if (event.target === event.currentTarget) setExpanded(event.currentTarget.open); }}>
       <summary>{prefix}<span className="lina-json-punctuation">{open}</span><span className="lina-json-folded"><span className="lina-json-count"> … {entries.length} {array ? 'items' : 'fields'} </span><span className="lina-json-punctuation">{close}{suffix}</span></span></summary>
-      <div className="lina-json-children">{entries.map(([key, item], index) => <JsonField key={key} name={array ? undefined : key} value={item} comma={index < entries.length - 1}/>)}</div>
+      {expanded && <div className="lina-json-children">{entries.map(([key, item], index) => <JsonField key={key} name={array ? undefined : key} value={item} comma={index < entries.length - 1}/>)}</div>}
       <div className="lina-json-line lina-json-punctuation">{close}{suffix}</div>
     </details>;
   }
   const type = value === null ? 'null' : typeof value;
   return <div className="lina-json-line">{prefix}<span className={`lina-json-${type}`}>{JSON.stringify(value)}</span><span className="lina-json-punctuation">{suffix}</span></div>;
 }
-function JsonView({ value, label }: { value: Json | object; label: string }) {
+export function JsonView({ value, label }: { value: Json | object; label: string }) {
   return <div className="lina-contract-json" role="group" aria-label={label}><JsonField value={value} root/></div>;
 }
 function SchemaView({ schema, label }: { schema: Schema; label: string }) {

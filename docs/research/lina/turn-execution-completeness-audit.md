@@ -81,7 +81,7 @@ separate nodes, nor require a durable runtime implementation.
 | Response validity | Classify complete, partial/truncated, malformed, failed and cancelled outcomes before authorizing calls | Salvaged arguments can parse while remaining incomplete. |
 | Launch guards | Check stop, authority and budget immediately before fresh model/tool work; show stop → settlement | Guidance checkpoints and cancellation signalling are different; a post-batch checkpoint alone cannot prevent launch. |
 | Continuation limits | State separate round and retry limits; show exhausted → settlement | Retries and loop iterations have different accounting. Limits remain a Lina policy choice. |
-| Tool outcome contract | Carry a call ID and one outcome for each admitted call, including error, denied/skipped and unknown | A model-visible tool error can continue the loop; infrastructure failure or uncertain effects require different handling. |
+| Tool outcome contract | Carry a call ID and one outcome for each admitted call, including error, denied/skipped and unknown; join bounded parallel independent calls and serialize conflicts | Completion order must not break call/result pairing. A model-visible tool error can continue the loop; infrastructure failure or uncertain effects require different handling. |
 | Preparation failure | Add recoverable context overflow to recovery; nonrecoverable preparation error to settlement | Errors can occur before any provider request, so model failure is not the only entry to recovery. |
 | Tool boundary failure | Separate model-visible error results from fatal tool/persistence/ownership failure exits | A successful batch is not the only route back to the controller. |
 | Safe recovery | Say which request/transcript resumes, check retry eligibility, preserve settled results and forbid blind tool replay | Retrying a provider request must not recreate side effects. |
@@ -123,8 +123,11 @@ every Hermes configuration provides persistence. See
 
 Pi converts validation/execution failures into result messages keyed by call ID.
 It prepares calls serially, joins parallel execution and publishes results in
-call order. Lina's first tool contract should preserve IDs and results without
-prematurely selecting a concurrency implementation. See
+call order. Lina now requires bounded parallel execution for independent calls
+and serialization for dependent or conflicting operations. The tool contract
+must preserve each call ID and outcome across completion order and the batch
+join. This is a design baseline; the current simulation still treats execution
+as one scripted batch and does not implement concurrent calls. See
 [Pi scheduling and result publication](https://github.com/earendil-works/pi/blob/a276dabe57911253350bffb93cb7d7aff6a73261/packages/agent/src/agent-loop.ts#L508-L659)
 and [result identity](https://github.com/earendil-works/pi/blob/a276dabe57911253350bffb93cb7d7aff6a73261/packages/agent/src/agent-loop.ts#L922-L935).
 
@@ -171,6 +174,22 @@ These mechanisms matter but are not missing Turn Execution nodes by themselves:
 - Adaptive models, speculative tools, memory review hooks and product-specific
   recovery exceptions are optional experiments, not baseline requirements.
 
+## Baseline requirements and policy experiments
+
+Parallel independent execution is a required Lina Tools capability. Validation,
+permissions, call/result pairing, conflict ordering, cancellation and effect-safe
+recovery are also baseline contracts. Verification should check those contracts;
+unsafe execution is not a competing architecture to benchmark.
+
+Useful scheduling comparisons can vary concurrency limits, conservative conflict
+grouping and result consumption after a full join or eligible earlier completion.
+Tool discovery, task-level versus small-operation tools and result representation
+also admit credible alternatives. A comparison needs a stated workload and shared
+correctness constraints. Caching, isolation, approvals and retries first depend on
+freshness, environment, permissions and effect semantics; they are not universally
+optional experiments. Incremental consumption changes the full-join round contract and requires a
+separate design. No performance comparison has been run in this audit.
+
 ## Proposed follow-up coverage
 
 Retain the three existing routes and progressively add deterministic fixtures:
@@ -183,6 +202,8 @@ Retain the three existing routes and progressively add deterministic fixtures:
 6. Approval wait with matched answer, denial and expiry.
 7. Context overflow followed by refresh while retaining settled tool results.
 8. Required settlement write failure with an explicit recovery/release outcome.
+9. Independent calls launched concurrently with a visible join, mixed outcomes
+   paired by call ID and conflicting calls serialized under a concurrency limit.
 
 This is coverage for a learning/design simulation, not a demand to implement
 production durability or exhaustively reproduce the four agents. No speed,

@@ -2,7 +2,9 @@
 
 Reviewed 2026-10-07. This is a proposal informed by source study, not an agreed
 architecture or an implementation plan. Lina's existing Input decisions remain
-unchanged. No next-block code or simulator behavior was added.
+unchanged. This research pass added no next-block code or simulator behavior.
+The baseline clarification below records the later Lina decision; historical
+agent comparisons retain their pinned source revisions.
 
 ## Question and answer
 
@@ -147,6 +149,32 @@ continues the same turn. These mechanisms should have separate simulation rules.
 The four studies do not justify changing Lina's current proposed queue/steer/
 interrupt/stop contracts without a decision.
 
+## Tool execution baseline clarification
+
+Lina requires parallel execution of independent tool calls as a design baseline.
+Tools owns scheduling with bounded concurrency and serialization for conflicting
+operations. Turn Execution admits a batch, waits for its settled outcomes and
+continues with results matched to their original call IDs. Calls whose arguments
+need an earlier result normally arrive in a later model round. The scheduler must
+not invent those future calls or infer arbitrary dependencies from model output.
+
+The pinned Hermes, OpenClaw and Pi studies above support concurrent execution
+with explicit boundaries. Waku's reviewed loop remains sequential, so this is a
+Lina design decision rather than a claim that all studied agents use parallelism.
+Parallel support does not establish a measured advantage for every workload.
+The current Lina simulation visits a tool-batch node; it does not yet model
+concurrent calls, completion ordering or a visible join.
+
+Schema validation, permission enforcement, call/result identity, safe launch
+ordering, cancellation outcomes and honest handling of uncertain effects are
+correctness requirements. Recovery must respect effect certainty and retry
+eligibility. These requirements need verification, not experiments that treat
+unsafe behavior as an equally valid alternative. Sequential execution remains
+required for dependencies or conflicts and may serve as a comparison control.
+
+Incremental result consumption would change the baseline full-join round
+contract. It requires a separate design before implementation or comparison.
+
 ## Meaningful experiments within the area
 
 These are mechanisms to study later, not measured improvements or a menu to add
@@ -155,7 +183,7 @@ whole-block implementations.
 
 | Mechanism | Concrete alternatives | What a controlled comparison could observe |
 | --- | --- | --- |
-| Tool scheduling | Sequential; bounded parallel batch; dependency-aware segments | Completion latency, peak concurrency, conflicts, model-visible result order |
+| Tool scheduling policy | Concurrency limits; conservative conflict grouping; batch join versus eligible incremental result consumption | Completion latency, peak concurrency and time until usable results, while preserving call identity and safe ordering |
 | Guidance admission | After full batch; safe per-call boundary; cancel model request and redirect same turn | Time until guidance applies, discarded model work, already-launched tool work |
 | Continuation | Basic tool-or-answer loop; explicit finish/continue policy; targeted truncation/stall recovery | Completion rate, extra rounds, budget use and premature stopping |
 | Model recovery | Same request retry; reproject/compact context then retry; eligible model fallback | Successful recovery, extra latency/tokens, repeat effects and consistency |
@@ -164,7 +192,10 @@ whole-block implementations.
 | Tool launch timing | After complete response; committed streamed tool fragments | Latency overlap, admission ordering, partial-stream failures and effects |
 
 Do not choose a mechanism because another agent has it. First define the
-hypothesis, capabilities required, controls and observable outcome. A design
+hypothesis, capabilities required, controls and observable outcome. Establish
+correctness and workload requirements first. For example, caching requires an
+explicit freshness policy, and tool retries require safe effect semantics; their
+necessary constraints are not optional experiment variables. A design
 simulation can verify transition logic and expose trade-offs; real harness
 experiments are needed for performance claims. Storage durability and tool
 idempotency are dependencies for recovery comparisons, not optional details to
@@ -174,7 +205,8 @@ assume away.
 
 1. Direct answer with no tools, including text that still requests continuation.
 2. One tool result followed by another model round and a final answer.
-3. Two tools with serial execution or overlapping execution and an explicit join.
+3. Independent tools with overlapping execution and an explicit join; conflicting
+   calls serialized with their original call/result identities preserved.
 4. Recoverable provider failure versus non-retryable failure or exhausted budget.
 5. Approval denial, approval wait and external reply with distinct waiting reasons.
 6. Guidance arriving during a model request, during a tool batch and during settlement.
@@ -195,7 +227,9 @@ follow agreed decisions and extend the same transition rules.
 - Confirm the name Turn Execution and the request-level meaning of turn.
 - Place the admission/ownership handoff precisely against the existing Input graph.
 - Decide the release contract and how final output delivery relates to it.
-- Choose the first continuation and tool scheduling baseline, leaving variation points explicit.
+- Choose the first continuation policy. Tool execution now has an agreed design
+  baseline of bounded parallel independent calls with serial conflict/dependency
+  boundaries; concrete scheduling policies remain variation points.
 - Decide which waits exist initially and whether any are durable suspensions.
 - Select the first simulated paths and use one transition definition for both graph and playback.
 

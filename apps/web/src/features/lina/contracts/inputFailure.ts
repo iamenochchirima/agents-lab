@@ -14,6 +14,7 @@ export const inputFailureContracts: ContractDefinition[] = [{
     'Known refusal and unknown acceptance are different outcomes. Inspect the existing claim/receipt before retrying an uncertain commit.',
     'Do not launch execution or promise acceptance from this boundary.',
     'Only deliver a safe failure when the original destination is verified; otherwise terminate locally.',
+    'Disabled binding, failed secret retrieval and changed original account are known pre-acceptance failures; do not fetch through another account or infer acceptance.',
     'Storage failure may prevent recording a receipt. Do not fabricate durable state or private progress in the response.',
   ],
   outputs: [
@@ -22,3 +23,7 @@ export const inputFailureContracts: ContractDefinition[] = [{
     output('input.failure.no-reply', 'No safe reply destination', object({ failure, disposition: fixed('stop-without-reply'), acceptedPromise: fixed(false) }), [], 'Transport origin cannot be verified or no usable destination exists. No outbound response is authorized.'),
   ],
 }];
+
+for (const code of ['binding-disabled', 'credential-retrieval-failed', 'original-account-changed']) inputFailureContracts[0].outputs.push(
+  output(`input.failure.${code}`, 'Known channel binding failure', object({ failure: replaceField(replaceField(replaceField(failure, 'stage', fixed('channel-binding')), 'code', fixed(code)), 'certainty', fixed('known')), connectionId: text('conn-original-account-demo'), originalAccountId: text('account-demo'), acceptedPromise: fixed(false), disposition: fixed('stop-without-reply') }), [], 'Before acceptance, the verified binding cannot be used. Stop without exposing credentials or inventing a usable reply route.'),
+);

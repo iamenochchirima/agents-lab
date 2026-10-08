@@ -1,5 +1,18 @@
 # Lina turn execution and connected simulation
 
+## Design clarification, 2026-10-07
+
+This completed plan records the delivered simulation slice. Its deferred parallel
+playback remains unimplemented. Lina's Tools design now requires bounded parallel
+execution for independent calls, ordered execution for dependent or conflicting
+operations, and call-ID matching through the batch join. Sequential-only execution
+is a comparison mode. Validation, permissions, cancellation accounting and safe
+effect handling are baseline correctness requirements, not optional experiments.
+No checklist item is reopened and no concurrent runtime or playback is added by
+this clarification.
+
+## Delivered slice
+
 Created: 2026-10-07. Status: complete, verified 2026-10-07.
 
 ## Goal and scope

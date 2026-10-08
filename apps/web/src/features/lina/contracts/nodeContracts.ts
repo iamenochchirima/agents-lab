@@ -1,9 +1,20 @@
+import { environmentExecutionContracts, attachEnvironmentProducerHandoffs } from './environmentExecution';
+import { planningTaskContracts, attachPlanningProducerHandoffs } from './planningTasks';
+import { subagentOrchestrationContracts, attachSubagentProducerHandoffs } from './subagentOrchestration';
+import { memoryKnowledgeContracts, attachMemoryProducerHandoffs } from './memoryKnowledge';
 import type { LinaDocument } from '../linaModel';
 import { linaArchitecture } from '../architectureDocument';
 import { inputAdmissionContracts } from './inputAdmission';
 import { inputFailureContracts } from './inputFailure';
 import { inputExecutionContracts } from './inputExecution';
 import { turnExecutionContracts } from './turnExecution';
+import { contextAssemblyContracts } from './contextAssembly';
+import { toolsConnectionContracts } from './toolsConnections';
+import { toolsCapabilityContracts } from './toolsCapabilities';
+import { toolsCallContracts } from './toolsCalls';
+import { modelInterfaceContracts } from './modelInterface';
+import { safetyPermissionContracts, attachSafetyProducerHandoffs } from './safetyPermissions';
+import { statePersistenceContracts, attachStateProducerHandoffs } from './statePersistence';
 import { object, type ContractDefinition, type ContractOutput, type Json, type Schema } from './schema';
 
 export interface InputExample { label: string; source: string; edgeId?: string; value: Json }
@@ -12,7 +23,13 @@ export interface NodeContract extends ContractDefinition {
   status: 'provisional';
   input: { schema: Schema; examples: InputExample[] };
 }
-export const contractDefinitions: ContractDefinition[] = [...inputAdmissionContracts, ...inputFailureContracts, ...inputExecutionContracts, ...turnExecutionContracts];
+export const contractDefinitions: ContractDefinition[] = [...inputAdmissionContracts, ...inputFailureContracts, ...inputExecutionContracts, ...turnExecutionContracts, ...contextAssemblyContracts, ...toolsConnectionContracts, ...toolsCapabilityContracts, ...toolsCallContracts, ...modelInterfaceContracts, ...safetyPermissionContracts, ...statePersistenceContracts, ...memoryKnowledgeContracts, ...subagentOrchestrationContracts, ...planningTaskContracts, ...environmentExecutionContracts];
+attachEnvironmentProducerHandoffs(contractDefinitions);
+attachPlanningProducerHandoffs(contractDefinitions);
+attachMemoryProducerHandoffs(contractDefinitions);
+attachSubagentProducerHandoffs(contractDefinitions);
+attachSafetyProducerHandoffs(contractDefinitions);
+attachStateProducerHandoffs(contractDefinitions);
 
 /** Assemble incoming event variants from their producers. Coordinator-supplied
  * context is separate, so an edge never implies that a node returns all turn state.

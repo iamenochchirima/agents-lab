@@ -65,6 +65,10 @@ as a record of the current implementation.
 
 ## Active plans
 
+- [Lina cross-block architecture revisit proposal](active/lina-cross-block-revisit.md)
+  audits all current and reserved blocks after Tools expansion. It specifies
+  graph-ready additions and handoffs. The populated-block revisit is complete;
+  remaining block development is pending.
 - [Studio Context component experiment](active/context-component-experiment.md)
 - [Component Lab UI foundation](active/component-lab-ui.md)
 
@@ -74,6 +78,38 @@ Context experiment plan connects that workspace to one executable, inspectable
 comparison. Other components and Context alternatives remain planned.
 
 ## Completed plans
+
+- [Lina Execution Environment](completed/lina-execution-environment.md) adds twelve
+  workspace/process/lifecycle nodes, JSON contracts and configurable local/sandbox
+  design playback. Validation is complete for the design simulation.
+
+- [Lina Subagents / multi-agent orchestration](completed/lina-subagents-block.md)
+  adds eight lifecycle nodes, recursive/session/ownership contracts, scoped child
+  harness simulation and per-agent Auto/Next inspection.
+
+- [Lina Memory design block](completed/lina-memory-block.md) adds twelve nodes,
+  scoped recall/write/maintenance contracts and 21 Auto/Next cases, including
+  parent-reviewed publication, corrections and tracked forgetting.
+
+- [Lina State, persistence and recovery](completed/lina-state-persistence.md)
+  adds four nodes, correlated storage/checkpoint contracts and fourteen recovery
+  cases with Auto/Next, preserved work and explicit uncertain effects.
+
+- [Lina Safety nodes and permission simulation](completed/lina-safety-permissions.md)
+  adds five nodes, four approval choices, scoped fixture grants and final dispatch
+  checks, with independent waits and preserved sibling results.
+
+- [Lina Model Interface and provider simulation](completed/lina-model-interface.md)
+  adds four maintained nodes connected to Context, Execution and shared readiness;
+  local protocol fixtures show drafts, normalization, retries and Stop without
+  live provider calls. The [reference contract fixtures](completed/lina-model-interface.contract-fixtures.json)
+  remain design examples, not production provider schemas.
+
+- [Lina populated-block revisit and detailed simulation](completed/lina-current-block-revisit.md)
+
+- [Lina Tools nodes, capability setup and credential lifecycle](completed/lina-tools-nodes.md)
+
+- [Lina Context block and connected simulation](completed/lina-context-block.md)
 
 - [Lina tool outcomes and loop limits](completed/lina-tool-outcomes-and-limits.md)
 
@@ -92,3 +128,5 @@ comparison. Other components and Context alternatives remain planned.
 - [Studio foundation kernel](completed/studio-runtime-kernel.md)
 - [Studio multi-turn Memory and measurement](completed/studio-memory-multiturn-measurement.md)
 - [Studio Context research runtime](completed/studio-context-research-runtime.md)
+
+- [Lina Planning and task management](completed/lina-planning-block.md)

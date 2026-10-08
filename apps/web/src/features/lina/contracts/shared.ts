@@ -12,6 +12,10 @@ export const ordinaryOperation = object({ kind: fixed('ordinary') });
 export const queueOperation = object({ kind: fixed('queue') });
 export const stopOperation = object({ kind: fixed('stop'), targetTurnId: text('turn-001'), guidance: sample(nullable(text('Use the updated constraints')), null) });
 export const promptOperation = object({ kind: fixed('prompt-answer'), promptId: text('prompt-001'), targetTurnId: text('turn-001'), answer: text('approve') });
+/** Explicit operation review is typed separately from arbitrary clarification text.
+ * Input acceptance/correlation never grants execution authority by itself. */
+export const permissionApprovalChoices = ['allow-once', 'allow-session', 'allow-always', 'deny'];
+export const approvalOperation = object({ kind: fixed('prompt-answer'), answerKind: fixed('operation-approval'), promptId: text('prompt-001'), targetTurnId: text('turn-001'), operationId: text('call-001'), waitId: text('wait:approval:call-001'), waitRevision: count(1), answer: choice(permissionApprovalChoices), reviewedScopeDigest: text('sha256:fixture-reviewed-scope') });
 export const commandOperation = object({ kind: fixed('command'), name: choice(['status', 'reset', 'configure']), arguments: list(text('demo'), []) });
 export const operation = union(
   object({ kind: fixed('ordinary') }),
@@ -19,6 +23,7 @@ export const operation = union(
   object({ kind: choice(['steer', 'interrupt', 'stop']), targetTurnId: text('turn-001'), guidance: nullable(text('Use the updated constraints')) }),
   object({ kind: fixed('prompt-answer'), promptId: text('prompt-001'), targetTurnId: text('turn-001'), answer: text('approve') }),
   object({ kind: fixed('command'), name: choice(['status', 'reset', 'configure']), arguments: list(text('demo'), []) }),
+  approvalOperation,
 );
 const envelopeRecord = object({ inputId: text('input-001'), receivedAt: text('2026-10-07T10:00:00Z'), source, content, destination, addressed: flag(true), selectedConversationId: sample(nullable(text('conversation-demo')), null), requestedOperation: sample(nullable(operation), null), transportFacts: { schema: { type: 'object', additionalProperties: true, description: 'Original adapter facts retained for provenance; never grant permission by themselves.' }, example: { connectionId: 'connection-demo' } } });
 // A structured operation is valid without message text; ordinary input needs
@@ -46,6 +51,7 @@ export const outputRecord = object({ outputId: text('output-001'), inputId: text
 export const checkpoint = object({ checkpointId: text('checkpoint-001'), turn, nextStep: choice(['prepare', 'controls', 'settle']), settledCallIds: list(text('call-001'), []), round: count(1) });
 export const uncertainty = object({ turn, operationId: text('call-001'), evidenceRef: text('evidence:call-001'), effect: choice(['unknown', 'succeeded', 'failed']), authorityRetained: fixed(true) });
 export const control = object({ conversationId: text('conversation-demo'), turnId: text('turn-001'), action: choice(['steer', 'interrupt', 'stop']), guidance: nullable(text('Use the updated constraints')), actorId: text('person-demo'), authority });
+export const approvalPromptAnswer = object({ promptId: text('prompt-001'), turnId: text('turn-001'), operationId: text('call-001'), responderId: text('person-demo'), waitId: text('wait:approval:call-001'), waitRevision: count(1), answerKind: fixed('operation-approval'), answer: choice(permissionApprovalChoices), reviewedScopeDigest: text('sha256:fixture-reviewed-scope'), authority, continuationGranted: fixed(false) });
 export const promptAnswer = object({ promptId: text('prompt-001'), turnId: text('turn-001'), operationId: text('call-001'), responderId: text('person-demo'), answer: text('approve'), authority });
 export const toolCall = object({ callId: text('call-001'), name: text('calculator'), arguments: argumentObject });
 export const toolResult = union(

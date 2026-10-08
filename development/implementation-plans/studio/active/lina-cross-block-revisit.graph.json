@@ -1,0 +1,4140 @@
+{
+  "version": 1,
+  "status": "current-block-model-safety-state-and-memory-slices-complete",
+  "baseline": {
+    "nodes": 79,
+    "edges": 162,
+    "commit": "53bc4a234f8c3cf4c2e7266de4a2e82973090028",
+    "includesWorkingTreeDesign": true
+  },
+  "scope": "Graph design and scripted simulation; no live runtime guarantee.",
+  "integrationAuthority": "lina-cross-block-revisit.md",
+  "newNodes": [
+    {
+      "id": "lina-execution-wait",
+      "title": "Await external work",
+      "block": "Turn Execution",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-execution-cancel",
+      "title": "Cancel active work",
+      "block": "Turn Execution",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-context-scope",
+      "title": "Bind context scope",
+      "block": "Context",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-context-observations",
+      "title": "Shape observations",
+      "block": "Context",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-tools-resource-read",
+      "title": "Read selected connector resources",
+      "block": "Tools",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-tools-prompt-get",
+      "title": "Get selected connector prompt",
+      "block": "Tools",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-tools-hooks",
+      "title": "Apply declared plugin hooks",
+      "block": "Tools",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-tools-retry",
+      "title": "Decide bounded adapter retry",
+      "block": "Tools",
+      "phase": "repair",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-model-resolve",
+      "title": "Resolve model binding",
+      "block": "Model Interface",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "completed-design-and-fixture"
+    },
+    {
+      "id": "lina-model-encode",
+      "title": "Encode provider request",
+      "block": "Model Interface",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "completed-design-and-fixture"
+    },
+    {
+      "id": "lina-model-invoke",
+      "title": "Invoke and collect response",
+      "block": "Model Interface",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "completed-design-and-fixture"
+    },
+    {
+      "id": "lina-model-normalize",
+      "title": "Normalize model outcome",
+      "block": "Model Interface",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "completed-design-and-fixture"
+    },
+    {
+      "id": "lina-environment-bind",
+      "title": "Bind execution environment",
+      "block": "Execution Environment",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-environment-run",
+      "title": "Run environment operation",
+      "block": "Execution Environment",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-environment-release",
+      "title": "Release environment resources",
+      "block": "Execution Environment",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-output-prepare",
+      "title": "Prepare delivery",
+      "block": "Output and delivery",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-output-record",
+      "title": "Record delivery intent",
+      "block": "Output and delivery",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-output-send",
+      "title": "Send delivery parts",
+      "block": "Output and delivery",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-output-reconcile",
+      "title": "Reconcile delivery status",
+      "block": "Output and delivery",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-state-load",
+      "title": "Load state",
+      "block": "State, persistence and recovery",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-record",
+      "title": "Record state",
+      "block": "State, persistence and recovery",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-checkpoint",
+      "title": "Create execution checkpoint",
+      "block": "State, persistence and recovery",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-recover",
+      "title": "Recover execution",
+      "block": "State, persistence and recovery",
+      "phase": "foundation",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-observability-record",
+      "title": "Record safe lifecycle event",
+      "block": "Observability",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-observability-project",
+      "title": "Project execution trace",
+      "block": "Observability",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-observability-export",
+      "title": "Export inspectable evidence",
+      "block": "Observability",
+      "phase": "foundation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-subagents-validate",
+      "title": "Validate subagent request",
+      "block": "Subagents",
+      "phase": "delegation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-subagents-prepare",
+      "title": "Prepare child task packet",
+      "block": "Subagents",
+      "phase": "delegation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-subagents-launch",
+      "title": "Launch child harness",
+      "block": "Subagents",
+      "phase": "delegation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-subagents-coordinate",
+      "title": "Coordinate child work",
+      "block": "Subagents",
+      "phase": "delegation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-subagents-return",
+      "title": "Return child result",
+      "block": "Subagents",
+      "phase": "delegation",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-computer-bind",
+      "title": "Bind computer target",
+      "block": "Computer Use",
+      "phase": "deferred",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-computer-observe",
+      "title": "Observe computer target",
+      "block": "Computer Use",
+      "phase": "deferred",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-computer-act",
+      "title": "Execute computer action",
+      "block": "Computer Use",
+      "phase": "deferred",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-planning-update",
+      "title": "Update explicit plan",
+      "block": "Planning",
+      "phase": "required-later",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-planning-select",
+      "title": "Select ready plan steps",
+      "block": "Planning",
+      "phase": "required-later",
+      "status": "proposed"
+    },
+    {
+      "id": "lina-safety-policy",
+      "title": "Resolve policy",
+      "block": "Safety and permissions",
+      "phase": "foundation",
+      "status": "design-implemented"
+    },
+    {
+      "id": "lina-safety-evaluate",
+      "title": "Evaluate operation",
+      "block": "Safety and permissions",
+      "phase": "foundation",
+      "status": "design-implemented"
+    },
+    {
+      "id": "lina-safety-approval",
+      "title": "Await approval",
+      "block": "Safety and permissions",
+      "phase": "foundation",
+      "status": "design-implemented"
+    },
+    {
+      "id": "lina-safety-grants",
+      "title": "Manage permission grants",
+      "block": "Safety and permissions",
+      "phase": "foundation",
+      "status": "design-implemented"
+    },
+    {
+      "id": "lina-safety-authorize",
+      "title": "Authorize execution",
+      "block": "Safety and permissions",
+      "phase": "foundation",
+      "status": "design-implemented"
+    },
+    {
+      "id": "lina-memory-scope",
+      "title": "Resolve memory access",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-query",
+      "title": "Prepare recall query",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-retrieve",
+      "title": "Retrieve candidates",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-select",
+      "title": "Select recall evidence",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-capture",
+      "title": "Capture memory evidence",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-extract",
+      "title": "Propose memories",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-validate",
+      "title": "Validate candidates",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-resolve",
+      "title": "Resolve memory changes",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-commit",
+      "title": "Commit memory changes",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-index",
+      "title": "Maintain retrieval index",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-consolidate",
+      "title": "Consolidate memories",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-forget",
+      "title": "Forget or retire memory",
+      "block": "Memory",
+      "phase": "memory",
+      "status": "proposed",
+      "implementation": "design-implemented"
+    }
+  ],
+  "nodeMoves": [
+    {
+      "id": "lina-input-reconcile",
+      "newBlock": "Turn Execution",
+      "preserveId": true
+    }
+  ],
+  "newEdges": [
+    {
+      "id": "lina-context-edge-prepare-scope",
+      "source": "lina-execution-prepare",
+      "target": "lina-context-scope",
+      "outputKind": "context.prepare",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-context-edge-scope-load",
+      "source": "lina-context-scope",
+      "target": "lina-context-load",
+      "outputKind": "context.scope-bound",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-context-edge-scope-terminal",
+      "source": "lina-context-scope",
+      "target": "lina-execution-settle",
+      "outputKind": "context.scope-denied",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-context-edge-tools-observations",
+      "source": "lina-context-tools",
+      "target": "lina-context-observations",
+      "outputKind": "context.tools-prepared",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-context-edge-observations-budget",
+      "source": "lina-context-observations",
+      "target": "lina-context-budget",
+      "outputKind": "context.observations-shaped",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-context-edge-observations-terminal",
+      "source": "lina-context-observations",
+      "target": "lina-execution-settle",
+      "outputKind": "context.observation-invalid",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-context-edge-observations-hooks",
+      "source": "lina-context-observations",
+      "target": "lina-tools-hooks",
+      "outputKind": "context.projection-hook-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-hooks-context-budget",
+      "source": "lina-tools-hooks",
+      "target": "lina-context-budget",
+      "outputKind": "tools.context-projection-transformed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-hooks-context-terminal",
+      "source": "lina-tools-hooks",
+      "target": "lina-execution-settle",
+      "outputKind": "tools.context-projection-failed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-context-edge-load-reprepare",
+      "source": "lina-context-load",
+      "target": "lina-execution-prepare",
+      "outputKind": "context.reprepare-required",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-context-edge-publish-reprepare",
+      "source": "lina-context-publish",
+      "target": "lina-execution-prepare",
+      "outputKind": "context.reprepare-required",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-context-resource-request",
+      "source": "lina-context-load",
+      "target": "lina-tools-resource-read",
+      "outputKind": "context.resource-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-resource-context",
+      "source": "lina-tools-resource-read",
+      "target": "lina-context-load",
+      "outputKind": "tools.resource-loaded",
+      "edgeKind": "return",
+      "outputKinds": [
+        "tools.resource-loaded",
+        "tools.resource-failed"
+      ]
+    },
+    {
+      "id": "lina-tools-edge-context-prompt-request",
+      "source": "lina-context-load",
+      "target": "lina-tools-prompt-get",
+      "outputKind": "context.prompt-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-prompt-context",
+      "source": "lina-tools-prompt-get",
+      "target": "lina-context-load",
+      "outputKind": "tools.prompt-loaded",
+      "edgeKind": "return",
+      "outputKinds": [
+        "tools.prompt-loaded",
+        "tools.prompt-failed"
+      ]
+    },
+    {
+      "id": "lina-tools-edge-resource-wait",
+      "source": "lina-tools-resource-read",
+      "target": "lina-execution-wait",
+      "outputKind": "tools.resource-waiting",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-prompt-wait",
+      "source": "lina-tools-prompt-get",
+      "target": "lina-execution-wait",
+      "outputKind": "tools.prompt-waiting",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-wait-resource-resume",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-resource-read",
+      "outputKind": "execution.resource-resume",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-wait-prompt-resume",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-prompt-get",
+      "outputKind": "execution.prompt-resume",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-resolve-hooks",
+      "source": "lina-tools-resolve",
+      "target": "lina-tools-hooks",
+      "outputKind": "tools.call-hook-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-hooks-validate",
+      "source": "lina-tools-hooks",
+      "target": "lina-tools-validate",
+      "outputKind": "tools.hook-applied",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-hooks-collect",
+      "source": "lina-tools-hooks",
+      "target": "lina-tools-collect",
+      "outputKind": "tools.hook-blocked",
+      "edgeKind": "return",
+      "outputKinds": [
+        "tools.hook-blocked",
+        "tools.hook-failed"
+      ]
+    },
+    {
+      "id": "lina-tools-edge-collect-retry",
+      "source": "lina-tools-collect",
+      "target": "lina-tools-retry",
+      "outputKind": "tools.retry-assessment-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-retry-resolve",
+      "source": "lina-tools-retry",
+      "target": "lina-tools-resolve",
+      "outputKind": "tools.retry-ready",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-retry-collect",
+      "source": "lina-tools-retry",
+      "target": "lina-tools-collect",
+      "outputKind": "tools.retry-denied",
+      "edgeKind": "return",
+      "outputKinds": [
+        "tools.retry-denied",
+        "tools.retry-cancelled"
+      ]
+    },
+    {
+      "id": "lina-tools-edge-skills-context-inventory",
+      "source": "lina-tools-skill-discover",
+      "target": "lina-context-load",
+      "outputKind": "tools.skill-inventory",
+      "edgeKind": "contribution"
+    },
+    {
+      "id": "lina-tools-edge-plugin-active-skills",
+      "source": "lina-tools-plugin-lifecycle",
+      "target": "lina-tools-skill-discover",
+      "outputKind": "tools.plugin-active-skills",
+      "edgeKind": "contribution"
+    },
+    {
+      "id": "lina-tools-edge-plugin-active-connectors",
+      "source": "lina-tools-plugin-lifecycle",
+      "target": "lina-tools-config",
+      "outputKind": "tools.plugin-active-connectors",
+      "edgeKind": "contribution"
+    },
+    {
+      "id": "lina-execution-edge-resume-wait",
+      "source": "lina-input-runtime",
+      "target": "lina-execution-wait",
+      "outputKind": "input.runtime.resume-wait",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-execution-edge-wait-approval",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-permissions",
+      "outputKind": "execution.wait-approval-answer",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-execution-edge-wait-auth",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-resolve",
+      "outputKind": "execution.wait-auth-ready",
+      "edgeKind": "return",
+      "condition": "Ordinary retained tool call only; resource/prompt auth resumes through dependency-specific wait return."
+    },
+    {
+      "id": "lina-execution-edge-wait-input",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-collect",
+      "outputKind": "execution.wait-input-answer",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-execution-edge-wait-cancel",
+      "source": "lina-execution-wait",
+      "target": "lina-execution-cancel",
+      "outputKind": "execution.wait-cancellation",
+      "edgeKind": "control",
+      "condition": "Exact-turn Stop/Interrupt only; operation wait expiry uses its owning-operation return, not turn cancellation."
+    },
+    {
+      "id": "lina-execution-edge-tools-approval-wait",
+      "source": "lina-tools-permissions",
+      "target": "lina-execution-wait",
+      "outputKind": "tools.approval-waiting",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-execution-edge-tools-resolve-auth-wait",
+      "source": "lina-tools-resolve",
+      "target": "lina-execution-wait",
+      "outputKind": "tools.authorization-waiting",
+      "edgeKind": "observation"
+    },
+    {
+      "id": "lina-execution-edge-tools-dispatch-auth-wait",
+      "source": "lina-tools-dispatch",
+      "target": "lina-execution-wait",
+      "outputKind": "tools.authorization-waiting",
+      "edgeKind": "observation"
+    },
+    {
+      "id": "lina-execution-edge-tools-input-wait",
+      "source": "lina-tools-collect",
+      "target": "lina-execution-wait",
+      "outputKind": "tools.call-input-wait",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-execution-edge-turn-steer",
+      "source": "lina-input-control",
+      "target": "lina-execution-controls",
+      "outputKind": "input.control.steer",
+      "edgeKind": "control"
+    },
+    {
+      "id": "lina-execution-edge-controls-cancel",
+      "source": "lina-execution-controls",
+      "target": "lina-execution-cancel",
+      "outputKind": "execution.controls-stop",
+      "edgeKind": "control"
+    },
+    {
+      "id": "lina-execution-edge-cancel-model",
+      "source": "lina-execution-cancel",
+      "target": "lina-execution-model",
+      "outputKind": "execution.provider-cancellation-requested",
+      "edgeKind": "control",
+      "condition": "Signal only matching active owner; settlement/reconciliation outputs occur after required work is joined or safely transferred."
+    },
+    {
+      "id": "lina-execution-edge-cancel-tools",
+      "source": "lina-execution-cancel",
+      "target": "lina-tools-collect",
+      "outputKind": "execution.tool-cancellation-requested",
+      "edgeKind": "control",
+      "condition": "Signal only matching active owner; settlement/reconciliation outputs occur after required work is joined or safely transferred."
+    },
+    {
+      "id": "lina-execution-edge-cancel-settle",
+      "source": "lina-execution-cancel",
+      "target": "lina-execution-settle",
+      "outputKind": "execution.cancellation-resolved",
+      "edgeKind": "return",
+      "condition": "Signal only matching active owner; settlement/reconciliation outputs occur after required work is joined or safely transferred."
+    },
+    {
+      "id": "lina-execution-edge-cancel-reconcile",
+      "source": "lina-execution-cancel",
+      "target": "lina-input-reconcile",
+      "outputKind": "execution.cancellation-uncertain",
+      "edgeKind": "return",
+      "condition": "Signal only matching active owner; settlement/reconciliation outputs occur after required work is joined or safely transferred."
+    },
+    {
+      "id": "lina-execution-edge-reconcile-publish",
+      "source": "lina-input-reconcile",
+      "target": "lina-tools-publish",
+      "outputKind": "execution.reconciled-batch",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-execution-edge-reconcile-settle",
+      "source": "lina-input-reconcile",
+      "target": "lina-execution-settle",
+      "outputKind": "execution.reconciliation-terminal",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-environment-edge-bind-run",
+      "source": "lina-environment-bind",
+      "target": "lina-environment-run",
+      "outputKind": "environment.bound",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-environment-edge-run-release",
+      "source": "lina-environment-run",
+      "target": "lina-environment-release",
+      "outputKind": "environment.release-requested",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-output-edge-prepare-record",
+      "source": "lina-output-prepare",
+      "target": "lina-output-record",
+      "outputKind": "delivery.plan-ready",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-output-edge-record-send",
+      "source": "lina-output-record",
+      "target": "lina-output-send",
+      "outputKind": "delivery.intent-recorded",
+      "edgeKind": "transition",
+      "condition": "Required State acknowledgement is known applied; failed/unknown intent does not authorize send."
+    },
+    {
+      "id": "lina-output-edge-send-reconcile",
+      "source": "lina-output-send",
+      "target": "lina-output-reconcile",
+      "outputKind": "delivery.attempt-observed",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-output-edge-reconcile-send",
+      "source": "lina-output-reconcile",
+      "target": "lina-output-send",
+      "outputKind": "delivery.retry-authorized",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-observability-edge-record-project",
+      "source": "lina-observability-record",
+      "target": "lina-observability-project",
+      "outputKind": "trace.recorded",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-observability-edge-project-export",
+      "source": "lina-observability-project",
+      "target": "lina-observability-export",
+      "outputKind": "trace.export-requested",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-subagents-edge-validate-prepare",
+      "source": "lina-subagents-validate",
+      "target": "lina-subagents-prepare",
+      "outputKind": "subagent.admitted",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-subagents-edge-prepare-launch",
+      "source": "lina-subagents-prepare",
+      "target": "lina-subagents-launch",
+      "outputKind": "subagent.packet-ready",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-subagents-edge-launch-coordinate",
+      "source": "lina-subagents-launch",
+      "target": "lina-subagents-coordinate",
+      "outputKind": "subagent.started",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-subagents-edge-coordinate-return",
+      "source": "lina-subagents-coordinate",
+      "target": "lina-subagents-return",
+      "outputKind": "subagent.result-ready",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-computer-edge-bind-observe",
+      "source": "lina-computer-bind",
+      "target": "lina-computer-observe",
+      "outputKind": "computer.bound",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-computer-edge-observe-act",
+      "source": "lina-computer-observe",
+      "target": "lina-computer-act",
+      "outputKind": "computer.action-requested",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-computer-edge-act-observe",
+      "source": "lina-computer-act",
+      "target": "lina-computer-observe",
+      "outputKind": "computer.refresh-requested",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-planning-edge-update-select",
+      "source": "lina-planning-update",
+      "target": "lina-planning-select",
+      "outputKind": "planning.plan-updated",
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-environment-edge-tools-bind",
+      "source": "lina-tools-dispatch",
+      "target": "lina-environment-bind",
+      "outputKind": "environment.operation-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-environment-edge-result-tools",
+      "source": "lina-environment-run",
+      "target": "lina-tools-collect",
+      "outputKind": "environment.operation-observed",
+      "edgeKind": "return",
+      "condition": "Retain terminal outcome until required ephemeral resource cleanup joins; shared handles may remain explicitly retained."
+    },
+    {
+      "id": "lina-environment-edge-turn-release",
+      "source": "lina-execution-settle",
+      "target": "lina-environment-release",
+      "outputKind": "environment.release-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-environment-edge-release-settle",
+      "source": "lina-environment-release",
+      "target": "lina-execution-settle",
+      "outputKind": "environment.release-observed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-output-edge-input-request",
+      "source": "lina-input-delivery",
+      "target": "lina-output-prepare",
+      "outputKind": "delivery.requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-output-edge-receipt-input",
+      "source": "lina-output-reconcile",
+      "target": "lina-input-delivery",
+      "outputKind": "delivery.status-ready",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-subagents-edge-spawn",
+      "source": "lina-tools-dispatch",
+      "target": "lina-subagents-validate",
+      "outputKind": "subagent.spawn-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-subagents-edge-permission",
+      "source": "lina-subagents-validate",
+      "target": "lina-safety-evaluate",
+      "outputKind": "safety.operation-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-subagents-edge-permission-return",
+      "source": "lina-safety-authorize",
+      "target": "lina-subagents-validate",
+      "outputKind": "safety.operation-decided",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-subagents-edge-start-turn",
+      "source": "lina-subagents-launch",
+      "target": "lina-execution-start",
+      "outputKind": "subagent.turn-started",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-subagents-edge-child-released",
+      "source": "lina-execution-release",
+      "target": "lina-subagents-coordinate",
+      "outputKind": "subagent.execution-settled",
+      "edgeKind": "return",
+      "condition": "Child origin only; return to its parent coordinator after child ownership release. No external reply or parent queue drain."
+    },
+    {
+      "id": "lina-subagents-edge-result-tools",
+      "source": "lina-subagents-return",
+      "target": "lina-tools-collect",
+      "outputKind": "subagent.operation-observed",
+      "edgeKind": "return",
+      "outputKinds": [
+        "subagent.operation-observed",
+        "subagent.spawn-refused",
+        "subagent.spawn-failed"
+      ]
+    },
+    {
+      "id": "lina-subagents-edge-cancel",
+      "source": "lina-execution-cancel",
+      "target": "lina-subagents-coordinate",
+      "outputKind": "subagent.control-requested",
+      "edgeKind": "control",
+      "condition": "Signal only matching active owner; settlement/reconciliation outputs occur after required work is joined or safely transferred."
+    },
+    {
+      "id": "lina-subagents-edge-child-cancel",
+      "source": "lina-subagents-coordinate",
+      "target": "lina-execution-cancel",
+      "outputKind": "subagent.child-stop-requested",
+      "edgeKind": "control"
+    },
+    {
+      "id": "lina-computer-edge-tool-bind",
+      "source": "lina-tools-dispatch",
+      "target": "lina-computer-bind",
+      "outputKind": "computer.operation-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-computer-edge-tool-observe",
+      "source": "lina-tools-dispatch",
+      "target": "lina-computer-observe",
+      "outputKind": "computer.observation-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-computer-edge-tool-act",
+      "source": "lina-tools-dispatch",
+      "target": "lina-computer-act",
+      "outputKind": "computer.action-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-computer-edge-host-bind",
+      "source": "lina-computer-bind",
+      "target": "lina-environment-bind",
+      "outputKind": "environment.binding-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-computer-edge-host-ready",
+      "source": "lina-environment-bind",
+      "target": "lina-computer-bind",
+      "outputKind": "environment.binding-ready",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-computer-edge-observation-tools",
+      "source": "lina-computer-observe",
+      "target": "lina-tools-collect",
+      "outputKind": "computer.observation-ready",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-computer-edge-action-tools",
+      "source": "lina-computer-act",
+      "target": "lina-tools-collect",
+      "outputKind": "computer.action-observed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-planning-edge-tool-update",
+      "source": "lina-tools-dispatch",
+      "target": "lina-planning-update",
+      "outputKind": "planning.update-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-planning-edge-result-tools",
+      "source": "lina-planning-update",
+      "target": "lina-tools-collect",
+      "outputKind": "planning.operation-observed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-observability-edge-execution-events",
+      "source": "lina-execution-controls",
+      "target": "lina-observability-record",
+      "outputKind": "trace.event-published",
+      "edgeKind": "observation"
+    },
+    {
+      "id": "lina-observability-edge-tools-events",
+      "source": "lina-tools-collect",
+      "target": "lina-observability-record",
+      "outputKind": "trace.event-published",
+      "edgeKind": "observation"
+    },
+    {
+      "id": "lina-observability-edge-child-events",
+      "source": "lina-subagents-coordinate",
+      "target": "lina-observability-record",
+      "outputKind": "trace.event-published",
+      "edgeKind": "observation"
+    },
+    {
+      "id": "lina-subagents-edge-approval-wait",
+      "source": "lina-subagents-validate",
+      "target": "lina-execution-wait",
+      "outputKind": "subagent.approval-waiting",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-subagents-edge-approval-resume",
+      "source": "lina-execution-wait",
+      "target": "lina-subagents-validate",
+      "outputKind": "execution.child-approval-answer",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-tools-edge-resource-auth",
+      "source": "lina-tools-resource-read",
+      "target": "lina-tools-auth",
+      "outputKind": "tools.dependency-auth-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-tools-edge-prompt-auth",
+      "source": "lina-tools-prompt-get",
+      "target": "lina-tools-auth",
+      "outputKind": "tools.dependency-auth-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-subagents-edge-refused-return",
+      "source": "lina-subagents-validate",
+      "target": "lina-subagents-return",
+      "outputKind": "subagent.spawn-refused",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-subagents-edge-prepare-failed-return",
+      "source": "lina-subagents-prepare",
+      "target": "lina-subagents-return",
+      "outputKind": "subagent.spawn-failed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-subagents-edge-launch-failed-return",
+      "source": "lina-subagents-launch",
+      "target": "lina-subagents-return",
+      "outputKind": "subagent.spawn-failed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-execution-edge-wait-expired-approval",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-permissions",
+      "outputKind": "execution.wait-expired",
+      "edgeKind": "return",
+      "condition": "Only the exact expired operation; sibling work remains active under its existing policy."
+    },
+    {
+      "id": "lina-execution-edge-wait-expired-input",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-collect",
+      "outputKind": "execution.wait-expired",
+      "edgeKind": "return",
+      "condition": "Only the exact expired operation; sibling work remains active under its existing policy."
+    },
+    {
+      "id": "lina-execution-edge-wait-expired-resource",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-resource-read",
+      "outputKind": "execution.wait-expired",
+      "edgeKind": "return",
+      "condition": "Only the exact expired operation; sibling work remains active under its existing policy."
+    },
+    {
+      "id": "lina-execution-edge-wait-expired-prompt",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-prompt-get",
+      "outputKind": "execution.wait-expired",
+      "edgeKind": "return",
+      "condition": "Only the exact expired operation; sibling work remains active under its existing policy."
+    },
+    {
+      "id": "lina-execution-edge-wait-expired-child",
+      "source": "lina-execution-wait",
+      "target": "lina-subagents-validate",
+      "outputKind": "execution.wait-expired",
+      "edgeKind": "return",
+      "condition": "Only the exact expired operation; sibling work remains active under its existing policy."
+    },
+    {
+      "id": "lina-environment-edge-bind-failed-tools",
+      "source": "lina-environment-bind",
+      "target": "lina-tools-collect",
+      "outputKind": "environment.binding-failed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-environment-edge-bind-failed-computer",
+      "source": "lina-environment-bind",
+      "target": "lina-computer-bind",
+      "outputKind": "environment.binding-failed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-environment-edge-release-tools",
+      "source": "lina-environment-release",
+      "target": "lina-tools-collect",
+      "outputKind": "environment.release-observed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-output-edge-intent-failed",
+      "source": "lina-output-record",
+      "target": "lina-output-reconcile",
+      "outputKind": "delivery.intent-unconfirmed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-output-edge-format-failed",
+      "source": "lina-output-prepare",
+      "target": "lina-output-reconcile",
+      "outputKind": "delivery.plan-refused",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-output-edge-input-receipt",
+      "source": "lina-input-delivery",
+      "target": "lina-output-reconcile",
+      "outputKind": "delivery.receipt-observed",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-output-edge-auth-request",
+      "source": "lina-output-send",
+      "target": "lina-tools-auth",
+      "outputKind": "delivery.account-readiness-requested",
+      "edgeKind": "request"
+    },
+    {
+      "id": "lina-output-edge-auth-ready-output",
+      "source": "lina-tools-auth",
+      "target": "lina-output-send",
+      "outputKind": "delivery.account-readiness-observed",
+      "edgeKind": "return",
+      "outputKinds": [
+        "delivery.account-ready",
+        "delivery.account-waiting",
+        "delivery.account-failed"
+      ],
+      "condition": "Return to retained delivery attempt; external turn need not remain active. Recheck unchanged account and send stage."
+    },
+    {
+      "id": "lina-environment-edge-connection-host",
+      "source": "lina-tools-connect",
+      "target": "lina-environment-bind",
+      "outputKind": "environment.connection-host-requested",
+      "edgeKind": "request",
+      "condition": "Environment-backed local connection, such as configured stdio, only."
+    },
+    {
+      "id": "lina-environment-edge-host-connection",
+      "source": "lina-environment-bind",
+      "target": "lina-tools-connect",
+      "outputKind": "environment.connection-host-ready",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-environment-edge-plugin-host",
+      "source": "lina-tools-plugin-load",
+      "target": "lina-environment-bind",
+      "outputKind": "environment.plugin-host-requested",
+      "edgeKind": "request",
+      "condition": "Configured plugin execution host only; trust check precedes loading code."
+    },
+    {
+      "id": "lina-environment-edge-host-plugin",
+      "source": "lina-environment-bind",
+      "target": "lina-tools-plugin-load",
+      "outputKind": "environment.plugin-host-ready",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-model-edge-context-resolve",
+      "source": "lina-context-load",
+      "target": "lina-model-resolve",
+      "label": "request metadata only",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.capabilities-requested"
+      ]
+    },
+    {
+      "id": "lina-model-edge-resolve-context",
+      "source": "lina-model-resolve",
+      "target": "lina-context-load",
+      "label": "same preparation: capabilities / failure",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.capabilities-ready",
+        "model.capabilities-unavailable",
+        "model.capabilities-cancelled",
+        "model.capabilities-ready-openai-responses",
+        "model.capabilities-ready-anthropic-messages",
+        "model.capabilities-ready-gemini-generate-content"
+      ]
+    },
+    {
+      "id": "lina-model-edge-execution-resolve",
+      "source": "lina-execution-model",
+      "target": "lina-model-resolve",
+      "label": "invocation intent; no dispatch",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.invocation-requested",
+        "model.invocation-requested-after-feedback",
+        "model.invocation-requested-retry"
+      ]
+    },
+    {
+      "id": "lina-model-edge-resolve-encode",
+      "source": "lina-model-resolve",
+      "target": "lina-model-encode",
+      "label": "current binding and budget",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.binding-ready",
+        "model.binding-ready-openai-responses",
+        "model.binding-ready-anthropic-messages",
+        "model.binding-ready-gemini-generate-content"
+      ]
+    },
+    {
+      "id": "lina-model-edge-resolve-normalize",
+      "source": "lina-model-resolve",
+      "target": "lina-model-normalize",
+      "label": "prelaunch failure / cancellation",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.binding-unavailable",
+        "model.binding-disabled",
+        "model.resolve-cancelled",
+        "model.readiness-denied",
+        "model.readiness-expired"
+      ]
+    },
+    {
+      "id": "lina-model-edge-cancel-resolve",
+      "source": "lina-execution-cancel",
+      "target": "lina-model-resolve",
+      "label": "cancel pending resolution",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.intent-cancelled"
+      ]
+    },
+    {
+      "id": "lina-model-edge-cancel-encode",
+      "source": "lina-execution-cancel",
+      "target": "lina-model-encode",
+      "label": "cancel before dispatch",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.intent-cancelled"
+      ]
+    },
+    {
+      "id": "lina-model-edge-cancel-readiness",
+      "source": "lina-execution-cancel",
+      "target": "lina-execution-wait",
+      "label": "invalidate Model readiness continuation",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.readiness-cancelled",
+        "model.metadata-readiness-cancelled"
+      ]
+    },
+    {
+      "id": "lina-model-edge-resolve-reprepare",
+      "source": "lina-model-resolve",
+      "target": "lina-execution-prepare",
+      "label": "changed binding / budget",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.resolve-reprepare-required"
+      ]
+    },
+    {
+      "id": "lina-model-edge-encode-invoke",
+      "source": "lina-model-encode",
+      "target": "lina-model-invoke",
+      "label": "validated request; launch recheck",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.request-ready",
+        "model.request-ready-openai-responses",
+        "model.request-ready-anthropic-messages",
+        "model.request-ready-gemini-generate-content"
+      ]
+    },
+    {
+      "id": "lina-model-edge-encode-normalize",
+      "source": "lina-model-encode",
+      "target": "lina-model-normalize",
+      "label": "prelaunch failure / cancellation",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.encode-unsupported-required-media",
+        "model.encode-unsupported-required-schema",
+        "model.encode-unsupported-required-setting",
+        "model.encode-invalid-history-pairing",
+        "model.encode-incompatible-continuation",
+        "model.encode-request-too-large-nonreducible",
+        "model.encode-cancelled"
+      ]
+    },
+    {
+      "id": "lina-model-edge-encode-reprepare",
+      "source": "lina-model-encode",
+      "target": "lina-execution-prepare",
+      "label": "pressure / stale projection",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.encode-reprepare-required",
+        "model.encode-budget-changed"
+      ]
+    },
+    {
+      "id": "lina-model-edge-invoke-progress",
+      "source": "lina-model-invoke",
+      "target": "lina-model-invoke",
+      "label": "draft progress; not executable",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.progress",
+        "model.progress-second-call",
+        "model.progress-text",
+        "model.progress-usage",
+        "model.progress-heartbeat",
+        "model.progress-unknown",
+        "model.progress-late"
+      ]
+    },
+    {
+      "id": "lina-model-edge-invoke-normalize",
+      "source": "lina-model-invoke",
+      "target": "lina-model-normalize",
+      "label": "one terminal local observation",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.attempt-observed",
+        "model.attempt-calls-observed",
+        "model.attempt-mixed-observed",
+        "model.attempt-truncated-observed",
+        "model.attempt-malformed-observed",
+        "model.attempt-refusal-observed",
+        "model.attempt-unknown-finish-observed",
+        "model.attempt-missing-terminal",
+        "model.attempt-provider-failed",
+        "model.attempt-failed-after-output",
+        "model.attempt-http200-error",
+        "model.attempt-aborted",
+        "model.invoke-prelaunch-stopped",
+        "model.attempt-observed-openai-responses",
+        "model.attempt-observed-anthropic-messages",
+        "model.attempt-observed-gemini-generate-content",
+        "model.attempt-observed-retry"
+      ]
+    },
+    {
+      "id": "lina-model-edge-normalize-decide",
+      "source": "lina-model-normalize",
+      "target": "lina-execution-decide",
+      "label": "semantic model outcome",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.outcome-ready",
+        "model.outcome-calls",
+        "model.outcome-text-and-calls",
+        "model.outcome-continuation",
+        "model.outcome-refused",
+        "model.outcome-truncated",
+        "model.outcome-malformed",
+        "model.outcome-duplicate-call-id",
+        "model.outcome-unknown-finish",
+        "model.outcome-missing-terminal",
+        "model.outcome-retryable-failure",
+        "model.outcome-context-overflow",
+        "model.outcome-auth-failure",
+        "model.outcome-aborted",
+        "model.outcome-failed-after-output",
+        "model.outcome-prelaunch-failed",
+        "model.outcome-prelaunch-aborted",
+        "model.outcome-unavailable-usage",
+        "model.outcome-scoped-replay",
+        "model.outcome-hosted-continuation-unsupported",
+        "model.outcome-ready-openai-responses",
+        "model.outcome-ready-anthropic-messages",
+        "model.outcome-ready-gemini-generate-content",
+        "model.outcome-ready-retry",
+        "model.outcome-unknown-tool",
+        "model.outcome-minted-call-id"
+      ]
+    },
+    {
+      "id": "lina-model-edge-cancel-invoke",
+      "source": "lina-execution-model",
+      "target": "lina-model-invoke",
+      "label": "abort exact active attempt",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.abort-requested"
+      ]
+    },
+    {
+      "id": "lina-model-edge-invoke-wait",
+      "source": "lina-model-invoke",
+      "target": "lina-execution-wait",
+      "label": "retain pending local settlement",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.local-settlement-pending"
+      ]
+    },
+    {
+      "id": "lina-model-edge-wait-invoke",
+      "source": "lina-execution-wait",
+      "target": "lina-model-invoke",
+      "label": "same attempt; never redispatch",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.settlement-resume"
+      ]
+    },
+    {
+      "id": "lina-model-edge-resolve-wait",
+      "source": "lina-model-resolve",
+      "target": "lina-execution-wait",
+      "label": "retain Model readiness intent",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.readiness-wait",
+        "model.metadata-readiness-wait"
+      ]
+    },
+    {
+      "id": "lina-model-edge-wait-auth",
+      "source": "lina-execution-wait",
+      "target": "lina-tools-auth",
+      "label": "registered native-provider auth request",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.credential-readiness-requested",
+        "model.metadata-credential-readiness-requested"
+      ]
+    },
+    {
+      "id": "lina-model-edge-wait-resolve",
+      "source": "lina-execution-wait",
+      "target": "lina-model-resolve",
+      "label": "matched readiness; recheck purpose",
+      "phase": "model-slice",
+      "implementation": "completed-design-and-fixture",
+      "outputKinds": [
+        "model.readiness-resume",
+        "model.metadata-readiness-resume"
+      ]
+    },
+    {
+      "id": "lina-safety-edge-tool-request",
+      "source": "lina-tools-permissions",
+      "target": "lina-safety-evaluate",
+      "label": "exact validated operation; request admission",
+      "outputKind": "tools.safety-operation-requested",
+      "outputKinds": [
+        "tools.safety-operation-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-evaluate-policy",
+      "source": "lina-safety-evaluate",
+      "target": "lina-safety-policy",
+      "label": "resolve trusted policy",
+      "outputKind": "safety.policy-requested",
+      "outputKinds": [
+        "safety.policy-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-policy-evaluate",
+      "source": "lina-safety-policy",
+      "target": "lina-safety-evaluate",
+      "label": "ready / denied / unavailable; same request",
+      "outputKind": "safety.policy-ready",
+      "outputKinds": [
+        "safety.policy-ready",
+        "safety.policy-hard-deny",
+        "safety.policy-always-review",
+        "safety.policy-unavailable"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-evaluate-grants",
+      "source": "lina-safety-evaluate",
+      "target": "lina-safety-grants",
+      "label": "lookup reviewed operation matcher",
+      "outputKind": "safety.grant-lookup",
+      "outputKinds": [
+        "safety.grant-lookup"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-grants-evaluate",
+      "source": "lina-safety-grants",
+      "target": "lina-safety-evaluate",
+      "label": "match / miss / expired / revoked / unavailable",
+      "outputKind": "safety.grant-matched",
+      "outputKinds": [
+        "safety.grant-matched",
+        "safety.grant-missing",
+        "safety.grant-expired",
+        "safety.grant-revoked",
+        "safety.grant-unavailable"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-evaluate-authorize",
+      "source": "lina-safety-evaluate",
+      "target": "lina-safety-authorize",
+      "label": "allow / deny / unavailable evaluation",
+      "outputKind": "safety.operation-allowed",
+      "outputKinds": [
+        "safety.operation-allowed",
+        "safety.operation-denied",
+        "safety.operation-unavailable"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-evaluate-approval",
+      "source": "lina-safety-evaluate",
+      "target": "lina-safety-approval",
+      "label": "review required; exact displayed scope",
+      "outputKind": "safety.approval-required",
+      "outputKinds": [
+        "safety.approval-required"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-wait-tools",
+      "source": "lina-safety-approval",
+      "target": "lina-tools-permissions",
+      "label": "retain tool approval wait before prompt",
+      "outputKind": "safety.approval-waiting",
+      "outputKinds": [
+        "safety.approval-waiting"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-wait-registered",
+      "source": "lina-execution-wait",
+      "target": "lina-safety-approval",
+      "label": "retained approval wait acknowledged",
+      "outputKind": "execution.safety-wait-registered",
+      "outputKinds": [
+        "execution.safety-wait-registered"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-prompt",
+      "source": "lina-safety-approval",
+      "target": "lina-input-delivery",
+      "label": "registered four-choice prompt delivery",
+      "outputKind": "safety.approval-prompt-requested",
+      "outputKinds": [
+        "safety.approval-prompt-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-answer",
+      "source": "lina-tools-permissions",
+      "target": "lina-safety-approval",
+      "label": "correlated answer via Input and Execution",
+      "outputKind": "tools.safety-answer-forwarded",
+      "outputKinds": [
+        "tools.safety-answer-forwarded"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-grants",
+      "source": "lina-safety-approval",
+      "target": "lina-safety-grants",
+      "label": "accepted allow choice; commit reviewed scope",
+      "outputKind": "safety.approval-allow-once",
+      "outputKinds": [
+        "safety.approval-allow-once",
+        "safety.approval-allow-session",
+        "safety.approval-allow-always"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-grants-authorize",
+      "source": "lina-safety-grants",
+      "target": "lina-safety-authorize",
+      "label": "commit outcome; unknown withholds launch",
+      "outputKind": "safety.grant-committed",
+      "outputKinds": [
+        "safety.grant-committed",
+        "safety.grant-commit-failed",
+        "safety.grant-commit-unknown",
+        "safety.grant-commit-conflict",
+        "safety.grant-inspected",
+        "safety.grant-committed-allow-once",
+        "safety.grant-committed-allow-session",
+        "safety.grant-committed-allow-always"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-authorize",
+      "source": "lina-safety-approval",
+      "target": "lina-safety-authorize",
+      "label": "deny / expired / cancelled; no launch",
+      "outputKind": "safety.approval-denied",
+      "outputKinds": [
+        "safety.approval-denied",
+        "safety.approval-expired",
+        "safety.approval-cancelled"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-authorize-grants",
+      "source": "lina-safety-authorize",
+      "target": "lina-safety-grants",
+      "label": "reserve / consume / inspect exact attempt",
+      "outputKind": "safety.grant-reservation-requested",
+      "outputKinds": [
+        "safety.grant-reservation-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-reservation-authorize",
+      "source": "lina-safety-grants",
+      "target": "lina-safety-authorize",
+      "label": "matched transaction outcome",
+      "outputKind": "safety.grant-reserved",
+      "outputKinds": [
+        "safety.grant-reserved",
+        "safety.reservation-consumed",
+        "safety.reservation-released",
+        "safety.reservation-already-applied",
+        "safety.reservation-conflict",
+        "safety.reservation-failed",
+        "safety.reservation-unknown"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-decision-tools",
+      "source": "lina-safety-authorize",
+      "target": "lina-tools-permissions",
+      "label": "admission / no-launch / recheck; not dispatch",
+      "outputKind": "safety.operation-decided",
+      "outputKinds": [
+        "safety.operation-decided",
+        "safety.operation-decided-denied",
+        "safety.operation-decided-unavailable",
+        "safety.operation-decided-cancelled"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-dispatch-authorize",
+      "source": "lina-tools-dispatch",
+      "target": "lina-safety-authorize",
+      "label": "fresh queued launch admission",
+      "outputKind": "tools.safety-launch-requested",
+      "outputKinds": [
+        "tools.safety-launch-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-authorize-dispatch",
+      "source": "lina-safety-authorize",
+      "target": "lina-tools-dispatch",
+      "label": "bounded launch decision; recheck fence",
+      "outputKind": "safety.launch-decided",
+      "outputKinds": [
+        "safety.launch-decided",
+        "safety.launch-grant-revoked",
+        "safety.launch-arguments-or-binding-changed",
+        "safety.launch-policy-generation-changed",
+        "safety.launch-stop-before-launch",
+        "safety.launch-grant-store-outcome-unknown"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-resource-read-request",
+      "source": "lina-tools-resource-read",
+      "target": "lina-safety-evaluate",
+      "label": "exact Context resource dependency",
+      "outputKind": "tools.safety-resource-read-requested",
+      "outputKinds": [
+        "tools.safety-resource-read-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-resource-read-return",
+      "source": "lina-safety-authorize",
+      "target": "lina-tools-resource-read",
+      "label": "same dependency admission / failure",
+      "outputKind": "safety.resource-operation-decided",
+      "outputKinds": [
+        "safety.resource-operation-decided",
+        "safety.resource-launch-decided"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-resource-read-authorize",
+      "source": "lina-tools-resource-read",
+      "target": "lina-safety-authorize",
+      "label": "fresh resource launch admission",
+      "outputKind": "tools.safety-resource-read-launch-requested",
+      "outputKinds": [
+        "tools.safety-resource-read-launch-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-wait-resource",
+      "source": "lina-safety-approval",
+      "target": "lina-tools-resource-read",
+      "label": "retain resource approval dependency",
+      "outputKind": "safety.resource-approval-waiting",
+      "outputKinds": [
+        "safety.resource-approval-waiting"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-resource-read-answer",
+      "source": "lina-tools-resource-read",
+      "target": "lina-safety-approval",
+      "label": "dependency answer via Execution",
+      "outputKind": "tools.safety-resource-read-answer-forwarded",
+      "outputKinds": [
+        "tools.safety-resource-read-answer-forwarded"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-prompt-get-request",
+      "source": "lina-tools-prompt-get",
+      "target": "lina-safety-evaluate",
+      "label": "exact Context prompt dependency",
+      "outputKind": "tools.safety-prompt-get-requested",
+      "outputKinds": [
+        "tools.safety-prompt-get-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-prompt-get-return",
+      "source": "lina-safety-authorize",
+      "target": "lina-tools-prompt-get",
+      "label": "same dependency admission / failure",
+      "outputKind": "safety.prompt-operation-decided",
+      "outputKinds": [
+        "safety.prompt-operation-decided",
+        "safety.prompt-launch-decided"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-prompt-get-authorize",
+      "source": "lina-tools-prompt-get",
+      "target": "lina-safety-authorize",
+      "label": "fresh prompt retrieval launch admission",
+      "outputKind": "tools.safety-prompt-get-launch-requested",
+      "outputKinds": [
+        "tools.safety-prompt-get-launch-requested"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-approval-wait-prompt",
+      "source": "lina-safety-approval",
+      "target": "lina-tools-prompt-get",
+      "label": "retain prompt approval dependency",
+      "outputKind": "safety.prompt-approval-waiting",
+      "outputKinds": [
+        "safety.prompt-approval-waiting"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-prompt-get-answer",
+      "source": "lina-tools-prompt-get",
+      "target": "lina-safety-approval",
+      "label": "dependency answer via Execution",
+      "outputKind": "tools.safety-prompt-get-answer-forwarded",
+      "outputKinds": [
+        "tools.safety-prompt-get-answer-forwarded"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-cancel-approval",
+      "source": "lina-execution-cancel",
+      "target": "lina-safety-approval",
+      "label": "cancel exact pending review; retain siblings",
+      "outputKind": "execution.safety-approval-cancelled",
+      "outputKinds": [
+        "execution.safety-approval-cancelled"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-safety-edge-cancel-authorization",
+      "source": "lina-execution-cancel",
+      "target": "lina-safety-authorize",
+      "label": "invalidate pending operation / launch authority",
+      "outputKind": "execution.safety-authorization-cancelled",
+      "outputKinds": [
+        "execution.safety-authorization-cancelled"
+      ],
+      "edgeKind": "transition"
+    },
+    {
+      "id": "lina-state-edge-claim-record",
+      "source": "lina-input-claim",
+      "target": "lina-state-record",
+      "label": "claim-input; correlated record request",
+      "outputKind": "lina-input-claim.state-claim-input-claim-input",
+      "outputKinds": [
+        "lina-input-claim.state-claim-input-claim-input"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-claim",
+      "source": "lina-state-record",
+      "target": "lina-input-claim",
+      "label": "claim-input; same request outcome / revision",
+      "outputKind": "state.claim-input.record-applied",
+      "outputKinds": [
+        "state.claim-input.record-applied",
+        "state.claim-input.record-already-applied",
+        "state.claim-input.record-conflict",
+        "state.claim-input.record-failed",
+        "state.claim-input.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-claim-load",
+      "source": "lina-input-claim",
+      "target": "lina-state-load",
+      "label": "inspect-claim-transaction; correlated load request",
+      "outputKind": "lina-input-claim.state-inspect-claim-transaction",
+      "outputKinds": [
+        "lina-input-claim.state-inspect-claim-transaction"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-claim",
+      "source": "lina-state-load",
+      "target": "lina-input-claim",
+      "label": "inspect-claim-transaction; same request outcome / revision",
+      "outputKind": "state.inspect-claim-transaction.load-found",
+      "outputKinds": [
+        "state.inspect-claim-transaction.load-found",
+        "state.inspect-claim-transaction.load-missing",
+        "state.inspect-claim-transaction.load-incompatible",
+        "state.inspect-claim-transaction.load-corrupt",
+        "state.inspect-claim-transaction.load-unavailable",
+        "state.inspect-claim-transaction.transaction-absent",
+        "state.inspect-claim-transaction.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-accept-record",
+      "source": "lina-input-accept",
+      "target": "lina-state-record",
+      "label": "commit-acceptance; correlated record request",
+      "outputKind": "lina-input-accept.state-commit-acceptance-commit-record-set",
+      "outputKinds": [
+        "lina-input-accept.state-commit-acceptance-commit-record-set"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-accept",
+      "source": "lina-state-record",
+      "target": "lina-input-accept",
+      "label": "commit-acceptance; same request outcome / revision",
+      "outputKind": "state.commit-acceptance.record-applied",
+      "outputKinds": [
+        "state.commit-acceptance.record-applied",
+        "state.commit-acceptance.record-already-applied",
+        "state.commit-acceptance.record-conflict",
+        "state.commit-acceptance.record-failed",
+        "state.commit-acceptance.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-accept-load",
+      "source": "lina-input-accept",
+      "target": "lina-state-load",
+      "label": "inspect-acceptance; correlated load request",
+      "outputKind": "lina-input-accept.state-inspect-acceptance",
+      "outputKinds": [
+        "lina-input-accept.state-inspect-acceptance"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-accept",
+      "source": "lina-state-load",
+      "target": "lina-input-accept",
+      "label": "inspect-acceptance; same request outcome / revision",
+      "outputKind": "state.inspect-acceptance.load-found",
+      "outputKinds": [
+        "state.inspect-acceptance.load-found",
+        "state.inspect-acceptance.load-missing",
+        "state.inspect-acceptance.load-incompatible",
+        "state.inspect-acceptance.load-corrupt",
+        "state.inspect-acceptance.load-unavailable",
+        "state.inspect-acceptance.transaction-absent",
+        "state.inspect-acceptance.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-delivery-load",
+      "source": "lina-input-delivery",
+      "target": "lina-state-load",
+      "label": "inspect-delivery; correlated load request",
+      "outputKind": "lina-input-delivery.state-inspect-delivery",
+      "outputKinds": [
+        "lina-input-delivery.state-inspect-delivery"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-delivery",
+      "source": "lina-state-load",
+      "target": "lina-input-delivery",
+      "label": "inspect-delivery; same request outcome / revision",
+      "outputKind": "state.inspect-delivery.load-found",
+      "outputKinds": [
+        "state.inspect-delivery.load-found",
+        "state.inspect-delivery.load-missing",
+        "state.inspect-delivery.load-incompatible",
+        "state.inspect-delivery.load-corrupt",
+        "state.inspect-delivery.load-unavailable",
+        "state.inspect-delivery.transaction-absent",
+        "state.inspect-delivery.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-delivery-record",
+      "source": "lina-input-delivery",
+      "target": "lina-state-record",
+      "label": "record-delivery; correlated record request",
+      "outputKind": "lina-input-delivery.state-record-delivery-record-delivery-intent",
+      "outputKinds": [
+        "lina-input-delivery.state-record-delivery-record-delivery-intent",
+        "lina-input-delivery.state-record-delivery-record-delivery-outcome"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-delivery",
+      "source": "lina-state-record",
+      "target": "lina-input-delivery",
+      "label": "record-delivery; same request outcome / revision",
+      "outputKind": "state.record-delivery.record-applied",
+      "outputKinds": [
+        "state.record-delivery.record-applied",
+        "state.record-delivery.record-already-applied",
+        "state.record-delivery.record-conflict",
+        "state.record-delivery.record-failed",
+        "state.record-delivery.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-duplicate-load",
+      "source": "lina-input-duplicate",
+      "target": "lina-state-load",
+      "label": "inspect-duplicate; correlated load request",
+      "outputKind": "lina-input-duplicate.state-inspect-duplicate",
+      "outputKinds": [
+        "lina-input-duplicate.state-inspect-duplicate"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-duplicate",
+      "source": "lina-state-load",
+      "target": "lina-input-duplicate",
+      "label": "inspect-duplicate; same request outcome / revision",
+      "outputKind": "state.inspect-duplicate.load-found",
+      "outputKinds": [
+        "state.inspect-duplicate.load-found",
+        "state.inspect-duplicate.load-missing",
+        "state.inspect-duplicate.load-incompatible",
+        "state.inspect-duplicate.load-corrupt",
+        "state.inspect-duplicate.load-unavailable",
+        "state.inspect-duplicate.transaction-absent",
+        "state.inspect-duplicate.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-claim-recovery-load",
+      "source": "lina-input-claim-recovery",
+      "target": "lina-state-load",
+      "label": "inspect-claim; correlated load request",
+      "outputKind": "lina-input-claim-recovery.state-inspect-claim",
+      "outputKinds": [
+        "lina-input-claim-recovery.state-inspect-claim"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-claim-recovery",
+      "source": "lina-state-load",
+      "target": "lina-input-claim-recovery",
+      "label": "inspect-claim; same request outcome / revision",
+      "outputKind": "state.inspect-claim.load-found",
+      "outputKinds": [
+        "state.inspect-claim.load-found",
+        "state.inspect-claim.load-missing",
+        "state.inspect-claim.load-incompatible",
+        "state.inspect-claim.load-corrupt",
+        "state.inspect-claim.load-unavailable",
+        "state.inspect-claim.transaction-absent",
+        "state.inspect-claim.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-queue-record",
+      "source": "lina-input-queue",
+      "target": "lina-state-record",
+      "label": "queue-mutation; correlated record request",
+      "outputKind": "lina-input-queue.state-queue-mutation-queue-insert",
+      "outputKinds": [
+        "lina-input-queue.state-queue-mutation-queue-insert",
+        "lina-input-queue.state-queue-mutation-queue-transfer",
+        "lina-input-queue.state-queue-mutation-queue-remove"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-queue",
+      "source": "lina-state-record",
+      "target": "lina-input-queue",
+      "label": "queue-mutation; same request outcome / revision",
+      "outputKind": "state.queue-mutation.record-applied",
+      "outputKinds": [
+        "state.queue-mutation.record-applied",
+        "state.queue-mutation.record-already-applied",
+        "state.queue-mutation.record-conflict",
+        "state.queue-mutation.record-failed",
+        "state.queue-mutation.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-queue-load",
+      "source": "lina-input-queue",
+      "target": "lina-state-load",
+      "label": "select-queue; correlated load request",
+      "outputKind": "lina-input-queue.state-select-queue",
+      "outputKinds": [
+        "lina-input-queue.state-select-queue"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-queue",
+      "source": "lina-state-load",
+      "target": "lina-input-queue",
+      "label": "select-queue; same request outcome / revision",
+      "outputKind": "state.select-queue.load-found",
+      "outputKinds": [
+        "state.select-queue.load-found",
+        "state.select-queue.load-missing",
+        "state.select-queue.load-incompatible",
+        "state.select-queue.load-corrupt",
+        "state.select-queue.load-unavailable"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-admission-record",
+      "source": "lina-input-admission",
+      "target": "lina-state-record",
+      "label": "acquire-owner; correlated record request",
+      "outputKind": "lina-input-admission.state-acquire-owner-acquire-owner",
+      "outputKinds": [
+        "lina-input-admission.state-acquire-owner-acquire-owner",
+        "lina-input-admission.state-acquire-owner-renew-owner"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-admission",
+      "source": "lina-state-record",
+      "target": "lina-input-admission",
+      "label": "acquire-owner; same request outcome / revision",
+      "outputKind": "state.acquire-owner.record-applied",
+      "outputKinds": [
+        "state.acquire-owner.record-applied",
+        "state.acquire-owner.record-already-applied",
+        "state.acquire-owner.record-conflict",
+        "state.acquire-owner.record-failed",
+        "state.acquire-owner.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-release-record",
+      "source": "lina-execution-release",
+      "target": "lina-state-record",
+      "label": "release-owner; correlated record request",
+      "outputKind": "lina-execution-release.state-release-owner-release-owner",
+      "outputKinds": [
+        "lina-execution-release.state-release-owner-release-owner"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-release",
+      "source": "lina-state-record",
+      "target": "lina-execution-release",
+      "label": "release-owner; same request outcome / revision",
+      "outputKind": "state.release-owner.record-applied",
+      "outputKinds": [
+        "state.release-owner.record-applied",
+        "state.release-owner.record-already-applied",
+        "state.release-owner.record-conflict",
+        "state.release-owner.record-failed",
+        "state.release-owner.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-wait-record",
+      "source": "lina-execution-wait",
+      "target": "lina-state-record",
+      "label": "persist-wait; correlated record request",
+      "outputKind": "lina-execution-wait.state-persist-wait-register-wait",
+      "outputKinds": [
+        "lina-execution-wait.state-persist-wait-register-wait",
+        "lina-execution-wait.state-persist-wait-consume-wait",
+        "lina-execution-wait.state-persist-wait-cancel-wait"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-wait",
+      "source": "lina-state-record",
+      "target": "lina-execution-wait",
+      "label": "persist-wait; same request outcome / revision",
+      "outputKind": "state.persist-wait.record-applied",
+      "outputKinds": [
+        "state.persist-wait.record-applied",
+        "state.persist-wait.record-already-applied",
+        "state.persist-wait.record-conflict",
+        "state.persist-wait.record-failed",
+        "state.persist-wait.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-grants-load",
+      "source": "lina-safety-grants",
+      "target": "lina-state-load",
+      "label": "inspect-grants; correlated load request",
+      "outputKind": "lina-safety-grants.state-inspect-grants",
+      "outputKinds": [
+        "lina-safety-grants.state-inspect-grants"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-grants",
+      "source": "lina-state-load",
+      "target": "lina-safety-grants",
+      "label": "inspect-grants; same request outcome / revision",
+      "outputKind": "state.inspect-grants.load-found",
+      "outputKinds": [
+        "state.inspect-grants.load-found",
+        "state.inspect-grants.load-missing",
+        "state.inspect-grants.load-incompatible",
+        "state.inspect-grants.load-corrupt",
+        "state.inspect-grants.load-unavailable",
+        "state.inspect-grants.transaction-absent",
+        "state.inspect-grants.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-grants-record",
+      "source": "lina-safety-grants",
+      "target": "lina-state-record",
+      "label": "commit-grants; correlated record request",
+      "outputKind": "lina-safety-grants.state-commit-grants-commit-grant",
+      "outputKinds": [
+        "lina-safety-grants.state-commit-grants-commit-grant",
+        "lina-safety-grants.state-commit-grants-reserve-grant",
+        "lina-safety-grants.state-commit-grants-consume-grant",
+        "lina-safety-grants.state-commit-grants-release-grant",
+        "lina-safety-grants.state-commit-grants-revoke-grant"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-grants",
+      "source": "lina-state-record",
+      "target": "lina-safety-grants",
+      "label": "commit-grants; same request outcome / revision",
+      "outputKind": "state.commit-grants.record-applied",
+      "outputKinds": [
+        "state.commit-grants.record-applied",
+        "state.commit-grants.record-already-applied",
+        "state.commit-grants.record-conflict",
+        "state.commit-grants.record-failed",
+        "state.commit-grants.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-context-load",
+      "source": "lina-context-load",
+      "target": "lina-state-load",
+      "label": "read-history; correlated load request",
+      "outputKind": "lina-context-load.state-read-history",
+      "outputKinds": [
+        "lina-context-load.state-read-history"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-context",
+      "source": "lina-state-load",
+      "target": "lina-context-load",
+      "label": "read-history; same request outcome / revision",
+      "outputKind": "state.read-history.load-found",
+      "outputKinds": [
+        "state.read-history.load-found",
+        "state.read-history.load-missing",
+        "state.read-history.load-incompatible",
+        "state.read-history.load-corrupt",
+        "state.read-history.load-unavailable"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-dispatch-record",
+      "source": "lina-tools-dispatch",
+      "target": "lina-state-record",
+      "label": "record-tool-intent; correlated record request",
+      "outputKind": "lina-tools-dispatch.state-record-tool-intent-record-intent",
+      "outputKinds": [
+        "lina-tools-dispatch.state-record-tool-intent-record-intent"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-dispatch",
+      "source": "lina-state-record",
+      "target": "lina-tools-dispatch",
+      "label": "record-tool-intent; same request outcome / revision",
+      "outputKind": "state.record-tool-intent.record-applied",
+      "outputKinds": [
+        "state.record-tool-intent.record-applied",
+        "state.record-tool-intent.record-already-applied",
+        "state.record-tool-intent.record-conflict",
+        "state.record-tool-intent.record-failed",
+        "state.record-tool-intent.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-collect-record",
+      "source": "lina-tools-collect",
+      "target": "lina-state-record",
+      "label": "record-tool-outcome; correlated record request",
+      "outputKind": "lina-tools-collect.state-record-tool-outcome-record-outcome",
+      "outputKinds": [
+        "lina-tools-collect.state-record-tool-outcome-record-outcome"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-collect",
+      "source": "lina-state-record",
+      "target": "lina-tools-collect",
+      "label": "record-tool-outcome; same request outcome / revision",
+      "outputKind": "state.record-tool-outcome.record-applied",
+      "outputKinds": [
+        "state.record-tool-outcome.record-applied",
+        "state.record-tool-outcome.record-already-applied",
+        "state.record-tool-outcome.record-conflict",
+        "state.record-tool-outcome.record-failed",
+        "state.record-tool-outcome.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-model-invoke-record",
+      "source": "lina-model-invoke",
+      "target": "lina-state-record",
+      "label": "record-model-intent; correlated record request",
+      "outputKind": "lina-model-invoke.state-record-model-intent-record-intent",
+      "outputKinds": [
+        "lina-model-invoke.state-record-model-intent-record-intent"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-model-invoke",
+      "source": "lina-state-record",
+      "target": "lina-model-invoke",
+      "label": "record-model-intent; same request outcome / revision",
+      "outputKind": "state.record-model-intent.record-applied",
+      "outputKinds": [
+        "state.record-model-intent.record-applied",
+        "state.record-model-intent.record-already-applied",
+        "state.record-model-intent.record-conflict",
+        "state.record-model-intent.record-failed",
+        "state.record-model-intent.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-model-normalize-record",
+      "source": "lina-model-normalize",
+      "target": "lina-state-record",
+      "label": "record-model-outcome; correlated record request",
+      "outputKind": "lina-model-normalize.state-record-model-outcome-record-outcome",
+      "outputKinds": [
+        "lina-model-normalize.state-record-model-outcome-record-outcome"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-model-normalize",
+      "source": "lina-state-record",
+      "target": "lina-model-normalize",
+      "label": "record-model-outcome; same request outcome / revision",
+      "outputKind": "state.record-model-outcome.record-applied",
+      "outputKinds": [
+        "state.record-model-outcome.record-applied",
+        "state.record-model-outcome.record-already-applied",
+        "state.record-model-outcome.record-conflict",
+        "state.record-model-outcome.record-failed",
+        "state.record-model-outcome.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-settle-record",
+      "source": "lina-execution-settle",
+      "target": "lina-state-record",
+      "label": "settle-turn; correlated record request",
+      "outputKind": "lina-execution-settle.state-settle-turn-commit-record-set",
+      "outputKinds": [
+        "lina-execution-settle.state-settle-turn-commit-record-set"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-settle",
+      "source": "lina-state-record",
+      "target": "lina-execution-settle",
+      "label": "settle-turn; same request outcome / revision",
+      "outputKind": "state.settle-turn.record-applied",
+      "outputKinds": [
+        "state.settle-turn.record-applied",
+        "state.settle-turn.record-already-applied",
+        "state.settle-turn.record-conflict",
+        "state.settle-turn.record-failed",
+        "state.settle-turn.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-cancel-record",
+      "source": "lina-execution-cancel",
+      "target": "lina-state-record",
+      "label": "persist-stop; correlated record request",
+      "outputKind": "lina-execution-cancel.state-persist-stop-persist-stop",
+      "outputKinds": [
+        "lina-execution-cancel.state-persist-stop-persist-stop"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-cancel",
+      "source": "lina-state-record",
+      "target": "lina-execution-cancel",
+      "label": "persist-stop; same request outcome / revision",
+      "outputKind": "state.persist-stop.record-applied",
+      "outputKinds": [
+        "state.persist-stop.record-applied",
+        "state.persist-stop.record-already-applied",
+        "state.persist-stop.record-conflict",
+        "state.persist-stop.record-failed",
+        "state.persist-stop.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-reconcile-record",
+      "source": "lina-input-reconcile",
+      "target": "lina-state-record",
+      "label": "record-reconciliation; correlated record request",
+      "outputKind": "lina-input-reconcile.state-record-reconciliation-record-reconciliation",
+      "outputKinds": [
+        "lina-input-reconcile.state-record-reconciliation-record-reconciliation"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-reconcile",
+      "source": "lina-state-record",
+      "target": "lina-input-reconcile",
+      "label": "record-reconciliation; same request outcome / revision",
+      "outputKind": "state.record-reconciliation.record-applied",
+      "outputKinds": [
+        "state.record-reconciliation.record-applied",
+        "state.record-reconciliation.record-already-applied",
+        "state.record-reconciliation.record-conflict",
+        "state.record-reconciliation.record-failed",
+        "state.record-reconciliation.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-controls-checkpoint",
+      "source": "lina-execution-controls",
+      "target": "lina-state-checkpoint",
+      "label": "round-boundary; correlated checkpoint request",
+      "outputKind": "lina-execution-controls.state-round-boundary",
+      "outputKinds": [
+        "lina-execution-controls.state-round-boundary"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-checkpoint-controls",
+      "source": "lina-state-checkpoint",
+      "target": "lina-execution-controls",
+      "label": "round-boundary; same request outcome / revision",
+      "outputKind": "state.round-boundary.checkpoint-committed",
+      "outputKinds": [
+        "state.round-boundary.checkpoint-committed",
+        "state.round-boundary.checkpoint-already-committed",
+        "state.round-boundary.checkpoint-incomplete",
+        "state.round-boundary.checkpoint-conflict",
+        "state.round-boundary.checkpoint-failed",
+        "state.round-boundary.checkpoint-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-outcomes-checkpoint",
+      "source": "lina-execution-tool-outcomes",
+      "target": "lina-state-checkpoint",
+      "label": "tool-boundary; correlated checkpoint request",
+      "outputKind": "lina-execution-tool-outcomes.state-tool-boundary",
+      "outputKinds": [
+        "lina-execution-tool-outcomes.state-tool-boundary"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-checkpoint-outcomes",
+      "source": "lina-state-checkpoint",
+      "target": "lina-execution-tool-outcomes",
+      "label": "tool-boundary; same request outcome / revision",
+      "outputKind": "state.tool-boundary.checkpoint-committed",
+      "outputKinds": [
+        "state.tool-boundary.checkpoint-committed",
+        "state.tool-boundary.checkpoint-already-committed",
+        "state.tool-boundary.checkpoint-incomplete",
+        "state.tool-boundary.checkpoint-conflict",
+        "state.tool-boundary.checkpoint-failed",
+        "state.tool-boundary.checkpoint-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-wait-checkpoint",
+      "source": "lina-execution-wait",
+      "target": "lina-state-checkpoint",
+      "label": "wait-boundary; correlated checkpoint request",
+      "outputKind": "lina-execution-wait.state-wait-boundary",
+      "outputKinds": [
+        "lina-execution-wait.state-wait-boundary"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-checkpoint-wait",
+      "source": "lina-state-checkpoint",
+      "target": "lina-execution-wait",
+      "label": "wait-boundary; same request outcome / revision",
+      "outputKind": "state.wait-boundary.checkpoint-committed",
+      "outputKinds": [
+        "state.wait-boundary.checkpoint-committed",
+        "state.wait-boundary.checkpoint-already-committed",
+        "state.wait-boundary.checkpoint-incomplete",
+        "state.wait-boundary.checkpoint-conflict",
+        "state.wait-boundary.checkpoint-failed",
+        "state.wait-boundary.checkpoint-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-settle-checkpoint",
+      "source": "lina-execution-settle",
+      "target": "lina-state-checkpoint",
+      "label": "terminal-boundary; correlated checkpoint request",
+      "outputKind": "lina-execution-settle.state-terminal-boundary",
+      "outputKinds": [
+        "lina-execution-settle.state-terminal-boundary"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-checkpoint-settle",
+      "source": "lina-state-checkpoint",
+      "target": "lina-execution-settle",
+      "label": "terminal-boundary; same request outcome / revision",
+      "outputKind": "state.terminal-boundary.checkpoint-committed",
+      "outputKinds": [
+        "state.terminal-boundary.checkpoint-committed",
+        "state.terminal-boundary.checkpoint-already-committed",
+        "state.terminal-boundary.checkpoint-incomplete",
+        "state.terminal-boundary.checkpoint-conflict",
+        "state.terminal-boundary.checkpoint-failed",
+        "state.terminal-boundary.checkpoint-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-recovery-load",
+      "source": "lina-input-recovery",
+      "target": "lina-state-load",
+      "label": "read-recovery; correlated load request",
+      "outputKind": "lina-input-recovery.state-read-recovery",
+      "outputKinds": [
+        "lina-input-recovery.state-read-recovery"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-recovery-ready",
+      "source": "lina-state-load",
+      "target": "lina-state-recover",
+      "label": "read-recovery; same request outcome / revision",
+      "outputKind": "state.read-recovery.load-found",
+      "outputKinds": [
+        "state.read-recovery.load-found",
+        "state.read-recovery.load-missing",
+        "state.read-recovery.load-incompatible",
+        "state.read-recovery.load-corrupt",
+        "state.read-recovery.load-unavailable"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-recover-load",
+      "source": "lina-state-recover",
+      "target": "lina-state-load",
+      "label": "inspect-recovery; correlated load request",
+      "outputKind": "lina-state-recover.state-inspect-recovery",
+      "outputKinds": [
+        "lina-state-recover.state-inspect-recovery"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-load-recover",
+      "source": "lina-state-load",
+      "target": "lina-state-recover",
+      "label": "inspect-recovery; same request outcome / revision",
+      "outputKind": "state.inspect-recovery.load-found",
+      "outputKinds": [
+        "state.inspect-recovery.load-found",
+        "state.inspect-recovery.load-missing",
+        "state.inspect-recovery.load-incompatible",
+        "state.inspect-recovery.load-corrupt",
+        "state.inspect-recovery.load-unavailable",
+        "state.inspect-recovery.transaction-absent",
+        "state.inspect-recovery.transaction-still-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-recover-record",
+      "source": "lina-state-recover",
+      "target": "lina-state-record",
+      "label": "reacquire-owner; correlated record request",
+      "outputKind": "lina-state-recover.state-reacquire-owner-reacquire-owner",
+      "outputKinds": [
+        "lina-state-recover.state-reacquire-owner-reacquire-owner"
+      ],
+      "edgeKind": "request",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-record-recover",
+      "source": "lina-state-record",
+      "target": "lina-state-recover",
+      "label": "reacquire-owner; same request outcome / revision",
+      "outputKind": "state.reacquire-owner.record-applied",
+      "outputKinds": [
+        "state.reacquire-owner.record-applied",
+        "state.reacquire-owner.record-already-applied",
+        "state.reacquire-owner.record-conflict",
+        "state.reacquire-owner.record-failed",
+        "state.reacquire-owner.record-unknown"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-state-edge-recovery-plan",
+      "source": "lina-state-recover",
+      "target": "lina-input-recovery",
+      "label": "validated recovery plan; resume / waits / reconcile / review / reject",
+      "outputKind": "state.recovery-plan-resume",
+      "outputKinds": [
+        "state.recovery-plan-resume",
+        "state.recovery-plan-restore-waits",
+        "state.recovery-plan-reconcile",
+        "state.recovery-plan-required-review",
+        "state.recovery-plan-reject"
+      ],
+      "edgeKind": "return",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-context-request",
+      "source": "lina-context-load",
+      "target": "lina-memory-scope",
+      "outputKind": "memory.handoff.lina-memory-edge-context-request",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-context-request"
+      ],
+      "condition": "context-recall",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-select-context",
+      "source": "lina-memory-select",
+      "target": "lina-context-load",
+      "outputKind": "memory.select.selected.lina-memory-edge-select-context",
+      "outputKinds": [
+        "memory.select.selected.lina-memory-edge-select-context",
+        "memory.select.empty.lina-memory-edge-select-context",
+        "memory.select.revoked.lina-memory-edge-select-context",
+        "memory.select.budget-exhausted.lina-memory-edge-select-context"
+      ],
+      "condition": "context-recall; same requester evidence",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-tools-request",
+      "source": "lina-tools-dispatch",
+      "target": "lina-memory-scope",
+      "outputKind": "memory.handoff.lina-memory-edge-tools-request",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-tools-request"
+      ],
+      "condition": "explicit-memory-operation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-select-tools",
+      "source": "lina-memory-select",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.select.selected.lina-memory-edge-select-tools",
+      "outputKinds": [
+        "memory.select.selected.lina-memory-edge-select-tools",
+        "memory.select.empty.lina-memory-edge-select-tools",
+        "memory.select.revoked.lina-memory-edge-select-tools",
+        "memory.select.budget-exhausted.lina-memory-edge-select-tools"
+      ],
+      "condition": "explicit-memory-operation; same requester evidence",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-state-load",
+      "source": "lina-memory-scope",
+      "target": "lina-state-load",
+      "outputKind": "memory.scope.lina-memory-edge-scope-state-load",
+      "outputKinds": [
+        "memory.scope.lina-memory-edge-scope-state-load"
+      ],
+      "condition": "read-memory-access-generation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-scope",
+      "source": "lina-state-load",
+      "target": "lina-memory-scope",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-scope.found",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-scope.found",
+        "memory.handoff.lina-memory-edge-state-load-scope.missing",
+        "memory.handoff.lina-memory-edge-state-load-scope.stale",
+        "memory.handoff.lina-memory-edge-state-load-scope.unavailable",
+        "memory.handoff.lina-memory-edge-state-load-scope.denied"
+      ],
+      "condition": "read-memory-access-generation; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-retrieve-state-load",
+      "source": "lina-memory-retrieve",
+      "target": "lina-state-load",
+      "outputKind": "memory.retrieve.lina-memory-edge-retrieve-state-load",
+      "outputKinds": [
+        "memory.retrieve.lina-memory-edge-retrieve-state-load"
+      ],
+      "condition": "read-memory-records",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-retrieve",
+      "source": "lina-state-load",
+      "target": "lina-memory-retrieve",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-retrieve.found",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-retrieve.found",
+        "memory.handoff.lina-memory-edge-state-load-retrieve.missing",
+        "memory.handoff.lina-memory-edge-state-load-retrieve.stale",
+        "memory.handoff.lina-memory-edge-state-load-retrieve.unavailable",
+        "memory.handoff.lina-memory-edge-state-load-retrieve.denied"
+      ],
+      "condition": "read-memory-records; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-resolve-state-load",
+      "source": "lina-memory-resolve",
+      "target": "lina-state-load",
+      "outputKind": "memory.resolve.lina-memory-edge-resolve-state-load",
+      "outputKinds": [
+        "memory.resolve.lina-memory-edge-resolve-state-load"
+      ],
+      "condition": "read-current-memory-revisions",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-resolve",
+      "source": "lina-state-load",
+      "target": "lina-memory-resolve",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-resolve.found",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-resolve.found",
+        "memory.handoff.lina-memory-edge-state-load-resolve.missing",
+        "memory.handoff.lina-memory-edge-state-load-resolve.stale",
+        "memory.handoff.lina-memory-edge-state-load-resolve.unavailable",
+        "memory.handoff.lina-memory-edge-state-load-resolve.denied"
+      ],
+      "condition": "read-current-memory-revisions; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-state-record",
+      "source": "lina-memory-commit",
+      "target": "lina-state-record",
+      "outputKind": "memory.commit.lina-memory-edge-commit-state-record",
+      "outputKinds": [
+        "memory.commit.lina-memory-edge-commit-state-record"
+      ],
+      "condition": "commit-memory-mutation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-record-commit",
+      "source": "lina-state-record",
+      "target": "lina-memory-commit",
+      "outputKind": "memory.handoff.lina-memory-edge-state-record-commit.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-record-commit.applied",
+        "memory.handoff.lina-memory-edge-state-record-commit.already-applied",
+        "memory.handoff.lina-memory-edge-state-record-commit.conflict",
+        "memory.handoff.lina-memory-edge-state-record-commit.failed",
+        "memory.handoff.lina-memory-edge-state-record-commit.unknown"
+      ],
+      "condition": "commit-memory-mutation; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-inspect-state-load",
+      "source": "lina-memory-commit",
+      "target": "lina-state-load",
+      "outputKind": "memory.commit.lina-memory-edge-commit-inspect-state-load",
+      "outputKinds": [
+        "memory.commit.lina-memory-edge-commit-inspect-state-load"
+      ],
+      "condition": "inspect-memory-transaction",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-commit-inspect",
+      "source": "lina-state-load",
+      "target": "lina-memory-commit",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-commit-inspect.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-commit-inspect.applied",
+        "memory.handoff.lina-memory-edge-state-load-commit-inspect.absent",
+        "memory.handoff.lina-memory-edge-state-load-commit-inspect.still-unknown",
+        "memory.handoff.lina-memory-edge-state-load-commit-inspect.unavailable"
+      ],
+      "condition": "inspect-memory-transaction; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-index-state-record",
+      "source": "lina-memory-index",
+      "target": "lina-state-record",
+      "outputKind": "memory.index.lina-memory-edge-index-state-record",
+      "outputKinds": [
+        "memory.index.lina-memory-edge-index-state-record"
+      ],
+      "condition": "record-memory-index-watermark",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-record-index",
+      "source": "lina-state-record",
+      "target": "lina-memory-index",
+      "outputKind": "memory.handoff.lina-memory-edge-state-record-index.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-record-index.applied",
+        "memory.handoff.lina-memory-edge-state-record-index.already-applied",
+        "memory.handoff.lina-memory-edge-state-record-index.conflict",
+        "memory.handoff.lina-memory-edge-state-record-index.failed",
+        "memory.handoff.lina-memory-edge-state-record-index.unknown"
+      ],
+      "condition": "record-memory-index-watermark; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-state-load",
+      "source": "lina-memory-consolidate",
+      "target": "lina-state-load",
+      "outputKind": "memory.consolidate.lina-memory-edge-consolidate-state-load",
+      "outputKinds": [
+        "memory.consolidate.lina-memory-edge-consolidate-state-load"
+      ],
+      "condition": "read-memory-maintenance-cursor",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-consolidate",
+      "source": "lina-state-load",
+      "target": "lina-memory-consolidate",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-consolidate.found",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-consolidate.found",
+        "memory.handoff.lina-memory-edge-state-load-consolidate.missing",
+        "memory.handoff.lina-memory-edge-state-load-consolidate.stale",
+        "memory.handoff.lina-memory-edge-state-load-consolidate.unavailable",
+        "memory.handoff.lina-memory-edge-state-load-consolidate.denied"
+      ],
+      "condition": "read-memory-maintenance-cursor; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-state-record",
+      "source": "lina-memory-consolidate",
+      "target": "lina-state-record",
+      "outputKind": "memory.consolidate.lina-memory-edge-consolidate-state-record",
+      "outputKinds": [
+        "memory.consolidate.lina-memory-edge-consolidate-state-record"
+      ],
+      "condition": "record-memory-maintenance-progress",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-record-consolidate",
+      "source": "lina-state-record",
+      "target": "lina-memory-consolidate",
+      "outputKind": "memory.handoff.lina-memory-edge-state-record-consolidate.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-record-consolidate.applied",
+        "memory.handoff.lina-memory-edge-state-record-consolidate.already-applied",
+        "memory.handoff.lina-memory-edge-state-record-consolidate.conflict",
+        "memory.handoff.lina-memory-edge-state-record-consolidate.failed",
+        "memory.handoff.lina-memory-edge-state-record-consolidate.unknown"
+      ],
+      "condition": "record-memory-maintenance-progress; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-state-load",
+      "source": "lina-memory-forget",
+      "target": "lina-state-load",
+      "outputKind": "memory.forget.lina-memory-edge-forget-state-load",
+      "outputKinds": [
+        "memory.forget.lina-memory-edge-forget-state-load"
+      ],
+      "condition": "read-memory-deletion-lineage",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-forget",
+      "source": "lina-state-load",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-forget.found",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-forget.found",
+        "memory.handoff.lina-memory-edge-state-load-forget.missing",
+        "memory.handoff.lina-memory-edge-state-load-forget.stale",
+        "memory.handoff.lina-memory-edge-state-load-forget.unavailable",
+        "memory.handoff.lina-memory-edge-state-load-forget.denied"
+      ],
+      "condition": "read-memory-deletion-lineage; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-state-record",
+      "source": "lina-memory-forget",
+      "target": "lina-state-record",
+      "outputKind": "memory.forget.lina-memory-edge-forget-state-record",
+      "outputKinds": [
+        "memory.forget.lina-memory-edge-forget-state-record"
+      ],
+      "condition": "revoke-memory-visibility",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-record-forget",
+      "source": "lina-state-record",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.handoff.lina-memory-edge-state-record-forget.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-record-forget.applied",
+        "memory.handoff.lina-memory-edge-state-record-forget.already-applied",
+        "memory.handoff.lina-memory-edge-state-record-forget.conflict",
+        "memory.handoff.lina-memory-edge-state-record-forget.failed",
+        "memory.handoff.lina-memory-edge-state-record-forget.unknown"
+      ],
+      "condition": "revoke-memory-visibility; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-inspect-state-load",
+      "source": "lina-memory-forget",
+      "target": "lina-state-load",
+      "outputKind": "memory.forget.lina-memory-edge-forget-inspect-state-load",
+      "outputKinds": [
+        "memory.forget.lina-memory-edge-forget-inspect-state-load"
+      ],
+      "condition": "inspect-memory-revocation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-load-forget-inspect",
+      "source": "lina-state-load",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.handoff.lina-memory-edge-state-load-forget-inspect.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-load-forget-inspect.applied",
+        "memory.handoff.lina-memory-edge-state-load-forget-inspect.absent",
+        "memory.handoff.lina-memory-edge-state-load-forget-inspect.still-unknown",
+        "memory.handoff.lina-memory-edge-state-load-forget-inspect.unavailable"
+      ],
+      "condition": "inspect-memory-revocation; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-receipt-state-record",
+      "source": "lina-memory-forget",
+      "target": "lina-state-record",
+      "outputKind": "memory.forget.lina-memory-edge-forget-receipt-state-record",
+      "outputKinds": [
+        "memory.forget.lina-memory-edge-forget-receipt-state-record"
+      ],
+      "condition": "record-memory-purge-receipt",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-state-record-forget-receipt",
+      "source": "lina-state-record",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.handoff.lina-memory-edge-state-record-forget-receipt.applied",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-state-record-forget-receipt.applied",
+        "memory.handoff.lina-memory-edge-state-record-forget-receipt.already-applied",
+        "memory.handoff.lina-memory-edge-state-record-forget-receipt.conflict",
+        "memory.handoff.lina-memory-edge-state-record-forget-receipt.failed",
+        "memory.handoff.lina-memory-edge-state-record-forget-receipt.unknown"
+      ],
+      "condition": "record-memory-purge-receipt; correlated acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-query",
+      "source": "lina-memory-scope",
+      "target": "lina-memory-query",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-query",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-query"
+      ],
+      "condition": "admitted search",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-query-retrieve",
+      "source": "lina-memory-query",
+      "target": "lina-memory-retrieve",
+      "outputKind": "memory.query.ready.lina-memory-edge-query-retrieve",
+      "outputKinds": [
+        "memory.query.ready.lina-memory-edge-query-retrieve"
+      ],
+      "condition": "bounded query ready",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-retrieve",
+      "source": "lina-memory-scope",
+      "target": "lina-memory-retrieve",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-retrieve",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-retrieve"
+      ],
+      "condition": "exact/profile read; bypass rewrite",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-retrieve-select",
+      "source": "lina-memory-retrieve",
+      "target": "lina-memory-select",
+      "outputKind": "memory.retrieve.found.lina-memory-edge-retrieve-select",
+      "outputKinds": [
+        "memory.retrieve.found.lina-memory-edge-retrieve-select",
+        "memory.retrieve.empty.lina-memory-edge-retrieve-select",
+        "memory.retrieve.stale.lina-memory-edge-retrieve-select",
+        "memory.retrieve.unavailable.lina-memory-edge-retrieve-select",
+        "memory.retrieve.denied.lina-memory-edge-retrieve-select"
+      ],
+      "condition": "candidates / no match / unavailable",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-settle-scope",
+      "source": "lina-execution-settle",
+      "target": "lina-memory-scope",
+      "outputKind": "memory.handoff.lina-memory-edge-settle-scope",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-settle-scope"
+      ],
+      "condition": "policy-selected automatic evidence; check access before capture",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-capture",
+      "source": "lina-memory-scope",
+      "target": "lina-memory-capture",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-capture",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-capture"
+      ],
+      "condition": "admitted explicit or automatic write",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-capture-extract",
+      "source": "lina-memory-capture",
+      "target": "lina-memory-extract",
+      "outputKind": "memory.capture.eligible.lina-memory-edge-capture-extract",
+      "outputKinds": [
+        "memory.capture.eligible.lina-memory-edge-capture-extract"
+      ],
+      "condition": "eligible extraction evidence",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-capture-validate",
+      "source": "lina-memory-capture",
+      "target": "lina-memory-validate",
+      "outputKind": "memory.capture.eligible.lina-memory-edge-capture-validate",
+      "outputKinds": [
+        "memory.capture.eligible.lina-memory-edge-capture-validate"
+      ],
+      "condition": "structured explicit mutation; bypass extraction",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-extract-validate",
+      "source": "lina-memory-extract",
+      "target": "lina-memory-validate",
+      "outputKind": "memory.extract.candidates.lina-memory-edge-extract-validate",
+      "outputKinds": [
+        "memory.extract.candidates.lina-memory-edge-extract-validate"
+      ],
+      "condition": "source-backed candidates",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-validate-resolve",
+      "source": "lina-memory-validate",
+      "target": "lina-memory-resolve",
+      "outputKind": "memory.validate.eligible.lina-memory-edge-validate-resolve",
+      "outputKinds": [
+        "memory.validate.eligible.lina-memory-edge-validate-resolve"
+      ],
+      "condition": "eligible reviewed candidates",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-resolve-commit",
+      "source": "lina-memory-resolve",
+      "target": "lina-memory-commit",
+      "outputKind": "memory.resolve.resolved.lina-memory-edge-resolve-commit",
+      "outputKinds": [
+        "memory.resolve.resolved.lina-memory-edge-resolve-commit"
+      ],
+      "condition": "conditional semantic mutation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-index",
+      "source": "lina-memory-commit",
+      "target": "lina-memory-index",
+      "outputKind": "memory.commit.applied.lina-memory-edge-commit-index",
+      "outputKinds": [
+        "memory.commit.applied.lina-memory-edge-commit-index",
+        "memory.commit.already-applied.lina-memory-edge-commit-index"
+      ],
+      "condition": "acknowledged record revisions",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-consolidate",
+      "source": "lina-memory-scope",
+      "target": "lina-memory-consolidate",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-consolidate",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-consolidate"
+      ],
+      "condition": "requested bounded maintenance",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-validate",
+      "source": "lina-memory-consolidate",
+      "target": "lina-memory-validate",
+      "outputKind": "memory.consolidate.candidates.lina-memory-edge-consolidate-validate",
+      "outputKinds": [
+        "memory.consolidate.candidates.lina-memory-edge-consolidate-validate"
+      ],
+      "condition": "derived candidates retain lineage",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-forget",
+      "source": "lina-memory-scope",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-forget",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-forget"
+      ],
+      "condition": "authorized forget selector",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-resolve",
+      "source": "lina-memory-forget",
+      "target": "lina-memory-resolve",
+      "outputKind": "memory.forget.logically-removed.lina-memory-edge-forget-resolve",
+      "outputKinds": [
+        "memory.forget.logically-removed.lina-memory-edge-forget-resolve"
+      ],
+      "condition": "revoked targets; admitted purge mutation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-index-forget",
+      "source": "lina-memory-index",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.index.ready.lina-memory-edge-index-forget",
+      "outputKinds": [
+        "memory.index.ready.lina-memory-edge-index-forget",
+        "memory.index.pending.lina-memory-edge-index-forget",
+        "memory.index.failed.lina-memory-edge-index-forget",
+        "memory.index.not-required.lina-memory-edge-index-forget"
+      ],
+      "condition": "purge watermark / pending coverage",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-index",
+      "source": "lina-memory-forget",
+      "target": "lina-memory-index",
+      "outputKind": "memory.forget.logically-removed.lina-memory-edge-forget-index",
+      "outputKinds": [
+        "memory.forget.logically-removed.lina-memory-edge-forget-index",
+        "memory.forget.purge-pending.lina-memory-edge-forget-index"
+      ],
+      "condition": "acknowledged visibility revocation; cleanup derived indexes",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-extract-model",
+      "source": "lina-memory-extract",
+      "target": "lina-model-resolve",
+      "outputKind": "memory.extract.lina-memory-edge-extract-model",
+      "outputKinds": [
+        "memory.extract.lina-memory-edge-extract-model"
+      ],
+      "condition": "memory-extraction purpose; separate budget",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-model",
+      "source": "lina-memory-consolidate",
+      "target": "lina-model-resolve",
+      "outputKind": "memory.consolidate.lina-memory-edge-consolidate-model",
+      "outputKinds": [
+        "memory.consolidate.lina-memory-edge-consolidate-model"
+      ],
+      "condition": "memory-consolidation purpose; separate budget",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-model-extract",
+      "source": "lina-model-normalize",
+      "target": "lina-memory-extract",
+      "outputKind": "memory.handoff.lina-memory-edge-model-extract",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-model-extract"
+      ],
+      "condition": "same extraction operation; candidates / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-model-consolidate",
+      "source": "lina-model-normalize",
+      "target": "lina-memory-consolidate",
+      "outputKind": "memory.handoff.lina-memory-edge-model-consolidate",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-model-consolidate"
+      ],
+      "condition": "same maintenance operation; candidates / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-validate-review",
+      "source": "lina-memory-validate",
+      "target": "lina-safety-evaluate",
+      "outputKind": "memory.validate.lina-memory-edge-validate-review",
+      "outputKinds": [
+        "memory.validate.lina-memory-edge-validate-review"
+      ],
+      "condition": "exact memory publication review",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-review-validate",
+      "source": "lina-safety-authorize",
+      "target": "lina-memory-validate",
+      "outputKind": "memory.handoff.lina-memory-edge-review-validate",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-review-validate"
+      ],
+      "condition": "same mutation admission decision",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-authorize",
+      "source": "lina-memory-commit",
+      "target": "lina-safety-authorize",
+      "outputKind": "memory.commit.lina-memory-edge-commit-authorize",
+      "outputKinds": [
+        "memory.commit.lina-memory-edge-commit-authorize"
+      ],
+      "condition": "final exact mutation authority recheck",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-authorize-commit",
+      "source": "lina-safety-authorize",
+      "target": "lina-memory-commit",
+      "outputKind": "memory.handoff.lina-memory-edge-authorize-commit",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-authorize-commit"
+      ],
+      "condition": "bounded commit admission / no launch",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-tools",
+      "source": "lina-memory-scope",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-tools",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-tools",
+        "memory.scope.denied.lina-memory-edge-scope-tools",
+        "memory.scope.unavailable.lina-memory-edge-scope-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-query-tools",
+      "source": "lina-memory-query",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.query.ready.lina-memory-edge-query-tools",
+      "outputKinds": [
+        "memory.query.ready.lina-memory-edge-query-tools",
+        "memory.query.not-needed.lina-memory-edge-query-tools",
+        "memory.query.invalid.lina-memory-edge-query-tools",
+        "memory.query.cancelled.lina-memory-edge-query-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-capture-tools",
+      "source": "lina-memory-capture",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.capture.eligible.lina-memory-edge-capture-tools",
+      "outputKinds": [
+        "memory.capture.eligible.lina-memory-edge-capture-tools",
+        "memory.capture.rejected.lina-memory-edge-capture-tools",
+        "memory.capture.no-op.lina-memory-edge-capture-tools",
+        "memory.capture.egress-blocked.lina-memory-edge-capture-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-extract-tools",
+      "source": "lina-memory-extract",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.extract.candidates.lina-memory-edge-extract-tools",
+      "outputKinds": [
+        "memory.extract.candidates.lina-memory-edge-extract-tools",
+        "memory.extract.no-op.lina-memory-edge-extract-tools",
+        "memory.extract.cancelled.lina-memory-edge-extract-tools",
+        "memory.extract.failed.lina-memory-edge-extract-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-validate-tools",
+      "source": "lina-memory-validate",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.validate.eligible.lina-memory-edge-validate-tools",
+      "outputKinds": [
+        "memory.validate.eligible.lina-memory-edge-validate-tools",
+        "memory.validate.rejected.lina-memory-edge-validate-tools",
+        "memory.validate.needs-review.lina-memory-edge-validate-tools",
+        "memory.validate.stale-policy.lina-memory-edge-validate-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-resolve-tools",
+      "source": "lina-memory-resolve",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.resolve.resolved.lina-memory-edge-resolve-tools",
+      "outputKinds": [
+        "memory.resolve.resolved.lina-memory-edge-resolve-tools",
+        "memory.resolve.no-op.lina-memory-edge-resolve-tools",
+        "memory.resolve.disputed.lina-memory-edge-resolve-tools",
+        "memory.resolve.stale.lina-memory-edge-resolve-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-tools",
+      "source": "lina-memory-commit",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.commit.applied.lina-memory-edge-commit-tools",
+      "outputKinds": [
+        "memory.commit.applied.lina-memory-edge-commit-tools",
+        "memory.commit.already-applied.lina-memory-edge-commit-tools",
+        "memory.commit.conflict.lina-memory-edge-commit-tools",
+        "memory.commit.failed.lina-memory-edge-commit-tools",
+        "memory.commit.unknown.lina-memory-edge-commit-tools",
+        "memory.commit.cancelled.lina-memory-edge-commit-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-index-tools",
+      "source": "lina-memory-index",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.index.ready.lina-memory-edge-index-tools",
+      "outputKinds": [
+        "memory.index.ready.lina-memory-edge-index-tools",
+        "memory.index.pending.lina-memory-edge-index-tools",
+        "memory.index.failed.lina-memory-edge-index-tools",
+        "memory.index.not-required.lina-memory-edge-index-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-tools",
+      "source": "lina-memory-consolidate",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.consolidate.candidates.lina-memory-edge-consolidate-tools",
+      "outputKinds": [
+        "memory.consolidate.candidates.lina-memory-edge-consolidate-tools",
+        "memory.consolidate.disabled.lina-memory-edge-consolidate-tools",
+        "memory.consolidate.no-op.lina-memory-edge-consolidate-tools",
+        "memory.consolidate.cancelled.lina-memory-edge-consolidate-tools",
+        "memory.consolidate.failed.lina-memory-edge-consolidate-tools",
+        "memory.consolidate.revoked.lina-memory-edge-consolidate-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-tools",
+      "source": "lina-memory-forget",
+      "target": "lina-tools-collect",
+      "outputKind": "memory.forget.planned.lina-memory-edge-forget-tools",
+      "outputKinds": [
+        "memory.forget.planned.lina-memory-edge-forget-tools",
+        "memory.forget.logically-removed.lina-memory-edge-forget-tools",
+        "memory.forget.purge-pending.lina-memory-edge-forget-tools",
+        "memory.forget.erased-within-coverage.lina-memory-edge-forget-tools",
+        "memory.forget.denied.lina-memory-edge-forget-tools",
+        "memory.forget.unknown.lina-memory-edge-forget-tools"
+      ],
+      "condition": "same explicit memory operation outcome / failure",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-settle",
+      "source": "lina-memory-scope",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-settle",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-settle",
+        "memory.scope.denied.lina-memory-edge-scope-settle",
+        "memory.scope.unavailable.lina-memory-edge-scope-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-capture-settle",
+      "source": "lina-memory-capture",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.capture.eligible.lina-memory-edge-capture-settle",
+      "outputKinds": [
+        "memory.capture.eligible.lina-memory-edge-capture-settle",
+        "memory.capture.rejected.lina-memory-edge-capture-settle",
+        "memory.capture.no-op.lina-memory-edge-capture-settle",
+        "memory.capture.egress-blocked.lina-memory-edge-capture-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-extract-settle",
+      "source": "lina-memory-extract",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.extract.candidates.lina-memory-edge-extract-settle",
+      "outputKinds": [
+        "memory.extract.candidates.lina-memory-edge-extract-settle",
+        "memory.extract.no-op.lina-memory-edge-extract-settle",
+        "memory.extract.cancelled.lina-memory-edge-extract-settle",
+        "memory.extract.failed.lina-memory-edge-extract-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-validate-settle",
+      "source": "lina-memory-validate",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.validate.eligible.lina-memory-edge-validate-settle",
+      "outputKinds": [
+        "memory.validate.eligible.lina-memory-edge-validate-settle",
+        "memory.validate.rejected.lina-memory-edge-validate-settle",
+        "memory.validate.needs-review.lina-memory-edge-validate-settle",
+        "memory.validate.stale-policy.lina-memory-edge-validate-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-resolve-settle",
+      "source": "lina-memory-resolve",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.resolve.resolved.lina-memory-edge-resolve-settle",
+      "outputKinds": [
+        "memory.resolve.resolved.lina-memory-edge-resolve-settle",
+        "memory.resolve.no-op.lina-memory-edge-resolve-settle",
+        "memory.resolve.disputed.lina-memory-edge-resolve-settle",
+        "memory.resolve.stale.lina-memory-edge-resolve-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-settle",
+      "source": "lina-memory-commit",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.commit.applied.lina-memory-edge-commit-settle",
+      "outputKinds": [
+        "memory.commit.applied.lina-memory-edge-commit-settle",
+        "memory.commit.already-applied.lina-memory-edge-commit-settle",
+        "memory.commit.conflict.lina-memory-edge-commit-settle",
+        "memory.commit.failed.lina-memory-edge-commit-settle",
+        "memory.commit.unknown.lina-memory-edge-commit-settle",
+        "memory.commit.cancelled.lina-memory-edge-commit-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-index-settle",
+      "source": "lina-memory-index",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.index.ready.lina-memory-edge-index-settle",
+      "outputKinds": [
+        "memory.index.ready.lina-memory-edge-index-settle",
+        "memory.index.pending.lina-memory-edge-index-settle",
+        "memory.index.failed.lina-memory-edge-index-settle",
+        "memory.index.not-required.lina-memory-edge-index-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-settle",
+      "source": "lina-memory-consolidate",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.consolidate.candidates.lina-memory-edge-consolidate-settle",
+      "outputKinds": [
+        "memory.consolidate.candidates.lina-memory-edge-consolidate-settle",
+        "memory.consolidate.disabled.lina-memory-edge-consolidate-settle",
+        "memory.consolidate.no-op.lina-memory-edge-consolidate-settle",
+        "memory.consolidate.cancelled.lina-memory-edge-consolidate-settle",
+        "memory.consolidate.failed.lina-memory-edge-consolidate-settle",
+        "memory.consolidate.revoked.lina-memory-edge-consolidate-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-settle",
+      "source": "lina-memory-forget",
+      "target": "lina-execution-settle",
+      "outputKind": "memory.forget.planned.lina-memory-edge-forget-settle",
+      "outputKinds": [
+        "memory.forget.planned.lina-memory-edge-forget-settle",
+        "memory.forget.logically-removed.lina-memory-edge-forget-settle",
+        "memory.forget.purge-pending.lina-memory-edge-forget-settle",
+        "memory.forget.erased-within-coverage.lina-memory-edge-forget-settle",
+        "memory.forget.denied.lina-memory-edge-forget-settle",
+        "memory.forget.unknown.lina-memory-edge-forget-settle"
+      ],
+      "condition": "same automatic or maintenance operation outcome; no new turn",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-scope-context",
+      "source": "lina-memory-scope",
+      "target": "lina-context-load",
+      "outputKind": "memory.scope.admitted.lina-memory-edge-scope-context",
+      "outputKinds": [
+        "memory.scope.admitted.lina-memory-edge-scope-context",
+        "memory.scope.denied.lina-memory-edge-scope-context",
+        "memory.scope.unavailable.lina-memory-edge-scope-context"
+      ],
+      "condition": "same recall denied / disabled / unavailable",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-query-context",
+      "source": "lina-memory-query",
+      "target": "lina-context-load",
+      "outputKind": "memory.query.ready.lina-memory-edge-query-context",
+      "outputKinds": [
+        "memory.query.ready.lina-memory-edge-query-context",
+        "memory.query.not-needed.lina-memory-edge-query-context",
+        "memory.query.invalid.lina-memory-edge-query-context",
+        "memory.query.cancelled.lina-memory-edge-query-context"
+      ],
+      "condition": "same recall no-op / invalid",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-cancel-extract",
+      "source": "lina-execution-cancel",
+      "target": "lina-memory-extract",
+      "outputKind": "memory.handoff.lina-memory-edge-cancel-extract",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-cancel-extract"
+      ],
+      "condition": "Stop exact memory operation; retain acknowledged writes",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-cancel-commit",
+      "source": "lina-execution-cancel",
+      "target": "lina-memory-commit",
+      "outputKind": "memory.handoff.lina-memory-edge-cancel-commit",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-cancel-commit"
+      ],
+      "condition": "Stop exact memory operation; retain acknowledged writes",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-cancel-consolidate",
+      "source": "lina-execution-cancel",
+      "target": "lina-memory-consolidate",
+      "outputKind": "memory.handoff.lina-memory-edge-cancel-consolidate",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-cancel-consolidate"
+      ],
+      "condition": "Stop exact memory operation; retain acknowledged writes",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-cancel-forget",
+      "source": "lina-execution-cancel",
+      "target": "lina-memory-forget",
+      "outputKind": "memory.handoff.lina-memory-edge-cancel-forget",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-cancel-forget"
+      ],
+      "condition": "Stop exact memory operation; retain acknowledged writes",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-extract-cancel",
+      "source": "lina-memory-extract",
+      "target": "lina-execution-cancel",
+      "outputKind": "memory.extract.cancelled.lina-memory-edge-extract-cancel",
+      "outputKinds": [
+        "memory.extract.cancelled.lina-memory-edge-extract-cancel"
+      ],
+      "condition": "cancellation settlement / unresolved acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-commit-cancel",
+      "source": "lina-memory-commit",
+      "target": "lina-execution-cancel",
+      "outputKind": "memory.commit.applied.lina-memory-edge-commit-cancel",
+      "outputKinds": [
+        "memory.commit.applied.lina-memory-edge-commit-cancel",
+        "memory.commit.already-applied.lina-memory-edge-commit-cancel",
+        "memory.commit.unknown.lina-memory-edge-commit-cancel",
+        "memory.commit.cancelled.lina-memory-edge-commit-cancel"
+      ],
+      "condition": "cancellation settlement / unresolved acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-consolidate-cancel",
+      "source": "lina-memory-consolidate",
+      "target": "lina-execution-cancel",
+      "outputKind": "memory.consolidate.cancelled.lina-memory-edge-consolidate-cancel",
+      "outputKinds": [
+        "memory.consolidate.cancelled.lina-memory-edge-consolidate-cancel"
+      ],
+      "condition": "cancellation settlement / unresolved acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-cancel",
+      "source": "lina-memory-forget",
+      "target": "lina-execution-cancel",
+      "outputKind": "memory.forget.logically-removed.lina-memory-edge-forget-cancel",
+      "outputKinds": [
+        "memory.forget.logically-removed.lina-memory-edge-forget-cancel",
+        "memory.forget.purge-pending.lina-memory-edge-forget-cancel",
+        "memory.forget.erased-within-coverage.lina-memory-edge-forget-cancel",
+        "memory.forget.unknown.lina-memory-edge-forget-cancel"
+      ],
+      "condition": "cancellation settlement / unresolved acknowledgment",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-validate-parent-wait",
+      "source": "lina-memory-validate",
+      "target": "lina-execution-wait",
+      "outputKind": "memory.validate.needs-review.lina-memory-edge-validate-parent-wait",
+      "outputKinds": [
+        "memory.validate.needs-review.lina-memory-edge-validate-parent-wait"
+      ],
+      "condition": "retain parent publication review; no fabricated subagent runtime",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-parent-review-validate",
+      "source": "lina-execution-wait",
+      "target": "lina-memory-validate",
+      "outputKind": "memory.handoff.lina-memory-edge-parent-review-validate",
+      "outputKinds": [
+        "memory.handoff.lina-memory-edge-parent-review-validate"
+      ],
+      "condition": "matched parent decision; recheck scope and revisions",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-index-context",
+      "source": "lina-memory-index",
+      "target": "lina-context-load",
+      "outputKind": "memory.index.ready.lina-memory-edge-index-context",
+      "outputKinds": [
+        "memory.index.ready.lina-memory-edge-index-context",
+        "memory.index.pending.lina-memory-edge-index-context",
+        "memory.index.failed.lina-memory-edge-index-context",
+        "memory.index.not-required.lina-memory-edge-index-context"
+      ],
+      "condition": "invalidate stale recall selection; reprepare before new invocation",
+      "implementation": "design-implemented"
+    },
+    {
+      "id": "lina-memory-edge-forget-context",
+      "source": "lina-memory-forget",
+      "target": "lina-context-load",
+      "outputKind": "memory.forget.logically-removed.lina-memory-edge-forget-context",
+      "outputKinds": [
+        "memory.forget.logically-removed.lina-memory-edge-forget-context",
+        "memory.forget.purge-pending.lina-memory-edge-forget-context",
+        "memory.forget.erased-within-coverage.lina-memory-edge-forget-context"
+      ],
+      "condition": "visibility revocation invalidates selected memory",
+      "implementation": "design-implemented"
+    }
+  ],
+  "existingEdgeChanges": [
+    {
+      "id": "lina-context-edge-prepare-load",
+      "action": "remove",
+      "replacementIds": [
+        "lina-context-edge-prepare-scope",
+        "lina-context-edge-scope-load"
+      ]
+    },
+    {
+      "id": "lina-context-edge-tools-budget",
+      "action": "remove",
+      "replacementIds": [
+        "lina-context-edge-tools-observations",
+        "lina-context-edge-observations-budget"
+      ]
+    },
+    {
+      "id": "lina-tools-edge-resolve-validate",
+      "action": "remove",
+      "replacementIds": [
+        "lina-tools-edge-resolve-hooks",
+        "lina-tools-edge-hooks-validate"
+      ]
+    },
+    {
+      "id": "lina-execution-edge-tools-outcomes",
+      "action": "remove-after-playback-parity",
+      "reason": "Use detailed Tools delegation and publication path."
+    },
+    {
+      "id": "lina-execution-edge-prompt-answer",
+      "action": "retarget",
+      "target": "lina-execution-wait",
+      "edgeKind": "return"
+    },
+    {
+      "id": "lina-execution-edge-turn-control",
+      "action": "retarget",
+      "target": "lina-execution-cancel",
+      "edgeKind": "control",
+      "condition": "Stop/Interrupt only; Steer uses the new turn-steer edge."
+    },
+    {
+      "id": "lina-tools-edge-auth-resolve",
+      "action": "retarget",
+      "target": "lina-execution-wait",
+      "edgeKind": "return",
+      "condition": "Correlated existing execution wait; startup auth-connect remains separate."
+    },
+    {
+      "id": "lina-tools-edge-catalog-context",
+      "action": "retarget",
+      "target": "lina-context-load",
+      "edgeKind": "contribution"
+    },
+    {
+      "id": "lina-tools-edge-skill-activate-context",
+      "action": "retarget",
+      "target": "lina-context-load",
+      "edgeKind": "contribution"
+    },
+    {
+      "id": "lina-tools-edge-skill-resources-context",
+      "action": "retarget",
+      "target": "lina-context-load",
+      "edgeKind": "contribution"
+    },
+    {
+      "id": "lina-tools-edge-plugin-load-register",
+      "action": "remove",
+      "reason": "Stage only; activation publishes via existing plugin-lifecycle-register."
+    },
+    {
+      "id": "lina-tools-edge-plugin-load-skill-discover",
+      "action": "remove",
+      "replacementIds": [
+        "lina-tools-edge-plugin-active-skills"
+      ]
+    },
+    {
+      "id": "lina-tools-edge-plugin-load-config",
+      "action": "remove",
+      "replacementIds": [
+        "lina-tools-edge-plugin-active-connectors"
+      ]
+    },
+    {
+      "id": "lina-execution-edge-controls-finish",
+      "action": "restrict-output",
+      "condition": "Candidate finish only; remove execution.controls-stop which uses controls-cancel."
+    },
+    {
+      "id": "lina-execution-edge-model-decide",
+      "action": "remove-after-Model-playback-parity",
+      "reason": "Use exactly one terminal Model normalize return; retain legacy bypass only before extraction."
+    },
+    {
+      "id": "lina-execution-edge-output",
+      "action": "restrict-output",
+      "condition": "External-origin turn delivery only; child-origin output returns to parent coordinator."
+    },
+    {
+      "id": "lina-execution-edge-owner-release",
+      "action": "restrict-output",
+      "condition": "Conversation-owner turn only; child releases its own owner and returns to parentOperationId, never drains parent queue."
+    }
+  ],
+  "routingRules": [
+    "Every return matches the exact requesting operation and agent; never broadcast a result to every outgoing edge.",
+    "Contribution edges stage versioned dependency data; they do not advance execution cursor.",
+    "Observation edges report safe events without scheduling work.",
+    "Same-named event kinds may target different requesters only through correlated return routing.",
+    "Provider/credential material stays adapter-private.",
+    "New failed/refused/unavailable output variants with no continuation are explicit local terminal or retained outputs, not silent omissions.",
+    "A wait registration is a side notification; OAuth or prompt workflows start only through their single owning request path. Register the wait before external answers can arrive.",
+    "Safety denial/evaluation failure passes through authorize to the correlated requester without creating a grant.",
+    "Model terminal publication replaces its old facade bypass; never emit two terminal Decide events.",
+    "Future child permission waits retain owningNodeId and child spawn operation so they cannot be routed as ordinary tool approval answers.",
+    "Operation wait expiry returns only to that operation owner; it is not automatically turn Stop.",
+    "Every delegated request must return failure/refusal/unavailable as well as success to its requester; local terminal outputs alone cannot settle a parent operation.",
+    "Input delivery request, provider receipt and Output status have distinct direction discriminators.",
+    "Output owns authentication waits for retained delivery after execution completion; these do not keep a completed agent turn artificially active.",
+    "Environment bind can return a handle to Computer or run a matching Tools operation; return routing follows the request discriminator.",
+    "Memory responses preserve Context/Tools/maintenance requester and operation identity; State acknowledgments do not repeat semantic extraction or external effects.",
+    "Memory forgetting revokes recall before covered cleanup; derived indexes are not authoritative records and pending consolidation cannot recreate revoked content."
+  ],
+  "reviewNotes": [
+    "Supporting audits specify fields and fixtures; complete per-node schemas are an implementation checklist item.",
+    "State and credential stores are distinct protected boundaries.",
+    "Future nodes remain unavailable until their design/playback slice is implemented."
+  ],
+  "traceSubscriptions": {
+    "sink": "lina-observability-record",
+    "producerBlocks": [
+      "Input",
+      "Turn Execution",
+      "Context",
+      "Tools",
+      "Model Interface",
+      "Safety and permissions",
+      "Execution Environment",
+      "Output and delivery",
+      "State, persistence and recovery",
+      "Subagents",
+      "Memory",
+      "Computer Use",
+      "Planning"
+    ],
+    "edgeKind": "observation",
+    "showByDefault": false,
+    "requiredFields": [
+      "eventId",
+      "sequence",
+      "runId",
+      "agentId",
+      "operationIdWhenApplicable",
+      "sourceKind",
+      "safePayloadRef"
+    ],
+    "rule": "Safe lifecycle events are observed without serializing the main request through telemetry."
+  },
+  "userDecisions": {
+    "planning": "required-capability-later-slice",
+    "computerUse": "deferred",
+    "currentAuthorization": "populated-block-repairs",
+    "memory": "accepted-research-recommendations-private-default-candidate-admission-parent-review-tracked-forgetting"
+  },
+  "implementation": {
+    "nodes": 112,
+    "edges": 400,
+    "appliedNodeIds": [
+      "lina-execution-wait",
+      "lina-execution-cancel",
+      "lina-context-scope",
+      "lina-context-observations",
+      "lina-tools-resource-read",
+      "lina-tools-prompt-get",
+      "lina-tools-hooks",
+      "lina-tools-retry",
+      "lina-model-resolve",
+      "lina-model-encode",
+      "lina-model-invoke",
+      "lina-model-normalize",
+      "lina-state-load",
+      "lina-state-record",
+      "lina-state-checkpoint",
+      "lina-state-recover",
+      "lina-memory-scope",
+      "lina-memory-query",
+      "lina-memory-retrieve",
+      "lina-memory-select",
+      "lina-memory-capture",
+      "lina-memory-extract",
+      "lina-memory-validate",
+      "lina-memory-resolve",
+      "lina-memory-commit",
+      "lina-memory-index",
+      "lina-memory-consolidate",
+      "lina-memory-forget"
+    ],
+    "remainingBlocks": "pending",
+    "planning": "required-later",
+    "computerUse": "deferred",
+    "modelInterface": "graph-contracts-fixture-playback-complete",
+    "safety": {
+      "status": "design-implemented",
+      "nodes": 5,
+      "edges": 31,
+      "runtimeEnforcement": false,
+      "grantStorage": "fixture-only"
+    },
+    "state": {
+      "status": "design-implemented",
+      "nodes": 4,
+      "edges": 61,
+      "runtimeDurability": false,
+      "storage": "fixture-only"
+    },
+    "typedContracts": 112,
+    "previousSliceExamplesValidated": 1940,
+    "memory": {
+      "status": "design-implemented",
+      "nodes": 12,
+      "edges": 87,
+      "runtimeBackend": false,
+      "storage": "fixture-only",
+      "baseline": "versioned-authoritative-records-and-exact-lexical-recall"
+    },
+    "examplesValidated": 2422
+  },
+  "blockPlanAuthorities": {
+    "Model Interface": "../completed/lina-model-interface.md",
+    "safety": "../completed/lina-safety-permissions.md",
+    "state": "../completed/lina-state-persistence.md",
+    "memory": "../completed/lina-memory-block.md"
+  }
+}

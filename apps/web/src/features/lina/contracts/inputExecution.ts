@@ -1,5 +1,5 @@
 import { choice, count, fixed, flag, inputEdges, executionEdges, list, nullable, object, output, replaceField, sample, text, type Payload, type ContractDefinition } from './schema';
-import { accepted, admitted, attachmentAccepted, attachmentRouted, authority, checkpoint, claim, control, custody, destination, failure, limits, operationAuthorization, ordinaryOperation, queueOperation, stopOperation, promptOperation, commandOperation, outputRecord, promptAnswer, released, turn, turnState, uncertainty, work } from './shared';
+import { toolResult as importedResult, accepted, admitted, attachmentAccepted, attachmentRouted, authority, checkpoint, claim, control, custody, destination, failure, limits, operationAuthorization, ordinaryOperation, queueOperation, stopOperation, promptOperation, commandOperation, outputRecord, promptAnswer, released, turn, turnState, uncertainty, work } from './shared';
 
 const acceptedWith = (operationValue: Payload) => replaceField(accepted, 'operation', operationValue);
 const reply = (category: string, message: string) => replaceField(replaceField(outputRecord, 'category', fixed(category)), 'text', text(message));
@@ -237,3 +237,47 @@ export const inputExecutionContracts: ContractDefinition[] = [
     ],
   },
 ];
+
+const resolvedRead = object({ callId: text('call-001'), outcome: fixed('success'), value: fixed(4) });
+const addDependencies = (value: Payload, fields: Record<string, Payload>) => object({ ...Object.fromEntries(Object.entries(value.schema.properties ?? {}).map(([key, schema]) => [key, { schema, example: (value.example as Record<string, import('./schema').Json>)[key] }])), ...fields });
+const scopedWait = object({ waitId: text('wait:approval:call-001'), waitKind: choice(['tool-approval', 'tool-input', 'user-clarification']), owningNodeId: text('lina-tools-permissions'), batchId: text('batch-001'), callId: nullable(text('call-001')), attemptId: sample(nullable(text('adapter-attempt-001')), null), bindingGeneration: count(4), answerSchemaRef: text('answer-schema:approval:v1'), accountId: text('account-demo'), answerEvidenceRef: text('answer-evidence:prompt-001') });
+const checkpointCorrelation = object({ stateRevision: count(3), ownerFence: count(1), batchId: text('batch-001'), settledCallIds: list(text('call-002'), ['call-002']), activeCallIds: list(text('call-001'), []), pendingWaitIds: list(text('wait:approval:call-001'), ['wait:approval:call-001']), unresolvedEffectCallIds: list(text('call-001'), []), safeResumeEntry: choice(['prepare', 'controls', 'settle', 'wait', 'reconcile'], 'wait') });
+for (const definition of inputExecutionContracts) {
+  const fields: Record<string, Payload> = {};
+  if (['custody', 'delivery'].some(id => definition.nodeId === `lina-input-${id}`)) fields.channelBinding = object({ connectionId: text('conn-original-account-demo'), adapterRef: text('adapter:origin:v1'), accountId: text('account-demo'), ownerScopeRef: text('owner:person-demo'), configurationRevision: count(2), readinessGeneration: count(4), credentialRef: text('credential:origin-demo'), state: choice(['ready', 'authentication-required', 'unavailable', 'disabled']) });
+  if (['queue', 'recovery', 'runtime', 'reconcile'].some(id => definition.nodeId === `lina-input-${id}`)) fields.checkpointCorrelation = checkpointCorrelation;
+  if (['accept', 'dispatch', 'queue', 'recovery', 'runtime', 'reconcile', 'delivery'].some(id => definition.nodeId === `lina-input-${id}`)) fields.stateOwner = object({ serviceRef: text('future-state-owner'), implemented: fixed(false), writeIdentityRef: text('write:input-001:v1'), expectedStateRevision: count(3) });
+  if (definition.nodeId === 'lina-input-prompt') fields.retainedWait = scopedWait;
+  if (Object.keys(fields).length) {
+    definition.context = addDependencies(definition.context, fields);
+    definition.contextExamples = definition.contextExamples?.map(example => ({ ...example, value: addDependencies(example.value, fields) }));
+  }
+  if (definition.nodeId === 'lina-input-control') definition.outputs = definition.outputs.map(value => value.id === 'input.control.steer' ? { ...value, edgeIds: executionEdges('turn-steer') } : value);
+  if (definition.nodeId === 'lina-input-prompt') {
+    definition.outputs = definition.outputs.map(value => value.id === 'input.prompt.matched' ? output(value.id, value.label, addDependencies(promptAnswer, { wait: scopedWait, answerEvidenceRef: text('answer-evidence:prompt-001'), continuationGranted: fixed(false) }), value.edgeIds, 'Exact prompt/wait/turn/call/responder/account/generation match; the operation owner still validates the answer.') : value);
+    definition.rules.push('Wrong account, stale arguments or binding generation and duplicate answers retain pending work. OAuth callbacks are verified by connection ownership, never treated as ordinary chat answers.');
+  }
+  if (definition.nodeId === 'lina-input-runtime') definition.outputs.push(output('input.runtime.resume-wait', 'Restore retained wait', object({ checkpoint: addDependencies(replaceField(checkpoint, 'nextStep', fixed('wait')), { correlation: checkpointCorrelation }), restoredState, resumeAt: fixed('wait'), retainedWait: scopedWait, replayDispatchAllowed: fixed(false) }), executionEdges('resume-wait'), 'Known-safe restart restores the wait, siblings and counters. Restore correlation without another call or turn.'));
+  if (definition.nodeId === 'lina-input-queue') definition.rules.push('Drain rechecks current source, conversation and operation policy; prior admission does not grant permanent permission. Owner-release and queue entries are deduplicated by exact identity and fence.');
+  if (definition.nodeId === 'lina-input-delivery') {
+    definition.outputs.push(output('input.delivery.status-observation', 'Account-correlated delivery observation', object({ outputId: text('output-001'), providerMessageId: nullable(text('provider-message-001')), accountId: text('account-demo'), state: choice(['created', 'queued', 'sent', 'failed', 'unknown', 'delivered']), observedAt: text('2026-10-08T10:00:05Z'), turnExecutionRepeated: fixed(false) }), [], 'Observed send lifecycle is retained separately from acceptance, execution completion and user consumption.'));
+    definition.rules.push('Unknown acknowledgement never permits blind resend. Retry saved delivery independently from model/tool execution. Output service ownership remains a future dependency.');
+  }
+  if (definition.nodeId === 'lina-input-reconcile') {
+    const sibling = object({ callId: text('call-002'), outcome: fixed('success'), value: fixed(6) });
+    definition.outputs.push(output('execution.reconciled-batch', 'Publish evidence-resolved batch', object({ state: replaceField(restoredState, 'results', list(importedResult, [resolvedRead.example, sibling.example])), round: object({ roundId: text('round-001'), index: count(1) }), batchId: text('batch-001'), requestedCallIds: list(text('call-001'), ['call-001', 'call-002']), results: list(importedResult, [resolvedRead.example, sibling.example]), evidenceRef: text('reconciliation-evidence:batch-001'), effectEvidence: fixed('known-success'), pendingCallIds: fixed([]), authorityRetained: fixed(true) }), executionEdges('reconcile-publish'), 'External evidence proves every required result; retain successful siblings and return to ordinary Tools publication.'), output('execution.reconciliation-terminal', 'Resolved evidence requires terminal settlement', object({ state: restoredState, round: object({ roundId: text('round-001'), index: count(1) }), terminal: object({ turn, outcome: fixed('cancelled'), reason: text('stop_requested'), requiredWorkResolved: fixed(true) }), candidate: fixed(null), evidenceRef: text('reconciliation-evidence:cancelled-batch-001') }), executionEdges('reconcile-settle'), 'Evidence resolves required work but cancellation intent prevents another model round.'));
+    definition.rules.push('Operator acknowledgement cannot convert unknown effects into known success. Full batch identity, settled siblings and exact attempt evidence must survive reconciliation. Resume checkpoint and publish known batch are distinct routes.');
+  }
+}
+const custodyContract = inputExecutionContracts.find(definition => definition.nodeId === 'lina-input-custody')!;
+custodyContract.rules.push('Failed secret retrieval, unavailable binding or changed original retrieval account use known pre-acceptance failure. Never fetch through another account silently.');
+custodyContract.contextExamples ??= [];
+custodyContract.contextExamples.push({ label: 'Original retrieval binding changed', value: addDependencies(custodyContract.context, { originalBindingGeneration: count(4), currentBindingGeneration: count(5), originalAccountId: text('account-original-demo'), currentAccountId: text('account-other-demo'), retrievalAllowed: fixed(false) }) });
+// This alternative includes explicit evidence alongside the usual dependencies;
+// reflect it in the local context union rather than silently accepting unknown keys.
+const custodyAlternate = custodyContract.contextExamples.at(-1)!.value;
+custodyContract.context = { schema: { anyOf: [custodyContract.context.schema, custodyAlternate.schema] }, example: custodyContract.context.example };
+const reconciler = inputExecutionContracts.find(definition => definition.nodeId === 'lina-input-reconcile')!;
+const noEffectResult = object({ callId: text('call-001'), outcome: fixed('error'), code: text('confirmed-no-effect'), message: text('Authoritative operation evidence confirms no external change occurred.'), correctable: fixed(true) });
+const preservedPeer = object({ callId: text('call-002'), outcome: fixed('success'), value: fixed(6) });
+reconciler.outputs.push(output('execution.reconciled-batch-no-effect', 'Publish proven no-effect plus settled sibling', object({ state: replaceField(restoredState, 'results', list(importedResult, [noEffectResult.example, preservedPeer.example])), round: object({ roundId: text('round-001'), index: count(1) }), batchId: text('batch-001'), requestedCallIds: list(text('call-001'), ['call-001', 'call-002']), results: list(importedResult, [noEffectResult.example, preservedPeer.example]), evidenceRef: text('reconciliation-evidence:batch-001:no-effect'), effectEvidence: fixed('known-no-effect'), pendingCallIds: fixed([]), authorityRetained: fixed(true), retryAuthorized: fixed(false) }), executionEdges('reconcile-publish'), 'Authoritative evidence proves the uncertain operation did not occur. Retain its explicit error and sibling success; evidence does not silently authorize replay.'));

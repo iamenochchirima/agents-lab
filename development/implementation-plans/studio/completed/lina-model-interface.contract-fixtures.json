@@ -1,0 +1,2068 @@
+{
+  "version": 1,
+  "status": "proposed-review-fixtures",
+  "notes": "Canonical design records, not exhaustive provider wire schemas. All references and tokens are fake. Node event wrappers/coordinator context are expanded during implementation.",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://example.test/lina/model-interface-fixtures/v1",
+    "$defs": {
+      "identity": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agentId",
+          "turnId",
+          "roundId",
+          "scopeRef",
+          "ownerRevision"
+        ],
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "turnId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "roundId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownerRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "usage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "availability",
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheWriteTokens",
+          "reasoningTokens",
+          "totalTokens",
+          "accountingSemantics",
+          "rawUsageRef"
+        ],
+        "properties": {
+          "availability": {
+            "enum": [
+              "reported",
+              "partial",
+              "unavailable"
+            ]
+          },
+          "inputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "cacheReadTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "cacheWriteTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "reasoningTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "totalTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "accountingSemantics": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rawUsageRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "availability": {
+                  "const": "unavailable"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "inputTokens": {
+                  "type": "null"
+                },
+                "outputTokens": {
+                  "type": "null"
+                },
+                "cacheReadTokens": {
+                  "type": "null"
+                },
+                "cacheWriteTokens": {
+                  "type": "null"
+                },
+                "reasoningTokens": {
+                  "type": "null"
+                },
+                "totalTokens": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "capabilities": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "sourceRef",
+          "inputModalities",
+          "contextWindowTokens",
+          "maxOutputTokens",
+          "functionTools",
+          "schemaProfileRef",
+          "opaqueReplay",
+          "cancellationMode"
+        ],
+        "properties": {
+          "revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputModalities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "contextWindowTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "maxOutputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "functionTools": {
+            "enum": [
+              "supported",
+              "unsupported",
+              "unknown"
+            ]
+          },
+          "schemaProfileRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "opaqueReplay": {
+            "enum": [
+              "supported",
+              "unsupported",
+              "unknown"
+            ]
+          },
+          "cancellationMode": {
+            "enum": [
+              "local-only",
+              "remote-confirmable",
+              "unknown"
+            ]
+          }
+        }
+      },
+      "resolutionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "intentId",
+          "purpose",
+          "preparationId",
+          "modelConfigRef",
+          "requiredFeatures",
+          "snapshotRef",
+          "launchAuthorityRef"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/$defs/identity"
+          },
+          "intentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "purpose": {
+            "enum": [
+              "capabilities",
+              "invocation"
+            ]
+          },
+          "preparationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "modelConfigRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requiredFeatures": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 0
+          },
+          "snapshotRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "launchAuthorityRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "purpose": {
+                  "const": "invocation"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "snapshotRef": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "launchAuthorityRef": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "binding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bindingRef",
+          "generation",
+          "providerRef",
+          "requestedModel",
+          "selectedModel",
+          "protocolProfileRef",
+          "codecRevision",
+          "endpointRef",
+          "accountRef",
+          "credentialReadinessRef",
+          "capabilities",
+          "configuredParameters",
+          "effectiveParameters",
+          "budgetProfileRef"
+        ],
+        "properties": {
+          "bindingRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "providerRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestedModel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "selectedModel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protocolProfileRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "codecRevision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "endpointRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accountRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "credentialReadinessRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "capabilities": {
+            "$ref": "#/$defs/capabilities"
+          },
+          "configuredParameters": {
+            "type": "object"
+          },
+          "effectiveParameters": {
+            "type": "object"
+          },
+          "budgetProfileRef": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "toolProjection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "toolId",
+          "providerName",
+          "originalSchemaRef",
+          "originalSchemaDigest",
+          "projectedSchemaDigest",
+          "transformationRefs",
+          "semanticVerdict"
+        ],
+        "properties": {
+          "toolId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "providerName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "originalSchemaRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "originalSchemaDigest": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectedSchemaDigest": {
+            "type": "string",
+            "minLength": 1
+          },
+          "transformationRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 0
+          },
+          "semanticVerdict": {
+            "enum": [
+              "equivalent",
+              "unsupported"
+            ]
+          }
+        }
+      },
+      "continuation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifactRef",
+          "agentId",
+          "accountRef",
+          "providerRef",
+          "protocolProfileRef",
+          "historyRevision",
+          "required",
+          "portable"
+        ],
+        "properties": {
+          "artifactRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "agentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accountRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "providerRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protocolProfileRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "historyRevision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "portable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "encodedRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "intentId",
+          "requestId",
+          "attemptId",
+          "bindingRef",
+          "bindingGeneration",
+          "protocolProfileRef",
+          "snapshotRef",
+          "catalogRevision",
+          "requestDigest",
+          "payloadRef",
+          "safeFixturePayload",
+          "toolMap",
+          "continuationRefs",
+          "validation",
+          "sizeEvidenceRef",
+          "launchAuthorityRef"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/$defs/identity"
+          },
+          "intentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attemptId": {
+            "type": "null"
+          },
+          "bindingRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bindingGeneration": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "protocolProfileRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "snapshotRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "catalogRevision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requestDigest": {
+            "type": "string",
+            "minLength": 1
+          },
+          "payloadRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "safeFixturePayload": {
+            "type": "object"
+          },
+          "toolMap": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/toolProjection"
+            },
+            "minItems": 0
+          },
+          "continuationRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/continuation"
+            },
+            "minItems": 0
+          },
+          "validation": {
+            "const": "accepted"
+          },
+          "sizeEvidenceRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "launchAuthorityRef": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "progress": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "attemptId",
+          "sequence",
+          "itemId",
+          "kind",
+          "draftRef",
+          "executable"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/$defs/identity"
+          },
+          "attemptId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "itemId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "text-delta",
+              "tool-arguments-delta",
+              "usage-update",
+              "heartbeat",
+              "unknown-event"
+            ]
+          },
+          "draftRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "executable": {
+            "const": false
+          }
+        }
+      },
+      "observation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "intentId",
+          "attemptId",
+          "stage",
+          "launched",
+          "localStatus",
+          "localSettled",
+          "remoteStatus",
+          "providerResponseId",
+          "terminalMarkerObserved",
+          "rawFinishReason",
+          "contentRef",
+          "callBuffersRef",
+          "rawDetailRef",
+          "usage"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/$defs/identity"
+          },
+          "intentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attemptId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "stage": {
+            "enum": [
+              "resolve",
+              "encode",
+              "invoke"
+            ]
+          },
+          "launched": {
+            "type": "boolean"
+          },
+          "localStatus": {
+            "enum": [
+              "completed",
+              "failed",
+              "aborted",
+              "unknown"
+            ]
+          },
+          "localSettled": {
+            "type": "boolean"
+          },
+          "remoteStatus": {
+            "enum": [
+              "completed",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "providerResponseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "terminalMarkerObserved": {
+            "type": "boolean"
+          },
+          "rawFinishReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "contentRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "callBuffersRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "rawDetailRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "usage": {
+            "$ref": "#/$defs/usage"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "launched": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "attemptId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "stage": {
+                  "const": "invoke"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "attemptId": {
+                  "type": "null"
+                },
+                "stage": {
+                  "enum": [
+                    "resolve",
+                    "encode"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "toolCall": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "callId",
+          "providerCallId",
+          "wireItemRef",
+          "name",
+          "arguments",
+          "argumentsComplete"
+        ],
+        "properties": {
+          "callId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "providerCallId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "wireItemRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "arguments": {
+            "type": "object"
+          },
+          "argumentsComplete": {
+            "const": true
+          }
+        }
+      },
+      "failure": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stage",
+          "code",
+          "class",
+          "retryHint",
+          "retryAfterMs",
+          "safeDetailRef"
+        ],
+        "properties": {
+          "stage": {
+            "enum": [
+              "resolve",
+              "encode",
+              "invoke",
+              "normalize"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "class": {
+            "enum": [
+              "configuration",
+              "unsupported",
+              "authentication",
+              "permission",
+              "rate-limit",
+              "context-overflow",
+              "transport",
+              "provider",
+              "incomplete",
+              "malformed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "retryHint": {
+            "enum": [
+              "none",
+              "possible",
+              "context-refresh",
+              "auth-readiness"
+            ]
+          },
+          "retryAfterMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "safeDetailRef": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "outcome": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity",
+          "intentId",
+          "attemptId",
+          "status",
+          "disposition",
+          "rawFinishReason",
+          "contentRefs",
+          "toolCalls",
+          "failure",
+          "requestedModel",
+          "responseModel",
+          "effectiveProvider",
+          "providerResponseId",
+          "usage",
+          "continuationRefs",
+          "rawDetailRef",
+          "localSettled",
+          "remoteStatus",
+          "continuationHint"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/$defs/identity"
+          },
+          "intentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "attemptId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "incomplete",
+              "malformed",
+              "failed",
+              "aborted",
+              "unknown"
+            ]
+          },
+          "disposition": {
+            "enum": [
+              "answer",
+              "tool-calls",
+              "refusal",
+              "blocked",
+              "unusable"
+            ]
+          },
+          "rawFinishReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "contentRefs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 0
+          },
+          "toolCalls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/toolCall"
+            },
+            "minItems": 0
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/failure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestedModel": {
+            "type": "string",
+            "minLength": 1
+          },
+          "responseModel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "effectiveProvider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "providerResponseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "usage": {
+            "$ref": "#/$defs/usage"
+          },
+          "continuationRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/continuation"
+            },
+            "minItems": 0
+          },
+          "rawDetailRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "localSettled": {
+            "type": "boolean"
+          },
+          "remoteStatus": {
+            "enum": [
+              "completed",
+              "failed",
+              "cancelled",
+              "unknown"
+            ]
+          },
+          "continuationHint": {
+            "enum": [
+              "none",
+              "client-continuation",
+              "provider-hosted",
+              "unknown"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "enum": [
+                    "incomplete",
+                    "malformed",
+                    "failed",
+                    "aborted",
+                    "unknown"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "toolCalls": {
+                  "maxItems": 0,
+                  "type": "array"
+                },
+                "disposition": {
+                  "const": "unusable"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "disposition": {
+                  "const": "tool-calls"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "status": {
+                  "const": "complete"
+                },
+                "toolCalls": {
+                  "minItems": 1,
+                  "type": "array"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "disposition": {
+                  "enum": [
+                    "answer",
+                    "refusal",
+                    "blocked"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "status": {
+                  "const": "complete"
+                },
+                "toolCalls": {
+                  "maxItems": 0,
+                  "type": "array"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "examples": [
+    {
+      "name": "metadata input",
+      "definition": "resolutionRequest",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "purpose": "capabilities",
+        "preparationId": "prepare:turn-001:round-001:r0",
+        "modelConfigRef": "model-config:demo:v1",
+        "requiredFeatures": [
+          "text",
+          "function-tools"
+        ],
+        "snapshotRef": null,
+        "launchAuthorityRef": null
+      }
+    },
+    {
+      "name": "invocation input",
+      "definition": "resolutionRequest",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "purpose": "invocation",
+        "preparationId": "prepare:turn-001:round-001:r0",
+        "modelConfigRef": "model-config:demo:v1",
+        "requiredFeatures": [
+          "text",
+          "function-tools"
+        ],
+        "snapshotRef": "context:turn-001:round-001:r0",
+        "launchAuthorityRef": "launch:turn-001:round-001:v4"
+      }
+    },
+    {
+      "name": "metadata and invocation binding",
+      "definition": "binding",
+      "value": {
+        "bindingRef": "model-binding:demo:v1",
+        "generation": 1,
+        "providerRef": "provider:fixture",
+        "requestedModel": "fixture-model",
+        "selectedModel": "fixture-model",
+        "protocolProfileRef": "openai-chat-fixture-v1",
+        "codecRevision": "fixture-codec:v1",
+        "endpointRef": "endpoint:fixture-local",
+        "accountRef": "account:demo",
+        "credentialReadinessRef": "readiness:account-demo:v1",
+        "capabilities": {
+          "revision": "capabilities:fixture:v1",
+          "sourceRef": "fixture-profile:openai-chat:v1",
+          "inputModalities": [
+            "text"
+          ],
+          "contextWindowTokens": 1000,
+          "maxOutputTokens": 200,
+          "functionTools": "supported",
+          "schemaProfileRef": "schema-profile:fixture:v1",
+          "opaqueReplay": "unsupported",
+          "cancellationMode": "local-only"
+        },
+        "configuredParameters": {
+          "max_output_tokens": 200
+        },
+        "effectiveParameters": {
+          "max_output_tokens": 200
+        },
+        "budgetProfileRef": "budget-profile:fixture:output200:reasoning-default:v1"
+      }
+    },
+    {
+      "name": "encoded provider request",
+      "definition": "encodedRequest",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "requestId": "model-request-001",
+        "attemptId": null,
+        "bindingRef": "model-binding:demo:v1",
+        "bindingGeneration": 1,
+        "protocolProfileRef": "openai-chat-fixture-v1",
+        "snapshotRef": "context:turn-001:round-001:r0",
+        "catalogRevision": "catalog:demo:7",
+        "requestDigest": "sha256:fixture-request-001",
+        "payloadRef": "fixture:request-001",
+        "safeFixturePayload": {
+          "model": "fixture-model",
+          "messages": [
+            {
+              "role": "user",
+              "content": "What is 2 + 2?"
+            }
+          ],
+          "tools": [
+            {
+              "type": "function",
+              "function": {
+                "name": "calculator",
+                "description": "Evaluate an arithmetic expression.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "expression": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          ],
+          "stream": true
+        },
+        "toolMap": [
+          {
+            "toolId": "tool:builtin:calculator",
+            "providerName": "calculator",
+            "originalSchemaRef": "tool-schema:calculator:v1",
+            "originalSchemaDigest": "sha256:fixture-calculator-schema",
+            "projectedSchemaDigest": "sha256:fixture-calculator-schema",
+            "transformationRefs": [],
+            "semanticVerdict": "equivalent"
+          }
+        ],
+        "continuationRefs": [],
+        "validation": "accepted",
+        "sizeEvidenceRef": "fixture-estimate:request-001",
+        "launchAuthorityRef": "launch:turn-001:round-001:v4"
+      }
+    },
+    {
+      "name": "unlaunchable argument preview",
+      "definition": "progress",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "attemptId": "attempt-001",
+        "sequence": 2,
+        "itemId": "wire-call-0",
+        "kind": "tool-arguments-delta",
+        "draftRef": "fixture:arguments-prefix:call-001",
+        "executable": false
+      }
+    },
+    {
+      "name": "text preview",
+      "definition": "progress",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "attemptId": "attempt-001",
+        "sequence": 1,
+        "itemId": "wire-text-0",
+        "kind": "text-delta",
+        "draftRef": "fixture:text-prefix:attempt-001",
+        "executable": false
+      }
+    },
+    {
+      "name": "terminal observation",
+      "definition": "observation",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "stage": "invoke",
+        "launched": true,
+        "localStatus": "completed",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "providerResponseId": "response-fixture-001",
+        "terminalMarkerObserved": true,
+        "rawFinishReason": "tool_calls",
+        "contentRef": null,
+        "callBuffersRef": "fixture:call-buffers:attempt-001",
+        "rawDetailRef": "fixture:response:attempt-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        }
+      }
+    },
+    {
+      "name": "two complete calls",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "complete",
+        "disposition": "tool-calls",
+        "rawFinishReason": "tool_calls",
+        "contentRefs": [],
+        "toolCalls": [
+          {
+            "callId": "call-001",
+            "providerCallId": "wire-call-0",
+            "wireItemRef": "fixture:response:attempt-001:item-0",
+            "name": "calculator",
+            "arguments": {
+              "expression": "2 + 2"
+            },
+            "argumentsComplete": true
+          },
+          {
+            "callId": "call-002",
+            "providerCallId": "wire-call-1",
+            "wireItemRef": "fixture:response:attempt-001:item-1",
+            "name": "calculator",
+            "arguments": {
+              "expression": "3 + 3"
+            },
+            "argumentsComplete": true
+          }
+        ],
+        "failure": null,
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "answer",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "complete",
+        "disposition": "answer",
+        "rawFinishReason": "stop",
+        "contentRefs": [
+          "fixture:answer:attempt-001"
+        ],
+        "toolCalls": [],
+        "failure": null,
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "refusal",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "complete",
+        "disposition": "refusal",
+        "rawFinishReason": "refusal",
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": null,
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "blocked",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "complete",
+        "disposition": "blocked",
+        "rawFinishReason": "content_filter",
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": null,
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "incomplete",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "incomplete",
+        "disposition": "unusable",
+        "rawFinishReason": "output_limit",
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": {
+          "stage": "normalize",
+          "code": "output_limit",
+          "class": "incomplete",
+          "retryHint": "none",
+          "retryAfterMs": null,
+          "safeDetailRef": "fixture:error:output_limit"
+        },
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "failed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "malformed",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "malformed",
+        "disposition": "unusable",
+        "rawFinishReason": "invalid_terminal_arguments",
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": {
+          "stage": "normalize",
+          "code": "invalid_terminal_arguments",
+          "class": "malformed",
+          "retryHint": "none",
+          "retryAfterMs": null,
+          "safeDetailRef": "fixture:error:invalid_terminal_arguments"
+        },
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "failed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "failed",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "failed",
+        "disposition": "unusable",
+        "rawFinishReason": "rate_limited",
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": {
+          "stage": "invoke",
+          "code": "rate_limited",
+          "class": "rate-limit",
+          "retryHint": "possible",
+          "retryAfterMs": 1000,
+          "safeDetailRef": "fixture:error:rate_limited"
+        },
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "failed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "aborted",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "aborted",
+        "disposition": "unusable",
+        "rawFinishReason": "local_abort",
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": {
+          "stage": "invoke",
+          "code": "local_abort",
+          "class": "cancelled",
+          "retryHint": "none",
+          "retryAfterMs": null,
+          "safeDetailRef": "fixture:error:local_abort"
+        },
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cacheReadTokens": null,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": null,
+          "accountingSemantics": "unavailable",
+          "rawUsageRef": null
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "unknown",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "unknown",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "unknown",
+        "disposition": "unusable",
+        "rawFinishReason": null,
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": {
+          "stage": "invoke",
+          "code": "missing_terminal_marker",
+          "class": "unknown",
+          "retryHint": "none",
+          "retryAfterMs": null,
+          "safeDetailRef": "fixture:error:missing_terminal_marker"
+        },
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cacheReadTokens": null,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": null,
+          "accountingSemantics": "unavailable",
+          "rawUsageRef": null
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "unknown",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "prelaunch encoding failure",
+      "definition": "observation",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": null,
+        "stage": "encode",
+        "launched": false,
+        "localStatus": "failed",
+        "localSettled": true,
+        "remoteStatus": "unknown",
+        "providerResponseId": null,
+        "terminalMarkerObserved": false,
+        "rawFinishReason": null,
+        "contentRef": null,
+        "callBuffersRef": null,
+        "rawDetailRef": "fixture:response:attempt-001",
+        "usage": {
+          "availability": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cacheReadTokens": null,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": null,
+          "accountingSemantics": "unavailable",
+          "rawUsageRef": null
+        }
+      }
+    },
+    {
+      "name": "local abort with remote status unknown",
+      "definition": "observation",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "stage": "invoke",
+        "launched": true,
+        "localStatus": "aborted",
+        "localSettled": true,
+        "remoteStatus": "unknown",
+        "providerResponseId": "response-fixture-001",
+        "terminalMarkerObserved": false,
+        "rawFinishReason": null,
+        "contentRef": null,
+        "callBuffersRef": "fixture:call-buffers:attempt-001",
+        "rawDetailRef": "fixture:response:attempt-001",
+        "usage": {
+          "availability": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cacheReadTokens": null,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": null,
+          "accountingSemantics": "unavailable",
+          "rawUsageRef": null
+        }
+      }
+    },
+    {
+      "name": "prelaunch outcome without physical attempt",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": null,
+        "status": "failed",
+        "disposition": "unusable",
+        "rawFinishReason": null,
+        "contentRefs": [],
+        "toolCalls": [],
+        "failure": {
+          "stage": "encode",
+          "code": "unsupported_required_media",
+          "class": "unsupported",
+          "retryHint": "none",
+          "retryAfterMs": null,
+          "safeDetailRef": "fixture:error:unsupported_required_media"
+        },
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": null,
+        "usage": {
+          "availability": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cacheReadTokens": null,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": null,
+          "accountingSemantics": "unavailable",
+          "rawUsageRef": null
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "unknown",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "explicit no-tool client continuation",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "complete",
+        "disposition": "answer",
+        "rawFinishReason": "stop",
+        "contentRefs": [
+          "fixture:answer:attempt-001"
+        ],
+        "toolCalls": [],
+        "failure": null,
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "continuationHint": "client-continuation"
+      }
+    }
+  ],
+  "invalidExamples": [
+    {
+      "name": "incomplete calls must not be executable",
+      "definition": "outcome",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "status": "incomplete",
+        "disposition": "unusable",
+        "rawFinishReason": "tool_calls",
+        "contentRefs": [],
+        "toolCalls": [
+          {
+            "callId": "call-001",
+            "providerCallId": "wire-call-0",
+            "wireItemRef": "fixture:response:attempt-001:item-0",
+            "name": "calculator",
+            "arguments": {
+              "expression": "2 + 2"
+            },
+            "argumentsComplete": true
+          },
+          {
+            "callId": "call-002",
+            "providerCallId": "wire-call-1",
+            "wireItemRef": "fixture:response:attempt-001:item-1",
+            "name": "calculator",
+            "arguments": {
+              "expression": "3 + 3"
+            },
+            "argumentsComplete": true
+          }
+        ],
+        "failure": null,
+        "requestedModel": "fixture-model",
+        "responseModel": "fixture-model",
+        "effectiveProvider": "provider:fixture",
+        "providerResponseId": "response-fixture-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        },
+        "continuationRefs": [],
+        "rawDetailRef": "fixture:response:attempt-001",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "continuationHint": "none"
+      }
+    },
+    {
+      "name": "missing usage is not zero",
+      "definition": "usage",
+      "value": {
+        "availability": "unavailable",
+        "inputTokens": 0,
+        "outputTokens": null,
+        "cacheReadTokens": null,
+        "cacheWriteTokens": null,
+        "reasoningTokens": null,
+        "totalTokens": null,
+        "accountingSemantics": "unavailable",
+        "rawUsageRef": null
+      }
+    },
+    {
+      "name": "progress must not grant execution",
+      "definition": "progress",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "attemptId": "attempt-001",
+        "sequence": 2,
+        "itemId": "wire-call-0",
+        "kind": "tool-arguments-delta",
+        "draftRef": "fixture:arguments-prefix:call-001",
+        "executable": true
+      }
+    },
+    {
+      "name": "prelaunch must not own physical attempt",
+      "definition": "observation",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "attemptId": "attempt-001",
+        "stage": "encode",
+        "launched": false,
+        "localStatus": "completed",
+        "localSettled": true,
+        "remoteStatus": "completed",
+        "providerResponseId": "response-fixture-001",
+        "terminalMarkerObserved": true,
+        "rawFinishReason": "tool_calls",
+        "contentRef": null,
+        "callBuffersRef": "fixture:call-buffers:attempt-001",
+        "rawDetailRef": "fixture:response:attempt-001",
+        "usage": {
+          "availability": "reported",
+          "inputTokens": 120,
+          "outputTokens": 20,
+          "cacheReadTokens": 80,
+          "cacheWriteTokens": null,
+          "reasoningTokens": null,
+          "totalTokens": 140,
+          "accountingSemantics": "fixture-input-includes-cache-read",
+          "rawUsageRef": "fixture:usage:attempt-001"
+        }
+      }
+    },
+    {
+      "name": "invocation needs snapshot",
+      "definition": "resolutionRequest",
+      "value": {
+        "identity": {
+          "agentId": "lina-main",
+          "turnId": "turn-001",
+          "roundId": "round-001",
+          "scopeRef": "scope:lina-main:v1",
+          "ownerRevision": 4
+        },
+        "intentId": "model-intent-001",
+        "purpose": "invocation",
+        "preparationId": "prepare:turn-001:round-001:r0",
+        "modelConfigRef": "model-config:demo:v1",
+        "requiredFeatures": [
+          "text",
+          "function-tools"
+        ],
+        "snapshotRef": null,
+        "launchAuthorityRef": null
+      }
+    }
+  ]
+}

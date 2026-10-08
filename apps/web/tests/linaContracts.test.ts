@@ -225,3 +225,132 @@ test('structured actions can omit content, while an empty ordinary envelope is i
   blank.requestedOperation = { kind: 'stop', targetTurnId: 'turn-001', guidance: null };
   assert.equal(validate(envelope.schema, blank), true);
 });
+
+const contextPayload = (node: string, outcome: string) => {
+  const result = contractForNode(`lina-context-${node}`)!.outputs.find(item => item.id === outcome)!;
+  assert.ok(result, outcome);
+  return (result.example as Record<string, Json>).payload as Record<string, Json>;
+};
+
+test('Context delegation preserves execution identity and counters before model launch', () => {
+  const prepare = contractForNode('lina-execution-prepare')!;
+  const request = prepare.outputs.find(item => item.id === 'execution.context-requested-after-tool-success')!;
+  const payload = (request.example as Record<string, Json>).payload as Record<string, Json>;
+  const state = payload.state as Record<string, Json>;
+  assert.deepEqual(state.limits, { roundsStarted: 1, maxRounds: 3, attempts: 1, retriesRemaining: 1 });
+  assert.deepEqual(payload.toolResultRefs, ['call-001:result']);
+  assert.equal((payload.round as Record<string, Json>).roundId, 'round-002');
+  assert.equal((payload.identities as Record<string, Json>).roundId, 'round-002');
+  assert.deepEqual(request.edgeIds, ['lina-context-edge-prepare-scope']);
+});
+
+test('Context reductions preserve canonical evidence and distinguish summary work from reasoning rounds', () => {
+  const pruned = contextPayload('prune', 'context.pruned');
+  assert.equal(pruned.canonicalRecordsPreserved, true);
+  assert.equal(pruned.canonicalHistoryRef, 'history:conversation-001:r7');
+  assert.equal(pruned.revision, 1);
+  const messages = pruned.messages as Record<string, Json>[];
+  const masked = messages.find(item => item.recordId === 'result-old-001')!;
+  assert.equal(masked.artifactRef, 'artifact:old-observation:raw');
+  assert.match((masked.result as Record<string, Json>).value as string, /masked/);
+  assert.ok(messages.some(item => item.role === 'assistant' && (item.calls as Record<string, Json>[]).some(call => call.callId === masked.callId)));
+  assert.ok(messages.some(item => item.callId === 'call-001' && item.protected === true));
+  assert.ok((pruned.selectionManifest as Record<string, Json>[]).some(item => item.action === 'masked' && item.sourceRef === 'artifact:old-observation:raw'));
+  const compacted = contextPayload('compact', 'context.compacted');
+  const work = compacted.summaryWork as Record<string, Json>;
+  assert.equal(work.kind, 'context-management');
+  assert.equal(work.mainAgentRoundStarted, false);
+  assert.equal(work.persistence, 'request-local');
+  const candidate = compacted.candidate as Record<string, Json>;
+  assert.ok((candidate.messages as Record<string, Json>[]).some(item => item.role === 'user' && item.protected === true));
+  for (const outcome of ['context.summary-failed', 'context.summary-cancelled']) {
+    const failure = contextPayload('compact', outcome);
+    assert.equal((failure.contextFailure as Record<string, Json>).previousValidSnapshotPreserved, true);
+    assert.equal((failure.contextFailure as Record<string, Json>).modelAttemptLaunched, false);
+  }
+});
+
+test('Context snapshots expose estimated budgets and immutable revision identities without launch permission', () => {
+  const first = contextPayload('publish', 'context.ready').contextSnapshot as Record<string, Json>;
+  const revised = contextPayload('publish', 'context.ready-revised').contextSnapshot as Record<string, Json>;
+  assert.equal(first.immutable, true);
+  assert.equal(first.grantsLaunchPermission, false);
+  assert.equal(first.storage, 'reference-fixture-not-persisted');
+  assert.equal((first.budget as Record<string, Json>).accounting, 'synthetic-estimate');
+  assert.equal((first.budget as Record<string, Json>).outputReservation, 200);
+  assert.equal(revised.revision, 1);
+  assert.ok(((revised.modelContext as Record<string, Json>).messages as Record<string, Json>[]).some(item => item.role === 'summary'));
+  assert.ok((revised.selectionManifest as Record<string, Json>[]).some(item => item.action === 'summarized'));
+  assert.notEqual(first.contextSnapshotRef, revised.contextSnapshotRef);
+  assert.deepEqual(first.identities, revised.identities);
+  assert.equal((revised.budget as Record<string, Json>).reductionAttempts, 1);
+  for (const [node, outcome] of [['load', 'context.required-source-missing'], ['budget', 'context.protected-too-large'], ['validate', 'context.invalid']]) {
+    const failure = contextPayload(node, outcome);
+    assert.equal((failure.terminal as Record<string, Json>).outcome, 'failed');
+    assert.equal((failure.contextFailure as Record<string, Json>).canonicalRecordsPreserved, true);
+  }
+});
+
+test('continued provider requests pair each tool result with a prior assistant call and matching snapshot', () => {
+  const prepare = contractForNode('lina-execution-prepare')!;
+  for (const id of ['execution.model-request-after-tool-success', 'execution.model-request-after-tool-error', 'execution.model-request-after-replacement']) {
+    const payload = (prepare.outputs.find(item => item.id === id)!.example as Record<string, Json>).payload as Record<string, Json>;
+    const request = payload.modelRequest as Record<string, Json>;
+    const messages = request.messages as Record<string, Json>[];
+    const calls = new Set<string>();
+    for (const message of messages) {
+      if (message.role === 'assistant') for (const call of message.toolCalls as Record<string, Json>[]) calls.add(call.callId as string);
+      if (message.role === 'tool') assert.ok(calls.has(message.callId as string), `${id}: orphan ${message.callId}`);
+    }
+    const snapshot = request.contextSnapshot as Record<string, Json>;
+    assert.equal((snapshot.identities as Record<string, Json>).roundId, (payload.round as Record<string, Json>).roundId);
+    assert.equal(((snapshot.modelContext as Record<string, Json>).messages as Json[]).length, messages.length);
+  }
+});
+
+test('reduced and tool-feedback projections survive budget, validation and publication unchanged', () => {
+  for (const [node, reducedId, budgetId, validatedId, readyId] of [
+    ['prune', 'context.pruned', 'context.budget-fits-after-prune', 'context.validated-after-prune', 'context.ready-pruned'],
+    ['compact', 'context.compacted', 'context.budget-fits-after-compact', 'context.validated-after-compact', 'context.ready-revised'],
+  ]) {
+    const reduced = contextPayload(node, reducedId);
+    const projected = (reduced.candidate ?? reduced) as Record<string, Json>;
+    for (const [stage, id] of [['budget', budgetId], ['validate', validatedId]]) {
+      const payload = contextPayload(stage, id);
+      assert.deepEqual(payload.candidate ?? payload, projected);
+    }
+    const snapshot = contextPayload('publish', readyId).contextSnapshot as Record<string, Json>;
+    assert.deepEqual((snapshot.modelContext as Record<string, Json>).messages, projected.messages);
+    assert.deepEqual(snapshot.selectionManifest, projected.selectionManifest);
+    assert.deepEqual(snapshot.reductions, projected.reductions);
+  }
+  const task = contextPayload('task', 'context.task-tool-feedback');
+  const tools = contextPayload('tools', 'context.tools-feedback');
+  const fit = contextPayload('budget', 'context.budget-fits-feedback');
+  const valid = contextPayload('validate', 'context.validated-feedback');
+  const ready = contextPayload('publish', 'context.ready-feedback');
+  for (const projection of [tools, fit, valid]) assert.deepEqual(projection.messages, task.messages);
+  const snapshot = ready.contextSnapshot as Record<string, Json>;
+  assert.deepEqual((snapshot.modelContext as Record<string, Json>).messages, task.messages);
+  assert.equal((snapshot.identities as Record<string, Json>).roundId, 'round-002');
+  assert.equal(((ready.state as Record<string, Json>).limits as Record<string, Json>).roundsStarted, 1);
+  const media = contextPayload('task', 'context.task-media');
+  const evidence = (media.taskEvidence as Record<string, Json>[])[0];
+  assert.equal(evidence.text, null);
+  assert.equal(evidence.artifactRef, 'artifact:input-001:image-001');
+  const origins = new Set((media.sources as Record<string, Json>[]).map(item => item.sourceRef));
+  assert.ok(origins.has(evidence.sourceRef));
+  assert.ok((media.messages as Record<string, Json>[]).some(item => item.role === 'assistant' && typeof item.content === 'string'));
+});
+
+test('a fitting context can still carry an orphan result for explicit validation failure', () => {
+  const malformed = contextPayload('budget', 'context.budget-fits-invalid');
+  const messages = malformed.messages as Record<string, Json>[];
+  assert.ok((malformed.budget as Record<string, Json>).fits);
+  assert.ok(messages.some(message => message.role === 'tool' && message.callId === 'call-001'));
+  assert.equal(messages.some(message => message.role === 'assistant'), false);
+  const input = contractForNode('lina-context-validate')!.input.examples.find(example =>
+    (example.value as Record<string, Json>).event && ((example.value as Record<string, Json>).event as Record<string, Json>).kind === 'context.budget-fits-invalid');
+  assert.ok(input, 'the invalid relationship remains visible at its receiving node');
+  assert.equal((contextPayload('validate', 'context.invalid').contextFailure as Record<string, Json>).modelAttemptLaunched, false);
+});

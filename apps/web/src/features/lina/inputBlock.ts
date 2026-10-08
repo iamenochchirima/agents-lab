@@ -14,7 +14,7 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Receive submissions through an authenticated connection to the shared Lina service.\n- Preserve the terminal’s selected conversation and explicit control action.",
       "inputs": "- Terminal text, local file references, and submission identity.\n- Authenticated CLI account and selected conversation, if specified.",
       "outputs": "- Transport facts for the common input envelope.\n- Attachment retrieval references and a response route to the CLI connection.",
-      "decisions": "- Agreed: CLI defaults to the personal conversation; each terminal can select another.\n- Open: authentication mechanism and reconnect protocol.",
+      "decisions": "- Agreed: CLI defaults to the personal conversation; each terminal can select another.\n- Open: authentication mechanism and reconnect protocol.\n- Use owner/account-scoped bindings with configuration and readiness generations. Credentials remain references; unavailable bindings cannot claim acceptance.",
       "references": "Hermes explorer: gw-ingress / CLIChatTuiMixin.chat\nOpenClaw explorer: channel-registry / ws\nPi: tui InteractiveMode; rpc runRpcMode. Waku: cli gateway.cli.main.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
@@ -28,7 +28,7 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Receive WhatsApp events and verify transport authenticity.\n- Preserve message identity and retrieve attachments using channel credentials.",
       "inputs": "- Adapter account, sender ID, chat ID, message ID, and available timestamps.\n- Text, attachment references, captions, and reply facts.",
       "outputs": "- Original transport facts for normalization.\n- Channel-specific attachment retrieval and reply routing references.",
-      "decisions": "- Agreed: WhatsApp is an initial channel; approved linked DMs share personal history.\n- Open: integration choice, available media capabilities, and transport acknowledgement timing.",
+      "decisions": "- Agreed: WhatsApp is an initial channel; approved linked DMs share personal history.\n- Open: integration choice, available media capabilities, and transport acknowledgement timing.\n- Use owner/account-scoped bindings with configuration and readiness generations. Credentials remain references; unavailable bindings cannot claim acceptance.",
       "references": "Hermes explorer: gw-adapters; gw-ingress\nOpenClaw explorer: channel-registry\nTransport-specific WhatsApp implementation must be selected.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
@@ -42,12 +42,17 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Receive Telegram events and preserve chat, topic, reply, mention, and album facts.\n- Retrieve attachments through the bot’s channel credentials.",
       "inputs": "- Bot account, update/message IDs, sender identity, and chat/topic IDs.\n- Text, media references, captions, reply anchors, and mention facts.",
       "outputs": "- Transport facts for normalization and duplicate detection.\n- Attachment retrieval references and the originating reply destination.",
-      "decisions": "- Agreed: Telegram is an initial channel; group activation requires a mention or reply.\n- Open: transport acknowledgement timing and offline backlog policy.",
+      "decisions": "- Agreed: Telegram is an initial channel; group activation requires a mention or reply.\n- Open: transport acknowledgement timing and offline backlog policy.\n- Use owner/account-scoped bindings with configuration and readiness generations. Credentials remain references; unavailable bindings cannot claim acceptance.",
       "references": "Hermes explorer: gw-adapters; gw-ingress\nOpenClaw explorer: channel-registry\nTelegram UpdateAdmission runs in adapter ingress.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
     {
-      "id": "lina-input-telegram-route", "title": "Telegram event router", "area": "Input / Adapters", "status": "proposed", "x": 1220, "y": 120,
+      "id": "lina-input-telegram-route",
+      "title": "Telegram event router",
+      "area": "Input / Adapters",
+      "status": "proposed",
+      "x": 1220,
+      "y": 120,
       "purpose": "- Classify Telegram update type and chat surface before common message normalization.\n- Preserve DM, group/topic, channel post, edit and button-response distinctions.",
       "inputs": "- Verified adapter update with its update ID, event type, chat type and actor provenance.\n- Server-owned button mappings and explicit surface policies.",
       "outputs": "- Supported DM/group/topic message facts or a verified structured button action for the common envelope.\n- A visible unsupported-policy outcome for channel posts, edits and unmapped responses.",
@@ -177,7 +182,7 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Retrieve required attachment bytes through the channel adapter.\n- Validate type/size and store originals with attachment IDs, order, and captions.",
       "inputs": "- Authorized input and source attachment references.\n- Adapter retrieval capability and configured storage/validation limits.",
       "outputs": "- Durable original references associated with the input.\n- A visible acquisition or unsupported-type failure.",
-      "decisions": "- Agreed: images, voice, PDFs, and text/code first; video deferred.\n- Agreed: derived content references originals; this component stays inside Lina’s service.\n- Open: limits, retention, providers, and partial-failure acceptance.",
+      "decisions": "- Agreed: images, voice, PDFs, and text/code first; video deferred.\n- Agreed: derived content references originals; this component stays inside Lina’s service.\n- Open: limits, retention, providers, and partial-failure acceptance.\n- Use owner/account-scoped bindings with configuration and readiness generations. Credentials remain references; unavailable bindings cannot claim acceptance.",
       "references": "Hermes explorer: gw-prepare plus adapter retrieval; gateway/run_inbound.py:51\nOpenClaw explorer: media stageRemoteInboundMediaIfNeeded; src/media/store.ts:486\nLina shared custody boundary is not an identical source-stage order.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
@@ -261,7 +266,7 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Match an answer to one waiting approval or clarification.\n- Check prompt ownership, turn identity, and responder permission before resolution.",
       "inputs": "- Prompt ID, owning turn ID, responder identity, and answer.\n- Pending prompt state and the authorized response action.",
       "outputs": "- The answer handed to its owning execution coordinator and waiting work, without starting a fresh turn.\n- A visible refusal for stale, ambiguous, or unauthorized responses.",
-      "decisions": "- Agreed: approvals use explicit controls or /approve <id>; plain yes grants no approval.\n- Agreed: unambiguous plain text can answer clarification questions.\n- Open: restricted-tool approvers and prompt expiry behavior.",
+      "decisions": "- Agreed: approvals use explicit controls or /approve <id>; plain yes grants no approval.\n- Agreed: unambiguous plain text can answer clarification questions.\n- Open: restricted-tool approvers and prompt expiry behavior.\n- Match wait, batch, call, attempt, binding generation and responder before forwarding answer evidence. OAuth callbacks belong to connection authorization.",
       "references": "Hermes explorer: BasePlatformAdapter active bypass at gateway/platforms/base.py:4081\nOpenClaw explorer: get-reply; docs/concepts/queue-steering.md:115\nExplicit Lina approval IDs and permission rules remain distinct from original source conveniences.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
@@ -289,7 +294,7 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Transfer newly admitted work to Start turn in Turn Execution.\n- Carry original input and attachment references into runtime-owned execution.\n- Select an explicit safe checkpoint entry that preserves the recorded turn and round.",
       "inputs": "- Conversation/turn identity, execution authority, and ordered admitted inputs.\n- Replacement work after safe cancellation, where applicable.",
       "outputs": "- Admitted identity and authority for Start turn, which initializes execution without another admission.\n- A safe checkpoint handoff to Prepare round, Apply pending controls or Settle turn after recovery/reconciliation.",
-      "decisions": "- Proposed: Turn Execution is a separate maintained block beyond this input boundary.\n- Agreed: derived content stays separate from originals before context consumption.\n- Proposed: Release turn emits owner-release events; admission does not release ownership.\n- Open: owner leases, checkpoints, cancellation ordering, and handoff protocol. The Start turn edge applies only to newly admitted work; recovery must select a safe resume entry instead.",
+      "decisions": "- Proposed: Turn Execution is a separate maintained block beyond this input boundary.\n- Agreed: derived content stays separate from originals before context consumption.\n- Proposed: Release turn emits owner-release events; admission does not release ownership.\n- Open: owner leases, checkpoints, cancellation ordering, and handoff protocol. The Start turn edge applies only to newly admitted work; recovery must select a safe resume entry instead.\n- Restore retained waits without another turn or repeated dispatch; unknown effects stay in reconciliation.",
       "references": "Hermes explorer: gw-turn-lease / gw-prepare then AIAgent turn lifecycle\nOpenClaw explorer: reply-admission / lanes then embedded runtime\nPi prompt AgentSession.prompt; Waku Waku.respond. This is an external boundary.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
@@ -303,7 +308,7 @@ export const linaInputBlock: LinaDocument = {
       "purpose": "- Hand acknowledgements, refusals, command results, and saved answers to delivery.\n- Preserve the explicit originating destination with each output.",
       "inputs": "- Output record, adapter account, chat/topic, and reply anchor.\n- Execution-produced output from Settle turn, independent of ownership release.\n- Authorized destination changes and known delivery state.",
       "outputs": "- Delivery status or a saved result available for authorized retrieval.\n- Retry or reconciliation work for failed or uncertain sends.",
-      "decisions": "- Agreed: answer at the request’s origin; cross-channel steering does not silently move it.\n- Agreed: retry saved answers without rerunning the agent.\n- Open: retry budgets, reconciliation, and destination-change controls.",
+      "decisions": "- Agreed: answer at the request’s origin; cross-channel steering does not silently move it.\n- Agreed: retry saved answers without rerunning the agent.\n- Open: retry budgets, reconciliation, and destination-change controls.\n- Created, queued, sent, failed, unknown and delivered observations differ; a send receipt does not prove user consumption.",
       "references": "Hermes explorer: MessageEvent reply anchors; run_startup.py:313 delivery recovery\nOpenClaw explorer: OriginatingChannel/OriginatingTo; infra/outbound/delivery-queue-storage.ts\nExternal boundary. Do not model delivery success as execution success.\n\nPinned snapshots: Hermes ddc0e659; OpenClaw e40ed06f; Pi a276dabe; Waku 24b4cbb6.\nLina agreement: docs/research/lina/input-design.md.\nThese are responsibility mappings, not identical execution order.",
       "experiments": ""
     },
@@ -389,20 +394,6 @@ export const linaInputBlock: LinaDocument = {
       "outputs": "- Waiting work or the next input for conversation admission.",
       "decisions": "- Proposed: queue belongs to the conversation, not an active turn.\n- Open: persistence, limits, ordering, failure blocking, and Stop/resume policy.",
       "references": "- Study: Hermes lease-admit; OpenClaw queue / queue-drain.\n- Lina queue owner and drain protocol remain proposed.",
-      "experiments": ""
-    },
-    {
-      "id": "lina-input-reconcile",
-      "title": "Execution reconciliation",
-      "area": "Input / Boundary",
-      "status": "proposed",
-      "x": 2520,
-      "y": 2100,
-      "purpose": "- Inspect uncertain execution and side effects before further work.",
-      "inputs": "- Execution records, unknown outcomes, and available operator decisions.",
-      "outputs": "- Known safe follow-up/resume or recorded status requesting a decision.",
-      "decisions": "- Agreed: uncertain tools must not be blindly repeated.\n- Proposed: runtime owns execution reconciliation beyond the input boundary; unresolved work retains or transfers fenced ownership instead of emitting a clean release.\n- Open: evidence, decision authority, checkpoints, and owner release.",
-      "references": "- Lina agreement: docs/research/lina/input-design.md, recovery.\n- Exact reconciliation mechanism remains open.",
       "experiments": ""
     }
   ],
@@ -701,13 +692,53 @@ export const linaInputBlock: LinaDocument = {
       "target": "lina-input-delivery",
       "label": "recorded status / decision needed"
     },
-    { "id": "lina-input-edge-50", "source": "lina-input-cli", "target": "lina-input-failure", "label": "authentication / ingress failure" },
-    { "id": "lina-input-edge-51", "source": "lina-input-whatsapp", "target": "lina-input-failure", "label": "authenticity / ingress failure" },
-    { "id": "lina-input-edge-52", "source": "lina-input-telegram", "target": "lina-input-failure", "label": "authenticity / ingress failure" },
-    { "id": "lina-input-edge-53", "source": "lina-input-identity", "target": "lina-input-failure", "label": "identity lookup failed" },
-    { "id": "lina-input-edge-54", "source": "lina-input-claim", "target": "lina-input-failure", "label": "claim write failed / outcome unknown" },
-    { "id": "lina-input-edge-55", "source": "lina-input-telegram-route", "target": "lina-input-envelope", "label": "supported message / mapped action" },
-    { "id": "lina-input-edge-56", "source": "lina-input-telegram-route", "target": "lina-input-failure", "label": "unsupported surface / edit / unmapped action" },
-    { "id": "lina-input-edge-57", "source": "lina-input-whatsapp", "target": "lina-input-delivery", "label": "correlated delivery observation; no new request" }
+    {
+      "id": "lina-input-edge-50",
+      "source": "lina-input-cli",
+      "target": "lina-input-failure",
+      "label": "authentication / ingress failure"
+    },
+    {
+      "id": "lina-input-edge-51",
+      "source": "lina-input-whatsapp",
+      "target": "lina-input-failure",
+      "label": "authenticity / ingress failure"
+    },
+    {
+      "id": "lina-input-edge-52",
+      "source": "lina-input-telegram",
+      "target": "lina-input-failure",
+      "label": "authenticity / ingress failure"
+    },
+    {
+      "id": "lina-input-edge-53",
+      "source": "lina-input-identity",
+      "target": "lina-input-failure",
+      "label": "identity lookup failed"
+    },
+    {
+      "id": "lina-input-edge-54",
+      "source": "lina-input-claim",
+      "target": "lina-input-failure",
+      "label": "claim write failed / outcome unknown"
+    },
+    {
+      "id": "lina-input-edge-55",
+      "source": "lina-input-telegram-route",
+      "target": "lina-input-envelope",
+      "label": "supported message / mapped action"
+    },
+    {
+      "id": "lina-input-edge-56",
+      "source": "lina-input-telegram-route",
+      "target": "lina-input-failure",
+      "label": "unsupported surface / edit / unmapped action"
+    },
+    {
+      "id": "lina-input-edge-57",
+      "source": "lina-input-whatsapp",
+      "target": "lina-input-delivery",
+      "label": "correlated delivery observation; no new request"
+    }
   ]
 };

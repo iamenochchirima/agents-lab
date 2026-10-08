@@ -359,7 +359,9 @@ flowchart LR
 
 Owners: child construction [D1], result/memory handoff [D2], ordinary parent result path [U3].
 
-The child is configured with `skip_context_files=True` and `skip_memory=True`; its toolset blocks the built-in memory tool. It receives a focused goal/context prompt rather than automatic parent-transcript inheritance. Its DB handle points to the parent's DB file but its session has a separate identity and parent link. Shared storage location and shared model context are different properties. [D1]
+The child is configured with `skip_context_files=True` and `skip_memory=True`; its toolset blocks the built-in memory tool. However, the child-prompt builder separately adds workspace project instructions with `skip_soul=True`. The context-files flag prevents duplicate ordinary loading; it does not exclude all project instructions. It receives a focused goal/context prompt rather than automatic parent-transcript inheritance. Its DB handle points to the parent's DB file but its session has a separate identity and parent link. Shared storage location and shared model context are different properties. [D1] [D3]
+
+Correction checked on 2026-10-07 by following the imported child-prompt builder; see the [Context comparison](../lina/context-hermes-openclaw.md#child-context-an-important-correction).
 
 ## 12. What this gives Context Lab
 
@@ -489,3 +491,5 @@ All links below pin the inspected commit. Diagram IDs resolve to these owners; a
 [H1]: https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/hermes_cli/cli_chat_turn_mixin.py#L58
 [H2]: https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/agent/context_references.py#L199
 [H3]: https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/gateway/run_inbound.py#L1199
+
+[D3]: https://github.com/NousResearch/hermes-agent/blob/ddc0e65958b326a89f6c440c76c812d31ac27e2a/tools/delegate_tool_progress.py#L178-L208

@@ -1,3 +1,7 @@
+import type { EnvironmentCase, EnvironmentSettings } from './environmentFixtures';
+import type { PlanningCase, PlanningSettings } from './planningFixtures';
+import type { SubagentCase, SubagentSettings } from './subagentsFixtures';
+import type { MemoryCase } from './memoryFixtures';
 import { AgentSystemTabs } from '../system-explorer/AgentSystemTabs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
@@ -8,8 +12,13 @@ import { linaArchitecture, refreshDocumentation } from './architectureDocument';
 import { LinaExecutionPath } from './LinaExecutionPath';
 import { LinaNodeContract, LinaConnectionContract } from './LinaNodeContract';
 import { LinaSimulation } from './LinaSimulation';
-import { startSimulation, advanceSimulation, resetSimulation, type SimulationState, type SimulationChannel, type SimulationCase } from './inputSimulation';
+import { startSimulation, advanceSimulation, resetSimulation, pauseSimulation, resumeSimulation, stopSimulation, answerSimulation, selectSimulationWait, selectSimulationAgent, simulationView, activeSimulationNodes, type SimulationState, type SimulationChannel, type SimulationCase, type ContextCase, type ToolScenario } from './inputSimulation';
 import { routeLinaEdge, LINA_NODE_WIDTH, LINA_NODE_HEIGHT } from './edgeRouting';
+import { relationshipBlockLayout } from './blockLayout';
+import { blockForNode } from './blockMembership';
+import type { ModelProtocol, ModelCase } from './modelFixtures';
+import type { SafetyCase } from './safetyFixtures';
+import type { StateCase } from './stateFixtures';
 import { plannedBlockRegions } from './plannedBlocks';
 import './lina.css';
 
@@ -17,7 +26,7 @@ const api = (import.meta.env.VITE_AGENTLAB_STUDIO_API_URL || 'http://127.0.0.1:4
 const draftKey = `agents-lab.lina.draft:${api}`;
 const panelsKey = 'agents-lab.lina.panels';
 const layoutKey = `${draftKey}:compact-layout-applied`;
-const layoutRevision = 'compact-2026-10-06';
+const layoutRevision = 'environment-relationships-2026-10-08';
 function savedPanels(): { left: boolean; right: boolean } {
   try {
     const value = JSON.parse(localStorage.getItem(panelsKey) || 'null');
@@ -60,9 +69,12 @@ export function LinaPage() {
   useEffect(() => { inspector.current?.scrollTo({ top: 0 }); }, [selected, selectedEdgeId, tab]);
   const [executionTrail, setExecutionTrail] = useState<string[]>([]);
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
+  const [followSimulation, setFollowSimulation] = useState(true);
   const simulationVisible = view === 'map' && simulation !== null;
-  const simulationNode = simulationVisible ? simulation.route[simulation.step] : undefined;
-  const trail = simulationVisible ? simulation.route.slice(0, simulation.step + 1) : executionTrail;
+  const inspectedSimulation = simulation ? simulationView(simulation) : null;
+  const simulationNode = simulationVisible ? inspectedSimulation!.route[inspectedSimulation!.step] : undefined;
+  const activeNodes = simulationVisible ? activeSimulationNodes(inspectedSimulation!) : [];
+  const trail = simulationVisible ? inspectedSimulation!.route.slice(0, inspectedSimulation!.step + 1) : executionTrail;
   const [collapsed, setCollapsed] = useState(savedPanels);
   useEffect(() => {
     try { localStorage.setItem(panelsKey, JSON.stringify(collapsed)); }
@@ -77,11 +89,29 @@ export function LinaPage() {
   const [panning, setPanning] = useState(false);
   const zoomValue = useRef(zoom);
   zoomValue.current = zoom;
-  const inputNodes = doc.nodes.filter(n => n.id.startsWith('lina-input-'));
-  const executionNodes = doc.nodes.filter(n => n.id.startsWith('lina-execution-'));
+  const inputNodes = doc.nodes.filter(n => blockForNode(n) === 'input');
+  const executionNodes = doc.nodes.filter(n => blockForNode(n) === 'execution');
+  const contextNodes = doc.nodes.filter(n => blockForNode(n) === 'context');
+  const toolsNodes = doc.nodes.filter(n => blockForNode(n) === 'tools');
+  const modelNodes = doc.nodes.filter(n => blockForNode(n) === 'model');
+  const safetyNodes = doc.nodes.filter(n => blockForNode(n) === 'safety');
+  const stateNodes = doc.nodes.filter(n => blockForNode(n) === 'state');
+  const subagentNodes = doc.nodes.filter(n => blockForNode(n) === 'subagents');
+  const environmentNodes = doc.nodes.filter(n => blockForNode(n) === 'environment');
+  const planningNodes = doc.nodes.filter(n => blockForNode(n) === 'planning');
+  const memoryNodes = doc.nodes.filter(n => blockForNode(n) === 'memory');
   const blocks = [
     { key: 'input', title: '01 · Input and admission', nodes: inputNodes },
     { key: 'execution', title: '02 · Turn Execution', nodes: executionNodes },
+    { key: 'context', title: '03 · Context', nodes: contextNodes },
+    { key: 'tools', title: '05 · Tools', nodes: toolsNodes },
+    { key: 'model', title: '06 · Model Interface', nodes: modelNodes },
+    { key: 'safety', title: '08 · Safety and permissions', nodes: safetyNodes },
+    { key: 'state', title: '13 · State, persistence and recovery', nodes: stateNodes },
+    { key: 'memory', title: '04 · Memory', nodes: memoryNodes },
+    { key: 'environment', title: '09 · Execution Environment', nodes: environmentNodes },
+    { key: 'planning', title: '07 · Planning and task management', nodes: planningNodes },
+    { key: 'subagents', title: '14 · Subagents / multi-agent orchestration', nodes: subagentNodes },
   ];
 
   const plannedRegions = plannedBlockRegions(doc);
@@ -149,13 +179,14 @@ export function LinaPage() {
     setSelectedEdgeId(null);
     setCollapsed(v => v.right ? { ...v, right: false } : v);
   }
-  function runSimulation(channel: SimulationChannel, automatic: boolean, executionCase: SimulationCase, maxRounds: number) {
+  function runSimulation(channel: SimulationChannel, automatic: boolean, executionCase: SimulationCase, maxRounds: number, contextCase: ContextCase, toolScenario: ToolScenario, follow: boolean, modelProtocol: ModelProtocol, modelCase: ModelCase, safetyCase: SafetyCase, stateCase: StateCase, memoryCase: MemoryCase, subagentCase: SubagentCase, subagentSettings: Partial<SubagentSettings>, planningCase: PlanningCase, planningSettings: Partial<PlanningSettings>, environmentCase: EnvironmentCase, environmentSettings: Partial<EnvironmentSettings>) {
+    setFollowSimulation(follow);
     setView('map'); setExecutionTrail([]);
-    setSimulation(startSimulation(channel, doc, automatic, executionCase, maxRounds));
+    setSimulation(startSimulation(channel, doc, automatic, executionCase, maxRounds, contextCase, toolScenario, modelProtocol, modelCase, safetyCase, simulation?.safetyGrants ?? [], stateCase, memoryCase, subagentCase, subagentSettings, planningCase, planningSettings, environmentCase, environmentSettings));
   }
   useEffect(() => {
-    if (simulationNode) centerNode(simulationNode);
-  }, [simulationNode]);
+    if (simulationNode && followSimulation) centerNode(simulationNode);
+  }, [simulationNode, followSimulation]);
   useEffect(() => {
     if (view !== 'map' || !ready || simulation?.status !== 'running') return;
     const timer = window.setTimeout(() => {
@@ -191,14 +222,8 @@ export function LinaPage() {
       // than the stored design. Retain its positions for undo and back up the draft.
       if (localStorage.getItem(layoutKey) !== layoutRevision && next.nodes.some(n => n.id.startsWith('lina-input-'))) {
         localStorage.setItem(`${draftKey}:before-layout-update`, JSON.stringify({ revision: draft?.revision ?? saved.revision, document: original }));
-        const defaults = new Map(linaInputBlock.nodes.map(n => [n.id, n]));
-        const outside = next.nodes.filter(n => !defaults.has(n.id) && !n.id.startsWith('lina-execution-'));
-        const offset = outside.length ? Math.max(...outside.map(n => n.x + LINA_NODE_WIDTH + 200)) : 0;
-        setLayoutUndo(original.nodes.filter(n => defaults.has(n.id)).map(n => ({ id: n.id, x: n.x, y: n.y })));
-        next = { ...next, nodes: next.nodes.map(n => {
-          const position = defaults.get(n.id);
-          return position ? { ...n, x: position.x + offset, y: position.y } : n;
-        }) };
+        setLayoutUndo(next.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })));
+        next = relationshipBlockLayout(next);
         localStorage.setItem(layoutKey, layoutRevision);
       }
       const updated = JSON.stringify(next) !== JSON.stringify(original);
@@ -265,15 +290,23 @@ export function LinaPage() {
     <header className="lina-header"><div><Link to="/studio" className="lina-back"><ArrowLeft size={14} /> Studio</Link><div className="lina-heading"><h1>Lina</h1><span>Architecture workspace</span></div><p>Study the architecture one component at a time.</p></div>
       <div className="lina-actions"><span role="status">{busy ? 'Connecting…' : error ? 'Needs attention' : dirty ? 'Draft · not saved to database' : ready ? `Saved to database · v${revision}` : 'Database unavailable'}</span><button onClick={download} disabled={!ready} title="Download architecture backup"><Download size={14} /> Export</button><button className="lina-primary" onClick={() => void save()} disabled={!ready || busy || !dirty}><Save size={14} /> Save design</button></div></header>
     <AgentSystemTabs active="lina"><Link to="/studio/comparison">Comparison</Link></AgentSystemTabs>
-    <div className="lina-view-tabs" aria-label="Architecture views"><button aria-pressed={view === 'map'} onClick={() => { setView('map'); setExecutionTrail([]); }}>Architecture map</button><button aria-pressed={view === 'path'} onClick={() => { setView('path'); setSimulation(current => current?.status === 'running' ? { ...current, status: 'paused' } : current); }}>Follow a message</button></div>
+    <div className="lina-view-tabs" aria-label="Architecture views"><button aria-pressed={view === 'map'} onClick={() => { setView('map'); setExecutionTrail([]); }}>Architecture map</button><button aria-pressed={view === 'path'} onClick={() => { setView('path'); setSimulation(current => current ? pauseSimulation(current) : current); }}>Follow a message</button></div>
     <LinaSimulation document={doc} state={simulation} active={view === 'map'} disabled={!ready || busy}
       onStart={runSimulation}
-      onPause={() => setSimulation(current => current?.status === 'running' ? { ...current, status: 'paused' } : current)}
-      onResume={() => setSimulation(current => current?.status === 'paused' ? { ...current, status: 'running' } : current)}
-      onNext={() => setSimulation(current => current ? advanceSimulation({ ...current, status: current.status === 'running' ? 'paused' : current.status }, doc) : current)}
-      onReset={() => setSimulation(current => current ? resetSimulation(current, doc) : current)}/>
+      onPause={() => setSimulation(current => current ? pauseSimulation(current) : current)}
+      onResume={() => setSimulation(current => current ? resumeSimulation(current) : current)}
+      onNext={() => setSimulation(current => current ? advanceSimulation(pauseSimulation(current), doc) : current)}
+      onReset={() => setSimulation(current => current ? resetSimulation(current, doc) : current)}
+      onStop={() => setSimulation(current => current ? stopSimulation(current, doc) : current)}
+      onSelectAgent={agentId => setSimulation(current => current ? selectSimulationAgent(current, agentId) : current)}
+      onSelectWait={waitId => setSimulation(current => current ? selectSimulationWait(current, waitId) : current)}
+      onAnswer={answer => setSimulation(current => current ? answerSimulation(current, doc, answer) : current)}/>
     {view === 'path' && ready && <LinaExecutionPath document={doc} onFocus={focusNode} onTrail={setExecutionTrail}/>}
-    <div className="lina-block-tools"><span>Input and Turn Execution · design draft</span><button disabled={busy} onClick={() => void load()} title="Reload stored design while preserving the browser draft"><RefreshCw size={14}/> Reload design</button><button disabled={!ready || busy || inputNodes.length === 0} onClick={resetInputLayout}><RotateCcw size={14}/> Reset input layout</button><div className="lina-panel-controls"><button aria-label={collapsed.left ? 'Expand components sidebar' : 'Collapse components sidebar'} aria-expanded={!collapsed.left} aria-controls="lina-components" onClick={() => setCollapsed(v => ({ ...v, left: !v.left }))}><PanelLeft size={14}/> Components</button><button aria-label={collapsed.right ? 'Expand inspector sidebar' : 'Collapse inspector sidebar'} aria-expanded={!collapsed.right} aria-controls="lina-inspector" onClick={() => setCollapsed(v => ({ ...v, right: !v.right }))}><PanelRight size={14}/> Inspector</button></div></div>
+    <div className="lina-block-tools"><span>Input, Turn Execution, Context, Tools, Model, Safety, State, Memory, Subagents, Planning and Environment · design draft</span><button disabled={busy} onClick={() => void load()} title="Reload stored design while preserving the browser draft"><RefreshCw size={14}/> Reload design</button><button disabled={!ready || busy} onClick={() => {
+        setLayoutUndo(doc.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })));
+        change(relationshipBlockLayout(doc));
+        requestAnimationFrame(fitMap);
+      }}>Arrange blocks</button><button disabled={!ready || busy || inputNodes.length === 0} onClick={resetInputLayout}><RotateCcw size={14}/> Reset input layout</button><div className="lina-panel-controls"><button aria-label={collapsed.left ? 'Expand components sidebar' : 'Collapse components sidebar'} aria-expanded={!collapsed.left} aria-controls="lina-components" onClick={() => setCollapsed(v => ({ ...v, left: !v.left }))}><PanelLeft size={14}/> Components</button><button aria-label={collapsed.right ? 'Expand inspector sidebar' : 'Collapse inspector sidebar'} aria-expanded={!collapsed.right} aria-controls="lina-inspector" onClick={() => setCollapsed(v => ({ ...v, right: !v.right }))}><PanelRight size={14}/> Inspector</button></div></div>
     {error && <div role="alert" className="lina-error">{error}<button disabled={busy} onClick={() => void (ready ? save() : load())}>Retry</button>{ready && <button disabled={busy} onClick={() => void load(true)}>Load database copy (discard draft)</button>}</div>}
     <div className={`lina-workspace ${collapsed.left ? 'left-collapsed' : ''} ${collapsed.right ? 'right-collapsed' : ''}`}><aside id="lina-components" hidden={collapsed.left} className="lina-index"><div className="lina-section-title"><h2>Components</h2></div>
       {doc.nodes.length === 0 ? <p className="lina-muted">Your architecture starts here.</p> : doc.nodes.map(n => <button className={`lina-index-node ${selected === n.id ? 'is-selected' : ''}`} key={n.id} onClick={() => focusNode(n.id)}><span className={`lina-dot ${n.status}`} /><span>{n.title}<small>{n.area}</small></span></button>)}
@@ -306,7 +339,7 @@ export function LinaPage() {
           onPointerCancel={() => { pan.current = null; setPanning(false); }}
           onLostPointerCapture={() => { pan.current = null; setPanning(false); }}
         ><div style={{ width: width*zoom, height:height*zoom }}><div className="lina-canvas" data-simulation-running={simulationVisible && simulation.status === 'running'} style={{ width,height,transform:`scale(${zoom})`,transformOrigin:'top left' }}>
-          {blocks.filter(block => block.nodes.length > 0).map(block => <div key={block.key} className="lina-block-region" style={{ left: Math.min(...block.nodes.map(n => n.x))-25, top: Math.min(...block.nodes.map(n => n.y))-75, width: Math.max(...block.nodes.map(n => n.x+LINA_NODE_WIDTH))-Math.min(...block.nodes.map(n => n.x))+50, height: Math.max(...block.nodes.map(n => n.y+LINA_NODE_HEIGHT))-Math.min(...block.nodes.map(n => n.y))+100 }}><button className="lina-block-handle" aria-label={`Drag ${block.key === 'input' ? 'input' : 'execution'} block`} disabled={!ready || busy}
+          {blocks.filter(block => block.nodes.length > 0).map(block => <div key={block.key} className="lina-block-region" style={{ left: Math.min(...block.nodes.map(n => n.x))-25, top: Math.min(...block.nodes.map(n => n.y))-75, width: Math.max(...block.nodes.map(n => n.x+LINA_NODE_WIDTH))-Math.min(...block.nodes.map(n => n.x))+50, height: Math.max(...block.nodes.map(n => n.y+LINA_NODE_HEIGHT))-Math.min(...block.nodes.map(n => n.y))+100 }}><button className="lina-block-handle" aria-label={`Drag ${block.key} block`} disabled={!ready || busy}
               onPointerDown={e => {
                 if (e.button !== 0) return;
                 e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId);
@@ -326,15 +359,15 @@ export function LinaPage() {
               onPointerCancel={() => { blockDrag.current = null; }}
               onLostPointerCapture={() => { blockDrag.current = null; }}
             >{block.title} <span>Drag block</span></button></div>)}
-          {plannedRegions.map(block => <section key={block.key} className="lina-block-region lina-planned-region" aria-label={`${block.title} block · empty`} style={{ left: block.x, top: block.y, width: block.width, height: block.height }}><h2>{block.number} · {block.title}</h2><span>Not designed yet</span></section>)}
+          {plannedRegions.map(block => <section key={block.key} className="lina-block-region lina-planned-region" aria-label={`${block.title} block · empty`} style={{ left: block.x, top: block.y, width: block.width, height: block.height }}><h2>{block.number} · {block.title}</h2><span>{block.note ?? 'Not designed yet'}</span></section>)}
           <svg width={width} height={height} role="group" aria-label="Component connections"><defs><marker id="lina-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="context-stroke" /></marker></defs>{routedConnections.map(({ edge, route }) => {
             if (!route.path) return null;
             const traversed = simulationVisible
-              ? simulation.transitions.slice(0, simulation.step).includes(edge.id)
+              ? inspectedSimulation!.transitions.slice(0, inspectedSimulation!.step).includes(edge.id)
               : trail.some((id, step) => id === edge.source && trail[step + 1] === edge.target);
             const connected = edge.source === selected || edge.target === selected;
-            const simulationEdge = simulationVisible && (traversed || edge.id === simulation.transitions[simulation.step]);
-            const justTraversed = simulationVisible && simulation.step > 0 && edge.id === simulation.transitions[simulation.step - 1];
+            const simulationEdge = simulationVisible && (traversed || edge.id === inspectedSimulation!.transitions[inspectedSimulation!.step]);
+            const justTraversed = simulationVisible && inspectedSimulation!.step > 0 && edge.id === inspectedSimulation!.transitions[inspectedSimulation!.step - 1];
             if (connections === 'selected' && !connected && !simulationEdge) return null;
             const source = doc.nodes.find(n => n.id === edge.source), target = doc.nodes.find(n => n.id === edge.target);
             return <g key={edge.id} className={`lina-map-edge ${connected ? 'is-connected' : ''} ${selectedEdgeId === edge.id ? 'is-inspected' : ''} ${traversed ? 'lina-traversed-edge' : ''} ${simulationEdge ? 'is-simulation-edge' : ''} ${justTraversed ? 'is-current-transition' : ''}`}>
@@ -347,7 +380,7 @@ export function LinaPage() {
               <title>{source?.title} → {target?.title}: {edge.label}</title>
             </g>;
           })}</svg>
-          {doc.nodes.map(n => <button key={n.id} aria-label={`Select ${n.title}`} aria-current={simulationNode === n.id ? 'step' : undefined} className={`lina-canvas-node ${n.status} ${selected===n.id?'is-selected':''} ${trail.includes(n.id)?'is-visited':''} ${simulationVisible && trail.includes(n.id) ? 'is-simulation-visited' : ''} ${simulationNode === n.id ? 'is-simulation-current' : ''}`} style={{ left:n.x,top:n.y }} onClick={()=>selectNode(n.id)} onPointerDown={e=>{ if(e.button!==0)return; e.currentTarget.setPointerCapture(e.pointerId); drag.current={id:n.id,startX:e.clientX,startY:e.clientY,x:n.x,y:n.y}; selectNode(n.id); }} onPointerMove={e=>{ const d=drag.current;if(!d||d.id!==n.id)return; const x=Math.max(20,Math.round(d.x+(e.clientX-d.startX)/zoom)),y=Math.max(20,Math.round(d.y+(e.clientY-d.startY)/zoom));change({...live.current,nodes:live.current.nodes.map(v=>v.id===d.id?{...v,x,y}:v)}); }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><small>{n.area}</small><strong>{n.title}</strong><span><i className={`lina-dot ${n.status}`} />{n.status}</span></button>)}
+          {doc.nodes.map(n => <button key={n.id} aria-label={`Select ${n.title}`} aria-current={simulationNode === n.id ? 'step' : undefined} className={`lina-canvas-node ${n.status} ${selected===n.id?'is-selected':''} ${trail.includes(n.id)?'is-visited':''} ${simulationVisible && trail.includes(n.id) ? 'is-simulation-visited' : ''} ${simulationNode === n.id ? 'is-simulation-current' : ''} ${activeNodes.includes(n.id) ? 'is-simulation-active' : ''}`} style={{ left:n.x,top:n.y }} onClick={()=>selectNode(n.id)} onPointerDown={e=>{ if(e.button!==0)return; e.currentTarget.setPointerCapture(e.pointerId); drag.current={id:n.id,startX:e.clientX,startY:e.clientY,x:n.x,y:n.y}; selectNode(n.id); }} onPointerMove={e=>{ const d=drag.current;if(!d||d.id!==n.id)return; const x=Math.max(20,Math.round(d.x+(e.clientX-d.startX)/zoom)),y=Math.max(20,Math.round(d.y+(e.clientY-d.startY)/zoom));change({...live.current,nodes:live.current.nodes.map(v=>v.id===d.id?{...v,x,y}:v)}); }} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}><small>{n.area}</small><strong>{n.title}</strong><span><i className={`lina-dot ${n.status}`} />{n.status}</span>{simulationVisible && inspectedSimulation!.operations.some(op => op.nodeId === n.id && ['running', 'waiting'].includes(op.status)) && <span className="lina-node-operations">{inspectedSimulation!.operations.filter(op => op.nodeId === n.id && ['running', 'waiting'].includes(op.status)).map(op => <code key={op.callId}>{op.callId} · {op.status}</code>)}</span>}{simulationVisible && inspectedSimulation!.modelWork?.nodeId===n.id && !['terminal','cancelled'].includes(inspectedSimulation!.modelWork.phase) && <span className="lina-node-operations"><code>{inspectedSimulation!.modelWork.attemptId ?? 'model intent'} · {inspectedSimulation!.modelWork.phase}</code></span>}</button>)}
           {doc.nodes.length===0 && <div className="lina-empty"><h2>No architecture components yet.</h2><p>Components will be added as we develop the design together.</p></div>}
         </div></div></div></section>
       <aside ref={inspector} id="lina-inspector" hidden={collapsed.right} className="lina-inspector">{selectedEdge ? <>
