@@ -10,6 +10,7 @@ import { createPackageCapabilityCatalog } from "../../src/capabilities/extension
 import type { HostedToolContribution } from "../../src/capabilities/extensions/contracts.js";
 import type { ToolExecutionContext, ToolExecutionResult } from "../../src/capabilities/tools/contracts.js";
 import { EncryptedFileSecretStore } from "../../src/capabilities/integrations/oauth/encrypted-file-store.js";
+import { ToolRegistry } from "../../src/capabilities/tools/registry.js";
 
 const context: ToolExecutionContext = { runId: "managed-test", turnId: "turn-one", toolCallId: "call-one", signal: new AbortController().signal };
 const invoke = (tool: HostedToolContribution) => (tool.implementation as typeof tool.implementation & { executeResult(input: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolExecutionResult> }).executeResult({}, context);
@@ -37,6 +38,49 @@ test("managed seed imports once and profile edits survive restart independently 
     assert.equal(service.repository.read().packages[0].source, "skills");
     await assert.rejects(service.saveProfile(revision, { id: "procedures", version: "1.0.0", displayName: "Colliding profile", packages: ["procedures"] }), /duplicated|collid/i);
     assert.equal(service.repository.read().revision, revision, "Failed admission must not publish unusable profile metadata");
+  } finally { await service.close(); }
+});
+
+test("profile-selected skills exclude siblings from schemas and actual execution; disabled packages retain unavailable profiles", async t => {
+  const root = await mkdtemp(join(tmpdir(), "lab-managed-skill-scope-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const name of ["chosen-procedure", "sibling-procedure"]) {
+    const directory = join(root, "skills", name); await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "SKILL.md"), `---\nname: ${name}\ndescription: Procedure ${name}.\n---\nFollow ${name} only.\n`);
+    await writeFile(join(directory, "reference.txt"), `Resource for ${name}.`);
+  }
+  const seedPath = join(root, "seed.json");
+  await writeFile(seedPath, JSON.stringify({ schemaVersion: 1, packages: [{ id: "procedures", version: "1.0.0", source: "skills", root: "./skills" }] }));
+  const service = await CapabilityManagement.create({ root: join(root, "managed"), seedPath, environment: {} });
+  try {
+    const profile = { id: "chosen-agent", version: "1.0.0", displayName: "Chosen agent", packages: ["procedures"], skills: ["procedures:chosen-procedure"] };
+    await service.saveProfile(service.repository.read().revision, profile);
+    const admitted = createPackageCapabilityCatalog(service.loaded).get(profile.id)!;
+    assert.deepEqual(admitted.availableSkills?.map(skill => skill.id), profile.skills);
+    const enabled = admitted.grants.filter(grant => grant.enabled).map(grant => grant.capabilityId);
+    const contributions = service.loaded.tools.filter(tool => enabled.includes(tool.descriptor.definition.name));
+    const load = contributions.find(tool => tool.descriptor.definition.name.endsWith("_load_skill"))!;
+    const resource = contributions.find(tool => tool.descriptor.definition.name.endsWith("_read_skill_resource"))!;
+    assert.ok(load); assert.ok(resource);
+    const properties = load.descriptor.definition.inputSchema.properties as { name: { enum: string[] } };
+    assert.deepEqual(properties.name.enum, ["chosen-procedure"]);
+    const registry = new ToolRegistry({ enabledNames: enabled });
+    for (const tool of contributions) registry.register(tool.implementation);
+    const valid = registry.validateCall({ toolCallId: "selected-skill", name: load.descriptor.definition.name, arguments: { name: "chosen-procedure" }, round: 1 });
+    assert.equal(valid.accepted, true);
+    const instructions = JSON.parse(await load.implementation.execute({ name: "chosen-procedure" }, context));
+    assert.match(instructions.instructions, /Follow chosen-procedure only/);
+    const guessed = registry.validateCall({ toolCallId: "guessed-sibling", name: load.descriptor.definition.name, arguments: { name: "sibling-procedure" }, round: 1 });
+    assert.equal(guessed.accepted, false);
+    if (!guessed.accepted) assert.equal(guessed.code, "INVALID_ARGUMENTS");
+    // Even bypassing schema validation cannot load an unselected sibling or its resources.
+    await assert.rejects(load.implementation.execute({ name: "sibling-procedure" }, context), /not selected/i);
+    await assert.rejects(resource.implementation.execute({ name: "sibling-procedure", path: "reference.txt" }, context), /not selected/i);
+    const pkg = service.repository.read().packages.find(pkg => pkg.id === "procedures")!;
+    await service.savePackage(service.repository.read().revision, { ...pkg, enabled: false });
+    assert.ok(service.loaded.profiles.find(value => value.id === profile.id)?.unavailableReason);
+    await service.saveProfile(service.repository.read().revision, { ...profile, version: "1.0.1" });
+    assert.ok(createPackageCapabilityCatalog(service.loaded).get(profile.id)?.unavailableReason);
   } finally { await service.close(); }
 });
 
@@ -75,6 +119,10 @@ test("saved PAT discovers live MCP tools, updates profile and rejects stale auth
     assert.equal(discovered.tools?.[0].name, "list_notes");
     const pkg = service.repository.read().packages[0], tool = service.loaded.tools[0];
     assert.ok(tool);
+    const resourceRevision = service.repository.read().revision;
+    await assert.rejects(service.saveConnection(resourceRevision, { ...record, resource: endpoint + "/other" }), /resource|endpoint|binding/i);
+    assert.equal(service.repository.read().revision, resourceRevision, "A mismatched bound resource must not publish metadata");
+    assert.equal(service.repository.read().connections[0].resource, endpoint);
     await service.saveProfile(service.repository.read().revision, { id: "notes-agent", version: "1.0.0", displayName: "Notes agent", packages: [pkg.id],
       tools: [{ packageId: pkg.id, name: tool.descriptor.definition.name, enabled: true, riskClass: "external", approvalMode: "automatic" }] });
     assert.equal(createPackageCapabilityCatalog(service.loaded).get("notes-agent")?.grants[0].approvalMode, "none");

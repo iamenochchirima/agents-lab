@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from "react";
 
 import { getCapabilityProfiles, type CapabilityApproval, type CapabilityProfile } from "./platformApi";
 import { ConnectionPanel } from "./ConnectionPanel";
+import { CapabilityManager } from "./CapabilityManager";
 import { requiresUpfrontApproval } from "./connectedToolState";
 import "./connected-tools.css";
 
@@ -21,6 +22,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
   const [failed, setFailed] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<CapabilityProfile | null>(null);
   const [catalogRevision, setCatalogRevision] = useState(0);
+  const [managerOpen, setManagerOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,6 +76,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
         <select aria-label="Capability profile" disabled={disabled || failed || profiles.length === 0} id={`${dialogId}-select`} onChange={(event) => selectProfile(event.target.value)} value={profiles.some((profile) => profile.id === value) ? value : ""}>
           {failed ? <option value="">Unavailable</option> : profiles.length === 0 ? <option value="">Loading</option> : profiles.map((profile) => <option key={profile.id} value={profile.id} disabled={!supported(profile)}>{profile.displayName}{!supported(profile) ? " · unavailable" : profile.skills.length > 0 ? ` · ${profile.skills.length} skill` : ""}</option>)}
         </select>
+        <button className="quiet-button cap-manager-open" type="button" disabled={disabled} onClick={() => setManagerOpen(true)}>Manage capabilities</button>
         {selectedProfile && <div className="capability-picker-summary" aria-live="polite">
           {!supported(selectedProfile) && <small>This profile is unavailable for the selected platform variant.</small>}
           <span>{selectedProfile.capabilities.map((capability) => capability.displayName).join(", ")}</span>
@@ -90,6 +93,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
         </div>}
       </div>
       <ConnectionPanel selectedRefs={[...new Set(selectedProfile?.capabilities.flatMap(capability => capability.connectionRef ? [capability.connectionRef] : []) ?? [])]} disabled={disabled} onChanged={() => setCatalogRevision(current => current + 1)} />
+      {managerOpen && <CapabilityManager onClose={() => setManagerOpen(false)} onChanged={() => setCatalogRevision(current => current + 1)} />}
 
       {pendingProfile && (
         <div className="model-select-backdrop" onMouseDown={() => setPendingProfile(null)} role="presentation">

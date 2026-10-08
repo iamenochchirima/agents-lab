@@ -1,3 +1,5 @@
+import { connectionAction, getManagementSession, getManagementState } from "./managementApi";
+
 export const RUN_STATUSES = [
   "created",
   "queued",
@@ -319,7 +321,16 @@ export async function getConnections(signal?: AbortSignal): Promise<readonly Con
   return body.connections;
 }
 export async function manageConnection(ref: string, operation: "connect" | "refresh" | "revoke", signal?: AbortSignal): Promise<{ readonly connection: ConnectionSummary; readonly authorizationUrl?: string }> {
-  return requestJson(`/api/connections/${encodeURIComponent(ref)}/${operation}`, { method: "POST", body: "{}", signal });
+  // Never fall back to a public connection mutation route: account changes need
+  // the same local administration session and CSRF checks as the manager.
+  signal?.throwIfAborted();
+  await getManagementSession();
+  const state = await getManagementState();
+  signal?.throwIfAborted();
+  const result = await connectionAction(ref, operation, state.revision);
+  const connection = (await getConnections(signal)).find(value => value.ref === ref);
+  if (!connection) throw new PlatformApiError("The connection is no longer available. Reload capabilities.", 404, "CONNECTION_NOT_FOUND");
+  return { connection, ...(result.authorizationUrl ? { authorizationUrl: result.authorizationUrl } : {}) };
 }
 export async function getInvocationReviews(runId: string, signal?: AbortSignal): Promise<readonly InvocationReviewView[]> {
   const body = await requestJson<{ readonly actions: readonly InvocationReviewView[] }>(`/api/runs/${encodeURIComponent(runId)}/actions`, { signal });
