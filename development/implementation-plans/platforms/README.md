@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Frontend capability management](active/frontend-capability-management.md):
+  researched next implementation programme for saved connections/credentials,
+  tool permissions, skills/plugin installation, editable profiles, catalog
+  persistence and managed stdio. Planned only; no manager implementation yet.
+
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
