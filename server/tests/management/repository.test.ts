@@ -6,7 +6,7 @@ import test from "node:test";
 import { ManagedRepository, ManagedRevisionConflict, ManagedWriterConflict } from "../../src/capabilities/management/repository.js";
 import { emptyManagedState, validateManagedState, type ManagedConnectionRecord } from "../../src/capabilities/management/records.js";
 
-const connection: ManagedConnectionRecord = { ref: "notes", displayName: "Notes", provider: "memos", owner: "local-workspace", resource: "http://localhost:5230/mcp", scopes: [], enabled: true, auth: { kind: "stored", credentialRef: "notes-secret" } };
+const connection: ManagedConnectionRecord = { ref: "conn_notes", displayName: "Notes", provider: "memos", owner: "local-workspace", resource: "http://localhost:5230/mcp", scopes: [], enabled: true, auth: { kind: "stored", credentialRef: "notes-secret" } };
 test("generations persist, stale edits fail and explicit seeds preserve managed records", async () => {
   const root = await mkdtemp(join(tmpdir(), "lab-management-"));
   let repository = await ManagedRepository.open(root);

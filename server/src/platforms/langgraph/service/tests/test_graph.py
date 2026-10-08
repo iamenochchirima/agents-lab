@@ -803,10 +803,11 @@ def test_development_eval_captures_native_requests_and_dispatches(fixture: str, 
 
 
 @pytest.mark.parametrize("experiment, allowance", [("agent-harness-live", 512), ("agent-capabilities-live", 2048)])
-def test_live_openrouter_records_actual_mapping_and_zero_price_controls(experiment: str, allowance: int) -> None:
+@pytest.mark.parametrize("model_id", ["google/gemma-4-31b-it:free", "nvidia/nemotron-3.5-lightning:free", "cohere/north-mini-code:free"])
+def test_live_openrouter_records_actual_mapping_and_zero_price_controls(experiment: str, allowance: int, model_id: str) -> None:
     requests: list[dict] = []
     state = {**_openrouter_state(), "_live_eval": True, "_live_eval_experiment": experiment}
-    model = ModelConfig(provider="openrouter", model="google/gemma-4-31b-it:free", api_key="test-secret", timeout_ms=5000)
+    model = ModelConfig(provider="openrouter", model=model_id, api_key="test-secret", timeout_ms=5000)
     body = json.dumps({"id": "provider1", "model": "actual-model", "provider": "actual-provider", "choices": [{"message": {"content": None, "tool_calls": [{"id": "call1", "function": {"name": "calculator", "arguments": '{"operation":"add","left":17,"right":25}'}}]}}]}).encode()
 
     def transport(request, **_kwargs):

@@ -4,6 +4,7 @@
  */
 export const DEFAULT_FREE_MODEL = "google/gemma-4-31b-it:free";
 export const COMPARISON_FREE_MODEL = "nvidia/nemotron-3.5-lightning:free";
+export const COHERE_FREE_MODEL = "cohere/north-mini-code:free";
 export const LIVE_MAX_OUTPUT_TOKENS = 512;
 export type FreeEvalExperiment = "agent-harness-live" | "agent-capabilities-live";
 const FREE_EVAL_SETTINGS = Object.freeze({
@@ -26,7 +27,7 @@ export class FreeModelPolicyError extends Error {
 }
 /** Exact IDs only. Adding candidates is explicit and still requires fresh catalog validation. */
 export function assertSelectedFreeModel(model: string): void {
-  if (![DEFAULT_FREE_MODEL, COMPARISON_FREE_MODEL].includes(model)) reject("Select an approved exact free-model ID; model routers and paid models are disabled for live evals.");
+  if (![DEFAULT_FREE_MODEL, COMPARISON_FREE_MODEL, COHERE_FREE_MODEL].includes(model)) reject("Select an approved exact free-model ID; model routers and paid models are disabled for live evals.");
 }
 /** Fresh raw /models catalog, not the UI's cached/truncated model list. Fail closed on unknown prices. */
 export function assertFreeModelCatalog(catalog: unknown, model: string): { id: string; contextLength: number | null; supportedParameters: readonly string[] } {
