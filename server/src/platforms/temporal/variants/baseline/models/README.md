@@ -15,16 +15,17 @@ limits determine its terminal result.
 
 ## Live eval requests
 
-The `agent-harness-live` experiment opts into the native `liveEval` input.
-Only these synthetic runs retain bounded `EvalModelObserved` receipts with
-mapped messages, tool definitions, the actual provider request body, returned
+The `agent-harness-live` and `agent-capabilities-live` experiments opt into the
+native `liveEval` input. These real-provider trials retain bounded
+`EvalModelObserved` receipts with mapped messages, tool definitions, the actual provider request body, returned
 tool calls, output, and provider request/model/provider identifiers when returned.
 Authentication headers are excluded. Provider failures retain the attempted
 request and error code. `EvalToolObserved` records actual dispatch output.
 
-Live requests use the selected approved free model, a 512-token output limit,
-zero price ceilings for every supported billing dimension, parameter requirements,
-and disabled provider fallback. The native model loop still decides and executes
+Live requests use the selected approved free model. `agent-harness-live` retains
+its 512-token output limit; the separate `agent-capabilities-live` workload allows
+2048 output tokens per request. Both enforce zero price ceilings for every
+supported billing dimension, parameter requirements and disabled provider fallback. The native model loop still decides and executes
 its tool steps. Provider failures and context overflow end the trial without
 an automatic retry or a paid substitute. Ordinary interactive runs keep their
 existing provider configuration and telemetry.

@@ -1,4 +1,4 @@
-import { FREE_PROVIDER_ROUTING, LIVE_MAX_OUTPUT_TOKENS, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
+import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
 import type { ToolDefinition } from "../../../../../capabilities/tools/contracts.js";
 
@@ -36,9 +36,9 @@ export class OpenRouterModelAdapter implements ModelAdapter {
           } : {}),
         };
     if (input.liveEval) {
-      Object.assign(requestBody, { provider: FREE_PROVIDER_ROUTING, max_tokens: LIVE_MAX_OUTPUT_TOKENS });
+      Object.assign(requestBody, { provider: FREE_PROVIDER_ROUTING, max_tokens: getFreeEvalSettings(input.liveEvalExperiment ?? "agent-harness-live")?.maxOutputTokens });
       try {
-        assertFreeModelRequest(requestBody, input.model);
+        assertFreeModelRequest(requestBody, input.model, input.liveEvalExperiment);
       } catch {
         return { kind: "failure", failureKind: "configuration", code: "LIVE_EVAL_FREE_MODEL_REQUIRED", message: "Live evals require the exact free model and zero-price provider routing.", requestSent: false };
       }

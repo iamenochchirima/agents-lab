@@ -1,3 +1,5 @@
+import { createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
+import { createProjectedToolRegistry } from "../../../../capabilities/extensions/projection.js";
 import * as restate from "@restatedev/restate-sdk";
 
 import {
@@ -18,10 +20,6 @@ import {
   type ContextMessage,
   type ContextSummaryGenerator,
 } from "../../../../capabilities/context/index.js";
-import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
-import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
-import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
-import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type {
   ToolCall,
   ToolDefinition,
@@ -56,11 +54,7 @@ export const baselineWorkflow = restate.workflow({
       const phases: Array<RunTrajectory["phases"][number]> = [];
       const startedAt = await ctx.date.toJSON();
       const toolConfiguration = normalizeToolConfiguration(input.tools);
-      const registry = new ToolRegistry({ enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames });
-      registry.register(calculatorTool);
-      registry.register(fixtureLookupTool);
-      registry.register(fixtureWriteTool);
-      registry.register(mcpFixtureLookupTool);
+      const registry = createProjectedToolRegistry(toolConfiguration, input.toolCatalog);
       const toolDefinitions = registry.definitions();
       const turnId = input.turnId ?? `${input.runId}:turn:1`;
       let sequence = 0;
@@ -428,7 +422,7 @@ export const baselineWorkflow = restate.workflow({
             await recordTool("ToolExecutionStarted", call, { attempt: 1, round });
             const toolResult = await ctx.run(
               `tool.execute.${round}.${index + 1}.${stableStepId(call.toolCallId)}`,
-              () => registry.execute(validation, {
+              () => createRuntimeToolRegistry(toolConfiguration, input.toolCatalog).execute(validation, {
                 runId: input.runId,
                 turnId,
                 toolCallId: call.toolCallId,
@@ -444,7 +438,7 @@ export const baselineWorkflow = restate.workflow({
             }
             messages = [...messages, toolResultMessage(resultId, call.name, toolResult.content)];
 
-            if (toolResult.status !== "completed" && !(toolResult.status === "failed" && ["fixture_lookup", "mcp_fixture_lookup"].includes(call.name))) {
+            if (toolResult.status !== "completed" && !(toolResult.status === "failed" && validation.definition.failurePolicy === "feedback")) {
               executionHalted = true;
               toolOutcomeUnknown ||= toolResult.status === "unknown";
               toolCancelled ||= toolResult.status === "cancelled";
@@ -552,6 +546,7 @@ async function requestModel(
         {
           runId: input.runId,
           liveEval: input.liveEval,
+          liveEvalExperiment: input.liveEvalExperiment,
           prompt: input.prompt,
           systemInstruction: input.systemInstruction,
           provider: input.model.provider,

@@ -1,3 +1,5 @@
+import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
+import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
 import type { ToolCall, ToolDefinition, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
 import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
 
@@ -18,6 +20,7 @@ export type TemporalFailureKind =
 export interface TemporalWorkflowInput {
   /** Synthetic live evals alone may retain mapped provider requests. */
   readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly runId: string;
   readonly prompt: string;
   readonly systemInstruction: string;
@@ -34,6 +37,7 @@ export interface TemporalWorkflowInput {
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  readonly toolCatalog?: ToolCatalogSnapshot;
   readonly connections?: readonly ConnectionBinding[];
   readonly context?: {
     readonly rootDirectory: string;
@@ -44,6 +48,7 @@ export interface TemporalWorkflowInput {
 
 export interface TemporalContextPreparationInput {
   readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly rootDirectory: string;
   readonly sessionId: string;
   readonly turnId: string;
@@ -120,6 +125,7 @@ export interface TemporalWorkflowResult extends TemporalWorkflowSnapshot {
 
 export interface ModelRequestInput {
   readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly runId: string;
   readonly prompt: string;
   readonly systemInstruction: string;
@@ -162,6 +168,7 @@ export interface TemporalModelToolCall {
 }
 
 export interface TemporalToolExecutionInput {
+  readonly toolCatalog?: ToolCatalogSnapshot;
   readonly runId: string;
   readonly turnId: string;
   readonly enabledNames: readonly string[];

@@ -1,16 +1,14 @@
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 import { createTool } from "@mastra/core/tools";
-import { z } from "zod";
 
 import type { RunManifest } from "../../../../control-plane/domain/types.js";
 import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
 import { getDefaultConnectionRuntime, type ConnectionRuntime } from "../../../../capabilities/integrations/runtime.js";
 import type { ToolExecutionResult, ToolCall, ToolImplementation, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
-import { createFixtureTools } from "../../../../capabilities/tools/fixtures.js";
-import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
+import { createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
 
@@ -19,6 +17,8 @@ export interface BaselineAgentOptions {
   readonly turnId: string;
   readonly signal: AbortSignal;
   readonly maxToolCalls: number;
+  /** One-based native model step, shared by all tool calls from that step. */
+  readonly currentRound?: () => number;
   readonly connectionRuntime?: ConnectionRuntime;
   readonly connectionBindings?: readonly ConnectionBinding[];
   /** Opt-in synthetic fixture observation, not persisted or enabled by default. */
@@ -56,14 +56,7 @@ export function createBaselineAgent(
   options?: BaselineAgentOptions,
 ): Agent {
   const enabledNames = manifest.capabilities?.tools.enabledNames ?? [calculatorTool.definition.name];
-  const fixtureTools = createFixtureTools(options?.connectionRuntime ?? getDefaultConnectionRuntime());
-  const fixtureLookupTool = fixtureTools.fixtureLookupTool;
-  const fixtureWriteTool = fixtureTools.fixtureWriteTool;
-  const registry = new ToolRegistry({ enabledNames, approvedNames: manifest.capabilities?.tools.approvedNames });
-  registry.register(calculatorTool);
-  registry.register(fixtureLookupTool);
-  registry.register(fixtureWriteTool);
-  registry.register(mcpFixtureLookupTool);
+  const registry = createRuntimeToolRegistry({ enabledNames, approvedNames: manifest.capabilities?.tools.approvedNames }, manifest.capabilities?.toolCatalog, options?.connectionRuntime ?? getDefaultConnectionRuntime());
 
   // Every wrapper shares this counter. Reserve synchronously before dispatch so
   // parallel SDK calls cannot each consume the same remaining allowance.
@@ -77,108 +70,25 @@ export function createBaselineAgent(
     model: modelFactory(manifest),
     ...(manifest.selection?.experimentId === "agent-harness-live" ? { maxRetries: 0 } : {}),
     ...(options ? {
-      tools: {
-        ...(enabledNames.includes(calculatorTool.definition.name) ? { calculator: calculatorAgentTool(registry, options, nextToolCall) } : {}),
-        ...(enabledNames.includes(fixtureLookupTool.definition.name) ? { fixture_lookup: fixtureLookupAgentTool(fixtureLookupTool, registry, options, nextToolCall) } : {}),
-        ...(enabledNames.includes(fixtureWriteTool.definition.name) ? { fixture_write: fixtureWriteAgentTool(fixtureWriteTool, registry, options, nextToolCall) } : {}),
-        ...(enabledNames.includes(mcpFixtureLookupTool.definition.name) ? { mcp_fixture_lookup: connectedAgentTool(registry, mcpFixtureLookupTool, mcpFixtureLookupInputSchema, options, nextToolCall) } : {}),
-      },
+      tools: Object.fromEntries(registry.definitions().map((definition) => [definition.name, catalogAgentTool(registry, registry.resolve(definition.name)!, options, nextToolCall)])),
     } : {}),
     maxRetries: 0,
   });
 }
 
-const calculatorInputSchema = z.object({
-  operation: z.enum(["add", "subtract", "multiply", "divide"]),
-  left: z.number(),
-  right: z.number(),
-}).strict();
-const fixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).strict();
-const fixtureWriteInputSchema = z.object({ key: z.string().min(1).max(64), value: z.string().max(512) }).strict();
-const mcpFixtureLookupInputSchema = z.object({ key: z.string().min(1).max(64) }).strict();
-
-function calculatorAgentTool(registry: ToolRegistry, options: BaselineAgentOptions, nextToolCall: () => number) {
-  return createTool({
-    id: calculatorTool.definition.name,
-    description: calculatorTool.definition.description,
-    inputSchema: calculatorInputSchema,
-    execute: async (input, context) => {
-      const toolCallCount = nextToolCall();
-      const toolCallId = context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`;
-      const call: ToolCall = {
-        toolCallId,
-        name: calculatorTool.definition.name,
-        arguments: input,
-        round: toolCallCount,
-      };
-      const payload = toolPayload(call);
-      options.onToolEvent?.("ToolCallRequested", payload);
-
-      if (toolCallCount > options.maxToolCalls) {
-        const message = "The Mastra baseline reached its tool-call limit.";
-        options.onToolEvent?.("ToolCallRejected", { ...payload, code: "TOOL_CALL_LIMIT_EXCEEDED", message });
-        throw mastraToolError("MASTRA_TOOL_CALL_LIMIT_EXCEEDED", message);
-      }
-
-      const validation = registry.validateCall(call);
-      if (!validation.accepted) {
-        options.onToolEvent?.("ToolCallRejected", { ...payload, code: validation.code, message: validation.message });
-        return JSON.stringify({ error: validation.message, code: validation.code });
-      }
-      options.onToolEvent?.("ToolCallValidated", toolPayload(validation.call));
-
-      const policy = registry.authorize(validation.call);
-      if (!policy.allowed) {
-        options.onToolEvent?.("ToolPolicyDenied", { ...toolPayload(validation.call), code: policy.code, message: policy.message });
-        return JSON.stringify({ error: policy.message, code: policy.code });
-      }
-
-      options.onToolEvent?.("ToolExecutionStarted", toolPayload(validation.call));
-      const result = await registry.execute(validation, {
-        runId: options.runId,
-        turnId: options.turnId,
-        signal: context.abortSignal ?? options.signal,
-      });
-      options.onToolObservation?.(validation.call, result);
-      const resultPayload = {
-        ...toolPayload(validation.call),
-        status: result.status,
-        durationMs: result.durationMs,
-        resultBytes: new TextEncoder().encode(result.content).byteLength,
-        ...(result.error ? { code: result.error.code, message: result.error.message } : {}),
-      } satisfies ToolLifecyclePayload;
-      options.onToolEvent?.(toolEventKind(result.status), resultPayload);
-      if (result.status !== "completed") {
-        if (result.status === "cancelled" || result.status === "timed_out") throw abortError();
-        throw mastraToolError(result.error?.code ?? "TOOL_EXECUTION_FAILED", "The Mastra calculator tool failed.");
-      }
-      return result.content;
-    },
-  });
-}
-
-function fixtureLookupAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions, nextToolCall: () => number) {
-  return connectedAgentTool(registry, implementation, fixtureLookupInputSchema, options, nextToolCall);
-}
-
-function fixtureWriteAgentTool(implementation: ToolImplementation, registry: ToolRegistry, options: BaselineAgentOptions, nextToolCall: () => number) {
-  return connectedAgentTool(registry, implementation, fixtureWriteInputSchema, options, nextToolCall);
-}
-
-function connectedAgentTool<TSchema extends z.ZodTypeAny>(
+function catalogAgentTool(
   registry: ToolRegistry,
   implementation: ToolImplementation,
-  inputSchema: TSchema,
   options: BaselineAgentOptions,
   nextToolCall: () => number,
 ) {
   return createTool({
     id: implementation.definition.name,
     description: implementation.definition.description,
-    inputSchema,
+    inputSchema: implementation.definition.inputSchema,
     execute: async (input, context) => {
       const toolCallCount = nextToolCall();
-      const call: ToolCall = { toolCallId: context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`, name: implementation.definition.name, arguments: input, round: toolCallCount };
+      const call: ToolCall = { toolCallId: context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`, name: implementation.definition.name, arguments: input, round: options.currentRound?.() ?? 1 };
       const payload = toolPayload(call);
       options.onToolEvent?.("ToolCallRequested", payload);
       if (toolCallCount > options.maxToolCalls) {
@@ -212,16 +122,17 @@ function connectedAgentTool<TSchema extends z.ZodTypeAny>(
         durationMs: result.durationMs,
         resultBytes: new TextEncoder().encode(result.content).byteLength,
         ...(result.connection ? { connection: result.connection } : {}),
+        ...(result.error ? { code: result.error.code, message: result.error.message } : {}),
       });
-      // Known failed reads have no external effect and can inform a later model step.
-      // Unknown write outcomes remain terminal; they are never converted into retries.
-      if (result.status === "failed" && ["fixture_lookup", "mcp_fixture_lookup"].includes(call.name)) return result.content;
+      // Known failures become model feedback only through the frozen tool policy.
+      // Unknown side effects remain terminal and never become automatic retries.
+      if (result.status === "failed" && implementation.definition.failurePolicy === "feedback") return result.content;
       if (result.status !== "completed") {
         if (result.status === "cancelled" || result.status === "timed_out") throw abortError();
         if (result.status === "unknown") {
           throw mastraToolError("TOOL_UNKNOWN", "The external tool outcome could not be confirmed.");
         }
-        throw mastraToolError(result.error?.code ?? "TOOL_EXECUTION_FAILED", "The Mastra connected tool failed.");
+        throw mastraToolError(result.error?.code ?? "TOOL_EXECUTION_FAILED", "The Mastra selected tool failed.");
       }
       return result.content;
     },

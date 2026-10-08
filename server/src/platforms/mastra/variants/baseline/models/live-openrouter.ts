@@ -1,8 +1,8 @@
 import type { MastraModelConfig } from "@mastra/core/llm";
 import type { RunManifest } from "../../../../../control-plane/domain/types.js";
-import { FREE_PROVIDER_ROUTING, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
+import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 
-/** Opt-in synthetic live eval transport. Mastra still owns its native multi-step agent loop. */
+/** Opt-in free-model acceptance transport. Mastra owns the native multi-step agent loop. */
 export function liveOpenRouterModel(manifest: RunManifest, observe: (receipt: Record<string, unknown>) => void,
   options: { apiKey?: string; baseUrl?: string; fetchImplementation?: typeof fetch } = {}): MastraModelConfig {
   let sequence = 0;
@@ -10,9 +10,9 @@ export function liveOpenRouterModel(manifest: RunManifest, observe: (receipt: Re
     specificationVersion: "v2", provider: "openrouter", modelId: manifest.model.model, supportedUrls: {},
     doGenerate: async (input: { prompt: unknown; tools?: { type: string; name: string; description?: string; inputSchema: unknown }[]; abortSignal?: AbortSignal }) => {
       const messages = mapMessages(input.prompt);
-      const body = { model: manifest.model.model, messages, max_tokens: 512, provider: FREE_PROVIDER_ROUTING,
+      const body = { model: manifest.model.model, messages, max_tokens: getFreeEvalSettings(manifest.selection?.experimentId ?? "agent-harness-live")?.maxOutputTokens, provider: FREE_PROVIDER_ROUTING,
         ...(input.tools?.length ? { tools: input.tools.map(tool => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })), tool_choice: "auto" } : {}) };
-      assertFreeModelRequest(body, manifest.model.model);
+      assertFreeModelRequest(body, manifest.model.model, manifest.selection?.experimentId);
       const apiKey = options.apiKey ?? process.env.OPENROUTER_API_KEY;
       if (!apiKey?.trim()) throw new Error("OPENROUTER_API_KEY is required for live evals.");
       const requestSequence = ++sequence;

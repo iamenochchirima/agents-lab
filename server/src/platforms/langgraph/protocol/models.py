@@ -111,9 +111,16 @@ class ConnectionBinding(ProtocolModel):
         return self
 
 
+class ToolCatalogSnapshot(ProtocolModel):
+    schema_version: Literal[1]
+    revision: str = Field(min_length=1, max_length=128)
+    tools: list[dict[str, Any]] = Field(max_length=128)
+
+
 class StartRunRequest(ProtocolModel):
     # Only synthetic live evals opt into bounded request evidence and free routing.
     live_eval: bool = False
+    live_eval_experiment: Literal["agent-harness-live", "agent-capabilities-live"] | None = None
     protocol_version: Literal[PROTOCOL_VERSION] = Field(default=PROTOCOL_VERSION)
     run_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
     session_id: str | None = Field(default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
@@ -128,6 +135,7 @@ class StartRunRequest(ProtocolModel):
     timeout_ms: int = Field(default=30_000, ge=100, le=300_000)
     context: ContextSelection | None = None
     tools: ToolConfiguration | None = None
+    tool_catalog: ToolCatalogSnapshot | None = None
     connections: list[ConnectionBinding] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")

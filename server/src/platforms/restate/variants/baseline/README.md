@@ -68,3 +68,24 @@ treating it as a substitute for the canonical context store.
 
 See the [local development guide](../../docs/local-development.md) and
 [semantics](../../docs/semantics.md).
+
+## Extensible tool catalogs
+
+Admitted profile runs carry a frozen `toolCatalog` snapshot with full JSON Schema,
+source identity, effective limits, execution binding, and failure policy. The
+model sees that snapshot rather than a platform-owned list of tool names. Adding
+a hosted tool package changes the capability catalog; it does not require adding
+a branch to this platform's agent loop. Direct legacy callers without a snapshot
+retain the original built-ins.
+
+Hosted tools require the Lab capability host (`AGENTLAB_CAPABILITY_HOST_URL`,
+default `http://127.0.0.1:4318`) and its local worker credential
+(`AGENTLAB_CAPABILITY_HOST_KEY_FILE`, default `lab/runs/.capability-host.key`).
+Only an opaque catalog revision and execution identity cross the runtime
+boundary; credentials and host addresses stay outside run manifests and model
+context. The host rechecks the admitted run's catalog and approval policy.
+Known failures become model feedback only when the frozen descriptor permits
+it. Unknown dispatch outcomes stop the turn and are never automatically retried.
+
+The workflow projects declarations before model calls. A `ctx.run` action owns
+host dispatch with one attempt, preserving the result in the native journal.

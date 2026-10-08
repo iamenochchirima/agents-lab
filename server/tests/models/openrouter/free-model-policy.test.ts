@@ -26,3 +26,18 @@ test("request boundary rejects altered prices and model fallback before transpor
     (body: any) => { delete body.max_tokens; },
   ]) { const body = request(); mutate(body); assert.throws(() => assertFreeModelRequest(body, DEFAULT_FREE_MODEL)); }
 });
+
+test("output allowances are selected by experiment while zero-price routing remains mandatory", async () => {
+  const { getFreeEvalSettings, isFreeEval } = await import("../../../src/models/openrouter/free-model-policy.js");
+  assert.equal(getFreeEvalSettings("agent-harness-live")?.maxOutputTokens, 512);
+  assert.equal(getFreeEvalSettings("agent-capabilities-live")?.maxOutputTokens, 2048);
+  assert.equal(isFreeEval("ordinary-chat"), false);
+  for (const experiment of ["agent-harness-live", "agent-capabilities-live"]) {
+    const allowance = getFreeEvalSettings(experiment)!.maxOutputTokens;
+    const body = { ...request(), max_tokens: allowance };
+    assert.doesNotThrow(() => assertFreeModelRequest(body, DEFAULT_FREE_MODEL, experiment));
+    assert.throws(() => assertFreeModelRequest({ ...body, max_tokens: allowance === 512 ? 2048 : 512 }, DEFAULT_FREE_MODEL, experiment), /output allowance/);
+    assert.throws(() => assertFreeModelRequest({ ...body, provider: { ...body.provider, allow_fallbacks: true } }, DEFAULT_FREE_MODEL, experiment), /fallback disabled/);
+  }
+  assert.throws(() => assertFreeModelRequest({ ...request(), max_tokens: 2048 }, DEFAULT_FREE_MODEL, "client-custom-budget"), /Unknown/);
+});

@@ -391,11 +391,16 @@ def test_mcp_discovery_failure_is_a_native_tool_failure_not_an_unknown_outcome()
             max_rounds=3,
             max_calls=2,
         )
-        with pytest.raises(ProviderError):
-            graph.invoke(
-                {"prompt": "Read the unavailable MCP fixture.", "system_instruction": "Use the selected MCP connection.", "output": "", "attempt_count": 0},
-                {"configurable": {"thread_id": "thread-mcp-failure"}, "run_id": "run-mcp-failure"},
-            )
+        result = graph.invoke(
+            {"prompt": "Read the unavailable MCP fixture.", "system_instruction": "Use the selected MCP connection.", "output": "", "attempt_count": 0},
+            {"configurable": {"thread_id": "thread-mcp-failure"}, "run_id": "run-mcp-failure"},
+        )
+        feedback = [message for message in result["messages"] if message.get("role") == "tool"]
+        assert len(feedback) == 1
+        assert feedback[0]["tool_call_id"] == "call-mcp-fixture-lookup-1"
+        assert json.loads(feedback[0]["content"])["code"] == "MCP_DISCOVERY_FAILED"
+        assert "MCP_DISCOVERY_FAILED" in result["output"]
+
 
     failed = next(payload for kind, payload in events if kind == "ToolExecutionFailed")
     assert failed["code"] == "MCP_DISCOVERY_FAILED"
@@ -797,9 +802,10 @@ def test_development_eval_captures_native_requests_and_dispatches(fixture: str, 
         assert result["content"] == tools[0]["output"]
 
 
-def test_live_openrouter_records_actual_mapping_and_zero_price_controls() -> None:
+@pytest.mark.parametrize("experiment, allowance", [("agent-harness-live", 512), ("agent-capabilities-live", 2048)])
+def test_live_openrouter_records_actual_mapping_and_zero_price_controls(experiment: str, allowance: int) -> None:
     requests: list[dict] = []
-    state = {**_openrouter_state(), "_live_eval": True}
+    state = {**_openrouter_state(), "_live_eval": True, "_live_eval_experiment": experiment}
     model = ModelConfig(provider="openrouter", model="google/gemma-4-31b-it:free", api_key="test-secret", timeout_ms=5000)
     body = json.dumps({"id": "provider1", "model": "actual-model", "provider": "actual-provider", "choices": [{"message": {"content": None, "tool_calls": [{"id": "call1", "function": {"name": "calculator", "arguments": '{"operation":"add","left":17,"right":25}'}}]}}]}).encode()
 
@@ -811,7 +817,7 @@ def test_live_openrouter_records_actual_mapping_and_zero_price_controls() -> Non
         response = complete_openrouter_response(model, state, lambda: False, ["calculator"])
     sent = requests[0]
     assert sent["model"] == model.model
-    assert sent["max_tokens"] == 512
+    assert sent["max_tokens"] == allowance
     assert sent["provider"] == {"require_parameters": True, "allow_fallbacks": False, "max_price": {"prompt": 0, "completion": 0, "request": 0, "image": 0}}
     receipt = state["_live_eval_observation"]
     assert receipt["providerRequest"] == sent

@@ -1,3 +1,4 @@
+import { getFreeEvalSettings, isFreeEval } from "../../../models/openrouter/free-model-policy.js";
 import { createHash } from "node:crypto";
 
 import type {
@@ -134,7 +135,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
     manifest: RunManifest,
     reference: PlatformExecutionReference,
   ): Promise<PlatformExecutionReference> {
-    if (manifest.selection?.experimentId === "agent-harness-live") throw new Error("LIVE_EVAL_RECOVERY_DISABLED: live trials do not retry context overflow.");
+    if (isFreeEval(manifest.selection?.experimentId)) throw new Error("LIVE_EVAL_RECOVERY_DISABLED: live trials do not retry context overflow.");
     const configuration = this.configurationFromManifest(manifest);
     if (!manifest.context.sessionId || !manifest.context.turnId) {
       throw new Error("LangGraph context recovery requires a session-backed turn.");
@@ -177,7 +178,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       : { ...manifest, runId: identity.runId };
     const requestBody = JSON.stringify({
       protocolVersion: LANGGRAPH_PROTOCOL_VERSION,
-      ...(manifest.selection?.experimentId === "agent-harness-live" ? { liveEval: true } : {}),
+      ...(getFreeEvalSettings(manifest.selection?.experimentId) ? { liveEval: true, liveEvalExperiment: getFreeEvalSettings(manifest.selection?.experimentId)!.experimentId } : {}),
       runId: identity.runId,
       ...(manifest.context.sessionId ? { sessionId: manifest.context.sessionId } : {}),
       ...(identity.clientTurnId ? { clientTurnId: identity.clientTurnId } : {}),
@@ -194,6 +195,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       timeoutMs: configuration.timeoutMs,
       ...(identity.context ? { context: identity.context } : {}),
       tools: manifest.capabilities?.tools ?? configuration.tools,
+      ...(manifest.capabilities?.toolCatalog ? { toolCatalog: manifest.capabilities.toolCatalog } : {}),
       ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     });
     try {
@@ -232,7 +234,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       new CharacterTokenEstimator(),
     );
     const summarizer = createLangGraphContextSummaryGenerator({
-      liveEval: manifest.selection?.experimentId === "agent-harness-live",
+      liveEval: isFreeEval(manifest.selection?.experimentId),
       provider: manifest.model.provider,
       model: manifest.model.model,
       apiKey: process.env.OPENROUTER_API_KEY,

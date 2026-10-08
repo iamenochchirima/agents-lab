@@ -22,6 +22,8 @@ class ServiceConfig:
     protocol_version: int = 1
     default_max_attempts: int = 2
     default_timeout_ms: int = 30_000
+    capability_host_url: str = "http://127.0.0.1:4318"
+    capability_host_key_file: Path = PLATFORM_ROOT.parents[3] / "lab" / "runs" / ".capability-host.key"
     local_fixture_url: str = "http://127.0.0.1:9191"
 
     @property
@@ -44,6 +46,8 @@ class ServiceConfig:
             default_timeout_ms=_bounded_int(
                 values.get("AGENTLAB_LANGGRAPH_TIMEOUT_MS"), 30_000, 100, 300_000, "AGENTLAB_LANGGRAPH_TIMEOUT_MS"
             ),
+            capability_host_url=values.get("AGENTLAB_CAPABILITY_HOST_URL", "http://127.0.0.1:4318").rstrip("/"),
+            capability_host_key_file=Path(values.get("AGENTLAB_CAPABILITY_HOST_KEY_FILE", str(PLATFORM_ROOT.parents[3] / "lab" / "runs" / ".capability-host.key"))).expanduser(),
             local_fixture_url=values.get("AGENTLAB_LOCAL_FIXTURE_URL", "http://127.0.0.1:9191").rstrip("/"),
         )
 

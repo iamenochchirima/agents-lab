@@ -139,6 +139,7 @@ class LangGraphService:
                 graph = build_baseline_graph(
                     model=model,
                     live_eval=request.live_eval,
+                    live_eval_experiment=request.live_eval_experiment,
                     emit=emit,
                     is_cancelled=cancel_event.is_set,
                     run_id=request.run_id,
@@ -148,6 +149,9 @@ class LangGraphService:
                     approved_tool_names=list(tool_configuration.approved_names) if tool_configuration else None,
                     connection_bindings=[binding.model_dump(by_alias=False) for binding in request.connections],
                     connection_url=self.config.local_fixture_url,
+                    tool_catalog=request.tool_catalog.model_dump(by_alias=True) if request.tool_catalog else None,
+                    capability_host_url=self.config.capability_host_url,
+                    capability_host_key_file=str(self.config.capability_host_key_file),
                     turn_id=request.context.turn_id if request.context else f"{request.run_id}:turn:1",
                     max_rounds=tool_configuration.max_rounds if tool_configuration else 6,
                     max_calls=tool_configuration.max_calls if tool_configuration else 8,

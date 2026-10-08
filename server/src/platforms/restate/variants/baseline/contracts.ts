@@ -1,3 +1,6 @@
+import { getFreeEvalSettings } from "../../../../models/openrouter/free-model-policy.js";
+import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
+import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
 import type {
   ModelProvider,
   RunEventIntent,
@@ -17,6 +20,7 @@ export const RESTATE_WORKFLOW_SOURCE = "restate-workflow";
 export interface RestateWorkflowInput {
   /** Synthetic live evals alone may retain mapped provider requests. */
   readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly runId: string;
   readonly turnId?: string;
   readonly prompt: string;
@@ -34,6 +38,7 @@ export interface RestateWorkflowInput {
     readonly maxRounds: number;
     readonly maxCalls: number;
   };
+  readonly toolCatalog?: ToolCatalogSnapshot;
   readonly connections?: readonly ConnectionBinding[];
   readonly context?: {
     readonly rootDirectory: string;
@@ -59,6 +64,7 @@ export interface RestateWorkflowResult extends RunResult {
 
 export interface ModelRequest {
   readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly runId: string;
   readonly prompt: string;
   readonly systemInstruction: string;
@@ -135,13 +141,14 @@ export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflo
     : process.env.AGENTLAB_CONTEXT_ROOT?.trim() || "lab/sessions";
   return {
     runId: manifest.runId,
-    ...(manifest.selection?.experimentId === "agent-harness-live" ? { liveEval: true } : {}),
+    ...(getFreeEvalSettings(manifest.selection?.experimentId) ? { liveEval: true, liveEvalExperiment: getFreeEvalSettings(manifest.selection?.experimentId)!.experimentId } : {}),
     turnId: manifest.context.turnId,
     prompt: manifest.task.prompt,
     systemInstruction: manifest.context.systemInstruction,
     model: manifest.model,
     modelRetryAttempts: positiveIntegerFromConfig(manifest.platformConfig, "runMaxRetryAttempts", 3),
     tools,
+    ...(manifest.capabilities?.toolCatalog ? { toolCatalog: manifest.capabilities.toolCatalog } : {}),
     ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     ...(manifest.context.sessionId && manifest.context.turnId ? {
       context: {

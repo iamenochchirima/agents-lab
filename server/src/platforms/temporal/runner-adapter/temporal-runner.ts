@@ -1,3 +1,4 @@
+import { getFreeEvalSettings } from "../../../models/openrouter/free-model-policy.js";
 import {
   Client,
   Connection,
@@ -207,7 +208,7 @@ function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
   const configuration = temporalConfigurationFromManifest(manifest);
   return {
     runId: manifest.runId,
-    ...(manifest.selection?.experimentId === "agent-harness-live" ? { liveEval: true } : {}),
+    ...(getFreeEvalSettings(manifest.selection?.experimentId) ? { liveEval: true, liveEvalExperiment: getFreeEvalSettings(manifest.selection?.experimentId)!.experimentId } : {}),
     prompt: manifest.task.prompt,
     systemInstruction: manifest.context.systemInstruction,
     model: manifest.model,
@@ -215,6 +216,7 @@ function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
     preDispatchRetryLimit: configuration.preDispatchRetryLimit,
     preDispatchRetryBackoffMs: configuration.preDispatchRetryBackoffMs,
     tools: manifest.capabilities?.tools ?? configuration.tools,
+    ...(manifest.capabilities?.toolCatalog ? { toolCatalog: manifest.capabilities.toolCatalog } : {}),
     ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     ...(manifest.context.sessionId && manifest.context.turnId ? {
       context: {

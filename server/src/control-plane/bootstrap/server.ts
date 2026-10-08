@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { FastifyInstance } from "fastify";
@@ -24,6 +26,11 @@ import { ContextService, ContextSessionStore, CharacterTokenEstimator } from "..
 import { OpenRouterModelCatalog } from "../../models/openrouter/catalog.js";
 import { createStudioModule } from "../../studio/index.js";
 import { createDefaultCapabilityCatalog } from "../../capabilities/catalog.js";
+import { createPackageCapabilityCatalog } from "../../capabilities/extensions/catalog.js";
+
+import { loadCapabilityPackages } from "../../capabilities/extensions/packages.js";
+import { CapabilityHost } from "../../capabilities/extensions/host.js";
+import { capabilityWorkspaceRoot } from "../../capabilities/extensions/runtime.js";
 
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
@@ -49,8 +56,9 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const langgraphRunner = LangGraphBaselineRunner.fromOptions({
     serviceUrl: process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024",
     contextRoot: config.contextRoot,
+    timeoutMs: config.nativeExecutionTimeoutMs,
   });
-  const mastraRunner = new MastraBaselineRunner({ contextRoot: config.contextRoot });
+  const mastraRunner = new MastraBaselineRunner({ contextRoot: config.contextRoot, executionTimeoutMs: config.nativeExecutionTimeoutMs });
   const mastraWorkflowRunner = config.mastra.workflowEnabled
     ? new MastraWorkflowRunner({ contextRoot: config.contextRoot, storagePath: config.mastra.workflowStoragePath })
     : null;
@@ -72,7 +80,8 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   ];
   if (mastraWorkflowRunner) runners.push(mastraWorkflowRunner);
   const evidence = new RunEvidenceStore(config.runsRoot);
-  const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
+  const sessions = new ContextSessionStore(config.contextRoot, config.context);
+  const context = new ContextService(sessions, new CharacterTokenEstimator());
   const registry = new PlatformRegistry(runners);
   const modelCatalog = new OpenRouterModelCatalog({
     apiKey: config.openRouter.apiKey,
@@ -82,11 +91,18 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     resultLimit: config.openRouter.catalogLimit,
     defaultModel: config.openRouter.defaultModel,
   });
-  const capabilities = createDefaultCapabilityCatalog(undefined, {
-    connectedEnabled: config.connectedCapabilitiesEnabled,
-  });
+  const defaultPackages = join(capabilityWorkspaceRoot(), "server/capability-packages/example.json");
+  const packagePath = process.env.AGENTLAB_CAPABILITY_PACKAGES ?? (existsSync(defaultPackages) ? defaultPackages : undefined);
+  const packages = packagePath ? await loadCapabilityPackages(packagePath) : undefined;
+  const capabilities = packages
+    ? createPackageCapabilityCatalog(packages, config.connectedCapabilitiesEnabled)
+    : createDefaultCapabilityCatalog(undefined, { connectedEnabled: config.connectedCapabilitiesEnabled });
   const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities });
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
+  if (packages) {
+    const host = await CapabilityHost.create(evidence, packages.tools, sessions); host.register(app);
+    app.get("/api/capability-packages", async (_request, reply) => reply.send({packages:packages.packages}));
+  }
   const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });
   studio.register(app);
 

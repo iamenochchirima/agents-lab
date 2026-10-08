@@ -1,3 +1,5 @@
+import type { FreeEvalExperiment } from "../../../models/openrouter/free-model-policy.js";
+import type { ToolCatalogSnapshot } from "../../../capabilities/extensions/contracts.js";
 import { createHash } from "node:crypto";
 import type { ConnectionBinding } from "../../../capabilities/integrations/contracts.js";
 
@@ -16,6 +18,7 @@ export type LangGraphFailureKind =
 
 export interface LangGraphStartRequest {
   readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly protocolVersion: typeof LANGGRAPH_PROTOCOL_VERSION;
   readonly runId: string;
   readonly sessionId?: string;
@@ -36,6 +39,7 @@ export interface LangGraphStartRequest {
     readonly contextWindowTokens?: number;
   };
   readonly tools?: { readonly enabledNames: readonly string[]; readonly approvedNames?: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
+  readonly toolCatalog?: ToolCatalogSnapshot;
   readonly connections?: readonly ConnectionBinding[];
 }
 

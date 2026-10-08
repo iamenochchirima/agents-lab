@@ -1,3 +1,4 @@
+import { createProjectedToolRegistry } from "../../../../capabilities/extensions/projection.js";
 import {
   ActivityFailure,
   CancellationScope,
@@ -12,10 +13,6 @@ import {
 } from "@temporalio/workflow";
 
 import type { baselineActivities } from "./activities.js";
-import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
-import { fixtureLookupTool, fixtureWriteTool } from "../../../../capabilities/tools/fixtures.js";
-import { mcpFixtureLookupTool } from "../../../../capabilities/tools/mcp-fixture.js";
-import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import type { ToolCall, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
 import {
   BASELINE_QUERY_NAME,
@@ -70,11 +67,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   let contextRecoveryUsed = false;
   let continuationMessages: TemporalModelMessage[] = [];
   const toolConfiguration = normalizeToolConfiguration(input.tools);
-      const toolRegistry = new ToolRegistry({ enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames });
-  toolRegistry.register(calculatorTool);
-  toolRegistry.register(fixtureLookupTool);
-  toolRegistry.register(fixtureWriteTool);
-  toolRegistry.register(mcpFixtureLookupTool);
+  const toolRegistry = createProjectedToolRegistry(toolConfiguration, input.toolCatalog);
   const toolDefinitions = toolRegistry.definitions();
 
   const snapshot = (): TemporalWorkflowSnapshot => ({
@@ -172,6 +165,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         [{
           rootDirectory: context.rootDirectory,
           liveEval: input.liveEval,
+          liveEvalExperiment: input.liveEvalExperiment,
           sessionId: context.sessionId,
           turnId: context.turnId,
           provider: input.model.provider,
@@ -269,6 +263,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
             [{
               runId: input.runId,
               liveEval: input.liveEval,
+              liveEvalExperiment: input.liveEvalExperiment,
               prompt: input.prompt,
               systemInstruction: input.systemInstruction,
               provider: input.model.provider,
@@ -422,7 +417,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               retry: { maximumAttempts: 1 },
               cancellationType: "WAIT_CANCELLATION_COMPLETED",
             },
-            [{ runId: input.runId, turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames, connectionBindings: input.connections, call: validation.call }],
+            [{ runId: input.runId, turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames, connectionBindings: input.connections, toolCatalog: input.toolCatalog, call: validation.call }],
           ));
         } catch (activityError) {
           finishPhase(toolPhase);
@@ -439,7 +434,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
         }
         continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];
-        if (toolResult.status === "failed" && ["fixture_lookup", "mcp_fixture_lookup"].includes(call.name)) continue;
+        if (toolResult.status === "failed" && validation.definition.failurePolicy === "feedback") continue;
         if (toolResult.status !== "completed") {
           const failure = temporalFailure(
             toolResult.error?.code ?? "TOOL_EXECUTION_FAILED",

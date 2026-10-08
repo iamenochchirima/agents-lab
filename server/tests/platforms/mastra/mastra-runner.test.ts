@@ -206,6 +206,40 @@ test("Mastra executes the shared calculator through a native Agent.generate tool
   );
 });
 
+test("parallel SDK calls share their model round while the model step budget remains enforced", async () => {
+  for (const maxRounds of [1, 2]) {
+    let requests = 0;
+    const rounds: number[] = [];
+    const runner = new MastraBaselineRunner({
+      onToolObservation: (_runId, call) => rounds.push(call.round),
+      modelFactory: () => ({
+        specificationVersion: "v2", provider: "agentlab.fake", modelId: "fake-success", supportedUrls: {},
+        doStream: async () => { throw new Error("This fixture supports generate only."); },
+        doGenerate: async () => {
+          const first = requests++ === 0;
+          return {
+            content: first ? [1, 2].map(value => ({ type: "tool-call", toolCallId: `parallel-${value}`, toolName: "calculator",
+              input: JSON.stringify({ operation: "add", left: value, right: 1 }) })) : [{ type: "text", text: "Done." }],
+            finishReason: first ? "tool-calls" : "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, warnings: [],
+          };
+        },
+      } as ReturnType<typeof createDeterministicFakeModel>),
+    });
+    const manifest = buildRunManifest({
+      platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "Perform two independent calculations." },
+      model: { provider: "fake", model: "fake-success" },
+      capabilities: { tools: { enabledNames: ["calculator"], maxCalls: 2, maxRounds } },
+    }, { runId: `mastra-parallel-round-${maxRounds}`, platformConfig: runner.manifestConfiguration() });
+    const inspection = await waitForTerminal(runner, await runner.start(manifest));
+    assert.deepEqual(rounds, [1, 1]);
+    assert.equal(inspection.eventIntents.filter(event => event.kind === "ToolExecutionCompleted").length, 2);
+    assert.equal(requests, maxRounds);
+    assert.equal(inspection.status, maxRounds === 1 ? "failed" : "completed");
+    if (maxRounds === 1) assert.equal(inspection.result?.error?.code, "MASTRA_MODEL_ROUND_LIMIT_EXCEEDED");
+    else assert.equal(inspection.result?.output, "Done.");
+  }
+});
+
 test("Mastra enforces requested aggregate call and model-round budgets", async () => {
   for (const scenario of [
     { id: "repeated-tool", tools: ["calculator", "calculator"], maxCalls: 1, maxRounds: 4, code: "MASTRA_TOOL_CALL_LIMIT_EXCEEDED", dispatches: 1, rounds: 3 },

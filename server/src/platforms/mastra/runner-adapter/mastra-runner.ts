@@ -1,3 +1,4 @@
+import { getFreeEvalSettings, isFreeEval } from "../../../models/openrouter/free-model-policy.js";
 import type {
   PlatformExecutionReference,
   RunEventIntent,
@@ -202,7 +203,7 @@ export class MastraBaselineRunner implements PlatformRunner {
 
     try {
       const context = await this.prepareContext(record, configuration.contextRoot);
-      const liveEval = record.manifest.selection?.experimentId === "agent-harness-live";
+      const liveEval = isFreeEval(record.manifest.selection?.experimentId);
       const modelFactory = liveEval ? (manifest: RunManifest) => liveOpenRouterModel(manifest,
         (observation) => this.addEvent(record, "EvalModelObserved", { observation })) : this.modelFactory;
       const runtime = createBaselineAgentRuntime(record.manifest, modelFactory, {
@@ -210,6 +211,7 @@ export class MastraBaselineRunner implements PlatformRunner {
         turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
         signal: record.controller.signal,
         maxToolCalls: configuration.maxToolCalls,
+        currentRound: () => record.events.filter(event => event.kind === "AgentStepCompleted").length + 1,
         connectionBindings: record.manifest.capabilities?.connections,
         onToolObservation: (call, result) => {
           this.onToolObservation?.(record.manifest.runId, call, result);
@@ -226,6 +228,7 @@ export class MastraBaselineRunner implements PlatformRunner {
             .map(toMastraMessage),
         } : {}),
         maxSteps: configuration.maxToolRounds,
+        ...(liveEval ? { modelSettings: { maxOutputTokens: getFreeEvalSettings(record.manifest.selection?.experimentId)!.maxOutputTokens } } : {}),
         onStepFinish: (step) => {
           // Mastra can reject schema-invalid or absent tools before our execute
           // callback. Normalize those observed SDK calls without inventing dispatch.
@@ -311,7 +314,7 @@ export class MastraBaselineRunner implements PlatformRunner {
       new ContextSessionStore(contextRoot),
       new CharacterTokenEstimator(),
     );
-    const summarizer = record.manifest.selection?.experimentId === "agent-harness-live"
+    const summarizer = isFreeEval(record.manifest.selection?.experimentId)
       ? { summarize: async () => { throw new Error("Live development probes do not permit context compaction."); } }
       : createMastraContextSummaryGenerator({
       manifest: record.manifest,

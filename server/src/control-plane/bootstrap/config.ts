@@ -38,6 +38,7 @@ export const DEFAULTS = {
 } as const;
 
 export interface ServerConfig {
+  readonly nativeExecutionTimeoutMs?: number;
   readonly serverVersion: string;
   readonly api: {
     readonly host: string;
@@ -123,6 +124,7 @@ export function loadServerConfig(
 
   const config: ServerConfig = {
     serverVersion: requiredString(environment.AGENTLAB_SERVER_VERSION, "0.0.0-dev", "AGENTLAB_SERVER_VERSION"),
+    nativeExecutionTimeoutMs: parseBoundedInteger("AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS", environment.AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS, 30_000, 100, 300_000),
     api: {
       host: apiHost,
       port: parsePort(environment.AGENTLAB_API_PORT, DEFAULTS.apiPort),

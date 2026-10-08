@@ -2,9 +2,9 @@
 
 The graph keeps the platform-native model and tool nodes visible. SQLite stores
 the LangGraph checkpoint, while the service owns the platform event record. The
-calculator is the only enabled tool in this slice. Its implementation mirrors
-the provider-neutral pure-tool contract and has no filesystem, network, or
-subprocess access.
+Tools are projected from the admitted frozen catalog. Hosted extensions execute
+through the authenticated capability boundary; legacy direct callers retain the
+original bounded built-ins.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ from urllib import request as urllib_request
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import RetryPolicy
+
+from .hosted_tools import catalog_tools, validate_arguments, execute_hosted
 
 
 EventEmitter = Callable[[str, dict[str, Any]], None]
@@ -139,6 +141,8 @@ class ToolExecution:
     status: str = "completed"
     error_code: str | None = None
     error_message: str | None = None
+    duration_ms: int = 0
+    attempt_count: int = 1
 
 
 CALCULATOR_DEFINITION: dict[str, Any] = {
@@ -217,8 +221,15 @@ def build_baseline_graph(
     max_rounds: int = 6,
     max_calls: int = 8,
     live_eval: bool = False,
+    live_eval_experiment: str | None = None,
+    tool_catalog: dict[str, Any] | None = None,
+    capability_host_url: str = "http://127.0.0.1:4318",
+    capability_host_key_file: str = "lab/runs/.capability-host.key",
 ):
-    enabled_tools = [name for name in (tool_names if tool_names is not None else ["calculator"]) if name in {"calculator", "fixture_lookup", "fixture_write", "mcp_fixture_lookup"}]
+    enabled_tools = list(tool_names if tool_names is not None else ["calculator"])
+    selected_catalog = catalog_tools(tool_catalog, enabled_tools)
+    if tool_catalog is None and any(name not in {"calculator", "fixture_lookup", "fixture_write", "mcp_fixture_lookup"} for name in enabled_tools):
+        raise ValueError("A non-builtin tool requires an admitted frozen catalog.")
     approved_tools = [name for name in (approved_tool_names or []) if name in enabled_tools]
     effective_connection_bindings = connection_bindings if connection_bindings is not None else [
         {"toolName": "fixture_lookup", "connectionRef": "conn_local_fixture", "operations": ["lookup"]},
@@ -248,7 +259,7 @@ def build_baseline_graph(
                 "requestSent": model.provider == "openrouter" or not model.model.startswith("fake-pre-dispatch"),
             },
         )
-        request_state = {**state, "messages": messages, "_live_eval": live_eval}
+        request_state = {**state, "messages": messages, "_live_eval": live_eval, "_live_eval_experiment": live_eval_experiment, "_tool_catalog": selected_catalog}
         try:
             response = complete_model(model, request_state, attempt, is_cancelled, enabled_tools, approved_tools)
         except Exception as exc:
@@ -340,7 +351,11 @@ def build_baseline_graph(
                 message = "The LangGraph baseline reached its tool-call limit."
                 emit("ToolCallRejected", {**payload, "code": "TOOL_CALL_LIMIT_EXCEEDED", "message": message})
                 raise ProviderError(message)
-            validation_error = validate_tool_call(call, enabled_tools, approved_tools, state.get("round_count", 0))
+            descriptor = selected_catalog.get(call.name)
+            if descriptor is not None:
+                validation_error = validate_catalog_call(call, descriptor, approved_tools, state.get("round_count", 0))
+            else:
+                validation_error = validate_tool_call(call, enabled_tools, approved_tools, state.get("round_count", 0))
             if validation_error:
                 emit("ToolCallRejected", {**payload, "code": validation_error[0], "message": validation_error[1]})
                 messages.append(tool_message(call, _tool_error(validation_error[0], validation_error[1])))
@@ -348,17 +363,27 @@ def build_baseline_graph(
             emit("ToolCallValidated", payload)
             emit("ToolExecutionStarted", payload)
             try:
-                result = execute_tool(
-                    call.name,
-                    call.arguments,
-                    connection_url=connection_url,
-                    connection_bindings=effective_connection_bindings,
-                    run_id=run_id,
-                    turn_id=turn_id or f"{run_id}:turn:1",
-                    tool_call_id=call.tool_call_id,
-                    is_cancelled=is_cancelled,
-                    timeout_ms=model.timeout_ms,
-                )
+                if descriptor is not None and descriptor["execution"]["kind"] == "hosted":
+                    host_result = execute_hosted(descriptor, tool_catalog["revision"], call.arguments,
+                        run_id=run_id, turn_id=turn_id or f"{run_id}:turn:1", tool_call_id=call.tool_call_id,
+                        round_number=state.get("round_count", 0), is_cancelled=is_cancelled,
+                        endpoint=capability_host_url, key_file=capability_host_key_file)
+                    host_error = host_result.get("error") or {}
+                    result = ToolExecution(host_result["content"], status=host_result["status"],
+                        error_code=host_error.get("code"), error_message=host_error.get("message"), connection=host_result.get("connection"),
+                        duration_ms=host_result.get("durationMs", 0), attempt_count=host_result.get("attemptCount", 1))
+                else:
+                    result = execute_tool(
+                        call.name,
+                        call.arguments,
+                        connection_url=connection_url,
+                        connection_bindings=effective_connection_bindings,
+                        run_id=run_id,
+                        turn_id=turn_id or f"{run_id}:turn:1",
+                        tool_call_id=call.tool_call_id,
+                        is_cancelled=is_cancelled,
+                        timeout_ms=model.timeout_ms,
+                    )
             except OutcomeUnknownError:
                 raise
             except CancellationError:
@@ -373,23 +398,30 @@ def build_baseline_graph(
                     "round": state.get("round_count", 0), "status": result.status, "output": result.content,
                 })
             if result.status != "completed":
-                event_kind = "ToolExecutionUnknown" if result.status == "unknown" else "ToolExecutionFailed"
+                event_kind = "ToolExecutionUnknown" if result.status == "unknown" else "ToolExecutionCancelled" if result.status in {"cancelled", "timed_out"} else "ToolExecutionFailed"
                 emit(event_kind, {
                     **payload,
                     "status": result.status,
+                    "durationMs": result.duration_ms,
+                    "attemptCount": result.attempt_count,
                     "code": result.error_code or "TOOL_EXECUTION_FAILED",
                     "message": result.error_message or "The selected tool did not complete.",
                     **({"connection": result.connection} if result.connection else {}),
                 })
                 if result.status == "unknown":
                     raise OutcomeUnknownError("The selected connection write outcome is unknown.")
-                if call.name in {"fixture_lookup", "mcp_fixture_lookup"} and result.status == "failed":
+                failure_policy = descriptor.get("failurePolicy", "terminal") if descriptor else ("feedback" if call.name in {"fixture_lookup", "mcp_fixture_lookup"} else "terminal")
+                if failure_policy == "feedback" and result.status == "failed":
                     messages.append(tool_message(call, result.content))
                     continue
+                if result.status in {"cancelled", "timed_out"}:
+                    raise CancellationError("The selected tool was cancelled or exceeded its deadline.")
                 raise ProviderError("The selected tool failed.")
             emit("ToolExecutionCompleted", {
                 **payload,
                 "status": "completed",
+                "durationMs": result.duration_ms,
+                "attemptCount": result.attempt_count,
                 "resultBytes": _utf8_bytes(result.content),
                 **({"connection": result.connection} if result.connection else {}),
             })
@@ -572,15 +604,23 @@ def complete_openrouter_response(
 
     messages = state.get("messages") or initial_messages(state)
     payload_data: dict[str, Any] = {"model": model.model, "messages": [to_openrouter_message(message) for message in messages]}
-    definitions = []
-    if "calculator" in tool_names:
-        definitions.append(CALCULATOR_DEFINITION)
-    if "fixture_lookup" in tool_names:
-        definitions.append(FIXTURE_LOOKUP_DEFINITION)
-    if "fixture_write" in tool_names:
-        definitions.append(FIXTURE_WRITE_DEFINITION)
-    if "mcp_fixture_lookup" in tool_names:
-        definitions.append(MCP_FIXTURE_LOOKUP_DEFINITION)
+    selected_catalog = state.get("_tool_catalog") or {}
+    if selected_catalog:
+        definitions = [{"type": "function", "function": {
+            "name": selected_catalog[name]["definition"]["name"],
+            "description": selected_catalog[name]["definition"]["description"],
+            "parameters": selected_catalog[name]["definition"]["inputSchema"],
+        }} for name in tool_names]
+    else:
+        definitions = []
+        if "calculator" in tool_names:
+            definitions.append(CALCULATOR_DEFINITION)
+        if "fixture_lookup" in tool_names:
+            definitions.append(FIXTURE_LOOKUP_DEFINITION)
+        if "fixture_write" in tool_names:
+            definitions.append(FIXTURE_WRITE_DEFINITION)
+        if "mcp_fixture_lookup" in tool_names:
+            definitions.append(MCP_FIXTURE_LOOKUP_DEFINITION)
     if definitions:
         payload_data["tools"] = definitions
         payload_data["tool_choice"] = "auto"
@@ -589,7 +629,10 @@ def complete_openrouter_response(
             raise ConfigurationError("Live evals require an exact :free model ID.")
         payload_data["provider"] = {"require_parameters": True, "allow_fallbacks": False,
                                     "max_price": {"prompt": 0, "completion": 0, "request": 0, "image": 0}}
-        payload_data["max_tokens"] = 512
+        experiment = state.get("_live_eval_experiment") or "agent-harness-live"
+        if experiment not in {"agent-harness-live", "agent-capabilities-live"}:
+            raise ConfigurationError("Unknown free evaluation experiment.")
+        payload_data["max_tokens"] = 2048 if experiment == "agent-capabilities-live" else 512
         # This state copy is local to this call, never a persisted graph input.
         state["_live_eval_observation"] = {
             "systemInstruction": state.get("system_instruction", ""),
@@ -629,7 +672,8 @@ def complete_openrouter_response(
     except (urllib_error.URLError, TimeoutError, OSError) as exc:
         raise OutcomeUnknownError("The OpenRouter response outcome could not be established.") from exc
 
-    result = parse_openrouter_response(body, tool_names)
+    limits = {name: descriptor["definition"]["limits"]["maxArgumentBytes"] for name, descriptor in selected_catalog.items()}
+    result = parse_openrouter_response(body, tool_names, limits or None)
     if state.get("_live_eval_observation"):
         state["_live_eval_observation"].update({
             "toolCalls": [{"toolCallId": call.tool_call_id, "name": call.name, "arguments": call.arguments} for call in result.tool_calls],
@@ -639,7 +683,7 @@ def complete_openrouter_response(
     return result
 
 
-def parse_openrouter_response(body: Any, tool_names: list[str]) -> ModelResponse:
+def parse_openrouter_response(body: Any, tool_names: list[str], tool_argument_limits: dict[str, int] | None = None) -> ModelResponse:
     try:
         message = body["choices"][0]["message"]
         output = message.get("content")
@@ -661,7 +705,8 @@ def parse_openrouter_response(body: Any, tool_names: list[str]) -> ModelResponse
                 raise ProviderError("OpenRouter returned an invalid tool call ID.")
             if not isinstance(name, str) or len(name) > MAX_TOOL_NAME_CHARS:
                 raise ProviderError("OpenRouter returned an invalid tool name.")
-            if _json_bytes(arguments) > MAX_TOOL_ARGUMENT_BYTES:
+            declared_limit = (tool_argument_limits or {}).get(name, MAX_TOOL_ARGUMENT_BYTES)
+            if _json_bytes(arguments) > min(MAX_RESPONSE_BYTES, declared_limit):
                 raise ProviderError("OpenRouter returned tool arguments larger than the configured limit.")
             if name not in tool_names:
                 raise ProviderError(f"OpenRouter requested a tool that is not enabled: {name}.")
@@ -786,6 +831,17 @@ def to_openrouter_message(message: dict[str, Any]) -> dict[str, Any]:
             "content": content,
         }
     return {"role": "system" if role == "developer" else role, "content": content}
+
+
+def validate_catalog_call(call: ToolCall, descriptor: dict[str, Any], approved_tools: list[str], round_number: int) -> tuple[str, str] | None:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", call.tool_call_id):
+        return "INVALID_CALL_ID", "Tool call ID is missing or unsafe."
+    if round_number < 1:
+        return "INVALID_ROUND", "Tool call round must be positive."
+    definition = descriptor["definition"]
+    if definition["riskClass"] == "external" or (definition["riskClass"] == "write" and call.name not in approved_tools):
+        return "APPROVAL_REQUIRED", "The selected tool requires an explicit approval."
+    return validate_arguments(descriptor, call.arguments)
 
 
 def validate_tool_call(call: ToolCall, enabled_tools: list[str], approved_tools: list[str], round_number: int) -> tuple[str, str] | None:

@@ -5,6 +5,16 @@
 export const DEFAULT_FREE_MODEL = "google/gemma-4-31b-it:free";
 export const COMPARISON_FREE_MODEL = "nvidia/nemotron-3.5-lightning:free";
 export const LIVE_MAX_OUTPUT_TOKENS = 512;
+export type FreeEvalExperiment = "agent-harness-live" | "agent-capabilities-live";
+const FREE_EVAL_SETTINGS = Object.freeze({
+  "agent-harness-live": Object.freeze({ experimentId: "agent-harness-live" as const, maxOutputTokens: 512 }),
+  "agent-capabilities-live": Object.freeze({ experimentId: "agent-capabilities-live" as const, maxOutputTokens: 2048 }),
+});
+/** Allowances belong to the selected experiment, never a client-supplied token limit. */
+export function getFreeEvalSettings(experimentId?: string): { readonly experimentId: FreeEvalExperiment; readonly maxOutputTokens: number } | undefined {
+  return experimentId === "agent-harness-live" || experimentId === "agent-capabilities-live" ? FREE_EVAL_SETTINGS[experimentId] : undefined;
+}
+export function isFreeEval(experimentId?: string): boolean { return getFreeEvalSettings(experimentId) !== undefined; }
 export const FREE_PROVIDER_ROUTING = Object.freeze({
   require_parameters: true,
   allow_fallbacks: false,
@@ -35,10 +45,12 @@ export function assertFreeModelCatalog(catalog: unknown, model: string): { id: s
   return { id: model, contextLength: typeof value.context_length === "number" && Number.isSafeInteger(value.context_length) && value.context_length > 0 ? value.context_length : null, supportedParameters };
 }
 /** Call immediately before transport. Catalog validation alone cannot constrain SDK routing. */
-export function assertFreeModelRequest(body: unknown, model: string): void {
+export function assertFreeModelRequest(body: unknown, model: string, experimentId: string = "agent-harness-live"): void {
+  const settings = getFreeEvalSettings(experimentId);
+  if (!settings) reject("Unknown free evaluation experiment.");
   assertSelectedFreeModel(model);
   if (!record(body) || body.model !== model || body.models !== undefined || body.route !== undefined || body.plugins !== undefined) reject("Live eval request changed the selected model or enabled routing/plugins.");
-  if (body.max_tokens !== LIVE_MAX_OUTPUT_TOKENS) reject("Live eval requests must retain the bounded output allowance.");
+  if (body.max_tokens !== settings.maxOutputTokens) reject("Live eval requests must retain the bounded output allowance.");
   const provider = body.provider;
   if (!record(provider) || provider.require_parameters !== true || provider.allow_fallbacks !== false || !record(provider.max_price)) reject("Live eval requests require zero-price routing with fallback disabled.");
   const ceilings = provider.max_price;
