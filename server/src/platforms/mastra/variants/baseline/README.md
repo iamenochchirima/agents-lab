@@ -77,7 +77,11 @@ the evidence does not claim the text-only model perceived images or audio.
 
 The opt-in native review fixture uses scripted model choices through the real
 SDK and capability host. It verifies suspended runner and host reconstruction,
-two review renewals, approve/deny/cancel, and stopping after an unknown effect:
+two review renewals, approve/deny/cancel, and stopping after an unknown effect.
+It also sends a read and two invocation-reviewed writes in one native model
+batch, approves only the first write, denies the second, and checks that all
+three original call IDs receive their corresponding feedback without repeating
+the read or model decision.
 
 ```sh
 cd server

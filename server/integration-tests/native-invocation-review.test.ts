@@ -20,7 +20,7 @@ import { RestateBaselineRunner } from "../src/platforms/restate/runner-adapter/r
 import { LangGraphBaselineRunner } from "../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
 import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mastra-runner.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
-import { scriptedMastraModel, type CapturedRequest } from "../src/evals/mastra-scripted-model.js";
+import { normalizeMastraPrompt, scriptedMastraModel, type CapturedRequest } from "../src/evals/mastra-scripted-model.js";
 import type { PlatformRunner } from "../src/control-plane/ports/runner.js";
 import type { CapabilityManifest } from "../src/capabilities/contracts.js";
 
@@ -51,6 +51,8 @@ test("native invocation review pauses before effects and resumes the original ca
       if (args.owner === "lose-ack") { const error = new Error("Controlled lost write acknowledgement"); error.name = "API_OUTCOME_UNKNOWN"; throw error; }
       return JSON.stringify({ owner: args.owner, saved: true });
     }, "a".repeat(64));
+  let reads = 0;
+  const read = contribution({ id: "review-test", version: "1.0.0" }, "read", "Read a fictional owner", objectSchema({}, []), "read", async () => { reads++; return JSON.stringify({ currentOwner: "Robin" }); }, "a".repeat(64));
   const definition = { ...original.descriptor.definition, approvalMode: "invocation" as const };
   const tool = { ...original, descriptor: { ...original.descriptor, definition }, implementation: { ...original.implementation, definition } };
   const manifest: CapabilityManifest = { schemaVersion: 1, id: definition.name, version: "1.0.0", kind: "tool",
@@ -58,14 +60,16 @@ test("native invocation review pauses before effects and resumes the original ca
     inputSchema: definition.inputSchema as CapabilityManifest["inputSchema"], requiredScopes: [],
     source: { kind: "package", ref: "review-test", digest: "a".repeat(64) } };
   const profile: CapabilityProfile = { id: "review-agent", version: "1.0.0", displayName: "Review agent", description: "Native review proof",
-    policy: { schemaVersion: 1, policyId: "review-agent", version: "1.0.0", allowedCapabilityIds: [definition.name],
-      allowedRiskClasses: ["write"], requiredApprovalRiskClasses: ["write"], allowedConnectionRefs: [],
+    policy: { schemaVersion: 1, policyId: "review-agent", version: "1.0.0", allowedCapabilityIds: [definition.name, read.descriptor.definition.name],
+      allowedRiskClasses: ["read", "write"], requiredApprovalRiskClasses: ["write"], allowedConnectionRefs: [],
       maxTimeoutMs: 30_000, maxInputBytes: 65_536, maxOutputBytes: 262_144 },
     grants: [{ schemaVersion: 1, capabilityId: definition.name, version: "1.0.0", enabled: true, allowedOperations: ["execute"],
-      approvalMode: "invocation", timeoutMs: 30_000, maxInputBytes: 65_536, maxOutputBytes: 262_144 }] };
-  const catalog = new CapabilityCatalog([manifest], [profile], undefined, undefined, { connectedEnabled: true, toolDescriptors: [tool.descriptor] });
+      approvalMode: "invocation", timeoutMs: 30_000, maxInputBytes: 65_536, maxOutputBytes: 262_144 }, { schemaVersion: 1, capabilityId: read.descriptor.definition.name, version: "1.0.0", enabled: true, allowedOperations: ["execute"], approvalMode: "none", timeoutMs: 30_000, maxInputBytes: 65_536, maxOutputBytes: 262_144 }] };
+  const readManifest: CapabilityManifest = { ...manifest, id: read.descriptor.definition.name, displayName: "Read owner", description: read.descriptor.definition.description, risk: "read", inputSchema: read.descriptor.definition.inputSchema as CapabilityManifest["inputSchema"] };
+  const modelFactory = (admitted: Parameters<typeof scriptedMastraModel>[0]) => admitted.task.prompt === "[mixed-review-batch]" ? mixedBatchModel(admitted, captures, definition.name, read.descriptor.definition.name) : scriptedMastraModel(admitted, captures);
+  const catalog = new CapabilityCatalog([manifest, readManifest], [profile], undefined, undefined, { connectedEnabled: true, toolDescriptors: [tool.descriptor, read.descriptor] });
   let app = Fastify();
-  let host = new CapabilityHost(evidence, [tool], key, sessions, reviews);
+  let host = new CapabilityHost(evidence, [tool, read], key, sessions, reviews);
   host.register(app);
   const renewReview = async (runId: string, requestId: string) => {
     const previous = await reviews.get(runId, requestId);
@@ -91,7 +95,7 @@ test("native invocation review pauses before effects and resumes the original ca
   const selected = new Set((process.env.AGENTLAB_REVIEW_PLATFORMS ?? "mastra,temporal,langgraph,restate").split(","));
   try {
     const config = loadServerConfig(environment, resolve(".."));
-    if (selected.has("mastra")) runners.push(new MastraBaselineRunner({ contextRoot, modelFactory: manifest => scriptedMastraModel(manifest, captures) }));
+    if (selected.has("mastra")) runners.push(new MastraBaselineRunner({ contextRoot, modelFactory }));
     if (selected.has("temporal")) {
       const worker = start(process.execPath, [resolve("dist/src/platforms/temporal/runner-adapter/worker-entry.js")], environment);
       children.push(worker); nativeProcesses.set("temporal", worker);
@@ -132,7 +136,7 @@ test("native invocation review pauses before effects and resumes the original ca
       reviews = new InvocationReviewStore(root, () => reviewClock);
       sessions = new ContextSessionStore(contextRoot);
       app = Fastify();
-      host = new CapabilityHost(evidence, [tool], key, sessions, reviews);
+      host = new CapabilityHost(evidence, [tool, read], key, sessions, reviews);
       host.register(app);
       await app.listen({ host: "127.0.0.1", port: address.port });
       service = new RunService({ config, evidence, reviews, renewReview, capabilities: catalog,
@@ -141,7 +145,7 @@ test("native invocation review pauses before effects and resumes the original ca
       assert.equal(effects, before);
       const worker = nativeProcesses.get(runner.platform);
       if (runner.platform === "mastra") {
-        const replacement = new MastraBaselineRunner({ contextRoot, modelFactory: manifest => scriptedMastraModel(manifest, captures) });
+        const replacement = new MastraBaselineRunner({ contextRoot, modelFactory });
         const index = runners.indexOf(runner);
         runners[index] = replacement;
         service = new RunService({ config, evidence, reviews, renewReview, capabilities: catalog,
@@ -205,6 +209,37 @@ test("native invocation review pauses before effects and resumes the original ca
       reports.push({ platform: runner.platform, runId: created.runId, status: completed.status, effects: effects - before, waitingRestart: !!worker || runner.platform === "mastra", apiHostRestart: true, reviewRenewals: 2 });
     });
     const mastra = runners.find(value => value.platform === "mastra");
+    if (mastra) await t.test("mixed native batch gates each write independently", async () => {
+      const before = effects, beforeReads = reads;
+      const created = await service.createRun({ platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "[mixed-review-batch]" },
+        model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16_384 },
+        capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
+      await waitFor(service, created.runId, view => view.status === "suspended");
+      assert.equal(effects, before);
+      let pending = (await service.actions(created.runId)).find(value => value.status === "pending")!;
+      assert.equal(pending.call.toolCallId, "mixed-write-first");
+      await service.decideAction(created.runId, pending.requestId, { requestId: pending.requestId, revision: pending.revision,
+        argumentDigest: pending.argumentDigest, decisionId: randomUUID(), decision: "approved" });
+      await waitFor(service, created.runId, view => view.status === "suspended" && view.events.some(event =>
+        event.kind === "WorkflowSuspended" && event.payload.toolCallId === "mixed-write-second"));
+      assert.equal(effects, before + 1, "Approving one write must not approve another call in its batch");
+      pending = (await service.actions(created.runId)).find(value => value.status === "pending")!;
+      assert.equal(pending.call.toolCallId, "mixed-write-second");
+      await service.decideAction(created.runId, pending.requestId, { requestId: pending.requestId, revision: pending.revision,
+        argumentDigest: pending.argumentDigest, decisionId: randomUUID(), decision: "denied", reason: "Decline second write" });
+      const completed = await waitFor(service, created.runId, view => !!view.result);
+      assert.equal(completed.status, "completed", JSON.stringify(completed.result));
+      assert.equal(effects, before + 1);
+      assert.equal(reads, beforeReads + 1);
+      const requests = captures.filter(value => value.runId === created.runId);
+      assert.equal(requests.length, 2, "Human decisions must resume the original model batch without repeated inference");
+      const feedback = requests[1]!.messages.filter(value => value.role === "tool");
+      assert.deepEqual(feedback.map(value => value.toolCallId).sort(), ["mixed-read", "mixed-write-first", "mixed-write-second"]);
+      assert.match(feedback.find(value => value.toolCallId === "mixed-read")!.content, /Robin/);
+      assert.match(feedback.find(value => value.toolCallId === "mixed-write-first")!.content, /First/);
+      assert.match(feedback.find(value => value.toolCallId === "mixed-write-second")!.content, /TOOL_APPROVAL_DENIED/);
+      reports.push({ platform: "mastra", outcome: "mixed-batch", runId: created.runId, effects: effects - before, reads: reads - beforeReads });
+    });
     if (mastra) await t.test("unknown effect stops Mastra inference", async () => {
       const before = effects;
       const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "lose-ack" } })).toString("base64url")}]`;
@@ -278,4 +313,22 @@ async function waitFor(service: RunService, runId: string, predicate: (run: RunV
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   throw new Error(`Native review deadline: ${runId}`);
+}
+
+function mixedBatchModel(manifest: Parameters<typeof scriptedMastraModel>[0], captures: CapturedRequest[], writeName: string, readName: string): ReturnType<typeof scriptedMastraModel> {
+  return {
+    specificationVersion: "v2", provider: "agentlab.eval", modelId: manifest.model.model, supportedUrls: {},
+    doGenerate: async ({ prompt }: { prompt: unknown }) => {
+      const messages = normalizeMastraPrompt(prompt);
+      const calls = messages.some(message => message.role === "tool") ? [] : [
+        { callId: "mixed-read", toolName: readName, input: {} },
+        { callId: "mixed-write-first", toolName: writeName, input: { owner: "First" } },
+        { callId: "mixed-write-second", toolName: writeName, input: { owner: "Second" } },
+      ];
+      captures.push({ runId: manifest.runId, sequence: captures.filter(value => value.runId === manifest.runId).length + 1, messages, responseToolCalls: calls });
+      return { content: calls.length ? calls.map(call => ({ type: "tool-call", toolCallId: call.callId, toolName: call.toolName, input: JSON.stringify(call.input) })) : [{ type: "text", text: "Mixed batch finished." }],
+        finishReason: calls.length ? "tool-calls" : "stop", usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20 }, warnings: [] };
+    },
+    doStream: async () => { throw new Error("Mixed batch uses generate."); },
+  } as unknown as ReturnType<typeof scriptedMastraModel>;
 }
