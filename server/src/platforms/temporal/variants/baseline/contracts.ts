@@ -1,3 +1,4 @@
+import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
 import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
 import type { ToolCall, ToolDefinition, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
@@ -6,6 +7,7 @@ import type { ConnectionBinding } from "../../../../capabilities/integrations/co
 export const BASELINE_WORKFLOW_TYPE = "temporalBaselineWorkflow";
 export const BASELINE_QUERY_NAME = "baselineSnapshot";
 export const BASELINE_CANCEL_SIGNAL = "baselineCancel";
+export const BASELINE_REVIEW_SIGNAL = "baselineReviewDecision";
 
 export type TemporalModelProvider = "fake" | "openrouter";
 export type TemporalFailureKind =
@@ -102,7 +104,8 @@ export interface TemporalRunError {
 
 export interface TemporalWorkflowSnapshot {
   readonly runId: string;
-  readonly status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  readonly status: "queued" | "running" | "suspended" | "completed" | "failed" | "cancelled";
+  readonly pendingReview?: InvocationReviewView | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly eventIntents: readonly TemporalEventIntent[];

@@ -89,3 +89,33 @@ it. Unknown dispatch outcomes stop the turn and are never automatically retried.
 
 The workflow projects declarations before model calls. A `ctx.run` action owns
 host dispatch with one attempt, preserving the result in the native journal.
+
+### Invocation review
+
+Tools configured with `approvalMode: "invocation"` persist a proposal in a short
+journaled preparation step before provider dispatch. The workflow stores the
+pending request and exposes it through `progress`; the runner projects this as
+`suspended`. Human waiting uses a durable promise keyed by request ID and revision,
+not a held external-I/O action. The `reviewDecision` shared handler checks request,
+revision and original tool-call identity before resolving the promise. Denial is
+correlated tool feedback; approval continues the original journaled tool step.
+The host independently validates the durable approval before dispatch.
+
+Pending review survives service replacement through Restate state and journal.
+This specifically establishes waiting-state continuation, not automatic repair of
+unknown external effects. Cancellation uses the existing invocation cancellation
+path; the common review store invalidates dispatch permission.
+
+## Exact-action review and renewal
+
+The workflow persists proposal preparation through `ctx.run` and waits on a durable
+promise keyed by request and revision. Its shared decision handler validates the
+pending identity. Approval/denial resolves only that revision. A renewal resolves
+the old wait with the next revision, then a distinct journaled preparation reads
+the current proposal and creates its new wait. No inference or source effect runs
+during renewal. Replaying history retains completed batch results and cannot
+reuse the old resolved promise to approve a changed review.
+
+Effect certainty, presentation validity and original content blocks remain in
+native evidence. The text-only model projection includes text and structured JSON;
+unsupported media is identified explicitly instead of silently claimed as perceived.

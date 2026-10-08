@@ -1,3 +1,4 @@
+import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import * as clients from "@restatedev/restate-sdk-clients";
 import { tableFromIPC } from "apache-arrow";
 
@@ -7,6 +8,7 @@ import type {
   RunnerCancellationResult,
   RunnerConnectivity,
   RunnerInspection,
+  RunnerResumeResult,
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
 import {
@@ -34,6 +36,7 @@ export interface RestateWorkflowClient {
   workflowSubmit(input: RestateWorkflowInput, options?: unknown): Promise<RestateWorkflowSubmission>;
   workflowOutput(): Promise<{ readonly ready: boolean; readonly result?: RestateWorkflowResult }>;
   progress?(): Promise<RestateWorkflowProgress | null>;
+  reviewDecision?(input: InvocationResumeInput): Promise<{ accepted: boolean }>;
 }
 
 export interface RestateIngress {
@@ -199,6 +202,21 @@ export class RestateBaselineRunner implements PlatformRunner {
     return { accepted: true, alreadyTerminal: false, message: "Restate accepted the cancellation request; terminal state is asynchronous." };
   }
 
+  async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const decision = input as InvocationResumeInput;
+    if (!decision || decision.kind !== "invocation_review" || typeof decision.requestId !== "string" ||
+        !Number.isInteger(decision.revision) || typeof decision.toolCallId !== "string" ||
+        typeof decision.decisionId !== "string" || !["approved", "denied", "renewed"].includes(decision.decision)) {
+      throw new Error("Restate requires an identified invocation review decision.");
+    }
+    const native = nativeReferenceFromExecution(reference);
+    const client = this.workflowClient(native.workflowKey);
+    if (!client.reviewDecision) throw new Error("The deployed workflow does not support invocation review.");
+    const response = await client.reviewDecision(decision);
+    return { accepted: response.accepted, alreadyTerminal: false,
+      message: response.accepted ? "Decision delivered to the existing workflow." : "The workflow is not awaiting this proposal." };
+  }
+
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const native = nativeReferenceFromExecution(reference);
     let terminalOutputError: unknown = null;
@@ -235,7 +253,7 @@ export class RestateBaselineRunner implements PlatformRunner {
       return cancellationInspection(updatedReference, native, invocation, progress);
     }
     return {
-      status: nativeStatus,
+      status: progress?.pendingReview ? "suspended" : nativeStatus,
       reference: updatedReference,
       eventIntents: progress?.eventIntents ?? [],
       result: null,

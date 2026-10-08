@@ -108,3 +108,44 @@ it. Unknown dispatch outcomes stop the turn and are never automatically retried.
 
 Workflow code projects declarations and validates calls without host I/O. The
 `executeTool` Activity owns authenticated host dispatch and native cancellation.
+
+### Invocation review
+
+Tools configured with `approvalMode: "invocation"` persist a proposal in a short
+`prepareInvocation` Activity before any provider dispatch. The Workflow exposes
+`suspended` and its pending request through `baselineSnapshot`, then waits for
+`baselineReviewDecision` using a Workflow condition. Review request, revision and
+original tool-call identity must match. Approval continues the existing call;
+denial becomes correlated tool feedback without dispatch. Cancellation wakes the
+wait and settles the existing turn. Human waiting does not hold a tool Activity
+or consume a provider deadline.
+
+Workflow history retains the waiting state across worker replacement. This does
+not promise recovery of an arbitrary external effect. The host independently
+checks the persisted decision immediately before provider dispatch. Tool Activities
+send heartbeats while awaiting I/O so the server can deliver cancellation and
+longer operations do not trigger the one-second heartbeat deadline.
+
+The isolated actual-worker check is:
+
+```sh
+AGENTLAB_RUN_TEMPORAL_TOOL_HEARTBEAT=1 node --test dist/integration-tests/temporal-tool-heartbeat.test.js
+```
+
+Run it from `server/` after building, with a reachable local Temporal server. It
+starts its own worker/task queue, verifies a 1.5-second MCP read completes, then
+cancels a second in-flight read without retrying it.
+
+## Exact-action review and renewal
+
+Proposal persistence runs in a short heartbeating Activity. Human waiting stays
+in Workflow state and uses a validated signal; no tool Activity or model call
+remains active while waiting. Signals bind request ID, call ID and current revision.
+A renewal accepts only the next revision, fetches its proposal in a fresh Activity
+and remains suspended. It cannot dispatch an operation or authorize that revision.
+Approval/denial must subsequently target the renewed proposal. Cancellation wins
+before a renewed or approved source dispatch. Temporal history retains the wait,
+renewal and continuation separately from business effects.
+
+Tool events retain effect certainty, presentation validity and original content.
+Model tool messages use explicit text/JSON projection and identify unsupported media.

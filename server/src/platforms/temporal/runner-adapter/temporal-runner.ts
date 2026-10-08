@@ -1,3 +1,4 @@
+import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import { getFreeEvalSettings } from "../../../models/openrouter/free-model-policy.js";
 import {
   Client,
@@ -14,9 +15,10 @@ import type {
   RunnerCancellationResult,
   RunnerConnectivity,
   RunnerInspection,
+  RunnerResumeResult,
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
-import { baselineCancelSignal, baselineSnapshotQuery, temporalBaselineWorkflow } from "../variants/baseline/workflow.js";
+import { baselineCancelSignal, baselineSnapshotQuery, baselineReviewSignal, temporalBaselineWorkflow } from "../variants/baseline/workflow.js";
 import type {
   TemporalEventIntent,
   TemporalWorkflowInput,
@@ -149,6 +151,25 @@ export class TemporalBaselineRunner implements PlatformRunner {
 
     await handle.signal(baselineCancelSignal, reason || "Cancellation requested.");
     return { accepted: true, alreadyTerminal: false, message: reason || "Cancellation requested." };
+  }
+
+  async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const value = input as InvocationResumeInput;
+    if (!value || value.kind !== "invocation_review" || typeof value.requestId !== "string" ||
+        !Number.isInteger(value.revision) || typeof value.toolCallId !== "string" ||
+        typeof value.decisionId !== "string" || !["approved", "denied", "renewed"].includes(value.decision)) {
+      throw new Error("Temporal requires an identified invocation review decision.");
+    }
+    const handle = this.handle(reference);
+    const description = await handle.describe();
+    if (isTerminalStatus(description.status.name)) return { accepted: false, alreadyTerminal: true, message: "Workflow is terminal." };
+    const snapshot = await handle.query<TemporalWorkflowSnapshot>(baselineSnapshotQuery);
+    const pending = snapshot.pendingReview;
+    if (!pending || pending.requestId !== value.requestId || (value.decision === "renewed" ? value.revision !== pending.revision + 1 : value.revision !== pending.revision) || pending.call.toolCallId !== value.toolCallId) {
+      return { accepted: false, alreadyTerminal: false, message: "The workflow is not awaiting this proposal." };
+    }
+    await handle.signal(baselineReviewSignal, value);
+    return { accepted: true, alreadyTerminal: false, message: "Invocation review decision signalled to the existing workflow." };
   }
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {

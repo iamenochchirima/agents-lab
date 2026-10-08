@@ -1,3 +1,4 @@
+import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import { getFreeEvalSettings } from "../../../../models/openrouter/free-model-policy.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
 import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
@@ -49,6 +50,7 @@ export interface RestateWorkflowInput {
 
 /** Bounded native events visible while the workflow is still executing. */
 export interface RestateWorkflowProgress {
+  readonly pendingReview?: InvocationReviewView | null;
   readonly schemaVersion: 1;
   readonly runId: string;
   readonly startedAt: string;

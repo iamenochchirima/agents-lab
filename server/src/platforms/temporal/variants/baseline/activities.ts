@@ -1,4 +1,4 @@
-import { createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
+import { prepareToolInvocation, createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 
 import { ContextService, ContextSessionStore, CharacterTokenEstimator, type ContextSummaryGenerator } from "../../../../capabilities/context/index.js";
@@ -78,7 +78,16 @@ export async function requestModel(input: ModelRequestInput): Promise<ModelCallR
 }
 
 export async function executeTool(input: TemporalToolExecutionInput): Promise<ToolExecutionResult> {
-  return executeToolWithSignal(input, cancellationSignal());
+  // Temporal delivers cancellation through heartbeats. Keep the Activity alive
+  // while the connected provider is working; the tool's own deadline still wins.
+  const beat = () => heartbeat({ toolCallId: input.call.toolCallId });
+  const heartbeatTimer = setInterval(beat, 250);
+  try {
+    beat();
+    return await executeToolWithSignal(input, cancellationSignal());
+  } finally {
+    clearInterval(heartbeatTimer);
+  }
 }
 
 /** Testable core of the Activity boundary; production calls provide Temporal's signal. */
@@ -97,7 +106,19 @@ export async function executeToolWithSignal(input: TemporalToolExecutionInput, s
   });
 }
 
-export const baselineActivities = { prepareContext, requestModel, executeTool };
+/** Proposal persistence is a short I/O Activity; human waiting stays in Workflow state. */
+export async function prepareInvocation(input: TemporalToolExecutionInput) {
+  if (!input.toolCatalog) return null;
+  const timer = setInterval(() => heartbeat({ toolCallId: input.call.toolCallId }), 250);
+  try {
+    heartbeat({ toolCallId: input.call.toolCallId });
+    return await prepareToolInvocation(input.toolCatalog, input.call, {
+      runId: input.runId, turnId: input.turnId, signal: cancellationSignal(),
+    });
+  } finally { clearInterval(timer); }
+}
+
+export const baselineActivities = { prepareContext, requestModel, executeTool, prepareInvocation };
 
 async function loadContextMessages(rootDirectory: string, sessionId: string, snapshotId: string): Promise<readonly import("../../../../capabilities/context/contracts.js").ContextMessage[]> {
   const store = new ContextSessionStore(rootDirectory);

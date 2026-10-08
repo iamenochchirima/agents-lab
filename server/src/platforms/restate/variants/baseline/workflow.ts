@@ -1,3 +1,6 @@
+import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
+import type { InvocationResumeInput, InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
+import { prepareToolInvocation } from "../../../../capabilities/extensions/runtime.js";
 import { createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
 import { createProjectedToolRegistry } from "../../../../capabilities/extensions/projection.js";
 import * as restate from "@restatedev/restate-sdk";
@@ -47,7 +50,20 @@ export const baselineWorkflow = restate.workflow({
   name: RESTATE_SERVICE_NAME,
   handlers: {
     progress: restate.handlers.workflow.shared(async (ctx: restate.WorkflowSharedContext): Promise<RestateWorkflowProgress | null> => {
-      return ctx.get<RestateWorkflowProgress>("progress");
+      const progress = await ctx.get<RestateWorkflowProgress>("progress");
+      return progress ? { ...progress, pendingReview: await ctx.get("pendingReview") } : null;
+    }),
+    reviewDecision: restate.handlers.workflow.shared(async (ctx: restate.WorkflowSharedContext, decision: InvocationResumeInput): Promise<{ accepted: boolean }> => {
+      const pending = await ctx.get<import("../../../../capabilities/reviews/contracts.js").InvocationReviewView>("pendingReview");
+      if (!decision || decision.kind !== "invocation_review" || !pending ||
+          decision.requestId !== pending.requestId || (decision.decision === "renewed" ? decision.revision !== pending.revision + 1 : decision.revision !== pending.revision) ||
+          decision.toolCallId !== pending.call.toolCallId || typeof decision.decisionId !== "string" ||
+          !["approved", "denied", "renewed"].includes(decision.decision)) return { accepted: false };
+      const promise = ctx.promise<InvocationResumeInput>(`approval:${decision.requestId}:${pending.revision}`);
+      const prior = await promise.peek();
+      if (prior) return { accepted: prior.decisionId === decision.decisionId && prior.decision === decision.decision };
+      await promise.resolve(decision);
+      return { accepted: true };
     }),
     run: async (ctx: restate.WorkflowContext, input: RestateWorkflowInput): Promise<RestateWorkflowResult> => {
       const events: RunEventIntent[] = [];
@@ -416,6 +432,44 @@ export const baselineWorkflow = restate.workflow({
               continue;
             }
 
+            if (validation.definition.approvalMode === "invocation" && input.toolCatalog) {
+              const initialReview = await ctx.run(`tool.prepare.${round}.${index + 1}.${stableStepId(call.toolCallId)}`,
+                () => prepareToolInvocation(input.toolCatalog!, validation.call, {
+                  runId: input.runId, turnId, signal: ctx.request().attemptCompletedSignal,
+                }), { maxRetryAttempts: 1 });
+              if (initialReview) {
+                let review: InvocationReviewView = initialReview;
+                let decision: InvocationResumeInput["decision"] | undefined = review.decision?.decision;
+                while (review.status === "pending" || review.status === "expired") {
+                  ctx.set("pendingReview", review);
+                  await record("WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
+                    revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
+                  const resumed: InvocationResumeInput = await ctx.promise<InvocationResumeInput>(`approval:${review.requestId}:${review.revision}`);
+                  decision = resumed.decision;
+                  if (decision === "renewed") {
+                    const renewed: InvocationReviewView | null = await ctx.run(`tool.renew.${round}.${index + 1}.${stableStepId(call.toolCallId)}.${resumed.revision}`,
+                      () => prepareToolInvocation(input.toolCatalog!, validation.call, {runId: input.runId, turnId,
+                        signal: ctx.request().attemptCompletedSignal}), {maxRetryAttempts: 1});
+                    if (!renewed || renewed.requestId !== review.requestId || renewed.revision !== resumed.revision || renewed.status !== "pending") throw new restate.TerminalError("The renewed proposal does not match this waiting action.");
+                    await record("InvocationReviewRenewed", {requestId: review.requestId, revision: renewed.revision, toolCallId: call.toolCallId});
+                    review = renewed;
+                    continue;
+                  }
+                  ctx.clear("pendingReview");
+                  await record("WorkflowResumed", { reason: "invocation_review", requestId: review.requestId,
+                    toolCallId: call.toolCallId, decision });
+                  break;
+                }
+                if (review.status === "cancelled") throw new restate.TerminalError("The review was cancelled.");
+                if (decision === "denied") {
+                  messages = [...messages, toolResultMessage(resultId, call.name,
+                    toolErrorContent("TOOL_APPROVAL_DENIED", "The proposed action was declined."))];
+                  await recordTool("ToolPolicyDenied", call, { round, attempt: 1, code: "TOOL_APPROVAL_DENIED" });
+                  continue;
+                }
+              }
+            }
+
             toolAttemptCount += 1;
             const toolPhase = { name: `tool_execution_${round}_${index + 1}`, startedAt: await ctx.date.toJSON(), finishedAt: null as string | null };
             phases.push(toolPhase);
@@ -432,11 +486,11 @@ export const baselineWorkflow = restate.workflow({
               { maxRetryAttempts: 1 },
             );
             await completePhase(toolPhase);
-            await recordTool(toolEventKind(toolResult), call, toolPayload(toolResult, round));
+            await recordTool(toolEventKind(toolResult), call, { ...toolPayload(toolResult, round), ...toolResultEvidence(toolResult) });
             if (input.liveEval || (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-"))) {
               await record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
             }
-            messages = [...messages, toolResultMessage(resultId, call.name, toolResult.content)];
+            messages = [...messages, toolResultMessage(resultId, call.name, projectToolResult(toolResult).content)];
 
             if (toolResult.status !== "completed" && !(toolResult.status === "failed" && validation.definition.failurePolicy === "feedback")) {
               executionHalted = true;

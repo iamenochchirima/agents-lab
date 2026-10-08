@@ -1,6 +1,9 @@
+import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
+import type { InvocationResumeInput, InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import { createProjectedToolRegistry } from "../../../../capabilities/extensions/projection.js";
 import {
   ActivityFailure,
+  condition,
   CancellationScope,
   TimeoutFailure,
   defineSignal,
@@ -17,6 +20,7 @@ import type { ToolCall, ToolExecutionResult } from "../../../../capabilities/too
 import {
   BASELINE_QUERY_NAME,
   BASELINE_CANCEL_SIGNAL,
+  BASELINE_REVIEW_SIGNAL,
   type ModelCallResult,
   type TemporalEventIntent,
   type TemporalRunError,
@@ -27,7 +31,7 @@ import {
   type TemporalModelMessage,
 } from "./contracts.js";
 
-const { prepareContext, requestModel, executeTool } = proxyActivities<typeof baselineActivities>({
+const { prepareContext, requestModel, executeTool, prepareInvocation } = proxyActivities<typeof baselineActivities>({
   startToCloseTimeout: "30s",
   heartbeatTimeout: "1s",
   retry: { maximumAttempts: 1 },
@@ -42,6 +46,7 @@ const DEFAULT_TOOL_CONFIGURATION = Object.freeze({
 
 export const baselineSnapshotQuery = defineQuery<TemporalWorkflowSnapshot>(BASELINE_QUERY_NAME);
 export const baselineCancelSignal = defineSignal<[string]>(BASELINE_CANCEL_SIGNAL);
+export const baselineReviewSignal = defineSignal<[InvocationResumeInput]>(BASELINE_REVIEW_SIGNAL);
 
 /**
  * One Temporal execution owns one model-backed turn. Event intents live in
@@ -62,6 +67,8 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   const eventIntents: TemporalEventIntent[] = [];
   const phases: { name: string; startedAt: string; finishedAt: string | null }[] = [];
   let cancellationRequested = false;
+  let pendingReview: InvocationReviewView | null = null;
+  let reviewDecision: InvocationResumeInput | null = null;
   let currentActivityScope: CancellationScope | null = null;
   let contextSnapshotId: string | null = null;
   let contextRecoveryUsed = false;
@@ -80,8 +87,18 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     error,
     attemptCount,
     usage,
+    pendingReview,
   });
   setHandler(baselineSnapshotQuery, snapshot);
+  setHandler(baselineReviewSignal, decision => {
+    if (cancellationRequested || !pendingReview || decision.kind !== "invocation_review" ||
+        decision.requestId !== pendingReview.requestId || (decision.decision === "renewed" ? decision.revision !== pendingReview.revision + 1 : decision.revision !== pendingReview.revision) ||
+        decision.toolCallId !== pendingReview.call.toolCallId ||
+        !["approved", "denied", "renewed"].includes(decision.decision)) return;
+    // The control plane persists/authenticates the decision; the host rechecks it
+    // before dispatch. Repeated signal delivery cannot replace the first value.
+    reviewDecision ??= decision;
+  });
 
   const record = (kind: string, payload: Record<string, unknown> = {}): void => {
     eventSequence += 1;
@@ -401,6 +418,58 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           continue;
         }
 
+        if (validation.definition.approvalMode === "invocation") {
+          currentActivityScope = new CancellationScope();
+          let review: InvocationReviewView | null;
+          try {
+            review = await currentActivityScope.run(() => prepareInvocation({ runId: input.runId,
+              turnId: input.context?.turnId ?? `${input.runId}:turn:1`,
+              enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames,
+              toolCatalog: input.toolCatalog, call: validation.call }));
+          } finally { currentActivityScope = null; }
+          if (cancellationRequested) return cancel(attemptCount);
+          if (review) {
+            let decision: InvocationResumeInput["decision"] | undefined = review.decision?.decision;
+            while (review.status === "pending" || review.status === "expired") {
+              pendingReview = review;
+              reviewDecision = null;
+              status = "suspended";
+              record("WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
+                revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
+              await condition(() => reviewDecision !== null || cancellationRequested);
+              if (cancellationRequested) return cancel(attemptCount);
+              const resumed = reviewDecision as InvocationResumeInput | null;
+              decision = resumed?.decision;
+              if (decision === "renewed") {
+                currentActivityScope = new CancellationScope();
+                let renewed: InvocationReviewView | null;
+                try {
+                  renewed = await currentActivityScope.run(() => prepareInvocation({runId: input.runId,
+                    turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames,
+                    approvedNames: toolConfiguration.approvedNames, toolCatalog: input.toolCatalog, call: validation.call}));
+                } finally { currentActivityScope = null; }
+                if (cancellationRequested) return cancel(attemptCount);
+                if (!renewed || renewed.requestId !== review.requestId || renewed.revision !== resumed!.revision || renewed.status !== "pending") throw new Error("The renewed proposal does not match this waiting action.");
+                record("InvocationReviewRenewed", {requestId: review.requestId, revision: renewed.revision, toolCallId: call.toolCallId});
+                review = renewed;
+                continue;
+              }
+              pendingReview = null;
+              status = "running";
+              record("WorkflowResumed", { reason: "invocation_review", requestId: review.requestId,
+                toolCallId: call.toolCallId, decision });
+              break;
+            }
+            if (review.status === "cancelled") return cancel(attemptCount);
+            if (decision === "denied") {
+              continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name,
+                toolErrorContent("TOOL_APPROVAL_DENIED", "The proposed action was declined."))];
+              record("ToolPolicyDenied", { ...toolEventPayload(validation.call, 1), code: "TOOL_APPROVAL_DENIED" });
+              continue;
+            }
+          }
+        }
+
         toolAttemptCount += 1;
         const toolPhase = { name: `tool_execution_${round}_${toolAttemptCount}`, startedAt: timestamp(), finishedAt: null as string | null };
         phases.push(toolPhase);
@@ -429,11 +498,11 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           currentActivityScope = null;
         }
         finishPhase(toolPhase);
-        record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...(toolResult.connection ? { connection: toolResult.connection } : {}), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
+        record(toolEventKind(toolResult), { ...toolEventPayload(validation.call, 1), status: toolResult.status, durationMs: toolResult.durationMs, resultBytes: byteLength(toolResult.content), ...toolResultEvidence(toolResult), ...(toolResult.connection ? { connection: toolResult.connection } : {}), ...(toolResult.error ? { code: toolResult.error.code, message: toolResult.error.message } : {}) });
         if (input.liveEval || (input.model.provider === "fake" && input.model.model.startsWith("fake-eval-"))) {
           record("EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, round, status: toolResult.status, output: toolResult.content });
         }
-        continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, toolResult.content)];
+        continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name, projectToolResult(toolResult).content)];
         if (toolResult.status === "failed" && validation.definition.failurePolicy === "feedback") continue;
         if (toolResult.status !== "completed") {
           const failure = temporalFailure(
