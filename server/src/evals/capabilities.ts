@@ -106,8 +106,8 @@ async function main() {
     const workspaceAssertions = {
       twoCompletedTurns: runs.length === 2 && runs.every(value => value.status === "completed"),
       retainedToolEvidence: toolEvidence.length === 2 && toolEvidence.every(value => value.error === null),
-      procedureLoaded: successful(initial, "load_skill").length > 0,
-      referenceRead: successful(initial, "read_skill_resource").some(call => call.path === "references/report-format.md"),
+      procedureLoaded: successful(initial, "load_skill").some(call => call.skill === "evidence-report"),
+      referenceRead: successful(initial, "read_skill_resource").some(call => call.skill === "evidence-report" && call.path === "references/report-format.md"),
       workspaceRead: successful(initial, "read_file").some(call => call.path !== "artifacts/cedar-report.md"),
       reportWritten: successful(initial, "write_file").some(call => call.path === "artifacts/cedar-report.md"),
       initialArtifactVerified: successful(initial, "read_file").some(call => call.path === "artifacts/cedar-report.md"),
@@ -126,7 +126,7 @@ async function main() {
     const assertions = task === "workspace" ? workspaceAssertions : {
       twoCompletedTurns: workspaceAssertions.twoCompletedTurns,
       retainedToolEvidence: workspaceAssertions.retainedToolEvidence,
-      procedureLoaded: workspaceAssertions.procedureLoaded,
+      procedureLoaded: successful(initial, "load_skill").some(call => call.skill === "release-coordination"),
       initialEditVerified: serviceEditVerified(initial), correctionVerified: serviceEditVerified(corrected),
       assignedOwner: records[0]?.owner === "Morgan" && records[0]?.revision === 2,
       correctedOwner: records[1]?.owner === "Avery" && records[1]?.revision === 3,
@@ -146,7 +146,7 @@ async function main() {
   }
 }
 
-interface ObservedCall { callId: string; name: string; status: string; path: string | null; sequence: number | null }
+interface ObservedCall { callId: string; name: string; status: string; path: string | null; skill: string | null; sequence: number | null }
 async function inspectToolEvidence(runsRoot: string, runId: string): Promise<{ runId: string; calls: ObservedCall[]; error: string | null }> {
   const calls: ObservedCall[] = [];
   try {
@@ -157,7 +157,7 @@ async function inspectToolEvidence(runsRoot: string, runId: string): Promise<{ r
       let content: Record<string, unknown> = {};
       try { content = JSON.parse(receipt.result?.content ?? "{}"); } catch { /* Non-JSON tool results have no artifact path. */ }
       const event = events.find(event => event.kind === "ToolExecutionCompleted" && event.payload?.toolCallId === receipt.toolCallId);
-      calls.push({ callId: receipt.toolCallId, name: receipt.toolName, status: receipt.status === "complete" ? receipt.result?.status ?? "unknown" : "unknown", path: typeof content?.path === "string" ? content.path : null, sequence: typeof event?.recordedSequence === "number" ? event.recordedSequence : null });
+      calls.push({ callId: receipt.toolCallId, name: receipt.toolName, status: receipt.status === "complete" ? receipt.result?.status ?? "unknown" : "unknown", path: typeof content?.path === "string" ? content.path : null, skill: typeof content?.name === "string" ? content.name : null, sequence: typeof event?.recordedSequence === "number" ? event.recordedSequence : null });
     }
     calls.sort((a, b) => (a.sequence ?? Infinity) - (b.sequence ?? Infinity));
     return { runId, calls, error: null };
