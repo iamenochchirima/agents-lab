@@ -38,7 +38,10 @@ test('offline source permits startup, explicit refresh discovers tools, revoke b
     assert.equal((await app.inject({ method: 'POST', url: '/api/connections/conn_business/refresh' })).statusCode, 200);
     assert.equal(catalog.list().find(p => p.id === 'remote')?.available, true);
     assert.equal(catalog.list().find(p => p.id === 'remote')?.capabilities[0].connectionRef, 'conn_business');
-    const frozen = catalog.toolSnapshot(['business_lookup']);
+    const resolution = catalog.resolve('remote').resolution;
+    assert.equal(resolution.grants.length, 1);
+    assert.equal(resolution.grants[0].grant.connectionRef, 'conn_business');
+    const frozen = catalog.toolSnapshot(['business_lookup'], resolution);
     const binding = await manager.binding('conn_business');
     assert.deepEqual(await binding.resolveHeaders(new AbortController().signal), {});
     assert.equal((await app.inject({ method: 'POST', url: '/api/connections/conn_business/revoke' })).statusCode, 200);
