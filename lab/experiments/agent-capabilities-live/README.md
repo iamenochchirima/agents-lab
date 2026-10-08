@@ -231,3 +231,40 @@ A subsequent normal run read settled it as `cancelled`; its original report stat
 and failing assertions were preserved. No correction write was observed after that
 request. The driver completed unsuccessfully as required. No further trial was run
 merely to obtain passing scores, and these single observations do not rank frameworks.
+
+## Observer and native budget scopes
+
+New driver reports separate observer interruption from native execution failure.
+`controls.observerBudget` describes the per-turn wall-clock window: it starts before
+admission and includes request latency, polling and suspended review. It is not a
+model request deadline, active execution budget or an equal native timeout across
+platforms. The driver leaves native limits unchanged.
+
+Each run's `nativeConfigurations` retains the admitted platform configuration,
+execution reference and `effectiveBudgets`. These distinguish Mastra's active
+SDK-generation segment from Temporal's per-model-activity StartToClose budget.
+LangGraph's runner HTTP timeout is a transport request limit; it must not be read
+as its model or total-agent deadline. A provider request timeout not retained in the
+manifest remains unknown, with native mapped requests as its evidence source.
+Admitted call/round controls remain alongside these scopes; equal numbers do not
+establish identical SDK step accounting.
+
+When observation ends, `observerTerminations` retains the reason (`deadline` or
+`user-interrupt`), the last observed native status at that boundary, and the one
+cancellation request. A deadline entry never retrospectively changes that original
+status. The driver bounds cancellation acknowledgement to 5 seconds, then inspects
+for at most another 5 seconds. It records the separately observed outcome, any
+control/inspection error and exhaustion of the settlement window. A still-running
+snapshot stays running with `settledStatus: null`; cancellation is not fabricated.
+A native failure or reconciliation-required outcome racing cancellation stays that
+outcome. Uncertain external effects are not resolved by a cancellation response.
+
+This driver neither redispatches the model/tool task nor retries cancellation during
+settlement. Historical reports remain unchanged and do not gain inferred fields.
+This bounded reporting correction does not alone justify rerunning all live tasks.
+Focused controls require no provider calls:
+
+```sh
+pnpm --filter @agent-harness-lab/lab-server run build
+node --test server/dist/tests/evals/observer-termination.test.js
+```

@@ -1,3 +1,4 @@
+import { terminateObservation, describeExecutionBudgets, type ObserverTermination } from "./observer-termination.js";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -68,7 +69,7 @@ async function main() {
   const startedAt = new Date().toISOString();
   let completedAt: string | null = null;
   const experimentId = "agent-capabilities-live";
-  const controls = {platforms, tasks, model: checkedModel, freeOnly: true, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, experimentId, maxRounds: 24, maxCalls: 32, deadlineMs, reviewPolicy: {mode: "local-fixture-only", permittedTool: "support_adjust", amountCents: 500, reason: "late_delivery", productionAuthorization: false}, sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], {cwd: root, encoding: "utf8"}).trim()};
+  const controls = {platforms, tasks, model: checkedModel, freeOnly: true, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, experimentId, maxRounds: 24, maxCalls: 32, deadlineMs, observerBudget: { scope: "per turn, starts before admission and includes admission, polling and suspended review", cancellationDeadlineMs: 5000, settlementWindowMs: 5000, nativeDeadlinesCompared: false }, reviewPolicy: {mode: "local-fixture-only", permittedTool: "support_adjust", amountCents: 500, reason: "late_delivery", productionAuthorization: false}, sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], {cwd: root, encoding: "utf8"}).trim()};
   const workspacePrompts = [
     "Use the available skills to complete the task in brief.md. Discover and load the evidence-report skill and its referenced report-format resource. Inspect the workspace documents, resolve the latest approved Cedar launch date against the older proposal, and write artifacts/cedar-report.md with the dependency, next action and file/line citations. Read the saved report to verify it. Work autonomously with the approved workspace tools.",
     "Revise the saved artifacts/cedar-report.md in this same workspace: add the exact heading 'Immediate action' and explicitly state that a documentation owner must be assigned. Keep the approved launch date and citations. Read the current file first, use its current digest for the edit, and read the saved revision to verify it.",
@@ -84,6 +85,7 @@ async function main() {
     if (!profile) throw new Error(`Configure the ${task}-agent package profile before acceptance.`);
     const sessionId = `cap-${task}-${platform}-${randomUUID()}`, runs: RunView[] = [];
     const reviews: { request: InvocationReviewView; before: unknown; decision: "approved" }[] = [];
+    const observerTerminations: {runId: string; turn: number; observation: ObserverTermination}[] = [];
     const serviceSnapshots: unknown[] = []; let error: string | undefined;
     const prompts = task === "workspace" ? workspacePrompts : task === "support" ? [
       `Use the customer-support skill. In namespace ${sessionId}, inspect Avery's customer eligibility, order-cedar and the late-delivery adjustment policy using MCP. The customer requests exactly 500 cents as a late_delivery adjustment. If policy permits, propose that exact adjustment with the current order revision using support_adjust. Await the platform review before applying it. Read the saved order afterward and report the verified amount and revision. Do not apply the policy maximum unless it is the requested amount.`,
@@ -97,7 +99,15 @@ async function main() {
         const run = await request<RunView>("/api/runs", {method: "POST", body: JSON.stringify({platform, variant: "baseline", sessionId, clientTurnId: `capability-turn-${turn + 1}`, task: {kind: "prompt", prompt: prompts[turn]}, model: {provider: "openrouter", model}, selection: {scenarioId: `${task}-capabilities`, experimentId}, capabilities: {profileId: profile.id, tools: {enabledNames: [], maxRounds: controls.maxRounds, maxCalls: controls.maxCalls}, approvals: profile.capabilities.filter(value => ["write", "external"].includes(value.risk) && value.approvalMode !== "invocation" && value.approvalMode !== "automatic").map(value => ({schemaVersion: 1, decisionId: `approval_${randomUUID()}`, capabilityId: value.id, version: value.version, allowedOperations: value.operations, ...(value.connectionRef ? { connectionRef: value.connectionRef } : {}), decision: "approved", decidedAt: new Date(now).toISOString(), expiresAt: new Date(now + 360000).toISOString()}))}})});
         runs.push(run); const deadline = now + controls.deadlineMs;
         while (["queued", "running", "suspended"].includes(runs.at(-1)!.status)) {
-          if (Date.now() >= deadline || interrupted) { runs[runs.length - 1] = await request<RunView>(`/api/runs/${run.runId}/cancel`, {method: "POST", body: JSON.stringify({reason: "Capability acceptance observation interrupted."})}); throw new Error("Observation interrupted; inspect the native evidence."); }
+          if (Date.now() >= deadline || interrupted) {
+            const reason = interrupted ? "user-interrupt" : "deadline";
+            const ended = await terminateObservation({ reason, snapshot: runs.at(-1)!,
+              cancel: signal => request<RunView>(`/api/runs/${run.runId}/cancel`, {method: "POST", signal, body: JSON.stringify({reason: `Capability acceptance observer ${reason}.`})}),
+              inspect: signal => request<RunView>(`/api/runs/${run.runId}`, {signal}) });
+            runs[runs.length - 1] = ended.snapshot;
+            observerTerminations.push({runId: run.runId, turn: turn + 1, observation: ended.termination});
+            throw new Error(`Observer ${reason}; native status at interruption ${ended.termination.statusAtInterruption}; bounded settled status ${ended.termination.settledStatus ?? "unresolved"}.`);
+          }
           if (task === "support" && runs.at(-1)!.status === "suspended") {
             const proposals = await request<{actions: InvocationReviewView[]}>(`/api/runs/${run.runId}/actions`);
             for (const proposal of proposals.actions.filter(action => action.status === "pending")) {
@@ -175,7 +185,7 @@ async function main() {
       preservedFacts: records.length === 2 && records.every(record => record.approvedDate === "2026-10-22" && record.status === "in_progress" && record.dependency === "Integration documentation incomplete"),
     };
     const routingValid = validateCapabilityRouting(runs, model, experimentId);
-    const outcome = {platform, task, profileId: profile.id, prompts, sessionId, runIds: runs.map(value => value.runId), statuses: runs.map(value => value.status), nativeConfigurations: runs.map(value => ({runId: value.runId, platformConfig: value.manifest.platformConfig, executionReference: value.executionReference})), assertions: {...assertions, routingValid}, toolEvidence, verdict: error ? "error" : routingValid && Object.values(assertions).every(Boolean) ? "pass" : "fail", ...(error ? {error} : {}), artifact, serviceSnapshots, reviews};
+    const outcome = {platform, task, profileId: profile.id, prompts, sessionId, runIds: runs.map(value => value.runId), statuses: runs.map(value => value.status), nativeConfigurations: runs.map(value => ({runId: value.runId, platformConfig: value.manifest.platformConfig, effectiveBudgets: describeExecutionBudgets(platform, value.manifest.platformConfig, value.manifest.capabilities?.tools ?? null), executionReference: value.executionReference})), assertions: {...assertions, routingValid}, toolEvidence, verdict: error ? "error" : routingValid && Object.values(assertions).every(Boolean) ? "pass" : "fail", ...(error ? {error} : {}), artifact, serviceSnapshots, reviews, observerTerminations};
     outcomes.push(outcome); await save(); console.log(`${platform} ${task}: ${outcome.verdict}`);
     if (outcome.verdict !== "pass") process.exitCode = 1;
   }
@@ -189,7 +199,7 @@ async function main() {
     return response.json() as Promise<{adjustmentCents: number; revision: number}>;
   }
   async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const response = await fetch(new URL(path, api), {...options, headers: {"content-type": "application/json"}, signal: AbortSignal.timeout(15000)});
+    const response = await fetch(new URL(path, api), {...options, headers: {"content-type": "application/json"}, signal: options.signal ?? AbortSignal.timeout(15000)});
     if (!response.ok) throw new Error(`${path}: HTTP ${response.status} ${await response.text()}`);
     return response.json() as Promise<T>;
   }
