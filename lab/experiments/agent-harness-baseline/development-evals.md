@@ -378,3 +378,48 @@ pass. One observation establishes no stable success rate.
 Regrading uses the current bounded grader `4` and writes a separate immutable
 `artifacts/eval-grader-4.json`; saved grader-3 artifacts remain available. It creates
 no model requests and retains source invocation and original grader lineage.
+
+## Recorded three-trial core selection (2026-10-08)
+
+At implementation revision `dc3a445`, every B01–B12 case has three passing
+scripted-native observations on each of the four baseline variants: **144 selected
+passes**. This is a per-case selection across explicitly retained invocations,
+not a claim that one uninterrupted all-platform command passed cleanly.
+
+| Baseline | Retained invocation | Selected observations |
+| --- | --- | --- |
+| Mastra | `behaviour-d072d1cf-1492-4c02-bcf8-257f1892a233` | B01–B12, trials 1–3: 36 pass |
+| LangGraph | `behaviour-cfb34123-5fe7-403a-a8df-6bfb89c7b189` | B01–B12, trials 1–3: 36 pass |
+| Temporal | `behaviour-ef034c41-d20c-4e4a-80e2-f16aa0d48049` | B01–B05/B07/B09–B12, trials 1–3: 30 pass |
+| Temporal corrected fixture | `behaviour-1d240ec9-19e6-410c-bd12-ff1614c29ee1` | B06/B08, trials 1–3: 6 pass |
+| Restate corrected deployment | `behaviour-0b32c6dc-f8ff-49c2-98e2-afe141bccbb3` | B01–B12, trials 1–3: 36 pass |
+
+All invocation paths are below `lab/runs/.evals/`. The retained selection and
+implementation source audit are in
+`core-readiness-7580ef79-a62b-46db-b75d-2c59bd1a6c3f/`. Before/after tracked
+server/scenario/dependency source digests match
+`b9c60ee8f343c0cc9ca95a5d3c5eecfb81f2f20ef37d58fca3df699427fca6ae`.
+Pre-existing unrelated working-tree changes were present and recorded; they are
+not silently described as a clean checkout.
+
+The original Temporal invocation retains six failures: the live worker omitted
+`AGENTLAB_LOCAL_FIXTURE_URL` and therefore used a process-local connection fixture,
+while the evaluator seeded and inspected its separate HTTP fixture. After fixing
+only that deployment setting, the affected B06/B08 cases passed three times.
+Unaffected cases were not repeated. The original Restate invocation
+`behaviour-5673e3c7-d2a6-47d2-9406-4af0a4fc2dc1` retains an interrupted B01 error.
+Its server had retained an isolated-test deployment at port 29080 after that test
+service stopped; the actual service at 9080 was re-registered before the corrected
+full Restate selection. No historical assertion or grader was changed to pass.
+
+Before future runs, explicitly inspect the **worker/service environment**, not just
+the driver's environment, for `AGENTLAB_LOCAL_FIXTURE_URL`. Absence selects a
+process-local fixture in the TypeScript legacy connection factory; that fixture
+cannot observe the evaluator's independent seed/fault state. For Restate, inspect
+the registered deployment URI as well as the existence of a service name. A stale
+registered URI can pass admission readiness while actual dispatch remains queued.
+
+This meets the bounded three-passing-trials-per-core-case development gate for
+these recorded sources and deployments. It does not establish live-model quality,
+optional capability acceptance, production reliability or readiness for a later
+implementation revision.
