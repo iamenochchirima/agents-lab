@@ -64,3 +64,8 @@ remain immutable alongside them.
 Validation: server build and six focused assessment/result projection tests
 passed on 2026-10-08. Synthetic reviewers appear only in unit fixtures; no actual
 retained trial has been automatically adjudicated.
+
+New live invocation summaries retain their grader version explicitly alongside the
+suite version. Historical summaries without that field remain unchanged. A trial
+inspector may show the matching retained report's grader as **report grader**;
+it must not present an inferred version as original invocation metadata.
