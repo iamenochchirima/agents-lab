@@ -14,6 +14,8 @@ export interface OAuthTokenSet {
   readonly refreshToken: string | null;
   readonly expiresAt: string;
   readonly scopes: readonly string[];
+  /** Internal parsing hint; omitted scope responses retain the granted scopes. */
+  readonly scopesProvided?: boolean;
 }
 
 export interface OAuthProvider {
@@ -37,18 +39,26 @@ export class MemorySecretStore implements SecretStore {
 }
 
 export class OAuthFlow {
-  private readonly pending = new Map<string, { readonly verifier: string; readonly redirectUri: string; readonly scopes: readonly string[] }>();
+  private readonly pending = new Map<string, { readonly ref: string; readonly generation: number; readonly verifier: string; readonly redirectUri: string; readonly scopes: readonly string[]; readonly expiresAt: number; readonly issuer?: string; readonly issuerRequired?: boolean }>();
   private readonly refreshes = new Map<string, RefreshEntry>();
 
-  constructor(private readonly provider: OAuthProvider, private readonly secrets: SecretStore) {}
+  private readonly revoked = new Set<string>();
+  private readonly generations = new Map<string, number>();
+  private readonly secretMutations = new Map<string, Promise<unknown>>();
+  constructor(private readonly provider: OAuthProvider, private readonly secrets: SecretStore, private readonly options: { readonly now?: () => number; readonly stateTtlMs?: number } = {}) {}
 
-  begin(ref: string, authorizationEndpoint: string, redirectUri: string, scopes: readonly string[]): OAuthAuthorizationRequest {
+  begin(ref: string, authorizationEndpoint: string, redirectUri: string, scopes: readonly string[], binding: { readonly clientId?: string; readonly resource?: string; readonly issuer?: string; readonly issuerRequired?: boolean } = {}): OAuthAuthorizationRequest {
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(ref)) throw new Error("OAuth connection reference is unsafe.");
     if (!isExactHttpUrl(redirectUri)) throw new Error("OAuth redirect URI must be an exact HTTP(S) URL.");
     const verifier = base64Url(randomBytes(32));
     const state = base64Url(randomBytes(32));
     const codeChallenge = base64Url(createHash("sha256").update(verifier).digest());
-    this.pending.set(state, { verifier, redirectUri, scopes: [...scopes] });
+    const now = this.options.now?.() ?? Date.now();
+    for (const [key, value] of this.pending) if (value.expiresAt <= now || value.ref === ref) this.pending.delete(key);
+    if (this.pending.size >= 128) throw new Error("Too many pending OAuth authorizations.");
+    this.revoked.delete(ref);
+    const generation = (this.generations.get(ref) ?? 0) + 1; this.generations.set(ref, generation);
+    this.pending.set(state, { ref, generation, verifier, redirectUri, scopes: [...scopes], expiresAt: now + (this.options.stateTtlMs ?? 600_000), ...(binding.issuer ? { issuer: binding.issuer, issuerRequired: binding.issuerRequired } : {}) });
     const url = new URL(authorizationEndpoint);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", state);
@@ -56,17 +66,24 @@ export class OAuthFlow {
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("scope", scopes.join(" "));
+    if (binding.clientId) url.searchParams.set("client_id", binding.clientId);
+    if (binding.resource) url.searchParams.set("resource", binding.resource);
     return { state, codeChallenge, codeChallengeMethod: "S256", redirectUri, scopes: [...scopes], authorizationUrl: url.toString() };
   }
 
-  async complete(ref: string, state: string, code: string, signal?: AbortSignal): Promise<OAuthTokenSet> {
+  async complete(ref: string, state: string, code: string, signal?: AbortSignal, issuer?: string): Promise<OAuthTokenSet> {
     throwIfAborted(signal);
     const pending = this.pending.get(state);
-    if (!pending) throw new Error("OAuth state is missing, expired, or already used.");
+    if (!pending || pending.expiresAt <= (this.options.now?.() ?? Date.now())) { this.pending.delete(state); throw new Error("OAuth state is missing, expired, or already used."); }
+    if (pending.ref !== ref) throw new Error("OAuth state belongs to another connection.");
     this.pending.delete(state);
-    const tokens = await this.provider.exchange(code, pending.verifier, pending.redirectUri, signal);
+    if ((pending.issuerRequired && issuer === undefined) || (issuer !== undefined && issuer !== pending.issuer)) throw new Error("OAuth callback issuer does not match the admitted authorization server.");
+    if (!code || code.length > 8192) throw new Error("OAuth authorization code is invalid.");
+    const received = await this.provider.exchange(code, pending.verifier, pending.redirectUri, signal);
+    const tokens = { ...received, scopes: received.scopesProvided === false ? pending.scopes : received.scopes };
+    if (tokens.scopes.some(scope => !pending.scopes.includes(scope))) throw new Error("OAuth provider returned scopes outside the requested grant.");
     throwIfAborted(signal);
-    await this.secrets.write(ref, tokens);
+    await this.persistActive(ref, pending.generation, tokens);
     return tokens;
   }
 
@@ -74,14 +91,19 @@ export class OAuthFlow {
     throwIfAborted(signal);
     const current = await this.secrets.read(ref);
     if (!current) throw new Error("OAuth connection is not configured.");
-    if (Date.parse(current.expiresAt) > Date.now() + 30_000) return current.accessToken;
+    if (this.revoked.has(ref)) throw new Error("OAuth connection was revoked.");
+    if (Date.parse(current.expiresAt) > (this.options.now?.() ?? Date.now()) + 30_000) return current.accessToken;
     if (!current.refreshToken) throw new Error("OAuth access token expired and no refresh token is available.");
     let entry = this.refreshes.get(ref);
     if (!entry) {
       const controller = new AbortController();
+      const generation = this.generations.get(ref) ?? 0;
       let created: RefreshEntry | undefined;
-      const refresh = this.provider.refresh(current.refreshToken, controller.signal).then(async (tokens) => {
-        await this.secrets.write(ref, tokens);
+      const refresh = this.provider.refresh(current.refreshToken, controller.signal).then(async (received) => {
+        const tokens = { ...received, refreshToken: received.refreshToken ?? current.refreshToken, scopes: received.scopesProvided === false ? current.scopes : received.scopes };
+        if (tokens.scopes.some(scope => !current.scopes.includes(scope))) throw new Error("OAuth refresh attempted to expand the granted scopes.");
+        if (controller.signal.aborted) throw new Error("OAuth refresh was invalidated.");
+        await this.persistActive(ref, generation, tokens);
         return tokens;
       }).finally(() => {
         if (created && this.refreshes.get(ref) === created) this.refreshes.delete(ref);
@@ -110,8 +132,24 @@ export class OAuthFlow {
   async revoke(ref: string, signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     const current = await this.secrets.read(ref);
+    this.revoked.add(ref);
+    this.generations.set(ref, (this.generations.get(ref) ?? 0) + 1);
+    this.refreshes.get(ref)?.controller.abort(new Error("OAuth connection revoked."));
+    for (const [state, pending] of this.pending) if (pending.ref === ref) this.pending.delete(state);
+    await this.serializeSecret(ref, () => this.secrets.delete(ref));
     if (current) await this.provider.revoke(current.refreshToken ?? current.accessToken, signal);
-    await this.secrets.delete(ref);
+  }
+  private persistActive(ref: string, generation: number, tokens: OAuthTokenSet): Promise<void> {
+    return this.serializeSecret(ref, async () => {
+      if (this.revoked.has(ref) || (this.generations.get(ref) ?? 0) !== generation) throw new Error("OAuth grant was invalidated before persistence.");
+      await this.secrets.write(ref, tokens);
+    });
+  }
+  private serializeSecret<T>(ref: string, operation: () => Promise<T>): Promise<T> {
+    const next = (this.secretMutations.get(ref) ?? Promise.resolve()).catch(() => undefined).then(operation);
+    this.secretMutations.set(ref, next);
+    void next.finally(() => { if (this.secretMutations.get(ref) === next) this.secretMutations.delete(ref); }).catch(() => undefined);
+    return next;
   }
 }
 

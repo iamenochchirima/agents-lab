@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,6 +31,10 @@ import { createPackageCapabilityCatalog } from "../../capabilities/extensions/ca
 
 import { loadCapabilityPackages } from "../../capabilities/extensions/packages.js";
 import { CapabilityHost } from "../../capabilities/extensions/host.js";
+import { InvocationReviewStore } from "../../capabilities/reviews/store.js";
+import { ConnectionManager, type ConnectionDefinition } from "../../capabilities/integrations/connections.js";
+import { EncryptedFileSecretStore } from "../../capabilities/integrations/oauth/encrypted-file-store.js";
+import { registerConnectionRoutes } from "../http/connections.js";
 import { capabilityWorkspaceRoot } from "../../capabilities/extensions/runtime.js";
 
 export interface ControlPlaneRuntime {
@@ -93,16 +98,52 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   });
   const defaultPackages = join(capabilityWorkspaceRoot(), "server/capability-packages/example.json");
   const packagePath = process.env.AGENTLAB_CAPABILITY_PACKAGES ?? (existsSync(defaultPackages) ? defaultPackages : undefined);
-  const packages = packagePath ? await loadCapabilityPackages(packagePath) : undefined;
+  const packageBytes = packagePath ? await readFile(packagePath) : undefined;
+  if (packageBytes && packageBytes.length > 262144) throw new Error("Capability configuration exceeds its limit.");
+  const connectionDefinitions: ConnectionDefinition[] = packageBytes ? JSON.parse(packageBytes.toString()).connections ?? [] : [];
+  const secretKey = process.env.AGENTLAB_OAUTH_SECRET_KEY_HEX;
+  const secrets = secretKey && /^[a-f0-9]{64}$/i.test(secretKey)
+    ? EncryptedFileSecretStore.fromEnvironment(join(config.contextRoot, ".oauth-secrets")) : undefined;
+  const connections = await ConnectionManager.create(connectionDefinitions, {
+    stateRoot: join(config.contextRoot, ".connections"), ...(secrets ? { secrets } : {}),
+    ...(!secrets ? { oauthUnavailableReason: "OAuth secret encryption key is not configured." } : {}),
+  });
+  let packages = packagePath ? await loadCapabilityPackages(packagePath, { connections, allowUnavailable: true }) : undefined;
+  const reportAvailability = () => {
+    for (const definition of connectionDefinitions) connections.reportSourceAvailability(definition.ref, null);
+    for (const pkg of packages?.packages ?? []) if (pkg.connectionRef && pkg.unavailableReason) connections.reportSourceAvailability(pkg.connectionRef, pkg.unavailableReason);
+  };
+  reportAvailability();
   const capabilities = packages
     ? createPackageCapabilityCatalog(packages, config.connectedCapabilitiesEnabled)
     : createDefaultCapabilityCatalog(undefined, { connectedEnabled: config.connectedCapabilitiesEnabled });
-  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities });
+  const reviews = new InvocationReviewStore(config.runsRoot);
+  const host = packages ? await CapabilityHost.create(evidence, packages.tools, sessions, reviews) : undefined;
+  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities, reviews,
+    ...(host ? { renewReview: async (runId: string, requestId: string) => {
+      const previous = await reviews.get(runId, requestId);
+      const renewed = await host.prepare({ runId, turnId: previous.turnId, catalogRevision: previous.catalogRevision, call: previous.call });
+      if (!renewed) throw new Error("Action review is no longer available.");
+      return renewed;
+    } } : {}),
+  });
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
   if (packages) {
-    const host = await CapabilityHost.create(evidence, packages.tools, sessions); host.register(app);
-    app.get("/api/capability-packages", async (_request, reply) => reply.send({packages:packages.packages}));
+    host!.register(app);
+    app.get("/api/capability-packages", async (_request, reply) => reply.send({packages:packages?.packages ?? []}));
   }
+  let refreshing: Promise<void> | undefined;
+  const refreshCatalog = async () => {
+    if (!packagePath || !host) return;
+    if (!refreshing) refreshing = (async () => {
+      for (const definition of connectionDefinitions) connections.reportSourceAvailability(definition.ref, null);
+      const next = await loadCapabilityPackages(packagePath, { connections, allowUnavailable: true });
+      const catalog = createPackageCapabilityCatalog(next, config.connectedCapabilitiesEnabled);
+      host.replace(next.tools); capabilities.replace(catalog); packages = next; reportAvailability();
+    })().finally(() => { refreshing = undefined; });
+    await refreshing;
+  };
+  registerConnectionRoutes(app, connections, refreshCatalog);
   const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });
   studio.register(app);
 

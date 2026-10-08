@@ -7,7 +7,7 @@ import { skillContributions } from "./skills.js";
 import { loadMcpSource, loadHttpSource } from "./connected-sources.js";
 import type { UntrustedSkillContextText } from "../skills/contracts.js";
 
-export interface CapabilityPackageSummary extends PackageIdentity { readonly source: "skills" | "mcp" | "http"; readonly digest: string; readonly tools: readonly string[]; readonly skills: readonly { name: string; description: string; digest: string }[] }
+export interface CapabilityPackageSummary extends PackageIdentity { readonly source: "skills" | "mcp" | "http"; readonly digest: string; readonly connectionRef?: string; readonly unavailableReason?: string; readonly tools: readonly string[]; readonly skills: readonly { name: string; description: string; digest: string }[] }
 export interface LoadedCapabilityPackages { readonly tools: HostedToolContribution[]; readonly profiles: CapabilityProfile[]; readonly packages: CapabilityPackageSummary[]; readonly resolveSkillContexts: (ids: readonly string[]) => Promise<UntrustedSkillContextText[]> }
 export interface PackageConnectionResolver {
   binding(ref: string): Promise<{ connection: NonNullable<HostedToolContribution["descriptor"]["connection"]>; resolveHeaders(signal: AbortSignal): Promise<Readonly<Record<string, string>>> }>;
@@ -56,7 +56,7 @@ export async function loadCapabilityPackages(configPath: string, options: { conn
     for (const contribution of contributions) if (contribution.close) cleanups.add(contribution.close);
     for (const tool of contributions) if (tools.some((existing) => existing.descriptor.definition.name === tool.descriptor.definition.name)) throw new Error(`Tool name collision: ${tool.descriptor.definition.name}.`);
     tools.push(...contributions); profiles.push({ ...profile(identity, contributions), ...(unavailableReason ? { unavailableReason } : {}) });
-    packages.push({ ...identity, source: value.source as CapabilityPackageSummary["source"], digest: digest(JSON.stringify(contributions.map((tool) => tool.descriptor))), tools: contributions.map((tool) => tool.descriptor.definition.name), skills });
+    packages.push({ ...identity, ...(typeof value.connectionRef === "string" ? { connectionRef: value.connectionRef } : {}), ...(unavailableReason ? { unavailableReason } : {}), source: value.source as CapabilityPackageSummary["source"], digest: digest(JSON.stringify(contributions.map((tool) => tool.descriptor))), tools: contributions.map((tool) => tool.descriptor.definition.name), skills });
   }
   if (config.profiles !== undefined) {
     if (!Array.isArray(config.profiles) || config.profiles.length > 32) throw new Error("Composed profiles must be an array of at most 32 entries.");
