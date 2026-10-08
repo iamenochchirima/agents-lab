@@ -5,7 +5,7 @@ Completed: 2026-10-08 (UTC).
 Created and reviewed 2026-10-08. Implementation continues under the active goal.
 
 This standalone temporary plan lives outside `docs/`. It follows the implemented
-[tools and skills milestone](real-agent-tools-and-skills.md) and supersedes its
+[tools and skills milestone](../active/real-agent-tools-and-skills.md) and supersedes its
 choice of a native workspace as the default agent environment. It does not rewrite
 earlier observations or claim that unchecked work already exists.
 
@@ -741,3 +741,9 @@ are separate evidence from the earlier strict eight-workflow model trial.
   HTTP/MCP support and optional external document/procedure providers meet this scope.
   Third-party OAuth acceptance, multitenancy, arbitrary procedure execution and general
   production hardening remain outside the verified implementation.
+
+Final closure checkpoint: `f792a1d`. Documentation catalog generation and diff
+checks passed; local-link validation caught one sibling link after moving this
+plan, which was corrected and rechecked successfully. New frontend controls and
+saved-run restoration both passed typechecking; actual browser verification is
+recorded above. Unrelated Studio/Lina changes were preserved and excluded.
