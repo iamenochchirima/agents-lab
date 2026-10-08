@@ -39,3 +39,14 @@ procedure, or expected policy winner; those belong to an experiment.
 
 See `lab/experiments/context-retention/README.md` for the first comparison procedure
 and its fixed controls.
+
+## Native compaction acceptance fixture
+
+A separate `x05-compaction-v1` fixture exercises two admitted native turns with old
+constraints and harmless padding sufficient to cross a recorded budget boundary.
+It has an exact JSON answer check alongside independent context/provenance checks;
+those assertions do not alter the ungraded `old-important-fact` fixture above.
+Its inputs are exported by `server/src/evals/compaction-contracts.ts`; the
+[experiment](../../experiments/agent-compaction-scripted/README.md) records controls,
+commands, evidence layout and limits. A scripted provider verifies the native path;
+real-model summary quality remains a separate evaluation.
