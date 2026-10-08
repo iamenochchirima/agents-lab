@@ -1,3 +1,4 @@
+import { ChatMarkdown } from "./ChatMarkdown";
 import { Ban, CheckCircle2, CircleAlert, ChevronDown, LoaderCircle, MessageSquare, Plus, Send, Wrench, XCircle } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -530,7 +531,7 @@ function ChatMessageBubble({ message, onRetry }: { message: ChatMessage; onRetry
     <article aria-label={`${isAssistant ? "Agent" : "You"} message, ${statusLabel}`} className={`chat-message chat-message-${message.role} chat-message-status-${message.status}`}>
       <div className="chat-message-label">{isAssistant ? "Agent" : "You"}</div>
       <div className="chat-message-content">
-        {message.content ? <p>{message.content}</p> : <span className="chat-message-pending"><StatusIcon aria-hidden="true" className={message.status === "running" || message.status === "pending" ? "is-spinning" : undefined} size={14} /> {statusLabel}</span>}
+        {message.content ? isAssistant ? <ChatMarkdown content={message.content} /> : <p>{message.content}</p> : <span className="chat-message-pending"><StatusIcon aria-hidden="true" className={message.status === "running" || message.status === "pending" ? "is-spinning" : undefined} size={14} /> {statusLabel}</span>}
         {message.status === "failed" && onRetry && <button className="chat-retry-button" disabled={!onRetry} onClick={onRetry} type="button">Retry</button>}
       </div>
     </article>

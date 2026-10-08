@@ -44,7 +44,11 @@ saved connector list is empty. Local sessions renew automatically without a prom
 
 New chats start with the built-in **Local safe** profile. Select another saved
 profile to use its connected tools. A missing recorded profile is shown as
-unavailable rather than displaying a different selection.
+unavailable rather than displaying a different selection. Tools are scoped to
+the selected profile; connecting a service does not expose its tools to every
+chat. Use **New chat** before changing the profile of an established session.
+Agent replies render Markdown lists, emphasis, links, code blocks and tables;
+user messages retain their literal formatting.
 
 ## Connect an MCP server
 
