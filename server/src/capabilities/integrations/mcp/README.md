@@ -36,11 +36,19 @@ invocation discovers the selected remote tool again before dispatch to reject
 changed or missing schemas, descriptions and versions.
 
 The generic adapter retains the complete bounded MCP result, including text,
-image/resource blocks and structured content. A confirmed `isError` result remains
-a failed tool result with correlated feedback. Lost acknowledgements and cancelled
+image/resource blocks and structured content. A read `isError` result remains
+a failed tool result with correlated feedback. A write error cannot establish
+absence of partial effects and stops as unknown. An acknowledged write with invalid
+structured output retains `effect.state=acknowledged` and `presentation=invalid`
+while stopping native continuation for reconciliation. Lost acknowledgements and cancelled
 or timed-out writes remain unknown and are never automatically retried. Endpoint
 and resolved credential headers belong to process configuration and stay outside
-the model descriptor. Credential values are redacted from returned content.
+the model descriptor. Credential values are redacted from returned content. A
+connection-backed source resolves current headers before discovery and each
+invocation; its stable authority identity, rather than rotating token bytes,
+defines the admitted source digest. Each invocation owns and closes its MCP client.
+`trustedContext: "session"` forwards the server-owned session ID in
+`X-AgentLab-Session-Id`; model arguments cannot set or override this identity.
 
 Streamable HTTP supports the sessionless `2026-07-28` protocol and the initialized
 `2025-06-18`/`2025-11-25` protocols. Legacy session IDs returned by initialization
@@ -58,6 +66,14 @@ elicitation; unsupported result types fail explicitly. This is a tools transport
 not a claim of full MCP client conformance. See the [MCP request metadata
 contract](https://modelcontextprotocol.io/specification/2026-07-28/basic/index#meta)
 and [tool naming rules](https://modelcontextprotocol.io/specification/2026-07-28/server/tools#tool-names).
+
+SSE replies are parsed incrementally with a total response-byte limit. Progress
+and unrelated envelopes cannot complete a call: only the correlated final result
+or error does. A valid final response returns without waiting for stream EOF,
+and the response reader is released. Modern tool calls mirror supported
+`x-mcp-header` properties using the protocol's header-value encoding; unsafe,
+duplicate or composition/array annotations are rejected. Unsupported interactive
+results remain explicit failures rather than simulated tool completion.
 
 Hosted calls retain sanitized full `ConnectionResult` records, including each
 attempt and source output, in their durable capability-call receipt. Native tool

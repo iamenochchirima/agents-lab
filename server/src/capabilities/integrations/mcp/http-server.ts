@@ -68,7 +68,11 @@ export class HttpMcpServer implements McpServer {
     do {
       const result = await this.request("tools/list", cursor ? { cursor } : {}, signal);
       if (!isRecord(result) || !Array.isArray(result.tools)) throw new Error("MCP tools/list returned an invalid result.");
-      tools.push(...result.tools.map(parseTool));
+      tools.push(...result.tools.map(parseTool).filter(tool => {
+        if (requiresLegacyHandshake(this.protocolVersion)) return true;
+        try { toolParameterHeaders(tool.inputSchema, undefined); return true; }
+        catch { return false; } // Invalid header annotations exclude only that declaration.
+      }));
       if (tools.length > 64) throw new Error("MCP discovery returned too many tools.");
       cursor = typeof result.nextCursor === "string" ? result.nextCursor : undefined;
       if (cursor) {
@@ -80,9 +84,9 @@ export class HttpMcpServer implements McpServer {
   }
 
   /** Preserve the complete protocol result for generic hosted tool adapters. */
-  async callToolResult(toolName: string, argumentsValue: Readonly<Record<string, unknown>>, requestId: string, signal: AbortSignal): Promise<Readonly<Record<string, unknown>>> {
+  async callToolResult(toolName: string, argumentsValue: Readonly<Record<string, unknown>>, requestId: string, signal: AbortSignal, inputSchema?: Readonly<Record<string, unknown>>): Promise<Readonly<Record<string, unknown>>> {
     await this.initialize(signal);
-    const result = await this.request("tools/call", { name: toolName, arguments: argumentsValue }, signal, requestId);
+    const result = await this.request("tools/call", { name: toolName, arguments: argumentsValue }, signal, requestId, inputSchema);
     if (!isRecord(result) || !Array.isArray(result.content) && result.structuredContent === undefined) throw new McpDispatchUnknownError("MCP tools/call returned no valid result acknowledgement.");
     return result;
   }
@@ -165,13 +169,13 @@ export class HttpMcpServer implements McpServer {
     await response.arrayBuffer();
   }
 
-  private async request(method: string, params: Readonly<Record<string, unknown>>, signal: AbortSignal, requestId?: string): Promise<unknown> {
+  private async request(method: string, params: Readonly<Record<string, unknown>>, signal: AbortSignal, requestId?: string, inputSchema?: Readonly<Record<string, unknown>>): Promise<unknown> {
     const id = requestId ?? `agentlab-${++this.requestSequence}`;
     let response: Response;
     try {
       response = await this.fetchImplementation(this.endpoint, {
         method: "POST",
-        headers: this.headers(method, params),
+        headers: { ...this.headers(method, params), ...(!requiresLegacyHandshake(this.protocolVersion) && inputSchema ? toolParameterHeaders(inputSchema, params.arguments) : {}) },
         body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, method, params: {
           ...params,
           ...(!requiresLegacyHandshake(this.protocolVersion) ? { _meta: {
@@ -195,12 +199,14 @@ export class HttpMcpServer implements McpServer {
     }
     let envelope: unknown;
     try {
-      const text = await boundedResponseText(response, this.maxResponseBytes);
       if (!response.ok) {
+        await response.body?.cancel();
         if (method === "tools/call" && response.status >= 500) throw new McpDispatchUnknownError();
         throw new Error(`MCP request failed with HTTP ${response.status}.`);
       }
-      envelope = parseResponse(text, response.headers.get("content-type"), id);
+      envelope = response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")
+        ? await correlatedSseResponse(response, this.maxResponseBytes, id)
+        : parseResponse(await boundedResponseText(response, this.maxResponseBytes), response.headers.get("content-type"), id);
       if (!isRecord(envelope) || envelope.jsonrpc !== JSON_RPC_VERSION || envelope.id !== id) throw new Error("MCP returned an invalid JSON-RPC envelope.");
     } catch (error) {
       // A rejected request is distinct from losing or corrupting a success reply
@@ -228,7 +234,7 @@ export class HttpMcpServer implements McpServer {
       "MCP-Protocol-Version": this.protocolVersion,
       ...(this.sessionId ? { "Mcp-Session-Id": this.sessionId } : {}),
       "Mcp-Method": method,
-      ...(name ? { "Mcp-Name": name } : {}),
+      ...(name ? { "Mcp-Name": encodeHeaderValue(name) } : {}),
     };
   }
 }
@@ -278,6 +284,65 @@ function parseResponse(text: string, contentType: string | null, requestId: stri
     throw new Error("MCP event stream has no correlated response.");
   }
   return parseJson(text);
+}
+
+/** A correlated final envelope completes a request even when the server keeps
+ * its response stream open. Byte limits include progress and ignored events.
+ */
+async function correlatedSseResponse(response: Response, maxBytes: number, requestId: string): Promise<unknown> {
+  if (!response.body) throw new Error("MCP event stream has no response body.");
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let buffer = "", bytes = 0;
+  const consume = (): unknown | undefined => {
+    let boundary: RegExpExecArray | null;
+    while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+      const event = buffer.slice(0, boundary.index);
+      buffer = buffer.slice(boundary.index + boundary[0].length);
+      const data = event.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, "")).join("\n");
+      if (!data.trim()) continue;
+      const envelope = parseJson(data);
+      if (isRecord(envelope) && envelope.id === requestId && ("result" in envelope || "error" in envelope)) return envelope;
+    }
+  };
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) { buffer += decoder.decode(); const envelope = consume(); if (envelope !== undefined) return envelope; throw new Error("MCP event stream has no correlated final response."); }
+      bytes += chunk.value.byteLength;
+      if (bytes > maxBytes) throw new Error("MCP response exceeds the configured response limit.");
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const envelope = consume(); if (envelope !== undefined) return envelope;
+    }
+  } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+}
+
+function encodeHeaderValue(value: string): string {
+  return /^[\x20-\x7e]*$/.test(value) && value === value.trim() && !(value.startsWith("=?base64?") && value.endsWith("?="))
+    ? value : `=?base64?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+function toolParameterHeaders(schema: Readonly<Record<string, unknown>>, argumentsValue: unknown): Record<string, string> {
+  const result: Record<string, string> = {}, names = new Set<string>();
+  const walk = (node: unknown, value: unknown, reachable: boolean) => {
+    if (!isRecord(node)) return;
+    if (node["x-mcp-header"] !== undefined) {
+      const name = node["x-mcp-header"];
+      if (!reachable || typeof name !== "string" || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || names.has(name.toLowerCase()) || !["string", "integer", "boolean"].includes(String(node.type))) throw new Error("MCP tool has an invalid x-mcp-header annotation.");
+      names.add(name.toLowerCase());
+      if (value !== undefined && value !== null) {
+        if (node.type === "integer" && !Number.isSafeInteger(value)) throw new Error("MCP header integer is not safely representable.");
+        result[`Mcp-Param-${name}`] = encodeHeaderValue(String(value));
+      }
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key === "properties" && isRecord(child)) for (const [property, propertySchema] of Object.entries(child)) walk(propertySchema, isRecord(value) ? value[property] : undefined, reachable);
+      else if (key !== "properties" && child && typeof child === "object") {
+        if (Array.isArray(child)) child.forEach(item => walk(item, undefined, false));
+        else walk(child, undefined, false);
+      }
+    }
+  };
+  walk(schema, argumentsValue, true);
+  return result;
 }
 
 function parseJson(text: string): unknown {

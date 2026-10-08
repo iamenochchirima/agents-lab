@@ -74,3 +74,55 @@ test("a write deadline preserves unknown effects and performs no automatic retry
     assert.equal(result.connection?.attemptCount, 1); assert.equal(connections.at(-1)?.status, "unknown");
   } finally { await local.close(); }
 });
+
+test("HTTP effect contracts distinguish rejection, uncertain mutation and invalid acknowledgement", async () => {
+  let writes = 0;
+  const local = await serve(async (request, response) => { const input = await body(request); writes++; json(response, input.key === "invalid" ? { unexpected: true } : { error: "provider rejected" }, input.key === "invalid" ? 200 : Number(input.key)); });
+  try {
+    const [tool] = loadHttpSource({ id: "effects", version: "1.0.0", baseUrl: local.base, operations: [{ name: "save", method: "POST", path: "/records", inputSchema: schema,
+      outputSchema: { type: "object", properties: { saved: { type: "boolean" } }, required: ["saved"] }, description: "Save", riskClass: "write", approvalMode: "invocation", effectContract: { rejectionStatusCodes: [409] } }] });
+    for (const [key, status, effect] of [["409", "failed", "rejected"], ["500", "unknown", "unknown"], ["invalid", "unknown", "acknowledged"]] as const) {
+      const result = await invoke(tool, { key }); assert.equal(result.status, status); assert.equal(result.effect?.state, effect);
+      if (key === "invalid") assert.equal(result.presentation, "invalid");
+    }
+    assert.equal(writes, 3, "each requested operation dispatches once without transport retries");
+    assert.equal(tool.descriptor.definition.approvalMode, "invocation");
+  } finally { await local.close(); }
+});
+
+test("HTTP bindings encode paths, query, form and stable provider idempotency with rotating credentials", async () => {
+  let token = "first", observed: { url?: string; headers?: IncomingMessage["headers"]; form?: string } = {};
+  const local = await serve(async (request, response) => {
+    observed = { url: request.url, headers: request.headers }; const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk)); observed.form = Buffer.concat(chunks).toString(); json(response, { saved: true });
+  });
+  try {
+    const options = { id: "binding", version: "1.0.0", baseUrl: local.base, connection: { ref: "conn_business", authorityRevision: "1", resource: local.base, scopes: ["write"] }, resolveHeaders: async () => ({ authorization: `Bearer ${token}` }), operations: [{ name: "save", method: "POST" as const, path: "/records/{id}", inputSchema: { type: "object" }, description: "Save", riskClass: "write" as const,
+      bindings: { path: { id: "record" }, query: { mode: "mode" }, headers: { "X-Business-Tag": "tag" }, body: { value: "value" } }, requestEncoding: "form" as const, idempotency: { header: "Idempotency-Key" } }] };
+    const [tool] = loadHttpSource(options); await invoke(tool, { record: "a/b", mode: "x y", tag: "known", value: "one&two" });
+    assert.equal(observed.url, "/records/a%2Fb?mode=x+y"); assert.equal(observed.form, "value=one%26two"); assert.equal(observed.headers?.authorization, "Bearer first"); assert.equal(observed.headers?.["x-business-tag"], "known");
+    const key = observed.headers?.["idempotency-key"]; token = "second";
+    const [reloaded] = loadHttpSource(options); assert.equal(reloaded.descriptor.source.digest, tool.descriptor.source.digest, "token refresh preserves stable authority identity");
+    await invoke(tool, { record: "a/b", mode: "x y", tag: "known", value: "one&two" }); assert.equal(observed.headers?.authorization, "Bearer second"); assert.equal(observed.headers?.["idempotency-key"], key);
+    assert.throws(() => loadHttpSource({ ...options, operations: [{ ...options.operations[0], bindings: { headers: { Authorization: "token" } } }] }), /credential headers/);
+  } finally { await local.close(); }
+});
+
+test("MCP consumes correlated chunked SSE without waiting for EOF and mirrors trusted headers", async () => {
+  let token = "first", calls = 0;
+  const annotated = { type: "object", properties: { key: { type: "string", "x-mcp-header": "BusinessKey" } }, required: ["key"] };
+  const local = await serve(async (request, response) => {
+    assert.equal(request.headers.authorization, `Bearer ${token}`);
+    const input = await body(request);
+    if (input.method === "tools/list") return json(response, { jsonrpc: "2.0", id: input.id, result: { tools: [{ name: "lookup", inputSchema: annotated }] } });
+    calls++; assert.equal(request.headers["x-agentlab-session-id"], "trusted-session"); assert.equal(request.headers["mcp-param-businesskey"], "=?base64?5LiW55WM?=");
+    response.writeHead(200, { "content-type": "text/event-stream" }); response.write(': keepalive\n\ndata: {"jsonrpc":"2.0","method":"notifications/progress"}\n\n');
+    const event = `data: ${JSON.stringify({ jsonrpc: "2.0", id: input.id, result: { content: [{ type: "text", text: "complete" }] } })}\n\n`;
+    response.write(event.slice(0, 17)); response.write(event.slice(17)); // Deliberately never call end().
+  });
+  try {
+    const [tool] = await loadMcpSource({ id: "streaming", version: "1.0.0", endpoint: `${local.base}/mcp`, resolveHeaders: async () => ({ authorization: `Bearer ${token}`, "X-AgentLab-Session-Id": "untrusted-config" }), trustedContext: "session", connection: { ref: "conn_stream", authorityRevision: "1", resource: local.base, scopes: ["read"] }, tools: [{ remoteName: "lookup", name: "lookup", riskClass: "read", limits: { timeoutMs: 1000 } }] });
+    token = "second";
+    const result = await tool.implementation.executeResult!({ key: "世界" }, { ...context, sessionId: "trusted-session" });
+    assert.equal(result.status, "completed"); assert.match(result.content, /complete/); assert.equal(calls, 1); assert.equal(result.effect?.state, "none");
+  } finally { await local.close(); }
+});
