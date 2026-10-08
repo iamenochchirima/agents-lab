@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "scriptId": "support-adjustment-summary",
+  "version": "1.0.0",
+  "steps": [
+    { "operation": "read_order" },
+    { "operation": "subtract", "left": "totalCents", "right": "adjustmentCents", "target": "netTotalCents" },
+    { "operation": "report", "fields": ["orderId", "adjustmentCents", "netTotalCents", "revision"] }
+  ]
+}

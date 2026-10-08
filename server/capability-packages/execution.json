@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "execution-procedures",
+      "version": "1.0.0",
+      "source": "skills",
+      "root": "./execution-skills"
+    },
+    {
+      "id": "procedure-provider",
+      "version": "1.0.0",
+      "source": "mcp",
+      "endpoint": "http://127.0.0.1:9198/mcp",
+      "protocolVersion": "2026-07-28",
+      "tools": [
+        {
+          "remoteName": "procedures.execute",
+          "name": "procedures_execute",
+          "riskClass": "read"
+        }
+      ],
+      "connectionRef": "conn_procedures_local"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "business-summary-agent",
+      "version": "1.0.0",
+      "packages": [
+        "execution-procedures",
+        "procedure-provider"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "ref": "conn_procedures_local",
+      "displayName": "Development procedure execution",
+      "provider": "procedure-fixture",
+      "owner": "lab-development",
+      "resource": "http://127.0.0.1:9198/mcp",
+      "scopes": [
+        "procedures:execute-readonly"
+      ],
+      "auth": {
+        "kind": "static",
+        "headersEnv": {
+          "Authorization": "AGENTLAB_PROCEDURE_PROVIDER_AUTHORIZATION"
+        }
+      }
+    }
+  ]
+}

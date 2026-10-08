@@ -250,10 +250,26 @@ Run evidence lives under `lab/runs/<run-id>/`; source receipts live under its
 generated session directories only when those sessions are no longer needed.
 
 See [architecture and lifecycle limits](../architecture/extensible-capabilities.md).
-Path confinement does not provide an operating-system sandbox, skill scripts
-are not executable capabilities, and arbitrary plugin installation is unsupported.
+Path confinement does not provide an operating-system sandbox. The skill loader
+does not execute scripts, and arbitrary plugin installation is unsupported.
+Authorized connected execution is a separate tool capability.
 
 Skill names and applicability descriptions are included in the frozen load-skill
 argument declaration before the first model decision. Procedure bodies remain
 unloaded until explicitly selected or requested through the skill tool. Metadata
 is bounded to 16 KiB per package; larger catalogs require separate packages.
+
+## Request connected script execution
+
+The optional `execution.json` profile demonstrates this boundary with a real
+[procedure provider](../../server/src/capabilities/integrations/procedure-service/README.md).
+The adjustment-summary skill directs the agent to read its script resource and
+submit the exact content and digest to `procedures_execute`. That external provider
+reads the saved order and executes bounded arithmetic/report steps. Tool selection
+and permissions remain ordinary admitted connected capabilities. No shell or
+filesystem management is added to the skill loader or platform runtimes.
+
+This configured fixture supports its pinned declarative script only. General
+Python/JavaScript execution needs a separately configured provider and is not
+implied by the presence of a script resource. If execution is absent or denied,
+the agent should report that limitation instead of claiming it ran the script.

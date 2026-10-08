@@ -58,3 +58,12 @@ verify the saved order. Start both local services, load this configuration and
 run `eval:capabilities -- --tasks support,workspace` for the reviewed business
 workflow and optional connected-document workflow. The driver has an explicit
 fictional trial review policy. It is not production authorization.
+
+## Optional script execution service
+
+`execution.json` connects a separate procedure provider and the `adjustment-summary`
+skill. Its script is an inert resource until the agent submits it to the admitted
+`procedures_execute` tool. The connected provider executes a pinned bounded
+read/arithmetic/report procedure against saved business data. Script identity and
+resource digest are verified; the skill cannot authorize itself or execute locally.
+See [provider startup and limits](../src/capabilities/integrations/procedure-service/README.md).
