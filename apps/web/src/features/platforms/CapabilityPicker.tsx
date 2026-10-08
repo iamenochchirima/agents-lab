@@ -74,8 +74,8 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
     <>
       <div className="compact-control capability-picker">
         <label htmlFor={`${dialogId}-select`}>Capabilities</label>
-        <select aria-label="Capability profile" disabled={disabled || failed || profiles.length === 0} id={`${dialogId}-select`} onChange={(event) => selectProfile(event.target.value)} value={profiles.some((profile) => profile.id === value) ? value : ""}>
-          {failed ? <option value="">Unavailable</option> : profiles.length === 0 ? <option value="">Loading</option> : profiles.map((profile) => <option key={profile.id} value={profile.id} disabled={!supported(profile)}>{profile.displayName}{!supported(profile) ? " · unavailable" : profile.skills.length > 0 ? ` · ${profile.skills.length} skill` : ""}</option>)}
+        <select aria-label="Capability profile" disabled={disabled || failed || profiles.length === 0} id={`${dialogId}-select`} onChange={(event) => selectProfile(event.target.value)} value={profiles.length ? value : ""}>
+          {failed ? <option value="">Unavailable</option> : profiles.length === 0 ? <option value="">Loading</option> : <>{!selectedProfile && <option value={value} disabled>Selected profile unavailable</option>}{profiles.map((profile) => <option key={profile.id} value={profile.id} disabled={!supported(profile)}>{profile.displayName}{!supported(profile) ? " · unavailable" : profile.skills.length > 0 ? ` · ${profile.skills.length} skill` : ""}</option>)}</>}
         </select>
         <Link className="quiet-button cap-manager-open" to={appPaths.platformPlugins(platformId ?? "mastra")}>Plugins</Link>
         {selectedProfile && <div className="capability-picker-summary" aria-live="polite">

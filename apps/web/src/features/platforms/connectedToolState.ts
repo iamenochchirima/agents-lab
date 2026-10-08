@@ -9,8 +9,9 @@ export function canReviewAction(action: InvocationReviewView, now = Date.now()):
 export function invocationDecision(action: InvocationReviewView, decision: InvocationDecision["decision"], decisionId: string): InvocationDecision {
   return { requestId: action.requestId, revision: action.revision, argumentDigest: action.argumentDigest, decisionId, decision, reason: decision === "denied" ? "Action denied from Chat." : "Action approved from Chat." };
 }
-export function defaultBusinessProfile(platform: string, variant: string): string {
-  return variant === "baseline" && ["mastra", "langgraph", "temporal", "restate"].includes(platform) ? "business-agent" : "local-safe";
+/** New chats use the built-in profile that exists independently of managed packages. */
+export function defaultCapabilityProfile(_platform: string, _variant: string): string {
+  return "local-safe";
 }
 
 

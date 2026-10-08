@@ -7,7 +7,7 @@ import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
 import { CapabilityPicker } from "./CapabilityPicker";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
-import { defaultBusinessProfile, toolOutcomeView } from "./connectedToolState";
+import { defaultCapabilityProfile, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -50,7 +50,7 @@ export function PlatformChatPage() {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
-  const [capabilityProfileId, setCapabilityProfileId] = useState(() => defaultBusinessProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
+  const [capabilityProfileId, setCapabilityProfileId] = useState(() => defaultCapabilityProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
   const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
   const [requestedSkillIds, setRequestedSkillIds] = useState<readonly string[]>([]);
   const [scenarioId, setScenarioId] = useState(scenarioCatalog[0].id);
@@ -86,12 +86,12 @@ export function PlatformChatPage() {
   useEffect(() => {
     // A reopened run must show its admitted profile, not the new-chat default.
     if (latestRun?.manifest.platform === platform.id && latestRun.manifest.variant === variantId) {
-      setCapabilityProfileId(latestRun.manifest.capabilities?.profileId ?? defaultBusinessProfile(platform.id, variantId));
+      setCapabilityProfileId(latestRun.manifest.capabilities?.profileId ?? defaultCapabilityProfile(platform.id, variantId));
       setRequestedSkillIds(latestRun.manifest.capabilities?.requestedSkillIds ?? []);
       setCapabilityApprovals([]);
       return;
     }
-    setCapabilityProfileId(defaultBusinessProfile(platform.id, variantId));
+    setCapabilityProfileId(defaultCapabilityProfile(platform.id, variantId));
     setCapabilityApprovals([]); setRequestedSkillIds([]);
   }, [platform.id, variantId, latestRun]);
 
@@ -158,7 +158,7 @@ export function PlatformChatPage() {
     setRetryTurn(null);
     setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
     setVariantId(platform.variants[0]?.id ?? "baseline");
-    setCapabilityProfileId(defaultBusinessProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
+    setCapabilityProfileId(defaultCapabilityProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
     setCapabilityApprovals([]); setRequestedSkillIds([]);
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
     eventCursor.current = 0;
@@ -507,7 +507,7 @@ export function PlatformChatPage() {
                 </ChatSelect>
               </div>
             </details>
-            {preservesSession && <p className="chat-session-note">Session active. Use New chat to change model.</p>}
+            {preservesSession && sessionId && <p className="chat-session-note">Session active. Use New chat to change model.</p>}
             {!preservesSession && hasRunnableVariant && <p className="chat-session-note">Each turn starts a new platform run.</p>}
             {!isReady && <p className="chat-availability-error">{connectivityError ?? connectivity?.message ?? (!hasRunnableVariant ? "This platform is not available yet." : "Checking server availability…")}</p>}
           </section>

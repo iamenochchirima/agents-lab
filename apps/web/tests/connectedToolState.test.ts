@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReviewAction, defaultBusinessProfile, invocationDecision, requiresUpfrontApproval, toolOutcomeView } from "../src/features/platforms/connectedToolState";
+import { canReviewAction, defaultCapabilityProfile, invocationDecision, requiresUpfrontApproval, toolOutcomeView } from "../src/features/platforms/connectedToolState";
 import type { CapabilityProfile, InvocationReviewView } from "../src/features/platforms/platformApi";
 
 const capability: CapabilityProfile["capabilities"][number] = { id: "assign", version: "1.0.0", kind: "tool", displayName: "Assign", description: "Assign a record", risk: "write", operations: ["execute"] };
@@ -15,8 +15,8 @@ test("invocation policy skips blanket approval and exact action review retains r
   assert.equal(canReviewAction(action, Date.parse(action.expiresAt)), false);
   assert.equal(canReviewAction({ ...action, status: "cancelled" }, Date.parse(action.createdAt)), false);
   assert.deepEqual(invocationDecision(action, "approved", "stable-decision-id"), { requestId: "action-one", revision: 3, argumentDigest: "current-arguments", decisionId: "stable-decision-id", decision: "approved", reason: "Action approved from Chat." });
-  for (const platform of ["mastra", "langgraph", "temporal", "restate"]) assert.equal(defaultBusinessProfile(platform, "baseline"), "business-agent");
-  assert.equal(defaultBusinessProfile("mastra", "workflow"), "local-safe"); assert.equal(defaultBusinessProfile("inngest", "baseline"), "local-safe");
+  for (const platform of ["mastra", "langgraph", "temporal", "restate"]) assert.equal(defaultCapabilityProfile(platform, "baseline"), "local-safe");
+  assert.equal(defaultCapabilityProfile("mastra", "workflow"), "local-safe"); assert.equal(defaultCapabilityProfile("inngest", "baseline"), "local-safe");
 });
 
 

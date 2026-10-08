@@ -32,12 +32,19 @@ defaults to `http://127.0.0.1:4318`. If your API runs on another port, set that
 variable when starting Vite. Account mutations use this same-origin route; public
 platform/run reads continue to use the configured API URL. A deployed frontend
 needs an equivalent reverse proxy and the explicitly allowed frontend origin.
-Management requests are restricted to the local frontend. A hosted multi-user
+Management requests are restricted to the local frontend. For a loopback
+frontend, `localhost`, `127.0.0.1` and `[::1]` are accepted with the configured
+scheme and port, so switching local hostnames does not break the UI. Other
+origins and ports are not included. A hosted multi-user
 deployment needs a separate authentication and authorization system.
 
 If the capability service is unavailable, check that the Lab API is running at
 the configured URL and choose **Try again**. A failed request does not mean the
 saved connector list is empty. Local sessions renew automatically without a prompt.
+
+New chats start with the built-in **Local safe** profile. Select another saved
+profile to use its connected tools. A missing recorded profile is shown as
+unavailable rather than displaying a different selection.
 
 ## Connect an MCP server
 
