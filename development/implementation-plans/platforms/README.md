@@ -9,6 +9,10 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Extensible tools and skills](active/extensible-tools-and-skills.md): capability
+  packages, frozen catalogs, generic native adapters, real workspace tools and
+  model-selected skills, based on Waku/Pi/Hermes research.
+
 - [Free-model live agent evals](active/free-model-live-evals.md) — implemented:
   historical first slice: three real-model tasks passed on Mastra, LangGraph and
   Temporal; Restate was unavailable then. The completed behaviour milestone below
