@@ -7,7 +7,7 @@ model trials.
 
 The implementation observations below describe the planning baseline. Later
 partial implementation and its verification are tracked in the
-[standalone plan](../../development/implementation-plans/platforms/active/connected-business-agent-tools.md).
+[standalone plan](../../development/implementation-plans/platforms/completed/connected-business-agent-tools.md).
 
 ## Goal and architectural boundary
 

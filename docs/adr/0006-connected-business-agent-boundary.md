@@ -42,5 +42,5 @@ integration. It preserves framework telemetry alongside normalized run evidence.
 The compatibility matrix and experiments must state which transports, native
 recovery boundaries and result projections were actually verified.
 
-See the [implementation plan](../../development/implementation-plans/platforms/active/connected-business-agent-tools.md)
+See the [implementation plan](../../development/implementation-plans/platforms/completed/connected-business-agent-tools.md)
 and [research evidence](../research/connected-business-agent-foundation.md).

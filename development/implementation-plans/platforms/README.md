@@ -9,12 +9,6 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [Connected business-agent tools](active/connected-business-agent-tools.md):
-  planned follow-up covering connection lifecycle, HTTP/MCP interoperability,
-  action-specific review and native continuation, business-effect outcomes,
-  external document providers, frontend and focused acceptance. Supersedes the
-  native workspace default from the earlier tools milestone. Not implemented.
-
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
@@ -40,6 +34,13 @@ was the foundation for this acceptance phase and the completed Restate slice. AW
 Functions remains parked.
 
 ## Completed plans
+
+- [Connected business-agent tools](completed/connected-business-agent-tools.md):
+  four native baselines with connected HTTP/MCP tools, connection authority,
+  exact-action review/recovery, optional external document/procedure providers,
+  retained effect evidence and actual LangGraph browser acceptance. Strict free-model
+  trial results remain 2 pass / 3 fail / 3 error; production hardening is deferred.
+
 
 - [Cross-platform agent behaviour milestone](completed/cross-platform-agent-behaviour-milestone.md):
   B01–B12 implemented with 48 passing native case reports across four platforms.

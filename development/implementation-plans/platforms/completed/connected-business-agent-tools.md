@@ -1,6 +1,7 @@
 # Connected business-agent tools implementation plan
 
-Status: implementation and compatibility audit committed; real-model trial finished; browser acceptance pending.
+Status: completed; implementation, compatibility audit, real-model trial and actual browser acceptance recorded.
+Completed: 2026-10-08 (UTC).
 Created and reviewed 2026-10-08. Implementation continues under the active goal.
 
 This standalone temporary plan lives outside `docs/`. It follows the implemented
@@ -442,9 +443,8 @@ now provides the foundation. Use this execution checklist:
 - [x] Verify skill-script requests through an authorized connected execution
   fixture before advertising execution support. Readable scripts alone do not
   establish this capability. Local shell execution remains excluded.
-- [ ] Complete the frontend approve/deny walkthrough with run IDs and a screenshot.
-  Browser automation was rejected by the browser security policy in this session;
-  this remains unverified until permitted or recorded manual verification.
+- [x] Complete the frontend approve/deny walkthrough with run IDs and screenshots.
+  Actual LangGraph Chat acceptance is recorded in the final closure below.
 - [x] Run the combined affected checks once and update permanent docs with observed
   implementation limits. Final trial observations and acceptance audit remain below.
 
@@ -503,9 +503,9 @@ substantial independent workstreams, not trivial edits.
 - [x] Core agents do not create or manage a native filesystem workspace.
 - [x] Optional document/file tools use the same connected adapter boundary.
 - [x] Skills, structured results, authority and native telemetry remain inspectable.
-- [ ] Frontend state accurately shows connections, pending review and outcomes
-  through an actual approve/deny walkthrough. Build and projection checks pass;
-  interaction acceptance remains unverified.
+- [x] Frontend state accurately shows connections, pending review and outcomes
+  through actual LangGraph approve/deny interaction and saved-run reload. Build
+  and projection checks also pass; native recovery evidence covers all four baselines.
 - [x] Focused deterministic and free-model evidence covers the completed workflows.
 - [x] Recovery limits, unsupported capabilities and failed trials are documented.
 - [x] Required checks pass or unrelated/environment failures are explicitly reported.
@@ -524,7 +524,7 @@ justify claiming this milestone makes the Lab production-ready in every environm
 The implementation has committed checkpoints across milestones 1 through 8.
 Acceptance remains incomplete. Milestones 1–7 have a code/evidence audit, with conditional binary transfer
 explicitly unsupported for these text-only scenarios. Milestone 8 implementation
-is verified by build/projection checks; its browser acceptance is still pending. Starting branch was `main`, checkpoint `ab2cadd`;
+is verified by build/projection checks and the final actual browser walkthrough. Starting branch was `main`, checkpoint `ab2cadd`;
 unrelated Studio/Lina and context-research changes remain user-owned.
 
 | Checkpoint | Implemented slice |
@@ -546,7 +546,7 @@ unrelated Studio/Lina and context-research changes remain user-owned.
 
 The all-platform report
 [`native-review-65eff9d8/summary.json`](../../../../lab/runs/.review-proof/native-review-65eff9d8-679a-40b3-a57b-4fd88ba464f0/summary.json)
-passed eight scripted native checks. Every baseline suspended with zero effects,
+passed seven scripted native scenario reports (eight Node test results including the parent test). Every baseline suspended with zero effects,
 survived host/control-plane reconstruction and native runner or worker replacement,
 renewed review twice without inference or dispatch, then approved the original
 call and executed once. Additional cases cover denial, cancellation and unknown
@@ -555,7 +555,7 @@ harness behavior, not model decision quality.
 
 The Mastra mixed-batch report
 [`native-review-e70d9c2b/summary.json`](../../../../lab/runs/.review-proof/native-review-e70d9c2b-576c-4852-add9-e10dc15cd632/summary.json)
-passed six selected checks. One model response proposed a read and two reviewed
+passed five selected native scenario reports (six Node test results including the parent test). One model response proposed a read and two reviewed
 writes. Approving the first and denying the second preserved original call IDs,
 ran the read once and returned correlated feedback. Fixture and documentation
 are committed in `313bbbc`.
@@ -576,8 +576,8 @@ failures include active-segment/provider timeouts and a LangGraph answer without
 required tool use; none is converted to a passing task.
 
 Frontend typecheck, production bundle and focused action-identity checks passed.
-The browser walkthrough remains unverified following the browser security-policy
-rejection. OAuth owner labels describe this trusted local deployment rather than
+At this historical checkpoint the browser walkthrough was unverified following a
+security-policy rejection. Final actual browser acceptance below closes that gap. OAuth owner labels describe this trusted local deployment rather than
 authenticated multi-tenant users. Automatic client registration, general MCP
 extensions, model-native multimedia input and external third-party compatibility are not
 established by the retained evidence. Connected procedure execution is established
@@ -626,8 +626,8 @@ MCP write errors must remain uncertain. That correction is committed in `906250c
   retained uncertainty when no contract exists.
 - Final affected integration checks after these changes: 57 passed; focused
   frontend identity/outcome/rendering checks: 4 passed. Earlier unaffected checks
-  remain applicable. Browser walkthrough is still pending; no substitute browser
-  automation was attempted after the security-policy rejection.
+  remain applicable. At this checkpoint browser acceptance was pending; the final
+  walkthrough below uses the valid current HTTP tab through documented controls.
 
 ### Dispatch-authority audit correction
 
@@ -667,17 +667,16 @@ framework ranking, and saved artifacts do not convert failed tasks into passes.
 
 - [x] Collect the current trial's terminal aggregate and inspect every new failure.
 - [x] Record final trial observations in experiment documentation and this ledger.
-- [ ] Perform or obtain the actual frontend approve/deny walkthrough, with run IDs
-  and a screenshot. Automated browser access was rejected by the browser security
-  policy. A manual verification request is pending; builds/API checks do not satisfy
-  this condition.
-- [ ] Complete the final audit against the original request. Do not declare the
-  implementation fully accepted while browser interaction remains unverified.
+- [x] Perform the actual frontend approve/deny walkthrough, with run IDs and
+  screenshots. Documented controls successfully selected the valid current HTTP
+  tab; no browser restriction was bypassed. Independent source checks passed.
+- [x] Complete the final audit against the original request. Read-only architecture
+  review and actual browser interaction establish the declared implementation subset.
 
 Final read-only architecture review found no additional backend implementation gap.
 Native orchestration, optional provider environments, frozen authority, explicit
 effect certainty and bounded compatibility remain intact. It confirmed that build
-and projection checks cannot stand in for the pending browser walkthrough, and
+and projection checks alone cannot establish browser interaction, and
 that preserved free-model failures cannot be described as successful all-platform
 workflow acceptance. No broad rerun was required.
 
@@ -690,10 +689,9 @@ services are absent, Trigger credentials are unset, and the existing Hatchet
 embedded Postgres lock prevents its sidecar from starting. Those baselines were
 out of scope; no unrelated infrastructure or user changes were repaired.
 
-Current milestone: 8 browser acceptance. Status: waiting for the already requested
-manual verification after the browser security rejection. All independent
-implementation and trial-analysis work is complete; the final acceptance audit
-remains open. The optional external compatibility smoke is conditional and was
+Current milestone: completed. Actual browser acceptance, independent source checks
+and final architecture audit are recorded below. Implementation and trial analysis
+are complete for the declared four-baseline subset. The optional external compatibility smoke is conditional and was
 not run because no suitable third-party connection is configured.
 
 A concrete manual approve/deny recipe is now in the
@@ -701,4 +699,45 @@ A concrete manual approve/deny recipe is now in the
 It specifies valid fresh namespaces, exact UI labels, pending zero-effect state,
 independent provider inspection, approval/denial outcomes, screenshots and run IDs.
 The recipe was checked against configuration, routes and current component labels;
-its browser execution remains unverified. No additional model trial was launched.
+its actual browser execution is now verified below. The two interactive checks
+are separate evidence from the earlier strict eight-workflow model trial.
+
+
+### Final browser acceptance and closure
+
+- `bf3e2e6` exposes **Free model capability trial** in Run/Compare/Chat. It selects
+  existing `agent-capabilities-live` server controls, not a client price override.
+  Approved exact model IDs, fresh zero-price catalog validation, zero-price provider
+  ceilings, disabled fallback and 2,048 output tokens remain enforced. Typecheck passed.
+- Current valid HTTP tab at `http://localhost:5173` was accessible through the
+  documented browser controls. The earlier rejection concerned an old tab whose
+  URL had become a browser error `data:` URL; it did not establish a global lack of
+  browser access. The API's exact allowed origin was configured to match localhost
+  rather than its default 127.0.0.1 origin. No security control was bypassed.
+- LangGraph baseline, `support-agent`, `nvidia/nemotron-3.5-lightning:free`,
+  `agent-capabilities-live`: approval run
+  `f910b60e-d529-43aa-8e62-3efcbc14dd13` suspended for the exact 500-cent
+  `late_delivery` action at revision 1. Independent provider state was zero/revision 1
+  while pending. **Approve action** resumed the native graph; source state became
+  500/revision 2 with exactly one adjustment. The agent reread the order and completed.
+- Denial run `853181b6-d7e9-4fa4-b2d4-64ca8c201891` used a fresh namespace.
+  **Deny** resumed with retained `INVOCATION_DENIED` feedback; no new write was proposed.
+  Source state remained zero/revision 1/no adjustments, and the run completed.
+- Proof: `lab/runs/.review-proof/browser-final/summary.json`, pending/completed
+  JPEGs and before/after independent provider JSON; normal run evidence retains both
+  native trajectories. This is an actual shared-UI control check on LangGraph, not
+  four separate browser acceptances or a new strict graded workflow suite.
+- Model limitations remain visible: these interactive runs skipped skill activation,
+  and the denial answer described approval as absent rather than acknowledging the
+  reviewer's refusal accurately. Enforcement and denial feedback worked; model
+  procedural adherence and explanation quality are not established by this check.
+  The earlier strict aggregate remains **2 pass / 3 fail / 3 error**.
+- `50d5629`: reload exposed a display gap: Chat showed its default profile for a saved run.
+  Chat now restores admitted profile/skills, variant and run selection from the
+  retained manifest. Actual reload, outcome/receipt inspection and typecheck verify
+  this correction. No additional live workflow suite or broad hardening was run.
+- Final read-only audit found no additional required backend gap. Native orchestration,
+  frozen authority, exact-action review/recovery, explicit effect certainty, bounded
+  HTTP/MCP support and optional external document/procedure providers meet this scope.
+  Third-party OAuth acceptance, multitenancy, arbitrary procedure execution and general
+  production hardening remain outside the verified implementation.

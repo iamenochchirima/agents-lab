@@ -41,6 +41,12 @@ URL and private key file must also match the API's configuration. The explicit r
 prevent different working directories from creating separate state collections.
 Stop task-owned development services with their normal interrupt command.
 
+When the frontend uses a separate API address, set `VITE_AGENTLAB_API_URL` to that
+API and set the API's `AGENTLAB_API_ORIGIN` to the exact frontend origin. For
+example, a page at `http://localhost:5173` needs that origin even if its API is
+`http://127.0.0.1:4322`. The default `http://127.0.0.1:5173` is a different origin.
+Restart the API after changing its origin configuration.
+
 ## Select connections and review actions
 
 In platform Chat, choose `support-agent`. The connection panel shows configured
@@ -56,6 +62,10 @@ An expired proposal needs fresh review; old decisions cannot authorize its new r
 If delivery of an already-retained decision fails, continue that reviewed action with
 the same decision identity rather than approving a new operation.
 
+Reopening a saved Chat run restores its admitted capability profile, requested skills
+and run options from the manifest. The selected connection panel still shows current
+connection availability; retained authority and provider receipts are run evidence.
+
 Choose `workspace-agent` for document work. File tools execute in the external
 provider; they do not expose the Lab server's filesystem. Reports and follow-up
 corrections stay in provider-owned session storage.
@@ -67,7 +77,9 @@ checks do not establish that the browser interaction works. Use the fictional
 development service above and record the selected platform, model and run IDs.
 
 1. Open a baseline platform's Chat, start **New chat**, choose `support-agent`,
-   and select a currently available zero-price tool-capable model. Confirm that
+   and select an approved currently available free tool model. Under **Run options**,
+   choose **Free model capability trial** to enforce server-owned price ceilings
+   and disable paid fallback. Confirm that
    **Fictional customer support** is available in the connection panel. If needed,
    use **Refresh** and record any connection error before submitting a task.
 2. Choose an unused lowercase namespace beginning `cap-ui-approve-`, followed by
@@ -154,3 +166,22 @@ activation; the model still chooses whether to call the loader, and acceptance
 records that decision. The driver never preloads a skill to make the check pass.
 Existing sessions preserve their original system instruction and record it in each
 run manifest. Start a new conversation to use a changed baseline instruction.
+
+
+## Recorded browser acceptance
+
+On 2026-10-08, actual LangGraph Chat controls were checked with `support-agent`,
+`nvidia/nemotron-3.5-lightning:free` and **Free model capability trial**. Run
+`f910b60e-d529-43aa-8e62-3efcbc14dd13` waited with zero effects, resumed after
+**Approve action**, applied exactly one 500-cent adjustment at revision 2 and
+reread the order. Run `853181b6-d7e9-4fa4-b2d4-64ca8c201891` resumed after
+**Deny**, received `INVOCATION_DENIED` feedback and completed without another
+proposal or source mutation. Independent before/after provider JSON and screenshots
+are retained in `lab/runs/.review-proof/browser-final/`; both runs have normal
+execution records. Saved-run reload and provider-receipt display were also checked.
+
+This verifies those UI controls, not reliable model adherence to every procedure.
+Both runs skipped skill activation; the denial answer treated explicit refusal as
+missing approval. Earlier strict workflow results remain unchanged. See the
+[capability experiment](../../lab/experiments/agent-capabilities-live/README.md)
+for graded outcomes and comparison limits.
