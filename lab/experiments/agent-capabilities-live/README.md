@@ -27,7 +27,7 @@ scenarios with separate sessions. Only the two turns of one task share state.
 | Alternate approved model | `google/gemma-4-31b-it:free` |
 | Output allowance | 2048 tokens per provider request |
 | Agent limits | 24 model rounds and 32 logical tool calls per turn |
-| Driver observation deadline | 180 seconds per turn |
+| Driver observation deadline | 180 seconds by default; explicit `--deadline-ms` permits 1000–600000 ms and is retained |
 | Routing | Fresh zero-price catalog check, zero billing ceilings, required parameters, disabled provider fallback |
 | Fault injection | None in these live workflows |
 | Temperature and seed | Omitted; provider defaults apply and deterministic reproduction is not claimed |
@@ -74,7 +74,10 @@ Scenario inputs and grading rules are documented beside
 
 The aggregate report at `lab/runs/.evals/capabilities-<uuid>/summary.json` records
 repository revision and dirty state, exact prompts, free model ID, budgets,
-profile IDs, sessions, run IDs, statuses, assertion results and tool evidence.
+profile IDs, sessions, run IDs, statuses, assertion results and tool evidence. New
+reports also retain installed SDK versions, native configuration/references and
+invocation start/completion markers. Older reports remain explicitly incomplete
+in Evals if they lack completion metadata; their original verdicts stay unchanged.
 Workspace output and service snapshots provide independent effect inspection.
 Canonical run directories retain resolved catalogs, skill/context identity,
 `EvalModelObserved` provider requests and returned decisions, tool results, native
@@ -157,3 +160,21 @@ not general claims of third-party compatibility, production authorization or
 model competence. Scripted lifecycle checks and local service contracts are
 separate evidence. Pending invocation review and final service effects must both
 be retained; a successful assistant message alone does not pass the scenario.
+
+## Connected review acceptance
+
+`--tasks support,workspace` selects the reviewed support adjustment and external
+provider document/correction scenarios using `customer-support.json`. The driver
+checks availability for the entire requested suite before admitting a model run.
+It approves only the model-proposed, fictional 500-cent adjustment under the
+recorded local acceptance policy. It never supplies the model's calls or preloads
+skills. Saved support state and document content are inspected independently.
+
+Use the same observation deadline and explicit native budgets across the requested
+platform set, then record their different scopes. Mastra bounds an active generation
+segment, LangGraph bounds individual provider requests, Temporal bounds individual
+Activities, and Restate retains its service execution policy. See the
+[budget contract](../agent-harness-baseline/development-evals.md#observation-and-native-time-budgets).
+A changed common instruction or declared provider effect contract is an experimental
+change. Record it as a separate invocation; do not replace earlier outcomes or imply
+that the trials differ only in their framework.

@@ -136,12 +136,12 @@ each leaves a usable checkpoint. Do not make a commit for every checkbox.
 
 - [x] Record an ADR for connected tools, external file providers, stable identity,
   effect outcomes and invocation approval. Include alternatives and migration.
-- [ ] Define the supported baseline/transport/result/approval matrix.
+- [x] Define the supported baseline/transport/result/approval matrix.
 - [x] Extend existing descriptors with connection reference, supported content,
   effect/retry contract and approval mode; avoid duplicated policy types.
-- [ ] Define versioned result and pending-action records, including compatibility
+- [x] Define versioned result and pending-action records, including compatibility
   handling for retained older run manifests and receipts.
-- [ ] Specify connection states, ownership and the distinction between credential
+- [x] Specify connection states, ownership and the distinction between credential
   rotation, revoked authority and changed source definitions.
 - [x] Make startup default to a business-tool/skill profile, without a native
   workspace or dependency on an available external service.
@@ -156,20 +156,20 @@ Commit: `feat: define connected agent lifecycle and capability contracts`.
 
 ### 2. Make effect outcomes and Temporal execution correct
 
-- [ ] Separate execution status from effect outcome: not dispatched, confirmed
+- [x] Separate execution status from effect outcome: not dispatched, confirmed
   rejection/no effect, confirmed effect, or unknown. Record the evidence for certainty.
 - [x] Treat dispatched write failures conservatively unless the provider contract
   establishes rejection. Do not assume every HTTP 4xx/5xx means no change occurred.
 - [x] Treat successful HTTP status with invalid output as a response-contract
   failure with the provider acknowledgement retained. Do not infer business success
   solely from status or expose this as an ordinary request to repeat the write.
-- [ ] Stop model continuation on an unresolved effect and retain a reconciliation
+- [x] Stop model continuation on an unresolved effect and retain a reconciliation
   record. Provide read/inspect recovery separately from repeat execution.
-- [ ] Add optional provider-supported idempotency binding. Use a durable logical
+- [x] Add optional provider-supported idempotency binding. Use a durable logical
   operation identity and reject changed arguments for an existing key.
-- [ ] Document that receipt replay deduplicates the same call ID, not independently
+- [x] Document that receipt replay deduplicates the same call ID, not independently
   generated business actions. Do not claim exactly-once effects.
-- [ ] Heartbeat Temporal tool Activities while awaiting source execution and clear
+- [x] Heartbeat Temporal tool Activities while awaiting source execution and clear
   timers on every exit. Propagate cancellation through the existing signal chain.
 
 Acceptance: a slow tool works, cancellation settles, and an uncertain write never
@@ -185,29 +185,29 @@ Commit: `fix: preserve business effect certainty and heartbeat tool activities`.
 
 ### 3. Connect identity, credentials and availability
 
-- [ ] Bind generic packages to existing connection references rather than captured
+- [x] Bind generic packages to existing connection references rather than captured
   raw startup headers. Support anonymous, static service-account and OAuth credentials.
-- [ ] Resolve credentials immediately before discovery/invocation, with declared
+- [x] Resolve credentials immediately before discovery/invocation, with declared
   resource and scopes. Keep tokens out of snapshots, model context and safe summaries.
-- [ ] Integrate existing refresh/revoke and encrypted secret storage. Inspect and
+- [x] Integrate existing refresh/revoke and encrypted secret storage. Inspect and
   repair OAuth callback state binding, expiry and refresh-token rotation first.
-- [ ] Add server-owned account/owner identity. Since full product login is absent,
+- [x] Add server-owned account/owner identity. Since full product login is absent,
   explicitly limit administrative APIs to the existing trusted local deployment;
   do not accept a browser-supplied owner as authorization or claim multi-tenancy.
-- [ ] Add configured OAuth browser redirect/callback behavior with PKCE and exact
+- [x] Add configured OAuth browser redirect/callback behavior with PKCE and exact
   redirect/resource checks. Follow the advertised MCP authorization capabilities.
-- [ ] Bind callback state to connection, owner, issuer, resource and redirect URI;
+- [x] Bind callback state to connection, owner, issuer, resource and redirect URI;
   expire and consume it once. Preserve the previous refresh token when a refresh
   reply omits a replacement. Reject issuer or connection mismatch before exchange.
-- [ ] Declare configured-provider OAuth separately from MCP authorization discovery.
+- [x] Declare configured-provider OAuth separately from MCP authorization discovery.
   For the advertised MCP OAuth path, implement protected-resource metadata and
   authorization-server metadata discovery, client registration selection, resource
   indicators and challenged scopes. Do not label a static bearer header as this flow.
-- [ ] Preserve permitted identity across token refresh; revoke/changed scopes must
+- [x] Preserve permitted identity across token refresh; revoke/changed scopes must
   immediately prevent new source dispatch and require a new authorization decision.
-- [ ] Expose unavailable, authorization-required, expired and revoked sources honestly.
+- [x] Expose unavailable, authorization-required, expired and revoked sources honestly.
   One unavailable optional source must not prevent the control plane from starting.
-- [ ] Add explicit connect/refresh/reconnect operations with bounded discovery and
+- [x] Add explicit connect/refresh/reconnect operations with bounded discovery and
   cleanup; update future catalogs atomically without rebinding running admissions.
 
 Acceptance: a configured connection becomes usable, refreshes without catalog
@@ -222,23 +222,25 @@ Commit: `feat: integrate connected source identity and credential lifecycle`.
 
 - [x] Add declarative path, query, permitted header and body mappings to HTTP
   operations. Encode path segments and prevent configured-origin escape.
-- [ ] Support JSON and form requests plus bounded artifact-reference upload/download
-  where the business/document scenario requires it. Never accept host file paths
+- [x] Support JSON and form requests plus bounded artifact-reference upload/download
+  where the business/document scenario requires it. The current text-only document
+  scenario needs no binary transfer; artifact upload/download remains unsupported
+  in the compatibility matrix. Never accept host file paths
   from the model as upload authority.
-- [ ] Bind pagination, request IDs, provider idempotency headers and response mapping
+- [x] Bind pagination, request IDs, provider idempotency headers and response mapping
   explicitly in configuration. Keep provider-specific details inside the adapter.
 - [x] Parse MCP SSE incrementally, correlate request IDs, handle chunk boundaries,
   progress and bounded errors, and stop at the matching terminal response without
   waiting for an open stream to close.
-- [ ] Implement the verified current HTTP tools requirements and explicitly retained
+- [x] Implement the verified current HTTP tools requirements and explicitly retained
   legacy compatibility, including relevant metadata/header binding and cleanup.
-- [ ] Verify `x-mcp-header` annotations and value encoding against the declared
+- [x] Verify `x-mcp-header` annotations and value encoding against the declared
   protocol revision. Retain bounded progress diagnostics with the source attempt.
-- [ ] Handle discovery pagination, alias collisions and catalog changes. Reject
+- [x] Handle discovery pagination, alias collisions and catalog changes. Reject
   unsupported interactive/server requests explicitly for the selected protocol era.
-- [ ] Advertise supported MCP operations. Resources/prompts, sampling, elicitation,
+- [x] Advertise supported MCP operations. Resources/prompts, sampling, elicitation,
   task extensions and local stdio are not implied by tool discovery.
-- [ ] Add a new connected business operation using configuration only, and verify
+- [x] Add a new connected business operation using configuration only, and verify
   no platform loop or tool-name switch was changed.
 
 Acceptance: an ordinary parameterized business API and an open-stream MCP tool
@@ -252,24 +254,24 @@ Commit: `feat: extend API bindings and MCP streaming interoperability`.
 
 ### 5. Persist action-specific human review
 
-- [ ] Add automatic, upfront tool-grant and invocation-review policy modes. Existing
+- [x] Add automatic, upfront tool-grant and invocation-review policy modes. Existing
   grants determine whether an action may be proposed; review cannot expand grants.
-- [ ] Persist a pending proposal before any side effect and before declaring the
+- [x] Persist a pending proposal before any side effect and before declaring the
   run suspended. Reuse `suspended` with a reason and pending-action reference.
-- [ ] Add APIs to inspect and approve/deny exact proposals with argument/source
+- [x] Add APIs to inspect and approve/deny exact proposals with argument/source
   digests, decision expiry and duplicate-decision conflict handling.
-- [ ] Serialize the approve/cancel race. Recheck terminal state, decision and current
+- [x] Serialize the approve/cancel race. Recheck terminal state, decision and current
   connection authority immediately before source dispatch.
-- [ ] On denial, return an identified tool result to the native agent so it can
+- [x] On denial, return an identified tool result to the native agent so it can
   explain or choose an allowed alternative. On expiry, retain the proposal and
   require a fresh review. On cancellation, invalidate pending dispatch permission.
-- [ ] Make fresh review reachable from a suspended run. A server-owned renewal
+- [x] Make fresh review reachable from a suspended run. A server-owned renewal
   operation revalidates the frozen call and authority, creates a new review revision,
   and updates the native waiting reference without dispatch or inference. Reject
   old decisions. If authority or arguments changed, require a new authorized action.
-- [ ] Keep an unfinished context turn occupied while awaiting review; do not append
+- [x] Keep an unfinished context turn occupied while awaiting review; do not append
   a synthetic completed answer or permit a conflicting follow-up turn.
-- [ ] Separate human-wait lifetime from model/tool deadlines and record both.
+- [x] Separate human-wait lifetime from model/tool deadlines and record both.
   No repeated inference, network retry loop or held tool Activity while waiting.
 
 Acceptance: the exact proposed action is reviewable, no write occurs while waiting,
@@ -284,29 +286,29 @@ Commit: `feat: persist invocation review and approved action dispatch`.
 
 ### 6. Wire waiting and continuation into all four native agents
 
-- [ ] Verify the pinned SDK mechanisms before changing any loop. Prototype one
+- [x] Verify the pinned SDK mechanisms before changing any loop. Prototype one
   invocation pause/resume per platform with scripted model decisions.
-- [ ] Mastra: use the installed SDK's `requireApproval`,
+- [x] Mastra: use the installed SDK's `requireApproval`,
   `approveToolCallGenerate` and `declineToolCallGenerate`; bind native run/call IDs
   to the Lab proposal. Configure persistent LibSQL snapshot storage and reconstruct
   admitted agents for waiting-run recovery. Do not restart the original prompt.
-- [ ] LangGraph: use checkpointed interruption/resumption with the stable native
+- [x] LangGraph: use checkpointed interruption/resumption with the stable native
   thread and pending call. Put `interrupt` in a dedicated approval node before
   effects and use `Command(resume=...)`. The pinned 1.2.10 does not support newer
   typed interrupt examples requiring 1.2.12; do not upgrade merely to copy a snippet.
   Extend Python/TypeScript protocol enums, service-store projection and runner
   mapping with nonterminal `suspended`, so an interrupt is not reported as completed
   or unknown.
-- [ ] Temporal: wait on a validated workflow signal/update after persisting the
+- [x] Temporal: wait on a validated workflow signal/update after persisting the
   proposal; execute approved I/O in an Activity with the same logical call ID.
-- [ ] Restate: use durable state and a call-specific `ctx.promise` resolved by a
+- [x] Restate: use durable state and a call-specific `ctx.promise` resolved by a
   validated workflow shared handler. Journal approved execution under stable
   identity without waiting inside an external I/O action.
-- [ ] Retain completed batch results and pending calls in deterministic order. A
+- [x] Retain completed batch results and pending calls in deterministic order. A
   mixed read/write batch must not run an unapproved write or lose previous results.
-- [ ] Extend existing runner resume and control-plane projection instead of creating
+- [x] Extend existing runner resume and control-plane projection instead of creating
   an unrelated approval executor. Validate resume payloads and retained native refs.
-- [ ] Publish normal approval continuation separately from API restart, worker
+- [x] Publish normal approval continuation separately from API restart, worker
   restart and unknown-effect recovery. Reconstruct pending review after restart
   on all four baselines using their verified snapshot/checkpoint/history/journal
   mechanisms; mark recovery limits outside this waiting boundary explicitly.
@@ -323,17 +325,17 @@ Split Python/Mastra and Temporal/Restate integration into separate commits if ne
 
 ### 7. Finish results, skills and external document access
 
-- [ ] Keep structured content, content blocks, source identity and errors in the
+- [x] Keep structured content, content blocks, source identity and errors in the
   canonical result through every native adapter, including Python.
-- [ ] Define text/JSON/resource projections and record transformations or omitted
+- [x] Define text/JSON/resource projections and record transformations or omitted
   content. Use model-native image input only for a supported model/platform pair;
   explicitly reject unsupported audio/image interactions instead of claiming support.
-- [ ] Preserve skill metadata, activation, resource loading, deduplication and
+- [x] Preserve skill metadata, activation, resource loading, deduplication and
   compaction protection. Skills never supply credentials or expand tool grants.
-- [ ] Give every native model the permitted skill names and descriptions before
+- [x] Give every native model the permitted skill names and descriptions before
   its first decision, with concise activation instructions. Load full instructions
   only on activation; disabled skills must not appear in the presented catalog.
-- [ ] Let skill scripts request an authorized connected execution service when
+- [x] Let skill scripts request an authorized connected execution service when
   configured; do not introduce local shell execution as a skill-loader feature.
 - [x] Move file operations into an optional separately running MCP/API provider
   with provider-owned storage/session scopes. Remove native workspace sources
@@ -352,17 +354,17 @@ Commit: `refactor: externalize document tools and preserve native result project
 
 ### 8. Make connections and pending actions usable in the frontend
 
-- [ ] Show selected connections, available tools and skills with concise states.
+- [x] Show selected connections, available tools and skills with concise states.
   Keep technical protocol/configuration details behind inspection views.
-- [ ] Provide connect/reconnect/revoke controls only for implemented lifecycle paths.
+- [x] Provide connect/reconnect/revoke controls only for implemented lifecycle paths.
   Never place secret values in browser state or show fictional connection health.
-- [ ] Show an awaiting-review action with relevant arguments and approve/deny controls,
+- [x] Show an awaiting-review action with relevant arguments and approve/deny controls,
   expiry and changed-proposal feedback. Keep cancellation available while suspended.
-- [ ] Show native continuation, tool outcome and source receipt together. Distinguish
+- [x] Show native continuation, tool outcome and source receipt together. Distinguish
   business rejection, invalid output and uncertain effects.
-- [ ] Keep profile-level approvals and call-specific review visually distinct.
+- [x] Keep profile-level approvals and call-specific review visually distinct.
   Do not add a VM/filesystem environment selector to the default business flow.
-- [ ] Update Chat, Compare and Evals projections where the new nonterminal state
+- [x] Update Chat, Compare and Evals projections where the new nonterminal state
   changes polling or completion detection.
 
 Acceptance: a contributor can connect a service, run an agent, inspect and decide
@@ -422,7 +424,7 @@ now provides the foundation. Use this execution checklist:
 
 - [ ] Audit each milestone against code and retained evidence. Check an item only
   when its contract and its stated validation are both satisfied.
-- [ ] Correct model-budget plumbing, including the Mastra construction in
+- [x] Correct model-budget plumbing, including the Mastra construction in
   `live.ts`. Record per-provider-request deadlines separately from whole active
   generation budgets. Mastra currently times an entire segment; LangGraph times
   individual provider requests. Equal numbers do not establish equal conditions.
@@ -433,9 +435,9 @@ now provides the foundation. Use this execution checklist:
 - [ ] Fix demonstrated integration defects, then repeat only affected workflows
   with explicit budgets. If choosing another free model, verify current price and
   tool support and retain a separate comparison report.
-- [ ] Publish the baseline/transport/authentication/result/recovery matrix with
+- [x] Publish the baseline/transport/authentication/result/recovery matrix with
   explicit OAuth registration and multimedia limits.
-- [ ] Verify skill-script requests through an authorized connected execution
+- [x] Verify skill-script requests through an authorized connected execution
   fixture before advertising execution support. Readable scripts alone do not
   establish this capability. Local shell execution remains excluded.
 - [ ] Complete the frontend approve/deny walkthrough with run IDs and a screenshot.
@@ -516,8 +518,9 @@ justify claiming this milestone makes the Lab production-ready in every environm
 ## Current position and evidence ledger
 
 The implementation has committed checkpoints across milestones 1 through 8.
-Acceptance remains incomplete. The unchecked checklist is conservative and needs
-its final code/evidence audit. Starting branch was `main`, checkpoint `ab2cadd`;
+Acceptance remains incomplete. Milestones 1–7 have a code/evidence audit, with conditional binary transfer
+explicitly unsupported for these text-only scenarios. Milestone 8 implementation
+is verified by build/projection checks; its browser acceptance is still pending. Starting branch was `main`, checkpoint `ab2cadd`;
 unrelated Studio/Lina and context-research changes remain user-owned.
 
 | Checkpoint | Implemented slice |
@@ -577,3 +580,42 @@ third-party compatibility are not established by the retained evidence.
 Before completion, re-read the user's filesystem restriction and the definition
 of done. Inspect the implementation beyond the checklist, resolve or report gaps,
 and distinguish implemented contracts from observed model competence.
+
+### Integration audit checkpoints
+
+- `313bbbc`: actual Mastra mixed-batch approval/denial fixture and documentation.
+- `d818e7d`: native running state survives projection and temporary service outage.
+- `31807b0`: timeout plumbing, recorded native settings and runtime versions.
+- `6e33888`: HTTP cursor/response mapping and retained sanitized MCP progress.
+- `fc0db9e`: structured-only tool feedback survives TS/Python projection.
+- `3e3526f`: authorized connected procedure execution, with denial/revoke checks.
+- `9d9815d`: meaningful Chat effect labels and read-only source receipt inspection.
+- `9510697`: whole-suite provider preflight and future report completion metadata.
+
+A combined affected suite ran 75 checks: 74 passed; one old HTTP expectation
+omitted the now-required frozen server catalog. Its assertion now checks the
+actual server-owned catalog, and the two affected HTTP checks passed. No runtime
+behavior or grader was weakened. Python hosted-tool/review/protocol checks passed
+21 tests. Frontend typecheck and production bundle passed. Native recovery proof
+was not repeated because the native lifecycle implementation did not change.
+
+The alternate Gemma trial returned HTTP 429 before successful decisions and is
+retained at `lab/runs/.evals/capabilities-f49dbaec-0f07-468f-89df-fb3acb91c377/summary.json`.
+The explicit-budget Nemotron trial is running at
+`lab/runs/.evals/capabilities-e6f0ca23-8d2b-4d6a-8c33-04eefc5f8abd/summary.json`.
+Mastra and LangGraph have each performed the exact reviewed adjustment and
+independent verification; both skipped the required skill activation. A Mastra
+bad patch also exposed a useful gap: provider-known pre-write document rejections
+need a configured no-effect contract to allow corrective model feedback. Generic
+MCP write errors must remain uncertain. That correction is committed in `906250c`, with ten source/provider checks passing.
+
+- `8621784`: legacy schema-v1 projection and frozen-source rejection verified.
+- `bf6a321`: common relevant-skill instructions for new sessions, with retained
+  session instructions preserved and a direct compatibility check.
+- `c779eae`: Evals displays business workflows, original assertions and outcomes.
+- `906250c`: configured MCP pre-effect rejection codes, verified correction and
+  retained uncertainty when no contract exists.
+- Final affected integration checks after these changes: 57 passed; focused
+  frontend identity/outcome/rendering checks: 4 passed. Earlier unaffected checks
+  remain applicable. Browser walkthrough is still pending; no substitute browser
+  automation was attempted after the security-policy rejection.
