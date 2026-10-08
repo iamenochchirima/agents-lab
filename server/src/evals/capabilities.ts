@@ -55,11 +55,20 @@ async function main() {
   if (!catalog.ok) throw new Error(`Free model catalog unavailable: HTTP ${catalog.status}.`);
   const checkedModel = assertFreeModelCatalog(await catalog.json(), model);
   const profiles = await request<{profiles: CapabilityProfileView[]}>("/api/capabilities");
+  // Validate the entire requested suite before admitting its first model run.
+  // An absent optional provider must not leave a misleading partial trial.
+  for (const task of tasks) {
+    if (!profiles.profiles.some(profile => profile.id === `${task}-agent` && profile.available)) {
+      throw new Error(`Configure the ${task}-agent package profile before acceptance.`);
+    }
+  }
   const invocationId = `capabilities-${randomUUID()}`, directory = join(config.runsRoot, ".evals", invocationId);
   await mkdir(directory, {recursive: true});
   const outcomes: unknown[] = [];
+  const startedAt = new Date().toISOString();
+  let completedAt: string | null = null;
   const experimentId = "agent-capabilities-live";
-  const controls = {model: checkedModel, freeOnly: true, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, experimentId, maxRounds: 24, maxCalls: 32, deadlineMs, reviewPolicy: {mode: "local-fixture-only", permittedTool: "support_adjust", amountCents: 500, reason: "late_delivery", productionAuthorization: false}, sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], {cwd: root, encoding: "utf8"}).trim()};
+  const controls = {platforms, tasks, model: checkedModel, freeOnly: true, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, experimentId, maxRounds: 24, maxCalls: 32, deadlineMs, reviewPolicy: {mode: "local-fixture-only", permittedTool: "support_adjust", amountCents: 500, reason: "late_delivery", productionAuthorization: false}, sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], {cwd: root, encoding: "utf8"}).trim()};
   const workspacePrompts = [
     "Use the available skills to complete the task in brief.md. Discover and load the evidence-report skill and its referenced report-format resource. Inspect the workspace documents, resolve the latest approved Cedar launch date against the older proposal, and write artifacts/cedar-report.md with the dependency, next action and file/line citations. Read the saved report to verify it. Work autonomously with the approved workspace tools.",
     "Revise the saved artifacts/cedar-report.md in this same workspace: add the exact heading 'Immediate action' and explicitly state that a documentation owner must be assigned. Keep the approved launch date and citations. Read the current file first, use its current digest for the edit, and read the saved revision to verify it.",
@@ -67,7 +76,7 @@ async function main() {
   let interrupted = false;
   const interrupt = () => { interrupted = true; };
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
-  async function save() { await writeFile(join(directory, "summary.json"), JSON.stringify({schemaVersion: 1, mode: "capability-acceptance", invocationId, controls, versions, workspacePrompts, outcomes}, null, 2) + "\n"); }
+  async function save() { await writeFile(join(directory, "summary.json"), JSON.stringify({schemaVersion: 1, mode: "capability-acceptance", invocationId, startedAt, completedAt, status: completedAt ? "completed" : "incomplete", controls, versions, workspacePrompts, outcomes}, null, 2) + "\n"); }
   await save();
   for (const platform of platforms) for (const task of tasks) {
     if (interrupted) break;
@@ -170,6 +179,8 @@ async function main() {
     outcomes.push(outcome); await save(); console.log(`${platform} ${task}: ${outcome.verdict}`);
     if (outcome.verdict !== "pass") process.exitCode = 1;
   }
+  if (!interrupted && outcomes.length === platforms.length * tasks.length) completedAt = new Date().toISOString();
+  await save();
   console.log(`Acceptance evidence: ${join(directory, "summary.json")}`);
   process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt);
   async function supportSnapshot(namespace: string): Promise<{adjustmentCents: number; revision: number}> {
