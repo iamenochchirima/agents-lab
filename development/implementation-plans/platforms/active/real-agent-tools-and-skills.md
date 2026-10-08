@@ -1,10 +1,9 @@
 # Real agent tools and skills implementation plan
 
-Status: implementing; resumed by user on 2026-10-08.
+Status: implemented and verified on 2026-10-08, with recorded real-model limitations.
 
-This is a temporary development plan, outside curated Docs. Earlier uncommitted
-implementation changes are drafts to review against this plan, not accepted
-milestones. The user has now authorized completing this standalone milestone.
+This is a temporary development plan, outside curated Docs. The implementation was resumed on 2026-10-08 and completed in separate
+reviewable commits. This file remains the single checklist and evidence ledger.
 
 This document owns the complete next tools-support milestone: architecture,
 adapters, skills, task environments, native platform integration, frontend,
@@ -37,10 +36,11 @@ workspace and service tasks and apply a follow-up correction with inspectable ev
 
 ## Design and alternatives
 
-The existing inline calculator and fixture routes remain compatible. The proposed
+The existing inline calculator and fixture routes remain compatible. The selected
 capability host uses an authenticated internal HTTP interface so Python and TS
 native workers can share implementations and configuration without importing each
-other's code. Phase 1 settles this boundary before accepting the draft. Resolve declarations before durable execution; never rediscover tools
+other's code. Phase 1 resolved this boundary after reviewing the earlier drafts.
+Resolve declarations before durable execution; never rediscover tools
 inside workflow replay. The host rechecks retained run grants and revision before
 execution. It is infrastructure, not an agent loop or a model proxy.
 
@@ -48,15 +48,15 @@ Prefer the existing JSON Schema contracts. Add Ajv as a direct pinned dependency
 already present transitively, because handwritten argument switches cannot validate
 arbitrary discovered schemas. Keep model SDK projections native.
 
-## Architecture decisions to settle
+## Architecture decisions
 
-| Boundary | Recommendation and trade-off |
+| Boundary | Decision and trade-off |
 | --- | --- |
 | Catalog | Extend the existing capability catalog with source contributions, stable identities and collision checks. Avoid a second catalog that disagrees with existing grants. |
-| Authority | Existing policy and connection layers own permissions, credentials and scopes. Discovery and skill instructions grant no authority. Review drafts for duplicated connection ownership. |
+| Authority | Existing policy and connection layers own permissions, credentials and scopes. Discovery and skill instructions grant no authority. Source adapters reuse these owners. |
 | Admission | Record schemas, bindings, versions, digests, effective limits and policy decisions. Refresh catalogs for future admissions; reject changed sources rather than silently rebinding existing runs. |
 | Native execution | Generate native declarations from catalog data. Each platform retains its own agent loop, lifecycle and execution boundary. |
-| Source execution | Prefer a shared authenticated capability host for integrations used by Python and TypeScript, with direct execution for local built-ins. Compare its service dependency with separate language-specific clients before finalizing. |
+| Source execution | Use a shared authenticated capability host for Python and TypeScript, with direct execution for local built-ins. Its service dependency avoids separate language-specific source implementations. |
 | Results | Preserve structured values, content blocks, status, correlation and bounded original detail. Record omissions in model projections. String-only conversion loses useful evidence. |
 | Skills | Metadata first, activation on demand, resources when needed, plus explicit user activation. Retain active instructions across follow-ups and compaction. |
 | Packages | Packages group contributions; adapters provide execution backends. Arbitrary executable plugin loading needs a separate trust and isolation design. |
@@ -148,17 +148,17 @@ Run relevant builds once integration settles.
 
 ### 6. Real-model acceptance and evidence
 
-- [ ] Run the same workspace task on each supported platform: activate a skill,
+- [x] Run the same workspace task on each supported platform: activate a skill,
       read its reference, inspect sources, create and verify an artifact, then apply a correction.
-- [ ] Run a service task through MCP or a connector to inspect and update controlled state.
+- [x] Run a service task through MCP or a connector to inspect and update controlled state.
 - [x] Validate free-model availability and zero-price routing before live execution.
 - [x] Use task-appropriate output/execution allowances and record them consistently.
       Preserve existing baseline controls if this workload requires a separate experiment configuration.
 - [x] Retain model decisions, effective catalogs, skill activations, tool results,
       artifacts and native execution evidence.
 - [x] Check actual artifacts/effects independently of native completion status.
-- [ ] Separate adapter correctness, harness behaviour, model behaviour and provider failures.
-- [ ] Update usage documentation and record validation limitations and commit identities.
+- [x] Separate adapter correctness, harness behaviour, model behaviour and provider failures.
+- [x] Update usage documentation and record validation limitations and commit identities.
 
 Commit: `feat: add real capability acceptance workflows`.
 Minimal checks: one workspace workflow and one service workflow per supported
@@ -167,20 +167,21 @@ Do not repeat large suites without a relevant change, failure or unresolved conc
 
 ## Completion criteria
 
-- [ ] A new tool and skill package work without native agent-loop edits.
-- [ ] Workspace and service operations execute against real task environments.
-- [ ] Permissions, source identity and connection lifecycle have one clear owner.
-- [ ] Skill activation survives the relevant session/context lifecycle.
-- [ ] All four baseline platforms have inspectable evidence or explicit limitations.
-- [ ] Real-model outcomes include failures and unavailable providers honestly.
-- [ ] Frontend and permanent documentation match implemented capabilities.
-- [ ] Coherent commits contain only this milestone's changes; unrelated work is preserved.
+- [x] A new tool and skill package work without native agent-loop edits.
+- [x] Workspace and service operations execute against real task environments.
+- [x] Permissions, source identity and connection lifecycle have one clear owner.
+- [x] Skill activation survives the relevant session/context lifecycle.
+- [x] All four baseline platforms have inspectable evidence or explicit limitations.
+- [x] Real-model outcomes include failures and unavailable providers honestly.
+- [x] Frontend and permanent documentation match implemented capabilities.
+- [x] Coherent commits contain only this milestone's changes; unrelated work is preserved.
 
 ## Current position and evidence
 
-Phases 1–5 are implemented and checked. Phase 6 is running the actual free-model
-workspace and service trials. Keep completion unproven until every requested
-platform/task observation is retained and its limitations inspected.
+All six implementation phases are complete. The primary agent inspected all
+sixteen native turn records, saved artifacts, service state, routing evidence
+and remaining limitations. Completion here means the capability implementation
+and its acceptance procedure work; it does not mean every model obeyed every step.
 
 ### Implementation checkpoints
 
@@ -221,8 +222,10 @@ remains untouched and uncommitted by this task.
   approval, package tools are displayed, and explicit evidence-report selection
   works. Screenshot: `/tmp/agentlab-capability-selection.png`.
 - Scenario/experiment links resolve and documentation generation passed.
+- The restarted final API returned persisted skill/reference identities from an
+  actual Mastra session, with only id/version/digest fields and no instruction text.
 
-### Actual-model observations underway
+### Actual-model observations and completion audit
 
 The first Mastra report is retained at
 `lab/runs/.evals/capabilities-3fab0e3b-e65f-4007-a1c3-9c2ef50a33c5/summary.json`.
@@ -236,14 +239,57 @@ its owned native worker disappeared. The interrupted report is
 Workers were restarted only after process and health evidence established they
 were absent. No observation timeout alone triggered redispatch.
 
-A fresh four-platform trial is running at
+The four-platform trial is retained at
 `lab/runs/.evals/capabilities-51211f00-2c24-4bd6-b6b6-98cb8afc14ae/summary.json`.
-Mastra has executed actual skill/resource/document reads, report creation,
-read-back verification and the correction through Nemotron's free model decisions.
-Its strict workspace verdict passed both turns. Service and remaining platform
-verdicts remain pending. Do not substitute native completion for effect checks.
+It includes eight task observations and sixteen native turn records. Every record
+has config, events, trajectory, metrics, result, context, native identity and
+correlated source receipts. Every service namespace has Avery at revision 3;
+every workspace has the corrected report.
 
-Current owned services: API 4322, task service 9196, frontend 5173, LangGraph 2024,
-Temporal 7233 with the capability queue, and isolated Restate 18080/19070/19080.
-Revalidate live handles when resuming; services are not evidence merely because
-this ledger names them.
+| Platform | Workspace | Service |
+| --- | --- | --- |
+| Mastra | Passed | Passed |
+| LangGraph | Failed requested fresh read before edit | Failed requested skill activation |
+| Temporal | Passed | Passed |
+| Restate | Saved/verified artifact; final response exceeded deadline | Failed requested skill activation |
+
+The original CLI used the TS phased observation shape to verify routing. A focused
+cross-native check exposed and fixed that assumption. The separate
+`routing-review.json`, produced by the documented offline review command, confirms
+free routing for every turn without replacing the original report. Each retained
+request uses exact Nemotron, max_tokens 2048, four zero-price ceilings and disabled
+fallback. Actual skill receipts also confirm the named procedure on passing tasks;
+the CLI now checks that exact identity rather than accepting any skill load.
+
+The Restate deadline case was inspected after asynchronous cancellation and is
+terminal cancelled. The earlier interrupted LangGraph run is explicitly
+reconciliation-required with SERVICE_RESTARTED. Neither was blindly redispatched.
+No acceptance job remains active.
+
+Additional commits: `31f2b73` fixes cross-native routing evidence and adds offline
+review; `d567e74` grades the requested skill identity; `6ef799d` clarifies that
+workspace writes create parent directories. One focused routing test passed;
+server build passed after the grader changes. Permanent scenario, experiment,
+architecture and usage documents match the implemented boundary. The frontend
+bundle and actual selection/approval UI were verified; the unrelated Lina full
+frontend typecheck limitation remains recorded above.
+
+### Requirement-by-requirement audit
+
+- [x] Extensible tools and skills: generic snapshots plus scripted native catalog
+  proof on all four actual runtimes, actual model-driven skill/resource reads,
+  explicit activation admission and persistent context checks.
+- [x] Real workspace and service environments: actual files, MCP/HTTP dispatch,
+  state revisions, per-session separation and sixteen retained native turns.
+- [x] Ownership and recovery: architectural responsibility table plus authenticated
+  host/approval/source-drift/receipt/unknown-effect and cleanup checks.
+- [x] Native and frontend integration: SDK tools, Python node, Temporal Activities,
+  Restate actions, honest unsupported variants, all-action approval and skill UI.
+- [x] Real-model evidence: identical free-model/task controls across four platforms,
+  independent effect checks, retained failed outcomes and explicit limits.
+- [x] Documentation and commits: permanent use/architecture/scenario/experiment
+  documents, separate implementation commits, unrelated Studio/Lina preserved.
+
+Owned service handles must be revalidated before reuse. No service is proven live
+merely because a plan names its port. Acceptance services are local development
+infrastructure, not a deployed or hardened multi-tenant environment.

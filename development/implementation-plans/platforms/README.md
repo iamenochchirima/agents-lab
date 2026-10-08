@@ -12,7 +12,8 @@ It does not contain Studio work or plans for independently owned harnesses.
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
-  commit checkpoints. Proposal ready; implementation paused.
+  commit checkpoints. Implemented with four-platform native and real-model
+  evidence; failed model steps and the Restate deadline remain recorded.
 
 - [Free-model live agent evals](active/free-model-live-evals.md) — implemented:
   historical first slice: three real-model tasks passed on Mastra, LangGraph and

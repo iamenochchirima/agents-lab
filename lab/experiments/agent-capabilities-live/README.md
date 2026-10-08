@@ -30,6 +30,7 @@ scenarios with separate sessions. Only the two turns of one task share state.
 | Driver observation deadline | 180 seconds per turn |
 | Routing | Fresh zero-price catalog check, zero billing ceilings, required parameters, disabled provider fallback |
 | Fault injection | None in these live workflows |
+| Temperature and seed | Omitted; provider defaults apply and deterministic reproduction is not claimed |
 
 The model remains identical across a comparison invocation. An alternate model
 requires its exact approved free ID and current zero-price catalog eligibility.
@@ -104,3 +105,33 @@ controlled effect boundary or lost acknowledgements. Focused adapter and lifecyc
 checks cover named contracts separately. Passing this experiment does not establish
 those failure guarantees, exactly-once external effects, arbitrary plugin safety,
 full MCP conformance or a production-ready agent.
+
+## Development observation on 2026-10-08
+
+One free Nemotron invocation retained eight task observations and sixteen native
+turn records. The original local report is
+`lab/runs/.evals/capabilities-51211f00-2c24-4bd6-b6b6-98cb8afc14ae/summary.json`.
+Its adjacent routing review confirms zero-price, fallback-disabled requests for
+every turn. The original driver incorrectly required phased telemetry; Temporal
+and LangGraph retain combined request/response observations. Their original
+routing failures remain in the report, and the separate review records the fix.
+
+| Platform | Workspace task | Service task |
+| --- | --- | --- |
+| Mastra | Passed both turns | Passed both turns |
+| LangGraph | Saved and verified the correction, but skipped the required fresh read before editing | Saved and verified both owners, but skipped the requested skill |
+| Temporal | Passed both turns | Passed both turns |
+| Restate | Saved and verified the correction, but its final response exceeded the 180-second observation deadline | Saved and verified both owners, but skipped the requested skill |
+
+The Restate correction subsequently settled as cancelled. Its successful artifact
+checks do not convert the deadline failure into a passing task. Every service
+namespace ended with Avery at revision 3 and preserved the approved date and
+dependency. Every workspace contained the saved, corrected report. The workflow
+assertions still distinguish these effects from following all requested steps.
+
+Earlier failed observations remain alongside this invocation. One used the wrong
+host port; another lost its LangGraph worker and settled as reconciliation-required.
+The host-port default was corrected. A directory-creation hallucination recovered
+through tool feedback, and the write tool now explicitly describes creating parent
+directories. These findings prompted configuration, telemetry and description fixes;
+they do not establish a platform ranking or reliable success rates.
