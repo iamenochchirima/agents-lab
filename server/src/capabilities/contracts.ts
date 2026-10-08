@@ -22,7 +22,7 @@ export type CapabilityApprovalMode = "none" | "required";
 export type CapabilityApprovalDecision = "approved" | "denied";
 
 export interface CapabilitySource {
-  readonly kind: "builtin" | "local" | "plugin" | "connection";
+  readonly kind: "builtin" | "local" | "plugin" | "connection" | "package";
   readonly ref: string;
   readonly digest?: string;
 }

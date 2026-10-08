@@ -116,12 +116,12 @@ export class ToolRegistry {
     if (!implementation) {
       return { allowed: false, code: "UNKNOWN_TOOL", message: `Tool is not enabled: ${call.name}` };
     }
-    if (implementation.definition.riskClass === "external" || (implementation.definition.riskClass === "write" && !this.approvedNames.has(call.name))) {
+    if ((implementation.definition.riskClass === "external" || implementation.definition.riskClass === "write") && !this.approvedNames.has(call.name)) {
       return {
         allowed: false,
         code: "TOOL_RISK_NOT_ALLOWED",
         message: implementation.definition.riskClass === "external"
-          ? `Tool risk class is not allowed in this slice: ${call.name}`
+          ? `Tool requires an explicit approval: ${call.name}`
           : `Tool requires an explicit approval: ${call.name}`,
       };
     }
@@ -155,12 +155,15 @@ export class ToolRegistry {
       // registry revalidates at the execution boundary so callers cannot
       // forge an accepted value by constructing the union themselves.
       const normalizedArguments = implementation.validateArguments(validated.call.arguments);
-      const content = await implementation.execute(normalizedArguments, {
+      const executionContext = {
         ...context,
         signal,
         toolCallId: validated.call.toolCallId,
+        toolRound: validated.call.round,
         onConnectionResult,
-      });
+      };
+      const remoteResult = implementation.executeResult ? await implementation.executeResult(normalizedArguments, executionContext) : undefined;
+      const content = remoteResult ? remoteResult.content : await implementation.execute(normalizedArguments, executionContext);
       const resultBytes = utf8ByteLength(content);
       if (resultBytes > implementation.definition.limits.maxResultBytes) {
         return failure(
@@ -172,6 +175,7 @@ export class ToolRegistry {
           connection,
         );
       }
+      if (remoteResult) return remoteResult;
       return {
         status: "completed",
         content,
@@ -182,16 +186,6 @@ export class ToolRegistry {
       };
     } catch (error) {
       const durationMs = elapsed(startedAt);
-      if (context.signal.aborted || timeoutController.signal.aborted) {
-        return failure(
-          timeoutController.signal.aborted && !context.signal.aborted ? "TOOL_TIMEOUT" : "TOOL_CANCELLED",
-          timeoutController.signal.aborted && !context.signal.aborted ? "Tool execution exceeded its deadline." : "Tool execution was cancelled.",
-          durationMs,
-          timeoutController.signal.aborted && !context.signal.aborted ? "timed_out" : "cancelled",
-          implementation.definition.limits.maxResultBytes,
-          connection,
-        );
-      }
       if (error instanceof Error && (error.name === "API_OUTCOME_UNKNOWN" || error.name === "CONNECTION_OUTCOME_UNKNOWN" || error.name.endsWith("_OUTCOME_UNKNOWN"))) {
         return failure(
           "TOOL_UNKNOWN",
@@ -202,6 +196,17 @@ export class ToolRegistry {
           connection,
         );
       }
+      if (context.signal.aborted || timeoutController.signal.aborted) {
+        return failure(
+          timeoutController.signal.aborted && !context.signal.aborted ? "TOOL_TIMEOUT" : "TOOL_CANCELLED",
+          timeoutController.signal.aborted && !context.signal.aborted ? "Tool execution exceeded its deadline." : "Tool execution was cancelled.",
+          durationMs,
+          timeoutController.signal.aborted && !context.signal.aborted ? "timed_out" : "cancelled",
+          implementation.definition.limits.maxResultBytes,
+          connection,
+        );
+      }
+
       return failure(
         "TOOL_EXECUTION_FAILED",
         safeErrorMessage(error, `Tool execution failed: ${validated.call.name}.`),

@@ -1,3 +1,4 @@
+import type { ToolCatalogSnapshot } from "../../capabilities/extensions/contracts.js";
 export const RUN_STATUSES = [
   "created",
   "queued",
@@ -40,6 +41,8 @@ export interface RunSelection {
 }
 
 export interface RunCapabilities {
+  /** Resolved once by trusted admission, never accepted from a browser. */
+  readonly toolCatalog?: ToolCatalogSnapshot;
   readonly tools: {
     readonly enabledNames: readonly string[];
     readonly approvedNames?: readonly string[];
@@ -50,6 +53,8 @@ export interface RunCapabilities {
   readonly connections?: readonly ConnectionBinding[];
   /** Server-owned profile selected by Chat or Compare. */
   readonly profileId?: string;
+  /** User-requested packaged skills, checked against the selected profile. */
+  readonly requestedSkillIds?: readonly string[];
   /** Approval decisions are references, never credentials. */
   readonly approvals?: readonly CapabilityApproval[];
   /** Immutable resolution retained in the manifest after admission. */

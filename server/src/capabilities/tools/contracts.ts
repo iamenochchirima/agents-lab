@@ -1,6 +1,7 @@
 import type { ConnectionResult } from "../integrations/contracts.js";
 import type { ConnectionBinding } from "../integrations/contracts.js";
 import type { ConnectionEvidence, ConnectionRuntime } from "../integrations/runtime.js";
+import type { UntrustedSkillContextText } from "../skills/contracts.js";
 
 /** Provider-neutral tool contracts.
  *
@@ -29,6 +30,8 @@ export interface ToolDefinition {
   readonly riskClass: ToolRiskClass;
   readonly executionKind: ToolExecutionKind;
   readonly limits: ToolLimits;
+  readonly outputSchema?: Readonly<Record<string, unknown>>;
+  readonly failurePolicy?: "feedback" | "terminal";
 }
 
 export interface ToolCall {
@@ -42,17 +45,23 @@ export interface ToolCall {
 export interface ToolExecutionContext {
   readonly runId: string;
   readonly turnId: string;
+  readonly sessionId?: string;
   readonly toolCallId?: string;
+  readonly toolRound?: number;
   readonly signal: AbortSignal;
   readonly connectionRuntime?: ConnectionRuntime;
   readonly connectionBindings?: readonly ConnectionBinding[];
   readonly onConnectionResult?: (result: ConnectionResult) => void;
+  /** Persist a permitted skill activation before returning its instructions. */
+  readonly onSkillActivated?: (skill: UntrustedSkillContextText) => Promise<void>;
 }
 
 export interface ToolImplementation {
   readonly definition: ToolDefinition;
   /** Returns a normalized JSON object or throws a classified validation error. */
   readonly validateArguments: (value: unknown) => Readonly<Record<string, unknown>>;
+  /** Optional lossless adapter result for hosted/remote execution. */
+  readonly executeResult?: (argumentsValue: Readonly<Record<string, unknown>>, context: ToolExecutionContext) => Promise<ToolExecutionResult>;
   readonly execute: (
     argumentsValue: Readonly<Record<string, unknown>>,
     context: ToolExecutionContext,
@@ -93,6 +102,9 @@ export interface ToolExecutionError {
 }
 
 export interface ToolExecutionResult {
+  /** Original bounded remote content retained alongside model text. */
+  readonly structuredContent?: unknown;
+  readonly contentBlocks?: readonly unknown[];
   readonly status: ToolExecutionStatus;
   readonly content: string;
   readonly error: ToolExecutionError | null;

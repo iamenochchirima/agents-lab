@@ -242,7 +242,7 @@ export function validateJsonObject(
 function validateSource(value: unknown, path: string): CapabilitySource {
   const input = validateRecord(value, path, CAPABILITY_LIMITS.maxRecordBytes);
   assertKeys(input, ["kind", "ref", "digest"], path);
-  const kind = validateEnum(input.kind, ["builtin", "local", "plugin", "connection"] as const, `${path}.kind`);
+  const kind = validateEnum(input.kind, ["builtin", "local", "plugin", "connection", "package"] as const, `${path}.kind`);
   const ref = validateIdentifierWithPattern(input.ref, `${path}.ref`, /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/, CAPABILITY_LIMITS.maxSourceRefBytes);
   const digest = input.digest === undefined ? undefined : validateIdentifierWithPattern(input.digest, `${path}.digest`, DIGEST_PATTERN, CAPABILITY_LIMITS.maxDigestBytes);
   return freeze({ kind, ref, ...(digest === undefined ? {} : { digest }) });

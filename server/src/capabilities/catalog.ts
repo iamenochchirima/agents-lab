@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import type { ToolCatalogSnapshot, ResolvedToolDescriptor } from "./extensions/contracts.js";
+import { legacyToolImplementations } from "./extensions/projection.js";
+import { compileToolSchema } from "./extensions/schema.js";
+import type { UntrustedSkillContextText } from "./skills/contracts.js";
 import type {
   CapabilityApproval,
   CapabilityGrant,
@@ -16,6 +21,10 @@ export interface CapabilityProfile {
   readonly policy: CapabilityPolicy;
   readonly grants: readonly CapabilityGrant[];
   readonly skillIds?: readonly string[];
+  /** Available on-demand through skill tools, not preloaded into the session. */
+  readonly availableSkills?: readonly SkillSummary[];
+  /** Native adapter targets verified for this profile. */
+  readonly supportedVariants?: readonly string[];
 }
 
 export interface CapabilityProfileView extends Omit<CapabilityProfile, "policy" | "grants" | "skillIds"> {
@@ -23,11 +32,14 @@ export interface CapabilityProfileView extends Omit<CapabilityProfile, "policy" 
   readonly unavailableReason: string | null;
   readonly capabilities: readonly Pick<CapabilityManifest, "id" | "version" | "kind" | "displayName" | "description" | "risk" | "operations">[];
   readonly skills: readonly SkillSummary[];
+  readonly availableSkills?: readonly SkillSummary[];
 }
 
 export interface CapabilityCatalogOptions {
   /** Rollback switch for connected and side-effecting capability profiles. */
   readonly connectedEnabled?: boolean;
+  readonly toolDescriptors?: readonly ResolvedToolDescriptor[];
+  readonly skillResolver?: (ids: readonly string[]) => Promise<readonly UntrustedSkillContextText[]>;
 }
 
 export interface CapabilityProfileResolution {
@@ -45,6 +57,8 @@ export class CapabilityCatalog {
   private readonly registry: CapabilityRegistry;
   private readonly resolver: CapabilityResolver;
   private readonly connectedEnabled: boolean;
+  private readonly toolDescriptors: ReadonlyMap<string, ResolvedToolDescriptor>;
+  private readonly skillResolver: CapabilityCatalogOptions["skillResolver"];
 
   constructor(
     manifests: readonly CapabilityManifest[],
@@ -56,6 +70,15 @@ export class CapabilityCatalog {
     this.registry = new CapabilityRegistry(manifests);
     this.resolver = new CapabilityResolver(this.registry, now);
     this.connectedEnabled = options.connectedEnabled ?? true;
+    this.skillResolver = options.skillResolver;
+    const descriptors = options.toolDescriptors ?? builtinToolDescriptors();
+    const tools = new Map<string, ResolvedToolDescriptor>();
+    for (const descriptor of descriptors) {
+      if (tools.has(descriptor.definition.name)) throw new Error(`Duplicate catalog tool: ${descriptor.definition.name}`);
+      compileToolSchema(descriptor.definition.inputSchema);
+      tools.set(descriptor.definition.name, deepFreeze(descriptor));
+    }
+    this.toolDescriptors = tools;
     const values = new Map<string, CapabilityProfile>();
     for (const profile of profiles) {
       if (values.has(profile.id)) throw new Error(`Capability profile is duplicated: ${profile.id}`);
@@ -82,8 +105,35 @@ export class CapabilityCatalog {
     return { profile, resolution, skills };
   }
 
+  /** Resolve full declarations once; grant limits override broader source defaults. */
+  toolSnapshot(names: readonly string[], resolution?: CapabilityResolution): ToolCatalogSnapshot {
+    const tools = names.map(name => {
+      const descriptor = this.toolDescriptors.get(name);
+      if (!descriptor) throw new Error(`Tool is absent from the configured catalog: ${name}`);
+      const grant = resolution?.grants.find(item => item.manifest.id === name)?.grant;
+      const limits = descriptor.definition.limits;
+      return { ...descriptor, definition: { ...descriptor.definition, limits: grant ? {
+        timeoutMs: Math.min(limits.timeoutMs, grant.timeoutMs),
+        maxArgumentBytes: Math.min(limits.maxArgumentBytes, grant.maxInputBytes),
+        maxResultBytes: Math.min(limits.maxResultBytes, grant.maxOutputBytes),
+      } : limits } };
+    });
+    return deepFreeze({ schemaVersion: 1 as const, revision: createHash("sha256").update(JSON.stringify(tools)).digest("hex"), tools });
+  }
+
   definitions(): readonly CapabilityManifest[] {
     return this.registry.definitions();
+  }
+
+  /** Explicit selection remains bounded by the selected profile's skill inventory. */
+  async resolveRequestedSkills(profileId: string, ids: readonly string[]): Promise<readonly UntrustedSkillContextText[]> {
+    const profile = this.get(profileId);
+    if (!profile || ids.some(id => !profile.availableSkills?.some(skill => skill.id === id))) {
+      throw new Error("Requested skill is not available in the selected capability profile.");
+    }
+    if (!ids.length) return [];
+    if (!this.skillResolver) throw new Error("Package skill activation is not configured.");
+    return this.skillResolver(ids);
   }
 
   private profileView(profile: CapabilityProfile): CapabilityProfileView {
@@ -102,6 +152,8 @@ export class CapabilityCatalog {
         description: skill.manifest.description,
         digest: skill.manifest.provenance.digest,
       })),
+      ...(profile.availableSkills ? {availableSkills:profile.availableSkills} : {}),
+      ...(profile.supportedVariants ? { supportedVariants: profile.supportedVariants } : {}),
       capabilities: profile.grants.flatMap((grant) => {
         const manifest = this.registry.get(grant.capabilityId, grant.version);
         return manifest ? [{
@@ -121,7 +173,7 @@ export class CapabilityCatalog {
     if (this.connectedEnabled) return { available: true, reason: "" };
     const connected = profile.grants.some((grant) => {
       const manifest = this.registry.get(grant.capabilityId, grant.version);
-      return manifest?.kind === "connection" || manifest?.risk === "write" || manifest?.risk === "external";
+      return this.toolDescriptors.get(grant.capabilityId)?.execution.kind === "hosted" || manifest?.kind === "connection" || manifest?.risk === "write" || manifest?.risk === "external";
     });
     return connected
       ? { available: false, reason: "Connected and side-effecting capabilities are disabled by the server rollback switch." }
@@ -274,4 +326,12 @@ function deepFreeze<T>(value: T): T {
   Object.freeze(value);
   for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
   return value;
+}
+
+/** One registration location for existing inline tools. New connected tools are data. */
+export function builtinToolDescriptors(): readonly ResolvedToolDescriptor[] {
+  return legacyToolImplementations().map(tool => ({ definition: tool.definition,
+    source: { id: `builtin:${tool.definition.name}`, version: "1.0.0", digest: createHash("sha256").update(JSON.stringify(tool.definition)).digest("hex") },
+    execution: { kind: "builtin" as const, id: tool.definition.name }, failurePolicy: tool.definition.failurePolicy ?? "terminal",
+  }));
 }

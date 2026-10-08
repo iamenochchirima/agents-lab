@@ -128,8 +128,12 @@ export function validateRunRequest(request: RunRequest): void {
 function validateCapabilities(capabilities: RunRequest["capabilities"]): void {
   if (capabilities === undefined) return;
   const tools = capabilities.tools;
-  if (!tools || !Array.isArray(tools.enabledNames) || tools.enabledNames.length > 32) {
-    throw new InvalidRunRequestError("capabilities.tools.enabledNames must contain at most 32 tool names.");
+  const requestedSkillIds = capabilities.requestedSkillIds ?? [];
+  if (!Array.isArray(requestedSkillIds) || requestedSkillIds.length > 64 || new Set(requestedSkillIds).size !== requestedSkillIds.length || requestedSkillIds.some(id => typeof id !== "string" || !/^[a-z0-9-]+:[a-z0-9-]+$/.test(id) || id.length > 128)) {
+    throw new InvalidRunRequestError("requestedSkillIds must contain distinct configured package skill IDs.");
+  }
+  if (!tools || !Array.isArray(tools.enabledNames) || tools.enabledNames.length > 128) {
+    throw new InvalidRunRequestError("capabilities.tools.enabledNames must contain at most 128 tool names.");
   }
   const names = new Set<string>();
   for (const name of tools.enabledNames) {

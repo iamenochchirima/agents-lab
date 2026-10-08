@@ -33,6 +33,7 @@ function createFixtureLookupTool(connectionRuntime: ConnectionRuntime): ToolImpl
         properties: { key: { type: "string", minLength: 1, maxLength: 64 } },
       },
       riskClass: "read",
+      failurePolicy: "feedback",
       executionKind: "connection",
       limits: { maxArgumentBytes: 512, maxResultBytes: 4_096, timeoutMs: 2_000 },
     },

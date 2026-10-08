@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
+import { CapabilityCatalog, builtinToolDescriptors, createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
+import { createProjectedToolRegistry } from "../../src/capabilities/extensions/projection.js";
 
 test("default capability profiles are server-owned and resolve read-only grants", () => {
   const catalog = createDefaultCapabilityCatalog(() => "2026-09-20T00:00:00.000Z");
@@ -55,4 +56,22 @@ test("rollback mode exposes connected profiles as unavailable and fails closed o
   assert.equal(localSafe?.available, false);
   assert.match(localSafe?.unavailableReason ?? "", /rollback switch/);
   assert.throws(() => catalog.resolve("local-safe"), /rollback switch/);
+});
+
+test("catalog snapshots freeze effective limits and validate native arguments without coercion", () => {
+  const catalog = createDefaultCapabilityCatalog(() => "2026-09-20T00:00:00.000Z");
+  const resolution = catalog.resolve("local-safe").resolution;
+  const snapshot = catalog.toolSnapshot(["calculator"], resolution);
+  assert.ok(Object.isFrozen(snapshot.tools[0]?.definition.limits));
+  assert.equal(snapshot.revision, catalog.toolSnapshot(["calculator"], resolution).revision);
+  const registry = createProjectedToolRegistry({ enabledNames: ["calculator"] }, snapshot);
+  assert.equal(registry.validateCall({ toolCallId: "bad", name: "calculator", round: 1, arguments: {operation: "add", left: "2", right: 3} }).accepted, false);
+  assert.equal(registry.validateCall({ toolCallId: "good", name: "calculator", round: 1, arguments: {operation: "add", left: 2, right: 3} }).accepted, true);
+  assert.throws(() => catalog.toolSnapshot(["unregistered"]), /absent/);
+});
+
+test("catalog rejects colliding declarations and unresolved remote schemas at registration", () => {
+  const descriptor = builtinToolDescriptors()[0]!;
+  assert.throws(() => new CapabilityCatalog([], [], undefined, undefined, { toolDescriptors: [descriptor, descriptor] }), /Duplicate catalog tool/);
+  assert.throws(() => new CapabilityCatalog([], [], undefined, undefined, { toolDescriptors: [{...descriptor, definition: {...descriptor.definition, inputSchema: { $ref: "https://invalid.example/schema" }}}] }), /resolve reference/);
 });

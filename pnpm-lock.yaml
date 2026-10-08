@@ -188,6 +188,9 @@ importers:
       '@trigger.dev/sdk':
         specifier: 4.5.14
         version: 4.5.14(react@19.3.0)(zod@4.6.5)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       apache-arrow:
         specifier: 18.1.0
         version: 18.1.0
@@ -197,6 +200,9 @@ importers:
       inngest:
         specifier: 4.20.0
         version: 4.20.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.1))(express@5.2.1)(fastify@5.12.4)(hono@4.13.8)(react@19.3.0)(typescript@7.0.2)(zod@4.6.5)
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
       zod:
         specifier: 4.6.5
         version: 4.6.5
