@@ -178,3 +178,56 @@ Activities, and Restate retains its service execution policy. See the
 A changed common instruction or declared provider effect contract is an experimental
 change. Record it as a separate invocation; do not replace earlier outcomes or imply
 that the trials differ only in their framework.
+
+## Connected trial observations on 2026-10-08
+
+The explicit-budget invocation
+`capabilities-e6f0ca23-8d2b-4d6a-8c33-04eefc5f8abd` settled with one pass,
+five strict failures and two errors. All four support runs independently saved
+exactly one reviewed 500-cent adjustment and verified revision 2, but none activated
+the requested skill. Restate passed both document turns. Temporal completed the
+document turns without the required verified correction. Mastra stopped on an
+uncertain patch result, and LangGraph received an unusable empty model response.
+The original reports and their assertions remain unchanged.
+
+That patch result exposed a contract gap. The document provider now identifies
+known validation failures that occur before the requested file edit. Trusted MCP
+configuration declares those exact rejection codes. They return corrective feedback
+with a known no-effect outcome; generic MCP write errors still stop as uncertain.
+A local provider fixture verified rejection, unchanged file state and a subsequent
+corrected edit. This change does not establish that an arbitrary server error has
+no effects.
+
+New sessions also receive the same relevant-skill activation and saved-result
+verification instruction across the four baselines. Skill metadata remains distinct
+from activation, and older sessions retain their original instructions. A separate
+trial records this changed instruction and provider contract; no required skill
+was preloaded and no assertion was weakened.
+
+The subsequent invocation
+`capabilities-7dfe1b7d-8d1c-4832-8939-95afae85c949` ran from 13:04:14 to
+13:25:26 UTC with `nvidia/nemotron-3.5-lightning:free`, a 300-second per-turn
+observation deadline, explicit native budgets, and no paid fallback. It retained
+eight task outcomes and eleven native run records: two strict passes, three strict
+failures and three errors. Repository dirty state and actual native configurations
+are retained; this is not a deterministic reproduction or latency comparison.
+
+| Platform | Reviewed support | External document and correction |
+| --- | --- | --- |
+| Mastra | Saved/verified exactly one 500-cent adjustment; failed required skill activation | Saved initial report, then dispatched-model request exceeded the 180-second active segment; no verification/correction pass |
+| LangGraph | Strict pass, including skill activation and exact reviewed effect | Strict pass across both turns |
+| Temporal | Saved/verified exact adjustment; failed required skill activation | Initial report verified; correction model Activity exceeded its 90-second deadline |
+| Restate | Saved/verified exact adjustment; failed required skill activation | Initial report verified; correction exceeded the 300-second observation deadline |
+
+Independent source inspection confirmed revision 2 and exactly one adjustment for
+all support namespaces, with zero adjustment in each pending-review snapshot. All
+four document namespaces contained a saved report with the approved date and source
+evidence. Saved content does not substitute for the required native verification
+or correction. The model request retained the activation instruction; missing skill
+loads remain observed model choices, not proof that the loader was absent.
+
+Restate's report captured `running` when cancellation was requested at the deadline.
+A subsequent normal run read settled it as `cancelled`; its original report status
+and failing assertions were preserved. No correction write was observed after that
+request. The driver completed unsuccessfully as required. No further trial was run
+merely to obtain passing scores, and these single observations do not rank frameworks.

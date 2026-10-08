@@ -1,6 +1,6 @@
 # Connected business-agent tools implementation plan
 
-Status: implementation checkpoints committed; final acceptance and compatibility audit pending.
+Status: implementation and compatibility audit committed; real-model trial finished; browser acceptance pending.
 Created and reviewed 2026-10-08. Implementation continues under the active goal.
 
 This standalone temporary plan lives outside `docs/`. It follows the implemented
@@ -377,27 +377,29 @@ Commit: `feat: review connected agent actions in the platform UI`.
 
 ### 9. Run business-agent acceptance and complete the handoff
 
-- [ ] Build a reusable fictional support/operations service with real persistent
+- [x] Build a reusable fictional support/operations service with real persistent
   records and an MCP document service. Keep services separate from agent runtimes.
-- [ ] Scenario A: load the appropriate skill, inspect a customer/order and policy,
+- [x] Implement scenario A requiring skill activation, customer/order and policy reads,
   propose a permitted adjustment, await review, apply it and verify the saved state.
-- [ ] Scenario B: inspect documents through the external provider, create a report,
+- [x] Implement scenario B requiring document inspection through the external provider and a report,
   then incorporate a follow-up correction with traceable source evidence.
-- [ ] Run A and B once on each baseline with the same currently verified free model,
+- [x] Run A and B once on each baseline with the same currently verified free model,
   prompts, source configuration, approval modes and recorded budgets. Do not let
   the driver select model tool calls or silently preload the required skill.
-- [ ] Use scripted native checks for deterministic fault boundaries; use actual
+- [x] Use scripted native checks for deterministic fault boundaries; use actual
   model decisions for workflow acceptance. Label the evidence separately.
-- [ ] Verify final business state independently of the agent's answer. Record
+- [x] Verify final business state independently of the agent's answer. Record
   denied actions, tool ordering, loaded skill identity and source effects.
-- [ ] Reuse deterministic services for refresh, source outage, ambiguous write,
+- [x] Reuse deterministic services for refresh, source outage, ambiguous write,
   denial and recovery checks. Do not multiply expensive model trials for those cases.
 - [ ] Run one opt-in external read-only compatibility smoke if a suitable connected
-  provider is available. Record credentials/network blockers honestly; local service
+  provider is available. No suitable third-party connection is configured in this
+  deployment, so this conditional check was not run. Record credentials/network
+  blockers honestly; local service
   acceptance must not be presented as universal third-party compatibility.
-- [ ] Preserve strict model failures and classify causes only from evidence. A failed
+- [x] Preserve strict model failures and classify causes only from evidence. A failed
   model instruction is not automatically an adapter failure and must not be hidden.
-- [ ] Update architecture, usage guide, source-adapter and native platform READMEs,
+- [x] Update architecture, usage guide, source-adapter and native platform READMEs,
   scenario/experiment docs and supported-capability matrix to match actual behavior.
 
 Acceptance: the four platforms demonstrate actual connected business work and
@@ -422,17 +424,17 @@ The next substantial slice is end-to-end acceptance and closing the integration
 issues it reveals. The committed connection, review and native continuation work
 now provides the foundation. Use this execution checklist:
 
-- [ ] Audit each milestone against code and retained evidence. Check an item only
+- [x] Audit each milestone implementation against code and retained evidence. Check an item only
   when its contract and its stated validation are both satisfied.
 - [x] Correct model-budget plumbing, including the Mastra construction in
   `live.ts`. Record per-provider-request deadlines separately from whole active
   generation budgets. Mastra currently times an entire segment; LangGraph times
   individual provider requests. Equal numbers do not establish equal conditions.
   Human review time remains separate.
-- [ ] Finish the eight-workflow free-model trial. Preserve failures and classify
+- [x] Finish the eight-workflow free-model trial. Preserve failures and classify
   timeout, admission, model-choice and adapter failures using retained evidence
   and independently inspected business state.
-- [ ] Fix demonstrated integration defects, then repeat only affected workflows
+- [x] Fix demonstrated integration defects, then repeat only affected workflows
   with explicit budgets. If choosing another free model, verify current price and
   tool support and retain a separate comparison report.
 - [x] Publish the baseline/transport/authentication/result/recovery matrix with
@@ -443,8 +445,8 @@ now provides the foundation. Use this execution checklist:
 - [ ] Complete the frontend approve/deny walkthrough with run IDs and a screenshot.
   Browser automation was rejected by the browser security policy in this session;
   this remains unverified until permitted or recorded manual verification.
-- [ ] Run the combined affected checks once, update permanent docs with observed
-  limits, and commit the final evidence and checklist audit.
+- [x] Run the combined affected checks once and update permanent docs with observed
+  implementation limits. Final trial observations and acceptance audit remain below.
 
 Use coherent commits for budget correction, demonstrated integration defects,
 and acceptance documentation. Keep this as one integrated delivery; avoid adding
@@ -479,32 +481,34 @@ substantial independent workstreams, not trivial edits.
 
 ## Commit and compatibility discipline
 
-- [ ] Capture starting branch/HEAD and unrelated changes before implementation.
-- [ ] Stage only the completed milestone's owned paths; inspect staged diffs.
-- [ ] Include required contract docs and meaningful checks with each coherent change.
-- [ ] Record each commit and its evidence below. Never mark an item complete just
+- [x] Capture starting branch/HEAD and unrelated changes before implementation.
+- [x] Stage only the completed milestone's owned paths; inspect staged diffs.
+- [x] Include required contract docs and meaningful checks with each coherent change.
+- [x] Record each commit and its evidence below. Never mark an item complete just
   because a commit exists.
-- [ ] Keep older evidence and experiments readable; migrate configuration explicitly.
-- [ ] Do not push, rewrite history or squash these checkpoints into one giant commit.
+- [x] Keep older evidence and experiments readable; migrate configuration explicitly.
+- [x] Do not push, rewrite history or squash these checkpoints into one giant commit.
 
 ## Definition of done
 
-- [ ] All four baseline agents use the connected tools through native loops.
-- [ ] A compatible new tool/skill is added without modifying those loops.
-- [ ] Connections have usable auth/refresh/revoke and availability lifecycle.
-- [ ] Specific actions can pause for review and resume without repeated effects.
-- [ ] Pending-review runs survive restart and resume on all four baselines; this
+- [x] All four baseline agents use the connected tools through native loops.
+- [x] A compatible new tool/skill is added without modifying those loops.
+- [x] Connections have usable auth/refresh/revoke and availability lifecycle.
+- [x] Specific actions can pause for review and resume without repeated effects.
+- [x] Pending-review runs survive restart and resume on all four baselines; this
   does not claim universal recovery of arbitrary in-flight inference or effects.
-- [ ] Unknown effects stop repetition; provider-supported idempotency is explicit.
-- [ ] Temporal slow tools and cancellation work with proper heartbeats.
-- [ ] HTTP bindings and the declared MCP HTTP subset have real compatibility evidence.
-- [ ] Core agents do not create or manage a native filesystem workspace.
-- [ ] Optional document/file tools use the same connected adapter boundary.
-- [ ] Skills, structured results, authority and native telemetry remain inspectable.
-- [ ] Frontend state accurately shows connections, pending review and outcomes.
-- [ ] Focused deterministic and free-model evidence covers the completed workflows.
-- [ ] Recovery limits, unsupported capabilities and failed trials are documented.
-- [ ] Required checks pass or unrelated/environment failures are explicitly reported.
+- [x] Unknown effects stop repetition; provider-supported idempotency is explicit.
+- [x] Temporal slow tools and cancellation work with proper heartbeats.
+- [x] HTTP bindings and the declared MCP HTTP subset have real compatibility evidence.
+- [x] Core agents do not create or manage a native filesystem workspace.
+- [x] Optional document/file tools use the same connected adapter boundary.
+- [x] Skills, structured results, authority and native telemetry remain inspectable.
+- [ ] Frontend state accurately shows connections, pending review and outcomes
+  through an actual approve/deny walkthrough. Build and projection checks pass;
+  interaction acceptance remains unverified.
+- [x] Focused deterministic and free-model evidence covers the completed workflows.
+- [x] Recovery limits, unsupported capabilities and failed trials are documented.
+- [x] Required checks pass or unrelated/environment failures are explicitly reported.
 
 ## Deferred work
 
@@ -553,8 +557,8 @@ The Mastra mixed-batch report
 [`native-review-e70d9c2b/summary.json`](../../../../lab/runs/.review-proof/native-review-e70d9c2b-576c-4852-add9-e10dc15cd632/summary.json)
 passed six selected checks. One model response proposed a read and two reviewed
 writes. Approving the first and denying the second preserved original call IDs,
-ran the read once and returned correlated feedback. Fixture/documentation edits
-need a separate checkpoint.
+ran the read once and returned correlated feedback. Fixture and documentation
+are committed in `313bbbc`.
 
 ### Real-model evidence and limits
 
@@ -565,17 +569,19 @@ The generated output-limit defect was corrected in `c5a0f5c`.
 The subsequent free-only trial is retained at
 [`capabilities-bbba1cf6/summary.json`](../../../../lab/runs/.evals/capabilities-bbba1cf6-9bd7-429d-a355-4e9616f06d99/summary.json).
 It uses the verified `nvidia/nemotron-3.5-lightning:free` ID, no paid fallback,
-recorded prompts and independent service-state checks. This is an in-progress
-report, not a successful acceptance claim. Observed failures include Mastra active
-segment timeouts and a LangGraph answer without required tool use. Audit final
-outcomes and causes after the driver settles.
+recorded prompts and independent service-state checks. The driver settled with
+one pass, two strict failures and five errors. Historical completion metadata is
+absent, so Evals deliberately labels that retained invocation incomplete. Observed
+failures include active-segment/provider timeouts and a LangGraph answer without
+required tool use; none is converted to a passing task.
 
 Frontend typecheck, production bundle and focused action-identity checks passed.
 The browser walkthrough remains unverified following the browser security-policy
 rejection. OAuth owner labels describe this trusted local deployment rather than
 authenticated multi-tenant users. Automatic client registration, general MCP
-extensions, model-native multimedia input, connected script execution and external
-third-party compatibility are not established by the retained evidence.
+extensions, model-native multimedia input and external third-party compatibility are not
+established by the retained evidence. Connected procedure execution is established
+only for the configured declarative executor, not arbitrary code or a local shell.
 
 Before completion, re-read the user's filesystem restriction and the definition
 of done. Inspect the implementation beyond the checklist, resolve or report gaps,
@@ -601,11 +607,14 @@ was not repeated because the native lifecycle implementation did not change.
 
 The alternate Gemma trial returned HTTP 429 before successful decisions and is
 retained at `lab/runs/.evals/capabilities-f49dbaec-0f07-468f-89df-fb3acb91c377/summary.json`.
-The explicit-budget Nemotron trial is running at
-`lab/runs/.evals/capabilities-e6f0ca23-8d2b-4d6a-8c33-04eefc5f8abd/summary.json`.
-Mastra and LangGraph have each performed the exact reviewed adjustment and
-independent verification; both skipped the required skill activation. A Mastra
-bad patch also exposed a useful gap: provider-known pre-write document rejections
+The explicit-budget Nemotron trial settled at
+`lab/runs/.evals/capabilities-e6f0ca23-8d2b-4d6a-8c33-04eefc5f8abd/summary.json`
+with one pass, five strict failures and two errors. All four platforms performed
+the exact reviewed adjustment and independent verification, but skipped required
+skill activation. Restate passed the document/correction workflow; Temporal
+completed it without the required verified correction. Mastra encountered an
+uncertain patch result and LangGraph received an unusable empty model response.
+The bad patch exposed a useful gap: provider-known pre-write document rejections
 need a configured no-effect contract to allow corrective model feedback. Generic
 MCP write errors must remain uncertain. That correction is committed in `906250c`, with ten source/provider checks passing.
 
@@ -619,3 +628,70 @@ MCP write errors must remain uncertain. That correction is committed in `906250c
   frontend identity/outcome/rendering checks: 4 passed. Earlier unaffected checks
   remain applicable. Browser walkthrough is still pending; no substitute browser
   automation was attempted after the security-policy rejection.
+
+### Dispatch-authority audit correction
+
+`800809b` closes a demonstrated admission-to-dispatch race. MCP now resolves live
+credentials before every HTTP request, including the tool call after schema
+discovery. HTTP rebinds credentials inside its actual send callback. Rotation
+preserves authority and uses the new token; revoke during discovery prevents the
+write. Pre-dispatch credential failures remain `not_dispatched`, and all resolved
+credential generations are redacted. Server build and 22 focused source, connection
+and integration checks passed. No full model trial was repeated for this isolated
+authority correction. `a56120d` also sanitizes pre-dispatch failure feedback before
+it reaches the model; the same authority fixture proves the redaction. The server
+build and this focused regression passed.
+
+### Latest controlled trial
+
+`lab/runs/.evals/capabilities-7dfe1b7d-8d1c-4832-8939-95afae85c949/summary.json`
+finished at 13:25:26 UTC with eight observations: **2 pass, 3 strict fail, 3 error**.
+It is the separate trial after the shared skill-activation instruction and documented
+MCP pre-effect rejection contract changed. It retains start/completion metadata,
+versions, exact requests and native configurations. LangGraph passed both workflows.
+All four support runs independently saved one exact reviewed 500-cent adjustment
+and verified revision 2; the other three skipped required skill activation. The
+instruction was present in retained requests; no skill was silently preloaded.
+
+All document namespaces contain a saved report with the approved date and source
+evidence. Mastra timed out after saving but before native verification at its
+180-second segment allowance. Temporal verified its first report, then the correction
+model Activity exceeded 90 seconds. Restate verified its first report, then correction
+exceeded the 300-second observation deadline. Its report captured `running` when
+cancellation was requested; a subsequent normal run read settled `cancelled`. No
+correction write was observed after cancellation. The original outcomes remain
+unchanged. These observations establish neither deterministic reproduction nor a
+framework ranking, and saved artifacts do not convert failed tasks into passes.
+
+### Remaining acceptance
+
+- [x] Collect the current trial's terminal aggregate and inspect every new failure.
+- [x] Record final trial observations in experiment documentation and this ledger.
+- [ ] Perform or obtain the actual frontend approve/deny walkthrough, with run IDs
+  and a screenshot. Automated browser access was rejected by the browser security
+  policy. A manual verification request is pending; builds/API checks do not satisfy
+  this condition.
+- [ ] Complete the final audit against the original request. Do not declare the
+  implementation fully accepted while browser interaction remains unverified.
+
+Final read-only architecture review found no additional backend implementation gap.
+Native orchestration, optional provider environments, frozen authority, explicit
+effect certainty and bounded compatibility remain intact. It confirmed that build
+and projection checks cannot stand in for the pending browser walkthrough, and
+that preserved free-model failures cannot be described as successful all-platform
+workflow acceptance. No broad rerun was required.
+
+The task-owned API was restarted after the driver and its cancellation settled,
+so the dispatch-authority/redaction fixes are live. Normal API inspection confirms
+all four selected baselines reachable, the catalog available, and Evals exposing
+the exact completed invocation with 2 pass / 3 fail / 3 error. `/ready` passes.
+Aggregate `/health` remains degraded because unrelated optional Vercel/Inngest/DBOS
+services are absent, Trigger credentials are unset, and the existing Hatchet
+embedded Postgres lock prevents its sidecar from starting. Those baselines were
+out of scope; no unrelated infrastructure or user changes were repaired.
+
+Current milestone: 8 browser acceptance. Status: waiting for the already requested
+manual verification after the browser security rejection. All independent
+implementation and trial-analysis work is complete; the final acceptance audit
+remains open. The optional external compatibility smoke is conditional and was
+not run because no suitable third-party connection is configured.
