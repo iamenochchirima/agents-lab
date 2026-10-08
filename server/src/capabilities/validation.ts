@@ -12,6 +12,8 @@ import { CAPABILITY_SCHEMA_VERSION } from "./contracts.js";
 
 export const CAPABILITY_LIMITS = Object.freeze({
   maxRecordBytes: 64 * 1024,
+  maxRecordDepth: 8,
+  maxRecordNodes: 256,
   maxIdBytes: 128,
   maxVersionBytes: 64,
   maxDisplayNameBytes: 256,
@@ -22,9 +24,12 @@ export const CAPABILITY_LIMITS = Object.freeze({
   maxOperations: 64,
   maxScopes: 64,
   maxScopeBytes: 256,
-  maxSchemaBytes: 16 * 1024,
-  maxSchemaDepth: 8,
-  maxSchemaNodes: 256,
+  // Generated provider schemas contain nested fields and descriptions. Keep
+  // their declaration budget separate from grants/policies and call payloads;
+  // the byte ceiling matches the existing tool-schema compiler's 32 KiB limit.
+  maxSchemaBytes: 32 * 1024,
+  maxSchemaDepth: 16,
+  maxSchemaNodes: 4096,
   maxAllowedCapabilities: 256,
   maxAllowedConnections: 256,
   maxApprovalBytes: 16 * 1024,
@@ -52,7 +57,9 @@ export class CapabilityValidationError extends Error {
 }
 
 export function validateCapabilityManifest(value: unknown): CapabilityManifest {
-  const input = validateRecord(value, "manifest", CAPABILITY_LIMITS.maxRecordBytes);
+  const input = validateRecord(value, "manifest", CAPABILITY_LIMITS.maxRecordBytes,
+    CAPABILITY_LIMITS.maxSchemaDepth + 1,
+    CAPABILITY_LIMITS.maxSchemaNodes + CAPABILITY_LIMITS.maxRecordNodes);
   assertKeys(input, [
     "schemaVersion",
     "id",
@@ -259,8 +266,10 @@ function validateMcpBinding(value: unknown, path: string): CapabilityManifest["m
   return Object.freeze({ endpointRef, serverName, protocolVersion, toolName, toolVersion });
 }
 
-function validateRecord(value: unknown, path: string, maxBytes: number): Record<string, unknown> {
-  assertJsonSafe(value, path, CAPABILITY_LIMITS.maxSchemaDepth, CAPABILITY_LIMITS.maxSchemaNodes);
+function validateRecord(value: unknown, path: string, maxBytes: number,
+  maxDepth: number = CAPABILITY_LIMITS.maxRecordDepth,
+  maxNodes: number = CAPABILITY_LIMITS.maxRecordNodes): Record<string, unknown> {
+  assertJsonSafe(value, path, maxDepth, maxNodes);
   if (!isRecord(value)) throw new CapabilityValidationError(path, "must be a JSON object.");
   const serialized = JSON.stringify(value);
   if (serialized === undefined || utf8ByteLength(serialized) > maxBytes) {

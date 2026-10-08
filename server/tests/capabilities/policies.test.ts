@@ -6,6 +6,7 @@ import type {
   CapabilityGrant,
   CapabilityManifest,
   CapabilityPolicy,
+  JsonObject,
 } from "../../src/capabilities/contracts.js";
 import {
   CapabilityRegistry,
@@ -120,6 +121,46 @@ test("runtime validation rejects unsupported fields, unsafe values, and unbounde
   const cyclic: Record<string, unknown> = {};
   cyclic.self = cyclic;
   assert.throws(() => validateCapabilityManifest({ ...manifest(), inputSchema: cyclic }), CapabilityValidationError);
+});
+
+test("provider schemas retain generated nested fields beyond the ordinary record budget", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      body: {
+        type: "object",
+        properties: {
+          location: {
+            type: "object",
+            description: "Location metadata supplied by the notes application.",
+            properties: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [
+              `field${index}`, { type: "string", description: `Published location field ${index}.` },
+            ])),
+          },
+        },
+      },
+    },
+  };
+  const validated = validateCapabilityManifest(manifest({ inputSchema: schema }));
+  assert.deepEqual(validated.inputSchema, schema);
+  assert.equal(Object.isFrozen(validated.inputSchema), true);
+
+  // Schema admission does not enlarge ordinary policy records or call limits.
+  assert.throws(() => validateCapabilityPolicy(policy({
+    allowedCapabilityIds: Array.from({ length: 250 }, (_, index) => `tool-${index}`),
+  })), /more than 256 JSON values/);
+});
+
+test("provider schema byte, node and nesting ceilings remain enforced", () => {
+  assert.throws(() => validateCapabilityManifest(manifest({
+    inputSchema: { type: "object", description: "x".repeat(32 * 1024) },
+  })), /32768 UTF-8 bytes/);
+  assert.throws(() => validateCapabilityManifest(manifest({
+    inputSchema: { enum: Array.from({ length: 4096 }, () => null) },
+  })), /more than 4096 JSON values/);
+  let nested: JsonObject = { type: "string" };
+  for (let depth = 0; depth < 17; depth++) nested = { items: nested };
+  assert.throws(() => validateCapabilityManifest(manifest({ inputSchema: nested })), /maximum JSON depth/);
 });
 
 test("the resolver is deny-by-default and returns only explicit allowlisted grants", () => {
