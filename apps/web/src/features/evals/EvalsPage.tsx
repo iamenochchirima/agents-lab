@@ -6,6 +6,7 @@ import specification from "../../../../../lab/scenarios/platform-agent-conforman
 import { documents } from "../../generated/document-catalog";
 import { pathForDocument } from "../documentation/documentPaths";
 import { readEvalCases, type EvalGroup } from "./evalModel";
+import { EvalCoverage } from "./EvalCoverage";
 import { EvalResults } from "./EvalResults";
 import "./evals.css";
 
@@ -45,8 +46,9 @@ export function EvalsPage() {
         <p>Inspect recorded trials and the behaviors each platform's agent harness is working toward.</p>
       </div>
     </header>
+    <EvalCoverage />
     <EvalResults />
-    <div className="evals-status"><strong>Acceptance specification</strong><span>Development commands cover twelve core cases and six live probes. Saved trials show measured outcomes.</span><Link to={pathForDocument("docs/research/platform-eval-readiness.md")}>Readiness investigation</Link></div>
+    <div className="evals-status"><strong>Acceptance specification</strong><span>Development commands cover twelve core cases and seven live probes. Saved trials show measured outcomes.</span><Link to={pathForDocument("docs/research/platform-eval-readiness.md")}>Readiness investigation</Link></div>
     <nav className="evals-groups" aria-label="Evaluation groups">
       {groups.map(group => <button key={group.id} type="button" aria-pressed={selected.id === group.id}
         onClick={() => { setParams({ group: group.id }); setQuery(""); }}>

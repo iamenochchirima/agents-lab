@@ -1,9 +1,10 @@
+import { EvalAssessment } from "./EvalAssessment";
 import React, { useEffect, useState } from "react";
 import { evalEvidenceUrl, getSavedEvals, getEvalTrialDetail, type EvalTrialDetail, type SavedEvalCase, type EvalMode, type SavedEvalInvocation } from "./evalResultsApi";
 
 const taskLabels: Readonly<Record<string, string>> = {
   L01: "Prompt completion", L02: "Calculator use", L03: "Context continuation",
-  L04: "Tool-error feedback", L05: "Missing information", L06: "Untrusted tool content",
+  L07: "Retained correction", L04: "Tool-error feedback", L05: "Missing information", L06: "Untrusted tool content",
   B04: "Session isolation", B05: "Tool validation", B06: "Permissions", B08: "Failure handling", B09: "Cancellation", B10: "Submission identity", B11: "Evidence integrity", B12: "Dispatch uncertainty",
   B01: "Prompt completion", B02: "Calculator use", B03: "Context continuation", B07: "Tool budget",
 };
@@ -13,7 +14,7 @@ export function SavedEvalResults({ invocations }: { invocations: readonly SavedE
   return <div className="evals-saved-list">
     {invocations.map(invocation => <article key={invocation.invocationId} className="evals-invocation">
       <header>
-        <div><h3>{invocation.platform === "multiple" ? "Multiple platforms" : invocation.platform}<span>{invocation.mode === "capability-acceptance" ? "Business workflows" : invocation.mode === "live" ? "Live model" : invocation.mode === "scripted" ? "Scripted" : "Unknown execution"}</span></h3>
+        <div><h3>{invocation.platform === "multiple" ? "Multiple platforms" : invocation.platform}<span>{invocation.mode === "capability-acceptance" ? "Connected-tool workflows" : invocation.mode === "live" ? "Live model" : invocation.mode === "scripted" ? "Scripted" : "Unknown execution"}</span></h3>
           <p>{invocation.modelId ?? (invocation.mode === "scripted" ? "Scripted model" : "Model identity unavailable")}</p></div>
         <time dateTime={invocation.startedAt}>{new Date(invocation.startedAt).toLocaleString()}</time>
       </header>
@@ -40,12 +41,12 @@ function TrialResult({ invocation, item }: { invocation: SavedEvalInvocation; it
           {item.runIds.length === 0 ? <p>No run was admitted. There is no run evidence for this trial.</p> :
             item.runIds.map((runId, index) => <div className="evals-evidence-links" key={runId}>
               <code>Run {index + 1}: {runId}</code>
-              {index === 0 && item.evidence && <a href={evalEvidenceUrl(runId, item.evidence === "artifacts/eval-grader-3.json" ? "artifacts/eval-grader-3.json" : "artifacts/eval.json")} target="_blank" rel="noreferrer">Verdict and assertions</a>}
+              {index === 0 && item.evidence && <a href={evalEvidenceUrl(runId, item.evidence === "artifacts/eval-grader-4.json" ? "artifacts/eval-grader-4.json" : item.evidence === "artifacts/eval-grader-3.json" ? "artifacts/eval-grader-3.json" : "artifacts/eval.json")} target="_blank" rel="noreferrer">Verdict and assertions</a>}
               <a href={evalEvidenceUrl(runId, "trajectory.json")} target="_blank" rel="noreferrer">Trajectory</a>
               <a href={evalEvidenceUrl(runId, "events.jsonl")} target="_blank" rel="noreferrer">Model and tool events</a>
               <a href={evalEvidenceUrl(runId, "context.json")} target="_blank" rel="noreferrer">Context</a>
             </div>)}
-          {expanded && (item.runIds.length > 0 || invocation.mode === "capability-acceptance") && <TrialInspector invocation={invocation} item={item} />}
+          {expanded && (item.runIds.length > 0 || invocation.mode === "capability-acceptance") && <EvalEvidenceInspector invocationId={invocation.invocationId} caseId={item.caseId} trial={item.trial} />}
           <small>Invocation <code>{invocation.invocationId}</code>{invocation.suiteVersion && ` · suite ${invocation.suiteVersion}`}{invocation.graderVersion && ` · grader ${invocation.graderVersion}`}{invocation.sourceInvocationId && <> · Regraded from <code>{invocation.sourceInvocationId}</code></>}</small>
         </div>
       </details>;
@@ -85,11 +86,12 @@ function ReviewEvidence({ detail }: { detail: EvalTrialDetail }) {
   </details>;
 }
 
-export function TrialDetailView({ detail }: { detail: EvalTrialDetail }) {
+export function TrialDetailView({ detail, onAssessmentSaved }: { detail: EvalTrialDetail; onAssessmentSaved?: () => void }) {
   return <div className="evals-inspector">
     {detail.issues.map(issue => <p key={issue} role="status">{issue}</p>)}
     {(detail.case.reviewRequired || detail.report?.reviewRequired) && <p>Review required. This trial remains blocked until its answer is assessed.</p>}
     <ReviewEvidence detail={detail} />
+    <EvalAssessment key={`${detail.invocation.invocationId}:${detail.case.caseId}:${detail.case.trial}:${detail.assessments?.at(-1)?.assessmentId ?? "none"}`} detail={detail} onSaved={onAssessmentSaved} />
     <FixtureEvidence observations={detail.report?.observations ?? []} />
     <h4>Assertions</h4>
     {detail.report?.assertions?.map(assertion => <details key={assertion.id} open={!assertion.passed}>
@@ -109,14 +111,15 @@ export function TrialDetailView({ detail }: { detail: EvalTrialDetail }) {
   </div>;
 }
 
-function TrialInspector({ invocation, item }: { invocation: SavedEvalInvocation; item: SavedEvalCase }) {
+export function EvalEvidenceInspector({ invocationId, caseId, trial }: { invocationId: string; caseId: string; trial: number }) {
   const [detail, setDetail] = useState<EvalTrialDetail | null>(null), [error, setError] = useState<string | null>(null);
+  const [assessmentRevision, setAssessmentRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    void getEvalTrialDetail(invocation.invocationId, item.caseId, item.trial, controller.signal).then(setDetail).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Trial detail could not be read."); });
+    void getEvalTrialDetail(invocationId, caseId, trial, controller.signal).then(setDetail).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Trial detail could not be read."); });
     return () => controller.abort();
-  }, [invocation.invocationId, item.caseId, item.trial]);
-  return error ? <p role="alert">{error}</p> : detail ? <TrialDetailView detail={detail} /> : <p>Reading trial evidence…</p>;
+  }, [invocationId, caseId, trial, assessmentRevision]);
+  return error ? <p role="alert">{error}</p> : detail ? <TrialDetailView detail={detail} onAssessmentSaved={() => setAssessmentRevision(value => value + 1)} /> : <p>Reading trial evidence…</p>;
 }
 
 export function EvalComparison({ invocations }: { invocations: readonly SavedEvalInvocation[] }) {
@@ -164,7 +167,7 @@ export function EvalResults() {
   return <section className="evals-results" aria-labelledby="evals-results-title">
     <div className="evals-heading"><div><h2 id="evals-results-title">Saved results</h2><p>Recent retained trials. A single trial is development feedback, not a reliability score.</p></div>
       <div className="evals-result-controls"><label>Execution<select value={mode} onChange={event => setMode(event.target.value as EvalMode | "all")}>
-        <option value="all">All results</option><option value="live">Live model</option><option value="scripted">Scripted</option><option value="capability-acceptance">Business workflows</option>
+        <option value="all">All results</option><option value="live">Live model</option><option value="scripted">Scripted</option><option value="capability-acceptance">Connected-tool workflows</option>
       </select></label><label>Platform<select value={platform} onChange={event => setPlatform(event.target.value)}><option value="all">All platforms</option>{[...new Set(invocations.flatMap(item => item.platform === "multiple" ? item.cases.map(entry => entry.platform ?? "Unknown") : [item.platform]))].sort().map(value => <option key={value}>{value}</option>)}</select></label><label>Task<select value={caseId} onChange={event => setCaseId(event.target.value)}><option value="all">All tasks</option>{[...new Set(invocations.flatMap(item => item.cases.map(entry => entry.task ?? entry.caseId)))].sort().map(value => <option key={value}>{value}</option>)}</select></label><button type="button" disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div></div>
     <div aria-live="polite">
       {loading && <p className="evals-empty">Reading saved results…</p>}

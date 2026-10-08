@@ -27,7 +27,7 @@ export async function readEvalCoverage(runsRoot: string, secrets: readonly strin
   return { ...coverage, issues: extensions.issues, cells: coverage.cells.map(cell => {
     if (cell.group !== "X" || cell.implementation === "not-applicable") return cell;
     const proof = extensions.envelopes.flatMap(envelope => envelope.reports.filter(report => report.platform === cell.platform && report.variant === cell.variant && report.caseId === cell.requirementId).map(report => ({envelope, report})))[0];
-    return proof ? { ...cell, measurement: proof.report.verdict, extensionEvidence: { invocationId: proof.envelope.invocationId, completedAt: proof.envelope.completedAt, revision: proof.envelope.revision, report: proof.report } } : cell;
+    return proof ? { ...cell, measurement: proof.report.verdict, extensionEvidence: { invocationId: proof.envelope.invocationId, completedAt: proof.envelope.completedAt, revision: proof.envelope.revision, metadata: proof.envelope.metadata, report: proof.report } } : cell;
   }) };
 
 }

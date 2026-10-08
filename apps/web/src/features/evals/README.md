@@ -69,3 +69,15 @@ git diff --check
 The result rendering check covers retained pass/fail/blocked outcomes, reasons,
 safe API evidence links, absence of local filesystem paths, and an empty list.
 Runtime model results require separate live execution evidence.
+
+
+Coverage maps exact baseline B/M/X requirements to executable cases and retained
+original outcomes through `/api/evals/coverage`. Missing variant, completion or
+assertion evidence cannot become a pass. Native X evidence has its own bounded
+projection; a core pass is not a full readiness or live-model score.
+
+`EvalAssessment.tsx` submits a real local reviewer assessment bound to the server's
+evidence digest/rubric. A lost acknowledgement can retry the same identity. Original
+verdicts remain visible; uncertain assessments require further review. See the
+[inspection guide](../../../../../docs/guides/agent-eval-coverage.md) for controls
+and attribution limits.

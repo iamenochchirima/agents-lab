@@ -10,7 +10,7 @@ const ceiling = 256 * 1024;
  */
 export async function readExtensionEvidence(runsRoot: string, secrets: readonly string[] = []) {
   const root = resolve(runsRoot), index = join(root, ".review-proof");
-  const envelopes: { invocationId: string; completedAt: string; revision: string | null; reports: ReturnType<typeof gradeExtension>[] }[] = [];
+  const envelopes: { invocationId: string; completedAt: string; revision: string | null; metadata: Record<string, unknown>; reports: ReturnType<typeof gradeExtension>[] }[] = [];
   const issues: string[] = [];
   let scanTruncated = false;
   try {
@@ -45,7 +45,7 @@ export async function readExtensionEvidence(runsRoot: string, secrets: readonly 
             if (seen.has(key)) throw new Error("Duplicate extension report identity."); seen.add(key);
             return { ...projected, deployment: sanitize(projected.deployment, secrets), reason: sanitize(projected.reason, secrets), observations: projected.observations.map(observation => ({...observation, sources: observation.sources.map(source => sanitize(source, secrets))})) };
           });
-          envelopes.push({invocationId: entry.name, completedAt: String(value.metadata.completedAt), revision: typeof value.metadata.revision === "string" && /^[a-f0-9]{40}$/.test(value.metadata.revision) ? value.metadata.revision : null, reports});
+          envelopes.push({invocationId: entry.name, completedAt: String(value.metadata.completedAt), revision: typeof value.metadata.revision === "string" && /^[a-f0-9]{40}$/.test(value.metadata.revision) ? value.metadata.revision : null, metadata: sanitizeMetadata(value.metadata, secrets) as Record<string, unknown>, reports});
         } finally { await handle.close(); }
       } catch (error) {
         if (!hasCode(error, "ENOENT")) issues.push(`${entry.name}: extension evidence is incomplete, malformed or unavailable.`);
@@ -60,3 +60,11 @@ function validDate(value: unknown): boolean { return typeof value === "string" &
 function inside(root: string, path: string): boolean { const difference = relative(root, path); return difference !== ".." && !difference.startsWith("../") && !difference.startsWith("/"); }
 function hasCode(error: unknown, code: string): boolean { return record(error) && error.code === code; }
 function sanitize(value: string, secrets: readonly string[]): string { let result = value.slice(0, 4096); for (const secret of secrets.filter(Boolean)) result = result.split(secret).join("[REDACTED]"); return result; }
+
+/** Envelope controls and SDK versions are provenance; preserve them beside checks. */
+function sanitizeMetadata(value: unknown, secrets: readonly string[]): unknown {
+  if (typeof value === "string") return sanitize(value, secrets);
+  if (Array.isArray(value)) return value.map(item => sanitizeMetadata(item, secrets));
+  if (record(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeMetadata(item, secrets)]));
+  return value;
+}

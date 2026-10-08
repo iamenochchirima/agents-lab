@@ -31,7 +31,7 @@ test("retained live verdicts show evidence while blocked trials never invent run
   assert.match(incomplete, /Incomplete invocation/);
   assert.match(incomplete, /Recorded trials are partial/);
   const business = renderToStaticMarkup(<SavedEvalResults invocations={[{ ...invocation, mode: "capability-acceptance", platform: "multiple", comparisonKey: null, cases: [{ caseId: "mastra-support", trial: 1, platform: "mastra", task: "support", verdict: "error", runIds: ["business-run"], statuses: ["failed"], assertions: { independentlySaved: false }, evidence: null }] }]} />);
-  assert.match(business, /Multiple platforms/); assert.match(business, /Business workflows/); assert.match(business, /Reviewed customer adjustment/); assert.match(business, /mastra ·/); assert.match(business, /Recorded run outcomes: failed/);
+  assert.match(business, /Multiple platforms/); assert.match(business, /Connected-tool workflows/); assert.match(business, /Reviewed customer adjustment/); assert.match(business, /mastra ·/); assert.match(business, /Recorded run outcomes: failed/);
   assert.doesNotMatch(business, /Unknown execution|Verdict and assertions/);
 });
 
