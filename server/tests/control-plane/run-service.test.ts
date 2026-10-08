@@ -436,6 +436,23 @@ test("projects native running state without an AgentStarted event and preserves 
   });
 });
 
+test("new agent instructions activate relevant skills without rewriting retained session controls", async () => {
+  await withService(async (service, _store, _runner, root) => {
+    const sessions = new ContextSessionStore(join(root, "sessions"));
+    const legacy = "You are the Agent Harness Lab baseline agent. Answer the user's prompt directly and concisely.";
+    await sessions.create({ sessionId: "legacy-controls", platform: "temporal", variant: "baseline", model: "fake/fake-success",
+      systemInstruction: legacy, contextWindowTokens: null, reservedOutputTokens: 4096, safetyMarginTokens: 1024,
+      compactionThresholdPercent: 20, recentMessageGroups: 2 });
+    const request = { platform: "temporal", variant: "baseline", task: {kind: "prompt" as const, prompt: "Continue"}, model: {provider: "fake" as const, model: "fake-success"} };
+    const retained = await service.createRun({...request, sessionId: "legacy-controls"});
+    assert.equal(retained.manifest.context.systemInstruction, legacy);
+    assert.equal((await sessions.read("legacy-controls")).systemInstruction, legacy);
+    const fresh = await service.createRun(request);
+    assert.match(fresh.manifest.context.systemInstruction, /load that skill before acting/);
+    assert.match(fresh.manifest.context.systemInstruction, /does not grant tools or permissions/);
+  });
+});
+
 test("freezes server-resolved model context metadata in the run manifest", async () => {
   await withService(async (service) => {
     const view = await service.createRun({

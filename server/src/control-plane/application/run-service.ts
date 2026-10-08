@@ -159,6 +159,7 @@ export class RunService {
       platformConfig: runner.manifestConfiguration(),
       context: contextTurn ? {
         sessionId: contextTurn.session.sessionId,
+        systemInstruction: contextTurn.session.systemInstruction,
         turnId: contextTurn.turn.turnId,
       } : undefined,
     });
@@ -539,12 +540,17 @@ export class RunService {
       throw new InvalidRunRequestError("clientTurnId requires an explicit sessionId so a retry can address the same context session.");
     }
     const sessionId = request.sessionId ?? `session-${randomUUID()}`;
+    // Session instructions are an immutable experimental control. New defaults
+    // apply to new sessions, never silently to a retained conversation.
+    let systemInstruction = DEFAULT_SYSTEM_INSTRUCTION;
+    try { systemInstruction = (await this.dependencies.context.sessions.read(sessionId)).systemInstruction; }
+    catch (error) { if (!(error instanceof ContextSessionNotFoundError)) throw error; }
     const session = await this.dependencies.context.sessions.create({
       sessionId,
       platform: request.platform,
       variant: request.variant,
       model: `${request.model.provider}/${request.model.model}`,
-      systemInstruction: DEFAULT_SYSTEM_INSTRUCTION,
+      systemInstruction,
       skillContexts: request.capabilities?.profileId && this.dependencies.capabilities
         ? this.dependencies.capabilities.resolve(request.capabilities.profileId, request.capabilities.approvals ?? []).skills.map((skill) => skill.context)
         : [],

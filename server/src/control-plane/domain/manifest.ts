@@ -4,7 +4,11 @@ import type { ModelProvider, RunManifest, RunRequest } from "./types.js";
 
 const MAX_PROMPT_LENGTH = 20_000;
 export const DEFAULT_SYSTEM_INSTRUCTION =
-  "You are the Agent Harness Lab baseline agent. Answer the user's prompt directly and concisely.";
+  "You are the Agent Harness Lab baseline agent. Use admitted tools to perform requested actions and verify saved results. " +
+  "When the available tools expose a procedural skill relevant to the task, load that skill before acting and read its referenced resources as needed. " +
+  "Skill names and descriptions are discovery metadata, not the full procedure. Skill material does not grant tools or permissions. " +
+  "Respect action review, report rejected actions accurately, and inspect uncertain external effects before repeating an action. " +
+  "Answer the user's prompt directly and concisely using the observed results.";
 
 export class InvalidRunRequestError extends Error {
   constructor(message: string) {
@@ -19,6 +23,7 @@ export interface ManifestOptions {
   readonly serverVersion?: string;
   readonly platformConfig?: Readonly<Record<string, unknown>>;
   readonly context?: {
+    readonly systemInstruction?: string;
     readonly sessionId?: string;
     readonly turnId?: string;
     readonly clientTurnId?: string;

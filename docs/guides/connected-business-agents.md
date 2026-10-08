@@ -101,3 +101,13 @@ The driver retains the model's actual decisions and strict failures. Its automat
 review is restricted to the explicit fictional 500-cent policy; it is not production
 authorization. Scripted native lifecycle checks are separate from model-quality
 observations. See the [experiment](../../lab/experiments/agent-capabilities-live/README.md).
+
+## Baseline instructions and retained sessions
+
+New baseline sessions tell the model to activate a relevant procedural skill,
+use admitted tools, verify saved results and respect action review/effect certainty.
+The same instructions apply to all four baselines. Metadata remains visible before
+activation; the model still chooses whether to call the loader, and acceptance
+records that decision. The driver never preloads a skill to make the check pass.
+Existing sessions preserve their original system instruction and record it in each
+run manifest. Start a new conversation to use a changed baseline instruction.
