@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getConnections, manageConnection, type ConnectionSummary } from "./platformApi";
-import { CapabilityManager } from "./CapabilityManager";
+import { useNavigate, useParams } from "react-router";
+import { appPaths } from "../../routes/paths";
 import { ManagementApiError } from "./managementApi";
 
 /** Safe connection summaries only; tokens never cross this browser boundary. */
@@ -9,7 +10,8 @@ export function ConnectionPanel({ selectedRefs, disabled, onChanged }: { readonl
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [authorization, setAuthorization] = useState<{ ref: string; url: string } | null>(null);
-  const [managerOpen, setManagerOpen] = useState(false);
+  const navigate = useNavigate();
+  const { platformId } = useParams();
   useEffect(() => {
     const controller = new AbortController();
     void getConnections(controller.signal).then(setConnections).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Connections unavailable."); });
@@ -27,7 +29,7 @@ export function ConnectionPanel({ selectedRefs, disabled, onChanged }: { readonl
       }
       onChanged();
     } catch (cause) {
-      if (cause instanceof ManagementApiError && cause.status === 401) setManagerOpen(true);
+      if (cause instanceof ManagementApiError && cause.status === 401) navigate(appPaths.platformPlugins(platformId ?? "mastra"));
       else setError(cause instanceof Error ? cause.message : "Connection action failed.");
     }
     finally { setBusy(null); }
@@ -48,9 +50,6 @@ export function ConnectionPanel({ selectedRefs, disabled, onChanged }: { readonl
     {selected.length > 0 && <div aria-label="Selected connections">{selected.map(row)}</div>}
     {others.length > 0 && <details><summary>Connections <small>{others.length}</small></summary>{others.map(row)}</details>}
     {error && <p className="chat-availability-error" role="status">{error}</p>}
-    {managerOpen && <CapabilityManager onClose={() => setManagerOpen(false)} onChanged={() => {
-      onChanged();
-      void getConnections().then(setConnections).catch(cause => setError(cause instanceof Error ? cause.message : "Connections unavailable."));
-    }} />}
+
   </div>;
 }

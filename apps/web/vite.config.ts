@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
     strictPort: true,
     // Administration stays on the frontend origin so its HttpOnly cookie and
     // Origin/CSRF checks work. Public/native execution routes keep their API URL.
-    proxy: { "/api/management": { target: apiTarget, changeOrigin: false } },
+    proxy: { "/api/management": { target: apiTarget, changeOrigin: false }, "/api/connections": { target: apiTarget, changeOrigin: false } },
     fs: {
       allow: [path.resolve(webRoot, "../..")],
     },

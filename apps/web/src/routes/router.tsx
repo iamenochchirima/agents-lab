@@ -169,6 +169,14 @@ export const router = createBrowserRouter([
             },
             handle: { label: "Platform chat" },
           },
+          {
+            path: "plugins",
+            lazy: async () => {
+              const { PlatformPluginsPage } = await import("../features/platforms/PlatformPluginsPage");
+              return { Component: PlatformPluginsPage };
+            },
+            handle: { label: "Platform plugins" },
+          },
         ],
       },
       {

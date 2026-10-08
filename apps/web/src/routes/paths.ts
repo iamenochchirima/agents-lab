@@ -22,6 +22,7 @@ export const appPaths = {
   studioWaku: "/studio/waku",
   components: "/components",
   platform: (platformId: string) => `/platforms/${platformId}`,
+  platformPlugins: (platformId: string) => `/platforms/${platformId}/plugins`,
   platformSection: (platformId: string, section: string) => `/platforms/${platformId}/${section}`,
   component: (areaId: string) => `/components/${areaId}`,
 } as const;

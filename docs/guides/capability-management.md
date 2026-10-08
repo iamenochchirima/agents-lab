@@ -1,7 +1,8 @@
 # Manage agent capabilities
 
-Use **Manage capabilities** beside the capability selector on a platform's chat
-or run configuration screen. Connections, installed packages and profiles are
+Open the **Plugins** tab at the top of any platform workspace. This dedicated
+page contains Connections, Tools, Skills, Plugins and Profiles; the capability selector's
+management link opens the same page. Connections, installed packages and profiles are
 shared across the Lab's platform agents; their orchestration remains native.
 Saving a supported integration requires no changes to a platform's agent loop
 and no API restart.
@@ -20,13 +21,15 @@ or managed-process environment secrets. `AGENTLAB_CREDENTIAL_KEY_ID` defaults to
 restarts: losing it makes saved credentials unreadable. Without a configured key,
 the UI disables credential entry; anonymous integrations remain available.
 
-Unlock the manager with the private token in
+Existing connection summaries are visible without an editing session. Choose
+**Add connection** or **Manage** to open the inline **Enable editing** form.
+Enable editing with the private token in
 `<capability-state-root>/administration/admin.token`, or the separately configured
 `AGENTLAB_CAPABILITY_ADMIN_TOKEN`. Do not put that token into screenshots, run
 prompts or source files. The browser receives an HttpOnly cookie and keeps its
 CSRF value in memory. Sessions expire after one hour or an API restart.
 
-In development, Vite proxies `/api/management` to `VITE_AGENTLAB_API_URL`, which
+In development, Vite proxies `/api/management` and the safe `/api/connections` directory to `VITE_AGENTLAB_API_URL`, which
 defaults to `http://127.0.0.1:4318`. If your API runs on another port, set that
 variable when starting Vite. Account mutations use this same-origin route; public
 platform/run reads continue to use the configured API URL. A deployed frontend

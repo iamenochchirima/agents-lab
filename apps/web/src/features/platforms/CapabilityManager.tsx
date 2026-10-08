@@ -6,19 +6,23 @@ import {
   ManagementApiError, installPackage, previewInstallation, saveConnection, savePackage, saveProfile, unlockManagement,
   type Approval, type ConnectionRecord, type InstallationPreview, type InstallInput, type ManagementState, type PackageRecord, type ProfileRecord, type Risk, type SafeCredentialSummary, type SkillInspection, type ToolManifest, type ToolSelection,
 } from "./managementApi";
+import type { ConnectionSummary } from "./platformApi";
 import "./management.css";
 
-type Tab = "Connections" | "Skills" | "Plugins" | "Profiles";
-const tabs: Tab[] = ["Connections", "Skills", "Plugins", "Profiles"];
+type Tab = "Connections" | "Tools" | "Skills" | "Plugins" | "Profiles";
+const tabs: Tab[] = ["Connections", "Tools", "Skills", "Plugins", "Profiles"];
 const message = (error: unknown) => error instanceof Error ? error.message : "The action could not be completed.";
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z]+/, "").replace(/-+$/, "").slice(0, 48);
 const approvalLabel = (approval: Approval) => approval === "invocation" ? "Review each action" : approval === "tool_grant" ? "Approve before run" : "Allow automatically";
 
 /** Shared administration surface: platform runtimes consume published profiles. */
-export function CapabilityManager({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+export function CapabilityManager({ onClose, onChanged, presentation = "dialog" }: { onClose?: () => void; onChanged: () => void; presentation?: "dialog" | "page" }) {
   const titleId = useId();
   const [state, setState] = useState<ManagementState | null>(null);
   const [locked, setLocked] = useState(false);
+  const [publicConnections, setPublicConnections] = useState<readonly ConnectionSummary[] | null>(null);
+  const [directoryFailed, setDirectoryFailed] = useState(false);
+  const [showAccess, setShowAccess] = useState(false);
   const [token, setToken] = useState("");
   const [tab, setTab] = useState<Tab>("Connections");
   const [busy, setBusy] = useState(false);
@@ -27,8 +31,9 @@ export function CapabilityManager({ onClose, onChanged }: { onClose: () => void;
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    dialog.current?.focus();
+    if (presentation === "dialog") dialog.current?.focus();
     let active = true;
+    void fetch("/api/connections").then(async response => { if (!response.ok) throw new Error("Connection list unavailable."); const body = await response.json() as { connections: ConnectionSummary[] }; if (active) setPublicConnections(body.connections); }).catch(() => { if (active) setDirectoryFailed(true); });
     void getManagementSession().then(getManagementState).then(value => { if (active) setState(value); }).catch(cause => { if (active) { setLocked(true); if (!message(cause).includes("Unlock")) setError(message(cause)); } });
     return () => { active = false; previousFocus?.focus(); };
   }, []);
@@ -56,41 +61,60 @@ export function CapabilityManager({ onClose, onChanged }: { onClose: () => void;
     });
   }
   function keyDown(event: React.KeyboardEvent) {
-    if (event.key === "Escape" && !busy) onClose();
+    if (event.key === "Escape" && !busy) onClose?.();
     if (event.key !== "Tab") return;
     const controls = [...dialog.current!.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], summary")].filter(element => element.getClientRects().length > 0);
     const first = controls[0], last = controls[controls.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
-  // Platform content has its own stacking context; mount the modal at the
-  // document boundary so shell navigation cannot obscure management controls.
-  return createPortal(<div className="cap-manager-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <section className="cap-manager" ref={dialog} tabIndex={-1} onKeyDown={keyDown} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy}>
-      <header className="cap-manager-header"><div><span className="eyebrow">Agent capabilities</span><h2 id={titleId}>Tools, skills and connections</h2></div><button className="icon-button" type="button" aria-label="Close capability manager" disabled={busy} onClick={onClose}><X size={18} /></button></header>
+  const content = <section className={`cap-manager${presentation === "page" ? " cap-manager-page" : ""}`} ref={dialog} tabIndex={-1} onKeyDown={presentation === "dialog" ? keyDown : undefined} role={presentation === "dialog" ? "dialog" : undefined} aria-modal={presentation === "dialog" ? true : undefined} aria-labelledby={titleId} aria-busy={busy}>
+      <header className="cap-manager-header"><div><span className="eyebrow">Agent customization</span>{presentation === "page" ? <h1 id={titleId}>Plugins</h1> : <h2 id={titleId}>Tools, skills and connections</h2>}<p className="cap-manager-muted">Connect tools and choose what your agents can use.</p></div>{presentation === "dialog" && <button className="icon-button" type="button" aria-label="Close capability manager" disabled={busy} onClick={onClose}><X size={18} /></button>}</header>
       {error && <p className="cap-manager-error" role="alert">{error}</p>}
-      {locked ? <form className="cap-manager-body cap-manager-form" onSubmit={unlock}><p>Enter the local administration token to manage capabilities.</p><label>Administration token<input type="password" autoComplete="off" value={token} required onChange={event => setToken(event.target.value)} /></label><button className="button button-primary" type="submit" disabled={busy}>Unlock</button></form> : !state ? <p className="cap-manager-body" role="status">Loading capabilities…</p> : <>
-        <nav className="cap-manager-tabs" aria-label="Capability categories">{tabs.map(item => <button key={item} className={item === tab ? "active" : ""} aria-current={item === tab ? "page" : undefined} type="button" onClick={() => { setTab(item); setError(null); }} disabled={busy}>{item}</button>)}<button className="cap-manager-reload" type="button" disabled={busy} onClick={() => void run(async () => setState(await getManagementState()))}>Reload</button></nav>
+      <nav className="cap-manager-tabs" aria-label="Capability categories">{tabs.map(item => <button key={item} className={item === tab ? "active" : ""} aria-current={item === tab ? "page" : undefined} type="button" onClick={() => { setTab(item); setError(null); }} disabled={busy}>{item}</button>)}{state && <button className="cap-manager-reload" type="button" disabled={busy} onClick={() => void run(async () => setState(await getManagementState()))}>Reload</button>}</nav>
+      {locked ? <div className="cap-manager-body">
+        <div className="cap-manager-toolbar"><h3>{tab === "Connections" ? "Connected services" : tab}</h3><button className="button button-primary" type="button" onClick={() => setShowAccess(true)}>{tab === "Connections" ? "Add connection" : "Enable editing"}</button></div>
+        {tab === "Connections" ? publicConnections?.map(connection => <article className="cap-manager-row" key={connection.ref}><div><strong>{connection.displayName}</strong><small>{connection.resource}</small><span className="cap-manager-muted">{connection.status.replaceAll("_", " ")}</span></div><button type="button" className="quiet-button" onClick={() => setShowAccess(true)}>Manage</button></article>) : <p className="cap-manager-muted">Enable editing to inspect and manage {tab.toLowerCase()}.</p>}
+        {tab === "Connections" && !publicConnections && <p className="cap-manager-muted">{directoryFailed ? "Connection list unavailable. Check the service and reload." : "Loading connections…"}</p>}{publicConnections?.length === 0 && tab === "Connections" && <p className="cap-manager-muted">No connected services yet.</p>}
+        {showAccess && <form className="cap-manager-form cap-manager-editor" onSubmit={unlock}><h3>Enable editing</h3><p className="cap-manager-muted">Enter this workspace's local administration token to add or change connections.</p><label>Administration token<input type="password" autoComplete="off" value={token} required onChange={event => setToken(event.target.value)} /></label><div className="cap-manager-actions"><button className="button button-primary" type="submit" disabled={busy}>Enable editing</button><button className="quiet-button" type="button" onClick={() => setShowAccess(false)}>Cancel</button></div></form>}
+      </div> : !state ? <p className="cap-manager-body" role="status">Loading connections…</p> : <>
         <div className="cap-manager-body">
           {authorizationUrl && <p><a href={authorizationUrl} rel="noreferrer" target="_blank">Continue account authorization</a><span className="cap-manager-muted"> · Refresh the connection after returning.</span></p>}
           {tab === "Connections" && <Connections state={state} busy={busy} run={run} publish={publish} operate={operate} />}
+          {tab === "Tools" && <Tools state={state} busy={busy} run={run} publish={publish} />}
           {(tab === "Skills" || tab === "Plugins") && <Installations key={tab} state={state} kind={tab} busy={busy} run={run} publish={publish} />}
           {tab === "Profiles" && <Profiles state={state} busy={busy} run={run} publish={publish} />}
         </div>
         <footer className="cap-manager-footer"><span>Saved changes apply to new runs.</span><span>Revision {state.revision}</span></footer>
       </>}
-    </section>
-  </div>, document.body);
+    </section>;
+  if (presentation === "page") return content;
+  // Dialogs escape the platform content stacking context; pages stay in normal flow.
+  return createPortal(<div className="cap-manager-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose?.(); }}>{content}</div>, document.body);
 }
+
 type Shared = { state: ManagementState; busy: boolean; run: (action: () => Promise<void>) => Promise<void>; publish: (value: ManagementState) => void };
+
+function Tools({ state, busy, run, publish }: Shared) {
+  const [editing, setEditing] = useState<PackageRecord | null>(null);
+  return <><div className="cap-manager-toolbar"><h3>Connected tools</h3></div>
+    {state.packages.filter(item => item.source !== "skills").map(item => <article className="cap-manager-row" key={item.id}><div><strong>{item.displayName ?? item.id}</strong><small>{item.source === "stdio" ? "Managed MCP server" : item.source === "mcp" ? "MCP connection" : "HTTP integration"}{item.enabled === false ? " · disabled" : ""}</small></div>
+      {(state.capabilitiesByPackage?.[item.id] ?? []).map(tool => <div className="cap-manager-package" key={tool.name}><span>{tool.name}</span><small>{tool.riskClass} · {approvalLabel(tool.approvalMode ?? "tool_grant")}</small></div>)}
+      {(item.source === "mcp" || item.source === "stdio") && <button type="button" className="quiet-button" disabled={busy} onClick={() => setEditing(item)}>Choose tools</button>}
+    </article>)}
+    {editing && <ToolPackageForm key={editing.id} capabilityPackage={editing} tools={state.discovery?.[editing.source === "stdio" ? editing.id : editing.connectionRef ?? ""] ?? []} state={state} busy={busy} run={run} publish={value => { publish(value); setEditing(null); }} cancel={() => setEditing(null)} />}
+  </>;
+}
 
 function Connections({ state, busy, run, publish, operate }: Shared & { operate: (ref: string, action: "discover" | "connect" | "refresh" | "revoke") => Promise<void> }) {
   const [editing, setEditing] = useState<ConnectionRecord | "new" | null>(null);
   const [editingPackage, setEditingPackage] = useState<PackageRecord | null>(null);
   return <>
     <div className="cap-manager-toolbar"><h3>Connected services</h3><button className="quiet-button" type="button" disabled={busy} onClick={() => setEditing("new")}><Plus size={15} /> Add connection</button></div>
+    {editing && <ConnectionForm key={editing === "new" ? "new" : editing.ref} connection={editing === "new" ? undefined : editing} state={state} busy={busy} run={run} publish={value => { publish(value); setEditing(null); }} cancel={() => setEditing(null)} />}
+    {editingPackage && <ToolPackageForm capabilityPackage={editingPackage} tools={state.discovery?.[editingPackage.connectionRef ?? ""] ?? []} state={state} busy={busy} run={run} publish={value => { publish(value); setEditingPackage(null); }} cancel={() => setEditingPackage(null)} />}
     {!state.connections.length && <p className="cap-manager-muted">Add a service to discover its tools.</p>}
-    {state.connections.map(connection => {
+    <div className="cap-manager-connection-list">{state.connections.map(connection => {
       const packages = state.packages.filter(item => item.connectionRef === connection.ref);
       return <article className="cap-manager-row" key={connection.ref}>
         <div><strong>{connection.displayName}</strong><small>{connection.resource}</small><span className="cap-manager-muted">{connection.status?.replaceAll("_", " ")}{connection.status ? " · " : ""}{connection.auth.kind === "stored" ? "Saved credential" : connection.auth.kind === "oauth" ? "Account authorization" : connection.auth.kind === "static" ? "Environment credential" : "No authentication"}{connection.enabled ? "" : " · disabled"}</span></div>
@@ -98,9 +122,7 @@ function Connections({ state, busy, run, publish, operate }: Shared & { operate:
         {packages.map(item => <div className="cap-manager-package" key={item.id}><span>{item.displayName ?? item.id} · {item.tools?.length ?? item.operations?.length ?? 0} selected tools{item.enabled === false ? " · disabled" : ""}</span><button type="button" className="quiet-button" disabled={busy} onClick={() => setEditingPackage(item)}><Settings2 size={14} /> Choose tools</button></div>)}
         <details><summary>Access and removal</summary>{connection.auth.kind !== "anonymous" && <CredentialSummary label="Account credential" credential={connection.credential} />}{connection.clientCredential && <CredentialSummary label="OAuth client secret" credential={connection.clientCredential} />}{connection.reason && <p className="cap-manager-muted">{connection.reason}</p>}<p className="cap-manager-muted">Revoking access disables the connection. Remove dependent packages and profile selections before deleting it.</p><div className="cap-manager-actions"><button type="button" className="quiet-button" disabled={busy} onClick={() => void operate(connection.ref, "revoke")}>Revoke access</button><button type="button" className="quiet-button" disabled={busy} onClick={() => void run(async () => publish(await deleteConnection(connection.ref, state.revision)))}>Delete connection</button></div></details>
       </article>;
-    })}
-    {editing && <ConnectionForm key={editing === "new" ? "new" : editing.ref} connection={editing === "new" ? undefined : editing} state={state} busy={busy} run={run} publish={value => { publish(value); setEditing(null); }} cancel={() => setEditing(null)} />}
-    {editingPackage && <ToolPackageForm capabilityPackage={editingPackage} tools={state.discovery?.[editingPackage.connectionRef ?? ""] ?? []} state={state} busy={busy} run={run} publish={value => { publish(value); setEditingPackage(null); }} cancel={() => setEditingPackage(null)} />}
+    })}</div>
     <details><summary>Add an HTTP API integration</summary><HttpPackageForm state={state} busy={busy} run={run} publish={publish} /></details>
   </>;
 }

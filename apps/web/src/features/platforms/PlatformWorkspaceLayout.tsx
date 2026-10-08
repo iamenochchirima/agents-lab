@@ -1,8 +1,9 @@
-import { Outlet, useParams } from "react-router";
+import { NavLink, Outlet, useParams } from "react-router";
 
 import { getPlatform } from "./platformCatalog";
 import type { PlatformDescriptor } from "./platformTypes";
 import { PlatformTabs } from "./PlatformTabs";
+import { appPaths } from "../../routes/paths";
 import "./platforms.css";
 
 export interface PlatformOutletContext {
@@ -20,6 +21,11 @@ export function PlatformWorkspaceLayout() {
   return (
     <div className="page-content platform-page">
       <PlatformTabs activePlatformId={platform.id} />
+      <nav className="platform-section-nav" aria-label={`${platform.name} workspace`}>
+        <NavLink end className={({ isActive }) => `platform-section-link${isActive ? " is-active" : ""}`} to={appPaths.platform(platform.id)}>Run setup</NavLink>
+        <NavLink className={({ isActive }) => `platform-section-link${isActive ? " is-active" : ""}`} to={appPaths.platformSection(platform.id, "chat")}>Chat</NavLink>
+        <NavLink className={({ isActive }) => `platform-section-link${isActive ? " is-active" : ""}`} to={appPaths.platformPlugins(platform.id)}>Plugins</NavLink>
+      </nav>
 
       <Outlet context={{ platform }} />
     </div>
