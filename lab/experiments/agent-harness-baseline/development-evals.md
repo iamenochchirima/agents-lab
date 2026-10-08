@@ -211,6 +211,36 @@ context-overflow recovery are refused for these probes to keep extra model calls
 of the experimental controls. Provider parameter defaults are not forced to arbitrary
 values; actual supplied settings are retained with each request.
 
+### Observation and native time budgets
+
+`--deadline-ms` limits the live driver's observation of each run, then requests
+cancellation. It is separate from the native runtime's timeout. Equal numeric
+settings do not imply equal execution budgets:
+
+| Baseline | Native timeout scope |
+| --- | --- |
+| Mastra | `AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS` bounds one active `generate` or approval-resume segment, including model rounds and tools. Default 30000 ms; accepted range 100–300000 ms. Human suspension clears the timer; resumption starts a new segment. Both the API and `eval:live` pass this setting to the runner. |
+| LangGraph | `timeoutMs` bounds each provider request, default 30000 ms. The service measures total execution duration but does not enforce this value as an aggregate graph budget. |
+| Temporal | `AGENTLAB_TEMPORAL_ACTIVITY_TIMEOUT_MS` bounds each model/tool Activity, default 30000 ms. Durable human approval waiting sits outside those Activities. |
+| Restate | The provider adapter uses the supplied cancellation signal; it does not impose a separate 30000 ms provider deadline. Restate's execution policies and the driver's observation deadline remain separate controls. |
+
+For short free-model acceptance work, explicitly allow Mastra a 180000 ms active
+segment so several model decisions and tool calls do not compete for one 30-second
+budget. The legacy live driver permits at most a 120000 ms observation deadline,
+so that outer deadline can still cancel first. For example:
+
+```bash
+AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS=180000 \
+pnpm --filter @agent-harness-lab/lab-server run eval:live -- \
+  --platform mastra --trials 1 --deadline-ms 120000
+```
+
+This is a practical acceptance configuration, not a claim of matching native
+timeout semantics across frameworks. Compare the same observation deadline,
+record each native timeout's scope, and separate timeout observations from model
+decision quality. The Mastra live summary retains its active-segment setting;
+run manifests retain the selected platform's configuration.
+
 Evidence uses normal run directories plus `artifacts/eval.json` on the first run of
 each task. The continuation report references both runs. Live report mode and L case
 IDs distinguish these from existing scripted reports. `EvalModelObserved` events retain

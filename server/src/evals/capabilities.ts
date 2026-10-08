@@ -9,6 +9,7 @@ import type { InvocationReviewView } from "../capabilities/reviews/contracts.js"
 import type { RunView } from "../control-plane/application/run-service.js";
 import { capabilityWorkspaceRoot } from "../capabilities/extensions/runtime.js";
 import { validateCapabilityRouting } from "./capability-evidence.js";
+import { installedRuntimeVersions } from "./runtime-versions.js";
 import { COMPARISON_FREE_MODEL, assertFreeModelCatalog, getFreeEvalSettings } from "../models/openrouter/free-model-policy.js";
 
 /** Acceptance driver only: the selected native platform owns model and tool steps.
@@ -35,17 +36,20 @@ async function main() {
     return;
   }
   loadLocalServerEnvironment();
-  let api = "http://127.0.0.1:4318", platforms = ["mastra", "langgraph", "temporal", "restate"], tasks = ["workspace", "service"], model = COMPARISON_FREE_MODEL;
+  let api = "http://127.0.0.1:4318", platforms = ["mastra", "langgraph", "temporal", "restate"], tasks = ["workspace", "service"], model = COMPARISON_FREE_MODEL, deadlineMs = 180000;
   for (let i = 0; i < args.length; i += 2) {
     const value = args[i + 1];
     if (args[i] === "--api" && value) api = value;
     else if (args[i] === "--platforms" && value) platforms = value.split(",");
     else if (args[i] === "--model" && value) model = value;
     else if (args[i] === "--tasks" && value) tasks = value.split(",");
-    else throw new Error("Usage: eval:capabilities [--api http://127.0.0.1:4318] [--platforms mastra,langgraph,temporal,restate] [--tasks workspace,service,support] [--model exact-approved-id:free]");
+    else if (args[i] === "--deadline-ms" && /^\d+$/.test(value ?? "")) deadlineMs = Number(value);
+    else throw new Error("Usage: eval:capabilities [--api http://127.0.0.1:4318] [--platforms mastra,langgraph,temporal,restate] [--tasks workspace,service,support] [--model exact-approved-id:free] [--deadline-ms 180000]");
   }
   if (!platforms.length || new Set(platforms).size !== platforms.length || platforms.some(value => !["mastra", "langgraph", "temporal", "restate"].includes(value))) throw new Error("Select distinct supported native platforms.");
   if (!tasks.length || new Set(tasks).size !== tasks.length || tasks.some(value => !["workspace", "service", "support"].includes(value))) throw new Error("Select distinct supported tasks.");
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 1000 || deadlineMs > 600000) throw new Error("Observation deadline must be 1000–600000ms.");
+  const versions = await installedRuntimeVersions();
   const root = capabilityWorkspaceRoot(), config = loadServerConfig(process.env, root);
   const catalog = await fetch(`${config.openRouter.baseUrl.replace(/\/$/, "")}/models`, {signal: AbortSignal.timeout(config.openRouter.catalogTimeoutMs)});
   if (!catalog.ok) throw new Error(`Free model catalog unavailable: HTTP ${catalog.status}.`);
@@ -55,7 +59,7 @@ async function main() {
   await mkdir(directory, {recursive: true});
   const outcomes: unknown[] = [];
   const experimentId = "agent-capabilities-live";
-  const controls = {model: checkedModel, freeOnly: true, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, experimentId, maxRounds: 24, maxCalls: 32, deadlineMs: 180000, reviewPolicy: {mode: "local-fixture-only", permittedTool: "support_adjust", amountCents: 500, reason: "late_delivery", productionAuthorization: false}, sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], {cwd: root, encoding: "utf8"}).trim()};
+  const controls = {model: checkedModel, freeOnly: true, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, experimentId, maxRounds: 24, maxCalls: 32, deadlineMs, reviewPolicy: {mode: "local-fixture-only", permittedTool: "support_adjust", amountCents: 500, reason: "late_delivery", productionAuthorization: false}, sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: root, encoding: "utf8"}).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], {cwd: root, encoding: "utf8"}).trim()};
   const workspacePrompts = [
     "Use the available skills to complete the task in brief.md. Discover and load the evidence-report skill and its referenced report-format resource. Inspect the workspace documents, resolve the latest approved Cedar launch date against the older proposal, and write artifacts/cedar-report.md with the dependency, next action and file/line citations. Read the saved report to verify it. Work autonomously with the approved workspace tools.",
     "Revise the saved artifacts/cedar-report.md in this same workspace: add the exact heading 'Immediate action' and explicitly state that a documentation owner must be assigned. Keep the approved launch date and citations. Read the current file first, use its current digest for the edit, and read the saved revision to verify it.",
@@ -63,7 +67,7 @@ async function main() {
   let interrupted = false;
   const interrupt = () => { interrupted = true; };
   process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
-  async function save() { await writeFile(join(directory, "summary.json"), JSON.stringify({schemaVersion: 1, mode: "capability-acceptance", invocationId, controls, workspacePrompts, outcomes}, null, 2) + "\n"); }
+  async function save() { await writeFile(join(directory, "summary.json"), JSON.stringify({schemaVersion: 1, mode: "capability-acceptance", invocationId, controls, versions, workspacePrompts, outcomes}, null, 2) + "\n"); }
   await save();
   for (const platform of platforms) for (const task of tasks) {
     if (interrupted) break;
@@ -162,7 +166,7 @@ async function main() {
       preservedFacts: records.length === 2 && records.every(record => record.approvedDate === "2026-10-22" && record.status === "in_progress" && record.dependency === "Integration documentation incomplete"),
     };
     const routingValid = validateCapabilityRouting(runs, model, experimentId);
-    const outcome = {platform, task, profileId: profile.id, prompts, sessionId, runIds: runs.map(value => value.runId), statuses: runs.map(value => value.status), assertions: {...assertions, routingValid}, toolEvidence, verdict: error ? "error" : routingValid && Object.values(assertions).every(Boolean) ? "pass" : "fail", ...(error ? {error} : {}), artifact, serviceSnapshots, reviews};
+    const outcome = {platform, task, profileId: profile.id, prompts, sessionId, runIds: runs.map(value => value.runId), statuses: runs.map(value => value.status), nativeConfigurations: runs.map(value => ({runId: value.runId, platformConfig: value.manifest.platformConfig, executionReference: value.executionReference})), assertions: {...assertions, routingValid}, toolEvidence, verdict: error ? "error" : routingValid && Object.values(assertions).every(Boolean) ? "pass" : "fail", ...(error ? {error} : {}), artifact, serviceSnapshots, reviews};
     outcomes.push(outcome); await save(); console.log(`${platform} ${task}: ${outcome.verdict}`);
     if (outcome.verdict !== "pass") process.exitCode = 1;
   }

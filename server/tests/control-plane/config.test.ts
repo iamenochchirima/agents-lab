@@ -14,6 +14,7 @@ test("configuration has safe local defaults and resolves the run root", () => {
   assert.equal(config.temporal.queryTimeoutMs, 1000);
   assert.deepEqual(config.allowedModelProviders, ["fake"]);
   assert.equal(config.connectedCapabilitiesEnabled, true);
+  assert.equal(config.nativeExecutionTimeoutMs, 30_000);
   assert.equal(config.openRouter.apiKey, null);
   assert.equal(config.openRouter.baseUrl, "https://openrouter.ai/api/v1");
   assert.equal(config.openRouter.catalogLimit, 40);
@@ -32,6 +33,7 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   const config = loadServerConfig(
     {
       AGENTLAB_API_PORT: "5000",
+      AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS: "180000",
       AGENTLAB_RUN_ROOT: "var/runs",
       AGENTLAB_CONTEXT_ROOT: "var/sessions",
       AGENTLAB_CONTEXT_MAX_SESSION_BYTES: "200000",
@@ -55,6 +57,7 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
   );
 
   assert.equal(config.api.port, 5000);
+  assert.equal(config.nativeExecutionTimeoutMs, 180_000);
   assert.equal(config.runsRoot, "/repo/var/runs");
   assert.equal(config.contextRoot, "/repo/var/sessions");
   assert.equal(config.context.maxSessionBytes, 200000);
@@ -75,6 +78,10 @@ test("configuration allows an explicit local profile and optional OpenRouter", (
 });
 
 test("invalid or missing explicit configuration fails before startup", () => {
+  assert.throws(
+    () => loadServerConfig({ AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS: "300001" }),
+    (error: unknown) => error instanceof InvalidServerConfigError,
+  );
   assert.throws(
     () => loadServerConfig({ AGENTLAB_API_PORT: "not-a-port" }),
     (error: unknown) => error instanceof InvalidServerConfigError,
