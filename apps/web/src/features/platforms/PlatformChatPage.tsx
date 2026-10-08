@@ -84,9 +84,26 @@ export function PlatformChatPage() {
   const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null;
 
   useEffect(() => {
+    // A reopened run must show its admitted profile, not the new-chat default.
+    if (latestRun?.manifest.platform === platform.id && latestRun.manifest.variant === variantId) {
+      setCapabilityProfileId(latestRun.manifest.capabilities?.profileId ?? defaultBusinessProfile(platform.id, variantId));
+      setRequestedSkillIds(latestRun.manifest.capabilities?.requestedSkillIds ?? []);
+      setCapabilityApprovals([]);
+      return;
+    }
     setCapabilityProfileId(defaultBusinessProfile(platform.id, variantId));
     setCapabilityApprovals([]); setRequestedSkillIds([]);
-  }, [platform.id, variantId]);
+  }, [platform.id, variantId, latestRun]);
+
+  useEffect(() => {
+    if (!latestRun || latestRun.manifest.platform !== platform.id) return;
+    const manifest = latestRun.manifest;
+    setVariantId(manifest.variant);
+    setScenarioId(manifest.selection?.scenarioId ?? scenarioCatalog[0].id);
+    setBackendProfileId(manifest.selection?.backendProfileId ?? platform.backendProfiles[0]?.id ?? "");
+    setInfrastructureId(manifest.selection?.infrastructureId ?? platform.infrastructure[0]?.id ?? "none");
+    setExperimentId(manifest.selection?.experimentId ?? "none");
+  }, [latestRun, platform]);
 
   useEffect(() => {
     setMessages((current) => {

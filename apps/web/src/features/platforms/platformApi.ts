@@ -54,6 +54,7 @@ export interface RunView {
     readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly clientTurnId?: string; readonly snapshotId?: string };
     readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
     readonly selection?: RunSelection;
+    readonly capabilities?: PlatformRunCapabilities;
   };
   readonly events: readonly RunEvent[];
   readonly executionReference: {
