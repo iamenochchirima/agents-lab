@@ -1,7 +1,7 @@
 # Manage agent capabilities
 
 Open the **Plugins** tab at the top of any platform workspace. This dedicated
-page contains Connections, Tools, Skills, Plugins and Profiles; the capability selector's
+page contains Connectors, Tools, Skills, Plugins and Profiles; the capability selector's
 management link opens the same page. Connections, installed packages and profiles are
 shared across the Lab's platform agents; their orchestration remains native.
 Saving a supported integration requires no changes to a platform's agent loop
@@ -22,7 +22,7 @@ restarts: losing it makes saved credentials unreadable. Without a configured key
 the UI disables credential entry; anonymous integrations remain available.
 
 Existing connection summaries are visible without an editing session. Choose
-**Add connection** or **Manage** to open the inline **Enable editing** form.
+**Add** or a connector card to open the **Enable editing** dialog.
 Enable editing with the private token in
 `<capability-state-root>/administration/admin.token`, or the separately configured
 `AGENTLAB_CAPABILITY_ADMIN_TOKEN`. Do not put that token into screenshots, run
@@ -39,7 +39,14 @@ multi-user authentication.
 
 ## Connect an MCP server
 
-1. Open **Connections → Add connection** and enter a name and Streamable HTTP MCP
+The Connectors tab lists configured services as searchable cards. Click a card
+to discover or refresh tools, edit the connection, or choose agent tools. Server
+addresses and masked credential summaries are under **Connection details**;
+disconnection and deletion are under **Disconnect or remove**. The Add dialog
+starts with a name, server URL and authentication choice, with optional settings
+behind **Advanced settings**.
+
+1. Open **Connectors → Add** and enter a name and Streamable HTTP MCP
    URL, such as a local Memos instance's `/mcp` endpoint.
 2. Choose no authentication, a personal access token, secret custom headers or
    OAuth. Credential inputs clear after submission, and the server stores only
@@ -47,7 +54,7 @@ multi-user authentication.
    token, you can record its known expiration in local time; unknown expiration
    remains explicitly unknown. Safe summaries show presence, expiration and
    whether credentials are deployment-managed without revealing their values.
-3. Save, then select **Discover tools**. Discovery validates the provider's
+3. Save, open the connector card, then select **Discover tools**. Discovery validates the provider's
    advertised definitions; it does not grant permission based on its annotations.
 4. Select **Choose tools**, enable the required tools, classify their effects and
    choose review on each action, approval before a run or automatic execution.
@@ -59,7 +66,7 @@ Authorize the saved connection and return to refresh it. Provider support and
 configuration determine which registration flow is available; entering a URL
 does not guarantee that every MCP server's authentication is compatible.
 
-Use **Refresh** after authentication or provider changes. **Revoke access** makes
+Use **Refresh** after authentication or provider changes. **Disconnect** makes
 the connection unavailable. Remove profile references and dependent packages
 before deleting a connection. Saved credentials are bound to the owner,
 connection and resource; changing a destination does not transfer an old token
