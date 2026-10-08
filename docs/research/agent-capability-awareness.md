@@ -6,7 +6,7 @@ Research date: 2026-10-09. This note separates inspected source behaviour from a
 
 Generate each agent's capability context from its resolved configuration, and use the same records to build its callable tool declarations and the UI's capability summary. Keep selected-profile authority separate from workspace installation. For a small authorized catalog, supply all usable tool schemas directly. Add search and deferred activation when measured catalog size warrants them, with a real change to subsequent model requests rather than a description-only search result.
 
-The reported chat was consistent with its selected Local safe tools. The missing feature is awareness of discoverable capabilities and their availability, not a complete absence of model tool declarations. The repository audit below establishes that distinction.
+An earlier chat correctly described the selected Local safe fixture tools, but could not answer approval policy reliably. A later attempt used Notes acceptance while its Memos connection was unavailable; the request failed before the model ran. These observations distinguish model awareness from run admission: a visible connection or stale UI label does not establish that the run actually received that tool schema.
 
 ## What the primary sources establish
 
@@ -27,6 +27,12 @@ Its agent loop passes `tools.schemas()` to both streaming and ordinary model req
 At revision `a276dabe57911253350bffb93cb7d7aff6a73261`, Pi separates tool registration, active declarations and exposure modes. Direct tools are declared while active; deferred tools can be found and activated through tool search. A loader can call `setActiveTools()` for tools already registered. Pi records tool and prompt changes before the next model request. It also exposes namespace descriptions and longer namespace instructions separately. These are useful design examples, not portable MCP requirements. [Pi extension contracts](https://github.com/earendil-works/pi/blob/a276dabe57911253350bffb93cb7d7aff6a73261/packages/coding-agent/docs/extensions.md).
 
 Pi advertises skill names, descriptions and locations at startup, then loads full instructions when relevant. It supports explicit skill activation when model selection fails. This is a useful behavioural model even though Pi's file-read activation mechanism differs from this lab's backend environment. [Pi skills documentation](https://github.com/earendil-works/pi/blob/a276dabe57911253350bffb93cb7d7aff6a73261/packages/coding-agent/docs/skills.md).
+
+Pi's current documentation describes the same separation in user-facing terms: the runtime advertises skill names/descriptions, then loads full instructions on demand, while an extension registers executable tools with a model-facing name, description, schema and implementation. This supports keeping skills as progressive instructions and tools as registered callable operations. [Pi skills](https://pi.dev/docs/latest/skills), [Pi extensions](https://pi.dev/docs/latest/extensions).
+
+### Agent SDKs attach tools to the configured agent
+
+The OpenAI Agents SDK models an agent as instructions plus an explicit tools collection. Its MCP adapter exposes remote server tools alongside ordinary function tools and keeps original server/name bindings when projecting safe model-facing names. Responses-backed tools can opt into deferred loading, but that mechanism is provider-specific. This is further evidence that a connection catalog does not become agent capability merely by existing: the runtime resolves and attaches the permitted tool definitions to the model request. [Agents SDK concepts](https://openai.github.io/openai-agents-python/), [MCP integration](https://openai.github.io/openai-agents-python/mcp/), [tool search](https://openai.github.io/openai-agents-python/tools/).
 
 ### Anthropic offers deferred tool declarations
 
@@ -112,17 +118,17 @@ These observations concern the inspected code on 2026-10-09, not a new live eval
 
 | Existing boundary | Observed behaviour | Remaining work |
 | --- | --- | --- |
-| `server/src/capabilities/catalog.ts` | Resolves profile grants and records selected tool schemas with a revision. Catalog replacement affects future admissions. | Add a resolved inventory that includes source provenance, skills and model exposure state. |
-| `server/src/control-plane/application/run-service.ts` | Records enabled tool names, connections and an exact tool catalog in the run. | Generate capability context from that same admission; include all enabled package skill metadata. |
-| Native Temporal, Restate, Mastra and LangGraph baseline adapters | Project selected definitions into actual model tool declarations. | Share the inventory contract; support recorded changes to active declarations for deferred discovery. |
-| `server/src/capabilities/extensions/skills.ts` | Already provides skill listing, instruction loading and bounded resource reading. Skill names/descriptions are also embedded in loader schemas. | Advertise a consistent skill index without duplicating the existing loader or adding native file access. |
-| `server/src/capabilities/context/session-store.ts` | Stored system instructions are part of immutable session configuration. | Keep generated capability context separate so catalog presentation changes do not invalidate session identity. |
-| `server/src/capabilities/context/context-service.ts` | Projects stored instructions and active skills into budgeted model context. | Budget generated inventory and preserve its current revision through compaction. |
-| `apps/web/src/features/platforms/CapabilityPicker.tsx` | Shows selected profile information alongside workspace connections. | Distinguish installed workspace services from capabilities enabled for this chat. |
+| `server/src/capabilities/catalog.ts` | Resolves grants and builds an immutable inventory from the admitted profile, exact tool catalog, approval modes and skill metadata. | Validate the prompt with real models; deferred search remains conditional on measured need. |
+| `server/src/control-plane/application/run-service.ts` | Records the profile, resolution, callable catalog and inventory in each new run. | Retain live-model evidence and report stale/unavailable profiles clearly. |
+| Native Temporal, Restate, Mastra and LangGraph baseline adapters | Carry the same inventory snapshot into prepared context and project the authorized schemas through native tool declaration paths. | Complete a comparable real-model awareness check per available baseline. |
+| `server/src/capabilities/extensions/skills.ts` | Provides skill listing, instruction loading and bounded resource reading; the run inventory adds scoped skill metadata. | Verify that the model actually loads a relevant skill before using it. |
+| `server/src/capabilities/context/session-store.ts` | Keeps generated inventory messages in a retained context snapshot, separate from the stored user/system instruction. | Confirm continuation and compaction preserve the admitted inventory in real traces. |
+| `server/src/capabilities/context/context-service.ts` | Budgets the generated inventory message and records its revision with the snapshot. | Measure only if context pressure or catalog scale shows eager exposure is costly. |
+| `apps/web/src/features/platforms/CapabilityPicker.tsx` | Disables profiles the API marks unavailable; chat details render the admitted run snapshot. | Refresh stale browser state and make unavailable-profile responses visible during live admission. |
 
 The generic baseline instructions already ask agents to use admitted tools and load relevant skills. They do not hardcode a calculator/lookup inventory. Replacing that prompt with another hand-written service list would leave the underlying problem intact.
 
-The Local safe default is a limited fixture configuration. An installed Memos connection does not imply that a chat using that profile receives its CRUD tools. The proposed user experience should let a contributor enable connected capabilities for their agent and then derive the model inventory automatically. Purpose-specific profiles can remain reproducibility controls; a business-agent role is not required.
+The Local safe default is a limited fixture configuration. An installed Memos connection does not imply that a chat using that profile receives its CRUD tools. The Notes acceptance profile is currently unavailable because the existing connection summary reports stored credentials unavailable. The page can retain an old selection, so the server must reject admission instead of launching a model with a stale or empty tool set. A typed `CapabilityResolutionError` now returns a `409` response for unavailable or stale profiles; focused HTTP tests cover this path. This does not restore the missing credential or constitute a real-model acceptance run.
 
 ## Implementation follow-through
 
@@ -135,8 +141,11 @@ still receives each executable tool's actual schema through the platform's exist
 tool declaration path.
 
 The remaining work is a real-model capability-awareness acceptance run and review of
-its retained evidence. Deferred search is intentionally conditional: implement it
-only after measuring schema-token cost or observing tool-selection failures that
-eager declarations do not address. See the standalone
+its retained evidence. Earlier CRUD and approval runs prove the connected tool path,
+but their manifests predate the inventory field and do not validate this feature.
+The current Notes profile cannot run until its stored connection credential becomes
+available. Deferred search is intentionally conditional: implement it only after
+measuring schema-token cost or observing tool-selection failures that eager
+declarations do not address. See the standalone
 [implementation checklist](../../development/implementation-plans/platforms/active/agent-capability-awareness.md)
 for progress and validation evidence.
