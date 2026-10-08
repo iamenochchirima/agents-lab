@@ -9,12 +9,13 @@ Start with the [usage guide](../../../../docs/guides/capability-packages.md),
 [architecture](../../../../docs/architecture/extensible-capabilities.md) and
 [source research](../../../../docs/research/extensible-agent-capabilities.md).
 The [example package configuration](../../../capability-packages/example.json)
-provides five workspace tools and three skill tools.
+provides three skill tools under the default `business-agent` profile. Optional
+file operations use the separate [document provider](../integrations/document-service/README.md) through MCP.
 
 | File | Responsibility |
 | --- | --- |
 | `packages.ts` | Validate server-owned JSON configuration and compose explicit package profiles |
-| `workspace.ts` | List/read/search task data and write/patch scoped output files; optionally clone a bounded template per session |
+| `internal-files.ts` | Bounded internal skill/config reads; never registered as filesystem tools |
 | `skills.ts` | Parse portable YAML frontmatter, list metadata and load selected instructions/resources with digest checks |
 | `connected-sources.ts` | Discover configured MCP tools or bind explicit HTTP operations and retain rich results |
 | `contracts.ts` | Serializable descriptor, snapshot and host-call records |
@@ -39,10 +40,11 @@ require a new session. Follow-up snapshots and compaction retain that context
 without promoting it to a higher-priority instruction role. Binary assets stay
 in tool evidence. Activation adds no authority or capability grants.
 
-The package loader supports trusted local workspace/skill directories and configured
+The package loader supports trusted skill directories and configured
 MCP/HTTP sources. It does not load arbitrary JavaScript/Python extension modules or
-install packages from a marketplace. Path confinement is an application check,
-not an operating-system sandbox.
+install packages from a marketplace. Native `workspace` package configuration
+is rejected with migration instructions. File storage belongs to optional external
+providers, not this runtime.
 
 Before package admission succeeds, the loader owns discovered source connections.
 If a later package or composed profile is invalid, it closes earlier source

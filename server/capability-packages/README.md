@@ -1,48 +1,60 @@
 # Capability package examples
 
-`example.json` is trusted server configuration. It contributes real workspace
-tools and a procedural skill package. Paths resolve against this config file.
-The example enables `isolateSessions`, which clones its bounded template once
-into `stateRoot/<session-id>`. Follow-up turns in the same host-admitted session
-keep that clone; other sessions get separate files. The default is false for
-packages intended to work in an existing configured workspace. Session identity
-comes from the admitted run, never a model argument. Templates reject links and
-special files and are limited to 256 files, 256 directories and 10 MiB. Clones
-use a recorded template/package revision and atomic directory publication.
-Generated reports do not belong in source control.
+`example.json` is trusted configuration containing procedural skills and the
+`business-agent` profile. Startup does not require a document service or create
+an agent filesystem. Skill resources and internal evidence still use Lab-owned
+storage; this is distinct from providing filesystem tools to models.
 
-Workspace contributions list, read and search files, then create and patch
-output files within `writeDirectories`. Editing an existing file requires the
-digest returned by `read_file`. Writes require an explicit capability approval.
-Path checks reject traversal and symbolic links; these checks are application
-confinement, not an operating-system sandbox.
+Supported package sources are `skills`, `mcp` and `http`. Native `workspace`
+packages fail with an explicit migration error. Adding another connected tool
+through these adapters requires configuration, not edits to native agent loops.
+Profiles select package IDs and retain each tool's version and risk class.
+Skills expose discovery, loading and reference reading. They grant no authority
+and do not automatically execute scripts or install plugins.
 
-The skill package contributes metadata listing, procedure loading and referenced
-resource reading. The model chooses when to load the procedure. `SKILL.md` uses
-the Agent Skills YAML format. Resource digests freeze the admitted package;
-changed files require a new catalog load. Scripts are readable resources and
-are never executed automatically. Binary resources return bounded base64.
-The direct `yaml` dependency parses portable block descriptions and metadata;
-the standard library does not provide a YAML parser.
+## Optional external document provider
 
-To add tools without native loop edits, add another configured package.
-Supported sources are `workspace`, `skills`, `mcp` and `http`. Workspace and
-skill packages require `id`, exact `version` and `root`. MCP packages require
-a trusted `endpoint` and may declare selected remote tools with aliases and
-risk classes. HTTP packages require a trusted `baseUrl` and explicit operation
-definitions with method, path, input schema, description and risk class.
-See the connection source adapter's contracts for these fields.
+`acceptance.json` connects the separate document provider at port 9197 through
+MCP. It retains the historical `task-workspace_*` tool aliases and the
+`workspace-agent` profile so retained results remain interpretable. The provider
+owns template copies, persistent session directories, path confinement and
+write restrictions. The capability host owns only the connected call.
 
-Remote packages can use `headersEnv`, mapping a header name to an environment
-variable containing its complete value. For example, an `Authorization`
-reference contains the complete `Bearer ...` header value. Credentials stay
-inside configured closures and never enter tool declarations, package summaries
-or run snapshots. Endpoints, roots and configuration are server-owned; model
-arguments cannot change them.
+Start the provider with an explicit development credential:
 
-Each package gets an individual capability profile. The config's optional
-`profiles` array defines trusted compositions with `id`, `version` and a list of
-package IDs. The example's `workspace-agent` profile explicitly selects both
-workspace tools and procedures. A composition retains each tool package's exact
-version in its grants. Discovery does not authorize an operation. Adding
-arbitrary executable plugin code is not supported by this loader.
+```sh
+export AGENTLAB_DOCUMENT_PROVIDER_TOKEN=fictional-local-fixture-token
+export AGENTLAB_DOCUMENT_PROVIDER_AUTHORIZATION="Bearer $AGENTLAB_DOCUMENT_PROVIDER_TOKEN"
+pnpm --filter @agent-harness-lab/lab-server dev:document-service
+```
+
+Pass `AGENTLAB_DOCUMENT_PROVIDER_AUTHORIZATION` to the control plane loading
+`acceptance.json`. The complete Authorization value is resolved server-side.
+`trustedContext: "session"` makes the adapter inject `X-AgentLab-Session-Id`
+from the admitted session. No model argument can select another session or root.
+The provider is a trusted local development service, not a multi-tenant product.
+Never expose its bearer credential to a model or browser.
+
+Its five operations list, read, search, write and patch real files. Writes are
+limited to `artifacts/`; replacing a file requires its current digest. The
+provider keeps files under `lab/runs/.document-provider/<session-id>`. Follow-up
+turns share their admitted session; different sessions have separate copies.
+Path checks are application confinement, not an OS sandbox.
+
+The controlled release service at port 9196 is also required for service acceptance.
+Generated provider storage and run artifacts do not belong in source control.
+
+## Reviewed customer-support workflow
+
+`customer-support.json` adds the `support-agent` profile. Customer, order and
+policy reads use MCP; the HTTP adjustment requires review of each invocation.
+Its declared rejection statuses correspond to the fixture's pre-write checks.
+Successful replies confirm the fixture's persisted effect. Idempotency-Key binds
+replay to the same arguments at the service, separately from host call receipts.
+
+The accompanying skill instructs the agent to read the policy and current
+revision, propose the requested amount rather than the policy maximum, and
+verify the saved order. Start both local services, load this configuration and
+run `eval:capabilities -- --tasks support,workspace` for the reviewed business
+workflow and optional connected-document workflow. The driver has an explicit
+fictional trial review policy. It is not production authorization.

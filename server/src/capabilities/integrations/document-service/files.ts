@@ -2,9 +2,9 @@ import { lstat, realpath, readdir, mkdir, rename, unlink, open, rm } from "node:
 import { randomUUID } from "node:crypto";
 import { dirname, resolve, relative, sep } from "node:path";
 import { constants } from "node:fs";
-import type { HostedToolContribution } from "./contracts.js";
-import type { ToolExecutionContext } from "../tools/contracts.js";
-import { aborted, contribution, digest, integerSchema, objectSchema, relativePathSchema, textSchema, type PackageIdentity } from "./package-utils.js";
+import type { HostedToolContribution } from "../../extensions/contracts.js";
+import type { ToolExecutionContext } from "../../tools/contracts.js";
+import { aborted, contribution, digest, integerSchema, objectSchema, relativePathSchema, textSchema, type PackageIdentity } from "../../extensions/package-utils.js";
 
 /** Application path confinement; this is not an operating-system sandbox. */
 export async function confinedPath(root: string, input: string, allowMissing = false): Promise<string> {

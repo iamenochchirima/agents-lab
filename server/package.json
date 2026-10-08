@@ -44,6 +44,7 @@
     "eval:live": "tsx src/evals/live.ts",
     "eval:workspace": "tsx src/evals/capabilities.ts --tasks workspace",
     "eval:capabilities": "tsx src/evals/capabilities.ts",
+    "dev:document-service": "tsx src/capabilities/integrations/document-service/service.ts",
     "dev:capability-service": "tsx src/capabilities/integrations/task-service/service.ts",
     "eval:regrade-live": "tsx src/evals/regrade-live.ts"
   },

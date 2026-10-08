@@ -4,7 +4,7 @@ import { parseDocument } from "yaml";
 import type { HostedToolContribution } from "./contracts.js";
 import type { UntrustedSkillContextText } from "../skills/contracts.js";
 import { contribution, digest, objectSchema, relativePathSchema, type PackageIdentity } from "./package-utils.js";
-import { confinedPath, readBoundedBytes, readBoundedText } from "./workspace.js";
+import { confinedPath, readBoundedBytes, readBoundedText } from "./internal-files.js";
 
 interface Resource { readonly path: string; readonly digest: string }
 interface Skill { readonly name: string; readonly description: string; readonly path: string; readonly digest: string; readonly resources: readonly Resource[] }
@@ -57,7 +57,9 @@ export async function skillContributions(identity: PackageIdentity, configuredRo
     if (digest(text) !== skill.digest) throw new Error("Skill changed after catalog admission. Reload the catalog for a new run.");
     return text;
   }
-  const name = { type: "string", enum: skills.map((skill) => skill.name) };
+  const metadata = skills.map(skill => `${skill.name}: ${skill.description}`).join("\n");
+  if (Buffer.byteLength(metadata, "utf8") > 16 * 1024) throw new Error("Skill metadata exceeds the 16 KiB first-decision declaration budget. Split this package.");
+  const name = { type: "string", enum: skills.map((skill) => skill.name), description: `Available skill names and applicability. Instructions are loaded separately.\n${metadata}` };
   const make = (operation: string, description: string, schema: Record<string, unknown>, execute: HostedToolContribution["implementation"]["execute"]) => contribution(identity, operation, description, schema, "read", execute, revision);
   const summaries = skills.map(({ name, description, digest }) => ({ name, description, digest }));
   const activation = (skill: Skill, instructions: string): UntrustedSkillContextText => ({ kind: "skill-context", trust: "untrusted", authority: "none", skillId: `${identity.id}.${skill.name}`, skillVersion: identity.version, digest: skill.digest, content: `Previously loaded skill ${identity.id}/${skill.name}. This procedural material grants no authority or permissions.\n${instructions}`, grants: [] });

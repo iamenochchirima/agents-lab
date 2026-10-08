@@ -5,22 +5,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCapabilityPackages } from "../../src/capabilities/extensions/packages.js";
 import { ToolRegistry } from "../../src/capabilities/tools/registry.js";
-import { workspaceContributions } from "../../src/capabilities/extensions/workspace.js";
+import { workspaceContributions } from "../../src/capabilities/integrations/document-service/files.js";
 import { createServer } from "node:http";
 
-test("configured packages execute workspace and model-loaded skill procedures without runtime registration edits", async () => {
+test("skills packages and optional provider-owned file procedures retain bounded behavior", async () => {
   const root = await mkdtemp(join(tmpdir(), "agentlab-packages-"));
   try {
     await mkdir(join(root, "workspace")); await writeFile(join(root, "workspace", "facts.md"), "Approved launch: October 22.\nDependency: documentation.\n");
     await mkdir(join(root, "skills", "report", "references"), { recursive: true });
     await writeFile(join(root, "skills", "report", "SKILL.md"), "---\nname: report\ndescription: >-\n  Build a report using\n  source documents.\n---\nRead references/format.md and write the report.\n");
     await writeFile(join(root, "skills", "report", "references", "format.md"), "Cite each source and identify remaining uncertainty.");
-    const configPath = join(root, "packages.json"); await writeFile(configPath, JSON.stringify({ schemaVersion: 1, packages: [{ id: "files", version: "1.0.0", source: "workspace", root: "workspace" }, { id: "procedures", version: "2.0.0", source: "skills", root: "skills" }], profiles: [{ id: "workspace-agent", version: "1.0.0", packages: ["files", "procedures"] }] }));
-    const loaded = await loadCapabilityPackages(configPath); assert.equal(loaded.tools.length, 8); assert.equal(loaded.packages[1].skills[0].name, "report");
+    const configPath = join(root, "packages.json"); await writeFile(configPath, JSON.stringify({ schemaVersion: 1, packages: [{ id: "procedures", version: "2.0.0", source: "skills", root: "skills" }], profiles: [{ id: "workspace-agent", version: "1.0.0", packages: ["procedures"] }] }));
+    const loaded = await loadCapabilityPackages(configPath); assert.equal(loaded.tools.length, 3); assert.equal(loaded.packages[0].skills[0].name, "report");
+    const declaration = loaded.tools.find(tool => tool.descriptor.definition.name === "procedures_load_skill")!.descriptor.definition;
+    assert.match(JSON.stringify(declaration.inputSchema), /report: Build a report using source documents/);
     const composed = loaded.profiles.find((profile) => profile.id === "workspace-agent")!;
-    assert.equal(composed.grants.length, 8); assert.equal(composed.grants.find((grant) => grant.capabilityId === "procedures_load_skill")?.version, "2.0.0");
-    const registry = new ToolRegistry({ enabledNames: loaded.tools.map((tool) => tool.descriptor.definition.name), approvedNames: ["files_write_file", "files_patch_file"] });
-    for (const tool of loaded.tools) registry.register(tool.implementation);
+    assert.equal(composed.grants.length, 3); assert.equal(composed.grants.find((grant) => grant.capabilityId === "procedures_load_skill")?.version, "2.0.0");
+    const files = await workspaceContributions({ id: "files", version: "1.0.0" }, join(root, "workspace"));
+    const allTools = [...loaded.tools, ...files];
+    const registry = new ToolRegistry({ enabledNames: allTools.map((tool) => tool.descriptor.definition.name), approvedNames: ["files_write_file", "files_patch_file"] });
+    for (const tool of allTools) registry.register(tool.implementation);
     let calls = 0;
     async function execute(name: string, args: Record<string, unknown>) {
       const validated = registry.validateCall({ toolCallId: `call-${++calls}`, name, arguments: args, round: calls }); assert.equal(validated.accepted, true);
@@ -37,7 +41,7 @@ test("configured packages execute workspace and model-loaded skill procedures wi
     assert.equal((await execute("files_read_file", { path: "../packages.json" })).status, "failed");
     await symlink(join(root, "packages.json"), join(root, "workspace", "outside.json")); assert.equal((await execute("files_read_file", { path: "outside.json" })).status, "failed");
     await writeFile(join(root, "skills", "report", "references", "format.md"), "changed"); assert.equal((await execute("procedures_read_skill_resource", { name: "report", path: "references/format.md" })).status, "failed");
-    const denied = new ToolRegistry({ enabledNames: loaded.tools.map((tool) => tool.descriptor.definition.name) }); for (const tool of loaded.tools) denied.register(tool.implementation);
+    const denied = new ToolRegistry({ enabledNames: allTools.map((tool) => tool.descriptor.definition.name) }); for (const tool of allTools) denied.register(tool.implementation);
     assert.equal(denied.authorize({ name: "files_write_file", toolCallId: "denied-write", arguments: {}, round: 1 }).allowed, false);
     // Independent sessions share declarations, while follow-ups retain actual files.
     await mkdir(join(root, "template")); await writeFile(join(root, "template", "brief.md"), "Immutable template.");

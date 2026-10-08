@@ -1,7 +1,8 @@
 # Give native agents tools and skills
 
-The example package configuration supplies a real task workspace and an
-evidence-report procedure. Agents on Mastra, LangGraph, Temporal and Restate
+The default example package configuration supplies procedural skills through
+a `business-agent` profile. Optional document tools connect through an external
+MCP provider; the Lab runtime does not manage an agent filesystem. Agents on Mastra, LangGraph, Temporal and Restate
 receive the selected tool declarations through native adapters. Source execution
 uses the control plane's authenticated capability host.
 
@@ -19,10 +20,21 @@ AGENTLAB_CAPABILITY_PACKAGES="$PWD/server/capability-packages/example.json" \
   pnpm --filter @agent-harness-lab/lab-server run dev
 ```
 
-The example explicitly composes `task-workspace` and `task-procedures` into
-`workspace-agent`. Its fictional Cedar documents form a bounded template.
-Session workspaces appear under `lab/runs/.workspaces/<session-id>`, which is
-generated local evidence rather than source. Follow-ups retain the same files.
+The example includes `task-procedures` only and starts without external services.
+To enable the optional document acceptance workflow, start the separate provider:
+
+```sh
+export AGENTLAB_DOCUMENT_PROVIDER_TOKEN=fictional-local-fixture-token
+export AGENTLAB_DOCUMENT_PROVIDER_AUTHORIZATION="Bearer $AGENTLAB_DOCUMENT_PROVIDER_TOKEN"
+pnpm --filter @agent-harness-lab/lab-server dev:document-service
+```
+
+Load `server/capability-packages/acceptance.json` instead of `example.json`, with
+that Authorization environment variable available to the control plane. The MCP
+adapter injects the admitted session identity into a trusted request header.
+The provider owns template copies under `lab/runs/.document-provider/<session-id>`.
+Follow-ups retain those files; models cannot choose another session or host root.
+Start the release service below as well for the complete acceptance configuration.
 
 Inspect the available profiles and safe package summaries:
 
@@ -44,7 +56,7 @@ workers; do not copy its value into a run, browser setting or committed config.
 
 ## Run a useful task
 
-In a platform's Chat, select `workspace-agent` and a free model from the available
+With the optional provider configured, in a platform's Chat select `workspace-agent` and a free model from the available
 model catalog. Approve the scoped workspace writes through the normal capability
 approval control. The model can then use:
 
@@ -164,9 +176,9 @@ unavailable and reject admission.
 
 Copy the example JSON to a local configuration file and add a package entry.
 Paths resolve against that configuration file. Every package requires a safe
-`id`, exact semantic `version` and source. `workspace` requires a root and optional
-write directories; `skills` requires a directory containing named `SKILL.md`
-packages. Explicit `profiles` select package IDs for a task.
+`id`, exact semantic `version` and source. `skills` requires a directory containing named `SKILL.md`
+packages. Legacy `workspace` sources are rejected with migration instructions;
+use a connected MCP/API document provider instead. Explicit `profiles` select package IDs for a task.
 
 For an MCP server:
 
@@ -227,7 +239,7 @@ agent loop edits are needed for another operation using these source kinds.
 
 An unavailable host usually means a worker cannot reach the configured URL or
 read the private key. Changed skill or MCP definitions require catalog reload.
-Workspace writes create missing parent directories within the configured writable
+The external document provider creates missing parent directories within the configured writable
 scope. An edit conflict requires reading the current file and using its new digest.
 Unapproved writes remain denied even if a skill says to perform them.
 
@@ -240,3 +252,8 @@ generated session directories only when those sessions are no longer needed.
 See [architecture and lifecycle limits](../architecture/extensible-capabilities.md).
 Path confinement does not provide an operating-system sandbox, skill scripts
 are not executable capabilities, and arbitrary plugin installation is unsupported.
+
+Skill names and applicability descriptions are included in the frozen load-skill
+argument declaration before the first model decision. Procedure bodies remain
+unloaded until explicitly selected or requested through the skill tool. Metadata
+is bounded to 16 KiB per package; larger catalogs require separate packages.
