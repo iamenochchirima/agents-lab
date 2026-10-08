@@ -61,7 +61,7 @@ test("OAuth manager uses bounded allowlisted metadata and PKCE/resource-bound to
     const url = String(input);
     if (url === config.resource) return new Response(null, { status: 401, headers: { "WWW-Authenticate": `Bearer resource_metadata="https://api.example.test/custom-resource-metadata", scope="${challengedScope}"` } });
     if (url === "https://api.example.test/custom-resource-metadata") return Response.json({ resource: config.resource, authorization_servers: ["https://issuer.example.test"] });
-    if (url.includes("oauth-authorization-server")) return Response.json({ issuer: "https://issuer.example.test", authorization_endpoint: "https://issuer.example.test/authorize", token_endpoint: "https://issuer.example.test/token", code_challenge_methods_supported: ["S256"], authorization_response_iss_parameter_supported: true });
+    if (url.includes("oauth-authorization-server")) return Response.json({ issuer: "https://issuer.example.test", authorization_endpoint: "https://issuer.example.test/authorize", token_endpoint: "https://issuer.example.test/token", code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"], authorization_response_iss_parameter_supported: true });
     assert.equal(url, "https://issuer.example.test/token"); sentBody = String(init?.body); return Response.json({ access_token: "private-token", refresh_token: "private-refresh", expires_in: 3600, token_type: "Bearer", scope: "tickets.write" });
   };
   const manager = await ConnectionManager.create([config], { secrets, fetchImplementation });
@@ -83,4 +83,92 @@ test("OAuth manager uses bounded allowlisted metadata and PKCE/resource-bound to
   assert.match((await metadataFailure.summary(config.ref)).reason!, /remote token revocation could not be confirmed/);
   const unavailable = await ConnectionManager.create([config], { oauthUnavailableReason: "Encryption key is not configured." });
   assert.equal((await unavailable.summary(config.ref)).status, "unavailable"); await assert.rejects(() => unavailable.connect(config.ref), /Encryption key/);
+});
+
+test("dynamic definitions preserve unchanged entries and invalidate changed or removed retained bindings", async () => {
+  const stateRoot = await mkdtemp(join(tmpdir(), "lab-dynamic-connection-"));
+  try {
+    const manager = await ConnectionManager.create([staticConnection], { stateRoot, environment: { FIXTURE_AUTHORIZATION: "Bearer service" } });
+    const original = await manager.binding(staticConnection.ref);
+    await manager.applyDefinitions([structuredClone(staticConnection)]);
+    assert.equal((await manager.summary(staticConnection.ref)).authorityRevision, original.connection.authorityRevision);
+    await assert.rejects(manager.applyDefinitions([staticConnection, staticConnection]), /duplicated/);
+    assert.deepEqual(await original.resolveHeaders(new AbortController().signal), { Authorization: "Bearer service" });
+    const changed = { ...staticConnection, resource: "https://replacement.example.test" };
+    const publishing = manager.applyDefinitions([changed]);
+    await publishing;
+    await assert.rejects(original.resolveHeaders(new AbortController().signal), /authority/);
+    const replacement = await manager.binding(changed.ref);
+    await manager.applyDefinitions([]);
+    await assert.rejects(replacement.resolveHeaders(new AbortController().signal), /authority/);
+    assert.deepEqual(await manager.summaries(), []);
+    await manager.applyDefinitions([changed]);
+    assert.equal((await manager.summary(changed.ref)).status, "revoked");
+    await manager.connect(changed.ref);
+    assert.notEqual((await manager.summary(changed.ref)).authorityRevision, replacement.connection.authorityRevision);
+    const restarted = await ConnectionManager.create([changed], { stateRoot, environment: { FIXTURE_AUTHORIZATION: "Bearer service" } });
+    assert.equal((await restarted.summary(changed.ref)).authorityRevision, (await manager.summary(changed.ref)).authorityRevision);
+  } finally { await rm(stateRoot, { recursive: true, force: true }); }
+});
+
+test("stored service credentials resolve at dispatch and same-reference replacement invalidates old authority", async () => {
+  const config: ConnectionDefinition = { ...staticConnection, auth: { kind: "stored", credentialRef: "notes_pat" } };
+  let value = "Bearer first";
+  const manager = await ConnectionManager.create([config], { resolveStoredHeaders: async (definition, signal) => { assert.equal(signal.aborted, false); assert.equal(definition.auth.kind, "stored"); return { authorization: value }; } });
+  const binding = await manager.binding(config.ref);
+  value = "Bearer second";
+  assert.deepEqual(await binding.resolveHeaders(new AbortController().signal), { authorization: "Bearer second" });
+  assert.doesNotMatch(JSON.stringify(await manager.summaries()), /Bearer|notes_pat/);
+  await manager.invalidate(config.ref);
+  await assert.rejects(binding.resolveHeaders(new AbortController().signal), /authority/);
+  assert.deepEqual(await (await manager.binding(config.ref)).resolveHeaders(new AbortController().signal), { authorization: "Bearer second" });
+  const unavailable = await ConnectionManager.create([config], { resolveStoredHeaders: async () => { throw new Error("credential=private-secret"); } });
+  assert.equal((await unavailable.summary(config.ref)).status, "unavailable");
+  await assert.rejects((await unavailable.binding(config.ref)).resolveHeaders(new AbortController().signal), error => error instanceof Error && !error.message.includes("private-secret"));
+});
+
+test("authority changes during asynchronous stored credential resolution block dispatch", async () => {
+  let release: (headers: Record<string, string>) => void = () => undefined;
+  const config: ConnectionDefinition = { ...staticConnection, auth: { kind: "stored", credentialRef: "notes_pat" } };
+  const manager = await ConnectionManager.create([config], { resolveStoredHeaders: async () => new Promise(resolve => { release = resolve; }) });
+  const binding = await manager.binding(config.ref);
+  const resolving = binding.resolveHeaders(new AbortController().signal);
+  await manager.applyDefinitions([{ ...config, scopes: ["tickets.read"] }]);
+  release({ authorization: "Bearer obsolete" });
+  await assert.rejects(resolving, /authority changed/);
+});
+
+test("OAuth client secret references are resolved asynchronously again for token exchange", async () => {
+  let secret = "first-secret", sentSecret = "", remoteRevoked = false;
+  const config: ConnectionDefinition = { ...staticConnection, ref: "conn_saved_oauth", auth: { kind: "oauth", clientId: "registered", clientSecretRef: "registered_secret", redirectUri: "http://localhost/callback", authorizationEndpoint: "https://issuer.example.test/authorize", tokenEndpoint: "https://issuer.example.test/token", revocationEndpoint: "https://issuer.example.test/revoke" } };
+  const manager = await ConnectionManager.create([config], { resolveClientSecret: async definition => { assert.equal(definition.ref, config.ref); return secret; }, fetchImplementation: async (url, init) => { sentSecret = new URLSearchParams(String(init?.body)).get("client_secret")!; if (String(url).endsWith("/revoke")) { remoteRevoked = true; return new Response(null, { status: 204 }); } return Response.json({ access_token: "private-access", token_type: "Bearer", expires_in: 3600, scope: "tickets.write" }); } });
+  const pending = await manager.connect(config.ref);
+  const state = new URL(pending.authorizationUrl!).searchParams.get("state")!;
+  secret = "rotated-secret";
+  await manager.complete(config.ref, state, "fixture-code");
+  assert.equal(sentSecret, "rotated-secret");
+  assert.doesNotMatch(JSON.stringify(await manager.summaries()), /first-secret|rotated-secret|private-access|registered_secret/);
+  secret = "revocation-secret";
+  await manager.revoke(config.ref);
+  assert.equal(remoteRevoked, true); assert.equal(sentSecret, "revocation-secret");
+});
+
+test("changing OAuth authority waits for an old refresh and removes its late grant", async () => {
+  const config: ConnectionDefinition = { ...staticConnection, ref: "conn_refresh_race", auth: { kind: "oauth", clientId: "registered", redirectUri: "http://localhost/callback", authorizationEndpoint: "https://issuer.example.test/authorize", tokenEndpoint: "https://issuer.example.test/token" } };
+  const secrets = new MemorySecretStore();
+  await secrets.write(config.ref, { accessToken: "expired", refreshToken: "refresh", expiresAt: new Date(0).toISOString(), scopes: config.scopes });
+  let finishRefresh: (response: Response) => void = () => undefined;
+  let started: () => void = () => undefined;
+  const refreshing = new Promise<void>(resolve => { started = resolve; });
+  const manager = await ConnectionManager.create([config], { secrets, fetchImplementation: async () => { started(); return new Promise(resolve => { finishRefresh = resolve; }); } });
+  const binding = await manager.binding(config.ref);
+  const resolving = binding.resolveHeaders(new AbortController().signal);
+  const rejected = assert.rejects(resolving, /authority changed/);
+  await refreshing;
+  const publishing = manager.applyDefinitions([{ ...config, resource: "https://another.example.test" }]);
+  await new Promise(resolve => setImmediate(resolve));
+  finishRefresh(Response.json({ access_token: "late-old-grant", refresh_token: "rotated", token_type: "Bearer", expires_in: 3600, scope: "tickets.write" }));
+  await rejected; await publishing;
+  assert.equal(await secrets.read(config.ref), null);
+  assert.equal((await manager.summary(config.ref)).status, "authorization_required");
 });

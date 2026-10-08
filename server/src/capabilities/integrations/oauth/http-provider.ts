@@ -6,7 +6,7 @@ export interface HttpOAuthProviderOptions {
   readonly revocationEndpoint?: string;
   readonly clientId?: string;
   readonly clientSecret?: string;
-  readonly resolveClientSecret?: () => string;
+  readonly resolveClientSecret?: (signal?: AbortSignal) => string | Promise<string>;
   readonly resource?: string;
   readonly fetchImplementation?: typeof fetch;
 }
@@ -56,7 +56,7 @@ export class HttpOAuthProvider implements OAuthProvider {
     const response = await this.fetchImplementation(this.revocationEndpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams({ token, ...this.clientParameters() }).toString(),
+      body: new URLSearchParams({ token, ...await this.clientParameters(signal) }).toString(),
       signal, redirect: "error",
     });
     if (!response.ok) throw new Error(`OAuth revocation failed with HTTP ${response.status}.`);
@@ -67,7 +67,7 @@ export class HttpOAuthProvider implements OAuthProvider {
     const response = await this.fetchImplementation(this.tokenEndpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams({ ...values, ...this.clientParameters(), ...(this.options.resource ? { resource: this.options.resource } : {}) }).toString(),
+      body: new URLSearchParams({ ...values, ...await this.clientParameters(signal), ...(this.options.resource ? { resource: this.options.resource } : {}) }).toString(),
       signal, redirect: "error",
     });
     const body = await readJson(response);
@@ -84,8 +84,13 @@ export class HttpOAuthProvider implements OAuthProvider {
       scopesProvided: typeof body.scope === "string",
     };
   }
-  private clientParameters(): Record<string, string> {
-    const clientSecret = this.options.resolveClientSecret?.() ?? this.options.clientSecret;
+  private async clientParameters(signal?: AbortSignal): Promise<Record<string, string>> {
+    if (signal?.aborted) throw new Error("OAuth credential resolution was cancelled before dispatch.");
+    let clientSecret: string | undefined;
+    try { clientSecret = this.options.resolveClientSecret ? await this.options.resolveClientSecret(signal) : this.options.clientSecret; }
+    catch { throw new Error("Configured OAuth client credential is unavailable."); }
+    if (signal?.aborted) throw new Error("OAuth credential resolution was cancelled before dispatch.");
+    if (this.options.resolveClientSecret && (typeof clientSecret !== "string" || !clientSecret || clientSecret.length > 16384)) throw new Error("Configured OAuth client credential is unavailable.");
     return { ...(this.options.clientId ? { client_id: this.options.clientId } : {}), ...(clientSecret ? { client_secret: clientSecret } : {}) };
   }
 }

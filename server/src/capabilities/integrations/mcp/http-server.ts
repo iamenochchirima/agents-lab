@@ -43,7 +43,8 @@ export class McpPreDispatchError extends Error {
  */
 export class HttpMcpServer implements McpServer {
   readonly serverName: string;
-  readonly protocolVersion: string;
+  private negotiatedProtocolVersion: string;
+  get protocolVersion(): string { return this.negotiatedProtocolVersion; }
   private readonly endpoint: string;
   private readonly fetchImplementation: typeof fetch;
   private readonly maxResponseBytes: number;
@@ -70,7 +71,7 @@ export class HttpMcpServer implements McpServer {
   constructor(options: HttpMcpServerOptions) {
     this.endpoint = normalizeEndpoint(options.endpoint);
     this.serverName = options.serverName ?? "http-mcp-server";
-    this.protocolVersion = options.protocolVersion ?? "2025-06-18";
+    this.negotiatedProtocolVersion = options.protocolVersion ?? "2025-06-18";
     if (!["2025-06-18", "2025-11-25", "2026-07-28"].includes(this.protocolVersion)) throw new Error("Unsupported MCP protocol version.");
     this.fetchImplementation = options.fetchImplementation ?? fetch;
     this.configuredHeaders = options.headers ?? {}; this.resolveHeaders = options.resolveHeaders; this.onDispatch = options.onDispatch;
@@ -168,13 +169,15 @@ export class HttpMcpServer implements McpServer {
       this.initialized = true;
       return;
     }
-    await this.request("initialize", {
+    const initialized = await this.request("initialize", {
       protocolVersion: this.protocolVersion,
       capabilities: {},
       clientInfo: { name: "agent-harness-lab", version: "1.0.0" },
     }, signal);
+    if (!isRecord(initialized) || typeof initialized.protocolVersion !== "string" || !["2025-06-18", "2025-11-25", "2026-07-28"].includes(initialized.protocolVersion)) throw new Error("MCP server negotiated an unsupported protocol version.");
+    this.negotiatedProtocolVersion = initialized.protocolVersion;
+    if (requiresLegacyHandshake(this.protocolVersion)) await this.notification("notifications/initialized", signal);
     this.initialized = true;
-    await this.notification("notifications/initialized", signal);
   }
 
   private async notification(method: string, signal: AbortSignal): Promise<void> {
