@@ -5,6 +5,10 @@ read-only inspection of the current Lab. This records design evidence for a
 standalone implementation plan; it does not report implemented changes or new
 model trials.
 
+The implementation observations below describe the planning baseline. Later
+partial implementation and its verification are tracked in the
+[standalone plan](../../development/implementation-plans/platforms/active/connected-business-agent-tools.md).
+
 ## Goal and architectural boundary
 
 Keep model decisions, orchestration, context, state and recovery native to each
@@ -197,3 +201,26 @@ This research does not require a plugin marketplace, arbitrary executable
 plugins, universal MCP extensions, a VM environment or production multi-tenant
 hosting. It establishes boundaries needed for credible connected business
 agents; future infrastructure hardening remains separately scoped.
+
+## Follow-up plan review
+
+Agent Skills recommends showing names and descriptions before activation, then
+loading full instructions on demand. Dedicated activation tools support agents
+without native filesystem access. The Lab should present only permitted metadata
+to each native model before its first decision, and retain protected skill context
+after activation. This is a concrete integration requirement beyond storing skill
+packages. [Agent Skills integration guide](https://agentskills.io/client-implementation/adding-skills-support).
+
+Configured-provider OAuth and MCP authorization discovery are separate compatibility
+claims. The MCP path requires protected-resource and authorization-server metadata,
+resource indicators and client-registration selection. Callback validation binds
+issuer and per-request state before code exchange. State must also bind the Lab
+connection and owner. Static bearer credentials do not implement that onboarding
+flow. [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
+
+The partial review store rejects expired decisions and can increment a proposal
+revision. A suspended native execution still waits on its previous revision.
+Therefore, renewal needs an explicit host-to-native transition, tested without
+inference or dispatch before fresh approval. This is a repository finding, not a
+protocol requirement. Pending-run worker recovery alone does not verify API-server
+restart or review renewal.

@@ -1,6 +1,7 @@
 # Connected business-agent tools implementation plan
 
-Status: planned, not implemented. Created 2026-10-08.
+Status: plan reviewed; partial implementation exists, integration acceptance pending.
+Created and reviewed 2026-10-08. This revision is a planning deliverable.
 
 This standalone temporary plan lives outside `docs/`. It follows the implemented
 [tools and skills milestone](real-agent-tools-and-skills.md) and supersedes its
@@ -41,6 +42,10 @@ business workflow end to end before expanding the tool catalog further.
   acceptance. Use fictional business records in real running development services.
 
 ## Baseline established by inspection
+
+The table records the starting baseline, not the current completion status.
+The progress table below distinguishes subsequent implementation from verified
+end-to-end behavior. Uncommitted code is not an accepted milestone.
 
 | Area | Present implementation | Gap this plan addresses |
 | --- | --- | --- |
@@ -191,6 +196,13 @@ Commit: `fix: preserve business effect certainty and heartbeat tool activities`.
   do not accept a browser-supplied owner as authorization or claim multi-tenancy.
 - [ ] Add configured OAuth browser redirect/callback behavior with PKCE and exact
   redirect/resource checks. Follow the advertised MCP authorization capabilities.
+- [ ] Bind callback state to connection, owner, issuer, resource and redirect URI;
+  expire and consume it once. Preserve the previous refresh token when a refresh
+  reply omits a replacement. Reject issuer or connection mismatch before exchange.
+- [ ] Declare configured-provider OAuth separately from MCP authorization discovery.
+  For the advertised MCP OAuth path, implement protected-resource metadata and
+  authorization-server metadata discovery, client registration selection, resource
+  indicators and challenged scopes. Do not label a static bearer header as this flow.
 - [ ] Preserve permitted identity across token refresh; revoke/changed scopes must
   immediately prevent new source dispatch and require a new authorization decision.
 - [ ] Expose unavailable, authorization-required, expired and revoked sources honestly.
@@ -220,6 +232,8 @@ Commit: `feat: integrate connected source identity and credential lifecycle`.
   waiting for an open stream to close.
 - [ ] Implement the verified current HTTP tools requirements and explicitly retained
   legacy compatibility, including relevant metadata/header binding and cleanup.
+- [ ] Verify `x-mcp-header` annotations and value encoding against the declared
+  protocol revision. Retain bounded progress diagnostics with the source attempt.
 - [ ] Handle discovery pagination, alias collisions and catalog changes. Reject
   unsupported interactive/server requests explicitly for the selected protocol era.
 - [ ] Advertise supported MCP operations. Resources/prompts, sampling, elicitation,
@@ -249,6 +263,10 @@ Commit: `feat: extend API bindings and MCP streaming interoperability`.
 - [ ] On denial, return an identified tool result to the native agent so it can
   explain or choose an allowed alternative. On expiry, retain the proposal and
   require a fresh review. On cancellation, invalidate pending dispatch permission.
+- [ ] Make fresh review reachable from a suspended run. A server-owned renewal
+  operation revalidates the frozen call and authority, creates a new review revision,
+  and updates the native waiting reference without dispatch or inference. Reject
+  old decisions. If authority or arguments changed, require a new authorized action.
 - [ ] Keep an unfinished context turn occupied while awaiting review; do not append
   a synthetic completed answer or permit a conflicting follow-up turn.
 - [ ] Separate human-wait lifetime from model/tool deadlines and record both.
@@ -258,7 +276,9 @@ Acceptance: the exact proposed action is reviewable, no write occurs while waiti
 and approval or denial can be delivered once with inspectable evidence.
 
 Minimum check: one lifecycle test covering approve, deny, expired/changed proposal
-and a duplicate decision; one targeted approve-versus-cancel boundary check.
+and a duplicate decision; one targeted approve-versus-cancel boundary check. Advance
+an injected clock while paused, renew the review, reject the old decision and resume
+the new revision. Exercise that shared renewal contract through each native adapter.
 
 Commit: `feat: persist invocation review and approved action dispatch`.
 
@@ -310,6 +330,9 @@ Split Python/Mastra and Temporal/Restate integration into separate commits if ne
   explicitly reject unsupported audio/image interactions instead of claiming support.
 - [ ] Preserve skill metadata, activation, resource loading, deduplication and
   compaction protection. Skills never supply credentials or expand tool grants.
+- [ ] Give every native model the permitted skill names and descriptions before
+  its first decision, with concise activation instructions. Load full instructions
+  only on activation; disabled skills must not appear in the presented catalog.
 - [ ] Let skill scripts request an authorized connected execution service when
   configured; do not introduce local shell execution as a skill-loader feature.
 - [ ] Move file operations into an optional separately running MCP/API provider
@@ -388,6 +411,24 @@ Commits: `test: add connected business-agent acceptance workflows`, followed by
 
 ## Validation budget and execution order
 
+Integration order is contracts and boundary, effect correctness, connections,
+transport bindings, persisted review, native continuation, results/skills,
+frontend, then acceptance. Independent implementation may overlap after the
+contracts settle; acceptance cannot skip its dependencies.
+
+The next substantial implementation slice is connection lifecycle plus complete
+review continuation. Finish the OAuth and availability APIs, expired-review renewal,
+Mastra persistence and continuation, then integrate the existing LangGraph,
+Temporal and Restate work. This yields one usable read/propose/review/write/verify
+workflow before further catalog expansion. It warrants several coherent commits;
+wall-clock duration is an estimate, not an acceptance criterion.
+
+Start real-model evals only after the four native scripted runs pass, connection
+authority is rechecked at dispatch, uncertain effects stop continuation, and the
+review path survives waiting-run restart. Verify the free model's current catalog
+price immediately before trials and disable paid fallback. Real-model failures
+remain valid evidence; they do not justify weakening the scenario grader.
+
 Do not run all repository tests after every edit. Start with the named contract or
 adapter check for that slice. Reuse existing tests and native acceptance services.
 Run the combined relevant suite once after integration, and repeat only when a
@@ -449,8 +490,10 @@ justify claiming this milestone makes the Lab production-ready in every environm
 
 ## Current position and evidence ledger
 
-Current position: planning complete; ready for implementation. No runtime
-implementation or new model trial belongs to this planning task.
+Current position: planning review complete; partial code awaits integrated review.
+This single checklist remains the implementation working state. Starting branch is
+`main`, checkpoint `ab2cadd`; unrelated Studio/Lina and context-research changes
+are user-owned. The earlier planning task made no runtime changes or model trials.
 
 | Checkpoint | Evidence |
 | --- | --- |
@@ -458,7 +501,26 @@ implementation or new model trial belongs to this planning task.
 | Research | Primary protocols and native platform sources recorded in the linked research note |
 | Planning validation | Local Markdown links passed; documentation catalog generation passed; nine milestones and 87 unchecked implementation/acceptance items; planning changes are committed separately from runtime work |
 | Plan review | Connected-source and native-platform reviews found no material blockers; clarified LangGraph suspended projection and the separate Temporal completion/cancellation invocations |
+| Updated review | Expired approval has no usable continuation path yet; OAuth state lacks connection binding and actual expiry, and omitted replacement refresh tokens are not preserved. These are explicit implementation requirements above. |
 | Implementation checkpoints | Add commit, narrow verification, native/run evidence and remaining limitations as each milestone completes |
+
+### Current progress, not completion claims
+
+| Workstream | Existing evidence | Remaining acceptance |
+| --- | --- | --- |
+| Shared contracts and action records | Partial uncommitted implementation | ADR, compatibility checks, authority integration, expiry renewal and race verification |
+| HTTP/MCP adapters | Focused binding, provider and integration checks reported passing | Integration audit, current-revision matrix and source availability lifecycle |
+| External document provider | Provider round trip and package/skills checks reported passing | Integrated document workflow and migration documentation audit |
+| Temporal and Restate | Scripted native run suspended with zero effects, survived worker/service replacement, approved and executed once; denial/cancellation had zero effects | Fresh-review renewal, API restart and actual connected business-model acceptance |
+| LangGraph | SQLite interruption/resume after service restart reported passing without repeated inference | Shared native integration report, fresh-review renewal and lifecycle docs |
+| Mastra | Existing native model/tool loop inspected | SDK approval, persistent snapshot reconstruction and same-run continuation |
+| Frontend | Typecheck, bundle and focused action-identity checks reported passing | Live connection APIs, browser approval/denial walkthrough and actual outcome projection |
+| Real-model trials | No new trials in this implementation | Two workflows on four baselines after the readiness gate |
+
+The Temporal/Restate scripted report is retained at
+[`lab/runs/.review-proof/native-review-181bab0b-d0e2-4d76-9a4e-4f31665df0fb/summary.json`](../../../../lab/runs/.review-proof/native-review-181bab0b-d0e2-4d76-9a4e-4f31665df0fb/summary.json).
+It proves those native gate and worker/service-restart behaviors only. It does not
+establish model competence, full API restart recovery or external interoperability.
 
 Before completion, re-read the user's filesystem restriction and this definition
 of done, inspect the finished implementation beyond its checklist, and resolve or
