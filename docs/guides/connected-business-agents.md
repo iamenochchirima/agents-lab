@@ -60,6 +60,49 @@ Choose `workspace-agent` for document work. File tools execute in the external
 provider; they do not expose the Lab server's filesystem. Reports and follow-up
 corrections stay in provider-owned session storage.
 
+## Manually verify action review
+
+This walkthrough checks the actual browser controls. API fixtures and component
+checks do not establish that the browser interaction works. Use the fictional
+development service above and record the selected platform, model and run IDs.
+
+1. Open a baseline platform's Chat, start **New chat**, choose `support-agent`,
+   and select a currently available zero-price tool-capable model. Confirm that
+   **Fictional customer support** is available in the connection panel. If needed,
+   use **Refresh** and record any connection error before submitting a task.
+2. Choose an unused lowercase namespace beginning `cap-ui-approve-`, followed by
+   a short unique suffix. Substitute it for `NAMESPACE` in this prompt:
+
+   ```text
+   Use the customer-support skill. In namespace NAMESPACE, inspect Avery's
+   eligibility, order-cedar and the late-delivery adjustment policy. Propose
+   exactly 500 cents for late_delivery using support_adjust and the current
+   order revision. Await review before applying it. Read the saved order
+   afterward and report the verified amount and revision.
+   ```
+
+3. When **Action review** appears, confirm `support_adjust`, the same namespace,
+   `order-cedar`, `amountCents: 500`, `reason: late_delivery`, and
+   `expectedRevision: 1`. Capture the pending screen and run ID. Independently
+   open `http://127.0.0.1:9196/support/order?namespace=NAMESPACE`, replacing the
+   placeholder. Before approval it must show `adjustmentCents: 0`, `revision: 1`
+   and an empty `adjustments` list.
+4. Click **Approve action**. The run must continue, retain the reviewed tool
+   result and verify the saved order. Refresh the independent order view: it
+   must show `adjustmentCents: 500`, `revision: 2` and one adjustment. Inspect
+   the tool outcome and source receipt in Chat; retain a completion screenshot.
+5. Start **New chat** with a different unused `cap-ui-deny-` namespace. Use the
+   same prompt, adding: "If review is denied, do not propose another adjustment;
+   explain the denial." Click **Deny** on the exact pending action. The run
+   must continue with denied-call feedback. The independent order view must
+   remain at zero adjustment, revision 1 and no adjustment entries. Retain the
+   denial screen and run ID.
+
+Report a missing proposal, failed control, unexpected effect or model/provider
+error as the observed result. Do not substitute an assistant's claim for the
+independent order view. This checks browser approval and denial, not all native
+recovery boundaries or general model reliability.
+
 ## Configure another service
 
 A trusted package can reference a connection with `connectionRef`. The top-level

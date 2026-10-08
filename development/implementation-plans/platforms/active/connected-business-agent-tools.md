@@ -695,3 +695,10 @@ manual verification after the browser security rejection. All independent
 implementation and trial-analysis work is complete; the final acceptance audit
 remains open. The optional external compatibility smoke is conditional and was
 not run because no suitable third-party connection is configured.
+
+A concrete manual approve/deny recipe is now in the
+[business-agent guide](../../../../docs/guides/connected-business-agents.md#manually-verify-action-review).
+It specifies valid fresh namespaces, exact UI labels, pending zero-effect state,
+independent provider inspection, approval/denial outcomes, screenshots and run IDs.
+The recipe was checked against configuration, routes and current component labels;
+its browser execution remains unverified. No additional model trial was launched.
