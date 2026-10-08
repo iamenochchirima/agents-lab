@@ -93,7 +93,7 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
         const connection: ConnectionResult = progress.notifications.length || progress.omitted
           ? { ...invoked, attempts: invoked.attempts.map(attempt => ({ ...attempt, progress })) } : invoked;
         const evidence = recordConnection(connection, context, state.headers);
-        if (!connection.output) return { ...connectionFailure(connection, evidence), effect: { state: isReadOnly(definition) ? "none" : state.dispatched ? "unknown" : "not_dispatched", evidence: "No valid MCP acknowledgement." } };
+        if (!connection.output) return { ...connectionFailure(sanitizeOutput(connection, state.headers) as ConnectionResult, evidence), effect: { state: isReadOnly(definition) ? "none" : state.dispatched ? "unknown" : "not_dispatched", evidence: "No valid MCP acknowledgement." } };
         const raw = connection.output, result = sanitizeOutput(raw, state.headers) as Record<string, unknown>;
         const knownFailure = result.isError === true;
         const invalidOutput = !knownFailure && outputValidator !== undefined && !outputValidator(raw.structuredContent);
@@ -169,7 +169,7 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
           attempts: rawConnection.attempts.map(attempt => ({ ...attempt, status: "unknown", retryable: false })) }
         : rawConnection;
       const evidence = recordConnection(connection, context, state.headers);
-      if (!response) return { ...connectionFailure(connection, evidence), effect: { state: isReadOnly(definition) ? "none" : state.dispatched ? "unknown" : "not_dispatched", evidence: "No complete HTTP acknowledgement.", ...(idempotencyKey ? { idempotencyKey } : {}) } };
+      if (!response) return { ...connectionFailure(sanitizeOutput(connection, state.headers) as ConnectionResult, evidence), effect: { state: isReadOnly(definition) ? "none" : state.dispatched ? "unknown" : "not_dispatched", evidence: "No complete HTTP acknowledgement.", ...(idempotencyKey ? { idempotencyKey } : {}) } };
       const text = response.text;
       let structuredContent: unknown;
       try { structuredContent = JSON.parse(text); } catch { /* Text responses stay text. */ }

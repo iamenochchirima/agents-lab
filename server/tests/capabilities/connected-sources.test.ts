@@ -178,8 +178,8 @@ test("live authority is rechecked between MCP discovery and dispatch, preserving
     const revoked = await tool.implementation.executeResult!({ key: "two" }, { ...context, sessionId: "trusted-session" });
     assert.equal(revoked.status, "failed"); assert.equal(revoked.effect?.state, "not_dispatched"); assert.equal(effects, 1);
     let resolutions = 0;
-    const [http] = loadHttpSource({ id: "live-http", version: "1.0.0", baseUrl: local.base, resolveHeaders: async () => { if (++resolutions === 2) throw new Error("Authority revoked before HTTP send"); return { authorization: "service-secret" }; }, operations: [{ name: "http_write", method: "POST", path: "/write", inputSchema: schema, description: "Write", riskClass: "write" }] });
+    const [http] = loadHttpSource({ id: "live-http", version: "1.0.0", baseUrl: local.base, resolveHeaders: async () => { if (++resolutions === 2) throw new Error("Authority revoked for service-secret before HTTP send"); return { authorization: "service-secret" }; }, operations: [{ name: "http_write", method: "POST", path: "/write", inputSchema: schema, description: "Write", riskClass: "write" }] });
     const denied = await invoke(http, { key: "one" });
-    assert.equal(denied.status, "failed"); assert.equal(denied.effect?.state, "not_dispatched"); assert.equal(httpEffects, 0);
+    assert.equal(denied.status, "failed"); assert.equal(denied.effect?.state, "not_dispatched"); assert.doesNotMatch(JSON.stringify(denied), /service-secret/); assert.equal(httpEffects, 0);
   } finally { await local.close(); }
 });
