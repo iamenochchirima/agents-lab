@@ -25,12 +25,13 @@ export interface CapabilityProfile {
   readonly availableSkills?: readonly SkillSummary[];
   /** Native adapter targets verified for this profile. */
   readonly supportedVariants?: readonly string[];
+  readonly unavailableReason?: string;
 }
 
-export interface CapabilityProfileView extends Omit<CapabilityProfile, "policy" | "grants" | "skillIds"> {
+export interface CapabilityProfileView extends Omit<CapabilityProfile, "policy" | "grants" | "skillIds" | "unavailableReason"> {
   readonly available: boolean;
   readonly unavailableReason: string | null;
-  readonly capabilities: readonly Pick<CapabilityManifest, "id" | "version" | "kind" | "displayName" | "description" | "risk" | "operations">[];
+  readonly capabilities: readonly (Pick<CapabilityManifest, "id" | "version" | "kind" | "displayName" | "description" | "risk" | "operations"> & { readonly approvalMode?: "automatic" | "tool_grant" | "invocation"; readonly connectionRef?: string })[];
   readonly skills: readonly SkillSummary[];
   readonly availableSkills?: readonly SkillSummary[];
 }
@@ -53,12 +54,12 @@ export interface CapabilityProfileResolution {
  * cannot add a grant or widen its policy.
  */
 export class CapabilityCatalog {
-  private readonly profiles: ReadonlyMap<string, CapabilityProfile>;
-  private readonly registry: CapabilityRegistry;
-  private readonly resolver: CapabilityResolver;
-  private readonly connectedEnabled: boolean;
-  private readonly toolDescriptors: ReadonlyMap<string, ResolvedToolDescriptor>;
-  private readonly skillResolver: CapabilityCatalogOptions["skillResolver"];
+  private profiles: ReadonlyMap<string, CapabilityProfile>;
+  private registry: CapabilityRegistry;
+  private resolver: CapabilityResolver;
+  private connectedEnabled: boolean;
+  private toolDescriptors: ReadonlyMap<string, ResolvedToolDescriptor>;
+  private skillResolver: CapabilityCatalogOptions["skillResolver"];
 
   constructor(
     manifests: readonly CapabilityManifest[],
@@ -85,6 +86,12 @@ export class CapabilityCatalog {
       values.set(profile.id, deepFreeze(profile));
     }
     this.profiles = values;
+  }
+
+  /** Atomic replacement affects future admissions; retained run snapshots stay immutable. */
+  replace(next: CapabilityCatalog): void {
+    this.profiles = next.profiles; this.registry = next.registry; this.resolver = next.resolver;
+    this.connectedEnabled = next.connectedEnabled; this.toolDescriptors = next.toolDescriptors; this.skillResolver = next.skillResolver;
   }
 
   list(): readonly CapabilityProfileView[] {
@@ -164,12 +171,15 @@ export class CapabilityCatalog {
           description: manifest.description,
           risk: manifest.risk,
           operations: manifest.operations,
+          ...(this.toolDescriptors.get(manifest.id)?.connection ? { connectionRef: this.toolDescriptors.get(manifest.id)!.connection!.ref } : {}),
+          approvalMode: this.toolDescriptors.get(manifest.id)?.definition.approvalMode ?? (grant.approvalMode === "required" ? "tool_grant" as const : "automatic" as const),
         }] : [];
       }),
     };
   }
 
   private profileAvailability(profile: CapabilityProfile): { readonly available: boolean; readonly reason: string } {
+    if (profile.unavailableReason) return { available: false, reason: profile.unavailableReason };
     if (this.connectedEnabled) return { available: true, reason: "" };
     const connected = profile.grants.some((grant) => {
       const manifest = this.registry.get(grant.capabilityId, grant.version);

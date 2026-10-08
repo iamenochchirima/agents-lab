@@ -7,6 +7,13 @@ export interface ResolvedToolDescriptor {
   readonly execution: { readonly kind: "builtin"; readonly id: string } | { readonly kind: "hosted"; readonly key: string };
   /** Only known failed operations can become feedback. Unknown effects always stop. */
   readonly failurePolicy: "feedback" | "terminal";
+  /** Safe server-owned connection identity. Credential material is never retained here. */
+  readonly connection?: {
+    readonly ref: string;
+    readonly authorityRevision: string;
+    readonly resource: string;
+    readonly scopes: readonly string[];
+  };
 }
 export interface ToolCatalogSnapshot {
   readonly schemaVersion: 1;
@@ -18,6 +25,8 @@ export interface HostedToolContribution {
   readonly implementation: ToolImplementation;
   /** Idempotent source cleanup, shared by every contribution from that source. */
   readonly close?: () => Promise<void>;
+  /** Revalidate live authority without executing the business operation. */
+  readonly checkAuthority?: (signal: AbortSignal) => Promise<void>;
 }
 export interface CapabilityHostRequest {
   readonly runId: string;

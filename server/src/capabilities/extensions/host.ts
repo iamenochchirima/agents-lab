@@ -10,6 +10,8 @@ import type { ToolExecutionResult } from "../tools/contracts.js";
 import { ToolRegistry } from "../tools/registry.js";
 import type { CapabilityHostRequest, HostedToolContribution } from "./contracts.js";
 import { capabilityHostKeyPath } from "./runtime.js";
+import { InvocationReviewStore, argumentDigest } from "../reviews/store.js";
+import type { InvocationReviewView } from "../reviews/contracts.js";
 
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 type ValidatedCall = Extract<ReturnType<ToolRegistry["validateCall"]>, { accepted: true }>;
@@ -33,7 +35,7 @@ interface CompleteReceipt extends Omit<PendingReceipt, "status"> {
  * restart stays unknown; inspecting it never dispatches the operation again.
  */
 export class CapabilityHost {
-  private readonly contributions: ReadonlyMap<string, HostedToolContribution>;
+  private contributions: ReadonlyMap<string, HostedToolContribution>;
   private readonly inFlight = new Map<string, { fingerprint: string; promise: Promise<ToolExecutionResult> }>();
 
   constructor(
@@ -41,11 +43,12 @@ export class CapabilityHost {
     tools: readonly HostedToolContribution[],
     private readonly key: string,
     private readonly sessions?: ContextSessionStore,
+    private readonly reviews: InvocationReviewStore = new InvocationReviewStore(dirname(evidence.runDirectory("review-root"))),
   ) {
     this.contributions = new Map(tools.map(tool => [tool.descriptor.definition.name, tool]));
   }
 
-  static async create(evidence: RunEvidenceStore, tools: readonly HostedToolContribution[], sessions?: ContextSessionStore): Promise<CapabilityHost> {
+  static async create(evidence: RunEvidenceStore, tools: readonly HostedToolContribution[], sessions?: ContextSessionStore, reviews?: InvocationReviewStore): Promise<CapabilityHost> {
     const path = capabilityHostKeyPath();
     await mkdir(dirname(path), { recursive: true });
     try {
@@ -59,13 +62,20 @@ export class CapabilityHost {
     }
     const key = (await readFile(path, "utf8")).trim();
     if (!/^[a-f0-9]{64}$/.test(key)) throw new Error("Invalid capability host key.");
-    return new CapabilityHost(evidence, tools, key, sessions);
+    return new CapabilityHost(evidence, tools, key, sessions, reviews);
+  }
+
+  private readonly cleanups = new Set<() => Promise<void>>();
+
+  replace(tools: readonly HostedToolContribution[]): void {
+    this.contributions = new Map(tools.map(tool => [tool.descriptor.definition.name, tool]));
+    for (const tool of tools) if (tool.close) this.cleanups.add(tool.close);
   }
 
   register(app: FastifyInstance): void {
-    const cleanups = new Set([...this.contributions.values()].flatMap(tool => tool.close ? [tool.close] : []));
+    this.replace([...this.contributions.values()]);
     app.addHook("onClose", async () => {
-      await Promise.allSettled([...cleanups].map(close => close()));
+      await Promise.allSettled([...this.cleanups].map(close => close()));
     });
     app.post("/internal/capabilities/execute", { bodyLimit: 1_048_576 }, async (request, reply) => {
       const actual = Buffer.from(request.headers.authorization ?? "");
@@ -86,6 +96,42 @@ export class CapabilityHost {
         reply.raw.removeListener("close", abort);
       }
     });
+    app.post("/internal/capabilities/prepare", { bodyLimit: 1_048_576 }, async (request, reply) => {
+      const actual = Buffer.from(request.headers.authorization ?? "");
+      const expected = Buffer.from(`Bearer ${this.key}`);
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return reply.code(401).send({ error: "Runtime authentication required." });
+      try { return reply.send(await this.prepare(request.body as CapabilityHostRequest)); }
+      catch { return reply.code(400).send({ error: "Invocation proposal rejected. Inspect admitted permissions and source identity." }); }
+    });
+  }
+
+  /** Validate and retain a proposal without reserving or invoking external effects. */
+  async prepare(input: CapabilityHostRequest): Promise<InvocationReviewView | null> {
+    if (!input || !safeId.test(input.runId) || !safeId.test(input.turnId) || !input.call || !safeId.test(input.call.toolCallId)) throw new Error("Unsafe proposal identity.");
+    const manifest = await this.evidence.readManifest(input.runId);
+    const snapshot = manifest.capabilities?.toolCatalog;
+    if (!snapshot || snapshot.revision !== input.catalogRevision || manifest.context.turnId !== input.turnId) throw new Error("Catalog or turn mismatch.");
+    const descriptor = snapshot.tools.find(value => value.definition.name === input.call.name);
+    const contribution = this.contributions.get(input.call.name);
+    if (!descriptor || !contribution || canonical(descriptor.source) !== canonical(contribution.descriptor.source)
+      || descriptor.execution.kind !== "hosted") throw new Error("Frozen source unavailable.");
+    if (descriptor.definition.approvalMode !== "invocation") return null;
+    await contribution.checkAuthority?.(AbortSignal.timeout(30_000));
+    const registry = new ToolRegistry(manifest.capabilities!.tools);
+    registry.register({ ...contribution.implementation, definition: descriptor.definition });
+    const validated = registry.validateCall(input.call);
+    if (!validated.accepted || !registry.authorize(validated.call).allowed) throw new Error("Invocation is not permitted.");
+    const state = await this.evidence.readSnapshot(input.runId);
+    if (state.result || state.events.some(event => event.kind === "RunCancellationRequested")) throw new Error("Run cannot propose an action.");
+    const args = validated.call.arguments as Record<string, unknown>;
+    const value = await this.reviews.propose({ runId: input.runId, turnId: input.turnId, call: validated.call,
+      catalogRevision: snapshot.revision, sourceDigest: descriptor.source.digest,
+      connectionIdentity: descriptor.connection ? canonical(descriptor.connection) : null,
+      argumentDigest: argumentDigest(args), displayArguments: redactArguments(args, descriptor.definition.inputSchema) }, async () => {
+        const current = await this.evidence.readSnapshot(input.runId);
+        if (current.result || current.events.some(event => event.kind === "RunCancellationRequested")) throw new Error("Run cannot propose an action.");
+      });
+    return this.reviews.view(value);
   }
 
   async execute(input: CapabilityHostRequest, signal: AbortSignal): Promise<ToolExecutionResult> {
@@ -117,6 +163,10 @@ export class CapabilityHost {
     if (!validated.accepted) return failure(validated.code, validated.message);
     const allowed = registry.authorize(validated.call);
     if (!allowed.allowed) return failure(allowed.code, allowed.message);
+    if (descriptor.definition.approvalMode === "invocation") {
+      const review = (await this.reviews.list(input.runId)).find(value => value.call.toolCallId === input.call.toolCallId);
+      if (!review || !["approved", "dispatching", "completed"].includes(review.status)) return failure("TOOL_EXECUTION_FAILED", "Review this exact action before execution.");
+    }
 
     const identity = `${input.runId}:${input.call.toolCallId}`;
     const fingerprint = hash({ revision: input.catalogRevision, turnId: input.turnId, call: input.call });
@@ -162,12 +212,18 @@ export class CapabilityHost {
       await this.finish(path, pending, result);
       return result;
     }
-    const snapshot = await this.evidence.readSnapshot(input.runId);
-    if (snapshot.result || snapshot.events.some(event => event.kind === "RunCancellationRequested")) {
-      const result = failure("TOOL_CANCELLED", "The run is terminal or cancellation has been requested.", "cancelled");
-      await this.finish(path, pending, result);
-      return result;
-    }
+    const gate = await this.reviews.locked(input.runId, async () => {
+      const snapshot = await this.evidence.readSnapshot(input.runId);
+      if (snapshot.result || snapshot.events.some(event => event.kind === "RunCancellationRequested")) return failure("TOOL_CANCELLED", "The run is terminal or cancellation has been requested.", "cancelled");
+      if (validated.definition.approvalMode === "invocation") {
+        try {
+          const descriptor = snapshot.manifest.capabilities!.toolCatalog!.tools.find(tool => tool.definition.name === input.call.name)!;
+          await this.reviews.claim(input.runId, input.call.toolCallId, argumentDigest(validated.call.arguments), descriptor.source.digest, input.catalogRevision);
+        } catch { return failure("TOOL_EXECUTION_FAILED", "This exact invocation requires current approval before execution."); }
+      }
+      return null;
+    });
+    if (gate) { await this.finish(path, pending, gate); return gate; }
     const connectionResults: ConnectionResult[] = [];
     const result = await registry.execute(validated, {
       runId: input.runId,
@@ -181,6 +237,7 @@ export class CapabilityHost {
     });
     try {
       await this.finish(path, pending, result, connectionResults);
+      if (validated.definition.approvalMode === "invocation") await this.reviews.finish(input.runId, input.call.toolCallId);
       return result;
     } catch {
       // An effect can succeed while writing its receipt fails. Keep the pending
@@ -205,6 +262,17 @@ export class CapabilityHost {
     await writeFile(temporary, `${JSON.stringify({ ...pending, status: "complete", result, ...(connectionResults.length ? { connectionResults } : {}) })}\n`);
     await rename(temporary, path);
   }
+}
+
+function redactArguments(args: Record<string, unknown>, schema: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  const properties = schema.properties as Record<string, Record<string, unknown>> | undefined;
+  const redact = (value: unknown, key: string, property?: Record<string, unknown>): unknown => {
+    if (/password|secret|token|authorization|api.?key|credential/i.test(key) || property?.["x-sensitive"] === true || property?.writeOnly === true) return "[REDACTED]";
+    if (Array.isArray(value)) return value.map(item => redact(item, "", property?.items as Record<string, unknown>));
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([childKey, item]) => [childKey, redact(item, childKey, (property?.properties as Record<string, Record<string, unknown>> | undefined)?.[childKey])]));
+    return value;
+  };
+  return Object.fromEntries(Object.entries(args).map(([key, value]) => [key, redact(value, key, properties?.[key])]));
 }
 
 function failure(code: string, message: string, status: ToolExecutionResult["status"] = "failed"): ToolExecutionResult {

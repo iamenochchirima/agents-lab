@@ -17,7 +17,7 @@ export function createPackageCapabilityCatalog(packages: LoadedCapabilityPackage
     risk: descriptor.definition.riskClass,
     operations: ["execute"],
     inputSchema: descriptor.definition.inputSchema as JsonObject,
-    requiredScopes: [],
+    requiredScopes: descriptor.connection?.scopes ?? [],
     source: { kind: "package" as const, ref: descriptor.source.id, digest: descriptor.source.digest },
   }));
   const profiles = packages.profiles.map(profile => ({

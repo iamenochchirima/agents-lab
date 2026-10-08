@@ -15,6 +15,15 @@ export const TOOL_SCHEMA_VERSION = 1 as const;
 export type ToolRiskClass = "pure" | "read" | "write" | "external";
 export type ToolExecutionKind = "in_process" | "connection";
 export type ToolExecutionStatus = "completed" | "failed" | "cancelled" | "timed_out" | "unknown";
+/** Absent on legacy declarations; those retain the existing upfront grant policy. */
+export type ToolApprovalMode = "automatic" | "tool_grant" | "invocation";
+
+/** A provider acknowledgement and a confirmed business effect are different evidence. */
+export interface ToolEffectOutcome {
+  readonly state: "not_dispatched" | "none" | "rejected" | "acknowledged" | "confirmed" | "unknown";
+  readonly evidence: string;
+  readonly idempotencyKey?: string;
+}
 
 export interface ToolLimits {
   readonly maxArgumentBytes: number;
@@ -32,6 +41,8 @@ export interface ToolDefinition {
   readonly limits: ToolLimits;
   readonly outputSchema?: Readonly<Record<string, unknown>>;
   readonly failurePolicy?: "feedback" | "terminal";
+  readonly approvalMode?: ToolApprovalMode;
+  readonly supportedContent?: readonly ("text" | "json" | "resource" | "image" | "audio")[];
 }
 
 export interface ToolCall {
@@ -102,6 +113,9 @@ export interface ToolExecutionError {
 }
 
 export interface ToolExecutionResult {
+  /** Optional for historical receipts. Unknown effects never authorize repetition. */
+  readonly effect?: ToolEffectOutcome;
+  readonly presentation?: "valid" | "invalid" | "not_declared";
   /** Original bounded remote content retained alongside model text. */
   readonly structuredContent?: unknown;
   readonly contentBlocks?: readonly unknown[];

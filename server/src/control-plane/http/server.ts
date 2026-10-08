@@ -15,6 +15,7 @@ import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogC
 import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 import { validateCapabilityApproval } from "../../capabilities/validation.js";
 import { readEvalResults, readEvalTrialDetail } from "../application/eval-results.js";
+import { InvocationReviewError } from "../../capabilities/reviews/store.js";
 
 export interface ControlPlaneServerDependencies {
   readonly config: ServerConfig;
@@ -191,6 +192,22 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
       await recordRunOperation(dependencies.evidence, run, "run.resume", request.id, startedAt);
       return reply.send(run);
     } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  app.get<{ Params: { runId: string } }>("/api/runs/:runId/actions", async (request, reply) => {
+    try { return reply.send({ actions: await dependencies.service.actions(request.params.runId) }); }
+    catch (error) { return sendError(reply, error); }
+  });
+  app.post<{ Params: { runId: string; requestId: string } }>("/api/runs/:runId/actions/:requestId/renew", async (request, reply) => {
+    try { return reply.send(await dependencies.service.renewAction(request.params.runId, request.params.requestId)); }
+    catch (error) { return sendError(reply, error); }
+  });
+  app.post<{ Params: { runId: string; requestId: string }; Body: unknown }>("/api/runs/:runId/actions/:requestId/decision", async (request, reply) => {
+    try { return reply.send(await dependencies.service.decideAction(request.params.runId, request.params.requestId, request.body)); }
+    catch (error) {
+      if (error instanceof InvocationReviewError) return reply.code(409).send({ error: { code: "ACTION_REVIEW_CONFLICT", message: error.message } });
       return sendError(reply, error);
     }
   });

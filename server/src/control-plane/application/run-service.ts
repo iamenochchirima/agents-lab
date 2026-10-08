@@ -19,6 +19,8 @@ import type { PlatformRunner, RunnerInspection } from "../ports/runner.js";
 import type { ModelMetadataResolver } from "../ports/model-metadata.js";
 import type { ServerConfig } from "../bootstrap/config.js";
 import type { ContextProjection } from "../../capabilities/context/contracts.js";
+import { InvocationReviewStore, InvocationReviewError, validateDecision } from "../../capabilities/reviews/store.js";
+import type { InvocationDecision, InvocationResumeInput, InvocationReviewView } from "../../capabilities/reviews/contracts.js";
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
 import { ContextSessionNotFoundError } from "../../capabilities/context/session-store.js";
 import { ContextService } from "../../capabilities/context/context-service.js";
@@ -81,6 +83,8 @@ export interface RunServiceDependencies {
   readonly context?: ContextService;
   readonly modelMetadata?: ModelMetadataResolver;
   readonly capabilities?: CapabilityCatalog;
+  readonly reviews?: InvocationReviewStore;
+  readonly renewReview?: (runId: string, requestId: string) => Promise<InvocationReviewView>;
 }
 
 /**
@@ -389,11 +393,17 @@ export class RunService {
         registration ? "planned" : "unknown",
       );
     }
+    if (this.dependencies.reviews) {
+      await this.dependencies.reviews.locked(runId, async () => {
+        await this.appendControlEvent(runId, "RunCancellationRequested", { reason });
+        await this.dependencies.reviews!.cancelLocked(runId);
+      });
+    }
     const cancellation = await runner.cancel(snapshot.executionReference, reason);
     if (cancellation.alreadyTerminal) {
       return this.getRun(runId);
     }
-    if (cancellation.accepted) {
+    if (cancellation.accepted && !this.dependencies.reviews) {
       await this.appendControlEvent(runId, "RunCancellationRequested", { reason });
     }
     return this.getRun(runId);
@@ -402,6 +412,16 @@ export class RunService {
   async resumeRun(runId: string, input: unknown): Promise<RunView> {
     const snapshot = await this.readSnapshotOrThrow(runId);
     if (snapshot.result) return toRunView(snapshot, snapshot.result.status, await this.contextProjection(snapshot.manifest));
+    if (input && typeof input === "object" && (input as InvocationResumeInput).kind === "invocation_review") {
+      const decision = input as InvocationResumeInput;
+      const review = await this.dependencies.reviews?.get(runId, decision.requestId);
+      const retainedDecision = decision.decision === "renewed"
+        ? review?.status === "pending" && review.renewalId === decision.decisionId
+        : review?.decision?.decisionId === decision.decisionId && review.decision.decision === decision.decision
+          && !["pending", "expired", "cancelled"].includes(review.status);
+      if (!review || !retainedDecision || review.revision !== decision.revision
+        || review.call.toolCallId !== decision.toolCallId) throw new InvocationReviewError("Native continuation requires the retained action decision.");
+    }
     if (!snapshot.executionReference) {
       await this.recordReconciliationRequired(snapshot.manifest, "Cannot resume without a retained platform execution reference.");
       return this.getRun(runId);
@@ -416,6 +436,44 @@ export class RunService {
       await this.appendControlEvent(runId, "RunResumeRequested", { message: resumed.message });
     }
     return this.getRun(runId);
+  }
+
+  async actions(runId: string): Promise<readonly InvocationReviewView[]> {
+    await this.readSnapshotOrThrow(runId);
+    return (await this.dependencies.reviews?.list(runId) ?? []).map(value => this.dependencies.reviews!.view(value));
+  }
+
+  async decideAction(runId: string, requestId: string, input: unknown): Promise<RunView> {
+    validateDecision(input);
+    if (input.requestId !== requestId || !this.dependencies.reviews) throw new InvocationReviewError("Action decision does not match this request.");
+    const reviews = this.dependencies.reviews;
+    const review = await reviews.locked(runId, async () => {
+      const current = await this.readSnapshotOrThrow(runId);
+      if (current.result || current.events.some(event => event.kind === "RunCancellationRequested")) throw new InvocationReviewError("This run can no longer accept action decisions.");
+      const retained = await reviews.get(runId, requestId);
+      if (retained.catalogRevision !== current.manifest.capabilities?.toolCatalog?.revision) throw new InvocationReviewError("The reviewed catalog changed.");
+      return reviews.decide(runId, input as InvocationDecision);
+    });
+    await this.appendControlEvent(runId, "InvocationReviewDecided", { requestId, revision: review.revision, decisionId: input.decisionId, decision: input.decision, toolCallId: review.call.toolCallId });
+    const resume: InvocationResumeInput = { kind: "invocation_review", requestId, revision: review.revision, decisionId: input.decisionId,
+      toolCallId: review.call.toolCallId, decision: input.decision, ...(input.reason ? { reason: input.reason } : {}) };
+    return this.resumeRun(runId, resume);
+  }
+
+  /** Renew only the retained immutable action, never browser-supplied arguments. */
+  async renewAction(runId: string, requestId: string): Promise<RunView> {
+    const current = await this.readSnapshotOrThrow(runId);
+    const previous = await this.dependencies.reviews?.get(runId, requestId);
+    if (current.result || current.events.some(event => event.kind === "RunCancellationRequested")
+      || !previous || !this.dependencies.renewReview) throw new InvocationReviewError("Action renewal is unavailable.");
+    if (previous.status !== "expired" && !(previous.status === "pending" && previous.renewalId)) {
+      throw new InvocationReviewError("Only an expired review can be renewed.");
+    }
+    const review = await this.dependencies.renewReview(runId, requestId);
+    if (!review.renewalId) throw new InvocationReviewError("No fresh review identity was retained.");
+    await this.appendControlEvent(runId, "InvocationReviewRenewed", { requestId, revision: review.revision, renewalId: review.renewalId, toolCallId: review.call.toolCallId });
+    return this.resumeRun(runId, { kind: "invocation_review", requestId, revision: review.revision,
+      decisionId: review.renewalId, toolCallId: review.call.toolCallId, decision: "renewed" } satisfies InvocationResumeInput);
   }
 
   private async reconcile(

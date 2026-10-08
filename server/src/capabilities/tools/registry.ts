@@ -116,7 +116,10 @@ export class ToolRegistry {
     if (!implementation) {
       return { allowed: false, code: "UNKNOWN_TOOL", message: `Tool is not enabled: ${call.name}` };
     }
-    if ((implementation.definition.riskClass === "external" || implementation.definition.riskClass === "write") && !this.approvedNames.has(call.name)) {
+    if ((implementation.definition.riskClass === "external" || implementation.definition.riskClass === "write")
+      && implementation.definition.approvalMode !== "invocation"
+      && implementation.definition.approvalMode !== "automatic"
+      && !this.approvedNames.has(call.name)) {
       return {
         allowed: false,
         code: "TOOL_RISK_NOT_ALLOWED",

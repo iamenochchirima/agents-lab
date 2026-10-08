@@ -116,11 +116,22 @@ export class CapabilityResolver {
       }
 
       const policyRequiresApproval = policy.requiredApprovalRiskClasses.includes(manifest.risk);
-      if (policyRequiresApproval && grant.approvalMode !== "required") {
+      if (policyRequiresApproval && grant.approvalMode !== "required" && grant.approvalMode !== "invocation") {
         decisions.push(denied(grant, "APPROVAL_REQUIRED", "The policy requires explicit approval for this risk class."));
         continue;
       }
 
+      if (grant.approvalMode === "invocation") {
+        // Admission permits a proposal, not execution. The host checks the
+        // exact persisted invocation decision immediately before effects.
+        if (matchingApproval(approvals, grant)?.decision === "denied") {
+          decisions.push(denied(grant, "APPROVAL_DENIED", "The capability was explicitly denied."));
+          continue;
+        }
+        resolved.push({ manifest, grant, approval: "invocation_required" });
+        decisions.push(decision(grant, "granted", "GRANTED", "Capability may propose an invocation for review."));
+        continue;
+      }
       const approvalRequired = policyRequiresApproval || grant.approvalMode === "required";
       if (approvalRequired) {
         const approval = matchingApproval(approvals, grant);

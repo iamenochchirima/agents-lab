@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ConnectionRuntime } from "../integrations/runtime.js";
-import type { ToolExecutionContext, ToolExecutionResult, ToolRiskClass } from "../tools/contracts.js";
+import type { ToolCall, ToolExecutionContext, ToolExecutionResult, ToolRiskClass } from "../tools/contracts.js";
+import type { InvocationReviewView } from "../reviews/contracts.js";
 import { createFixtureTools } from "../tools/fixtures.js";
 import { ToolRegistry } from "../tools/registry.js";
 import type { ToolCatalogSnapshot } from "./contracts.js";
@@ -66,6 +67,23 @@ export function createRuntimeToolRegistry(
     if (!registry.resolve(name)) throw new Error(`Selected tool has no catalog descriptor: ${name}`);
   }
   return registry;
+}
+
+/** Native execution suspends on this proposal before starting a tool deadline.
+ * The host retains the arguments and rechecks the exact decision at dispatch.
+ */
+export async function prepareToolInvocation(snapshot: ToolCatalogSnapshot, call: ToolCall, context: ToolExecutionContext): Promise<InvocationReviewView | null> {
+  const descriptor = snapshot.tools.find(tool => tool.definition.name === call.name);
+  if (descriptor?.definition.approvalMode !== "invocation") return null;
+  const key = (await readFile(capabilityHostKeyPath(), "utf8")).trim();
+  const endpoint = new URL("/internal/capabilities/prepare", process.env.AGENTLAB_CAPABILITY_HOST_URL ?? `http://127.0.0.1:${process.env.AGENTLAB_API_PORT ?? "4318"}`);
+  const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    body: JSON.stringify({ runId: context.runId, turnId: context.turnId, catalogRevision: snapshot.revision, call }),
+    signal: AbortSignal.any([context.signal, AbortSignal.timeout(30_000)]) });
+  if (!response.ok) { await response.body?.cancel(); throw new Error(`Invocation proposal rejected with HTTP ${response.status}.`); }
+  const value = JSON.parse(await boundedResponseText(response, 256 * 1024)) as InvocationReviewView | null;
+  if (value !== null && (value.schemaVersion !== 1 || value.runId !== context.runId || value.call?.toolCallId !== call.toolCallId || !Number.isSafeInteger(value.revision))) throw new Error("Invalid invocation proposal result.");
+  return value;
 }
 
 async function invokeCapabilityHost(

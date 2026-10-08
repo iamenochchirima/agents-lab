@@ -18,7 +18,7 @@ export interface JsonObject {
 
 export type CapabilityKind = "tool" | "connection" | "plugin";
 export type CapabilityRisk = "pure" | "read" | "write" | "external";
-export type CapabilityApprovalMode = "none" | "required";
+export type CapabilityApprovalMode = "none" | "required" | "invocation";
 export type CapabilityApprovalDecision = "approved" | "denied";
 
 export interface CapabilitySource {
@@ -116,7 +116,7 @@ export interface CapabilityResolutionDecision {
 export interface ResolvedCapability {
   readonly manifest: CapabilityManifest;
   readonly grant: CapabilityGrant;
-  readonly approval: "not_required" | "approved";
+  readonly approval: "not_required" | "approved" | "invocation_required";
 }
 
 export interface CapabilityResolution {

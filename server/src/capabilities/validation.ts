@@ -122,7 +122,7 @@ export function validateCapabilityGrant(value: unknown): CapabilityGrant {
     ? undefined
     : validateConnectionRef(input.connectionRef, "grant.connectionRef");
   const allowedOperations = validateStringList(input.allowedOperations, "grant.allowedOperations", CAPABILITY_LIMITS.maxOperations, CAPABILITY_LIMITS.maxOperationBytes, OPERATION_PATTERN, true);
-  const approvalMode = validateEnum(input.approvalMode, ["none", "required"] as const, "grant.approvalMode");
+  const approvalMode = validateEnum(input.approvalMode, ["none", "required", "invocation"] as const, "grant.approvalMode");
   const timeoutMs = validateBoundedInteger(input.timeoutMs, "grant.timeoutMs", 1, CAPABILITY_LIMITS.maxTimeoutMs);
   const maxInputBytes = validateBoundedInteger(input.maxInputBytes, "grant.maxInputBytes", 1, CAPABILITY_LIMITS.maxInputBytes);
   const maxOutputBytes = validateBoundedInteger(input.maxOutputBytes, "grant.maxOutputBytes", 1, CAPABILITY_LIMITS.maxOutputBytes);
