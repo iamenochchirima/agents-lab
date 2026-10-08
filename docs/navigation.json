@@ -50,7 +50,9 @@
         "docs/research/platform-plan-source-audit.md",
         "docs/research/tool-execution-reference.md",
         "docs/research/tui-reference-comparison.md",
-        "docs/research/write-tool-approval-comparison.md"
+        "docs/research/write-tool-approval-comparison.md",
+        "docs/research/capability-management-connections.md",
+        "docs/research/capability-management-packages.md"
       ]
     },
     {
