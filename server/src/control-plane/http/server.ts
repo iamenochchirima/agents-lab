@@ -15,6 +15,7 @@ import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogC
 import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 import { validateCapabilityApproval } from "../../capabilities/validation.js";
 import { readEvalResults, readEvalTrialDetail } from "../application/eval-results.js";
+import { EvalAssessmentStore, EvalAssessmentError, assessmentContext } from "../application/eval-assessments.js";
 import { InvocationReviewError } from "../../capabilities/reviews/store.js";
 
 export interface ControlPlaneServerDependencies {
@@ -107,6 +108,8 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     return reply.send({ profiles: dependencies.capabilities?.list() ?? [] });
   });
 
+  const assessments = new EvalAssessmentStore(dependencies.config.runsRoot);
+
   app.get<{ Querystring: { limit?: string } }>("/api/evals", async (request, reply) => {
     try {
       const value = request.query.limit;
@@ -123,9 +126,29 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
       return reply.code(400).send({ error: { code: "INVALID_REQUEST", message: "Invalid retained eval trial identity." } });
     }
     try {
-      return reply.send(await readEvalTrialDetail(dependencies.config.runsRoot, dependencies.evidence, invocationId, caseId, Number(trial), [dependencies.config.openRouter.apiKey ?? ""]));
+      const detail = await readEvalTrialDetail(dependencies.config.runsRoot, dependencies.evidence, invocationId, caseId, Number(trial), [dependencies.config.openRouter.apiKey ?? ""]);
+      const records = await assessments.list(detail);
+      const context = assessmentContext(detail);
+      const latest = records.at(-1);
+      return reply.send({ ...detail, assessmentContext: context, assessments: records, assessedOutcome: latest && latest.evidenceDigest === context.evidenceDigest && latest.rubricVersion === context.rubricVersion ? { assessmentId: latest.assessmentId, outcome: latest.outcome, reviewRequired: latest.outcome === "uncertain", source: "human-assessment" } : null });
     } catch {
       return reply.code(404).send({ error: { code: "EVAL_DETAIL_UNAVAILABLE", message: "Retained eval trial is unavailable or unsafe to read." } });
+    }
+  });
+
+  // Local deployment ownership is the authority; a reviewer label is not authentication.
+  app.post<{ Params: { invocationId: string; caseId: string; trial: string } }>("/api/evals/:invocationId/cases/:caseId/trials/:trial/assessments", async (request, reply) => {
+    if (request.headers.origin && request.headers.origin !== dependencies.config.api.origin) {
+      return reply.code(403).send({ error: { code: "ASSESSMENT_ORIGIN_DENIED", message: "Assessment must originate from the configured local frontend." } });
+    }
+    try {
+      const { invocationId, caseId, trial } = request.params;
+      if (!/^\d+$/.test(trial)) throw new EvalAssessmentError(400, "INVALID_ASSESSMENT", "Invalid trial identity.");
+      const detail = await readEvalTrialDetail(dependencies.config.runsRoot, dependencies.evidence, invocationId, caseId, Number(trial), [dependencies.config.openRouter.apiKey ?? ""]);
+      return reply.code(200).send({ assessment: await assessments.submit(detail, request.body) });
+    } catch (error) {
+      if (error instanceof EvalAssessmentError) return reply.code(error.statusCode).send({ error: { code: error.code, message: error.message } });
+      return reply.code(400).send({ error: { code: "ASSESSMENT_UNAVAILABLE", message: "The retained trial or assessment store is unavailable or unsafe." } });
     }
   });
 

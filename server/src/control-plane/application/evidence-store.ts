@@ -332,7 +332,7 @@ export class RunEvidenceStore {
   /** Retains one bounded, immutable case verdict alongside its ordinary run evidence. */
   async writeEvalReport(runId: string, report: RunEvalReport, options: { graderRevision?: true } = {}): Promise<void> {
     assertRunEvalReport(report);
-    if (options.graderRevision && report.graderVersion !== "3") throw new Error("Only the bounded grader-3 revision artifact is supported.");
+    if (options.graderRevision && !["3", "4"].includes(report.graderVersion)) throw new Error("Only bounded grader-3/4 revision artifacts are supported.");
     if (report.ownerRunId !== runId) {
       throw new EvidenceConflictError(`Eval report belongs to a different run: ${runId}`);
     }
@@ -345,7 +345,7 @@ export class RunEvidenceStore {
       }
     }
     const safeReport = sanitizeEvidenceValue(report) as RunEvalReport;
-    const fileName = options.graderRevision ? "artifacts/eval-grader-3.json" : "artifacts/eval.json";
+    const fileName = options.graderRevision ? (report.graderVersion === "4" ? "artifacts/eval-grader-4.json" : "artifacts/eval-grader-3.json") : "artifacts/eval.json";
     const path = join(this.runDirectory(runId), fileName);
     await mkdir(dirname(path), { recursive: true });
     await this.assertEvalDirectories(runId);
@@ -362,8 +362,8 @@ export class RunEvidenceStore {
     }
   }
 
-  async readEvalReport(runId: string, fileName: "artifacts/eval.json" | "artifacts/eval-grader-3.json" = "artifacts/eval.json"): Promise<RunEvalReport | null> {
-    if (fileName !== "artifacts/eval.json" && fileName !== "artifacts/eval-grader-3.json") throw new Error("Unsupported eval report revision artifact.");
+  async readEvalReport(runId: string, fileName: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | "artifacts/eval-grader-4.json" = "artifacts/eval.json"): Promise<RunEvalReport | null> {
+    if (fileName !== "artifacts/eval.json" && fileName !== "artifacts/eval-grader-3.json" && fileName !== "artifacts/eval-grader-4.json") throw new Error("Unsupported eval report revision artifact.");
     await this.readManifest(runId);
     const path = join(this.runDirectory(runId), fileName);
     let report: unknown;
@@ -384,7 +384,7 @@ export class RunEvidenceStore {
     }
     try {
       assertRunEvalReport(report);
-      if (report.ownerRunId !== runId || (fileName === "artifacts/eval-grader-3.json" && report.graderVersion !== "3")) throw new Error("Eval owner or grader mismatch.");
+      if (report.ownerRunId !== runId || (fileName === "artifacts/eval-grader-3.json" && report.graderVersion !== "3") || (fileName === "artifacts/eval-grader-4.json" && report.graderVersion !== "4")) throw new Error("Eval owner or grader mismatch.");
     } catch { throw new CorruptEvidenceError(path); }
     return report;
   }
@@ -423,7 +423,7 @@ export class RunEvidenceStore {
     if (!isAllowlistedEvidenceFile(fileName, manifest.platform)) {
       throw new Error(`Unsupported evidence file: ${fileName}`);
     }
-    if (fileName === "artifacts/eval.json" || fileName === "artifacts/eval-grader-3.json") {
+    if (fileName === "artifacts/eval.json" || fileName === "artifacts/eval-grader-3.json" || fileName === "artifacts/eval-grader-4.json") {
       const report = await this.readEvalReport(runId, fileName);
       if (report === null) throw new EvidenceNotFoundError(join(this.runDirectory(runId), fileName));
       return `${stableJson(report)}\n`;
@@ -679,6 +679,7 @@ export type EvidenceFileName =
   | "result.json"
   | "artifacts/eval.json"
   | "artifacts/eval-grader-3.json"
+  | "artifacts/eval-grader-4.json"
   | "logs/operations.jsonl"
   | `native/${string}.json`;
 
@@ -692,6 +693,7 @@ export function isAllowlistedEvidenceFile(fileName: string, platform: string): f
     fileName === "result.json" ||
     fileName === "artifacts/eval.json" ||
     fileName === "artifacts/eval-grader-3.json" ||
+    fileName === "artifacts/eval-grader-4.json" ||
     fileName === OPERATIONAL_LOG_FILE ||
     fileName === nativeReferenceFile(platform);
 }

@@ -16,7 +16,7 @@ export interface EvalResultCase {
   readonly verdict: Verdict;
   readonly runIds: readonly string[];
   /** A safe report marker, never the writer's local absolute path. */
-  readonly evidence: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | null;
+  readonly evidence: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | "artifacts/eval-grader-4.json" | null;
   readonly reason?: string;
   readonly reviewRequired?: boolean;
   readonly platform?: string;
@@ -29,6 +29,7 @@ export interface EvalResultInvocation {
   readonly invocationId: string;
   readonly mode: "live" | "scripted" | "capability-acceptance" | "unknown";
   readonly platform: string;
+  readonly variant?: string;
   readonly modelId: string | null;
   readonly suiteVersion?: string;
   readonly graderVersion?: string;
@@ -133,7 +134,7 @@ function projectSummary(value: unknown, invocationId: string, secrets: readonly 
       ...(item.reason ? { reason: safeReason(item.reason as string, secrets) } : {}) };
   });
   const incomplete = value.completedAt === null;
-  return { invocationId, mode, platform: String(value.platform), modelId,
+  return { invocationId, mode, platform: String(value.platform), ...(typeof value.variant === "string" && idPattern.test(value.variant) ? { variant: value.variant } : {}), modelId,
     ...(text(value.suiteVersion) ? { suiteVersion: value.suiteVersion } : {}),
     ...(text(value.graderVersion) ? { graderVersion: value.graderVersion } : {}),
     ...(typeof value.sourceInvocationId === "string" && idPattern.test(value.sourceInvocationId) ? { sourceInvocationId: value.sourceInvocationId } : {}),
@@ -238,7 +239,8 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
   const item = invocation.cases.find(value => value.caseId === caseId && value.trial === trial);
   if (!item) throw new Error("Retained eval trial was not found.");
   const root = await realpath(runsRoot);
-  const read = async (runId: string, file: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | "events.jsonl" | "context.json" | "trajectory.json" | "result.json") => {
+  let evidenceDigest: string | null = null;
+  const read = async (runId: string, file: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | "artifacts/eval-grader-4.json" | "events.jsonl" | "context.json" | "trajectory.json" | "result.json") => {
     const path = join(runsRoot, runId, file);
     for (const directory of [join(runsRoot, runId), ...(file.startsWith("artifacts/") ? [join(runsRoot, runId, "artifacts")] : [])]) {
       const info = await lstat(directory);
@@ -248,6 +250,7 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
     if (!info.isFile() || info.isSymbolicLink() || info.size > maxSummaryBytes || !inside(root, await realpath(path))) throw new Error("Evidence is unsafe or exceeds the inline read limit.");
     const raw = await evidence.readAllowlistedFile(runId, file);
     if (Buffer.byteLength(raw) > maxSummaryBytes) throw new Error("Evidence exceeds the inline read limit.");
+    if (file === item.evidence) evidenceDigest = createHash("sha256").update(raw).digest("hex");
     const value = file.endsWith(".jsonl") ? raw.split("\n").filter(Boolean).map(line => JSON.parse(line)) : JSON.parse(raw);
     return sanitizeDetail(value, secrets);
   };
@@ -276,7 +279,7 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
     }
     return { runId, artifacts, issues };
   }));
-  return { invocation, case: item, report, runs, issues };
+  return { invocation, case: item, report, evidenceDigest: report ? evidenceDigest : null, runs, issues };
 }
 
 function sanitizeDetail(value: unknown, secrets: readonly string[], depth = 0): unknown {
@@ -295,6 +298,7 @@ function sanitizeDetail(value: unknown, secrets: readonly string[], depth = 0): 
 function reportMarker(value: unknown): EvalResultCase["evidence"] {
   if (!value) return null;
   if (typeof value !== "string") invalid();
+  if (value === "artifacts/eval-grader-4.json" || value.endsWith("/artifacts/eval-grader-4.json")) return "artifacts/eval-grader-4.json";
   if (value === "artifacts/eval-grader-3.json" || value.endsWith("/artifacts/eval-grader-3.json")) return "artifacts/eval-grader-3.json";
   if (value === "eval.json" || value === "artifacts/eval.json" || value.endsWith("/eval.json")) return "artifacts/eval.json";
   return invalid();
