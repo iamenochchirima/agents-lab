@@ -44,8 +44,10 @@ while stopping native continuation for reconciliation. Lost acknowledgements and
 or timed-out writes remain unknown and are never automatically retried. Endpoint
 and resolved credential headers belong to process configuration and stay outside
 the model descriptor. Credential values are redacted from returned content. A
-connection-backed source resolves current headers before discovery and each
-invocation; its stable authority identity, rather than rotating token bytes,
+connection-backed source resolves current headers immediately before every HTTP
+request, including paginated discovery, the final tool call, legacy notifications
+and best-effort cleanup. A revoke or credential rotation during the schema-check
+network wait is rechecked before dispatch; its stable authority identity, rather than rotating token bytes,
 defines the admitted source digest. Each invocation owns and closes its MCP client.
 `trustedContext: "session"` forwards the server-owned session ID in
 `X-AgentLab-Session-Id`; model arguments cannot set or override this identity.
@@ -85,3 +87,11 @@ attempt and source output, in their durable capability-call receipt. Native tool
 events may use the smaller connection summary. If execution succeeds but saving
 its acknowledgement fails, the pending receipt remains and the result is unknown;
 recovery does not dispatch the operation again.
+
+`HttpMcpServer.resolveHeaders(signal)` provides that request boundary. Resolution
+errors happen before the external-dispatch marker, so a denied grant does not
+become an unknown write. Precise transport adapters supply `isDispatched` to retain
+that distinction during a credential-resolution timeout or cancellation. Legacy
+adapters without the observer keep conservative timeout classification. All
+credential generations actually resolved during an invocation are used to sanitize
+its returned content and retained attempts, including pre-rotation values.

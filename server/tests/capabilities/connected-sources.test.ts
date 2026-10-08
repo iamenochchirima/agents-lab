@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import test from "node:test";
+import { ConnectionManager } from "../../src/capabilities/integrations/connections.js";
 import { loadHttpSource, loadMcpSource } from "../../src/capabilities/extensions/connected-sources.js";
 import type { ToolExecutionContext, ToolExecutionResult } from "../../src/capabilities/tools/contracts.js";
 import type { ConnectionResult } from "../../src/capabilities/integrations/contracts.js";
@@ -147,5 +148,38 @@ test("HTTP pagination binds one bounded cursor and maps payload and provider req
     assert.equal(connections.at(-1)?.attempts[0].providerRequestId, "provider-page-two"); assert.equal(calls, 1, "pagination never silently requests the next page");
     invalidCursor = true; assert.equal((await invoke(tool, { cursor: "page/two" })).status, "failed");
     assert.equal((await invoke(tool, { cursor: "x".repeat(2049) })).effect?.state, "not_dispatched"); assert.equal(calls, 2);
+  } finally { await local.close(); }
+});
+
+
+test("live authority is rechecked between MCP discovery and dispatch, preserving rotation and rejecting revoked writes", async () => {
+  const environment = { FIXTURE_AUTHORIZATION: "first-secret" };
+  let manager: ConnectionManager, lists = 0, effects = 0, httpEffects = 0;
+  const local = await serve(async (request, response) => {
+    if (request.url === "/write") { httpEffects++; return json(response, { saved: true }); }
+    const input = await body(request);
+    if (input.method === "tools/list") {
+      lists++;
+      if (lists === 2) environment.FIXTURE_AUTHORIZATION = "second-secret";
+      if (lists === 3) await manager.revoke("conn_live");
+      return json(response, { jsonrpc: "2.0", id: input.id, result: { tools: [{ name: "write", inputSchema: schema }] } });
+    }
+    assert.equal(input.method, "tools/call"); assert.equal(request.headers.authorization, "second-secret"); assert.equal(request.headers["x-agentlab-session-id"], "trusted-session"); effects++;
+    json(response, { jsonrpc: "2.0", id: input.id, result: { content: [{ type: "text", text: "first-secret second-secret" }] } });
+  });
+  try {
+    manager = await ConnectionManager.create([{ ref: "conn_live", displayName: "Live", provider: "fixture", owner: "local-admin", resource: local.base, scopes: ["write"], auth: { kind: "static", headersEnv: { authorization: "FIXTURE_AUTHORIZATION" } } }], { environment });
+    const binding = await manager.binding("conn_live");
+    const options = { id: "live-dispatch", version: "1.0.0", endpoint: `${local.base}/mcp`, ...binding, trustedContext: "session" as const, tools: [{ remoteName: "write", name: "write", riskClass: "write" as const }] };
+    const [tool] = await loadMcpSource(options);
+    const result = await tool.implementation.executeResult!({ key: "one" }, { ...context, sessionId: "trusted-session" });
+    assert.equal(result.status, "completed"); assert.equal(effects, 1); assert.doesNotMatch(result.content, /first-secret|second-secret/); assert.doesNotMatch(JSON.stringify(connections.at(-1)), /first-secret|second-secret/);
+    assert.equal((await manager.summary("conn_live")).authorityRevision, binding.connection.authorityRevision, "credential rotation does not alter admission");
+    const revoked = await tool.implementation.executeResult!({ key: "two" }, { ...context, sessionId: "trusted-session" });
+    assert.equal(revoked.status, "failed"); assert.equal(revoked.effect?.state, "not_dispatched"); assert.equal(effects, 1);
+    let resolutions = 0;
+    const [http] = loadHttpSource({ id: "live-http", version: "1.0.0", baseUrl: local.base, resolveHeaders: async () => { if (++resolutions === 2) throw new Error("Authority revoked before HTTP send"); return { authorization: "service-secret" }; }, operations: [{ name: "http_write", method: "POST", path: "/write", inputSchema: schema, description: "Write", riskClass: "write" }] });
+    const denied = await invoke(http, { key: "one" });
+    assert.equal(denied.status, "failed"); assert.equal(denied.effect?.state, "not_dispatched"); assert.equal(httpEffects, 0);
   } finally { await local.close(); }
 });

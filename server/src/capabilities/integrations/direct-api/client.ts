@@ -23,6 +23,8 @@ export interface DirectApiClientOptions {
   readonly adapter: DirectApiAdapter;
   readonly limits: ConnectionLimits;
   readonly retryableStatusCodes?: readonly number[];
+  /** Absent retains conservative legacy classification of timed-out writes. */
+  readonly isDispatched?: () => boolean;
 }
 
 /**
@@ -67,7 +69,7 @@ export class DirectApiClient {
       } catch (error) {
         const timedOut = error instanceof DeadlineError;
         const cancelled = options.signal.aborted && !timedOut;
-        const unknown = !options.readOnly && (timedOut || error instanceof DispatchUnknownError);
+        const unknown = !options.readOnly && ((timedOut && (this.options.isDispatched?.() ?? true)) || error instanceof DispatchUnknownError);
         const status = cancelled ? "cancelled" : unknown ? "unknown" : timedOut ? "timed_out" : "failed";
         attempts.push(attemptRecord(request.requestId, attempt, startedAt, status, !unknown && !cancelled, null, timedOut ? "API_TIMEOUT" : cancelled ? "API_CANCELLED" : "API_CALL_FAILED"));
         if (unknown || cancelled || attempt === request.limits.maxAttempts) {

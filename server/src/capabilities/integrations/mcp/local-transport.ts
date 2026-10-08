@@ -38,6 +38,8 @@ export interface McpTransportOptions {
   readonly selectedTool?: McpToolSelection;
   /** Writes become unknown when cancellation or a deadline loses their acknowledgement. */
   readonly readOnly?: boolean;
+  /** Adapters with a precise dispatch seam can distinguish credential waits from external I/O. */
+  readonly isDispatched?: () => boolean;
 }
 
 export class McpTransport {
@@ -124,7 +126,7 @@ export class McpTransport {
       } catch (error) {
         const timedOut = error instanceof DeadlineError;
         const cancelled = signal.aborted && !timedOut;
-        const unknown = error instanceof McpDispatchUnknownError || (dispatched && this.options.readOnly === false && (timedOut || cancelled));
+        const unknown = error instanceof McpDispatchUnknownError || ((this.options.isDispatched?.() ?? dispatched) && this.options.readOnly === false && (timedOut || cancelled));
         const preDispatch = error instanceof McpPreDispatchError;
         const retryable = preDispatch && !signal.aborted && attempt < this.options.limits.maxAttempts;
         const status = unknown ? "unknown" : cancelled ? "cancelled" : timedOut ? "timed_out" : "failed" as const;

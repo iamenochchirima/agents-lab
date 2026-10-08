@@ -46,9 +46,8 @@ export interface HttpSourceOptions extends Source {
  */
 export async function loadMcpSource(options: McpSourceOptions): Promise<HostedToolContribution[]> {
   validateSource(options);
-  const discoveredHeaders = await sourceHeaders(options, AbortSignal.timeout(defaults.timeoutMs));
-  const createServer = (headers: Readonly<Record<string, string>>) => new HttpMcpServer({ endpoint: options.endpoint, serverName: options.id, protocolVersion: options.protocolVersion ?? "2026-07-28", headers, maxResponseBytes: 4 * 1024 * 1024 });
-  const discovery = createServer(discoveredHeaders);
+  const createServer = (resolveHeaders: NonNullable<Source["resolveHeaders"]>, onDispatch?: (method: string) => void) => new HttpMcpServer({ endpoint: options.endpoint, serverName: options.id, protocolVersion: options.protocolVersion ?? "2026-07-28", resolveHeaders, onDispatch, maxResponseBytes: 4 * 1024 * 1024 });
+  const discovery = createServer(signal => sourceHeaders(options, signal));
   let manifests;
   try { manifests = await discovery.listTools(AbortSignal.timeout(defaults.timeoutMs)); }
   finally { await discovery.close(); }
@@ -69,14 +68,16 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
     const frozenRemoteDigest = digest(remote);
     return contribution(options, definition, { kind: "mcp", endpoint: new URL(options.endpoint).toString(), protocolVersion: discovery.protocolVersion,
       authorizationContextDigest: authorityDigest(options), trustedContext: options.trustedContext ?? null, remoteName: remote.name, remoteDigest: frozenRemoteDigest, effectContract: selection.effectContract ?? null }, async (input, context, state) => {
-      const headers = await sourceHeaders(options, state.signal);
-      if (options.trustedContext === "session") {
-        if (!context.sessionId || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(context.sessionId)) throw new Error("The connected provider requires a trusted session identity.");
-        for (const name of Object.keys(headers)) if (name.toLowerCase() === "x-agentlab-session-id") delete headers[name];
-        headers["X-AgentLab-Session-Id"] = context.sessionId;
-      }
-      state.headers = headers;
-      const server = createServer(headers);
+      const server = createServer(async signal => {
+        const headers = await sourceHeaders(options, signal);
+        if (options.trustedContext === "session") {
+          if (!context.sessionId || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(context.sessionId)) throw new Error("The connected provider requires a trusted session identity.");
+          for (const name of Object.keys(headers)) if (name.toLowerCase() === "x-agentlab-session-id") delete headers[name];
+          headers["X-AgentLab-Session-Id"] = context.sessionId;
+        }
+        retainHeaders(state, headers);
+        return headers;
+      }, method => { if (method === "tools/call") state.dispatched = true; });
       try {
         const current = (await server.listTools(AbortSignal.any([state.signal, AbortSignal.timeout(definition.limits.timeoutMs)]))).find(tool => tool.name === selection.remoteName);
         if (!current || digest(current) !== frozenRemoteDigest) throw new CatalogDriftError("The admitted MCP tool definition changed or disappeared. Reload the catalog for a new run.");
@@ -84,17 +85,16 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
         const transport = new McpTransport({ server: { serverName: server.serverName, protocolVersion: server.protocolVersion,
           listTools: signal => server.listTools(signal),
           callTool: async (name, args, requestId, signal) => {
-            state.dispatched = true;
             const output = await server.callToolResult(name, args, requestId, signal, remote.inputSchema);
             return { providerRequestId: requestId, output, isError: output.isError === true };
-          } }, endpoint: options.endpoint, allowedEndpoints: [options.endpoint], limits: connectionLimits(definition.limits), readOnly: isReadOnly(definition) });
+          } }, endpoint: options.endpoint, allowedEndpoints: [options.endpoint], limits: connectionLimits(definition.limits), readOnly: isReadOnly(definition), isDispatched: () => state.dispatched });
         const invoked = await transport.invoke(remote, requestIdentity(context), input, state.signal);
         const progress = server.progressDiagnostics;
         const connection: ConnectionResult = progress.notifications.length || progress.omitted
           ? { ...invoked, attempts: invoked.attempts.map(attempt => ({ ...attempt, progress })) } : invoked;
-        const evidence = recordConnection(connection, context, headers);
-        if (!connection.output) return { ...connectionFailure(connection, evidence), effect: { state: isReadOnly(definition) ? "none" : "unknown", evidence: "No valid MCP acknowledgement." } };
-        const raw = connection.output, result = sanitizeOutput(raw, headers) as Record<string, unknown>;
+        const evidence = recordConnection(connection, context, state.headers);
+        if (!connection.output) return { ...connectionFailure(connection, evidence), effect: { state: isReadOnly(definition) ? "none" : state.dispatched ? "unknown" : "not_dispatched", evidence: "No valid MCP acknowledgement." } };
+        const raw = connection.output, result = sanitizeOutput(raw, state.headers) as Record<string, unknown>;
         const knownFailure = result.isError === true;
         const invalidOutput = !knownFailure && outputValidator !== undefined && !outputValidator(raw.structuredContent);
         const structuredError = record(raw.structuredContent) && record(raw.structuredContent.error) ? raw.structuredContent.error : null;
@@ -132,19 +132,24 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
     return contribution(options, definition, { kind: "http", baseUrl: base.toString(), authorizationContextDigest: authorityDigest(options), operation }, async (input, context, state) => {
       validateToolArguments(operation.inputSchema, input);
       const headers = await sourceHeaders(options, state.signal);
-      state.headers = headers;
+      retainHeaders(state, headers);
       const bound = bindHttpRequest(operation, base, input, headers);
       if (Buffer.byteLength(bound.url.toString()) + Buffer.byteLength(bound.body ?? "") + Buffer.byteLength(JSON.stringify(bound.headers)) > definition.limits.maxArgumentBytes) throw new Error("Bound HTTP request exceeds its configured input limit.");
       const idempotencyKey = operation.idempotency ? requestIdentity(context) : undefined;
       if (operation.idempotency) bound.headers[operation.idempotency.header] = idempotencyKey!;
       let response: { ok: boolean; status: number; text: string } | undefined;
       const limits = connectionLimits(definition.limits);
-      const client = new DirectApiClient({ limits, adapter: {
+      const client = new DirectApiClient({ limits, isDispatched: () => state.dispatched, adapter: {
         send: async (_request, signal) => {
+          const currentHeaders = await sourceHeaders(options, signal);
+          retainHeaders(state, currentHeaders);
+          const current = bindHttpRequest(operation, base, input, currentHeaders);
+          if (operation.idempotency) current.headers[operation.idempotency.header] = idempotencyKey!;
+          if (Buffer.byteLength(current.url.toString()) + Buffer.byteLength(current.body ?? "") + Buffer.byteLength(JSON.stringify(current.headers)) > definition.limits.maxArgumentBytes) throw new Error("Bound HTTP request exceeds its configured input limit.");
           try {
             state.dispatched = true;
-            const rawResponse = await fetch(bound.url, { method: operation.method,
-              headers: bound.headers, ...(bound.body !== undefined ? { body: bound.body } : {}), signal, redirect: "error" });
+            const rawResponse = await fetch(current.url, { method: operation.method,
+              headers: current.headers, ...(current.body !== undefined ? { body: current.body } : {}), signal, redirect: "error" });
             const text = await boundedText(rawResponse, definition.limits.maxResultBytes);
             response = { ok: rawResponse.ok, status: rawResponse.status, text };
             let parsed: unknown;
@@ -159,11 +164,11 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
       } });
       const rawConnection = await client.request({ requestId: requestIdentity(context), operation: operation.name,
         input, idempotencyKey: idempotencyKey ?? null, limits }, { readOnly: isReadOnly(definition), signal: state.signal });
-      const connection: ConnectionResult = rawConnection.status === "cancelled" && !isReadOnly(definition)
+      const connection: ConnectionResult = rawConnection.status === "cancelled" && !isReadOnly(definition) && state.dispatched
         ? { ...rawConnection, status: "unknown", error: { code: "API_OUTCOME_UNKNOWN", message: "The HTTP call may have been dispatched; its effects are unknown." },
           attempts: rawConnection.attempts.map(attempt => ({ ...attempt, status: "unknown", retryable: false })) }
         : rawConnection;
-      const evidence = recordConnection(connection, context, headers);
+      const evidence = recordConnection(connection, context, state.headers);
       if (!response) return { ...connectionFailure(connection, evidence), effect: { state: isReadOnly(definition) ? "none" : state.dispatched ? "unknown" : "not_dispatched", evidence: "No complete HTTP acknowledgement.", ...(idempotencyKey ? { idempotencyKey } : {}) } };
       const text = response.text;
       let structuredContent: unknown;
@@ -171,8 +176,8 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
       const mapped = response.ok ? mapHttpResponse(operation, structuredContent) : { valid: true, value: structuredContent };
       structuredContent = mapped.value;
       const invalidOutput = response.ok && (!mapped.valid || outputValidator !== undefined && !outputValidator(structuredContent));
-      structuredContent = structuredContent === undefined ? undefined : sanitizeOutput(structuredContent, headers);
-      const content = structuredContent === undefined ? String(sanitizeOutput(text, headers)) : JSON.stringify(structuredContent);
+      structuredContent = structuredContent === undefined ? undefined : sanitizeOutput(structuredContent, state.headers);
+      const content = structuredContent === undefined ? String(sanitizeOutput(text, state.headers)) : JSON.stringify(structuredContent);
       const rejected = !response.ok && operation.effectContract?.rejectionStatusCodes?.includes(response.status) === true;
       const unresolved = !isReadOnly(definition) && ((!response.ok && !rejected) || invalidOutput);
       return { status: unresolved ? "unknown" : response.ok && !invalidOutput ? "completed" : "failed", content,
@@ -226,7 +231,14 @@ function contribution(source: Source, definition: ToolDefinition, binding: unkno
 class CatalogDriftError extends Error {}
 async function sourceHeaders(source: Source, signal: AbortSignal): Promise<Record<string, string>> {
   if (signal.aborted) throw signal.reason ?? new Error("Source resolution cancelled.");
-  return { ...source.headers, ...(source.resolveHeaders ? await source.resolveHeaders(signal) : {}) };
+  const headers = { ...source.headers, ...(source.resolveHeaders ? await source.resolveHeaders(signal) : {}) };
+  if (signal.aborted) throw signal.reason ?? new Error("Source resolution cancelled before dispatch.");
+  return headers;
+}
+/** Retain every resolved secret generation for redaction, rather than replacing old values on token rotation. */
+function retainHeaders(state: DispatchState, headers: Readonly<Record<string, string>>): void {
+  const values = [...new Set([...Object.values(state.headers ?? {}), ...Object.values(headers)])];
+  state.headers = Object.fromEntries(values.map((value, index) => [`resolved-${index}`, value]));
 }
 function authorityDigest(source: Source): string { return digest(source.connection ?? source.headers ?? {}); }
 type HttpOperation = HttpSourceOptions["operations"][number];

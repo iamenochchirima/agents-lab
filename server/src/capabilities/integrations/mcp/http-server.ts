@@ -12,6 +12,9 @@ export interface HttpMcpServerOptions {
   readonly maxResponseBytes?: number;
   /** Trusted process configuration; never included in model tool descriptors. */
   readonly headers?: Readonly<Record<string, string>>;
+  /** Recheck live authority immediately before each HTTP request, not only client construction. */
+  readonly resolveHeaders?: (signal: AbortSignal) => Promise<Readonly<Record<string, string>>>;
+  readonly onDispatch?: (method: string) => void;
 }
 
 /** The MCP request may have reached a server but no response was confirmed. */
@@ -45,6 +48,8 @@ export class HttpMcpServer implements McpServer {
   private readonly fetchImplementation: typeof fetch;
   private readonly maxResponseBytes: number;
   private readonly configuredHeaders: Readonly<Record<string, string>>;
+  private readonly resolveHeaders?: HttpMcpServerOptions["resolveHeaders"];
+  private readonly onDispatch?: HttpMcpServerOptions["onDispatch"];
   private initialized = false;
   private requestSequence = 0;
   private sessionId: string | null = null;
@@ -68,7 +73,7 @@ export class HttpMcpServer implements McpServer {
     this.protocolVersion = options.protocolVersion ?? "2025-06-18";
     if (!["2025-06-18", "2025-11-25", "2026-07-28"].includes(this.protocolVersion)) throw new Error("Unsupported MCP protocol version.");
     this.fetchImplementation = options.fetchImplementation ?? fetch;
-    this.configuredHeaders = options.headers ?? {};
+    this.configuredHeaders = options.headers ?? {}; this.resolveHeaders = options.resolveHeaders; this.onDispatch = options.onDispatch;
     this.maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1 || this.maxResponseBytes > 4 * 1024 * 1024) {
       throw new Error("MCP response limit is invalid.");
@@ -143,10 +148,12 @@ export class HttpMcpServer implements McpServer {
     const sessionId = this.sessionId;
     this.sessionId = null;
     try {
+      const signal = AbortSignal.timeout(2_000);
+      const credentials = await this.credentials(signal);
       const response = await this.fetchImplementation(this.endpoint, {
         method: "DELETE",
-        headers: { ...this.configuredHeaders, "MCP-Protocol-Version": this.protocolVersion, "Mcp-Session-Id": sessionId },
-        signal: AbortSignal.timeout(2_000),
+        headers: { ...credentials, "MCP-Protocol-Version": this.protocolVersion, "Mcp-Session-Id": sessionId },
+        signal,
       });
       await response.body?.cancel();
     } catch { /* Cleanup cannot establish remote session expiry after a lost reply. */ }
@@ -171,9 +178,10 @@ export class HttpMcpServer implements McpServer {
   }
 
   private async notification(method: string, signal: AbortSignal): Promise<void> {
+    const credentials = await this.credentials(signal);
     const response = await this.fetchImplementation(this.endpoint, {
       method: "POST",
-      headers: this.headers(method),
+      headers: this.headers(method, undefined, credentials),
       body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, method }),
       signal,
     });
@@ -186,11 +194,15 @@ export class HttpMcpServer implements McpServer {
   private async request(method: string, params: Readonly<Record<string, unknown>>, signal: AbortSignal, requestId?: string, inputSchema?: Readonly<Record<string, unknown>>): Promise<unknown> {
     if (method === "tools/call") this.progress = { notifications: [], omitted: 0 };
     const id = requestId ?? `agentlab-${++this.requestSequence}`;
+    // Authority failures occur before the dispatch try block and must not become ambiguous writes.
+    const credentials = await this.credentials(signal);
+    const headers = { ...this.headers(method, params, credentials), ...(!requiresLegacyHandshake(this.protocolVersion) && inputSchema ? toolParameterHeaders(inputSchema, params.arguments) : {}) };
     let response: Response;
     try {
+      this.onDispatch?.(method);
       response = await this.fetchImplementation(this.endpoint, {
         method: "POST",
-        headers: { ...this.headers(method, params), ...(!requiresLegacyHandshake(this.protocolVersion) && inputSchema ? toolParameterHeaders(inputSchema, params.arguments) : {}) },
+        headers,
         body: JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, method, params: {
           ...params,
           ...(!requiresLegacyHandshake(this.protocolVersion) ? { _meta: {
@@ -240,10 +252,17 @@ export class HttpMcpServer implements McpServer {
     return envelope.result;
   }
 
-  private headers(method: string, params?: Readonly<Record<string, unknown>>): Record<string, string> {
+  private async credentials(signal: AbortSignal): Promise<Readonly<Record<string, string>>> {
+    if (signal.aborted) throw signal.reason ?? new Error("MCP request cancelled before dispatch.");
+    const headers = { ...this.configuredHeaders, ...(this.resolveHeaders ? await this.resolveHeaders(signal) : {}) };
+    if (signal.aborted) throw signal.reason ?? new Error("MCP request cancelled before dispatch.");
+    return headers;
+  }
+
+  private headers(method: string, params?: Readonly<Record<string, unknown>>, credentials = this.configuredHeaders): Record<string, string> {
     const name = params && typeof params.name === "string" ? params.name : undefined;
     return {
-      ...this.configuredHeaders,
+      ...credentials,
       accept: "application/json, text/event-stream",
       "content-type": "application/json",
       "MCP-Protocol-Version": this.protocolVersion,

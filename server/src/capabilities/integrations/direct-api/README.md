@@ -37,7 +37,12 @@ behavior. Multipart, arbitrary local-file upload paths and general OpenAPI impor
 are not implemented. Document/file providers can expose bounded content through
 connected MCP tools instead.
 
-Credentials resolve immediately before dispatch. An optional provider idempotency
+Credentials resolve again inside the transport's actual send callback, immediately
+before dispatch, rather than relying on headers captured during request preparation.
+The request is rebound and its expanded size checked with the current credentials.
+Authority failure before that marker reports `not_dispatched`; it is not an unknown
+write. Credential-generation values resolved during the call remain redacted from
+both output and source evidence. An optional provider idempotency
 header uses the stable run/turn/call identity, so a resumed call keeps the key.
 The host rejects changed arguments for an already reserved call ID. Independently
 generated calls have different keys: this does not deduplicate every business
