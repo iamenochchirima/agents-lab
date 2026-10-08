@@ -720,3 +720,36 @@ test("HTTP API routes cancellation and unknown runs safely", async () => {
     assert.equal(missing.statusCode, 404);
   });
 });
+
+test("local assessment HTTP retains separate adjudication and blocks foreign origins", async () => {
+  await withApp(async (app, runner, root) => {
+    const created = await app.inject({ method: "POST", url: "/api/runs", payload: { platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt: "Synthetic assessment fixture." }, model: { provider: "fake", model: "fake-success" } } });
+    const runId = created.json().runId;
+    assert.ok(runId);
+    const directory = join(root, ".evals", "synthetic-review");
+    await mkdir(directory, { recursive: true });
+    await mkdir(join(root, runId, "artifacts"), { recursive: true });
+    const report = { schemaVersion: 1, mode: "live", trialId: "synthetic-review-1-L05", metadata: { revision: null, dirty: false, versions: {}, startedAt: "2026-10-07T00:00:00Z", completedAt: "2026-10-07T00:01:00Z", trialCount: 1 }, ownerRunId: runId, caseId: "L05", runIds: [runId], suiteVersion: "synthetic-suite", graderVersion: "4", verdict: "blocked", reviewRequired: true, assertions: [{ id: "objective", passed: true, expected: true, observed: true }], observations: [{ fixture: { reviewRubric: "Synthetic rubric: ask for clarification." } }] };
+    const raw = JSON.stringify(report);
+    await writeFile(join(root, runId, "artifacts", "eval.json"), raw);
+    await writeFile(join(directory, "summary.json"), JSON.stringify({ schemaVersion: 1, mode: "live", invocationId: "synthetic-review", platform: "temporal", variant: "baseline", suiteVersion: "synthetic-suite", graderVersion: "4", model: { model: "synthetic-model:free" }, startedAt: "2026-10-07T00:00:00Z", completedAt: "2026-10-07T00:01:00Z", cases: [{ caseId: "L05", trial: 1, verdict: "blocked", reviewRequired: true, runIds: [runId], evidence: "artifacts/eval.json" }] }));
+    const url = "/api/evals/synthetic-review/cases/L05/trials/1";
+    const original = (await app.inject({ method: "GET", url })).json();
+    assert.equal(original.assessmentContext.eligible, true);
+    assert.equal(original.evidenceDigest, createHash("sha256").update(raw).digest("hex"));
+    const payload = { assessmentId: "synthetic-http-assessment", evidenceDigest: original.evidenceDigest, rubricVersion: original.assessmentContext.rubricVersion, reviewerLabel: "Synthetic test reviewer", rationale: "Synthetic test only.", answers: [{ questionId: "semantic-rubric", outcome: "pass", rationale: "Synthetic clarification response." }] };
+    const denied = await app.inject({ method: "POST", url: `${url}/assessments`, headers: { origin: "https://foreign.example" }, payload });
+    assert.equal(denied.statusCode, 403);
+    const first = await app.inject({ method: "POST", url: `${url}/assessments`, payload });
+    assert.equal(first.statusCode, 200);
+    const replay = await app.inject({ method: "POST", url: `${url}/assessments`, payload });
+    assert.deepEqual(replay.json(), first.json());
+    const final = (await app.inject({ method: "GET", url })).json();
+    assert.equal(final.case.verdict, "blocked");
+    assert.equal(final.invocation.counts.blocked, 1);
+    assert.equal(final.assessedOutcome.outcome, "pass");
+    assert.equal(final.assessments.length, 1);
+    assert.equal(runner.startCalls, 1, "assessment does not dispatch additional work");
+    assert.equal(await readFile(join(root, runId, "artifacts", "eval.json"), "utf8"), raw);
+  });
+});

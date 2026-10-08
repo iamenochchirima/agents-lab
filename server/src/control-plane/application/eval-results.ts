@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
 import type { RunEvidenceStore } from "./evidence-store.js";
 import { constants } from "node:fs";
@@ -250,7 +251,18 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
     if (!info.isFile() || info.isSymbolicLink() || info.size > maxSummaryBytes || !inside(root, await realpath(path))) throw new Error("Evidence is unsafe or exceeds the inline read limit.");
     const raw = await evidence.readAllowlistedFile(runId, file);
     if (Buffer.byteLength(raw) > maxSummaryBytes) throw new Error("Evidence exceeds the inline read limit.");
-    if (file === item.evidence) evidenceDigest = createHash("sha256").update(raw).digest("hex");
+    if (file === item.evidence) {
+      // The allowlisted reader canonicalizes JSON; bind assessment to stored bytes.
+      const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const bytes = Buffer.alloc(maxSummaryBytes + 1);
+        const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+        if (bytesRead > maxSummaryBytes) throw new Error("Report exceeds the digest read limit.");
+        const retained = bytes.subarray(0, bytesRead);
+        if (!isDeepStrictEqual(JSON.parse(retained.toString("utf8")), JSON.parse(raw))) throw new Error("Report changed while reading evidence.");
+        evidenceDigest = createHash("sha256").update(retained).digest("hex");
+      } finally { await handle.close(); }
+    }
     const value = file.endsWith(".jsonl") ? raw.split("\n").filter(Boolean).map(line => JSON.parse(line)) : JSON.parse(raw);
     return sanitizeDetail(value, secrets);
   };

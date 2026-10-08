@@ -40,10 +40,10 @@ export function assessmentContext(detail: Detail) {
 
 function validate(v: unknown): asserts v is AssessmentInput {
   const allowed = ["assessmentId", "evidenceDigest", "rubricVersion", "reviewerLabel", "rationale", "answers", "supersedesAssessmentId"];
-  if (!object(v) || Object.keys(v).some(k => !allowed.includes(k)) || !id.test(String(v.assessmentId)) || !digest.test(String(v.evidenceDigest)) || !digest.test(String(v.rubricVersion)) ||
+  if (!object(v) || Object.keys(v).some(k => !allowed.includes(k)) || !(typeof v.assessmentId === "string" && id.test(v.assessmentId)) || !(typeof v.evidenceDigest === "string" && digest.test(v.evidenceDigest)) || !(typeof v.rubricVersion === "string" && digest.test(v.rubricVersion)) ||
       !text(v.reviewerLabel, 128) || !text(v.rationale, 4096) || !Array.isArray(v.answers) || v.answers.length !== 1 ||
       v.answers.some(a => !object(a) || Object.keys(a).some(k => !["questionId", "outcome", "rationale"].includes(k)) || a.questionId !== "semantic-rubric" || !["pass", "fail", "uncertain"].includes(String(a.outcome)) || !text(a.rationale, 4096)) ||
-      (v.supersedesAssessmentId !== undefined && (!id.test(String(v.supersedesAssessmentId)) || v.supersedesAssessmentId === v.assessmentId))) {
+      (v.supersedesAssessmentId !== undefined && (!(typeof v.supersedesAssessmentId === "string" && id.test(v.supersedesAssessmentId)) || v.supersedesAssessmentId === v.assessmentId))) {
     throw new EvalAssessmentError(400, "INVALID_ASSESSMENT", "Invalid assessment identity, rubric answers, or reviewer attribution.");
   }
 }
