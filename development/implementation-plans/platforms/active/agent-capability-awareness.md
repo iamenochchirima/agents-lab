@@ -89,7 +89,8 @@ Before the real-model acceptance phase, verify the implementation with narrow se
 - Server and web typechecks pass; the server build passes.
 - Focused suites pass: capability catalog (8), context service (3), run service (22), HTTP API (16), Temporal adapter projection (1), Restate runner (15), and Mastra runner (14).
 - The LangGraph Python test file passes syntax parsing, but `pytest` is unavailable in this environment. LangGraph and Mastra workflow integration tests that bind local mock servers are blocked by `listen EPERM`; the non-listener Mastra runner tests pass.
-- A real-model run and visual browser verification are still pending. No paid-model fallback has been used.
+- Baseline probe on 2026-10-09: Temporal, `memos-notes` profile, UI model label `Cohere: North Mini Code (free)`, run `ab132acd-ebab-45bf-9df7-5f923ad09836`. Prompt: “List the connected service and the exact tools available to you in this chat. Say which operations require approval. Do not call any tools or perform an action.” The model identified the Memo service and named all five tools correctly; it made no tool calls. It hedged about approvals instead of reporting the configured policy. The displayed model label was free, but its exact provider model ID was not visible in this run view.
+- The baseline run view did not contain the new `inventory` projection, so this observation does not validate the committed inventory injection. The current browser/server instance has not picked up that implementation. After the local services are restarted, rerun this prompt and compare the answer and retained inventory against the profile's actual approval settings. No paid-model fallback has been used.
 
 ## Expected result
 
