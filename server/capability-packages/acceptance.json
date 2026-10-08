@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    { "id": "task-workspace", "version": "1.0.0", "source": "workspace", "root": "../../lab/scenarios/workspace-capabilities/fixtures", "writeDirectories": ["artifacts"], "isolateSessions": true, "stateRoot": "../../lab/runs/.workspaces" },
+    { "id": "task-procedures", "version": "1.0.0", "source": "skills", "root": "./skills" },
+    { "id": "release-mcp", "version": "1.0.0", "source": "mcp", "endpoint": "http://127.0.0.1:9196/mcp", "protocolVersion": "2026-07-28", "tools": [
+      { "remoteName": "release.lookup", "name": "release_lookup", "riskClass": "read" }
+    ] },
+    { "id": "release-api", "version": "1.0.0", "source": "http", "baseUrl": "http://127.0.0.1:9196", "operations": [
+      { "name": "release_assign", "method": "PUT", "path": "/records", "riskClass": "write", "description": "Assign a documentation owner to Cedar and mark work in progress. Read the current record revision first. This does not mark the launch ready.", "inputSchema": {
+        "type": "object", "properties": { "namespace": { "type": "string", "pattern": "^cap-[a-z0-9-]{1,90}$" }, "key": { "type": "string", "enum": ["cedar"] }, "expectedRevision": { "type": "integer", "minimum": 1 }, "owner": { "type": "string", "minLength": 1, "maxLength": 80 }, "status": { "type": "string", "enum": ["in_progress"] } }, "required": ["namespace", "key", "expectedRevision", "owner", "status"], "additionalProperties": false
+      } }
+    ] }
+  ],
+  "profiles": [
+    { "id": "workspace-agent", "version": "1.0.0", "packages": ["task-workspace", "task-procedures"] },
+    { "id": "service-agent", "version": "1.0.0", "packages": ["release-mcp", "release-api", "task-procedures"] }
+  ]
+}
