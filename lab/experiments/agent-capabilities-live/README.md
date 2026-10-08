@@ -268,3 +268,40 @@ Focused controls require no provider calls:
 pnpm --filter @agent-harness-lab/lab-server run build
 node --test server/dist/tests/evals/observer-termination.test.js
 ```
+
+## Affected Restate workflow observation, 2026-10-08
+
+One affected workspace workflow was admitted after the native summary instruction
+fix, using the freshly checked zero-priced `nvidia/nemotron-3.5-lightning:free`
+model, the normal API and the 180-second observer deadline. There was no paid
+fallback or model retry. Invocation
+`capabilities-0424dbac-941d-4625-aec4-79129f7dd37c` ran from 18:03:03.962 to
+18:06:09.786 UTC at revision `9a1111b3c23df1e3ff3668b9fce6a5fd4865793a`
+with a dirty working tree. Run `d924a690-ce25-43cf-9ba5-bbaab09ebf70` loaded
+the evidence-report skill, then retained a pending model request. No document
+read, write, saved artifact or correction turn was observed within the window.
+
+The original report remains an error with the exact message:
+`Observer deadline; native status at interruption running; bounded settled status unresolved.`
+Its single cancellation request returned HTTP 500 and could not confirm settlement.
+Diagnosis found the Restate Admin endpoint unavailable and its original server
+process absent. The server's exit cause is unknown. The pending model request and
+the infrastructure outage are separate observations; this trial cannot establish
+a provider timeout or model noncompliance.
+
+The original persisted Restate state was subsequently restored with its SDK
+endpoint stopped to prevent further dispatch. Admin already reported invocation
+`inv_1kfhDkazHYHP3uSL2kPA2OlSNvy7e3TfbM` completed with failure. The precise
+operator cancellation returned 409 because it was already completed. This is
+native failure, not confirmed cancellation. The SDK was restarted only after that
+terminal observation. No task was redispatched and the original trial was not
+rewritten. The separate receipts are retained under
+`lab/runs/.review-proof/eval-gap-live-cancellation/`: `restate-operator-cancel.json`,
+`readiness-and-terminal-follow-up.json` and `native-failure-projection.json`.
+
+The follow-up exposed two operational gaps: readiness accepted an old registered
+endpoint, and generic output errors prevented an independently confirmed native
+failure from reaching the common projection. Focused controls now cover current
+binding discovery, stopped endpoints, safe unconfirmed cancellation and native
+terminal failure reconciliation. This observation does not measure real-model
+compaction quality or complete the workspace acceptance task.

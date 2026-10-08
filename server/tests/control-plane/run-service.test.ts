@@ -949,3 +949,18 @@ test("explicit skill admission persists untrusted user context without widening 
     assert.equal(messages[0].content, skill.content);
   }, { capabilities });
 });
+
+test("native cancellation exceptions preserve unknown state and safe control evidence", async () => {
+  await withService(async (service, store, runner) => {
+    runner.state = "running";
+    runner.cancel = async () => { throw new Error("private upstream diagnostic secret-token"); };
+    const run = await service.createRun({ platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt: "Cancellation exception fixture." }, model: { provider: "fake", model: "fake-success" } });
+    await assert.rejects(service.cancelRun(run.runId), (error: unknown) => error instanceof Error && error.name === "RunnerCancellationUnconfirmedError" && !error.message.includes("secret-token"));
+    const snapshot = await store.readSnapshot(run.runId);
+    assert.equal(snapshot.result, null);
+    const retained = snapshot.events.find(event => event.kind === "RunCancellationUnconfirmed");
+    assert.ok(retained);
+    assert.deepEqual(retained.payload, { operation: "cancel", outcome: "unconfirmed", nativeErrorType: "Error" });
+    assert.equal(JSON.stringify(snapshot.events).includes("secret-token"), false);
+  });
+});

@@ -753,3 +753,19 @@ test("local assessment HTTP retains separate adjudication and blocks foreign ori
     assert.equal(await readFile(join(root, runId, "artifacts", "eval.json"), "utf8"), raw);
   });
 });
+
+test("HTTP cancellation exceptions return unconfirmed availability without fabricated terminal state", async () => {
+  await withApp(async (app, runner) => {
+    runner.running = true;
+    runner.cancel = async () => { throw new Error("private-token-upstream-unavailable"); };
+    const created = await app.inject({ method: "POST", url: "/api/runs", payload: { platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt: "Synthetic failed cancellation" }, model: { provider: "fake", model: "fake-success" } } });
+    const runId = created.json().runId;
+    const cancelled = await app.inject({ method: "POST", url: `/api/runs/${runId}/cancel`, payload: {} });
+    assert.equal(cancelled.statusCode, 503);
+    assert.equal(cancelled.json().error.code, "RUN_CANCELLATION_UNCONFIRMED");
+    assert.equal(cancelled.body.includes("private-token"), false);
+    const retained = (await app.inject({ method: "GET", url: `/api/runs/${runId}` })).json();
+    assert.equal(retained.status, "running");
+    assert.equal(retained.result, null);
+  });
+});

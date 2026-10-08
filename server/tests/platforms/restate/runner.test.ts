@@ -314,9 +314,10 @@ test("runner reports a healthy Restate server separately from service registrati
   const runner = RestateBaselineRunner.fromOptions({
     config,
     ingress: new FakeIngress(new FakeWorkflowClient()),
-    fetchImplementation: async (url) => String(url).endsWith("/health")
-      ? response({})
-      : response({ deployments: [{ services: [{ name: config.serviceName }] }] }),
+    fetchImplementation: async (url) => String(url).endsWith("/health") ? response({})
+      : String(url).endsWith("/discover") ? response({ services: [{ name: config.serviceName }] })
+      : String(url).includes("/services/") ? response({ deployment_id: "current" })
+      : response({ deployments: [{ id: "current", uri: config.serviceUrl, http_version: "HTTP/1.1", services: [{ name: config.serviceName, revision: 1 }] }] }),
   });
 
   assert.deepEqual(await runner.checkConnection(), {
@@ -365,4 +366,28 @@ test("runner preserves native progress before and after an asynchronous cancella
   assert.deepEqual(terminal.eventIntents.slice(0, 2), events);
   assert.deepEqual(terminal.eventIntents.slice(2).map(event => event.kind), ["AgentCancelled", "RunCancelled"]);
   assert.equal(terminal.metrics?.modelCallCount, 1);
+});
+
+test("confirmed native terminal failure survives a generic output error without inferring failure from outages", async () => {
+  const config = loadRestateConfig(), outputError = Object.assign(new Error("private provider text"), { status: 500 });
+  const client = new FakeWorkflowClient({ invocationId: "inv-native-failed", status: "Accepted", attachable: true }, { ready: false }, outputError);
+  const make = (nativeStatus: string, adminUnavailable = false) => RestateBaselineRunner.fromOptions({ config, ingress: new FakeIngress(client), fetchImplementation: async () => {
+    if (adminUnavailable) throw new Error("Admin unavailable");
+    return response({ rows: [{ id: "inv-native-failed", status: nativeStatus, completion_result: "failure", retry_count: null, modified_at: "2026-10-08T00:00:00Z" }] });
+  } });
+  const failed = make("completed"), reference = await failed.start(manifestFor(failed, "native-failure-control"));
+  const inspection = await failed.inspect(reference);
+  assert.equal(inspection.status, "failed");
+  assert.equal(inspection.result?.error?.code, "RESTATE_NATIVE_TERMINAL_FAILURE");
+  assert.equal(JSON.stringify(inspection).includes("private provider text"), false);
+  await assert.rejects(make("running").inspect(reference), /private provider text/);
+  await assert.rejects(make("completed", true).inspect(reference), /Admin unavailable/);
+});
+
+test("transport cancellation wording does not confirm native cancellation", async () => {
+  const client = new FakeWorkflowClient({ invocationId: "inv-running", status: "Accepted", attachable: true }, { ready: false }, new Error("request cancelled"));
+  const runner = RestateBaselineRunner.fromOptions({ config: loadRestateConfig(), ingress: new FakeIngress(client),
+    fetchImplementation: async () => response({ rows: [{ id: "inv-running", status: "running", completion_result: null, retry_count: 0 }] }) });
+  const reference = await runner.start(manifestFor(runner, "transport-cancellation-control"));
+  await assert.rejects(runner.inspect(reference), /request cancelled/);
 });

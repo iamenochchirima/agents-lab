@@ -27,3 +27,27 @@ in-flight event evidence. Register the updated service manifest after changing
 handlers; re-registering the same URI needs an explicit refresh, for example
 `POST /deployments` with `{"uri":"http://127.0.0.1:19080","force":true}` in an
 isolated local development deployment.
+
+## Readiness and terminal observations
+
+Readiness checks the Admin API's current service binding and its deployment URI,
+then reads that endpoint's `/discover` manifest within the configured HTTP timeout.
+The manifest must declare `AgentLabBaselineWorkflow`. The installed SDK uses HTTP/2;
+the probe closes its connection on completion or timeout. An older deployment at
+the configured URI cannot make a different current binding ready. When older Admin
+responses lack the binding, the highest declared service revision is used; missing
+URI information remains explicitly unverified rather than ready. Discovery is
+read-only and does not start a workflow or call a model.
+
+If output retrieval rejects, inspection still asks Admin for the invocation state.
+A confirmed terminal native failure produces `RESTATE_NATIVE_TERMINAL_FAILURE`
+while retaining available workflow progress. An unavailable Admin API, nonterminal
+state or transport error alone cannot establish failure. Cancellation wording in a
+transport exception cannot establish cancellation either; the native cancelled
+state or a terminal SDK cancellation response must confirm it.
+
+At the common HTTP boundary, a thrown cancellation exception returns 503 with
+`RUN_CANCELLATION_UNCONFIRMED` and retains a `RunCancellationUnconfirmed` event.
+The existing run status and result remain unchanged until inspection observes a
+terminal state. The public response and event exclude private native error bodies;
+this response does not establish whether cancellation took effect.

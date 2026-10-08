@@ -1,3 +1,4 @@
+import { registeredEndpoint, discoverEndpoint } from "./service-discovery.js";
 import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import * as clients from "@restatedev/restate-sdk-clients";
 import { tableFromIPC } from "apache-arrow";
@@ -150,9 +151,16 @@ export class RestateBaselineRunner implements PlatformRunner {
       const health = await this.requestAdmin("/health", { method: "GET" });
       if (!health.ok) return { reachable: false, message: `Restate Admin API returned HTTP ${health.status}.` };
       const deployments = await this.requestAdminJson("/deployments");
-      if (!deploymentContainsService(deployments, this.options.config.serviceName)) {
+      const bindingResponse = await this.requestAdmin(`/services/${encodeURIComponent(this.options.config.serviceName)}`, { method: "GET" });
+      if (!bindingResponse.ok && bindingResponse.status !== 404 && bindingResponse.status !== 501) return { reachable: false, message: "Restate service binding is unavailable." };
+      const binding: unknown = bindingResponse.ok ? await bindingResponse.json() : null;
+      const currentDeploymentId = isRecord(binding) && typeof binding.deployment_id === "string" ? binding.deployment_id : undefined;
+      const registration = registeredEndpoint(deployments, this.options.config.serviceName, this.options.config.serviceUrl, currentDeploymentId);
+      if (!registration.registered) {
         return { reachable: false, message: `Restate is healthy, but ${this.options.config.serviceName} is not registered at ${this.options.config.serviceUrl}.` };
       }
+      if (!registration.endpoint) return { reachable: false, message: "Restate registration is present, but its endpoint URI is unavailable; readiness is unverified." };
+      if (!(await discoverEndpoint(registration.endpoint, this.options.config.serviceName, this.fetchTimeoutMs, registration.http2, this.fetchImplementation))) return { reachable: false, message: "The registered Restate SDK endpoint does not expose the selected service." };
       return { reachable: true, message: `Restate and ${this.options.config.serviceName} are reachable.` };
     } catch (error) {
       return { reachable: false, message: safeMessage(error, "Restate is unavailable.") };
@@ -229,10 +237,9 @@ export class RestateBaselineRunner implements PlatformRunner {
         return inspectionFromResult(await this.refreshTerminalReference(reference, native), output.result);
       }
     } catch (error) {
-      // A terminal workflow error is visible through introspection even when
-      // the output endpoint rejects. Temporary ingress failures must remain
-      // errors so the common server preserves its last projection.
-      if (!isPlatformTerminalError(error)) throw error;
+      // Admin introspection can confirm terminal failure when the output endpoint
+      // rejects. Without terminal confirmation, ingress errors preserve the last
+      // common projection rather than inventing a failure or cancellation.
       terminalOutputError = error;
     }
 
@@ -249,9 +256,25 @@ export class RestateBaselineRunner implements PlatformRunner {
     });
     const nativeStatus = mapNativeStatus(invocation.status, invocation.completionResult);
     const progress = await this.readProgress(native.workflowKey);
-    if (nativeStatus === "cancelled" || isRestateCancellationError(terminalOutputError)) {
+    if (nativeStatus === "cancelled" || (isPlatformTerminalError(terminalOutputError) && isRestateCancellationError(terminalOutputError))) {
       return cancellationInspection(updatedReference, native, invocation, progress);
     }
+    if (nativeStatus === "failed") {
+      const runId = reference.executionId.replace(/^agentlab:/, "");
+      const finishedAt = invocation.modifiedAt ?? new Date().toISOString();
+      // Admin confirmation is authoritative even when workflowOutput returns a
+      // generic 500 after native retries are exhausted. Never infer this from
+      // the transport error alone, or expose its potentially private body.
+      const result: RunResult = { schemaVersion: 1, runId, status: "failed", startedAt: progress?.startedAt ?? null, finishedAt,
+        output: null, error: { code: "RESTATE_NATIVE_TERMINAL_FAILURE", failureKind: "internal", retryable: false,
+          message: "Restate confirmed a terminal invocation failure before a workflow result was available." },
+        attemptCount: Math.max(1, (invocation.retryCount ?? 0) + 1), usage: { inputTokens: null, outputTokens: null, totalTokens: null } };
+      return { status: "failed", reference: updateReference(updatedReference, { terminalObservedAt: finishedAt }),
+        eventIntents: [...(progress?.eventIntents ?? []), { source: "restate-runner", sourceSequence: 1, kind: "RunFailed", runId, occurredAt: finishedAt,
+          payload: { invocationId: invocation.id, nativeStatus: invocation.status, completionResult: invocation.completionResult, code: result.error!.code } }],
+        result, trajectory: null, metrics: null };
+    }
+    if (terminalOutputError && !isPlatformTerminalError(terminalOutputError)) throw terminalOutputError;
     return {
       status: progress?.pendingReview ? "suspended" : nativeStatus,
       reference: updatedReference,
@@ -551,10 +574,6 @@ async function queryRowsFromResponse(response: Response): Promise<readonly Recor
   return table.toArray().map((row) => row as unknown as Record<string, unknown>);
 }
 
-function deploymentContainsService(value: unknown, serviceName: string): boolean {
-  if (!isRecord(value) || !Array.isArray(value.deployments)) return false;
-  return value.deployments.some((deployment) => isRecord(deployment) && Array.isArray(deployment.services) && deployment.services.some((service) => isRecord(service) && service.name === serviceName));
-}
 
 function isNativeTerminal(status: string): boolean {
   return ["completed", "cancelled", "canceled", "failed", "killed", "aborted", "purged"].includes(status.toLowerCase());

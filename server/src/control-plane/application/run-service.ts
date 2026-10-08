@@ -56,6 +56,14 @@ export class RunnerConnectionUnavailableError extends Error {
   }
 }
 
+/** A native control exception does not establish whether cancellation reached the platform. */
+export class RunnerCancellationUnconfirmedError extends Error {
+  constructor(readonly platform: string, readonly variant: string, readonly cause: unknown) {
+    super(`Cancellation could not be confirmed: ${platform}/${variant}. Inspect retained execution evidence before assuming the run stopped.`);
+    this.name = "RunnerCancellationUnconfirmedError";
+  }
+}
+
 class RunnerInspectionError extends Error {
   constructor(readonly cause: unknown) {
     super("Platform inspection is unavailable.");
@@ -400,7 +408,12 @@ export class RunService {
         await this.dependencies.reviews!.cancelLocked(runId);
       });
     }
-    const cancellation = await runner.cancel(snapshot.executionReference, reason);
+    let cancellation;
+    try { cancellation = await runner.cancel(snapshot.executionReference, reason); }
+    catch (error) {
+      await this.appendControlEvent(runId, "RunCancellationUnconfirmed", { operation: "cancel", outcome: "unconfirmed", nativeErrorType: error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,127}$/.test(error.name) ? error.name : "unknown" });
+      throw new RunnerCancellationUnconfirmedError(snapshot.manifest.platform, snapshot.manifest.variant, error);
+    }
     if (cancellation.alreadyTerminal) {
       return this.getRun(runId);
     }
