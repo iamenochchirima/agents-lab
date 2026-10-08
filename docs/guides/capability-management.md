@@ -37,6 +37,11 @@ needs an equivalent reverse proxy and the explicitly allowed frontend origin.
 The administration session is for a trusted local workspace; it is not hosted
 multi-user authentication.
 
+If the capability service is unavailable, check that the Lab API is running at
+the configured URL and choose **Try again**. A failed request does not mean the
+saved connector list is empty. An expired editing session instead prompts for
+the administration token; saved connection summaries remain visible.
+
 ## Connect an MCP server
 
 The Connectors tab lists configured services as searchable cards. Click a card

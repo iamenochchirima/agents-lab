@@ -42,7 +42,7 @@ async function request<T>(path: string, method = "GET", body?: unknown): Promise
   const result: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     if (response.status === 401) csrfToken = null;
-    const message = result && typeof result === "object" && "message" in result && typeof result.message === "string" ? result.message : result && typeof result === "object" && "error" in result && typeof result.error === "string" ? result.error : response.status === 409 ? "Configuration changed. Reload and try again." : response.status === 401 ? "Unlock capability management to continue." : "Capability management request failed.";
+    const message = result && typeof result === "object" && "message" in result && typeof result.message === "string" ? result.message : result && typeof result === "object" && "error" in result && typeof result.error === "string" ? result.error : response.status === 409 ? "Configuration changed. Reload and try again." : response.status === 401 ? "Unlock capability management to continue." : response.status === 502 || response.status === 503 || response.status === 504 ? "The capability service is unavailable. Check that the Lab backend is running, then try again." : "Capability management request failed.";
     throw new ManagementApiError(message, response.status);
   }
   return result as T;

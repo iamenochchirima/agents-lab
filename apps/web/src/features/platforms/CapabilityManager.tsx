@@ -23,6 +23,7 @@ export function CapabilityManager({ onClose, onChanged, presentation = "dialog" 
   const [locked, setLocked] = useState(false);
   const [publicConnections, setPublicConnections] = useState<readonly ConnectionSummary[] | null>(null);
   const [directoryFailed, setDirectoryFailed] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [showAccess, setShowAccess] = useState(false);
   const [pendingConnector, setPendingConnector] = useState<string | null>(null);
   const [token, setToken] = useState("");
@@ -35,10 +36,28 @@ export function CapabilityManager({ onClose, onChanged, presentation = "dialog" 
     const previousFocus = document.activeElement as HTMLElement | null;
     if (presentation === "dialog") dialog.current?.focus();
     let active = true;
-    void fetch("/api/connections").then(async response => { if (!response.ok) throw new Error("Connection list unavailable."); const body = await response.json() as { connections: ConnectionSummary[] }; if (active) setPublicConnections(body.connections); }).catch(() => { if (active) setDirectoryFailed(true); });
-    void getManagementSession().then(getManagementState).then(value => { if (active) setState(value); }).catch(cause => { if (active) { setLocked(true); if (!message(cause).includes("Unlock")) setError(message(cause)); } });
+    void load(() => active);
     return () => { active = false; previousFocus?.focus(); };
   }, []);
+  // Service failures are distinct from an expired editing session or an empty catalog.
+  async function load(isActive: () => boolean = () => true) {
+    setBusy(true); setError(null); setLoadFailed(false); setDirectoryFailed(false);
+    const [directory, management] = await Promise.allSettled([
+      fetch("/api/connections").then(async response => {
+        if (!response.ok) throw new Error("Connection list unavailable.");
+        const body = await response.json() as { connections: ConnectionSummary[] };
+        return body.connections;
+      }),
+      getManagementSession().then(getManagementState),
+    ]);
+    if (!isActive()) return;
+    if (directory.status === "fulfilled") setPublicConnections(directory.value);
+    else setDirectoryFailed(true);
+    if (management.status === "fulfilled") { setState(management.value); setLocked(false); }
+    else if (management.reason instanceof ManagementApiError && management.reason.status === 401) setLocked(true);
+    else { setLoadFailed(true); setError(message(management.reason)); }
+    setBusy(false);
+  }
   async function run(action: () => Promise<void>) { setBusy(true); setError(null); try { await action(); } catch (cause) { setError(message(cause)); if (message(cause).includes("Unlock")) setLocked(true); } finally { setBusy(false); } }
   function publish(value: ManagementState) { setState(value); onChanged(); }
   async function unlock(event: FormEvent) { event.preventDefault(); const entered = token; setToken(""); await run(async () => { await unlockManagement(entered); setState(await getManagementState()); setLocked(false); setShowAccess(false); }); }
@@ -74,9 +93,9 @@ export function CapabilityManager({ onClose, onChanged, presentation = "dialog" 
       <header className="cap-manager-header"><div><span className="eyebrow">Agent customization</span>{presentation === "page" ? <h1 id={titleId}>Plugins</h1> : <h2 id={titleId}>Tools, skills and connections</h2>}<p className="cap-manager-muted">Connect tools and choose what your agents can use.</p></div>{presentation === "dialog" && <button className="icon-button" type="button" aria-label="Close capability manager" disabled={busy} onClick={onClose}><X size={18} /></button>}</header>
       {error && <p className="cap-manager-error" role="alert">{error}</p>}
       <nav className="cap-manager-tabs" aria-label="Capability categories">{tabs.map(item => <button key={item} className={item === tab ? "active" : ""} aria-current={item === tab ? "page" : undefined} type="button" onClick={() => { setTab(item); setError(null); }} disabled={busy}>{item === "Connections" ? "Connectors" : item}</button>)}{state && <button className="cap-manager-reload" type="button" disabled={busy} onClick={() => void run(async () => setState(await getManagementState()))}>Reload</button>}</nav>
-      {locked ? <div className="cap-manager-body">
-        {tab === "Connections" ? <ConnectorDirectory connections={publicConnections ?? []} busy={busy} onAdd={() => { setPendingConnector("new"); setShowAccess(true); }} onSelect={ref => { setPendingConnector(ref); setShowAccess(true); }} /> : <><div className="cap-manager-toolbar"><h3>{tab}</h3><button className="button button-primary" type="button" onClick={() => setShowAccess(true)}>Enable editing</button></div><p className="cap-manager-muted">Enable editing to inspect and manage {tab.toLowerCase()}.</p></>}
-        {tab === "Connections" && !publicConnections && <p className="cap-manager-muted">{directoryFailed ? "Connection list unavailable. Check the service and reload." : "Loading connections…"}</p>}
+      {loadFailed ? <div className="cap-manager-body"><p className="cap-manager-muted">The capability service is unavailable. Your saved connectors have not been removed.</p><button type="button" className="button button-primary" disabled={busy} onClick={() => void load()}>Try again</button></div> : locked ? <div className="cap-manager-body">
+        {tab === "Connections" ? publicConnections ? <ConnectorDirectory connections={publicConnections} busy={busy} onAdd={() => { setPendingConnector("new"); setShowAccess(true); }} onSelect={ref => { setPendingConnector(ref); setShowAccess(true); }} /> : directoryFailed ? <div><p className="cap-manager-muted">Connection list unavailable. Your saved connectors have not been removed.</p><button type="button" className="quiet-button" disabled={busy} onClick={() => void load()}>Try again</button></div> : <p role="status">Loading connections…</p> : <><div className="cap-manager-toolbar"><h3>{tab}</h3><button className="button button-primary" type="button" onClick={() => setShowAccess(true)}>Enable editing</button></div><p className="cap-manager-muted">Enable editing to inspect and manage {tab.toLowerCase()}.</p></>}
+
         {showAccess && <ConnectorModal title="Enable editing" busy={busy} onClose={() => { setShowAccess(false); setPendingConnector(null); }}><form className="cap-manager-form" onSubmit={unlock}><p className="cap-manager-muted">Enter this workspace's local administration token to add or change connections.</p><label>Administration token<input type="password" autoComplete="off" value={token} required onChange={event => setToken(event.target.value)} /></label><div className="cap-manager-actions"><button className="button button-primary" type="submit" disabled={busy}>Enable editing</button><button className="quiet-button" type="button" onClick={() => { setShowAccess(false); setPendingConnector(null); }}>Cancel</button></div>{error && <p className="cap-manager-error" role="alert">{error}</p>}</form></ConnectorModal>}
 
       </div> : !state ? <p className="cap-manager-body" role="status">Loading connections…</p> : <>
