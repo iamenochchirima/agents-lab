@@ -69,3 +69,13 @@ See [executable commands](../../lab/experiments/agent-harness-baseline/developme
 and [compatibility limits](connected-tool-compatibility.md). New trials, assessments
 and bounded native acceptance are additional evidence; they do not rewrite the
 historical outcomes above.
+
+## Unavailable native controls
+
+A cancellation transport failure does not prove that the agent stopped. The API
+returns503 `RUN_CANCELLATION_UNCONFIRMED` and retains a separate control event;
+inspect the native execution before retrying or reconciling. Restate readiness
+checks the current registered endpoint and its SDK discovery, rather than merely
+finding a service name in historical deployments. Confirmed native terminal failure
+can be projected even when its output endpoint errors. An unavailable Admin API
+still leaves the latest projection uncertain. Original eval verdicts remain unchanged.

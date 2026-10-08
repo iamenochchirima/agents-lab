@@ -1,7 +1,7 @@
 # General backend agent eval gap closure
 
 **Created:** 2026-10-08
-**Status:** Active, final observation exposed a cancellation/readiness gap under investigation.
+**Status:** Implementation completed 2026-10-08. Core and live measurement limits remain explicit.
 **Scope:** Mastra, LangGraph, Temporal and Restate baseline variants.
 
 ## Goal and constraints
@@ -264,7 +264,7 @@ are implemented; do not publish nonexistent commands as runnable examples.
 - [x] Original request and general-agent scope are rechecked; no business specialization
   or native filesystem capability has been introduced.
 - [x] Coverage and failure attribution are explicit for every scoped B/M/X requirement.
-- [ ] Demonstrated runtime defects are corrected and evidenced; unresolved model/provider
+- [x] Demonstrated runtime defects are corrected and evidenced; unresolved model/provider
   failures remain visible with actionable classification.
 - [x] Missing correction evaluation and durable assessment flow work end to end.
 - [x] Applicable claimed extensions have executable evidence; unsupported/unclaimed
@@ -274,7 +274,7 @@ are implemented; do not publish nonexistent commands as runnable examples.
   reported. This plan does not require concealing errors or making every free-model run pass.
 - [x] Every coherent chunk is committed with tests/docs relevant to it; final diff
   excludes unrelated changes and generated private state.
-- [ ] Record completion date, commit hashes, commands, observations and remaining limits;
+- [x] Record completion date, commit hashes, commands, observations and remaining limits;
   move this plan to `completed/` only after the implementation audit passes.
 
 ## Commit checkpoints
@@ -293,11 +293,12 @@ bug produces an evidence/documentation checkpoint, not an invented patch.
 
 ## Current position and evidence ledger
 
-Milestone: completion audit. Correction, assessment, coverage UI and native extension
-acceptance are implemented and committed. Browser Save → reload passed with an isolated
-synthetic record labelled Automated UI fixture and outcome uncertain. Real semantic
-judgments remain pending. One post-fix Restate free-model document workflow is underway.
-Full final-revision core readiness is not claimed after the later Temporal heartbeat fix.
+Milestone: completed implementation audit. Correction, assessment, coverage UI, native
+acceptance and demonstrated context/readiness/cancellation/projection fixes are committed.
+Browser Save → reload passed with an isolated synthetic record labelled Automated UI
+fixture and outcome uncertain. Real semantic judgments remain pending. The final affected
+free-model workflow errored; its original result and separate native failure recovery
+remain retained. Full final-revision core readiness and live reliability are not claimed.
 
 ### Checkpoints
 
@@ -417,3 +418,38 @@ Full final-revision core readiness is not claimed after the later Temporal heart
   180-second observer window. No document writes were observed. Cancellation returned
   HTTP500 and bounded settlement remained unresolved. This exposed a further
   cancellation/readiness investigation; original error remains immutable.
+
+- Follow-up to the final Restate error: the actual Restate server became unavailable;
+  its termination cause is unknown. Its launcher masks signal termination as exit0,
+  so that value is not evidence of normal shutdown. The same persisted server state
+  was restored with its SDK stopped. Exact native invocation
+  `inv_1kfhDkazHYHP3uSL2kPA2OlSNvy7e3TfbM` was already completed with failure; operator
+  cancellation returned409 and did not establish a cancelled result. No task was
+  resubmitted. Follow-up proof: `.review-proof/eval-gap-live-cancellation/
+  restate-operator-cancel.json`. SDK resumed only after the invocation was terminal.
+
+### Closure
+
+- `4b55368`: Restate readiness now checks the current binding and bounded SDK
+  discovery. Cancellation transport exceptions retain an unconfirmed event and
+  return503, and Admin-confirmed failure projects despite output transport errors.
+  Server build and fourteen focused controls passed. Current9080 endpoint passed
+  real read-only readiness; obsolete29080 registration failed. The terminal native
+  failure was read independently without model/task redispatch. Proofs:
+  `.review-proof/eval-gap-live-cancellation/readiness-and-terminal-follow-up.json`
+  and `native-failure-projection.json`.
+- `7c9b7de` recorded the implementation/evidence audit; this closure moves the single
+  checklist to completed and updates its index. Unrelated Studio/Lina/context work
+  remains outside all task commits. Runtime services use current code and original
+  persisted state; task-only synthetic UI services were stopped.
+- Completion distinguishes working implementation from successful measurements.
+  Every scoped requirement has an executable mapping or explicit applicability.
+  Pending human judgments, unresolved Temporal model heartbeat loss, free-model
+  timeout and infrastructure termination cause remain documented next investigations.
+  No paid fallback, native filesystem runtime or business-agent specialization was added.
+
+- Final normal API reconciliation on 2026-10-08: retained Restate run
+  `d924a690-ce25-43cf-9ba5-bbaab09ebf70` now projects `failed` with
+  `RESTATE_NATIVE_TERMINAL_FAILURE` and current projection. Restate readiness
+  returns reachable after current endpoint discovery. Original capability trial
+  remains error. API proof: `.review-proof/eval-gap-live-cancellation/api-reconciled.json`.

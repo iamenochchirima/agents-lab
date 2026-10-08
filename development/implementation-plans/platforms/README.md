@@ -9,11 +9,6 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [General backend agent eval gap closure](active/agent-eval-gap-closure.md):
-  next substantial phase covering remaining eval coverage, evidence-based runtime
-  fixes, correction measurement, retained human assessment, applicable extension
-  acceptance and visible coverage. Planned; no runtime implementation yet.
-
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
@@ -39,6 +34,11 @@ was the foundation for this acceptance phase and the completed Restate slice. AW
 Functions remains parked.
 
 ## Completed plans
+
+- [General backend agent eval gap closure](completed/agent-eval-gap-closure.md):
+  implemented coverage, correction evaluation, retained assessment, native extension
+  acceptance and demonstrated runtime fixes. Focused evidence and remaining live
+  failures/human judgments are recorded; final-revision readiness is not implied.
 
 - [Connected business-agent tools](completed/connected-business-agent-tools.md):
   four native baselines with connected HTTP/MCP tools, connection authority,
