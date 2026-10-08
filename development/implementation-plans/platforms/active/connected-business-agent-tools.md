@@ -1,7 +1,7 @@
 # Connected business-agent tools implementation plan
 
-Status: plan reviewed; partial implementation exists, integration acceptance pending.
-Created and reviewed 2026-10-08. This revision is a planning deliverable.
+Status: implementation checkpoints committed; final acceptance and compatibility audit pending.
+Created and reviewed 2026-10-08. Implementation continues under the active goal.
 
 This standalone temporary plan lives outside `docs/`. It follows the implemented
 [tools and skills milestone](real-agent-tools-and-skills.md) and supersedes its
@@ -134,16 +134,16 @@ each leaves a usable checkpoint. Do not make a commit for every checkbox.
 
 ### 1. Correct the boundary and freeze shared contracts
 
-- [ ] Record an ADR for connected tools, external file providers, stable identity,
+- [x] Record an ADR for connected tools, external file providers, stable identity,
   effect outcomes and invocation approval. Include alternatives and migration.
 - [ ] Define the supported baseline/transport/result/approval matrix.
-- [ ] Extend existing descriptors with connection reference, supported content,
+- [x] Extend existing descriptors with connection reference, supported content,
   effect/retry contract and approval mode; avoid duplicated policy types.
 - [ ] Define versioned result and pending-action records, including compatibility
   handling for retained older run manifests and receipts.
 - [ ] Specify connection states, ownership and the distinction between credential
   rotation, revoked authority and changed source definitions.
-- [ ] Make startup default to a business-tool/skill profile, without a native
+- [x] Make startup default to a business-tool/skill profile, without a native
   workspace or dependency on an available external service.
 
 Acceptance: contracts can express two concrete sources, HTTP and MCP, plus a
@@ -158,9 +158,9 @@ Commit: `feat: define connected agent lifecycle and capability contracts`.
 
 - [ ] Separate execution status from effect outcome: not dispatched, confirmed
   rejection/no effect, confirmed effect, or unknown. Record the evidence for certainty.
-- [ ] Treat dispatched write failures conservatively unless the provider contract
+- [x] Treat dispatched write failures conservatively unless the provider contract
   establishes rejection. Do not assume every HTTP 4xx/5xx means no change occurred.
-- [ ] Treat successful HTTP status with invalid output as a response-contract
+- [x] Treat successful HTTP status with invalid output as a response-contract
   failure with the provider acknowledgement retained. Do not infer business success
   solely from status or expose this as an ordinary request to repeat the write.
 - [ ] Stop model continuation on an unresolved effect and retain a reconciliation
@@ -220,14 +220,14 @@ Commit: `feat: integrate connected source identity and credential lifecycle`.
 
 ### 4. Complete useful HTTP and MCP tool bindings
 
-- [ ] Add declarative path, query, permitted header and body mappings to HTTP
+- [x] Add declarative path, query, permitted header and body mappings to HTTP
   operations. Encode path segments and prevent configured-origin escape.
 - [ ] Support JSON and form requests plus bounded artifact-reference upload/download
   where the business/document scenario requires it. Never accept host file paths
   from the model as upload authority.
 - [ ] Bind pagination, request IDs, provider idempotency headers and response mapping
   explicitly in configuration. Keep provider-specific details inside the adapter.
-- [ ] Parse MCP SSE incrementally, correlate request IDs, handle chunk boundaries,
+- [x] Parse MCP SSE incrementally, correlate request IDs, handle chunk boundaries,
   progress and bounded errors, and stop at the matching terminal response without
   waiting for an open stream to close.
 - [ ] Implement the verified current HTTP tools requirements and explicitly retained
@@ -335,10 +335,10 @@ Split Python/Mastra and Temporal/Restate integration into separate commits if ne
   only on activation; disabled skills must not appear in the presented catalog.
 - [ ] Let skill scripts request an authorized connected execution service when
   configured; do not introduce local shell execution as a skill-loader feature.
-- [ ] Move file operations into an optional separately running MCP/API provider
+- [x] Move file operations into an optional separately running MCP/API provider
   with provider-owned storage/session scopes. Remove native workspace sources
   from the core package loader and business-agent defaults.
-- [ ] Port useful filesystem acceptance to that provider and preserve existing
+- [x] Port useful filesystem acceptance to that provider and preserve existing
   workspace reports as historical evidence. Give legacy configurations an explicit
   migration message; do not silently reinterpret their roots or write permissions.
 
@@ -416,12 +416,37 @@ transport bindings, persisted review, native continuation, results/skills,
 frontend, then acceptance. Independent implementation may overlap after the
 contracts settle; acceptance cannot skip its dependencies.
 
-The next substantial implementation slice is connection lifecycle plus complete
-review continuation. Finish the OAuth and availability APIs, expired-review renewal,
-Mastra persistence and continuation, then integrate the existing LangGraph,
-Temporal and Restate work. This yields one usable read/propose/review/write/verify
-workflow before further catalog expansion. It warrants several coherent commits;
-wall-clock duration is an estimate, not an acceptance criterion.
+The next substantial slice is end-to-end acceptance and closing the integration
+issues it reveals. The committed connection, review and native continuation work
+now provides the foundation. Use this execution checklist:
+
+- [ ] Audit each milestone against code and retained evidence. Check an item only
+  when its contract and its stated validation are both satisfied.
+- [ ] Correct model-budget plumbing, including the Mastra construction in
+  `live.ts`. Record per-provider-request deadlines separately from whole active
+  generation budgets. Mastra currently times an entire segment; LangGraph times
+  individual provider requests. Equal numbers do not establish equal conditions.
+  Human review time remains separate.
+- [ ] Finish the eight-workflow free-model trial. Preserve failures and classify
+  timeout, admission, model-choice and adapter failures using retained evidence
+  and independently inspected business state.
+- [ ] Fix demonstrated integration defects, then repeat only affected workflows
+  with explicit budgets. If choosing another free model, verify current price and
+  tool support and retain a separate comparison report.
+- [ ] Publish the baseline/transport/authentication/result/recovery matrix with
+  explicit OAuth registration and multimedia limits.
+- [ ] Verify skill-script requests through an authorized connected execution
+  fixture before advertising execution support. Readable scripts alone do not
+  establish this capability. Local shell execution remains excluded.
+- [ ] Complete the frontend approve/deny walkthrough with run IDs and a screenshot.
+  Browser automation was rejected by the browser security policy in this session;
+  this remains unverified until permitted or recorded manual verification.
+- [ ] Run the combined affected checks once, update permanent docs with observed
+  limits, and commit the final evidence and checklist audit.
+
+Use coherent commits for budget correction, demonstrated integration defects,
+and acceptance documentation. Keep this as one integrated delivery; avoid adding
+unrelated features or broad hardening to fill an estimated hour.
 
 Start real-model evals only after the four native scripted runs pass, connection
 authority is rechecked at dispatch, uncertain effects stop continuation, and the
@@ -490,39 +515,65 @@ justify claiming this milestone makes the Lab production-ready in every environm
 
 ## Current position and evidence ledger
 
-Current position: planning review complete; partial code awaits integrated review.
-This single checklist remains the implementation working state. Starting branch is
-`main`, checkpoint `ab2cadd`; unrelated Studio/Lina and context-research changes
-are user-owned. The earlier planning task made no runtime changes or model trials.
+The implementation has committed checkpoints across milestones 1 through 8.
+Acceptance remains incomplete. The unchecked checklist is conservative and needs
+its final code/evidence audit. Starting branch was `main`, checkpoint `ab2cadd`;
+unrelated Studio/Lina and context-research changes remain user-owned.
 
-| Checkpoint | Evidence |
+| Checkpoint | Implemented slice |
 | --- | --- |
-| Baseline audit | Native tool loops, default workspace, static credentials, upfront approvals, effect classification and Temporal heartbeat inspected on 2026-10-08 |
-| Research | Primary protocols and native platform sources recorded in the linked research note |
-| Planning validation | Local Markdown links passed; documentation catalog generation passed; nine milestones and 87 unchecked implementation/acceptance items; planning changes are committed separately from runtime work |
-| Plan review | Connected-source and native-platform reviews found no material blockers; clarified LangGraph suspended projection and the separate Temporal completion/cancellation invocations |
-| Updated review | Expired approval has no usable continuation path yet; OAuth state lacks connection binding and actual expiry, and omitted replacement refresh tokens are not preserved. These are explicit implementation requirements above. |
-| Implementation checkpoints | Add commit, narrow verification, native/run evidence and remaining limitations as each milestone completes |
+| `3674780` | Research-based standalone plan and review lifecycle requirements |
+| `7a71069` | Exact review records, authority contracts, conflict/expiry checks and ADR |
+| `ff72970` | External document provider, removed native workspace and explicit migration |
+| `2d728b1` | HTTP parameter bindings, correlated MCP SSE and conservative effects |
+| `b73d8a5` | Connection credentials, OAuth state/refresh, availability and authority generations |
+| `5ed4244` | Mastra SDK review with persistent LibSQL snapshots |
+| `842f3c9` | Temporal/Restate durable review and Temporal heartbeat/cancellation |
+| `bea4029` | LangGraph checkpointed review and suspended control-plane projection |
+| `c5a0f5c` | Generated package output-limit admission correction |
+| `4c72025` | Frontend connections and exact action review |
+| `6e68fee` | Persistent fictional business service and real-model workflow driver |
+| `35598e0` | Permanent setup and architecture documentation |
 
-### Current progress, not completion claims
+### Native harness evidence
 
-| Workstream | Existing evidence | Remaining acceptance |
-| --- | --- | --- |
-| Shared contracts and action records | Partial uncommitted implementation | ADR, compatibility checks, authority integration, expiry renewal and race verification |
-| HTTP/MCP adapters | Focused binding, provider and integration checks reported passing | Integration audit, current-revision matrix and source availability lifecycle |
-| External document provider | Provider round trip and package/skills checks reported passing | Integrated document workflow and migration documentation audit |
-| Temporal and Restate | Scripted native run suspended with zero effects, survived worker/service replacement, approved and executed once; denial/cancellation had zero effects | Fresh-review renewal, API restart and actual connected business-model acceptance |
-| LangGraph | SQLite interruption/resume after service restart reported passing without repeated inference | Shared native integration report, fresh-review renewal and lifecycle docs |
-| Mastra | Existing native model/tool loop inspected | SDK approval, persistent snapshot reconstruction and same-run continuation |
-| Frontend | Typecheck, bundle and focused action-identity checks reported passing | Live connection APIs, browser approval/denial walkthrough and actual outcome projection |
-| Real-model trials | No new trials in this implementation | Two workflows on four baselines after the readiness gate |
+The all-platform report
+[`native-review-65eff9d8/summary.json`](../../../../lab/runs/.review-proof/native-review-65eff9d8-679a-40b3-a57b-4fd88ba464f0/summary.json)
+passed eight scripted native checks. Every baseline suspended with zero effects,
+survived host/control-plane reconstruction and native runner or worker replacement,
+renewed review twice without inference or dispatch, then approved the original
+call and executed once. Additional cases cover denial, cancellation and unknown
+effect stopping. Actual native runtimes used scripted model choices; this measures
+harness behavior, not model decision quality.
 
-The Temporal/Restate scripted report is retained at
-[`lab/runs/.review-proof/native-review-181bab0b-d0e2-4d76-9a4e-4f31665df0fb/summary.json`](../../../../lab/runs/.review-proof/native-review-181bab0b-d0e2-4d76-9a4e-4f31665df0fb/summary.json).
-It proves those native gate and worker/service-restart behaviors only. It does not
-establish model competence, full API restart recovery or external interoperability.
+The Mastra mixed-batch report
+[`native-review-e70d9c2b/summary.json`](../../../../lab/runs/.review-proof/native-review-e70d9c2b-576c-4852-add9-e10dc15cd632/summary.json)
+passed six selected checks. One model response proposed a read and two reviewed
+writes. Approving the first and denying the second preserved original call IDs,
+ran the read once and returned correlated feedback. Fixture/documentation edits
+need a separate checkpoint.
 
-Before completion, re-read the user's filesystem restriction and this definition
-of done, inspect the finished implementation beyond its checklist, and resolve or
-report remaining gaps. Distinguish an implemented functional contract from observed
-model competence and from guarantees this experiment has not measured.
+### Real-model evidence and limits
+
+The initial eight-workflow attempt failed admission before model dispatch:
+[`capabilities-76e060f0/summary.json`](../../../../lab/runs/.evals/capabilities-76e060f0-3bb1-437e-84ed-79aaa6318c3c/summary.json).
+The generated output-limit defect was corrected in `c5a0f5c`.
+
+The subsequent free-only trial is retained at
+[`capabilities-bbba1cf6/summary.json`](../../../../lab/runs/.evals/capabilities-bbba1cf6-9bd7-429d-a355-4e9616f06d99/summary.json).
+It uses the verified `nvidia/nemotron-3.5-lightning:free` ID, no paid fallback,
+recorded prompts and independent service-state checks. This is an in-progress
+report, not a successful acceptance claim. Observed failures include Mastra active
+segment timeouts and a LangGraph answer without required tool use. Audit final
+outcomes and causes after the driver settles.
+
+Frontend typecheck, production bundle and focused action-identity checks passed.
+The browser walkthrough remains unverified following the browser security-policy
+rejection. OAuth owner labels describe this trusted local deployment rather than
+authenticated multi-tenant users. Automatic client registration, general MCP
+extensions, model-native multimedia input, connected script execution and external
+third-party compatibility are not established by the retained evidence.
+
+Before completion, re-read the user's filesystem restriction and the definition
+of done. Inspect the implementation beyond the checklist, resolve or report gaps,
+and distinguish implemented contracts from observed model competence.
