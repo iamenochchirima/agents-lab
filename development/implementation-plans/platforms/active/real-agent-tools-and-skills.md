@@ -77,36 +77,36 @@ Each phase ends with a focused commit and its relevant validation.
 ### 1. Reconcile architecture and review drafts
 
 - [x] Research primary sources and inspect existing runtime coupling.
-- [ ] Map catalog, policy, connection, tool execution, skill and environment ownership.
-- [ ] Identify reusable draft work, duplicated responsibilities and missing lifecycle behaviour.
-- [ ] Resolve the capability-host decision and package/source terminology.
-- [ ] Publish the supported-capability matrix for the four baseline platforms.
-- [ ] Record decisions, alternatives and dependency rationale in permanent architecture notes.
+- [x] Map catalog, policy, connection, tool execution, skill and environment ownership.
+- [x] Identify reusable draft work, duplicated responsibilities and missing lifecycle behaviour.
+- [x] Resolve the capability-host decision and package/source terminology.
+- [x] Publish the supported-capability matrix for the four baseline platforms.
+- [x] Record decisions, alternatives and dependency rationale in permanent architecture notes.
 
 Commit: `docs: define extensible capability architecture`.
 Validation: compare actual interfaces and installed SDK versions. No broad tests.
 
 ### 2. Catalog, source contracts and admission
 
-- [ ] Define descriptors, execution bindings, results and lifecycle contracts.
-- [ ] Support trusted registration and declarative package contributions.
-- [ ] Validate input schemas and reject duplicate identities or aliases.
-- [ ] Resolve selected tools through existing profiles, grants and connection references.
-- [ ] Record effective limits, source identity and model-facing declarations at admission.
-- [ ] Keep credentials and private configuration out of model declarations and evidence.
+- [x] Define descriptors, execution bindings, results and lifecycle contracts.
+- [x] Support trusted registration and declarative package contributions.
+- [x] Validate input schemas and reject duplicate identities or aliases.
+- [x] Resolve selected tools through existing profiles, grants and connection references.
+- [x] Record effective limits, source identity and model-facing declarations at admission.
+- [x] Keep credentials and private configuration out of model declarations and evidence.
 
 Commit: `feat: add capability catalog and source contracts`.
 Minimal checks: valid admission, invalid schema and denied operation.
 
 ### 3. Real source adapters and execution
 
-- [ ] Adapt existing built-ins without changing their observable meaning.
-- [ ] Implement configured MCP discovery/invocation with explicit protocol compatibility.
-- [ ] Implement explicitly configured HTTP connector operations.
-- [ ] Preserve rich results and distinguish protocol failures from operation failures.
-- [ ] Establish authentication, connection ownership, cleanup and cancellation behaviour.
-- [ ] Retain correlated call receipts; document duplicate dispatch and unknown outcomes.
-- [ ] Reuse existing connection infrastructure where it already owns these responsibilities.
+- [x] Adapt existing built-ins without changing their observable meaning.
+- [x] Implement configured MCP discovery/invocation with explicit protocol compatibility.
+- [x] Implement explicitly configured HTTP connector operations.
+- [x] Preserve rich results and distinguish protocol failures from operation failures.
+- [x] Establish authentication, connection ownership, cleanup and cancellation behaviour.
+- [x] Retain correlated call receipts; document duplicate dispatch and unknown outcomes.
+- [x] Reuse existing connection infrastructure where it already owns these responsibilities.
 
 Commit: `feat: execute configured capability sources`.
 Minimal checks: real MCP and HTTP calls, actionable failure feedback, and one
@@ -115,14 +115,14 @@ MCP conformance or model competence.
 
 ### 4. Skills and persistent task environments
 
-- [ ] Discover actual SKILL.md packages and advertise permitted metadata.
-- [ ] Support model-driven and explicit user activation.
-- [ ] Read referenced resources with identity, digests and bounds.
-- [ ] Retain active instructions through follow-ups and context compaction.
-- [ ] Add actual workspace list/read/search/write/patch operations with scoped grants.
-- [ ] Preserve files within a session and separate comparison sessions.
-- [ ] Make script execution depend on a separately authorized execution tool.
-- [ ] Provide a service task environment alongside the workspace example.
+- [x] Discover actual SKILL.md packages and advertise permitted metadata.
+- [x] Support model-driven and explicit user activation.
+- [x] Read referenced resources with identity, digests and bounds.
+- [x] Retain active instructions through follow-ups and context compaction.
+- [x] Add actual workspace list/read/search/write/patch operations with scoped grants.
+- [x] Preserve files within a session and separate comparison sessions.
+- [x] Make script execution depend on a separately authorized execution tool.
+- [x] Provide a service task environment alongside the workspace example.
 
 Commit: `feat: add skill activation and persistent task environments`.
 Minimal checks: activation/resource reads, relevant context retention, same-session
@@ -130,15 +130,15 @@ continuity and separation between sessions. Path checks are not an OS sandbox.
 
 ### 5. Native platform integration and frontend
 
-- [ ] Mastra: project catalog definitions into native SDK tools.
-- [ ] LangGraph: project serialized definitions into Python's native tool node.
-- [ ] Temporal: keep workflow declarations pure and source I/O in Activities.
-- [ ] Restate: invoke sources through its durable action boundary.
-- [ ] Preserve platform lifecycle information and framework-specific telemetry.
-- [ ] Remove tool-name-specific registration branches for extensible sources.
-- [ ] Show selected tools, available/active skills, connection status and effective permissions.
-- [ ] Ensure approvals cover every displayed side-effecting operation.
-- [ ] Show unsupported platform capabilities honestly.
+- [x] Mastra: project catalog definitions into native SDK tools.
+- [x] LangGraph: project serialized definitions into Python's native tool node.
+- [x] Temporal: keep workflow declarations pure and source I/O in Activities.
+- [x] Restate: invoke sources through its durable action boundary.
+- [x] Preserve platform lifecycle information and framework-specific telemetry.
+- [x] Remove tool-name-specific registration branches for extensible sources.
+- [x] Show selected tools, available/active skills, connection status and effective permissions.
+- [x] Ensure approvals cover every displayed side-effecting operation.
+- [x] Show unsupported platform capabilities honestly.
 
 Commits: coherent native integration slices, followed by
 `feat: expose capability selection and effective permissions` for the frontend.
@@ -151,12 +151,12 @@ Run relevant builds once integration settles.
 - [ ] Run the same workspace task on each supported platform: activate a skill,
       read its reference, inspect sources, create and verify an artifact, then apply a correction.
 - [ ] Run a service task through MCP or a connector to inspect and update controlled state.
-- [ ] Validate free-model availability and zero-price routing before live execution.
-- [ ] Use task-appropriate output/execution allowances and record them consistently.
+- [x] Validate free-model availability and zero-price routing before live execution.
+- [x] Use task-appropriate output/execution allowances and record them consistently.
       Preserve existing baseline controls if this workload requires a separate experiment configuration.
-- [ ] Retain model decisions, effective catalogs, skill activations, tool results,
+- [x] Retain model decisions, effective catalogs, skill activations, tool results,
       artifacts and native execution evidence.
-- [ ] Check actual artifacts/effects independently of native completion status.
+- [x] Check actual artifacts/effects independently of native completion status.
 - [ ] Separate adapter correctness, harness behaviour, model behaviour and provider failures.
 - [ ] Update usage documentation and record validation limitations and commit identities.
 
@@ -178,26 +178,72 @@ Do not repeat large suites without a relevant change, failure or unresolved conc
 
 ## Current position and evidence
 
-Phase 1 is under review. Three parallel workstreams own source execution, skill
-context lifecycle and native projection. The primary agent owns architecture,
-catalog admission, task scenarios, live acceptance, integration and commits.
+Phases 1–5 are implemented and checked. Phase 6 is running the actual free-model
+workspace and service trials. Keep completion unproven until every requested
+platform/task observation is retained and its limitations inspected.
 
-The capability host is the selected shared source-execution boundary because the
-Lab has concrete Python and TypeScript native workers. Its JSON interface shares
-implementations without sharing executable closures or replacing native loops.
-Direct built-ins remain valid. Source adapters must use the existing connection
-result/attempt contracts and do not grant permissions independently.
+### Implementation checkpoints
 
-Package contributions use explicit package provenance rather than claiming that
-declarative configuration is an executable plugin. A separate capability acceptance
-experiment will allow 2048 output tokens for real tasks; existing baseline live
-evals retain their 512-token controls and free-only routing.
+- `e138820`: architecture ownership and native boundary decisions.
+- `77a2dd0`: immutable catalogs, schema validation and result contracts.
+- `3160cd7`: configured MCP/HTTP adapters reuse existing connection infrastructure.
+- `98d413c`: authenticated host, packages, isolated workspaces and persistent skills.
+- `108c85e`: four native projections and separate free capability experiment controls.
+- `4ee7525`: frontend selection, complete approval lists and persisted skill identities.
+- `82dc54b`: actual service environment and shared acceptance driver/scenario documents.
 
-Research and the earlier checklist were committed as `236a879`. Implementation
-drafts remain uncommitted. Earlier checks and live attempts are exploratory evidence,
-not completion of this revised plan. Observations included provider rate limits and
-native completion without a verified saved artifact; those are not passing results.
+Only milestone files were staged. Concurrent Studio/Lina and context research work
+remains untouched and uncommitted by this task.
 
-Owned acceptance services were stopped when implementation paused. Existing user
-services were preserved. Before resuming, verify repository state and service
-ownership, review the drafts, then proceed from phase 1. Preserve earlier evidence.
+### Verification ledger
+
+- Server build passed after integration and the persisted-skill UI projection.
+- Catalog/tools/policy checks: 25 passed, including schema references, collisions,
+  non-coercion and explicit write authorization.
+- Host/source/packages/active-skill checks: 8 passed, including authenticated
+  admission, deduplication, pending receipts, source drift, interrupted writes,
+  source cleanup, session separation and compaction retention.
+- Admission checks: 2 passed for explicit skill/profile restrictions before turn
+  creation and persisted authority-free activation.
+- Native scripted acceptance: all 8 actual SDK/worker/workflow executions passed.
+  Evidence: `lab/runs/.capability-proof/native-catalog-81ce3439-c1ec-4658-add2-7a8a63e7e293/summary.json`.
+  Scripted decisions prove adapter execution, not real-model task competence.
+- Free policy and Mastra checks: 17 passed, including parallel tool calls sharing
+  a model round while call and round limits remain separate.
+- Related Temporal/Restate/LangGraph/admission checks: 114 passed, 2 opt-in native
+  tests skipped. The native catalog proof above covers actual native dispatch.
+- Controlled service and skill projection: 2 passed, covering real MCP/HTTP edits,
+  stale revision rejection, restart persistence, compaction and safe UI identities.
+- Frontend production bundle passed. Full typecheck is currently blocked by
+  concurrent `lina/contracts/modelInterface.ts` JSON typing changes. No capability
+  type errors remain in its output; do not modify unrelated Lina work.
+- Actual UI verified on the owned frontend: both write operations appear for
+  approval, package tools are displayed, and explicit evidence-report selection
+  works. Screenshot: `/tmp/agentlab-capability-selection.png`.
+- Scenario/experiment links resolve and documentation generation passed.
+
+### Actual-model observations underway
+
+The first Mastra report is retained at
+`lab/runs/.evals/capabilities-3fab0e3b-e65f-4007-a1c3-9c2ef50a33c5/summary.json`.
+It failed because the in-process tool client used port 4318 while the owned server
+used 4322. The runtime now derives its default from the configured API port;
+remote workers still require an explicit host URL. This failed result remains.
+
+A later LangGraph trial retained successful skill/resource/file operations before
+its owned native worker disappeared. The interrupted report is
+`lab/runs/.evals/capabilities-5b74d591-2e47-4892-89e4-fbb87bfcf607/summary.json`.
+Workers were restarted only after process and health evidence established they
+were absent. No observation timeout alone triggered redispatch.
+
+A fresh four-platform trial is running at
+`lab/runs/.evals/capabilities-51211f00-2c24-4bd6-b6b6-98cb8afc14ae/summary.json`.
+Mastra has executed actual skill/resource/document reads, report creation,
+read-back verification and the correction through Nemotron's free model decisions.
+Its strict workspace verdict passed both turns. Service and remaining platform
+verdicts remain pending. Do not substitute native completion for effect checks.
+
+Current owned services: API 4322, task service 9196, frontend 5173, LangGraph 2024,
+Temporal 7233 with the capability queue, and isolated Restate 18080/19070/19080.
+Revalidate live handles when resuming; services are not evidence merely because
+this ledger names them.
