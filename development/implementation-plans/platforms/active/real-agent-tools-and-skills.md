@@ -293,3 +293,9 @@ frontend typecheck limitation remains recorded above.
 Owned service handles must be revalidated before reuse. No service is proven live
 merely because a plan names its port. Acceptance services are local development
 infrastructure, not a deployed or hardened multi-tenant environment.
+
+After the audit, owned native acceptance workers were stopped. The primary agent
+left the updated API on 4322, controlled task service on 9196 and frontend on 5173
+for local review. Mastra runs in process; other native workers require the guide
+startup commands. The final browser review shows workspace-agent and explicit
+evidence-report selection. These are review services, not a deployment claim.
