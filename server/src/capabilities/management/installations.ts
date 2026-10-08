@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { inflateRawSync } from "node:zlib";
 import { parseDocument } from "yaml";
 import { skillContributions } from "../extensions/skills.js";
+import { validateConnectionDefinition } from "../integrations/connections.js";
 import { emptyManagedState, validateManagedState, type ManagedConnectionRecord, type ManagedInstallationRecord, type ManagedPackageRecord } from "./records.js";
 
 export interface PluginManifest {
@@ -157,9 +158,10 @@ function parseManifest(value: unknown): PluginManifest {
   if (value.skills !== undefined) { if (typeof value.skills !== "string") throw new Error("Plugin skills must name a relative directory."); safePath(value.skills); }
   if (value.connections !== undefined) {
     if (!Array.isArray(value.connections) || value.connections.length > 32 || value.connections.some(connection => !object(connection)
-      || typeof connection.ref !== "string" || !connection.ref.startsWith(value.id + "-") || connection.owner !== "local-workspace"
+      || typeof connection.ref !== "string" || !connection.ref.startsWith("conn_" + value.id + "-") || connection.owner !== "local-workspace"
       || connection.enabled !== false || !object(connection.auth) || connection.auth.kind !== "anonymous")) throw new Error("Plugin connections must be namespaced, disabled anonymous templates owned by the local workspace.");
     const state = emptyManagedState(); state.connections = value.connections as ManagedConnectionRecord[]; validateManagedState(state);
+    for (const connection of state.connections) validateConnectionDefinition(connection);
   }
   if (value.packages !== undefined) {
     if (!Array.isArray(value.packages) || value.packages.length > 32 || value.packages.some(p => !object(p) || !["mcp", "http"].includes(String(p.source)) || p.installationRef !== undefined || p.enabled === true)) throw new Error("Plugin source templates permit MCP/HTTP definitions only, without connected accounts or automatic enablement.");

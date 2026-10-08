@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { deflateRawSync } from "node:zlib";
 import { PackageInstaller } from "../../src/capabilities/management/installations.js";
 import type { ManagedInstallationRecord } from "../../src/capabilities/management/records.js";
+import { ConnectionManager } from "../../src/capabilities/integrations/connections.js";
 
 const skill = "---\nname: notes-check\ndescription: Inspect notes before changing them.\n---\nRead references/guide.md and inspect the connected tools.\n";
 const manifest = { schemaVersion: 1, id: "notes-plugin", version: "1.0.0", skills: "skills", requiredSecrets: [{ name: "notes-token", description: "Token entered separately when connecting notes." }] };
@@ -51,7 +52,7 @@ test("full plugin bundles prepare disabled connections, tools and skills without
   const root = await mkdtemp(join(tmpdir(), "lab-full-bundle-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const installer = new PackageInstaller(root);
-  const connection = { ref: "notes-plugin-account", displayName: "Notes account", provider: "Notes", owner: "local-workspace", resource: "https://notes.example/mcp", scopes: [], enabled: false, auth: { kind: "anonymous" } };
+  const connection = { ref: "conn_notes-plugin-account", displayName: "Notes account", provider: "Notes", owner: "local-workspace", resource: "https://notes.example/mcp", scopes: [], enabled: false, auth: { kind: "anonymous" as const } };
   const pkg = { id: "notes-plugin-provider", version: "1.0.0", source: "mcp", endpoint: connection.resource, connectionRef: connection.ref };
   const prepared = await installer.installZip(bundle({ connections: [connection], packages: [pkg] }));
   assert.deepEqual(prepared.connections, [connection]);
@@ -59,6 +60,11 @@ test("full plugin bundles prepare disabled connections, tools and skills without
   assert.equal(prepared.packages.length, 2);
   assert.ok(prepared.packages.every(pkg => pkg.enabled === false));
   assert.equal(prepared.preview.skills[0].name, "notes-check");
+  const manager = await ConnectionManager.create(prepared.connections);
+  const summary = await manager.summary(connection.ref);
+  assert.equal(summary.status, "unavailable");
+  assert.match(summary.reason ?? "", /disabled/);
+  await assert.rejects(installer.previewZip(bundle({ connections: [{ ...connection, ref: "notes-plugin-account" }], packages: [] })), /namespaced/);
   await assert.rejects(installer.previewZip(bundle({ connections: [{ ...connection, auth: { kind: "stored", credentialRef: "credential_untrusted" } }], packages: [pkg] })), /anonymous templates/);
   await assert.rejects(installer.previewZip(bundle({ packages: [pkg] })), /unknown/);
   await assert.rejects(installer.previewZip(bundle({ connections: [connection], packages: [{ ...pkg, endpoint: "https://another.example/mcp" }] })), /match/);

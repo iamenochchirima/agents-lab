@@ -5,7 +5,7 @@ import { ManagedRepository, ManagedRevisionConflict } from './repository.js';
 import { emptyManagedState, validateManagedState, type ManagedState, type ManagedConnectionRecord, type ManagedPackageRecord, type ManagedProfileRecord } from './records.js';
 import { EncryptedCredentialStore, type CredentialBinding, type CredentialSecret } from './credentials.js';
 import { IntegrationNetworkPolicy } from './network-policy.js';
-import { ConnectionManager, type ConnectionDefinition } from '../integrations/connections.js';
+import { ConnectionManager, validateConnectionDefinition, type ConnectionDefinition } from '../integrations/connections.js';
 import type { OAuthTokenSet, SecretStore } from '../integrations/oauth/flow.js';
 import { EncryptedFileSecretStore } from '../integrations/oauth/encrypted-file-store.js';
 import { loadCapabilityPackageRecords, type LoadedCapabilityPackages, type PackageConnectionResolver } from '../extensions/packages.js';
@@ -195,7 +195,8 @@ export class CapabilityManagement {
         Object.assign(auth, { clientId: selected.clientId, issuer: metadata.issuer, authorizationEndpoint: metadata.authorizationEndpoint, tokenEndpoint: metadata.tokenEndpoint, ...(metadata.revocationEndpoint ? { revocationEndpoint: metadata.revocationEndpoint } : {}) });
         if (selected.clientSecret) credential = { kind: 'oauth-client', clientId: selected.clientId, clientSecret: selected.clientSecret };
       }
-      const candidate = structuredClone(current); upsert(candidate.connections, connection, 'ref'); validateManagedState(candidate);
+      validateConnectionDefinition(connection);
+      const candidate = structuredClone(current); upsert(candidate.connections, connection, 'ref'); validateManagedState(candidate); validateResourceBindings(candidate);
       let createdId: string | undefined;
       try {
         if (credential) {
@@ -315,7 +316,14 @@ export class CapabilityManagement {
           const operation = draft.operations.find(value => value.id === operationId)!; operation.status = 'committed'; operation.resourceRef = prepared.installation.id;
           validateManagedState(draft); createPackageCapabilityCatalog(await this.load(draft), this.options.connectedEnabled);
         }); await this.reload(); return this.view();
-      } catch (error) { await this.repository.mutate(this.repository.read().revision, draft => { draft.operations.find(value => value.id === operationId)!.status = 'abandoned'; }); throw error; }
+      } catch (error) {
+        await this.repository.mutate(this.repository.read().revision, draft => {
+          draft.connections = current.connections; draft.packages = current.packages;
+          draft.profiles = current.profiles; draft.installations = current.installations;
+          draft.operations.find(value => value.id === operationId)!.status = 'abandoned';
+        });
+        await this.reload(); throw error;
+      }
     });
   }
   async reload(): Promise<void> {
@@ -351,18 +359,9 @@ export class CapabilityManagement {
     await this.credentials.reconcileReferences(references);
   }
   private async load(state: ManagedState): Promise<LoadedCapabilityPackages> {
+    for (const connection of state.connections) validateConnectionDefinition(connection);
     const enabled = state.packages.filter(pkg => pkg.enabled !== false);
-    for (const pkg of state.packages) {
-      if (!('connectionRef' in pkg) || !pkg.connectionRef) continue;
-      const connection = state.connections.find(value => value.ref === pkg.connectionRef);
-      if (!connection) throw new Error('Package connection is unknown.');
-      const target = pkg.source === 'mcp' ? pkg.endpoint : pkg.source === 'http' ? pkg.baseUrl : undefined;
-      if (target) {
-        const destination = new URL(target), resource = new URL(connection.resource);
-        const rootPath = resource.pathname.replace(/\/$/, '');
-        if (destination.origin !== resource.origin || (pkg.source === 'mcp' && destination.pathname !== resource.pathname && !destination.pathname.startsWith(rootPath + '/'))) throw new Error('Package endpoint does not match its credential resource.');
-      }
-    }
+    validateResourceBindings(state);
     const resolver: PackageConnectionResolver = {
       summary: ref => this.connections.summary(ref),
       binding: async ref => {
@@ -395,7 +394,12 @@ export class CapabilityManagement {
           if (!current || digest(JSON.stringify(current)) !== processDigest) throw new Error('Admitted process access changed. Readmit this run.');
           return {};
         };
-        const tools = await loadMcpSource({ id: pkg.id, version: pkg.version, endpoint: `stdio://${pkg.id}`, tools: pkg.tools,
+        const discoveryClient = new StdioMcpServer({ executable: pkg.command, args: pkg.args, cwd, env, serverName: pkg.id, protocolVersion: pkg.protocolVersion });
+        let manifests: readonly McpToolManifest[];
+        try { manifests = await discoveryClient.listTools(AbortSignal.timeout(30000)); } finally { await discoveryClient.close(); }
+        if (state.revision === this.repository.read().revision) this.discovery.set(pkg.id, manifests);
+        const selections = pkg.tools ?? manifests.map(tool => ({ remoteName: tool.name, name: toolName(pkg.id, tool.name), riskClass: 'external' as const, approvalMode: 'invocation' as const }));
+        const tools = await loadMcpSource({ id: pkg.id, version: pkg.version, endpoint: `stdio://${pkg.id}`, tools: selections,
           implementationDigest: processDigest, resolveHeaders: authority,
           createServer: (_headers, onDispatch) => {
             const server = new StdioMcpServer({ executable: pkg.command, args: pkg.args, cwd, env, serverName: pkg.id, protocolVersion: pkg.protocolVersion, onDispatch });
@@ -415,7 +419,7 @@ export class CapabilityManagement {
       for (const selection of record.tools ?? []) {
         const known = loaded.tools.find(tool => record.packages.includes(tool.descriptor.source.id) && tool.descriptor.definition.name === selection.name);
         if (known && selection.riskClass !== known.descriptor.definition.riskClass) throw new Error('Tool risk classification belongs to its package; profiles select approval policy.');
-        if (!known && !record.packages.some(id => loaded.packages.some(pkg => pkg.id === id && pkg.unavailableReason))) throw new Error('Selected profile tool is unavailable or unknown.');
+        if (!known && !record.packages.some(id => !loaded.packages.some(pkg => pkg.id === id && !pkg.unavailableReason))) throw new Error('Selected profile tool is unavailable or unknown.');
       }
       const selected = loaded.tools.filter(tool => record.packages.includes(tool.descriptor.source.id) && (record.tools === undefined || record.tools.some(selected => selected.name === tool.descriptor.definition.name && selected.enabled)));
       let tools = selected;
@@ -452,4 +456,18 @@ function makeProfile(record: ManagedProfileRecord, tools: readonly HostedToolCon
 function decodeArchive(value: string): Buffer {
   if (value.length > 24 * 1024 * 1024 || !/^[a-zA-Z0-9+/]*={0,2}$/.test(value)) throw new Error('Invalid bounded ZIP upload.');
   return Buffer.from(value, 'base64');
+}
+
+function validateResourceBindings(state: ManagedState): void {
+    for (const pkg of state.packages) {
+      if (!('connectionRef' in pkg) || !pkg.connectionRef) continue;
+      const connection = state.connections.find(value => value.ref === pkg.connectionRef);
+      if (!connection) throw new Error('Package connection is unknown.');
+      const target = pkg.source === 'mcp' ? pkg.endpoint : pkg.source === 'http' ? pkg.baseUrl : undefined;
+      if (target) {
+        const destination = new URL(target), resource = new URL(connection.resource);
+        const rootPath = resource.pathname.replace(/\/$/, '');
+        if (destination.origin !== resource.origin || (pkg.source === 'mcp' && destination.pathname !== resource.pathname && !destination.pathname.startsWith(rootPath + '/'))) throw new Error('Package endpoint does not match its credential resource.');
+      }
+    }
 }

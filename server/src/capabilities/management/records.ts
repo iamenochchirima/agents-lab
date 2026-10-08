@@ -86,6 +86,9 @@ export function validateManagedState(value: unknown): asserts value is ManagedSt
     else if (auth.kind === "stored") { keys(auth, ["kind", "credentialRef"]); id(auth.credentialRef); }
     else if (auth.kind === "oauth") { keys(auth, ["kind", "clientId", "redirectUri", "clientMetadataUrl", "clientSecretEnv", "clientSecretRef", "tokenCredentialRef", "issuer", "authorizationEndpoint", "tokenEndpoint", "revocationEndpoint", "discovery"]); text(auth.clientId, 512); url(auth.redirectUri); for (const field of ["issuer", "authorizationEndpoint", "tokenEndpoint", "revocationEndpoint", "clientMetadataUrl"]) if (auth[field] !== undefined) url(auth[field]); for (const field of ["clientSecretRef", "tokenCredentialRef"]) if (auth[field] !== undefined) id(auth[field]); if (auth.clientSecretEnv !== undefined && (typeof auth.clientSecretEnv !== "string" || !/^[A-Z][A-Z0-9_]{0,127}$/.test(auth.clientSecretEnv))) fail("invalid secret environment reference"); if (auth.clientSecretEnv && auth.clientSecretRef) fail("ambiguous client secret reference"); if (auth.discovery !== undefined) { const d = record(auth.discovery); keys(d, ["kind", "allowedIssuers", "protectedResourceMetadataUrl"]); if (d.kind !== "mcp") fail("invalid OAuth discovery kind"); strings(d.allowedIssuers, 16).forEach(url); if (d.protectedResourceMetadataUrl !== undefined) url(d.protectedResourceMetadataUrl); } }
     else fail("unsupported authentication kind");
+    // Stored generations retain their original metadata format for inspection.
+    // Live publication separately applies validateConnectionDefinition so legacy
+    // records cannot become executable authority without lifecycle admission.
   }
   const refs = new Set(connections.map(c => record(c).ref));
   for (const value of packages) {

@@ -65,7 +65,7 @@ export class ConnectionManager {
   applyDefinitions(configs: readonly ConnectionDefinition[]): Promise<void> {
     if (!Array.isArray(configs) || configs.length > 64) return Promise.reject(new Error("Connections require a bounded trusted configuration array."));
     const refs = new Set<string>();
-    try { for (const config of configs) { validateDefinition(config); if (refs.has(config.ref)) throw new Error("Connection reference is duplicated."); refs.add(config.ref); } }
+    try { for (const config of configs) { validateConnectionDefinition(config); if (refs.has(config.ref)) throw new Error("Connection reference is duplicated."); refs.add(config.ref); } }
     catch (error) { return Promise.reject(error); }
     const definitions: ConnectionDefinition[] = JSON.parse(JSON.stringify(configs));
     const next = this.definitionsMutation.catch(() => undefined).then(async () => {
@@ -289,7 +289,8 @@ export class ConnectionManager {
     await writeFile(temporary, JSON.stringify({ fingerprint: entry.fingerprint, revoked: entry.revoked, generation: entry.generation }), { mode: 0o600 }); await rename(temporary, path);
   }
 }
-function validateDefinition(config: ConnectionDefinition): void {
+/** Shared admission guard for connection lifecycle and managed publication. */
+export function validateConnectionDefinition(config: ConnectionDefinition): void {
   if (!config || !/^conn_[a-z0-9][a-z0-9_-]{0,57}$/.test(config.ref) || !config.displayName?.trim() || !config.provider?.trim() || !config.owner?.trim() || !Array.isArray(config.scopes) || config.scopes.length > 128 || config.scopes.some(scope => typeof scope !== "string" || !scope || scope.length > 256)) throw new Error("Connection requires a safe reference, owner, resource and scopes.");
   trustedUrl(config.resource);
   if (!config.auth || !["anonymous", "static", "stored", "oauth"].includes(config.auth.kind)) throw new Error("Connection authentication mode is invalid.");

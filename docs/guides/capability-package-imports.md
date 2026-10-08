@@ -34,12 +34,12 @@ A plugin ZIP has `lab-plugin.json` at its root:
       "version": "1.0.0",
       "source": "mcp",
       "endpoint": "https://notes.example/mcp",
-      "connectionRef": "notes-kit-account"
+      "connectionRef": "conn_notes-kit-account"
     }
   ],
   "connections": [
     {
-      "ref": "notes-kit-account",
+      "ref": "conn_notes-kit-account",
       "displayName": "Notes account",
       "provider": "Notes",
       "owner": "local-workspace",
@@ -60,8 +60,9 @@ A plugin ZIP has `lab-plugin.json` at its root:
 ```
 
 Place skills under `skills/<skill-name>/SKILL.md`. The `packages` array contains
-MCP or HTTP source templates using the Lab package schema. Template IDs and
-connection references start with the plugin ID followed by a hyphen. A source
+MCP or HTTP source templates using the Lab package schema. Template IDs start with the plugin ID followed by a hyphen. Connection
+references use `conn_<plugin-id>-<name>` and satisfy the shared connection
+lifecycle validator before publication. A source
 can name only a connection template declared in the same bundle. Connection
 templates are disabled, anonymous and owned by the local workspace. MCP endpoints
 match their connection resource; HTTP base URLs use the same origin. Templates
