@@ -149,3 +149,37 @@ renewal and continuation separately from business effects.
 
 Tool events retain effect certainty, presentation validity and original content.
 Model tool messages use explicit text/JSON projection and identify unsupported media.
+
+### Context preparation liveness
+
+Context preparation also emits heartbeats while loading context and awaiting a
+model-backed compaction summary. It clears its timer when the Activity settles.
+The one-second heartbeat deadline describes worker liveness; it is distinct from
+the configured model/Activity start-to-close budget. SDK heartbeats can be
+[throttled before reaching the server](https://docs.temporal.io/encyclopedia/detecting-activity-failures).
+A heartbeat loss after model dispatch retains an unknown outcome and does not
+justify retrying the provider call.
+
+The narrow acceptance uses a local controlled summary provider delayed by two
+seconds, exceeding the heartbeat deadline without spending model tokens:
+
+```sh
+AGENTLAB_TEMPORAL_ENDPOINT=127.0.0.1:17233 \
+pnpm --filter @agent-harness-lab/lab-server exec tsx src/evals/compaction.ts \
+  --platforms temporal --summary-delay-ms 2000
+```
+
+The optional delay accepts 0–10000 ms; default zero preserves the normal X05
+fixture. Evidence retains the requested delay, actual receive/respond timestamps,
+source hashes and native run IDs. Before the context heartbeat correction,
+`compaction-abfa27a9-45a5-43eb-998e-ec9964efcbf1` failed with
+`CONTEXT_PREPARATION_FAILED`. Afterward,
+`compaction-0f23f5a6-ee2a-4f8c-a94e-a7c9c7185b5b` passed all X05 assertions.
+Three affected B03 trials also passed in
+`behaviour-9a8be7fa-4ec9-4db7-9b1e-a97512c8b995`.
+
+This is composite affected-path validation after the prior 144-case core batch,
+not a claim that the complete core readiness gate ran again at this revision.
+The earlier live L07 model heartbeat loss remains unresolved: its model Activity
+already emitted heartbeats, so this context correction cannot establish that
+incident's cause or overwrite its error.

@@ -29,12 +29,12 @@ async function stop(child: ChildProcess) { if (child.exitCode !== null || child.
 
 /** One native compaction boundary per requested baseline. Isolated workers and
  * Restate server preserve user services; only Temporal's existing server is reused. */
-export async function runCompactionEvals(selected: ExtensionPlatform[]) {
+export async function runCompactionEvals(selected: ExtensionPlatform[], options: { summaryDelayMs?: number } = {}) {
   if (!selected.length || new Set(selected).size !== selected.length || selected.some(platform => !["mastra", "langgraph", "temporal", "restate"].includes(platform))) throw new Error("Select distinct supported baseline platforms.");
   const root = await workspace(), invocationId = `compaction-${randomUUID()}`;
   const directory = join(root, "lab/runs/.evals", invocationId), contextRoot = join(directory, "sessions");
   await mkdir(directory, { recursive: true });
-  const fixture = await startCompactionProvider(), children: ChildProcess[] = [], runners: PlatformRunner[] = [];
+  const fixture = await startCompactionProvider(options), children: ChildProcess[] = [], runners: PlatformRunner[] = [];
   const logs: Record<string, string> = {}, reports: ExtensionReport[] = [], errors: { platform: string; message: string; runIds: string[] }[] = [];
   const start = (label: string, executable: string, args: string[], environment: NodeJS.ProcessEnv, cwd = root) => {
     const child = spawn(executable, args, { cwd, env: environment, stdio: ["ignore", "pipe", "pipe"] });
@@ -49,7 +49,7 @@ export async function runCompactionEvals(selected: ExtensionPlatform[]) {
   process.env.AGENTLAB_OPENROUTER_BASE_URL = fixture.baseUrl; process.env.OPENROUTER_API_KEY = environment.OPENROUTER_API_KEY;
   const startedAt = new Date().toISOString();
   const versions = await installedRuntimeVersions();
-  const sourcePaths = ["server/src/evals/compaction.ts", "server/src/evals/compaction-contracts.ts", "server/src/evals/compaction-provider.ts", "server/src/platforms/restate/variants/baseline/workflow.ts", "server/src/capabilities/context/compaction.ts", "server/src/capabilities/context/context-service.ts", "server/src/capabilities/context/token-counter.ts"];
+  const sourcePaths = ["server/src/evals/compaction.ts", "server/src/evals/compaction-contracts.ts", "server/src/evals/compaction-provider.ts", "server/src/platforms/restate/variants/baseline/workflow.ts", "server/src/platforms/temporal/variants/baseline/activities.ts", "server/src/capabilities/context/compaction.ts", "server/src/capabilities/context/context-service.ts", "server/src/capabilities/context/token-counter.ts"];
   const sourceHashes = Object.fromEntries(await Promise.all(sourcePaths.map(async path => [path, createHash("sha256").update(await readFile(join(root, path))).digest("hex")])));
   let revision: string | null = null, dirty: boolean | null = null; try { revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(); dirty = Boolean(execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim()); } catch { /* source export */ }
   try {
@@ -108,10 +108,10 @@ export async function runCompactionEvals(selected: ExtensionPlatform[]) {
     await writeFile(join(directory, "provider-receipts.json"), JSON.stringify(fixture.receipts, null, 2) + "\n", { flag: "wx" });
     if (previousBase === undefined) delete process.env.AGENTLAB_OPENROUTER_BASE_URL; else process.env.AGENTLAB_OPENROUTER_BASE_URL = previousBase;
     if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey;
-    await writeFile(join(directory, "summary.json"), JSON.stringify({ schemaVersion: 1, invocationId, mode: "scripted-extension", caseVersion: COMPACTION_CASE_VERSION, revision, dirty, versions, sourceHashes, startedAt, completedAt: new Date().toISOString(), controls: { provider: "loopback-scripted", modelQualityClaim: false, contextWindowTokens: 12000, reservedOutputTokens: 4096, safetyMarginTokens: 1024, compactionThresholdPercent: 20, recentMessageGroups: 2, trials: 1 }, reports, errors }, null, 2) + "\n", { flag: "wx" });
+    await writeFile(join(directory, "summary.json"), JSON.stringify({ schemaVersion: 1, invocationId, mode: "scripted-extension", caseVersion: COMPACTION_CASE_VERSION, revision, dirty, versions, sourceHashes, startedAt, completedAt: new Date().toISOString(), controls: { provider: "loopback-scripted", summaryDelayMs: options.summaryDelayMs ?? 0, modelQualityClaim: false, contextWindowTokens: 12000, reservedOutputTokens: 4096, safetyMarginTokens: 1024, compactionThresholdPercent: 20, recentMessageGroups: 2, trials: 1 }, reports, errors }, null, 2) + "\n", { flag: "wx" });
     const proofDirectory = join(root, "lab/runs/.review-proof", invocationId);
     await mkdir(proofDirectory, { recursive: true });
-    await writeFile(join(proofDirectory, "extensions.json"), JSON.stringify({ schemaVersion: 1, mode: "scripted-native", metadata: { revision, dirty, versions, sourceHashes, startedAt, completedAt: new Date().toISOString(), model: "loopback-scripted-compaction-fixture", controls: { caseVersion: COMPACTION_CASE_VERSION, summaryQualityClaim: false, contextWindowTokens: 12000, reservedOutputTokens: 4096, safetyMarginTokens: 1024, compactionThresholdPercent: 20, recentMessageGroups: 2, sourceSummary: join(directory, "summary.json") } }, reports }, null, 2) + "\n", { flag: "wx" });
+    await writeFile(join(proofDirectory, "extensions.json"), JSON.stringify({ schemaVersion: 1, mode: "scripted-native", metadata: { revision, dirty, versions, sourceHashes, startedAt, completedAt: new Date().toISOString(), model: "loopback-scripted-compaction-fixture", controls: { caseVersion: COMPACTION_CASE_VERSION, summaryDelayMs: options.summaryDelayMs ?? 0, summaryQualityClaim: false, contextWindowTokens: 12000, reservedOutputTokens: 4096, safetyMarginTokens: 1024, compactionThresholdPercent: 20, recentMessageGroups: 2, sourceSummary: join(directory, "summary.json") } }, reports }, null, 2) + "\n", { flag: "wx" });
     console.log(`Extension proof: ${join(proofDirectory, "extensions.json")}`);
     for (const [name, contents] of Object.entries(logs)) await writeFile(join(directory, `${name}.log`), contents);
   }
@@ -120,6 +120,6 @@ export async function runCompactionEvals(selected: ExtensionPlatform[]) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2).filter(arg => arg !== "--");
-  if (args.length !== 2 || args[0] !== "--platforms") throw new Error("Usage: compaction --platforms mastra,langgraph,temporal,restate");
-  await runCompactionEvals(args[1].split(",") as ExtensionPlatform[]);
+  if (![2, 4].includes(args.length) || args[0] !== "--platforms" || (args.length === 4 && (args[2] !== "--summary-delay-ms" || !/^\d+$/.test(args[3]!)))) throw new Error("Usage: compaction --platforms mastra,langgraph,temporal,restate [--summary-delay-ms 2000]");
+  await runCompactionEvals(args[1]!.split(",") as ExtensionPlatform[], { summaryDelayMs: args.length === 4 ? Number(args[3]) : 0 });
 }

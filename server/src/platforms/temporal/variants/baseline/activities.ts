@@ -8,52 +8,60 @@ import type { ModelCallResult, ModelRequestInput, TemporalContextPreparationInpu
 import { createModelAdapter } from "./models/factory.js";
 
 export async function prepareContext(input: TemporalContextPreparationInput): Promise<TemporalContextPreparationResult> {
-  const store = new ContextSessionStore(input.rootDirectory);
-  const session = await store.read(input.sessionId);
-  if (session.model !== `${input.provider}/${input.model}`) {
-    throw new Error("The context session model does not match the Temporal run model.");
+  // Summary generation can outlive the one-second liveness deadline even when
+  // the worker is healthy. Keep this I/O Activity alive until its result settles.
+  const heartbeatTimer = setInterval(() => heartbeat({ sessionId: input.sessionId, turnId: input.turnId }), 250);
+  try {
+    heartbeat({ sessionId: input.sessionId, turnId: input.turnId });
+    const store = new ContextSessionStore(input.rootDirectory);
+    const session = await store.read(input.sessionId);
+    if (session.model !== `${input.provider}/${input.model}`) {
+      throw new Error("The context session model does not match the Temporal run model.");
+    }
+    const context = new ContextService(store, new CharacterTokenEstimator());
+    const adapter = createModelAdapter(input.provider);
+    const summarizer: ContextSummaryGenerator = {
+      async summarize(request) {
+        if (input.liveEval) throw new Error("LIVE_EVAL_COMPACTION_DISABLED: live development probes cannot dispatch an unobserved summary request.");
+        const response = await adapter.complete({
+          runId: `${input.sessionId}:context:${request.sourceRevision}`,
+          prompt: formatSummaryPrompt(request.messages),
+          systemInstruction: "Summarize the earlier conversation for another model. Preserve facts, decisions, unresolved requests, and tool results. Return only the concise summary.",
+          provider: input.provider,
+          model: input.model,
+          attemptId: `${input.sessionId}:context:${request.sourceRevision}`,
+          attemptNumber: 1,
+        }, cancellationSignal());
+        if (response.kind !== "success" || response.output === null) throw new Error(response.kind === "failure" ? response.message : "The context summarizer returned no text.");
+        return response.output;
+      },
+    };
+    const prepared = await context.prepareTurn(input.sessionId, input.turnId, summarizer, {
+      forceCompaction: input.forceCompaction,
+      trigger: input.trigger,
+    });
+    return {
+      snapshotId: prepared.snapshot.snapshotId,
+      sessionRevision: prepared.snapshot.sessionRevision,
+      compactionRevision: prepared.snapshot.compactionRevision,
+      inputTokens: prepared.snapshot.budget.inputTokens,
+      remainingTokens: prepared.snapshot.budget.remainingTokens,
+      remainingPercent: prepared.snapshot.budget.remainingPercent,
+      pressure: prepared.snapshot.budget.pressure,
+      quality: prepared.snapshot.budget.quality,
+      compacted: prepared.snapshot.compaction !== null,
+      compaction: prepared.snapshot.compaction === null ? null : {
+        compactionId: prepared.snapshot.compaction.compactionId,
+        trigger: prepared.snapshot.compaction.trigger,
+        sourceMessageCount: prepared.snapshot.compaction.sourceMessageIds.length,
+        retainedMessageCount: prepared.snapshot.compaction.retainedMessageIds.length,
+        beforeInputTokens: prepared.snapshot.compaction.before.inputTokens,
+        afterInputTokens: prepared.snapshot.compaction.after.inputTokens,
+      },
+    };
+  } finally {
+    clearInterval(heartbeatTimer);
   }
-  const context = new ContextService(store, new CharacterTokenEstimator());
-  const adapter = createModelAdapter(input.provider);
-  const summarizer: ContextSummaryGenerator = {
-    async summarize(request) {
-      if (input.liveEval) throw new Error("LIVE_EVAL_COMPACTION_DISABLED: live development probes cannot dispatch an unobserved summary request.");
-      const response = await adapter.complete({
-        runId: `${input.sessionId}:context:${request.sourceRevision}`,
-        prompt: formatSummaryPrompt(request.messages),
-        systemInstruction: "Summarize the earlier conversation for another model. Preserve facts, decisions, unresolved requests, and tool results. Return only the concise summary.",
-        provider: input.provider,
-        model: input.model,
-        attemptId: `${input.sessionId}:context:${request.sourceRevision}`,
-        attemptNumber: 1,
-      }, cancellationSignal());
-      if (response.kind !== "success" || response.output === null) throw new Error(response.kind === "failure" ? response.message : "The context summarizer returned no text.");
-      return response.output;
-    },
-  };
-  const prepared = await context.prepareTurn(input.sessionId, input.turnId, summarizer, {
-    forceCompaction: input.forceCompaction,
-    trigger: input.trigger,
-  });
-  return {
-    snapshotId: prepared.snapshot.snapshotId,
-    sessionRevision: prepared.snapshot.sessionRevision,
-    compactionRevision: prepared.snapshot.compactionRevision,
-    inputTokens: prepared.snapshot.budget.inputTokens,
-    remainingTokens: prepared.snapshot.budget.remainingTokens,
-    remainingPercent: prepared.snapshot.budget.remainingPercent,
-    pressure: prepared.snapshot.budget.pressure,
-    quality: prepared.snapshot.budget.quality,
-    compacted: prepared.snapshot.compaction !== null,
-    compaction: prepared.snapshot.compaction === null ? null : {
-      compactionId: prepared.snapshot.compaction.compactionId,
-      trigger: prepared.snapshot.compaction.trigger,
-      sourceMessageCount: prepared.snapshot.compaction.sourceMessageIds.length,
-      retainedMessageCount: prepared.snapshot.compaction.retainedMessageIds.length,
-      beforeInputTokens: prepared.snapshot.compaction.before.inputTokens,
-      afterInputTokens: prepared.snapshot.compaction.after.inputTokens,
-    },
-  };
 }
 
 /**

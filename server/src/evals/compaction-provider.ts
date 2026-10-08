@@ -3,7 +3,9 @@ import type { MastraModelConfig } from "@mastra/core/llm";
 import { COMPACTION_CONSTRAINT, type CompactionReceipt } from "./compaction-contracts.js";
 
 /** Loopback-only controlled provider. Never forwards a request or retains headers. */
-export async function startCompactionProvider() {
+export async function startCompactionProvider(options: { summaryDelayMs?: number } = {}) {
+  const summaryDelayMs = options.summaryDelayMs ?? 0;
+  if (!Number.isSafeInteger(summaryDelayMs) || summaryDelayMs < 0 || summaryDelayMs > 10000) throw new Error("Summary fixture delay must be between 0 and 10000ms.");
   const receipts: CompactionReceipt[] = [];
   const server = createServer(async (request, response) => {
     try {
@@ -12,11 +14,13 @@ export async function startCompactionProvider() {
       for await (const chunk of request) { raw += chunk.toString(); if (raw.length > 100_000) throw new Error("Fixture request too large."); }
       const body = JSON.parse(raw), messages = body.messages as { role: string; content: string }[];
       if (typeof body.model !== "string" || !body.model.startsWith("fixture/compaction-") || !Array.isArray(messages) || !messages.every(message => typeof message.content === "string")) throw new Error("Unexpected fixture request.");
-      const kind = messages.some(message => message.role === "system" && message.content.startsWith("Summarize the earlier conversation")) ? "summary" : "answer";
+      const kind: CompactionReceipt["kind"] = messages.some(message => message.role === "system" && message.content.startsWith("Summarize the earlier conversation")) ? "summary" : "answer";
       const joined = messages.map(message => message.content).join("\n");
       const output = kind === "summary" ? joined.includes(COMPACTION_CONSTRAINT) ? `Persistent constraints: ${COMPACTION_CONSTRAINT}.` : "No constraints found."
         : messages.at(-1)?.content.startsWith("Return only a JSON object") ? joined.includes(COMPACTION_CONSTRAINT) ? JSON.stringify({ colour: "violet", batch: 27, mode: "read-only" }) : JSON.stringify({ missing: true }) : "Stored.";
-      receipts.push({ sequence: receipts.length + 1, model: body.model, messages, output, kind });
+      const receivedAt = new Date().toISOString();
+      if (kind === "summary" && summaryDelayMs) await new Promise(resolve => setTimeout(resolve, summaryDelayMs));
+      receipts.push(Object.assign({ sequence: receipts.length + 1, model: body.model, messages, output, kind }, { receivedAt, respondedAt: new Date().toISOString(), delayMs: kind === "summary" ? summaryDelayMs : 0 }));
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ id: `fixture-${receipts.length}`, model: body.model, choices: [{ index: 0, message: { role: "assistant", content: output }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }));
     } catch { response.writeHead(400).end("Invalid controlled request."); }

@@ -53,3 +53,18 @@ ignored the correction. The original reports remain unchanged under
 Execute another affected trial only after a relevant correction or explicit
 additional measurement decision. Provider/runtime failures and pending semantic
 judgment stay visible alongside passing mechanical evidence.
+
+## Separate affected-path correction afterward
+
+A controlled Temporal compaction summary delayed by 2,000 ms demonstrated that
+context preparation lacked heartbeats despite its 1,000 ms heartbeat deadline.
+The failing native observation is
+`compaction-abfa27a9-45a5-43eb-998e-ec9964efcbf1`. Adding context-preparation
+heartbeats made the same bounded native fixture pass in
+`compaction-0f23f5a6-ee2a-4f8c-a94e-a7c9c7185b5b`; three affected B03 trials
+passed in `behaviour-9a8be7fa-4ec9-4db7-9b1e-a97512c8b995`.
+
+The L07 model Activity already emitted heartbeats, so its observed loss remains
+unexplained. No free-model rerun was made for this different context-compaction
+fix. Earlier core acceptance remains evidence at its recorded revision;
+affected-path checks do not become a full final-revision readiness gate.
