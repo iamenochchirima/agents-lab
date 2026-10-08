@@ -1,10 +1,10 @@
 # Real agent tools and skills implementation plan
 
-Status: proposal ready for review; implementation paused. Updated 2026-10-08.
+Status: implementing; resumed by user on 2026-10-08.
 
 This is a temporary development plan, outside curated Docs. Earlier uncommitted
 implementation changes are drafts to review against this plan, not accepted
-milestones. Updating the plan does not authorize resuming implementation.
+milestones. The user has now authorized completing this standalone milestone.
 
 This document owns the complete next tools-support milestone: architecture,
 adapters, skills, task environments, native platform integration, frontend,
@@ -176,7 +176,22 @@ Do not repeat large suites without a relevant change, failure or unresolved conc
 - [ ] Frontend and permanent documentation match implemented capabilities.
 - [ ] Coherent commits contain only this milestone's changes; unrelated work is preserved.
 
-## Current evidence and handoff
+## Current position and evidence
+
+Phase 1 is under review. Three parallel workstreams own source execution, skill
+context lifecycle and native projection. The primary agent owns architecture,
+catalog admission, task scenarios, live acceptance, integration and commits.
+
+The capability host is the selected shared source-execution boundary because the
+Lab has concrete Python and TypeScript native workers. Its JSON interface shares
+implementations without sharing executable closures or replacing native loops.
+Direct built-ins remain valid. Source adapters must use the existing connection
+result/attempt contracts and do not grant permissions independently.
+
+Package contributions use explicit package provenance rather than claiming that
+declarative configuration is an executable plugin. A separate capability acceptance
+experiment will allow 2048 output tokens for real tasks; existing baseline live
+evals retain their 512-token controls and free-only routing.
 
 Research and the earlier checklist were committed as `236a879`. Implementation
 drafts remain uncommitted. Earlier checks and live attempts are exploratory evidence,
