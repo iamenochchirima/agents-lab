@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [General backend agent eval gap closure](active/agent-eval-gap-closure.md):
+  next substantial phase covering remaining eval coverage, evidence-based runtime
+  fixes, correction measurement, retained human assessment, applicable extension
+  acceptance and visible coverage. Planned; no runtime implementation yet.
+
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
