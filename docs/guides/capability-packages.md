@@ -227,7 +227,8 @@ agent loop edits are needed for another operation using these source kinds.
 
 An unavailable host usually means a worker cannot reach the configured URL or
 read the private key. Changed skill or MCP definitions require catalog reload.
-An edit conflict requires reading the current file and using its new digest.
+Workspace writes create missing parent directories within the configured writable
+scope. An edit conflict requires reading the current file and using its new digest.
 Unapproved writes remain denied even if a skill says to perform them.
 
 Unknown effects require inspecting the retained call receipt and actual target
