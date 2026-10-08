@@ -2,6 +2,7 @@ import type { InvocationReviewView } from "../../../../capabilities/reviews/cont
 import { getFreeEvalSettings } from "../../../../models/openrouter/free-model-policy.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
 import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
+import type { CapabilityInventorySnapshot } from "../../../../capabilities/contracts.js";
 import type {
   ModelProvider,
   RunEventIntent,
@@ -40,6 +41,7 @@ export interface RestateWorkflowInput {
     readonly maxCalls: number;
   };
   readonly toolCatalog?: ToolCatalogSnapshot;
+  readonly inventory?: CapabilityInventorySnapshot;
   readonly connections?: readonly ConnectionBinding[];
   readonly context?: {
     readonly rootDirectory: string;
@@ -151,6 +153,7 @@ export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflo
     modelRetryAttempts: positiveIntegerFromConfig(manifest.platformConfig, "runMaxRetryAttempts", 3),
     tools,
     ...(manifest.capabilities?.toolCatalog ? { toolCatalog: manifest.capabilities.toolCatalog } : {}),
+    ...(manifest.capabilities?.inventory ? { inventory: manifest.capabilities.inventory } : {}),
     ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     ...(manifest.context.sessionId && manifest.context.turnId ? {
       context: {

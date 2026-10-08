@@ -5,10 +5,27 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from service.app import create_app
+from service.app import create_app, native_context_message
 from service.config import ServiceConfig
 from service.store import SQLiteRunStore
 from protocol.models import thread_id_for_session
+
+
+def test_generated_capability_context_maps_to_native_system_message() -> None:
+    message = native_context_message(
+        {
+            "role": "developer",
+            "content": "Configured capability inventory: Notes profile.",
+            "source": "tools",
+            "metadata": {"capabilityRevision": "revision-1", "authority": "summary_only"},
+        },
+        1,
+    )
+
+    assert message == {
+        "role": "system",
+        "content": "Configured capability inventory: Notes profile.",
+    }
 
 
 def make_client(tmp_path: Path) -> TestClient:

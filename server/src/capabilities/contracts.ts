@@ -81,6 +81,32 @@ export interface CapabilityApproval {
   readonly expiresAt: string;
 }
 
+/** Safe, immutable summary of capabilities admitted for one run. */
+export interface CapabilityInventorySnapshot {
+  readonly schemaVersion: 1;
+  readonly revision: string;
+  /** Exact admitted callable definitions represented by this inventory. */
+  readonly toolCatalogRevision: string;
+  readonly profile: { readonly id: string; readonly version: string; readonly name: string };
+  readonly sources: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly tools: readonly {
+      readonly name: string;
+      readonly risk: CapabilityRisk;
+      readonly approvalMode: "automatic" | "tool_grant" | "invocation";
+    }[];
+  }[];
+  readonly skills: readonly {
+    readonly id: string;
+    readonly version: string;
+    readonly name: string;
+    readonly description: string;
+    readonly digest: string;
+    readonly activation: "preloaded" | "available";
+  }[];
+}
+
 export interface CapabilityResolutionRequest {
   readonly policy: CapabilityPolicy;
   readonly grants: readonly CapabilityGrant[];

@@ -14,6 +14,7 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 export type TerminalRunStatus = "completed" | "failed" | "cancelled" | "reconciliation_required";
 export type ModelProvider = "fake" | "openrouter";
 import type { CapabilityApproval, CapabilityResolution } from "../../capabilities/contracts.js";
+import type { CapabilityInventorySnapshot } from "../../capabilities/contracts.js";
 import type { ConnectionBinding } from "../../capabilities/integrations/contracts.js";
 import type { SkillSummary } from "../../capabilities/skills/index.js";
 export type FailureKind =
@@ -43,6 +44,8 @@ export interface RunSelection {
 export interface RunCapabilities {
   /** Resolved once by trusted admission, never accepted from a browser. */
   readonly toolCatalog?: ToolCatalogSnapshot;
+  /** Human-readable capability metadata projected from the admitted catalog. */
+  readonly inventory?: CapabilityInventorySnapshot;
   readonly tools: {
     readonly enabledNames: readonly string[];
     readonly approvedNames?: readonly string[];

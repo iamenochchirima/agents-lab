@@ -229,6 +229,17 @@ test("LangGraph runner prepares and hands off the exact shared context snapshot"
           ...manifest(runner),
           runId,
           task: { kind: "prompt", prompt: "Remember conformance-4318." },
+          capabilities: {
+            tools: { enabledNames: [], maxRounds: 8, maxCalls: 8 },
+            inventory: {
+              schemaVersion: 1,
+              revision: "langgraph-test-capability-revision",
+              toolCatalogRevision: "langgraph-test-tool-catalog-revision",
+              profile: { id: "test-profile", version: "1.0.0", name: "Notes profile" },
+              sources: [],
+              skills: [],
+            },
+          },
           context: {
             systemInstruction: "Respond directly.",
             sessionId: "session-langgraph-handoff",
@@ -239,6 +250,9 @@ test("LangGraph runner prepares and hands off the exact shared context snapshot"
         await runner.start(runManifest);
         const snapshot = await store.latestSnapshot("session-langgraph-handoff");
         assert.ok(snapshot);
+        const capabilityMessage = snapshot.messages.find((message) => message.source === "tools");
+        assert.equal(capabilityMessage?.role, "developer");
+        assert.match(capabilityMessage?.content ?? "", /test-profile@1\.0\.0/);
         assert.equal(snapshot.messages.at(-1)?.content, "Remember conformance-4318.");
       },
     );

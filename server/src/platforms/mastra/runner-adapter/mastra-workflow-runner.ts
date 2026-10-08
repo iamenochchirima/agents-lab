@@ -394,7 +394,9 @@ export class MastraWorkflowRunner implements PlatformRunner {
       modelFactory: this.modelFactory,
       signal: new AbortController().signal,
     });
-    const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
+    const prepared = await context.prepareTurn(sessionId, turnId, summarizer, {
+      capabilityInventory: record.manifest.capabilities?.inventory,
+    });
     this.addEvent(record, "ContextPrepared", {
       sessionId,
       turnId,

@@ -89,13 +89,14 @@ additional path and edit invariants.
 
 ## Skill and external document lifecycle
 
-The default `business-agent` profile exposes skill operations without depending
-on a remote service. The optional `workspace-agent` profile combines five
-external document operations with three skill operations. Skill metadata is available without adding every body
-to model context. The model can list procedures, load one `SKILL.md`, then read
-the particular resource it needs. Loaded results retain package identity and
-digest. Skill scripts are returned as source text; no script executor is implied.
-Binary assets use bounded base64, while text uses UTF-8.
+Profiles are reproducible capability configurations, not agent personas or job
+roles. The built-in `local-safe` profile supplies a small fixture for initial
+experiments. A configured profile can combine connected operations and skills
+without changing a platform runtime. Skill metadata is available without adding
+every body to model context. The model can list procedures, load one `SKILL.md`,
+then read the particular resource it needs. Loaded results retain package
+identity and digest. Skill scripts are returned as source text; no script
+executor is implied. Binary assets use bounded base64, while text uses UTF-8.
 
 The context session owns activated skill state. Successful instruction loads and
 UTF-8 resource reads persist authority-free identities, exact versions, digests

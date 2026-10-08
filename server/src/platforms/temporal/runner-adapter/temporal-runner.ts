@@ -238,6 +238,7 @@ function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
     preDispatchRetryBackoffMs: configuration.preDispatchRetryBackoffMs,
     tools: manifest.capabilities?.tools ?? configuration.tools,
     ...(manifest.capabilities?.toolCatalog ? { toolCatalog: manifest.capabilities.toolCatalog } : {}),
+    ...(manifest.capabilities?.inventory ? { inventory: manifest.capabilities.inventory } : {}),
     ...(manifest.capabilities?.connections ? { connections: manifest.capabilities.connections } : {}),
     ...(manifest.context.sessionId && manifest.context.turnId ? {
       context: {

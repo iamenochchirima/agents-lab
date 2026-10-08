@@ -1,6 +1,7 @@
 import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
 import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
+import type { CapabilityInventorySnapshot } from "../../../../capabilities/contracts.js";
 import type { ToolCall, ToolDefinition, ToolExecutionResult } from "../../../../capabilities/tools/contracts.js";
 import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
 
@@ -40,6 +41,7 @@ export interface TemporalWorkflowInput {
     readonly maxCalls: number;
   };
   readonly toolCatalog?: ToolCatalogSnapshot;
+  readonly inventory?: CapabilityInventorySnapshot;
   readonly connections?: readonly ConnectionBinding[];
   readonly context?: {
     readonly rootDirectory: string;
@@ -58,6 +60,7 @@ export interface TemporalContextPreparationInput {
   readonly model: string;
   readonly forceCompaction?: boolean;
   readonly trigger?: "preflight" | "provider_overflow";
+  readonly capabilityInventory?: CapabilityInventorySnapshot;
 }
 
 export interface TemporalContextPreparationResult {

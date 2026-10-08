@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CapabilityCatalog, builtinToolDescriptors, createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
+import { CapabilityCatalog, DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES, builtinToolDescriptors, createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
+import { capabilityInventoryContext } from "../../src/capabilities/inventory.js";
 import { createProjectedToolRegistry } from "../../src/capabilities/extensions/projection.js";
 import { createRuntimeToolRegistry } from "../../src/capabilities/extensions/runtime.js";
 import { projectToolResult, toolResultEvidence } from "../../src/capabilities/tools/result-projection.js";
@@ -38,6 +39,35 @@ test("default capability profiles are server-owned and resolve read-only grants"
   assert.deepEqual(catalog.list()[0]?.skills.map((skill) => skill.id), ["research-summary"]);
   assert.ok(resolved.resolution.grants.every(({ approval }) => approval === "not_required"));
   assert.equal(resolved.resolution.decisions.every((decision) => decision.status === "granted"), true);
+});
+
+test("capability inventory contains only the selected profile tools and scoped skill metadata", () => {
+  const skill = { id: "notes:review", version: "2.0.0", name: "review-notes", description: "Check existing notes before editing.", digest: "a".repeat(64) };
+  const profiles = DEFAULT_CAPABILITY_PROFILES.map(profile => profile.id === "local-safe"
+    ? { ...profile, availableSkills: [skill] }
+    : profile);
+  const catalog = new CapabilityCatalog(DEFAULT_CAPABILITY_MANIFESTS, profiles, undefined, undefined, { toolDescriptors: builtinToolDescriptors() });
+  const resolved = catalog.resolve("local-safe");
+  const toolCatalog = catalog.toolSnapshot(["calculator", "fixture_lookup"], resolved.resolution);
+  const preloadedSkills = resolved.skills.map(value => ({
+    id: value.manifest.id,
+    version: value.manifest.version,
+    name: value.manifest.name,
+    description: value.manifest.description,
+    digest: value.manifest.provenance.digest,
+  }));
+  const inventory = catalog.inventory(resolved.profile, toolCatalog, preloadedSkills);
+  const context = capabilityInventoryContext(inventory);
+
+  assert.deepEqual(inventory.sources.flatMap(source => source.tools.map(tool => tool.name)).sort(), ["calculator", "fixture_lookup"]);
+  assert.equal(inventory.toolCatalogRevision, toolCatalog.revision);
+  assert.deepEqual(inventory.skills.map(value => [value.id, value.activation]), [["research-summary", "preloaded"], ["notes:review", "available"]]);
+  assert.match(context, /review-notes/);
+  assert.match(context, new RegExp(toolCatalog.revision));
+  assert.doesNotMatch(JSON.stringify(inventory), /https?:\/\//);
+  assert.doesNotMatch(context, /fixture_write/);
+  assert.equal(catalog.inventory(resolved.profile, toolCatalog, preloadedSkills).revision, inventory.revision);
+  assert.notEqual(catalog.inventory(resolved.profile, { ...toolCatalog, revision: `${toolCatalog.revision}-changed` }, preloadedSkills).revision, inventory.revision);
 });
 
 test("the MCP profile keeps server-owned tool selection separate from the direct fixture", () => {

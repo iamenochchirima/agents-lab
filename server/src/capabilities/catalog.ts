@@ -6,6 +6,7 @@ import type { UntrustedSkillContextText } from "./skills/contracts.js";
 import type {
   CapabilityApproval,
   CapabilityGrant,
+  CapabilityInventorySnapshot,
   CapabilityManifest,
   CapabilityPolicy,
   CapabilityResolution,
@@ -126,6 +127,46 @@ export class CapabilityCatalog {
       } : limits } };
     });
     return deepFreeze({ schemaVersion: 1 as const, revision: createHash("sha256").update(JSON.stringify(tools)).digest("hex"), tools });
+  }
+
+  /** Build model/UI metadata from the exact admitted schemas, never the global catalog. */
+  inventory(
+    profile: CapabilityProfile,
+    toolCatalog: ToolCatalogSnapshot,
+    preloadedSkills: readonly SkillSummary[],
+    explicitlySelectedSkillIds: readonly string[] = [],
+  ): CapabilityInventorySnapshot {
+    const sources = new Map<string, { id: string; version: string; tools: { name: string; risk: "pure" | "read" | "write" | "external"; approvalMode: "automatic" | "tool_grant" | "invocation" }[] }>();
+    for (const descriptor of toolCatalog.tools) {
+      const key = `${descriptor.source.id}@${descriptor.source.version}`;
+      const source = sources.get(key) ?? { id: descriptor.source.id, version: descriptor.source.version, tools: [] };
+      source.tools.push({
+        name: descriptor.definition.name,
+        risk: descriptor.definition.riskClass,
+        approvalMode: descriptor.definition.approvalMode ?? "automatic",
+      });
+      sources.set(key, source);
+    }
+    const preloaded = new Set(preloadedSkills.map(skill => `${skill.id}@${skill.version}`));
+    const selected = new Set(explicitlySelectedSkillIds);
+    const skills = new Map<string, CapabilityInventorySnapshot["skills"][number]>();
+    for (const skill of [...preloadedSkills, ...(profile.availableSkills ?? [])]) {
+      const key = `${skill.id}@${skill.version}`;
+      skills.set(key, {
+        ...skill,
+        activation: preloaded.has(key) || selected.has(skill.id) ? "preloaded" : "available",
+      });
+    }
+    const inventory = {
+      schemaVersion: 1 as const,
+      toolCatalogRevision: toolCatalog.revision,
+      profile: { id: profile.id, version: profile.version, name: profile.displayName },
+      sources: [...sources.values()].map(source => ({ ...source, tools: source.tools.sort((left, right) => left.name.localeCompare(right.name)) }))
+        .sort((left, right) => left.id.localeCompare(right.id) || left.version.localeCompare(right.version)),
+      skills: [...skills.values()].sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)),
+    };
+    const revision = createHash("sha256").update(JSON.stringify(inventory)).digest("hex");
+    return deepFreeze({ ...inventory, revision });
   }
 
   definitions(): readonly CapabilityManifest[] {

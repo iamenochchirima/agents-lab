@@ -665,7 +665,10 @@ async function prepareContextSnapshot(
         },
       };
       try {
-        return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer, options)).snapshot;
+        return (await context.prepareTurn(input.context!.sessionId, input.context!.turnId, summarizer, {
+          ...options,
+          ...(input.inventory ? { capabilityInventory: input.inventory } : {}),
+        })).snapshot;
       } catch (error) {
         if (error instanceof ContextCompactionError) {
           throw new restate.TerminalError("Context preparation failed.", {

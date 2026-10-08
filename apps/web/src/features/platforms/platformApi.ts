@@ -56,7 +56,7 @@ export interface RunView {
     readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly clientTurnId?: string; readonly snapshotId?: string };
     readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
     readonly selection?: RunSelection;
-    readonly capabilities?: PlatformRunCapabilities;
+    readonly capabilities?: PlatformRunManifestCapabilities;
   };
   readonly events: readonly RunEvent[];
   readonly executionReference: {
@@ -166,6 +166,33 @@ export interface PlatformRunCapabilities {
     readonly maxCalls: number;
   };
   readonly approvals?: readonly CapabilityApproval[];
+}
+
+/** Read-only server projection of the capabilities admitted for a run. */
+export interface PlatformRunManifestCapabilities extends PlatformRunCapabilities {
+  readonly inventory?: {
+    readonly schemaVersion: 1;
+    readonly revision: string;
+    readonly toolCatalogRevision: string;
+    readonly profile: { readonly id: string; readonly version: string; readonly name: string };
+    readonly sources: readonly {
+      readonly id: string;
+      readonly version: string;
+      readonly tools: readonly {
+        readonly name: string;
+        readonly risk: "pure" | "read" | "write" | "external";
+        readonly approvalMode: "automatic" | "tool_grant" | "invocation";
+      }[];
+    }[];
+    readonly skills: readonly {
+      readonly id: string;
+      readonly version: string;
+      readonly name: string;
+      readonly description: string;
+      readonly digest: string;
+      readonly activation: "preloaded" | "available";
+    }[];
+  };
 }
 
 export interface CapabilityApproval {

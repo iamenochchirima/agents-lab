@@ -406,7 +406,9 @@ export class MastraBaselineRunner implements PlatformRunner {
       modelFactory: this.modelFactory ?? defaultMastraModelFactory,
       signal: record.controller.signal,
     });
-    const prepared = await context.prepareTurn(sessionId, turnId, summarizer);
+    const prepared = await context.prepareTurn(sessionId, turnId, summarizer, {
+      capabilityInventory: record.manifest.capabilities?.inventory,
+    });
     this.addEvent(record, "ContextPrepared", {
       sessionId,
       turnId,

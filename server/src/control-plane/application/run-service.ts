@@ -260,6 +260,20 @@ export class RunService {
     const toolNames = resolved.resolution.grants
       .filter(({ manifest }) => manifest.kind === "tool" || manifest.source.kind === "connection")
       .map(({ manifest }) => manifest.id);
+    const toolCatalog = this.dependencies.capabilities.toolSnapshot(toolNames, resolved.resolution);
+    const preloadedSkills = resolved.skills.map((skill) => ({
+      id: skill.manifest.id,
+      version: skill.manifest.version,
+      name: skill.manifest.name,
+      description: skill.manifest.description,
+      digest: skill.manifest.provenance.digest,
+    }));
+    const inventory = this.dependencies.capabilities.inventory(
+      resolved.profile,
+      toolCatalog,
+      preloadedSkills,
+      request.capabilities?.requestedSkillIds ?? [],
+    );
     return {
       ...request,
       capabilities: {
@@ -280,15 +294,10 @@ export class RunService {
             operations: [...grant.allowedOperations],
             ...(manifest.mcp ? { mcp: manifest.mcp } : {}),
           })),
-        toolCatalog: this.dependencies.capabilities.toolSnapshot(toolNames, resolved.resolution),
+        toolCatalog,
+        inventory,
         resolution: resolved.resolution,
-        skills: resolved.skills.map((skill) => ({
-          id: skill.manifest.id,
-          version: skill.manifest.version,
-          name: skill.manifest.name,
-          description: skill.manifest.description,
-          digest: skill.manifest.provenance.digest,
-        })),
+        skills: preloadedSkills,
       },
     };
   }

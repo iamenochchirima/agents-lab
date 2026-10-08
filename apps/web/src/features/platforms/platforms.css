@@ -1161,6 +1161,28 @@
   padding-left: 9px;
 }
 
+.capability-inventory {
+  display: grid;
+  font-size: 0.68rem;
+  gap: 6px;
+  line-height: 1.4;
+}
+
+.capability-inventory summary {
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.capability-inventory ul {
+  margin: 3px 0 0;
+  padding-left: 16px;
+}
+
+.capability-inventory strong {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
 .chat-availability-error {
   align-items: flex-start;
   color: var(--danger);

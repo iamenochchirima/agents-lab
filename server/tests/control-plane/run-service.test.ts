@@ -934,6 +934,7 @@ test("explicit skill admission persists untrusted user context without widening 
     assert.equal(runner.startCalls, 1);
     assert.ok(run.manifest.capabilities);
     assert.deepEqual(run.manifest.capabilities.tools.enabledNames, []);
+    assert.deepEqual(run.manifest.capabilities.inventory?.skills.map(skill => [skill.id, skill.activation]), [["procedures:evidence-report", "preloaded"]]);
     // Reopening the store proves this selection is retained, rather than only
     // injected into an in-memory request for the first model call.
     const sessions = new ContextSessionStore(join(root, "sessions"));

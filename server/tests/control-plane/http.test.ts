@@ -331,13 +331,19 @@ test("a selected capability profile is resolved before dispatch and retained as 
         variant: "baseline",
         task: { kind: "prompt", prompt: "Read the local fixture." },
         model: { provider: "fake", model: "fake-success" },
-        capabilities: { profileId: "local-safe" },
+        capabilities: {
+          profileId: "local-safe",
+          inventory: { profile: { id: "client-controlled", name: "Fake" }, sources: [{ id: "ungranted", tools: ["unsafe_write"] }] },
+        },
       },
     });
     assert.equal(response.statusCode, 202);
     const run = response.json();
     assert.equal(run.manifest.capabilities.profileId, "local-safe");
     assert.deepEqual(run.manifest.capabilities.tools.enabledNames, ["calculator", "fixture_lookup"]);
+    assert.equal(run.manifest.capabilities.inventory.profile.id, "local-safe");
+    assert.equal(run.manifest.capabilities.inventory.toolCatalogRevision, run.manifest.capabilities.toolCatalog.revision);
+    assert.deepEqual(run.manifest.capabilities.inventory.sources.flatMap((source: { tools: readonly { name: string }[] }) => source.tools.map(tool => tool.name)), ["calculator", "fixture_lookup"]);
     assert.deepEqual(run.manifest.capabilities.resolution.grants.map((grant: { manifest: { id: string } }) => grant.manifest.id), ["calculator", "fixture_lookup"]);
     const evidence = await app.inject({ method: "GET", url: `/api/runs/${run.runId}/evidence/capabilities.json` });
     assert.equal(evidence.statusCode, 200);

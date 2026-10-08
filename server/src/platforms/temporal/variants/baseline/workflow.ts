@@ -189,6 +189,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           model: input.model.model,
           ...(forceCompaction ? { forceCompaction: true } : {}),
           ...(trigger === "provider_overflow" ? { trigger } : {}),
+          ...(input.inventory ? { capabilityInventory: input.inventory } : {}),
         }],
       ));
     } finally {

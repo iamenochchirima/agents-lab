@@ -144,7 +144,17 @@ test("workflow input carries the shared tool and context contract", () => {
       model: { provider: "fake", model: "fake-context", contextWindowTokens: 2_048 },
       sessionId: "restate-context-session",
       clientTurnId: "turn-1",
-      capabilities: { tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 } },
+      capabilities: {
+        tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 },
+        inventory: {
+          schemaVersion: 1,
+          revision: "restate-capability-revision",
+          toolCatalogRevision: "restate-tool-catalog-revision",
+          profile: { id: "notes-agent", version: "1.0.0", name: "Notes agent" },
+          sources: [{ id: "notes", version: "1.0.0", tools: [{ name: "notes_list", risk: "read", approvalMode: "automatic" }] }],
+          skills: [],
+        },
+      },
     }, {
       runId: "restate-context-run",
       context: { sessionId: "restate-context-session", turnId: "turn-1" },
@@ -158,6 +168,7 @@ test("workflow input carries the shared tool and context contract", () => {
       model: { provider: "fake", model: "fake-context", contextWindowTokens: 2_048 },
       modelRetryAttempts: 3,
       tools: { enabledNames: [], maxRounds: 2, maxCalls: 3 },
+      inventory: manifest.capabilities?.inventory,
       context: {
         rootDirectory: "/tmp/agentlab-restate-context",
         sessionId: "restate-context-session",

@@ -39,6 +39,7 @@ export async function prepareContext(input: TemporalContextPreparationInput): Pr
     const prepared = await context.prepareTurn(input.sessionId, input.turnId, summarizer, {
       forceCompaction: input.forceCompaction,
       trigger: input.trigger,
+      ...(input.capabilityInventory ? { capabilityInventory: input.capabilityInventory } : {}),
     });
     return {
       snapshotId: prepared.snapshot.snapshotId,

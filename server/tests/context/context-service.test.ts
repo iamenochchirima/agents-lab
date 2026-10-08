@@ -123,17 +123,34 @@ test("inserts selected skills as untrusted developer context and preserves them 
       count: (messages) => ({ tokens: messages.reduce((sum, message) => sum + message.content.length, 0), quality: "estimated", basis: "test" }),
     });
 
+    const capabilityInventory = {
+      schemaVersion: 1 as const,
+      revision: "b".repeat(64),
+      toolCatalogRevision: "d".repeat(64),
+      profile: { id: "notes-agent", version: "1.0.0", name: "Notes agent" },
+      sources: [{ id: "notes-mcp", version: "2.0.0", tools: [{ name: "memo_list_memos", risk: "read" as const, approvalMode: "automatic" as const }] }],
+      skills: [{ id: "notes:review", version: "2.0.0", name: "review-notes", description: "Read before editing.", digest: "c".repeat(64), activation: "available" as const }],
+    };
     const prepared = await service.prepareTurn(
       turn.session.sessionId,
       turn.turn.turnId,
       { summarize: async () => "Earlier evidence summary." },
-      { forceCompaction: true },
+      { forceCompaction: true, capabilityInventory },
     );
     const skill = prepared.snapshot.messages.find((message) => message.source === "skills");
     assert.equal(skill?.role, "developer");
     assert.equal(skill?.content, "Separate evidence from interpretation.");
     assert.equal(skill?.metadata?.authority, "none");
-    assert.deepEqual(prepared.snapshot.sources, ["system", "skills", "compaction-summary", "transcript"]);
+    const awareness = prepared.snapshot.messages.find(message => message.source === "tools");
+    assert.equal(awareness?.role, "developer");
+    assert.match(awareness?.content ?? "", /"notes-mcp"@2\.0\.0: "memo_list_memos"/);
+    assert.match(awareness?.content ?? "", /review-notes/);
+    assert.equal(awareness?.metadata?.capabilityRevision, capabilityInventory.revision);
+    assert.equal(awareness?.metadata?.authority, "summary_only");
+    assert.equal(prepared.snapshot.capabilityRevision, capabilityInventory.revision);
+    assert.ok(prepared.snapshot.budget.inputTokens! >= awareness!.content.length);
+    assert.deepEqual((await store.read("session-service-skills")).systemInstruction, "Answer directly.");
+    assert.deepEqual(prepared.snapshot.sources, ["system", "skills", "tools", "compaction-summary", "transcript"]);
     assert.equal(prepared.snapshot.compaction?.trigger, "preflight");
     assert.equal(prepared.snapshot.messages.some((message) => message.source === "compaction-summary"), true);
     assert.deepEqual((await store.readTranscript(session.sessionId)).map((message) => message.source), ["transcript", "transcript", "transcript"]);

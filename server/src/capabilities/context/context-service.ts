@@ -12,6 +12,8 @@ import type {
 } from "./contracts.js";
 import { ContextSessionStore, type ContextSession, type ContextTurn } from "./session-store.js";
 import type { UntrustedSkillContextText } from "../skills/contracts.js";
+import type { CapabilityInventorySnapshot } from "../contracts.js";
+import { capabilityInventoryContext } from "../inventory.js";
 
 export interface PreparedContextTurn {
   readonly session: ContextSession;
@@ -22,6 +24,8 @@ export interface PreparedContextTurn {
 export interface PrepareContextOptions {
   readonly forceCompaction?: boolean;
   readonly trigger?: "preflight" | "provider_overflow" | "manual";
+  /** Per-run authority summary, rendered into the counted and retained context snapshot. */
+  readonly capabilityInventory?: CapabilityInventorySnapshot;
 }
 
 /**
@@ -61,7 +65,7 @@ export class ContextService {
 
     const currentMessage = transcript.find((message) => message.messageId === turns.userMessageId);
     if (!currentMessage) throw new Error(`Context turn has no user message: ${turnId}`);
-    const messages = contextMessagesForSession(session, transcript);
+    const messages = contextMessagesForSession(session, transcript, turns.turnId, options.capabilityInventory, this.now());
     const policy = policyFromSession(session);
     const initialBudget = calculateContextBudget(session.contextWindowTokens, this.tokenCounter.count(messages), policy);
     if (initialBudget.pressure === "unknown") {
@@ -107,6 +111,7 @@ export class ContextService {
       sessionRevision: turns.sessionRevision,
       compactionRevision,
       model: session.model,
+      ...(options.capabilityInventory ? { capabilityRevision: options.capabilityInventory.revision } : {}),
       messages: contextMessages,
       sources: [...new Set(contextMessages.map((message) => message.source))],
       budget,
@@ -162,17 +167,44 @@ function systemMessage(session: ContextSession): ContextMessage {
   };
 }
 
-function contextMessagesForSession(session: ContextSession, transcript: readonly ContextMessage[]): readonly ContextMessage[] {
+function contextMessagesForSession(
+  session: ContextSession,
+  transcript: readonly ContextMessage[],
+  turnId?: string,
+  capabilityInventory?: CapabilityInventorySnapshot,
+  createdAt = session.createdAt,
+): readonly ContextMessage[] {
   const skills = [...(session.skillContexts ?? []), ...(session.activeSkillContexts ?? [])];
-  if (skills.length === 0) return [systemMessage(session), ...transcript];
-
   const skillMessages: ContextMessage[] = skills.map((skill, index) => skillMessage(session, skill, index + 1, index >= session.skillContexts.length));
-  const offset = skillMessages.length;
+  const capabilityMessage = capabilityInventory && turnId ? [inventoryMessage(session, turnId, capabilityInventory, skillMessages.length + 1, createdAt)] : [];
+  const offset = skillMessages.length + capabilityMessage.length;
+  if (offset === 0) return [systemMessage(session), ...transcript];
   return [
     systemMessage(session),
     ...skillMessages,
+    ...capabilityMessage,
     ...transcript.map((message) => ({ ...message, sequence: message.sequence + offset })),
   ];
+}
+
+function inventoryMessage(
+  session: ContextSession,
+  turnId: string,
+  inventory: CapabilityInventorySnapshot,
+  sequence: number,
+  createdAt: string,
+): ContextMessage {
+  return {
+    schemaVersion: 1,
+    messageId: `capabilities-${createHash("sha256").update(`${turnId}:${inventory.revision}`).digest("hex").slice(0, 32)}`,
+    sessionId: session.sessionId,
+    sequence,
+    role: "developer",
+    content: capabilityInventoryContext(inventory),
+    source: "tools",
+    createdAt,
+    metadata: { capabilityRevision: inventory.revision, authority: "summary_only" },
+  };
 }
 
 function skillMessage(session: ContextSession, skill: UntrustedSkillContextText, sequence: number, activated = false): ContextMessage {

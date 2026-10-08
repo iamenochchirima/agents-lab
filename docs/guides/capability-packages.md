@@ -1,8 +1,8 @@
 # Give native agents tools and skills
 
-The default example package configuration supplies procedural skills through
-a `business-agent` profile. Optional document tools connect through an external
-MCP provider; the Lab runtime does not manage an agent filesystem. Agents on Mastra, LangGraph, Temporal and Restate
+The default example package configuration supplies procedural skills through a
+reproducible capability profile. Optional document tools connect through an
+external MCP provider; the Lab runtime does not manage an agent filesystem. Agents on Mastra, LangGraph, Temporal and Restate
 receive the selected tool declarations through native adapters. Source execution
 uses the control plane's authenticated capability host.
 

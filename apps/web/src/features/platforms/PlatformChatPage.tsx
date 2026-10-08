@@ -488,6 +488,19 @@ export function PlatformChatPage() {
             </div>
             <ModelPicker disabled={modelPickerDisabled} onChange={setSelectedModel} value={selectedModel} />
             <CapabilityPicker targets={[`${platform.id}/${variantId}`]} disabled={modelPickerDisabled} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} selectedSkillIds={requestedSkillIds} onSkillsChange={setRequestedSkillIds} />
+            {latestRun?.manifest.capabilities?.inventory && <details className="chat-session-note capability-inventory">
+              <summary>Capabilities given to the agent</summary>
+              <small>{latestRun.manifest.capabilities.inventory.profile.name} · {latestRun.manifest.capabilities.inventory.profile.id} · catalog {latestRun.manifest.capabilities.inventory.toolCatalogRevision.slice(0, 12)}</small>
+              {latestRun.manifest.capabilities.inventory.sources.length === 0 && <p>No tools were enabled for this run.</p>}
+              {latestRun.manifest.capabilities.inventory.sources.map(source => <div key={`${source.id}@${source.version}`}>
+                <strong>{source.id}</strong>
+                <ul>{source.tools.map(tool => <li key={tool.name}>{tool.name} · {tool.risk}{tool.approvalMode === "invocation" ? " · approval for each action" : tool.approvalMode === "tool_grant" ? " · approved for this run" : ""}</li>)}</ul>
+              </div>)}
+              {latestRun.manifest.capabilities.inventory.skills.length > 0 && <div>
+                <strong>Skills</strong>
+                <ul>{latestRun.manifest.capabilities.inventory.skills.map(skill => <li key={`${skill.id}@${skill.version}`}>{skill.name} · {skill.activation}</li>)}</ul>
+              </div>}
+            </details>}
             <details className="chat-options">
               <summary>Run options <ChevronDown aria-hidden="true" size={14} /></summary>
               <div className="chat-option-grid">

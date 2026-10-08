@@ -124,6 +124,19 @@ The generic baseline instructions already ask agents to use admitted tools and l
 
 The Local safe default is a limited fixture configuration. An installed Memos connection does not imply that a chat using that profile receives its CRUD tools. The proposed user experience should let a contributor enable connected capabilities for their agent and then derive the model inventory automatically. Purpose-specific profiles can remain reproducibility controls; a business-agent role is not required.
 
-## Proposed implementation handoff
+## Implementation follow-through
 
-The standalone [implementation checklist](../../development/implementation-plans/platforms/active/agent-capability-awareness.md) describes the work and commit checkpoints. It has not been implemented. Success means a newly enabled connector appears in the agent's actual configuration and the model can select its tools without changing runtime code or hardcoding its name into a prompt.
+The first implementation slice now derives an inventory from the admitted profile,
+selected tool schemas and skill catalog. Its revision includes the exact callable
+tool-catalog revision. A generated, budgeted context message carries that summary
+through Temporal, Restate, Mastra and LangGraph without changing stored session
+instructions. The chat run details display the same retained inventory. The model
+still receives each executable tool's actual schema through the platform's existing
+tool declaration path.
+
+The remaining work is a real-model capability-awareness acceptance run and review of
+its retained evidence. Deferred search is intentionally conditional: implement it
+only after measuring schema-token cost or observing tool-selection failures that
+eager declarations do not address. See the standalone
+[implementation checklist](../../development/implementation-plans/platforms/active/agent-capability-awareness.md)
+for progress and validation evidence.

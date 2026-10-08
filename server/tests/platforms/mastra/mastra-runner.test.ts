@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { MastraModelConfig } from "@mastra/core/llm";
 
+import { ContextSessionStore } from "../../../src/capabilities/context/session-store.js";
 import { buildRunManifest } from "../../../src/control-plane/domain/manifest.js";
 import type { RunManifest } from "../../../src/control-plane/domain/types.js";
 import { MastraBaselineRunner } from "../../../src/platforms/mastra/runner-adapter/mastra-runner.js";
@@ -115,6 +119,7 @@ test("Mastra runs a real Agent.generate call and duplicate start is idempotent",
 test("Mastra Agent.generate sends the selected OpenRouter model and preserves normalized evidence", async () => {
   const previousKey = process.env.OPENROUTER_API_KEY;
   const originalFetch = globalThis.fetch;
+  const contextRoot = await mkdtemp(join(tmpdir(), "agentlab-mastra-capability-context-"));
   const requests: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
   const selectedModel = "openai/gpt-4o-mini";
 
@@ -141,8 +146,38 @@ test("Mastra Agent.generate sends the selected OpenRouter model and preserves no
   try {
     const runner = new MastraBaselineRunner({
       environment: { OPENROUTER_API_KEY: "test-openrouter-secret" },
+      contextRoot,
     });
-    const manifest = manifestFor(runner, selectedModel, "openrouter", "mastra-openrouter-native");
+    const baseManifest = manifestFor(runner, selectedModel, "openrouter", "mastra-openrouter-native");
+    const sessionId = "mastra-openrouter-capability-context";
+    const contextStore = new ContextSessionStore(contextRoot);
+    await contextStore.create({
+      sessionId,
+      platform: "mastra",
+      variant: "baseline",
+      model: `openrouter/${selectedModel}`,
+      systemInstruction: baseManifest.context.systemInstruction,
+      contextWindowTokens: 128_000,
+      reservedOutputTokens: 4_096,
+      safetyMarginTokens: 1_024,
+      compactionThresholdPercent: 20,
+    });
+    const contextTurn = await contextStore.admitTurn(sessionId, baseManifest.runId, baseManifest.task.prompt);
+    const manifest: RunManifest = {
+      ...baseManifest,
+      context: { ...baseManifest.context, sessionId, turnId: contextTurn.turn.turnId },
+      capabilities: {
+        tools: { enabledNames: [], maxRounds: 8, maxCalls: 8 },
+        inventory: {
+          schemaVersion: 1,
+          revision: "test-capability-revision",
+          toolCatalogRevision: "test-tool-catalog-revision",
+          profile: { id: "test-profile", version: "1.0.0", name: "Notes profile" },
+          sources: [],
+          skills: [],
+        },
+      },
+    };
     const reference = await runner.start(manifest);
     const inspection = await waitForTerminal(runner, reference);
 
@@ -157,14 +192,19 @@ test("Mastra Agent.generate sends the selected OpenRouter model and preserves no
     assert.equal(requests.length, 1);
     assert.equal(requests[0]?.url.endsWith("/chat/completions"), true);
     assert.equal(requests[0]?.body.model, selectedModel);
-    const messages = requests[0]?.body.messages as Array<{ role: string; content: string }>;
-    assert.deepEqual(messages.filter((message) => message.role === "system"), [
-      { role: "system", content: [{ type: "text", text: manifest.context.systemInstruction }] },
-    ]);
+    const messages = requests[0]?.body.messages as Array<{ role: string; content: unknown }>;
+    const systemContents = messages.filter((message) => message.role === "system").flatMap((message) =>
+      Array.isArray(message.content)
+        ? message.content.map((part) => typeof part === "object" && part !== null && "text" in part ? String(part.text) : "")
+        : [String(message.content)],
+    );
+    assert.ok(systemContents.includes(manifest.context.systemInstruction));
+    assert.ok(systemContents.some((content) => content.includes("Configured capability inventory") && content.includes("test-profile@1.0.0")));
     assert.equal(requests[0]?.headers.get("authorization"), "Bearer test-openrouter-secret");
     assert.equal(JSON.stringify(inspection).includes("test-openrouter-secret"), false);
     assert.equal(JSON.stringify(reference).includes("test-openrouter-secret"), false);
   } finally {
+    await rm(contextRoot, { recursive: true, force: true });
     globalThis.fetch = originalFetch;
     if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previousKey;

@@ -93,6 +93,8 @@ export interface ContextSnapshot {
   readonly sessionRevision: number;
   readonly compactionRevision: number;
   readonly model: string;
+  /** Revision of the generated admitted-capability message, when present. */
+  readonly capabilityRevision?: string;
   readonly messages: readonly ContextMessage[];
   readonly sources: readonly ContextSourceKind[];
   readonly budget: ContextBudget;

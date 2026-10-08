@@ -247,7 +247,10 @@ export class LangGraphBaselineRunner implements PlatformRunner {
     });
     const snapshot = snapshotId && !options.forceCompaction
       ? await context.readSnapshot(sessionId, snapshotId)
-      : (await context.prepareTurn(sessionId, turnId, summarizer, options)).snapshot;
+      : (await context.prepareTurn(sessionId, turnId, summarizer, {
+        ...options,
+        capabilityInventory: manifest.capabilities?.inventory,
+      })).snapshot;
     return contextIdentity(snapshot, sessionId, turnId);
   }
 
