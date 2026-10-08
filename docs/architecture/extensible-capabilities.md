@@ -97,6 +97,16 @@ the particular resource it needs. Loaded results retain package identity and
 digest. Skill scripts are returned as source text; no script executor is implied.
 Binary assets use bounded base64, while text uses UTF-8.
 
+The context session owns activated skill state. Successful instruction loads and
+UTF-8 resource reads persist authority-free identities, exact versions, digests
+and content before returning to the caller. Repeated identical loads are a no-op.
+Changed content under an active identity requires a new session. Follow-up
+snapshots include these records as contextual user messages with `source: skills`;
+they do not promote tool text to a higher-priority instruction role. Compaction
+protects these records and includes their actual size in the context budget.
+Binary assets remain tool evidence rather than permanently occupying model context.
+Preselected legacy skills remain separate admission configuration.
+
 Workspace tools list, read and search files, then create or patch scoped output
 files. Existing-file replacement requires the previously observed digest. Patches
 require an unambiguous match. Local mutations serialize within that package

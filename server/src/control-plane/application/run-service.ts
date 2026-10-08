@@ -225,11 +225,25 @@ export class RunService {
 
   private async resolveCapabilities(request: RunRequest): Promise<RunRequest> {
     const profileId = request.capabilities?.profileId;
-    if (!profileId) return request;
+    if (!profileId) {
+      if (request.capabilities?.requestedSkillIds?.length) throw new InvalidRunRequestError("Skill selection requires a capability profile.");
+      // Direct callers also cannot supply execution bindings or a tool snapshot.
+      if (!request.capabilities) return request;
+      const { toolCatalog: _untrusted, ...capabilities } = request.capabilities;
+      const toolCatalog = this.dependencies.capabilities?.toolSnapshot(capabilities.tools.enabledNames);
+      if (toolCatalog?.tools.some(tool => tool.execution.kind === "hosted")) {
+        throw new InvalidRunRequestError("Package tools require a configured capability profile and its approval decisions.");
+      }
+      return { ...request, capabilities: { ...capabilities, ...(toolCatalog ? { toolCatalog } : {}) } };
+    }
     if (!this.dependencies.capabilities) {
       throw new Error("Capability profiles are not configured for this server.");
     }
     const resolved = this.dependencies.capabilities.resolve(profileId, request.capabilities.approvals ?? []);
+    if (resolved.profile.supportedVariants && !resolved.profile.supportedVariants.includes(`${request.platform}/${request.variant}`)) {
+      throw new InvalidRunRequestError("The selected capability profile is not supported by this platform variant.");
+    }
+    await this.dependencies.capabilities.resolveRequestedSkills(profileId, request.capabilities.requestedSkillIds ?? []);
     const toolNames = resolved.resolution.grants
       .filter(({ manifest }) => manifest.kind === "tool" || manifest.source.kind === "connection")
       .map(({ manifest }) => manifest.id);
@@ -253,6 +267,7 @@ export class RunService {
             operations: [...grant.allowedOperations],
             ...(manifest.mcp ? { mcp: manifest.mcp } : {}),
           })),
+        toolCatalog: this.dependencies.capabilities.toolSnapshot(toolNames, resolved.resolution),
         resolution: resolved.resolution,
         skills: resolved.skills.map((skill) => ({
           id: skill.manifest.id,
@@ -477,7 +492,17 @@ export class RunService {
       compactionThresholdPercent: 20,
       recentMessageGroups: 2,
     });
-    return this.dependencies.context.sessions.admitTurn(session.sessionId, runId, request.task.prompt, undefined, request.clientTurnId);
+    const admitted = await this.dependencies.context.sessions.admitTurn(session.sessionId, runId, request.task.prompt, undefined, request.clientTurnId);
+    if (request.capabilities?.requestedSkillIds?.length && this.dependencies.capabilities && (admitted.turn.status === "admitted" || admitted.turn.status === "running")) {
+      try {
+        const selected = await this.dependencies.capabilities.resolveRequestedSkills(request.capabilities.profileId!, request.capabilities.requestedSkillIds);
+        for (const skill of selected) await this.dependencies.context.sessions.activateSkill(session.sessionId, admitted.turn.turnId, skill);
+      } catch (error) {
+        await this.dependencies.context.sessions.settleTurn(session.sessionId, admitted.turn.turnId, { status: "failed", output: null, error: "Explicit skill activation failed before dispatch." });
+        throw error;
+      }
+    }
+    return admitted;
   }
 
   private async settleContextTurn(manifest: RunManifest, result: RunResult): Promise<void> {

@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { loadServerConfig } from "../control-plane/bootstrap/config.js";
 import { loadLocalServerEnvironment } from "../control-plane/bootstrap/local-env.js";
 import { RunEvidenceStore } from "../control-plane/application/evidence-store.js";
-import { createDefaultCapabilityCatalog } from "../capabilities/catalog.js";
+import { createDefaultSkillCatalog } from "../capabilities/skills/catalog.js";
 import type { EvalJson, RunEvalReport } from "../control-plane/domain/eval-report.js";
 import type { LiveCaseId, LiveObservation } from "../../../lab/scenarios/platform-agent-conformance/live-evals.mjs";
 
@@ -41,7 +41,7 @@ async function main() {
   const config = loadServerConfig(process.env, root), source = await summary(config.runsRoot, args[1]);
   const suite = await import(pathToFileURL(join(root, "lab/scenarios/platform-agent-conformance/live-evals.mjs")).href) as typeof import("../../../lab/scenarios/platform-agent-conformance/live-evals.mjs");
   if (suite.LIVE_GRADER_VERSION !== "3") throw new Error("Only the bounded grader-3 revision is supported.");
-  const evidence = new RunEvidenceStore(config.runsRoot), capabilities = createDefaultCapabilityCatalog();
+  const evidence = new RunEvidenceStore(config.runsRoot), skills = createDefaultSkillCatalog();
   const invocationId = `regrade-${randomUUID()}`, startedAt = new Date().toISOString();
   const directory = join(config.runsRoot, ".evals", invocationId); await mkdir(directory, { recursive: true });
   const cases: Record<string, any>[] = [], counts = { pass: 0, fail: 0, blocked: 0, error: 0 };
@@ -64,7 +64,7 @@ async function main() {
     for (const run of observation.runs) {
       const manifest = await evidence.readManifest(run.runId);
       run.declaredSkills = (manifest.capabilities?.skills ?? []).map(skill => ({ id: skill.id, version: skill.version, digest: skill.digest }));
-      run.skillContexts = manifest.capabilities?.profileId ? capabilities.resolve(manifest.capabilities.profileId).skills.map(skill => ({ skillId: skill.context.skillId, skillVersion: skill.context.skillVersion, digest: skill.context.digest, content: skill.context.content })) : [];
+      run.skillContexts = run.declaredSkills.length ? skills.resolve(run.declaredSkills.map(skill => skill.id)).map(skill => ({ skillId: skill.context.skillId, skillVersion: skill.context.skillVersion, digest: skill.context.digest, content: skill.context.content })) : [];
       if (run.declaredSkills.length !== run.skillContexts.length || run.declaredSkills.some((skill, index) => skill.id !== run.skillContexts![index].skillId || skill.version !== run.skillContexts![index].skillVersion || skill.digest !== run.skillContexts![index].digest)) throw new Error("Allowlisted skill content no longer matches the immutable execution digest.");
     }
     const fixture = report.observations.find(value => object(value) && object((value as Record<string, unknown>).fixture)) as unknown as { fixture: Parameters<typeof suite.gradeLiveCase>[2] } | undefined;

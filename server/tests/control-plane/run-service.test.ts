@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { CapabilityCatalog, DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES } from "../../src/capabilities/catalog.js";
+import type { UntrustedSkillContextText } from "../../src/capabilities/skills/contracts.js";
 import { loadServerConfig } from "../../src/control-plane/bootstrap/config.js";
 import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../../src/capabilities/context/index.js";
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
@@ -265,7 +267,7 @@ class ContextOverflowRunner implements PlatformRunner {
 
 async function withService(
   run: (service: RunService, store: RunEvidenceStore, runner: FakeRunner, root: string) => Promise<void>,
-  options: { readonly allowOpenRouter?: boolean; readonly modelMetadata?: ModelMetadataResolver } = {},
+  options: { readonly allowOpenRouter?: boolean; readonly modelMetadata?: ModelMetadataResolver; readonly capabilities?: CapabilityCatalog } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "agentlab-run-service-"));
   try {
@@ -277,7 +279,7 @@ async function withService(
       ...(options.allowOpenRouter ? { AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake,openrouter" } : {}),
     }, "/repo");
     const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
-    const service = new RunService({ config, context, evidence: store, modelMetadata: options.modelMetadata, registry: new PlatformRegistry([runner]) });
+    const service = new RunService({ config, context, evidence: store, modelMetadata: options.modelMetadata, capabilities: options.capabilities, registry: new PlatformRegistry([runner]) });
     await run(service, store, runner, root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -841,4 +843,71 @@ test("unavailable native readiness rejects new admission while offline canonical
     assert.equal(runner.startCalls, 1);
     assert.equal((await store.readSnapshot(admitted.runId)).result?.status, "completed");
   });
+});
+
+
+function requestedSkillCatalog() {
+  const skill: UntrustedSkillContextText = {
+    kind: "skill-context", trust: "untrusted", authority: "none", grants: [],
+    skillId: "procedures.evidence-report", skillVersion: "1.0.0", digest: "a".repeat(64),
+    content: "Read the source, cite evidence, and distinguish observed facts from assumptions.",
+  };
+  const profile = {
+    ...DEFAULT_CAPABILITY_PROFILES[0], id: "explicit-skill-test", grants: [], skillIds: [],
+    supportedVariants: ["temporal/baseline"],
+    availableSkills: [{ id: "procedures:evidence-report", name: "evidence-report", version: skill.skillVersion, description: "Prepare an evidence report.", digest: skill.digest }],
+  };
+  const capabilities = new CapabilityCatalog(DEFAULT_CAPABILITY_MANIFESTS, [profile], undefined, undefined, {
+    skillResolver: async ids => ids.map(id => {
+      assert.equal(id, "procedures:evidence-report");
+      return skill;
+    }),
+  });
+  return { capabilities, skill };
+}
+
+test("explicit skill selection rejects profile boundary violations before admitting a turn", async () => {
+  const { capabilities } = requestedSkillCatalog();
+  await withService(async (service, _store, runner, root) => {
+    const request = {
+      platform: "temporal", variant: "baseline", sessionId: "session-rejected-skill",
+      task: { kind: "prompt" as const, prompt: "Use the reporting procedure." },
+      model: { provider: "fake", model: "fake-success" },
+      capabilities: { profileId: "explicit-skill-test", requestedSkillIds: ["procedures:evidence-report"], tools: { enabledNames: [], maxRounds: 4, maxCalls: 8 } },
+    };
+    await assert.rejects(service.createRun({ ...request, capabilities: { ...request.capabilities, requestedSkillIds: ["other:private-skill"] } }), /not available in the selected capability profile/);
+    await assert.rejects(service.createRun({ ...request, capabilities: { ...request.capabilities, profileId: undefined } }), /requires a capability profile/);
+    await assert.rejects(service.createRun({ ...request, platform: "mastra" }), /not supported by this platform variant/);
+    assert.equal(runner.startCalls, 0);
+    await assert.rejects(readdir(join(root, "sessions")), { code: "ENOENT" });
+  }, { capabilities });
+});
+
+test("explicit skill admission persists untrusted user context without widening tool grants", async () => {
+  const { capabilities, skill } = requestedSkillCatalog();
+  await withService(async (service, _store, runner, root) => {
+    runner.state = "running";
+    const run = await service.createRun({
+      platform: "temporal", variant: "baseline", sessionId: "session-explicit-skill",
+      task: { kind: "prompt", prompt: "Prepare a report using the selected procedure." },
+      model: { provider: "fake", model: "fake-success", contextWindowTokens: 8192 },
+      capabilities: { profileId: "explicit-skill-test", requestedSkillIds: ["procedures:evidence-report"], tools: { enabledNames: [], maxRounds: 4, maxCalls: 8 } },
+    });
+    assert.equal(runner.startCalls, 1);
+    assert.ok(run.manifest.capabilities);
+    assert.deepEqual(run.manifest.capabilities.tools.enabledNames, []);
+    // Reopening the store proves this selection is retained, rather than only
+    // injected into an in-memory request for the first model call.
+    const sessions = new ContextSessionStore(join(root, "sessions"));
+    const session = await sessions.read("session-explicit-skill");
+    assert.deepEqual(session.activeSkillContexts, [skill]);
+    assert.deepEqual(session.skillContexts, []);
+    const context = new ContextService(sessions, new CharacterTokenEstimator());
+    const prepared = await context.prepareTurn(session.sessionId, run.manifest.context.turnId!, { summarize: async () => { throw new Error("This small context must not require compaction."); } });
+    const messages = prepared.snapshot.messages.filter(message => message.source === "skills");
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].role, "user");
+    assert.equal(messages[0].metadata?.authority, "none");
+    assert.equal(messages[0].content, skill.content);
+  }, { capabilities });
 });

@@ -163,10 +163,10 @@ function systemMessage(session: ContextSession): ContextMessage {
 }
 
 function contextMessagesForSession(session: ContextSession, transcript: readonly ContextMessage[]): readonly ContextMessage[] {
-  const skills = session.skillContexts ?? [];
+  const skills = [...(session.skillContexts ?? []), ...(session.activeSkillContexts ?? [])];
   if (skills.length === 0) return [systemMessage(session), ...transcript];
 
-  const skillMessages: ContextMessage[] = skills.map((skill, index) => skillMessage(session, skill, index + 1));
+  const skillMessages: ContextMessage[] = skills.map((skill, index) => skillMessage(session, skill, index + 1, index >= session.skillContexts.length));
   const offset = skillMessages.length;
   return [
     systemMessage(session),
@@ -175,13 +175,15 @@ function contextMessagesForSession(session: ContextSession, transcript: readonly
   ];
 }
 
-function skillMessage(session: ContextSession, skill: UntrustedSkillContextText, sequence: number): ContextMessage {
+function skillMessage(session: ContextSession, skill: UntrustedSkillContextText, sequence: number, activated = false): ContextMessage {
   return {
     schemaVersion: 1,
-    messageId: `skill-${skill.skillId}-${skill.skillVersion}`,
+    messageId: activated ? `skill-${skill.skillId}-${skill.skillVersion}-${skill.digest.slice(0, 12)}` : `skill-${skill.skillId}-${skill.skillVersion}`,
     sessionId: session.sessionId,
     sequence,
-    role: "developer",
+    // Model-loaded package text remains contextual material. Persistence must
+    // not promote a tool result into a new higher-priority authority channel.
+    role: activated ? "user" : "developer",
     content: skill.content,
     source: "skills",
     createdAt: session.createdAt,
@@ -191,6 +193,7 @@ function skillMessage(session: ContextSession, skill: UntrustedSkillContextText,
       skillDigest: skill.digest,
       trust: skill.trust,
       authority: skill.authority,
+      activation: activated ? "loaded" : "preselected",
     },
   };
 }

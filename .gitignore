@@ -42,3 +42,6 @@ server/lab/sessions/*
 
 # Local Studio database and SQLite journal files
 lab/state/*.sqlite*
+
+# Disposable output from the shipped workspace capability example
+lab/scenarios/workspace-capabilities/fixtures/artifacts/

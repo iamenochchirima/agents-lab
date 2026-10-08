@@ -25,6 +25,8 @@ export interface ContextSession {
   readonly systemInstruction: string;
   /** Validated context-only skill projections selected before admission. */
   readonly skillContexts: readonly UntrustedSkillContextText[];
+  /** Procedures/resources actually loaded through admitted skill tools. */
+  readonly activeSkillContexts?: readonly UntrustedSkillContextText[];
   readonly contextWindowTokens: number | null;
   readonly reservedOutputTokens: number;
   readonly safetyMarginTokens: number;
@@ -148,6 +150,7 @@ export class ContextSessionStore {
         model: input.model,
         systemInstruction: input.systemInstruction,
         skillContexts: Object.freeze([...(input.skillContexts ?? [])]),
+        activeSkillContexts: [],
         contextWindowTokens: input.contextWindowTokens,
         reservedOutputTokens: input.reservedOutputTokens,
         safetyMarginTokens: input.safetyMarginTokens,
@@ -211,6 +214,29 @@ export class ContextSessionStore {
       messages.push(message);
     }
     return messages;
+  }
+
+  /** Persist one authority-free activation while its admitted turn is active.
+   * A repeated identical activation is a no-op. A changed digest/version under
+   * an active identity must use a new session rather than rewriting old context.
+   */
+  async activateSkill(sessionId: string, turnId: string, skill: UntrustedSkillContextText, now = new Date().toISOString()): Promise<ContextSession> {
+    assertSafeSessionId(sessionId); validateSkillContexts([skill]);
+    return this.serialized(sessionId, async () => this.withLock(sessionId, async () => {
+      const session = await this.read(sessionId);
+      const turn = await this.readTurn(sessionId, turnId);
+      if (session.activeTurnId !== turnId || !turn || !["admitted", "running"].includes(turn.status)) throw new ContextSessionConflictError("Skill activation requires the session's active admitted turn.");
+      const existing = [...session.skillContexts, ...(session.activeSkillContexts ?? [])].find(value => value.skillId === skill.skillId);
+      if (existing) {
+        if (existing.skillVersion !== skill.skillVersion || existing.digest !== skill.digest || existing.content !== skill.content) throw new ContextSessionConflictError("An active skill identity changed. Start a new session for the new package revision.");
+        return session;
+      }
+      const activeSkillContexts = [...(session.activeSkillContexts ?? []), structuredClone(skill)];
+      validateSkillContexts([...session.skillContexts, ...activeSkillContexts]);
+      const updated = { ...session, activeSkillContexts, updatedAt: now };
+      await this.writeSessionJson(sessionId, updated, session);
+      return updated;
+    }));
   }
 
   async admitTurn(
@@ -812,10 +838,12 @@ function normalizeSession(session: ContextSession, limits: ContextSessionLimits)
   const normalized = {
     ...session,
     skillContexts: Object.freeze([...(session.skillContexts ?? [])]),
+    activeSkillContexts: Object.freeze([...(session.activeSkillContexts ?? [])]),
     maxSessionBytes: session.maxSessionBytes ?? limits.maxSessionBytes,
     maxTranscriptBytes: session.maxTranscriptBytes ?? limits.maxTranscriptBytes,
   };
   validateSessionLimits({ maxSessionBytes: normalized.maxSessionBytes, maxTranscriptBytes: normalized.maxTranscriptBytes });
+  validateSkillContexts([...normalized.skillContexts, ...normalized.activeSkillContexts]);
   return normalized;
 }
 

@@ -320,6 +320,10 @@ function parseRunCapabilities(value: unknown): RunCapabilities | undefined {
     throw new InvalidApiRequestError("capabilities.tools.maxRounds and maxCalls must be integers.");
   }
   const profileId = value.profileId;
+  const requestedSkillIds = value.requestedSkillIds;
+  if (requestedSkillIds !== undefined && (!Array.isArray(requestedSkillIds) || requestedSkillIds.some(id => typeof id !== "string"))) {
+    throw new InvalidApiRequestError("requestedSkillIds must be an array of skill IDs.");
+  }
   if (profileId !== undefined && (typeof profileId !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(profileId))) {
     throw new InvalidApiRequestError("capabilities.profileId must be a safe profile identifier.");
   }
@@ -339,6 +343,7 @@ function parseRunCapabilities(value: unknown): RunCapabilities | undefined {
       maxCalls: tools.maxCalls,
     },
     ...(profileId === undefined ? {} : { profileId }),
+    ...(requestedSkillIds === undefined ? {} : { requestedSkillIds }),
     ...(approvals === undefined ? {} : { approvals }),
   };
 }

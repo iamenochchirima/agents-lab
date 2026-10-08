@@ -32,6 +32,7 @@ export class SkillCatalog {
     if (!Array.isArray(ids) || ids.length > this.loader.limits.maxSkillsPerLoad) {
       throw new Error("Skill selection exceeds the configured limit.");
     }
+    if (ids.length === 0) return [];
     return this.loader.load(this.packages, { ids }).selected;
   }
 }

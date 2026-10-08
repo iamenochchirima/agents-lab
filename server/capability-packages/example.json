@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    { "id": "task-workspace", "version": "1.0.0", "source": "workspace", "root": "../../lab/scenarios/workspace-capabilities/fixtures", "writeDirectories": ["artifacts"], "isolateSessions": true, "stateRoot": "../../lab/runs/.workspaces" },
+    { "id": "task-procedures", "version": "1.0.0", "source": "skills", "root": "./skills" }
+  ],
+  "profiles": [
+    { "id": "workspace-agent", "version": "1.0.0", "packages": ["task-workspace", "task-procedures"] }
+  ]
+}

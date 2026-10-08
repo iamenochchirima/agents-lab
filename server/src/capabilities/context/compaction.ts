@@ -101,7 +101,7 @@ function compactableCandidates(messages: readonly ContextMessage[], currentMessa
 
   const groups = new Map<string, ContextMessage[]>();
   for (const message of messages.slice(0, currentIndex)) {
-    if (message.role === "system" || message.role === "developer" || message.source === "compaction-summary") continue;
+    if (message.role === "system" || message.role === "developer" || message.source === "skills" || message.source === "compaction-summary") continue;
     const groupId = message.groupId ?? message.messageId;
     const group = groups.get(groupId) ?? [];
     group.push(message);
