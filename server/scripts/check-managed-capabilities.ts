@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { RunView } from '../src/control-plane/application/run-service.js';
 import type { InvocationReviewView } from '../src/capabilities/reviews/contracts.js';
@@ -16,6 +16,7 @@ import { loadLocalServerEnvironment } from '../src/control-plane/bootstrap/local
 import { loadServerConfig } from '../src/control-plane/bootstrap/config.js';
 import { assertFreeModelCatalog, DEFAULT_FREE_MODEL, FREE_PROVIDER_ROUTING } from '../src/models/openrouter/free-model-policy.js';
 import { validateCapabilityRouting } from '../src/evals/capability-evidence.js';
+import { skillResourceDelivered } from '../src/evals/managed-skill-evidence.js';
 import { terminateObservation } from '../src/evals/observer-termination.js';
 
 interface Receipt { toolCallId: string; toolName: string; status: string; result?: { status: string; content: string }; sequence: number | null; output: Record<string, unknown> }
@@ -25,6 +26,11 @@ const writes = ['memo_create_memo', 'memo_update_memo', 'memo_delete_memo'];
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 async function main() {
+  const offlineArgs = process.argv.slice(2).filter(value => value !== '--');
+  if (offlineArgs[0] === '--regrade-read-only') {
+    if (offlineArgs.length !== 2) throw new Error('Offline regrade accepts only one retained evidence directory.');
+    await regradeReadOnly(offlineArgs[1]!, capabilityWorkspaceRoot()); return;
+  }
   loadLocalServerEnvironment();
   const root = capabilityWorkspaceRoot(), config = loadServerConfig(process.env, root);
   let api = process.env.AGENTLAB_CAPABILITY_CHECK_API ?? 'http://127.0.0.1:4322';
@@ -359,7 +365,7 @@ async function checkReadOnlyNotes(options: { api: string; platforms: string[]; m
         const reads = completed.filter(receipt => receipt.toolName === 'memo_list_memos');
         const resource = completed.find(receipt => receipt.toolName.endsWith('_read_skill_resource') && receipt.output.name === 'notes-check' && receipt.output.path === 'references/procedure.md' && typeof receipt.output.content === 'string');
         const expected = memoNames(before), final = parseMemoCount(run.result?.output);
-        const resourceContext = !!resource && run.events.some(event => event.kind === 'EvalModelObserved' && JSON.stringify(event.payload.observation).includes('Previously read skill resource notes-check-skills/notes-check/references/procedure.md'));
+        const resourceContext = skillResourceDelivered(run.events, resource);
         const assertions = { nativeCompleted: run.status === 'completed', freeRoutingVerified: validateCapabilityRouting([run], options.model, controls.experimentId), preloadedSkill: verifiedPreloadedSkill(run), skillResourceRead: !!resource, skillResourceInModelContext: resourceContext, actualConnectedList: reads.length > 0, toolMatchesIndependentProvider: reads.length > 0 && reads.every(receipt => JSON.stringify(memoNames(receipt.output)) === JSON.stringify(expected)), providerUnchanged: stableJson(before) === stableJson(after), finalCountAndIds: final !== null && final.observedCount === expected.length && JSON.stringify([...final.memoIds].sort()) === JSON.stringify(expected), noMutations: !observed.some(receipt => writes.includes(receipt.toolName)), noApprovedReview: (evidence.reviews as unknown[]).length === 0 };
         evidence.assertions = assertions; evidence.verdict = Object.values(assertions).every(Boolean) ? 'pass' : 'fail';
       } catch (error) {
@@ -393,4 +399,37 @@ function memoNames(value: Record<string, unknown>): string[] { const memos = val
 function parseMemoCount(output: string | null | undefined): { observedCount: number; memoIds: string[] } | null {
   if (!output) return null;
   try { const value: unknown = JSON.parse(output.match(/\{[\s\S]*\}/)?.[0] ?? output); return record(value) && Object.keys(value).length === 2 && Number.isSafeInteger(value.observedCount) && Number(value.observedCount) >= 0 && Array.isArray(value.memoIds) && value.memoIds.every(item => typeof item === 'string') ? { observedCount: Number(value.observedCount), memoIds: value.memoIds } : null; } catch { return null; }
+}
+
+/** Correct observer interpretation using retained bytes only. Original failures
+ * are immutable evidence; corrections create separately named, hash-linked files.
+ */
+async function regradeReadOnly(path: string, root: string): Promise<void> {
+  const evidenceRoot = await realpath(join(root, 'lab/runs/capability-manager-acceptance'));
+  const directory = await realpath(resolve(path));
+  if (dirname(directory) !== evidenceRoot || !/^read-only-[a-f0-9-]{36}$/.test(directory.slice(evidenceRoot.length + 1))) throw new Error('Offline regrade requires a retained lab/runs/capability-manager-acceptance/read-only UUID directory.');
+  const configBytes = await readFile(join(directory, 'config.json'));
+  const controls = JSON.parse(configBytes.toString('utf8'));
+  if (!record(controls) || controls.mode !== 'managed-notes-read-only-acceptance' || !Array.isArray(controls.platforms) || !record(controls.selectedModel) || typeof controls.selectedModel.id !== 'string' || typeof controls.experimentId !== 'string') throw new Error('Offline regrade requires retained read-only acceptance controls.');
+  const corrections: unknown[] = [];
+  const metadata = { correctedAt: new Date().toISOString(), graderHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), graderDirty: !!execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(), graderScriptSha256: createHash('sha256').update(await readFile(join(root, 'server/scripts/check-managed-capabilities.ts'))).digest('hex'), graderHelperSha256: createHash('sha256').update(await readFile(join(root, 'server/src/evals/managed-skill-evidence.ts'))).digest('hex'), configSha256: createHash('sha256').update(configBytes).digest('hex'), correctionReason: 'Original observer required an internal skill context heading. Native correlated tool-role JSON already delivered the exact completed resource to a subsequent model request. Regrade checks call identity, post-receipt sequence, digest, content and untrusted/no-authority metadata; all other assertions are recomputed unchanged.' };
+  for (const platform of controls.platforms) {
+    if (typeof platform !== 'string' || !['mastra', 'langgraph', 'temporal', 'restate'].includes(platform)) throw new Error('Offline regrade contains an unsupported platform.');
+    const originalPath = join(directory, `${platform}.result.json`);
+    if (await realpath(originalPath) !== originalPath) throw new Error('Offline regrade does not accept symlinked source results.');
+    const originalBytes = await readFile(originalPath), original: unknown = JSON.parse(originalBytes.toString('utf8'));
+    if (!record(original) || !record(original.run) || !record(original.before) || !record(original.after) || !Array.isArray(original.receipts) || !Array.isArray(original.reviews)) throw new Error('Offline regrade requires complete retained run, snapshots and receipts.');
+    const run = original.run as unknown as RunView, observed = original.receipts as Receipt[];
+    const completed = observed.filter(receipt => receipt.result?.status === 'completed');
+    const reads = completed.filter(receipt => receipt.toolName === 'memo_list_memos');
+    const resource = completed.find(receipt => receipt.toolName.endsWith('_read_skill_resource') && receipt.output.name === 'notes-check' && receipt.output.path === 'references/procedure.md' && typeof receipt.output.content === 'string');
+    const expected = memoNames(original.before), final = parseMemoCount(run.result?.output);
+    const assertions = { nativeCompleted: run.status === 'completed', freeRoutingVerified: validateCapabilityRouting([run], controls.selectedModel.id, controls.experimentId), preloadedSkill: verifiedPreloadedSkill(run), skillResourceRead: !!resource, skillResourceInModelContext: skillResourceDelivered(run.events, resource), actualConnectedList: reads.length > 0, toolMatchesIndependentProvider: reads.length > 0 && reads.every(receipt => JSON.stringify(memoNames(receipt.output)) === JSON.stringify(expected)), providerUnchanged: stableJson(original.before) === stableJson(original.after), finalCountAndIds: final !== null && final.observedCount === expected.length && JSON.stringify([...final.memoIds].sort()) === JSON.stringify(expected), noMutations: !observed.some(receipt => writes.includes(receipt.toolName)), noApprovedReview: original.reviews.length === 0 };
+    const correction = { schemaVersion: 1, mode: 'offline-read-only-observer-correction', platform, runId: run.runId, originalFile: `${platform}.result.json`, originalSha256: createHash('sha256').update(originalBytes).digest('hex'), originalVerdict: original.verdict, originalAssertions: original.assertions, ...metadata, assertions, verdict: Object.values(assertions).every(Boolean) ? 'pass' : 'fail' };
+    await writeFile(join(directory, `${platform}.regraded.json`), JSON.stringify(correction, null, 2) + '\n', { flag: 'wx' });
+    corrections.push(correction);
+  }
+  await writeFile(join(directory, 'regraded-summary.json'), JSON.stringify({ schemaVersion: 1, ...metadata, corrections }, null, 2) + '\n', { flag: 'wx' });
+  console.log(JSON.stringify({ directory, corrections: corrections.map(value => { const correction = value as { platform: string; verdict: string }; return { platform: correction.platform, verdict: correction.verdict }; }) }));
+  if (corrections.some(value => (value as { verdict: string }).verdict !== 'pass')) process.exitCode = 1;
 }
