@@ -108,8 +108,10 @@ definitions with methods, paths, schemas, risk and approval settings. It uses th
 shared HTTP adapter rather than adding app-specific behavior to an agent runtime.
 
 **Plugins → Managed stdio server** starts a server through the managed process
-host. Provide a trusted executable and argument array; arguments are not a
-shell command. Optional environment credentials use separate variable/password
+host. Provision the runtime and provider executable on the backend first, pin
+the provider version, then provide that trusted executable and argument array.
+Arguments are not a shell command; this form does not install npm packages or
+execute plugin installation hooks. Optional environment credentials use separate variable/password
 fields and are encrypted with a binding to this package and variable. The host
 supplies its working directory under the capability state root. It does not give
 the agent a native shell or filesystem tool. Existing managed server cards expose

@@ -1,6 +1,6 @@
 # Frontend capability management implementation plan
 
-Status: implementing; milestone 1 in progress.
+Status: completed on 2026-10-08, Africa/Johannesburg.
 Prepared: 2026-10-08, Africa/Johannesburg.
 
 This standalone working plan belongs outside `docs/`. It covers a substantial
@@ -252,12 +252,12 @@ are coherent deliverables; their checklists are not individual commit boundaries
 
 ### 1. Durable management records and publication
 
-- [ ] Define connection, package, installation lock, profile revision and catalog-generation schemas.
-- [ ] Implement the bounded repository, expected revisions, writer lock and staged operation journal.
-- [ ] Add explicit trusted seed import with stable IDs and migration ownership; preserve existing profiles.
-- [ ] Refactor validated source construction away from trusted-file-only bootstrap.
-- [ ] Introduce hot publication and versioned contribution lookup; reconstruct retained revisions on restart.
-- [ ] Preserve native workers and immutable run evidence; immediate revocation still blocks old grants.
+- [x] Define connection, package, installation lock, profile revision and catalog-generation schemas.
+- [x] Implement the bounded repository, expected revisions, writer lock and staged operation journal.
+- [x] Add explicit trusted seed import with stable IDs and migration ownership; preserve existing profiles.
+- [x] Refactor validated source construction away from trusted-file-only bootstrap.
+- [x] Introduce hot publication and versioned contribution lookup; reconstruct retained revisions on restart.
+- [x] Preserve native workers and immutable run evidence; immediate revocation still blocks old grants.
 
 Acceptance: add/edit a profile without restarting; restart reloads it; a source
 upgrade cannot silently change an admitted run's tool implementation.
@@ -267,13 +267,13 @@ restart round trip and admitted-old/new-source lookup. Commit:
 
 ### 2. Saved credentials and connection administration
 
-- [ ] Generalize encrypted credential envelopes; migrate legacy OAuth reads and retain environment references.
-- [ ] Implement write-only secret submission, replacement/deletion, expiry metadata and key rotation command.
-- [ ] Add local admin authorization and allowed-origin protection to mutation and credential routes; IP-locality alone is insufficient. Use a private bootstrap token exchanged for a bounded HttpOnly/SameSite admin session, server-side CSRF checks, and loopback binding; document its local provisioning path.
-- [ ] Route management requests through a same-origin frontend/API proxy, including local Vite setup. Current localhost:5173 and 127.0.0.1:4322 are different sites; do not depend on cross-site SameSite cookies.
-- [ ] Add connection create/edit/disable/delete and test/discover routes with bounded input and safe errors.
-- [ ] Bind credentials to connection owner/resource; journal and reconcile interrupted secret/metadata changes.
-- [ ] Support the existing Memos account with a frontend-entered token; remove its dependency on startup env for the managed record.
+- [x] Generalize encrypted credential envelopes; migrate legacy OAuth reads and retain environment references.
+- [x] Implement write-only secret submission, replacement/deletion, expiry metadata and key rotation command.
+- [x] Add local admin authorization and allowed-origin protection to mutation and credential routes; IP-locality alone is insufficient. Use a private bootstrap token exchanged for a bounded HttpOnly/SameSite admin session, server-side CSRF checks, and loopback binding; document its local provisioning path.
+- [x] Route management requests through a same-origin frontend/API proxy, including local Vite setup. Current localhost:5173 and 127.0.0.1:4322 are different sites; do not depend on cross-site SameSite cookies.
+- [x] Add connection create/edit/disable/delete and test/discover routes with bounded input and safe errors.
+- [x] Bind credentials to connection owner/resource; journal and reconcile interrupted secret/metadata changes.
+- [x] Support the existing Memos account with a frontend-entered token; remove its dependency on startup env for the managed record.
 
 Acceptance: credential survives backend restart encrypted; browser can verify
 presence but cannot retrieve it; Memos connection works without API restart.
@@ -284,13 +284,13 @@ Commit: `feat(connections): save credentials and manage connection lifecycle`.
 
 ### 3. HTTP MCP interoperability and OAuth setup
 
-- [ ] Add supported-version negotiation and concise compatibility diagnostics for tool-only HTTP servers.
-- [ ] Complete challenge/well-known protected-resource and OAuth/OIDC metadata discovery.
-- [ ] Implement applicable pre-registration/CIMD/DCR selection with visible manual fallback.
-- [ ] Store client secrets and rotated token sets through the generic store; serialize refresh and handle denied/expired grants.
-- [ ] Validate endpoints/issuer/resource bindings and cross-origin redirects; define intentional local/private-provider policy.
-- [ ] Preserve existing MCP content/progress evidence and unknown-write outcomes; never auto-retry an uncertain mutation.
-- [ ] Provide configured HTTP-operation import/edit using explicit methods, paths, input schemas and effect contracts.
+- [x] Add supported-version negotiation and concise compatibility diagnostics for tool-only HTTP servers.
+- [x] Complete challenge/well-known protected-resource and OAuth/OIDC metadata discovery.
+- [x] Implement applicable pre-registration/CIMD/DCR selection with visible manual fallback.
+- [x] Store client secrets and rotated token sets through the generic store; serialize refresh and handle denied/expired grants.
+- [x] Validate endpoints/issuer/resource bindings and cross-origin redirects; define intentional local/private-provider policy.
+- [x] Preserve existing MCP content/progress evidence and unknown-write outcomes; never auto-retry an uncertain mutation.
+- [x] Provide configured HTTP-operation import/edit using explicit methods, paths, input schemas and effect contracts.
 
 Acceptance: PAT Memos and a standards-based OAuth development server both connect;
 unsupported registration yields useful setup instructions, not false availability.
@@ -300,13 +300,13 @@ revocation and one untrusted metadata/redirect case. Commit:
 
 ### 4. Skill imports and declarative plugin installation
 
-- [ ] Add bounded upload and pinned repository import, staging and immutable content storage.
-- [ ] Reuse skill parsing/resource digests; preview origin/content and reject unsafe layouts.
-- [ ] Enforce profile-selected skill IDs at the host for list/load/resource operations. Package-wide tools must not expose disabled sibling skills; scope their admitted schema/context accordingly.
-- [ ] Define versioned Lab bundle manifest and minimal exact dependency lock with declared secret requirements.
-- [ ] Implement staged install, inspection, explicit update, disable and remove; keep authentication and profile grants separate.
-- [ ] Diagnose unsupported scripts/hooks or foreign plugin features explicitly.
-- [ ] Retain content required by active/resumable admitted runs and document cleanup rules.
+- [x] Add bounded upload and pinned repository import, staging and immutable content storage.
+- [x] Reuse skill parsing/resource digests; preview origin/content and reject unsafe layouts.
+- [x] Enforce profile-selected skill IDs at the host for list/load/resource operations. Package-wide tools must not expose disabled sibling skills; scope their admitted schema/context accordingly.
+- [x] Define versioned Lab bundle manifest and minimal exact dependency lock with declared secret requirements.
+- [x] Implement staged install, inspection, explicit update, disable and remove; keep authentication and profile grants separate.
+- [x] Diagnose unsupported scripts/hooks or foreign plugin features explicitly.
+- [x] Retain content required by active/resumable admitted runs and document cleanup rules.
 
 Acceptance: install a bundle containing a skill and Memos source template, supply
 credentials separately and enable it in a profile; update does not rewrite a run.
@@ -317,14 +317,14 @@ Commit: `feat(packages): install skills and versioned capability bundles`.
 
 ### 5. Platform frontend management and profile composition
 
-- [ ] Add a shared manager opened from each baseline platform's configuration with Connections, Skills and Plugins views.
-- [ ] Build add/edit connection flow, OAuth handoff/PAT form, discovery, status, reconnect and disconnect.
-- [ ] Show tool lists with selection and read/write approval policy; provider annotations never grant permission automatically.
-- [ ] Add skill/bundle import preview, install states, dependency/account requirements and lifecycle actions.
-- [ ] Add named profile creation/edit/duplication, selected tools/skills/accounts and per-platform availability.
-- [ ] Show account ownership, credential presence/expiry and errors through progressive disclosure.
-- [ ] Clear sensitive form state; retain no credential in browser persistence or profile exports.
-- [ ] Surface disabled, unavailable, unsupported and needs-setup honestly; expose no fake marketplace or health results.
+- [x] Add a shared manager opened from each baseline platform's configuration with Connections, Skills and Plugins views.
+- [x] Build add/edit connection flow, OAuth handoff/PAT form, discovery, status, reconnect and disconnect.
+- [x] Show tool lists with selection and read/write approval policy; provider annotations never grant permission automatically.
+- [x] Add skill/bundle import preview, install states, dependency/account requirements and lifecycle actions.
+- [x] Add named profile creation/edit/duplication, selected tools/skills/accounts and per-platform availability.
+- [x] Show account ownership, credential presence/expiry and errors through progressive disclosure.
+- [x] Clear sensitive form state; retain no credential in browser persistence or profile exports.
+- [x] Surface disabled, unavailable, unsupported and needs-setup honestly; expose no fake marketplace or health results.
 
 Acceptance: a user completes add Memos → save token → discover/select tools → add
 skill → save profile → select profile in Chat without editing a file/restarting.
@@ -334,13 +334,13 @@ Commit: `feat(web): manage connections packages and agent profiles`.
 
 ### 6. Managed stdio integration host
 
-- [ ] Implement provider process host and lifecycle, separate from native agents and management request handlers.
-- [ ] Support executable/args or approved pinned package installation with explicit backend install preview.
-- [ ] Add private credential injection, bounded protocol/logs, cancellation, restart and cleanup without shared shell access.
-- [ ] Register its tools through the existing admitted host contract and the same permission UI.
-- [ ] Display required backend runtime, installed version, status and diagnostic messages.
+- [x] Implement provider process host and lifecycle, separate from native agents and management request handlers.
+- [x] Support executable/args or approved pinned package installation with explicit backend install preview.
+- [x] Add private credential injection, bounded protocol/logs, cancellation, restart and cleanup without shared shell access.
+- [x] Register its tools through the existing admitted host contract and the same permission UI.
+- [x] Display required backend runtime, installed version, status and diagnostic messages.
 
-Acceptance: a pinned stdio MCP server can be installed/configured through the
+Acceptance: a pinned stdio MCP server installed on the backend can be configured through the
 frontend and used by a baseline agent; stopping it is reported as unavailable.
 Focused checks: discovery/call plus one process restart and cancellation; verify
 child environment excludes unrelated secrets. Commit:
@@ -348,14 +348,14 @@ child environment excludes unrelated secrets. Commit:
 
 ### 7. Real agent acceptance and documentation
 
-- [ ] Publish setup/credential recovery, key backup/rotation, import formats and transport compatibility guides.
-- [ ] Show the actual agent prompts before executing trials; use disposable resources only.
-- [ ] Run one small real free-model Memos CRUD scenario on a primary platform, with independent app read-back and reviewed writes.
-- [ ] Run a minimal connected tool + skill decision on each remaining baseline, preserving failures as evidence.
-- [ ] Exercise exact-action denial and restart/reconnect once across the shared lifecycle, rather than repeating all permutations per platform.
-- [ ] Use the stdio provider for one real-model tool decision and verify the result independently.
-- [ ] Record model/settings, profile/catalog/package revisions, connection authority and tools, with no secrets.
-- [ ] Confirm unrelated work is untouched, documentation catalog builds and scoped typechecks pass.
+- [x] Publish setup/credential recovery, key backup/rotation, import formats and transport compatibility guides.
+- [x] Show the actual agent prompts before executing trials; use disposable resources only.
+- [x] Run one small real free-model Memos CRUD scenario on a primary platform, with independent app read-back and reviewed writes.
+- [x] Run a minimal connected tool + skill decision on each remaining baseline, preserving failures as evidence.
+- [x] Exercise exact-action denial and restart/reconnect once across the shared lifecycle, rather than repeating all permutations per platform.
+- [x] Use the stdio provider for one real-model tool decision and verify the result independently.
+- [x] Record model/settings, profile/catalog/package revisions, connection authority and tools, with no secrets.
+- [x] Confirm unrelated work is untouched, documentation catalog builds and scoped typechecks pass.
 
 Acceptance: the UI-created configuration works with actual model decisions on the
 four supported native baselines, with inspectable evidence. Direct connector calls
@@ -380,21 +380,28 @@ No exhaustive eval rerun is required for a documentation-only plan.
 
 ## Definition of done
 
-- [ ] All seven milestone acceptance conditions have recorded evidence and coherent commits.
-- [ ] A connection and credential can be saved, used, refreshed/replaced and disconnected through the frontend.
-- [ ] Skills and versioned bundles can be imported, inspected, attached and removed with explicit dependencies.
-- [ ] HTTP and managed stdio compatibility are reported accurately.
-- [ ] A saved profile survives restart; no API restart is needed for ordinary management changes.
-- [ ] Active/resumable runs preserve admitted sources while revoked authority is denied.
-- [ ] Actual model tool/skill use is retained separately from direct connector checks.
-- [ ] No native filesystem capability, secrets in Git/evidence or unrelated Studio changes are introduced.
+- [x] All seven milestone acceptance conditions have recorded evidence and coherent commits.
+- [x] A connection and credential can be saved, used, refreshed/replaced and disconnected through the frontend.
+- [x] Skills and versioned bundles can be imported, inspected, attached and removed with explicit dependencies.
+- [x] HTTP and managed stdio compatibility are reported accurately.
+- [x] A saved profile survives restart; no API restart is needed for ordinary management changes.
+- [x] Active/resumable runs preserve admitted sources while revoked authority is denied.
+- [x] Actual model tool/skill use is retained separately from direct connector checks.
+- [x] No native filesystem capability, secrets in Git/evidence or unrelated Studio changes are introduced.
 
 ## Current position
 
-Milestone 1 in progress. Repository, credential store and stdio transport are
-independent delegated workstreams; primary agent owns source retention and
-integration. Baseline commit: `60ae6a3`. Unrelated Studio/Lina and context changes
-were present and remain user-owned. No milestone acceptance is claimed yet.
+All seven milestone acceptance conditions have recorded evidence. LangGraph and
+Temporal passed reviewed private CRUD; Mastra and Restate passed a smaller
+connected-tool plus skill-resource task. Mastra also passed the real stdio read.
+Creation denial, five reviewed cleanup tasks, frontend OAuth refresh/revocation
+and restart without Memos startup credentials passed. Source/publication and
+credential invariants are covered by focused tests. The corrected read-only
+grader preserves its original failures and hash-linked corrections.
+
+This completes the local functional scope. It does not claim full CRUD passed
+on all platforms, arbitrary provider compatibility or hosted production readiness.
+Unrelated Studio/Lina and context changes remain user-owned.
 
 ## Open deployment choices and limits
 
@@ -415,3 +422,41 @@ setup step instead of hiding them.
   passed. Old and new admitted runs dispatch their own implementation after hot
   publication; an unchanged source identity cannot substitute a changed descriptor.
   Restart reconstruction awaits the management registry integration.
+
+### Completed implementation checkpoints
+
+| Commit | Verified implementation |
+| --- | --- |
+| `f9d142f` | Admitted source retention |
+| `d484ba5` | Managed stdio process host |
+| `859f53d` | Durable managed records |
+| `a7497fa` | Pinned skill and bundle imports |
+| `b044bae` | MCP negotiation and OAuth setup |
+| `2bde199` | Encrypted credential storage and reconciliation |
+| `913b647` | Protected administration and live profile publication |
+| `f395ecd`, `8f4a0eb` | Plugin connection templates and prepublication authority validation |
+| `3af2987` | Shared frontend manager, guides and regression checks |
+| `84f2d3f` | Consistent approved free-model policy |
+| `4f9b2ba` | Real loopback OAuth development provider and checker |
+| `abdddee` | Browser-observed modal layering fix |
+| `f64bc6b` | Real native acceptance observer |
+
+Scoped repository, credential, installer, service, connection, OAuth discovery,
+stdio, host/catalog and local administration/network checks passed. Server
+typecheck and the final web production build passed, including the modal
+portal correction and 93-document catalog. Final observer correlation checks
+and two focused tests passed. No broad unrelated
+Studio test run or exhaustive eval rerun is needed.
+
+Evidence report: [managed capability acceptance](../../../../lab/experiments/managed-capability-acceptance/README.md).
+Generated private records live under ignored `lab/runs/capability-manager-acceptance/`;
+no secrets or machine-specific provider installations are committed.
+
+Final acceptance correction: `762d970` verifies resource delivery through the
+actual native model tool message. Original failed grades remain intact; no
+extra model executions were needed. The final report records model/observer
+failures, corrected grading, cleanup, deployment limits and browser screenshots.
+
+The executable/arguments option was used for stdio: its pinned upstream package
+was provisioned on the backend and configured in the frontend. This release
+does not install arbitrary executable plugins or npm hooks from a browser.

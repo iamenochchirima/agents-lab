@@ -9,11 +9,6 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [Frontend capability management](active/frontend-capability-management.md):
-  researched next implementation programme for saved connections/credentials,
-  tool permissions, skills/plugin installation, editable profiles, catalog
-  persistence and managed stdio. Planned only; no manager implementation yet.
-
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
@@ -39,6 +34,11 @@ was the foundation for this acceptance phase and the completed Restate slice. AW
 Functions remains parked.
 
 ## Completed plans
+
+- [Frontend capability management](completed/frontend-capability-management.md):
+  saved encrypted connections, HTTP/OAuth and managed stdio, skill/bundle imports,
+  tool approvals and live agent profiles. Four native baselines have workload-specific
+  free-model acceptance; failed trials and observer corrections remain recorded.
 
 - [General backend agent eval gap closure](completed/agent-eval-gap-closure.md):
   implemented coverage, correction evaluation, retained assessment, native extension
