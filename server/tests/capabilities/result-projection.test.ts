@@ -17,5 +17,6 @@ test("text-only native projection retains structured results and identifies unsu
   const evidence = toolResultEvidence(result);
   assert.deepEqual(evidence.effect, result.effect);
   assert.deepEqual(evidence.contentBlocks, result.contentBlocks);
-  assert.equal(projectToolResult({...result, contentBlocks: undefined}).content, result.content);
+  assert.equal(projectToolResult({...result, contentBlocks: undefined}).content, `${result.content}\n${JSON.stringify(result.structuredContent)}`);
+  assert.equal(projectToolResult({...result, contentBlocks: undefined, structuredContent: undefined}).content, result.content);
 });

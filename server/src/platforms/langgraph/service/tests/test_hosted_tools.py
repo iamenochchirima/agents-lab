@@ -101,3 +101,20 @@ def test_registered_tool_decoder_uses_declared_argument_limit():
         parse_openrouter_response(body, ["catalog_document_read"])
     result = parse_openrouter_response(body, ["catalog_document_read"], {"catalog_document_read": 1024})
     assert result.tool_calls[0].arguments == arguments
+
+
+def test_text_projection_preserves_json_and_resources_without_claiming_image_perception():
+    from variants.baseline.hosted_tools import project_model_content
+    result = {"content": "raw source envelope", "structuredContent": {"owner": "Avery"},
+              "contentBlocks": [{"type": "text", "text": "Saved."},
+                                {"type": "image", "data": "fictional-image", "mimeType": "image/png"},
+                                {"type": "resource", "resource": {"uri": "fixture:report", "text": "Report evidence."}}]}
+    projected, unsupported = project_model_content(result)
+    assert "Saved." in projected and "Report evidence." in projected
+    assert '"owner":"Avery"' in projected
+    assert "Unsupported tool content retained in evidence: image" in projected
+    assert "fictional-image" not in projected
+    assert unsupported == ["image"]
+    assert result["contentBlocks"][1]["data"] == "fictional-image"
+    assert project_model_content({"content": "raw source envelope", "structuredContent": {"owner": "Avery"}}) == ("raw source envelope\n{\"owner\":\"Avery\"}", [])
+    assert project_model_content({"content": "legacy text"}) == ("legacy text", [])

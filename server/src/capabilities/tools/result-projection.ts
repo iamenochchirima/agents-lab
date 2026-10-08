@@ -6,9 +6,9 @@ import type { ToolExecutionResult } from "./contracts.js";
  * Pure code is safe to run within a durable workflow's deterministic boundary.
  */
 export function projectToolResult(result: ToolExecutionResult): { content: string; unsupportedContent: string[] } {
-  if (!Array.isArray(result.contentBlocks)) return { content: result.content, unsupportedContent: [] };
-  const texts: string[] = []; const unsupported = new Set<string>();
-  for (const value of result.contentBlocks) {
+  const blocks = Array.isArray(result.contentBlocks) ? result.contentBlocks : null;
+  const texts: string[] = blocks ? [] : [result.content]; const unsupported = new Set<string>();
+  for (const value of blocks ?? []) {
     if (!value || typeof value !== "object" || Array.isArray(value)) { unsupported.add("invalid"); continue; }
     const block = value as Record<string, unknown>;
     if (block.type === "text" && typeof block.text === "string") texts.push(block.text);

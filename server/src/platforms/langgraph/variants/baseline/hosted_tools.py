@@ -189,11 +189,9 @@ def project_model_content(result: dict[str, Any]) -> tuple[str, list[str]]:
     never described as having been perceived by the model.
     """
     blocks = result.get("contentBlocks")
-    if not isinstance(blocks, list):
-        return result["content"], []
-    texts: list[str] = []
+    texts: list[str] = [] if isinstance(blocks, list) else [result["content"]]
     unsupported: list[str] = []
-    for block in blocks:
+    for block in blocks if isinstance(blocks, list) else []:
         if not isinstance(block, dict):
             unsupported.append("invalid")
         elif block.get("type") == "text" and isinstance(block.get("text"), str):
@@ -204,7 +202,7 @@ def project_model_content(result: dict[str, Any]) -> tuple[str, list[str]]:
             texts.append(json.dumps({"resourceLink": block.get("uri"), "name": block.get("name")}, separators=(",", ":")))
         else:
             unsupported.append(str(block.get("type", "unknown")) if isinstance(block, dict) else "invalid")
-    if result.get("structuredContent") is not None:
+    if "structuredContent" in result:
         texts.append(json.dumps(result["structuredContent"], separators=(",", ":")))
     if unsupported:
         texts.append("Unsupported tool content retained in evidence: " + ", ".join(sorted(set(unsupported))) + ".")
