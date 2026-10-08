@@ -5,6 +5,9 @@ Research date: 2026-10-08. This note records source findings and design recommen
 The follow-up [Waku filesystem and execution environment study](waku-filesystem-environment.md)
 examines project directories, persistent scratch work, Pi delegation, and the
 difference between a working directory and an operating-system sandbox.
+The [connected business-agent foundation](connected-business-agent-foundation.md)
+records the subsequent boundary decision, protocol requirements and native
+approval mechanisms for backend agents.
 
 ## Recommendation
 

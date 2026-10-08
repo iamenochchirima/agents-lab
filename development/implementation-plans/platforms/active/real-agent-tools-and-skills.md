@@ -2,6 +2,11 @@
 
 Status: implemented and verified on 2026-10-08, with recorded real-model limitations.
 
+Follow-up: the [connected business-agent tools plan](connected-business-agent-tools.md)
+supersedes this milestone's native workspace default and specifies connection
+lifecycle, invocation approval and remaining execution fixes. Its work is planned,
+not already included in the completed checklist below.
+
 This is a temporary development plan, outside curated Docs. The implementation was resumed on 2026-10-08 and completed in separate
 reviewable commits. This file remains the single checklist and evidence ledger.
 

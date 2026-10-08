@@ -9,6 +9,12 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Connected business-agent tools](active/connected-business-agent-tools.md):
+  planned follow-up covering connection lifecycle, HTTP/MCP interoperability,
+  action-specific review and native continuation, business-effect outcomes,
+  external document providers, frontend and focused acceptance. Supersedes the
+  native workspace default from the earlier tools milestone. Not implemented.
+
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
