@@ -1,3 +1,5 @@
+import { readExtensionEvidence } from "../application/eval-extension-evidence.js";
+import { readEvalCoverage } from "../application/eval-coverage.js";
 import { randomUUID } from "node:crypto";
 
 import cors from "@fastify/cors";
@@ -109,6 +111,16 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
   });
 
   const assessments = new EvalAssessmentStore(dependencies.config.runsRoot);
+
+  app.get("/api/evals/extensions", async (_request, reply) => {
+    try { return reply.send(await readExtensionEvidence(dependencies.config.runsRoot, [dependencies.config.openRouter.apiKey ?? ""])); }
+    catch (error) { return sendError(reply, error); }
+  });
+
+  app.get("/api/evals/coverage", async (_request, reply) => {
+    try { return reply.send(await readEvalCoverage(dependencies.config.runsRoot, [dependencies.config.openRouter.apiKey ?? ""])); }
+    catch (error) { return sendError(reply, error); }
+  });
 
   app.get<{ Querystring: { limit?: string } }>("/api/evals", async (request, reply) => {
     try {
