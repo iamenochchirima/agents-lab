@@ -119,7 +119,7 @@ export class CapabilityCatalog {
       if (!descriptor) throw new Error(`Tool is absent from the configured catalog: ${name}`);
       const grant = resolution?.grants.find(item => item.manifest.id === name)?.grant;
       const limits = descriptor.definition.limits;
-      return { ...descriptor, definition: { ...descriptor.definition, limits: grant ? {
+      return { ...descriptor, definition: { ...descriptor.definition, ...(grant ? { approvalMode: grant.approvalMode === "invocation" ? "invocation" as const : grant.approvalMode === "required" ? "tool_grant" as const : "automatic" as const } : {}), limits: grant ? {
         timeoutMs: Math.min(limits.timeoutMs, grant.timeoutMs),
         maxArgumentBytes: Math.min(limits.maxArgumentBytes, grant.maxInputBytes),
         maxResultBytes: Math.min(limits.maxResultBytes, grant.maxOutputBytes),
@@ -172,7 +172,7 @@ export class CapabilityCatalog {
           risk: manifest.risk,
           operations: manifest.operations,
           ...(this.toolDescriptors.get(manifest.id)?.connection ? { connectionRef: this.toolDescriptors.get(manifest.id)!.connection!.ref } : {}),
-          approvalMode: this.toolDescriptors.get(manifest.id)?.definition.approvalMode ?? (grant.approvalMode === "required" ? "tool_grant" as const : "automatic" as const),
+          approvalMode: grant.approvalMode === "invocation" ? "invocation" as const : grant.approvalMode === "required" ? "tool_grant" as const : "automatic" as const,
         }] : [];
       }),
     };

@@ -45,3 +45,6 @@ lab/state/*.sqlite*
 
 # Disposable output from the shipped workspace capability example
 lab/scenarios/workspace-capabilities/fixtures/artifacts/
+
+# Local managed capabilities, encrypted credentials and administrator session key
+/lab/state/capabilities/

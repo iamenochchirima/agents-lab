@@ -7,7 +7,7 @@ import { skillContributions } from "./skills.js";
 import { loadMcpSource, loadHttpSource } from "./connected-sources.js";
 import type { UntrustedSkillContextText } from "../skills/contracts.js";
 
-export interface CapabilityPackageSummary extends PackageIdentity { readonly source: "skills" | "mcp" | "http"; readonly digest: string; readonly connectionRef?: string; readonly unavailableReason?: string; readonly tools: readonly string[]; readonly skills: readonly { name: string; description: string; digest: string }[] }
+export interface CapabilityPackageSummary extends PackageIdentity { readonly source: "skills" | "mcp" | "http" | "stdio"; readonly digest: string; readonly connectionRef?: string; readonly unavailableReason?: string; readonly tools: readonly string[]; readonly skills: readonly { name: string; description: string; digest: string }[] }
 export interface LoadedCapabilityPackages { readonly tools: HostedToolContribution[]; readonly profiles: CapabilityProfile[]; readonly packages: CapabilityPackageSummary[]; readonly resolveSkillContexts: (ids: readonly string[]) => Promise<UntrustedSkillContextText[]> }
 export interface PackageConnectionResolver {
   binding(ref: string): Promise<{ connection: NonNullable<HostedToolContribution["descriptor"]["connection"]>; resolveHeaders(signal: AbortSignal): Promise<Readonly<Record<string, string>>> }>;
@@ -15,9 +15,15 @@ export interface PackageConnectionResolver {
 }
 
 /** Loads trusted server configuration. Model/browser input must never be passed here. */
-export async function loadCapabilityPackages(configPath: string, options: { connections?: PackageConnectionResolver; allowUnavailable?: boolean } = {}): Promise<LoadedCapabilityPackages> {
+export async function loadCapabilityPackages(configPath: string, options: { connections?: PackageConnectionResolver; allowUnavailable?: boolean; fetchImplementation?: typeof fetch } = {}): Promise<LoadedCapabilityPackages> {
   const bytes = await readFile(configPath); if (bytes.length > 256 * 1024) throw new Error("Capability package configuration exceeds 262144 bytes.");
-  const config: unknown = JSON.parse(bytes.toString("utf8"));
+  return loadCapabilityPackageRecords(JSON.parse(bytes.toString("utf8")), dirname(configPath), options);
+}
+
+/** Internal construction from management-validated records; not an HTTP input parser.
+ * The trusted file adapter and management service share source validation.
+ */
+export async function loadCapabilityPackageRecords(config: unknown, configuredRoot: string, options: { connections?: PackageConnectionResolver; allowUnavailable?: boolean; fetchImplementation?: typeof fetch } = {}): Promise<LoadedCapabilityPackages> {
   if (!record(config) || config.schemaVersion !== 1 || !Array.isArray(config.packages) || config.packages.length < 1 || config.packages.length > 32) throw new Error("Capability package configuration requires schemaVersion 1 and 1 to 32 packages.");
   exactKeys(config, ["schemaVersion", "packages", "profiles", "connections"]);
   const tools: HostedToolContribution[] = []; const profiles: CapabilityProfile[] = []; const packages: CapabilityPackageSummary[] = []; const ids = new Set<string>();
@@ -37,14 +43,14 @@ export async function loadCapabilityPackages(configPath: string, options: { conn
     try {
     const connected = value.connectionRef === undefined ? {} : await packageConnection(value.connectionRef, options.connections);
     if (value.source === "skills") {
-      const result = await skillContributions(identity, root(value.root, configPath)); contributions = result.tools; skills = result.skills;
+      const result = await skillContributions(identity, root(value.root, resolve(configuredRoot, "packages.json"))); contributions = result.tools; skills = result.skills;
       skillResolvers.set(identity.id, result.resolveSkillContexts);
     } else if (value.source === "mcp") {
       if (typeof value.endpoint !== "string") throw new Error("MCP package requires a configured endpoint.");
-      contributions = await loadMcpSource({ ...identity, ...connected, endpoint: value.endpoint, ...(typeof value.protocolVersion === "string" ? { protocolVersion: value.protocolVersion } : {}), ...(value.tools !== undefined ? { tools: value.tools as Parameters<typeof loadMcpSource>[0]["tools"] } : {}), headers: headers(value.headersEnv), ...(value.trustedContext !== undefined ? { trustedContext: value.trustedContext as "session" } : {}) });
+      contributions = await loadMcpSource({ ...identity, ...connected, fetchImplementation: options.fetchImplementation, endpoint: value.endpoint, ...(typeof value.protocolVersion === "string" ? { protocolVersion: value.protocolVersion } : {}), ...(value.tools !== undefined ? { tools: value.tools as Parameters<typeof loadMcpSource>[0]["tools"] } : {}), headers: headers(value.headersEnv), ...(value.trustedContext !== undefined ? { trustedContext: value.trustedContext as "session" } : {}) });
     } else if (value.source === "http") {
       if (typeof value.baseUrl !== "string" || !Array.isArray(value.operations)) throw new Error("HTTP package requires baseUrl and explicit operations.");
-      contributions = loadHttpSource({ ...identity, ...connected, baseUrl: value.baseUrl, operations: value.operations as Parameters<typeof loadHttpSource>[0]["operations"], headers: headers(value.headersEnv) });
+      contributions = loadHttpSource({ ...identity, ...connected, fetchImplementation: options.fetchImplementation, baseUrl: value.baseUrl, operations: value.operations as Parameters<typeof loadHttpSource>[0]["operations"], headers: headers(value.headersEnv) });
     } else throw new Error("Package source must be skills, mcp or http.");
     } catch (error) {
       if (!options.allowUnavailable || value.source === "skills") throw error;

@@ -14,8 +14,14 @@ interface Source {
   readonly id: string; readonly version: string; readonly headers?: Readonly<Record<string, string>>;
   readonly resolveHeaders?: (signal: AbortSignal) => Promise<Readonly<Record<string, string>>>;
   readonly connection?: NonNullable<HostedToolContribution["descriptor"]["connection"]>;
+  readonly fetchImplementation?: typeof fetch;
+  /** Nonsecret transport configuration included in admitted source identity. */
+  readonly implementationDigest?: string;
 }
+export type ManagedMcpClient = Pick<HttpMcpServer, "serverName" | "protocolVersion" | "listTools" | "callToolResult" | "close" | "progressDiagnostics">;
 export interface McpSourceOptions extends Source {
+  /** Server-owned transport factory. HTTP and managed stdio share admission semantics. */
+  readonly createServer?: (resolveHeaders: NonNullable<Source["resolveHeaders"]>, onDispatch?: (method: string) => void) => ManagedMcpClient;
   readonly endpoint: string;
   readonly protocolVersion?: string;
   readonly trustedContext?: "session";
@@ -46,7 +52,7 @@ export interface HttpSourceOptions extends Source {
  */
 export async function loadMcpSource(options: McpSourceOptions): Promise<HostedToolContribution[]> {
   validateSource(options);
-  const createServer = (resolveHeaders: NonNullable<Source["resolveHeaders"]>, onDispatch?: (method: string) => void) => new HttpMcpServer({ endpoint: options.endpoint, serverName: options.id, protocolVersion: options.protocolVersion ?? "2026-07-28", resolveHeaders, onDispatch, maxResponseBytes: 4 * 1024 * 1024 });
+  const createServer = (resolveHeaders: NonNullable<Source["resolveHeaders"]>, onDispatch?: (method: string) => void) => options.createServer ? options.createServer(resolveHeaders, onDispatch) : new HttpMcpServer({ endpoint: options.endpoint, serverName: options.id, protocolVersion: options.protocolVersion ?? "2026-07-28", resolveHeaders, onDispatch, fetchImplementation: options.fetchImplementation, maxResponseBytes: 4 * 1024 * 1024 });
   const discovery = createServer(signal => sourceHeaders(options, signal));
   let manifests;
   try { manifests = await discovery.listTools(AbortSignal.timeout(defaults.timeoutMs)); }
@@ -67,7 +73,7 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
     const outputValidator = remote.outputSchema ? compileToolSchema(remote.outputSchema) : undefined;
     const frozenRemoteDigest = digest(remote);
     return contribution(options, definition, { kind: "mcp", endpoint: new URL(options.endpoint).toString(), protocolVersion: discovery.protocolVersion,
-      authorizationContextDigest: authorityDigest(options), trustedContext: options.trustedContext ?? null, remoteName: remote.name, remoteDigest: frozenRemoteDigest, effectContract: selection.effectContract ?? null }, async (input, context, state) => {
+      authorizationContextDigest: authorityDigest(options), implementationDigest: options.implementationDigest ?? null, trustedContext: options.trustedContext ?? null, remoteName: remote.name, remoteDigest: frozenRemoteDigest, effectContract: selection.effectContract ?? null }, async (input, context, state) => {
       const server = createServer(async signal => {
         const headers = await sourceHeaders(options, signal);
         if (options.trustedContext === "session") {
@@ -148,7 +154,7 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
           if (Buffer.byteLength(current.url.toString()) + Buffer.byteLength(current.body ?? "") + Buffer.byteLength(JSON.stringify(current.headers)) > definition.limits.maxArgumentBytes) throw new Error("Bound HTTP request exceeds its configured input limit.");
           try {
             state.dispatched = true;
-            const rawResponse = await fetch(current.url, { method: operation.method,
+            const rawResponse = await (options.fetchImplementation ?? fetch)(current.url, { method: operation.method,
               headers: current.headers, ...(current.body !== undefined ? { body: current.body } : {}), signal, redirect: "error" });
             const text = await boundedText(rawResponse, definition.limits.maxResultBytes);
             response = { ok: rawResponse.ok, status: rawResponse.status, text };

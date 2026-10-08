@@ -23,8 +23,8 @@ function parseSkill(text: string): { name: string; description: string; body: st
   return { name, description, body: match[2].trim() };
 }
 
-export interface SkillContributions { readonly tools: HostedToolContribution[]; readonly skills: readonly Pick<Skill, "name" | "description" | "digest">[]; readonly resolveSkillContexts: (names: readonly string[]) => Promise<UntrustedSkillContextText[]> }
-export async function skillContributions(identity: PackageIdentity, configuredRoot: string): Promise<SkillContributions> {
+export interface SkillContributions { readonly inspect: (name: string) => Promise<{ name: string; description: string; content: string; files: string[] }>; readonly tools: HostedToolContribution[]; readonly skills: readonly Pick<Skill, "name" | "description" | "digest">[]; readonly resolveSkillContexts: (names: readonly string[]) => Promise<UntrustedSkillContextText[]> }
+export async function skillContributions(identity: PackageIdentity, configuredRoot: string, allowedNames?: readonly string[]): Promise<SkillContributions> {
   const root = await realpath(configuredRoot); const skills: Skill[] = []; let files = 0; let directories = 0;
   async function resources(directory: string): Promise<Resource[]> {
     const found: Resource[] = [];
@@ -50,6 +50,13 @@ export async function skillContributions(identity: PackageIdentity, configuredRo
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) if (entry.isDirectory() && ![".git", "node_modules"].includes(entry.name)) await discover(resolve(path, entry.name), depth + 1);
   }
   await discover(root, 0);
+  // Profile scope is enforced here, so load/resource tools cannot reach disabled
+  // siblings even when the model guesses their names.
+  if (allowedNames !== undefined) {
+    if (allowedNames.length > 64 || new Set(allowedNames).size !== allowedNames.length || allowedNames.some(name => !skills.some(skill => skill.name === name))) throw new Error("Selected skill is not installed in this package.");
+    const selectedSkills = skills.filter(skill => allowedNames.includes(skill.name));
+    skills.splice(0, skills.length, ...selectedSkills);
+  }
   const revision = digest(JSON.stringify(skills.map(({ path, ...skill }) => skill)));
   const selected = (name: unknown): Skill => { const value = skills.find((skill) => skill.name === name); if (!value) throw new Error("Skill was not selected from this package's catalog."); return value; };
   async function verify(skill: Skill): Promise<string> {
@@ -67,8 +74,9 @@ export async function skillContributions(identity: PackageIdentity, configuredRo
     if (!Array.isArray(names) || names.length > 64 || new Set(names).size !== names.length) throw new Error("Explicit skill selection requires at most 64 distinct names.");
     return Promise.all(names.map(async (name) => { const skill = selected(name); return activation(skill, parseSkill(await verify(skill)).body); }));
   };
-  if (!skills.length) return { tools: [], skills: [], resolveSkillContexts };
-  return { skills: summaries, resolveSkillContexts, tools: [
+  const inspect = async (name: string) => { const skill = selected(name); return { name: skill.name, description: skill.description, content: await verify(skill), files: skill.resources.map(resource => resource.path) }; };
+  if (!skills.length) return { inspect, tools: [], skills: [], resolveSkillContexts };
+  return { inspect, skills: summaries, resolveSkillContexts, tools: [
     make("list_skills", "List available procedural skills by name and description. Load a relevant skill before following its procedure.", objectSchema({}), async () => JSON.stringify({ packageId: identity.id, packageVersion: identity.version, skills: summaries })),
     make("load_skill", "Load a selected SKILL.md procedure and its resource index. Instructions grant no tools, permissions or secrets.", objectSchema({ name }, ["name"]), async (args, context) => {
       context.signal.throwIfAborted(); const skill = selected(args.name); const text = await verify(skill);
