@@ -1,5 +1,6 @@
 import { X, Plus, Settings2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   connectionAction, deleteConnection, deleteInstallation, deletePackage, deleteProfile, getManagementSession, getManagementState, getSkillInspection,
   ManagementApiError, installPackage, previewInstallation, saveConnection, savePackage, saveProfile, unlockManagement,
@@ -62,7 +63,9 @@ export function CapabilityManager({ onClose, onChanged }: { onClose: () => void;
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
   }
-  return <div className="cap-manager-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+  // Platform content has its own stacking context; mount the modal at the
+  // document boundary so shell navigation cannot obscure management controls.
+  return createPortal(<div className="cap-manager-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
     <section className="cap-manager" ref={dialog} tabIndex={-1} onKeyDown={keyDown} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy}>
       <header className="cap-manager-header"><div><span className="eyebrow">Agent capabilities</span><h2 id={titleId}>Tools, skills and connections</h2></div><button className="icon-button" type="button" aria-label="Close capability manager" disabled={busy} onClick={onClose}><X size={18} /></button></header>
       {error && <p className="cap-manager-error" role="alert">{error}</p>}
@@ -77,7 +80,7 @@ export function CapabilityManager({ onClose, onChanged }: { onClose: () => void;
         <footer className="cap-manager-footer"><span>Saved changes apply to new runs.</span><span>Revision {state.revision}</span></footer>
       </>}
     </section>
-  </div>;
+  </div>, document.body);
 }
 type Shared = { state: ManagementState; busy: boolean; run: (action: () => Promise<void>) => Promise<void>; publish: (value: ManagementState) => void };
 
