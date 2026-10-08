@@ -135,3 +135,25 @@ The host-port default was corrected. A directory-creation hallucination recovere
 through tool feedback, and the write tool now explicitly describes creating parent
 directories. These findings prompted configuration, telemetry and description fixes;
 they do not establish a platform ranking or reliable success rates.
+
+## Connected business and external document extension
+
+The `support` task in `eval:capabilities` uses `customer-support.json` and the
+[connected support scenario](../../scenarios/business-agent/README.md). All four
+native baselines receive the same customer/order/policy task. The model must load
+the named skill and choose the reads and adjustment. The driver reviews its exact
+proposal under a recorded local-fixture-only 500-cent policy, independently checks
+that no write occurred while waiting, and then verifies one persisted effect and
+a native verification read. A wrong proposal is denied and remains failed evidence.
+
+The companion `workspace` task now accesses the optional external document MCP
+provider. The runtime no longer creates session workspaces. Historical reports
+remain evidence of the older implementation and are not reinterpreted as external
+provider results. Newly retained reports inspect `.document-provider` storage.
+The provider owns the session directory, path restrictions and edit digests.
+
+These are functional integration observations with actual free-model decisions,
+not general claims of third-party compatibility, production authorization or
+model competence. Scripted lifecycle checks and local service contracts are
+separate evidence. Pending invocation review and final service effects must both
+be retained; a successful assistant message alone does not pass the scenario.

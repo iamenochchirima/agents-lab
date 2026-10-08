@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "task-workspace",
+      "version": "2.0.0",
+      "source": "mcp",
+      "endpoint": "http://127.0.0.1:9197/mcp",
+      "protocolVersion": "2026-07-28",
+      "trustedContext": "session",
+      "tools": [
+        {
+          "remoteName": "task-workspace_list_files",
+          "name": "task-workspace_list_files",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "task-workspace_read_file",
+          "name": "task-workspace_read_file",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "task-workspace_search_files",
+          "name": "task-workspace_search_files",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "task-workspace_write_file",
+          "name": "task-workspace_write_file",
+          "riskClass": "write"
+        },
+        {
+          "remoteName": "task-workspace_patch_file",
+          "name": "task-workspace_patch_file",
+          "riskClass": "write"
+        }
+      ],
+      "connectionRef": "conn_documents_local"
+    },
+    {
+      "id": "task-procedures",
+      "version": "1.0.0",
+      "source": "skills",
+      "root": "./skills"
+    },
+    {
+      "id": "support-mcp",
+      "version": "1.0.0",
+      "source": "mcp",
+      "endpoint": "http://127.0.0.1:9196/mcp",
+      "protocolVersion": "2026-07-28",
+      "tools": [
+        {
+          "remoteName": "support.customer",
+          "name": "support_customer",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "support.order",
+          "name": "support_order",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "support.policy",
+          "name": "support_policy",
+          "riskClass": "read"
+        }
+      ],
+      "connectionRef": "conn_support_local"
+    },
+    {
+      "id": "support-api",
+      "version": "1.0.0",
+      "source": "http",
+      "baseUrl": "http://127.0.0.1:9196",
+      "operations": [
+        {
+          "name": "support_adjust",
+          "method": "POST",
+          "path": "/support/adjustments",
+          "riskClass": "write",
+          "approvalMode": "invocation",
+          "description": "Apply the requested late-delivery adjustment to order-cedar using its current revision. Requires review of this exact action. Verify the order afterward.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "pattern": "^cap-[a-z0-9-]{1,90}$"
+              },
+              "orderId": {
+                "type": "string",
+                "enum": [
+                  "order-cedar"
+                ]
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "amountCents": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "late_delivery"
+                ]
+              }
+            },
+            "required": [
+              "namespace",
+              "orderId",
+              "expectedRevision",
+              "amountCents",
+              "reason"
+            ],
+            "additionalProperties": false
+          },
+          "idempotency": {
+            "header": "Idempotency-Key"
+          },
+          "effectContract": {
+            "rejectionStatusCodes": [
+              400,
+              409,
+              422
+            ],
+            "successConfirmsEffect": true
+          }
+        }
+      ],
+      "connectionRef": "conn_support_local"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "workspace-agent",
+      "version": "2.0.0",
+      "packages": [
+        "task-workspace",
+        "task-procedures"
+      ]
+    },
+    {
+      "id": "support-agent",
+      "version": "1.0.0",
+      "packages": [
+        "support-mcp",
+        "support-api",
+        "task-procedures"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "ref": "conn_support_local",
+      "displayName": "Fictional customer support",
+      "provider": "support-fixture",
+      "owner": "lab-development",
+      "resource": "http://127.0.0.1:9196",
+      "scopes": [
+        "support:read",
+        "support:adjust"
+      ],
+      "auth": {
+        "kind": "anonymous"
+      }
+    },
+    {
+      "ref": "conn_documents_local",
+      "displayName": "Development documents",
+      "provider": "document-fixture",
+      "owner": "lab-development",
+      "resource": "http://127.0.0.1:9197/mcp",
+      "scopes": [
+        "documents:read",
+        "documents:write"
+      ],
+      "auth": {
+        "kind": "static",
+        "headersEnv": {
+          "Authorization": "AGENTLAB_DOCUMENT_PROVIDER_AUTHORIZATION"
+        }
+      }
+    }
+  ]
+}

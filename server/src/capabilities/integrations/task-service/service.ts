@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerSupportService, supportTools } from "./support.js";
 import { capabilityWorkspaceRoot } from "../../extensions/runtime.js";
 
 export interface ReleaseRecord {
@@ -29,6 +30,7 @@ export async function createTaskService(options: { port?: number; stateRoot?: st
   const app = Fastify({ bodyLimit: 8192 });
   const root = options.stateRoot ?? join(capabilityWorkspaceRoot(), "lab/runs/.service-task");
   await mkdir(root, { recursive: true });
+  const support = await registerSupportService(app, join(root, "support"));
   let mutations = Promise.resolve();
   const namespacePath = (namespace: string) => {
     if (!/^cap-[a-z0-9-]{1,90}$/.test(namespace)) throw new Error("Invalid acceptance namespace.");
@@ -61,7 +63,13 @@ export async function createTaskService(options: { port?: number; stateRoot?: st
   app.post<{ Body: { id?: string | number; method?: string; params?: { name?: string; arguments?: { namespace?: string; key?: string } } } }>("/mcp", async (request, reply) => {
     const body = request.body;
     const envelope = (result: unknown) => ({ jsonrpc: "2.0", id: body.id ?? null, result });
-    if (body.method === "tools/list") return envelope({ tools: [{ name: "release.lookup", description: "Read the Cedar release record, including its current revision, assigned owner and status.", inputSchema: recordLookupSchema }] });
+    if (body.method === "tools/list") return envelope({ tools: [{ name: "release.lookup", description: "Read the Cedar release record, including its current revision, assigned owner and status.", inputSchema: recordLookupSchema }, ...supportTools] });
+    if (body.method === "tools/call" && supportTools.some(tool => tool.name === body.params?.name)) {
+      const input = body.params?.arguments;
+      if (!input || typeof input.namespace !== "string" || !/^cap-[a-z0-9-]{1,90}$/.test(input.namespace) || Object.keys(input).some(key => key !== "namespace")) return envelope({ isError: true, content: [{ type: "text", text: "Provide only the assigned support namespace." }] });
+      const record = await support.lookup(body.params!.name!, input.namespace);
+      return envelope({ content: [{ type: "text", text: JSON.stringify(record) }], structuredContent: record });
+    }
     if (body.method === "tools/call" && body.params?.name === "release.lookup") {
       const input = body.params.arguments;
       if (!input || input.key !== "cedar" || typeof input.namespace !== "string" || !/^cap-[a-z0-9-]{1,90}$/.test(input.namespace)) return envelope({ isError: true, content: [{ type: "text", text: "Provide the assigned acceptance namespace and key cedar." }] });
@@ -71,7 +79,7 @@ export async function createTaskService(options: { port?: number; stateRoot?: st
     return reply.code(400).send({ jsonrpc: "2.0", id: body.id ?? null, error: { code: -32601, message: "This controlled fixture supports tools/list and tools/call only." } });
   });
   await app.listen({ host: "127.0.0.1", port: options.port ?? 9196 });
-  return { app, lookup, stateRoot: root, close: () => app.close() };
+  return { app, lookup, support, stateRoot: root, close: () => app.close() };
 }
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
   const service = await createTaskService();
