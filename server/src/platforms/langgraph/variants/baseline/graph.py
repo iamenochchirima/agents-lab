@@ -21,9 +21,9 @@ from urllib import request as urllib_request
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
-from langgraph.types import RetryPolicy
+from langgraph.types import RetryPolicy, interrupt
 
-from .hosted_tools import catalog_tools, validate_arguments, execute_hosted
+from .hosted_tools import catalog_tools, validate_arguments, execute_hosted, prepare_hosted, project_model_content
 
 
 EventEmitter = Callable[[str, dict[str, Any]], None]
@@ -54,6 +54,7 @@ class GraphState(TypedDict, total=False):
     tool_call_count: int
     pending_tool_calls: list[dict[str, Any]]
     usage: dict[str, int | None]
+    review_decisions: dict[str, str]
     # The shared context revision that produced `messages`. A higher revision
     # must replace the native checkpoint transcript before the next model node;
     # otherwise a provider-overflow recovery would compact the Lab snapshot but
@@ -143,6 +144,7 @@ class ToolExecution:
     error_message: str | None = None
     duration_ms: int = 0
     attempt_count: int = 1
+    rich_result: dict[str, Any] | None = None
 
 
 CALCULATOR_DEFINITION: dict[str, Any] = {
@@ -326,6 +328,55 @@ def build_baseline_graph(
             "usage": response.usage,
         }
 
+    def review_tools(state: GraphState) -> GraphState:
+        # This dedicated node may replay on resume. Preparation is idempotent,
+        # and no effect or model inference occurs before/inside interrupt().
+        decisions: dict[str, str] = {}
+        for raw in state.get("pending_tool_calls", []):
+            descriptor = selected_catalog.get(raw["name"])
+            if not descriptor or descriptor["definition"].get("approvalMode") != "invocation":
+                continue
+            call = ToolCall(str(raw["id"]), str(raw["name"]), raw.get("arguments"))
+            if validate_catalog_call(call, descriptor, approved_tools, state.get("round_count", 0)):
+                continue
+            if is_cancelled():
+                raise CancellationError("Cancellation was requested before action review.")
+            review = prepare_hosted(descriptor, tool_catalog["revision"], call.arguments,
+                run_id=run_id, turn_id=turn_id or f"{run_id}:turn:1", tool_call_id=call.tool_call_id,
+                round_number=state.get("round_count", 0), is_cancelled=is_cancelled,
+                endpoint=capability_host_url, key_file=capability_host_key_file)
+            if review is None:
+                raise ConfigurationError("Invocation review was required but the host returned no proposal.")
+            if review["status"] in {"approved", "dispatching", "completed"}:
+                decisions[call.tool_call_id] = "approved"
+                continue
+            if review["status"] in {"denied", "cancelled"}:
+                decisions[call.tool_call_id] = "denied"
+                continue
+            while True:
+                emit("InvocationReviewPending", {"requestId": review["requestId"], "toolCallId": call.tool_call_id, "revision": review["revision"]})
+                resumed = interrupt(review)
+                if not isinstance(resumed, dict) or resumed.get("kind") != "invocation_review" or resumed.get("requestId") != review["requestId"] or resumed.get("toolCallId") != call.tool_call_id or resumed.get("decision") not in {"approved", "denied", "renewed"}:
+                    raise ConfigurationError("The resumed decision does not match this pending invocation.")
+                if resumed["decision"] == "renewed":
+                    renewed = prepare_hosted(descriptor, tool_catalog["revision"], call.arguments,
+                        run_id=run_id, turn_id=turn_id or f"{run_id}:turn:1", tool_call_id=call.tool_call_id,
+                        round_number=state.get("round_count", 0), is_cancelled=is_cancelled,
+                        endpoint=capability_host_url, key_file=capability_host_key_file)
+                    # Older renewal values replay as the node reexecutes. The
+                    # host's current revision cannot move backwards; no effect
+                    # or inference occurs while replay advances interruptions.
+                    if not renewed or renewed["requestId"] != review["requestId"] or renewed["revision"] < resumed.get("revision", 0) or renewed["status"] != "pending":
+                        raise ConfigurationError("The renewed proposal does not match this waiting action.")
+                    emit("InvocationReviewRenewed", {"requestId": renewed["requestId"], "revision": resumed["revision"], "toolCallId": call.tool_call_id})
+                    review = renewed
+                    continue
+                if resumed.get("revision") != review["revision"]:
+                    raise ConfigurationError("The resumed decision targets an outdated proposal revision.")
+                decisions[call.tool_call_id] = resumed["decision"]
+                break
+        return {"review_decisions": decisions}
+
     def execute_tools(state: GraphState, runtime: Runtime[Any]) -> GraphState:
         del runtime
         messages = list(state.get("messages", []))
@@ -361,6 +412,10 @@ def build_baseline_graph(
                 messages.append(tool_message(call, _tool_error(validation_error[0], validation_error[1])))
                 continue
             emit("ToolCallValidated", payload)
+            if state.get("review_decisions", {}).get(call.tool_call_id) == "denied":
+                emit("ToolCallRejected", {**payload, "code": "INVOCATION_DENIED", "message": "This exact action was denied during review."})
+                messages.append(tool_message(call, _tool_error("INVOCATION_DENIED", "This exact action was denied. No source operation was dispatched.")))
+                continue
             emit("ToolExecutionStarted", payload)
             try:
                 if descriptor is not None and descriptor["execution"]["kind"] == "hosted":
@@ -369,9 +424,10 @@ def build_baseline_graph(
                         round_number=state.get("round_count", 0), is_cancelled=is_cancelled,
                         endpoint=capability_host_url, key_file=capability_host_key_file)
                     host_error = host_result.get("error") or {}
-                    result = ToolExecution(host_result["content"], status=host_result["status"],
+                    model_content, unsupported_content = project_model_content(host_result)
+                    result = ToolExecution(model_content, status=host_result["status"],
                         error_code=host_error.get("code"), error_message=host_error.get("message"), connection=host_result.get("connection"),
-                        duration_ms=host_result.get("durationMs", 0), attempt_count=host_result.get("attemptCount", 1))
+                        duration_ms=host_result.get("durationMs", 0), attempt_count=host_result.get("attemptCount", 1), rich_result={**{key: host_result[key] for key in ("effect", "presentation", "contentBlocks", "structuredContent") if key in host_result}, "modelProjection": {"mode": "text", "unsupportedContent": unsupported_content}})
                 else:
                     result = execute_tool(
                         call.name,
@@ -407,6 +463,7 @@ def build_baseline_graph(
                     "code": result.error_code or "TOOL_EXECUTION_FAILED",
                     "message": result.error_message or "The selected tool did not complete.",
                     **({"connection": result.connection} if result.connection else {}),
+                    **(result.rich_result or {}),
                 })
                 if result.status == "unknown":
                     raise OutcomeUnknownError("The selected connection write outcome is unknown.")
@@ -424,6 +481,7 @@ def build_baseline_graph(
                 "attemptCount": result.attempt_count,
                 "resultBytes": _utf8_bytes(result.content),
                 **({"connection": result.connection} if result.connection else {}),
+                    **(result.rich_result or {}),
             })
             messages.append(tool_message(call, result.content))
         return {"messages": messages, "pending_tool_calls": [], "tool_call_count": call_count}
@@ -440,9 +498,11 @@ def build_baseline_graph(
         call_model,
         retry_policy=RetryPolicy(max_attempts=1 if live_eval else max_attempts, jitter=False, retry_on=retry_on),
     )
+    builder.add_node("approval", review_tools)
     builder.add_node("tools", execute_tools)
     builder.add_edge(START, "model")
-    builder.add_conditional_edges("model", route_after_model, {"tools": "tools", END: END})
+    builder.add_conditional_edges("model", route_after_model, {"tools": "approval", END: END})
+    builder.add_edge("approval", "tools")
     builder.add_edge("tools", "model")
     return builder.compile(checkpointer=checkpointer)
 
@@ -839,7 +899,7 @@ def validate_catalog_call(call: ToolCall, descriptor: dict[str, Any], approved_t
     if round_number < 1:
         return "INVALID_ROUND", "Tool call round must be positive."
     definition = descriptor["definition"]
-    if definition["riskClass"] == "external" or (definition["riskClass"] == "write" and call.name not in approved_tools):
+    if definition.get("approvalMode") != "invocation" and definition["riskClass"] in {"external", "write"} and call.name not in approved_tools:
         return "APPROVAL_REQUIRED", "The selected tool requires an explicit approval."
     return validate_arguments(descriptor, call.arguments)
 

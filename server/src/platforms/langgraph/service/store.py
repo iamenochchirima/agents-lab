@@ -100,6 +100,7 @@ class SQLiteRunStore:
                     ON service_events(execution_id, source_sequence);
                 """
             )
+            self._ensure_column("service_runs", "request_json", "TEXT")
             self._ensure_column("service_runs", "session_id", "TEXT")
             self._ensure_column("service_runs", "turn_id", "TEXT")
             self._ensure_column("service_runs", "client_turn_id", "TEXT")
@@ -147,7 +148,7 @@ class SQLiteRunStore:
                 active = self._connection.execute(
                     """
                     SELECT execution_id FROM service_runs
-                    WHERE session_id = ? AND status IN ('queued', 'running')
+                    WHERE session_id = ? AND status IN ('queued', 'running', 'suspended')
                     LIMIT 1
                     """,
                     (session_id,),
@@ -196,6 +197,7 @@ class SQLiteRunStore:
                         record["cancel_requested"], record["cancel_reason"],
                     ),
                 )
+                self._connection.execute("UPDATE service_runs SET request_json = ? WHERE execution_id = ?", (canonical_json(request.get("native_request", request)), execution_id))
             return record, True
 
     def get(self, execution_id: str) -> dict[str, Any]:
@@ -303,7 +305,7 @@ class SQLiteRunStore:
                 UPDATE service_runs
                 SET status = ?, finished_at = ?, output = ?, error_json = ?,
                     attempt_count = ?, usage_json = ?
-                WHERE execution_id = ? AND status IN ('queued', 'running')
+                WHERE execution_id = ? AND status IN ('queued', 'running', 'suspended')
                 """,
                 (status, finished_at, output, canonical_json(error) if error else None, attempt_count, canonical_json(usage), execution_id),
             )

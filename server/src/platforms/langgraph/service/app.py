@@ -16,8 +16,12 @@ from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import Command
+from variants.baseline.hosted_tools import host_key
+import secrets
 
 from protocol.models import (
+    ResumeRunRequest,
     CancelRunRequest,
     CancelRunResponse,
     HealthResponse,
@@ -57,6 +61,7 @@ class LangGraphService:
 
     async def start_run(self, request: StartRunRequest) -> tuple[dict[str, Any], bool]:
         request_data = request.model_dump(by_alias=False)
+        request_data["native_request"] = request.model_dump(by_alias=True)
         execution_id = f"langgraph:{request.run_id}"
         request_data["execution_id"] = execution_id
         request_data["request_fingerprint"] = fingerprint(request_data)
@@ -80,7 +85,37 @@ class LangGraphService:
             cancel_event = self.cancel_events.get(execution_id)
             if cancel_event:
                 cancel_event.set()
+            if record["status"] == "suspended":
+                self.store.finish(execution_id, status="cancelled", finished_at=now_iso(), output=None,
+                    error={"code": "LANGGRAPH_CANCELLED", "message": reason, "failureKind": "cancelled", "retryable": False},
+                    attempt_count=record["attempt_count"], usage=record["usage"])
+                self.store.append_event(execution_id, "RunCancelled", {"reason": reason})
         return self.store.get(execution_id), accepted
+
+    async def resume_run(self, execution_id: str, resume: ResumeRunRequest) -> dict[str, Any]:
+        async with self._lock:
+            record = self.store.get(execution_id)
+            if record["status"] != "suspended" or record["cancel_requested"]:
+                raise RunConflictError("Only an uncancelled suspended invocation can resume.")
+            if not record.get("request_json"):
+                raise RunConflictError("This retained execution has no recoverable admission request.")
+            request = StartRunRequest.model_validate(json.loads(record["request_json"]))
+            with SqliteSaver.from_conn_string(str(self.config.database_path)) as checkpointer:
+                # Read the exact native interrupt without reconstructing inference.
+                pending = checkpointer.get_tuple({"configurable": {"thread_id": request.thread_id}})
+                interrupts = [value for _, channel, value in pending.pending_writes if channel == "__interrupt__"] if pending else []
+                reviews = [item.value for values in interrupts for item in (values if isinstance(values, (list, tuple)) else [values]) if hasattr(item, "value")]
+                if not any(review.get("requestId") == resume.request_id and (review.get("revision") + 1 == resume.revision if resume.decision == "renewed" else review.get("revision") == resume.revision) and review.get("call", {}).get("toolCallId") == resume.tool_call_id for review in reviews):
+                    raise RunConflictError("The resume identity does not match the checkpoint's pending invocation.")
+            previous_task = self.active_tasks.get(execution_id)
+            if previous_task is not None and not previous_task.done():
+                await previous_task
+            cancel_event = threading.Event()
+            self.cancel_events[execution_id] = cancel_event
+            self.store.update_status(execution_id, "running")
+            self.store.append_event(execution_id, "RunResumed", {"reason": "invocation_review", "requestId": resume.request_id, "revision": resume.revision, "toolCallId": resume.tool_call_id, "decision": resume.decision})
+            self.active_tasks[execution_id] = asyncio.create_task(self._execute(request, cancel_event, resume.model_dump(by_alias=True)))
+            return self.store.get(execution_id)
 
     async def shutdown(self) -> None:
         for event in self.cancel_events.values():
@@ -98,15 +133,15 @@ class LangGraphService:
         if all(task.done() for task in active_tasks):
             self.store.close()
 
-    async def _execute(self, request: StartRunRequest, cancel_event: threading.Event) -> None:
+    async def _execute(self, request: StartRunRequest, cancel_event: threading.Event, resume: dict[str, Any] | None = None) -> None:
         execution_id = f"langgraph:{request.run_id}"
         try:
-            await asyncio.to_thread(self._execute_sync, request, cancel_event)
+            await asyncio.to_thread(self._execute_sync, request, cancel_event, resume)
         finally:
             self.active_tasks.pop(execution_id, None)
             self.cancel_events.pop(execution_id, None)
 
-    def _execute_sync(self, request: StartRunRequest, cancel_event: threading.Event) -> None:
+    def _execute_sync(self, request: StartRunRequest, cancel_event: threading.Event, resume: dict[str, Any] | None = None) -> None:
         execution_id = f"langgraph:{request.run_id}"
         started_at = now_iso()
         self.store.update_status(execution_id, "running", started_at=started_at)
@@ -133,7 +168,7 @@ class LangGraphService:
         error: dict[str, Any] | None = None
         usage = {"inputTokens": None, "outputTokens": None, "totalTokens": None}
         try:
-            initial_messages = load_context_messages(self.config.context_root, request, emit)
+            initial_messages = load_context_messages(self.config.context_root, request, emit) if resume is None else []
             tool_configuration = request.tools
             with SqliteSaver.from_conn_string(str(self.config.database_path)) as checkpointer:
                 graph = build_baseline_graph(
@@ -141,7 +176,7 @@ class LangGraphService:
                     live_eval=request.live_eval,
                     live_eval_experiment=request.live_eval_experiment,
                     emit=emit,
-                    is_cancelled=cancel_event.is_set,
+                    is_cancelled=lambda: cancel_event.is_set() or self.store.cancellation_requested(execution_id)[0],
                     run_id=request.run_id,
                     max_attempts=request.max_attempts,
                     checkpointer=checkpointer,
@@ -161,7 +196,7 @@ class LangGraphService:
                     "run_id": request.run_id,
                 }
                 checkpoint = graph.get_state(graph_config)
-                graph_input = graph_input_for_turn(request, initial_messages, checkpoint, emit)
+                graph_input = Command(resume=resume) if resume is not None else graph_input_for_turn(request, initial_messages, checkpoint, emit)
                 for part in graph.stream(
                     graph_input,
                     graph_config,
@@ -170,6 +205,15 @@ class LangGraphService:
                 ):
                     self._record_stream_part(execution_id, request.run_id, part)
                 snapshot = graph.get_state(graph_config)
+                if any(task.interrupts for task in snapshot.tasks):
+                    status = "suspended"
+                    self.store.update_status(execution_id, "suspended")
+                    pending = next(item.value for task in snapshot.tasks for item in task.interrupts)
+                    self.store.append_event(execution_id, "RunSuspended", {"reason": "invocation_review", "threadId": request.thread_id,
+                        "checkpointId": snapshot.config.get("configurable", {}).get("checkpoint_id"),
+                        "requestId": pending.get("requestId"), "revision": pending.get("revision"),
+                        "toolCallId": pending.get("call", {}).get("toolCallId")})
+                    return
                 output = snapshot.values.get("output") if isinstance(snapshot.values, dict) else None
                 attempt_count = max(attempt_count, int(snapshot.values.get("attempt_count", 0)))
                 snapshot_usage = snapshot.values.get("usage") if isinstance(snapshot.values, dict) else None
@@ -210,7 +254,7 @@ class LangGraphService:
             if self.store.get(execution_id)["status"] in {"queued", "running"}:
                 self.store.append_event(execution_id, "RunFailed" if status == "failed" else "RunReconciliationRequired", {"code": error["code"]})
         finally:
-            finished = self.store.finish(
+            finished = False if status == "suspended" else self.store.finish(
                 execution_id,
                 status=status,
                 finished_at=now_iso(),
@@ -369,6 +413,23 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
             ),
             **diagnostics,
         )
+
+    @app.post("/v1/runs/{execution_id}/resume")
+    async def resume_run(request: Request, execution_id: str, body: ResumeRunRequest):
+        service = request.app.state.service
+        try:
+            expected = "Bearer " + host_key(str(service.config.capability_host_key_file))
+        except (OSError, ValueError):
+            raise HTTPException(status_code=503, detail="Native resume credential is unavailable.")
+        if not secrets.compare_digest(request.headers.get("authorization", ""), expected):
+            raise HTTPException(status_code=401, detail="Native resume requires the trusted capability host credential.")
+        try:
+            await service.resume_run(execution_id, body)
+            return service.inspection(execution_id)
+        except RunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="LangGraph execution not found.") from exc
+        except RunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/v1/runs/{execution_id}/cancel", response_model=CancelRunResponse)
     async def cancel_run(request: Request, execution_id: str, body: CancelRunRequest) -> CancelRunResponse:

@@ -799,8 +799,8 @@ function deriveStatus(events: readonly RunEvent[], result: RunResult | null): Ru
   if (result) {
     return result.status;
   }
-  const suspended = [...events].reverse().find((event) => event.kind === "WorkflowSuspended" || event.kind === "WorkflowResumed");
-  if (suspended?.kind === "WorkflowSuspended") return "suspended";
+  const suspended = [...events].reverse().find((event) => ["WorkflowSuspended", "WorkflowResumed", "RunSuspended", "RunResumed"].includes(event.kind));
+  if (suspended && ["WorkflowSuspended", "RunSuspended"].includes(suspended.kind)) return "suspended";
   if (events.some((event) => event.kind === "AgentStarted")) {
     return "running";
   }
@@ -858,7 +858,7 @@ function capabilityMetricCounts(events: readonly RunEventIntent[]): Pick<RunMetr
     toolAttemptCount: events.filter((event) => event.kind === "ToolExecutionStarted").length,
     connectionCallCount: events.filter((event) => event.kind === "ToolExecutionCompleted" || event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionUnknown").filter((event) => isRecord(event.payload.connection)).length,
     connectionUnknownCount: unknownOutcomeEvents.length,
-    approvalDecisionCount: resolutionDecisionCount + events.filter((event) => event.kind === "ToolPolicyDenied" || event.kind === "WorkflowSuspended" || event.kind === "WorkflowResumed").length,
+    approvalDecisionCount: resolutionDecisionCount + events.filter((event) => event.kind === "ToolPolicyDenied" || ["WorkflowSuspended", "WorkflowResumed", "RunSuspended", "RunResumed"].includes(event.kind)).length,
     retryCount: events.filter((event) => event.kind === "ModelRetryScheduled" || event.kind === "ModelRetryRequested").length,
     toolFailureCount: toolFailureEvents.length,
     toolCancellationCount: events.filter((event) => event.kind === "ToolExecutionCancelled" || (isRecord(event.payload) && event.payload.status === "cancelled")).length,

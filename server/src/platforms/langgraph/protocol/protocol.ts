@@ -5,7 +5,7 @@ import type { ConnectionBinding } from "../../../capabilities/integrations/contr
 
 export const LANGGRAPH_PROTOCOL_VERSION = 1 as const;
 
-export type LangGraphPlatformStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "unknown";
+export type LangGraphPlatformStatus = "queued" | "running" | "suspended" | "completed" | "failed" | "cancelled" | "unknown";
 export type LangGraphFailureKind =
   | "configuration"
   | "pre_dispatch"
@@ -324,7 +324,7 @@ function requireFailureKind(value: unknown): asserts value is LangGraphFailureKi
 }
 
 function isStatus(value: unknown): value is LangGraphPlatformStatus {
-  return value === "queued" || value === "running" || value === "completed" || value === "failed" || value === "cancelled" || value === "unknown";
+  return value === "queued" || value === "running" || value === "suspended" || value === "completed" || value === "failed" || value === "cancelled" || value === "unknown";
 }
 
 function isFailureKind(value: unknown): value is LangGraphFailureKind {

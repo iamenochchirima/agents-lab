@@ -3,209 +3,979 @@
   "$id": "https://agent-harness-lab.local/schemas/langgraph-baseline-v1.json",
   "title": "Agent Harness Lab LangGraph baseline protocol",
   "oneOf": [
-    { "$ref": "#/$defs/startRequest" },
-    { "$ref": "#/$defs/startResponse" },
-    { "$ref": "#/$defs/healthResponse" },
-    { "$ref": "#/$defs/recoveryDiagnostics" },
-    { "$ref": "#/$defs/inspection" },
-    { "$ref": "#/$defs/cancelRequest" },
-    { "$ref": "#/$defs/cancelResponse" }
+    {
+      "$ref": "#/$defs/startRequest"
+    },
+    {
+      "$ref": "#/$defs/startResponse"
+    },
+    {
+      "$ref": "#/$defs/healthResponse"
+    },
+    {
+      "$ref": "#/$defs/recoveryDiagnostics"
+    },
+    {
+      "$ref": "#/$defs/inspection"
+    },
+    {
+      "$ref": "#/$defs/cancelRequest"
+    },
+    {
+      "$ref": "#/$defs/cancelResponse"
+    },
+    {
+      "$ref": "#/$defs/resumeRequest"
+    }
   ],
   "$defs": {
-    "protocol": { "const": 1 },
-    "provider": { "type": "string", "enum": ["fake", "openrouter"] },
-    "status": { "type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled", "unknown"] },
-    "failureKind": { "type": "string", "enum": ["configuration", "pre_dispatch", "provider", "timeout", "cancelled", "outcome_unknown", "internal", "reconciliation"] },
-    "identity": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "protocol": {
+      "const": 1
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "fake",
+        "openrouter"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "suspended",
+        "completed",
+        "failed",
+        "cancelled",
+        "unknown"
+      ]
+    },
+    "failureKind": {
+      "type": "string",
+      "enum": [
+        "configuration",
+        "pre_dispatch",
+        "provider",
+        "timeout",
+        "cancelled",
+        "outcome_unknown",
+        "internal",
+        "reconciliation"
+      ]
+    },
+    "identity": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
     "model": {
-      "type": "object", "additionalProperties": false, "required": ["provider", "model"],
-      "properties": { "provider": { "$ref": "#/$defs/provider" }, "model": { "type": "string", "minLength": 1, "maxLength": 200 } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "model"
+      ],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/provider"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
     },
     "context": {
-      "type": "object", "additionalProperties": false, "required": ["sessionId", "turnId"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "turnId"
+      ],
       "properties": {
-        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
-        "turnId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "snapshotId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "compactionRevision": { "type": "integer", "minimum": 0 },
-        "contextWindowTokens": { "type": "integer", "minimum": 1 }
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "snapshotId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "compactionRevision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contextWindowTokens": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "tools": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "enabledNames": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-z0-9_-]*$" } },
-        "approvedNames": { "type": "array", "maxItems": 32, "items": { "type": "string", "minLength": 1, "pattern": "^[a-z][a-z0-9_-]*$" } },
-        "maxRounds": { "type": "integer", "minimum": 1, "maximum": 32, "default": 6 },
-        "maxCalls": { "type": "integer", "minimum": 1, "maximum": 64, "default": 8 }
+        "enabledNames": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "approvedNames": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          }
+        },
+        "maxRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 6
+        },
+        "maxCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 8
+        }
       }
     },
     "connectionBinding": {
-      "type": "object", "additionalProperties": false,
-      "required": ["toolName", "connectionRef", "operations"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "toolName",
+        "connectionRef",
+        "operations"
+      ],
       "properties": {
-        "toolName": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
-        "connectionRef": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$" },
-        "operations": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_.:-]{0,127}$" } },
-        "mcp": { "$ref": "#/$defs/mcpBinding" }
+        "toolName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "connectionRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^conn_[A-Za-z0-9][A-Za-z0-9._:-]{0,122}$"
+        },
+        "operations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_.:-]{0,127}$"
+          }
+        },
+        "mcp": {
+          "$ref": "#/$defs/mcpBinding"
+        }
       }
     },
     "mcpBinding": {
-      "type": "object", "additionalProperties": false,
-      "required": ["endpointRef", "serverName", "protocolVersion", "toolName", "toolVersion"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "endpointRef",
+        "serverName",
+        "protocolVersion",
+        "toolName",
+        "toolVersion"
+      ],
       "properties": {
-        "endpointRef": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
-        "serverName": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "protocolVersion": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
-        "toolName": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "toolVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+        "endpointRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "serverName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "protocolVersion": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "toolName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "toolVersion": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        }
       }
     },
     "usage": {
-      "type": "object", "additionalProperties": false, "required": ["inputTokens", "outputTokens", "totalTokens"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputTokens",
+        "outputTokens",
+        "totalTokens"
+      ],
       "properties": {
-        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
-        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
-        "totalTokens": { "type": ["integer", "null"], "minimum": 0 }
+        "inputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
       }
     },
     "error": {
-      "type": "object", "additionalProperties": false, "required": ["code", "message", "failureKind", "retryable"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "failureKind",
+        "retryable"
+      ],
       "properties": {
-        "code": { "type": "string", "minLength": 1 }, "message": { "type": "string", "minLength": 1 },
-        "failureKind": { "$ref": "#/$defs/failureKind" }, "retryable": { "type": "boolean" }
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failureKind": {
+          "$ref": "#/$defs/failureKind"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
       }
     },
     "event": {
-      "type": "object", "additionalProperties": false, "required": ["source", "sourceSequence", "kind", "runId", "occurredAt", "payload"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "sourceSequence",
+        "kind",
+        "runId",
+        "occurredAt",
+        "payload"
+      ],
       "properties": {
-        "source": { "const": "langgraph-service" }, "sourceSequence": { "type": "integer", "minimum": 1 },
-        "kind": { "type": "string", "minLength": 1, "maxLength": 100 }, "runId": { "$ref": "#/$defs/identity" },
-        "occurredAt": { "type": "string", "minLength": 1 }, "payload": { "type": "object" }
+        "source": {
+          "const": "langgraph-service"
+        },
+        "sourceSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "runId": {
+          "$ref": "#/$defs/identity"
+        },
+        "occurredAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "object"
+        }
       }
     },
     "checkpoint": {
-      "type": "object", "additionalProperties": false, "required": ["checkpointId", "step", "count", "pendingWrites"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpointId",
+        "step",
+        "count",
+        "pendingWrites"
+      ],
       "properties": {
-        "checkpointId": { "type": ["string", "null"] }, "step": { "type": ["integer", "null"] },
-        "count": { "type": "integer", "minimum": 0 }, "pendingWrites": { "type": "integer", "minimum": 0 }
+        "checkpointId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "step": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pendingWrites": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "trajectory": {
-      "type": "object", "additionalProperties": false, "required": ["phases"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phases"
+      ],
       "properties": {
-        "phases": { "type": "array", "items": {
-          "type": "object", "additionalProperties": false, "required": ["name", "startedAt", "finishedAt"],
-          "properties": { "name": { "type": "string", "minLength": 1 }, "startedAt": { "type": "string", "minLength": 1 }, "finishedAt": { "type": ["string", "null"] } }
-        } }
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "startedAt",
+              "finishedAt"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "startedAt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "finishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
       }
     },
     "metrics": {
-      "type": "object", "additionalProperties": false,
-      "required": ["modelCallCount", "modelAttemptCount", "checkpointCount", "durationMs", "inputTokens", "outputTokens", "totalTokens"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modelCallCount",
+        "modelAttemptCount",
+        "checkpointCount",
+        "durationMs",
+        "inputTokens",
+        "outputTokens",
+        "totalTokens"
+      ],
       "properties": {
-        "modelCallCount": { "type": "integer", "minimum": 0 }, "modelAttemptCount": { "type": "integer", "minimum": 0 },
-        "checkpointCount": { "type": "integer", "minimum": 0 }, "durationMs": { "type": ["integer", "null"], "minimum": 0 },
-        "inputTokens": { "type": ["integer", "null"], "minimum": 0 }, "outputTokens": { "type": ["integer", "null"], "minimum": 0 }, "totalTokens": { "type": ["integer", "null"], "minimum": 0 },
-        "toolCallCount": { "type": "integer", "minimum": 0 }, "toolAttemptCount": { "type": "integer", "minimum": 0 }
+        "modelCallCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "modelAttemptCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checkpointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "durationMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "inputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "outputTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "totalTokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "toolCallCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toolAttemptCount": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
     "result": {
-      "type": "object", "additionalProperties": false, "required": ["status", "runId", "startedAt", "finishedAt", "output", "error", "attemptCount", "usage"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "runId",
+        "startedAt",
+        "finishedAt",
+        "output",
+        "error",
+        "attemptCount",
+        "usage"
+      ],
       "properties": {
-        "status": { "$ref": "#/$defs/status" }, "runId": { "$ref": "#/$defs/identity" },
-        "startedAt": { "type": ["string", "null"] }, "finishedAt": { "type": ["string", "null"] }, "output": { "type": ["string", "null"] },
-        "error": { "anyOf": [{ "$ref": "#/$defs/error" }, { "type": "null" }] }, "attemptCount": { "type": "integer", "minimum": 0 }, "usage": { "$ref": "#/$defs/usage" }
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "runId": {
+          "$ref": "#/$defs/identity"
+        },
+        "startedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finishedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attemptCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usage": {
+          "$ref": "#/$defs/usage"
+        }
       }
     },
     "startRequest": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "runId", "prompt", "systemInstruction", "model", "graph", "threadId", "durability", "maxAttempts", "timeoutMs"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "runId",
+        "prompt",
+        "systemInstruction",
+        "model",
+        "graph",
+        "threadId",
+        "durability",
+        "maxAttempts",
+        "timeoutMs"
+      ],
       "properties": {
-        "protocolVersion": { "$ref": "#/$defs/protocol" }, "runId": { "$ref": "#/$defs/identity" },
-        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
-        "clientTurnId": { "$ref": "#/$defs/identity" },
-        "liveEval": { "type": "boolean", "default": false },
-        "prompt": { "type": "string", "minLength": 1, "maxLength": 20000 }, "systemInstruction": { "type": "string", "minLength": 1, "maxLength": 20000 },
-        "model": { "$ref": "#/$defs/model" }, "graph": { "const": "baseline" }, "threadId": { "$ref": "#/$defs/identity" },
-        "durability": { "const": "sqlite-sync" }, "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 5 }, "timeoutMs": { "type": "integer", "minimum": 100, "maximum": 300000 },
-        "context": { "$ref": "#/$defs/context" }, "tools": { "$ref": "#/$defs/tools" },
-        "connections": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/connectionBinding" } }
+        "protocolVersion": {
+          "$ref": "#/$defs/protocol"
+        },
+        "runId": {
+          "$ref": "#/$defs/identity"
+        },
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+        },
+        "clientTurnId": {
+          "$ref": "#/$defs/identity"
+        },
+        "liveEval": {
+          "type": "boolean",
+          "default": false
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "systemInstruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "graph": {
+          "const": "baseline"
+        },
+        "threadId": {
+          "$ref": "#/$defs/identity"
+        },
+        "durability": {
+          "const": "sqlite-sync"
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 300000
+        },
+        "context": {
+          "$ref": "#/$defs/context"
+        },
+        "tools": {
+          "$ref": "#/$defs/tools"
+        },
+        "connections": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/connectionBinding"
+          }
+        }
       }
     },
     "healthResponse": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "service", "serviceVersion", "langgraphVersion", "pythonVersion", "status", "checkpointPath", "checkpointPathWritable", "message"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "service",
+        "serviceVersion",
+        "langgraphVersion",
+        "pythonVersion",
+        "status",
+        "checkpointPath",
+        "checkpointPathWritable",
+        "message"
+      ],
       "properties": {
-        "protocolVersion": { "$ref": "#/$defs/protocol" }, "service": { "const": "langgraph" }, "serviceVersion": { "type": "string", "minLength": 1 },
-        "langgraphVersion": { "type": "string", "minLength": 1 }, "pythonVersion": { "type": "string", "minLength": 1 },
-        "status": { "type": "string", "enum": ["ready", "unavailable"] }, "checkpointPath": { "type": "string", "minLength": 1 },
-        "checkpointPathWritable": { "type": "boolean" }, "message": { "type": "string", "minLength": 1 }
+        "protocolVersion": {
+          "$ref": "#/$defs/protocol"
+        },
+        "service": {
+          "const": "langgraph"
+        },
+        "serviceVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "langgraphVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pythonVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "unavailable"
+          ]
+        },
+        "checkpointPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpointPathWritable": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "orphanCheckpointThread": {
-      "type": "object", "additionalProperties": false,
-      "required": ["threadId", "checkpointCount", "latestCheckpointId"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "threadId",
+        "checkpointCount",
+        "latestCheckpointId"
+      ],
       "properties": {
-        "threadId": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "checkpointCount": { "type": "integer", "minimum": 1 },
-        "latestCheckpointId": { "type": ["string", "null"], "maxLength": 255 }
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "checkpointCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "latestCheckpointId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 255
+        }
       }
     },
     "uncheckpointedRun": {
-      "type": "object", "additionalProperties": false,
-      "required": ["executionId", "runId", "threadId", "status", "message"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executionId",
+        "runId",
+        "threadId",
+        "status",
+        "message"
+      ],
       "properties": {
-        "executionId": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "runId": { "$ref": "#/$defs/identity" },
-        "threadId": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "status": { "type": "string", "enum": ["queued", "running", "unknown"] },
-        "message": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "executionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "runId": {
+          "$ref": "#/$defs/identity"
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "unknown"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
       }
     },
     "recoveryDiagnostics": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "status", "limit", "orphanCheckpointThreads", "orphanWriteCount", "uncheckpointedRuns", "truncated", "message"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "status",
+        "limit",
+        "orphanCheckpointThreads",
+        "orphanWriteCount",
+        "uncheckpointedRuns",
+        "truncated",
+        "message"
+      ],
       "properties": {
-        "protocolVersion": { "$ref": "#/$defs/protocol" },
-        "status": { "type": "string", "enum": ["clean", "attention"] },
-        "limit": { "type": "integer", "minimum": 1, "maximum": 100 },
-        "orphanCheckpointThreads": { "type": "array", "items": { "$ref": "#/$defs/orphanCheckpointThread" } },
-        "orphanWriteCount": { "type": "integer", "minimum": 0 },
-        "uncheckpointedRuns": { "type": "array", "items": { "$ref": "#/$defs/uncheckpointedRun" } },
-        "truncated": { "type": "boolean" },
-        "message": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "protocolVersion": {
+          "$ref": "#/$defs/protocol"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "clean",
+            "attention"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "orphanCheckpointThreads": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/orphanCheckpointThread"
+          }
+        },
+        "orphanWriteCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uncheckpointedRuns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uncheckpointedRun"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
       }
     },
     "startResponse": {
-      "type": "object", "additionalProperties": false, "required": ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "idempotent"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "executionId",
+        "runId",
+        "threadId",
+        "graph",
+        "status",
+        "idempotent"
+      ],
       "properties": {
-        "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 },
-        "runId": { "$ref": "#/$defs/identity" }, "threadId": { "$ref": "#/$defs/identity" }, "graph": { "const": "baseline" },
-        "status": { "$ref": "#/$defs/status" }, "idempotent": { "type": "boolean" },
-        "serviceVersion": { "type": "string", "minLength": 1 }, "langgraphVersion": { "type": "string", "minLength": 1 },
-        "pythonVersion": { "type": "string", "minLength": 1 }
+        "protocolVersion": {
+          "$ref": "#/$defs/protocol"
+        },
+        "executionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "$ref": "#/$defs/identity"
+        },
+        "threadId": {
+          "$ref": "#/$defs/identity"
+        },
+        "graph": {
+          "const": "baseline"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "idempotent": {
+          "type": "boolean"
+        },
+        "serviceVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "langgraphVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pythonVersion": {
+          "type": "string",
+          "minLength": 1
+        }
       }
     },
     "inspection": {
-      "type": "object", "additionalProperties": false,
-      "required": ["protocolVersion", "executionId", "runId", "threadId", "graph", "status", "checkpoint", "events", "result", "trajectory", "metrics"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "executionId",
+        "runId",
+        "threadId",
+        "graph",
+        "status",
+        "checkpoint",
+        "events",
+        "result",
+        "trajectory",
+        "metrics"
+      ],
       "properties": {
-        "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 }, "runId": { "$ref": "#/$defs/identity" },
-        "threadId": { "$ref": "#/$defs/identity" }, "graph": { "const": "baseline" }, "status": { "$ref": "#/$defs/status" },
-        "checkpoint": { "$ref": "#/$defs/checkpoint" }, "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
-        "result": { "anyOf": [{ "$ref": "#/$defs/result" }, { "type": "null" }] }, "trajectory": { "$ref": "#/$defs/trajectory" }, "metrics": { "$ref": "#/$defs/metrics" }
+        "protocolVersion": {
+          "$ref": "#/$defs/protocol"
+        },
+        "executionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runId": {
+          "$ref": "#/$defs/identity"
+        },
+        "threadId": {
+          "$ref": "#/$defs/identity"
+        },
+        "graph": {
+          "const": "baseline"
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/result"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trajectory": {
+          "$ref": "#/$defs/trajectory"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        }
       }
     },
     "cancelRequest": {
-      "type": "object", "additionalProperties": false, "required": ["reason"],
-      "properties": { "reason": { "type": "string", "minLength": 1, "maxLength": 500 } }
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
     },
     "cancelResponse": {
-      "type": "object", "additionalProperties": false, "required": ["protocolVersion", "executionId", "status", "accepted", "alreadyTerminal", "message"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocolVersion",
+        "executionId",
+        "status",
+        "accepted",
+        "alreadyTerminal",
+        "message"
+      ],
       "properties": {
-        "protocolVersion": { "$ref": "#/$defs/protocol" }, "executionId": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/$defs/status" },
-        "accepted": { "type": "boolean" }, "alreadyTerminal": { "type": "boolean" }, "message": { "type": "string", "minLength": 1 }
+        "protocolVersion": {
+          "$ref": "#/$defs/protocol"
+        },
+        "executionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "$ref": "#/$defs/status"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "alreadyTerminal": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "resumeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "requestId",
+        "revision",
+        "decisionId",
+        "toolCallId",
+        "decision"
+      ],
+      "properties": {
+        "kind": {
+          "const": "invocation_review"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decisionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "toolCallId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "denied",
+            "renewed"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 512
+        }
       }
     }
   }

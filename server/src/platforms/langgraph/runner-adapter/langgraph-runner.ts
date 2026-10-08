@@ -1,4 +1,7 @@
 import { getFreeEvalSettings, isFreeEval } from "../../../models/openrouter/free-model-policy.js";
+import { readFile } from "node:fs/promises";
+import { capabilityHostKeyPath } from "../../../capabilities/extensions/runtime.js";
+import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import { createHash } from "node:crypto";
 
 import type {
@@ -9,6 +12,7 @@ import type {
 } from "../../../control-plane/domain/types.js";
 import type {
   PlatformRunner,
+  RunnerResumeResult,
   RunnerCancellationResult,
   RunnerConnectivity,
   RunnerInspection,
@@ -264,6 +268,22 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       alreadyTerminal: response.alreadyTerminal,
       message: response.message,
     };
+  }
+
+  async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const decision = input as InvocationResumeInput;
+    if (!decision || decision.kind !== "invocation_review" || !Number.isSafeInteger(decision.revision) ||
+        typeof decision.requestId !== "string" || typeof decision.decisionId !== "string" ||
+        typeof decision.toolCallId !== "string" || !["approved", "denied", "renewed"].includes(decision.decision)) {
+      throw new Error("LangGraph requires an identified invocation review decision.");
+    }
+    const native = langGraphExecutionFromReference(reference);
+    const key = (await readFile(capabilityHostKeyPath(), "utf8")).trim();
+    const inspection = parseInspection(await this.request(`/v1/runs/${encodeURIComponent(native.executionId)}/resume`, {
+      method: "POST", headers: {authorization: `Bearer ${key}`}, body: JSON.stringify(decision),
+    }));
+    return {accepted: ["running", "suspended", "completed"].includes(inspection.status), alreadyTerminal: false,
+      message: "Invocation review resumed the existing LangGraph checkpoint."};
   }
 
   private async request(path: string, init: RequestInit): Promise<unknown> {

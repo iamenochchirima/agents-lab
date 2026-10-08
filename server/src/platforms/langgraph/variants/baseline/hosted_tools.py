@@ -144,3 +144,68 @@ def execute_hosted(
 def failed(status: str, code: str, message: str) -> dict[str, Any]:
     return {"status": status, "content": json.dumps({"code": code, "error": message}),
             "error": {"code": code, "message": message}, "durationMs": 0, "attemptCount": 1}
+
+
+def prepare_hosted(
+    descriptor: dict[str, Any], revision: str, arguments: Any,
+    *, run_id: str, turn_id: str, tool_call_id: str, round_number: int,
+    is_cancelled: Callable[[], bool], endpoint: str, key_file: str,
+) -> dict[str, Any] | None:
+    """Persist exact-call review before native interruption. No source effects.
+
+    Replaying this prepare after checkpoint resume returns the same durable
+    proposal identity. Dispatch authority is checked separately by the host.
+    """
+    if is_cancelled():
+        raise ValueError("Invocation proposal was cancelled before preparation.")
+    parsed = urlsplit(endpoint)
+    if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
+        raise ValueError("Capability host endpoint must be configured HTTP(S).")
+    connection_class = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection = connection_class(parsed.hostname, parsed.port, timeout=30)
+    payload = {"runId": run_id, "turnId": turn_id, "catalogRevision": revision,
+               "call": {"toolCallId": tool_call_id, "name": descriptor["definition"]["name"], "arguments": arguments, "round": round_number}}
+    try:
+        connection.request("POST", parsed.path.rstrip("/") + "/internal/capabilities/prepare", body=json.dumps(payload).encode(),
+                           headers={"Content-Type": "application/json", "Authorization": "Bearer " + host_key(key_file)})
+        response = connection.getresponse()
+        if response.status != 200:
+            raise ValueError(f"Invocation proposal rejected with HTTP {response.status}.")
+        raw = response.read(256 * 1024 + 1)
+        if len(raw) > 256 * 1024:
+            raise ValueError("Invocation proposal acknowledgement exceeds its limit.")
+        result = json.loads(raw)
+        if result is not None and (not isinstance(result, dict) or result.get("schemaVersion") != 1 or result.get("runId") != run_id or result.get("call", {}).get("toolCallId") != tool_call_id or not isinstance(result.get("revision"), int)):
+            raise ValueError("Invalid invocation proposal acknowledgement.")
+        return result
+    finally:
+        connection.close()
+
+
+def project_model_content(result: dict[str, Any]) -> tuple[str, list[str]]:
+    """Project supported text/JSON explicitly; retain other blocks as evidence.
+
+    This baseline uses text OpenAI-style tool messages. An image/audio block is
+    never described as having been perceived by the model.
+    """
+    blocks = result.get("contentBlocks")
+    if not isinstance(blocks, list):
+        return result["content"], []
+    texts: list[str] = []
+    unsupported: list[str] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            unsupported.append("invalid")
+        elif block.get("type") == "text" and isinstance(block.get("text"), str):
+            texts.append(block["text"])
+        elif block.get("type") == "resource" and isinstance(block.get("resource"), dict) and isinstance(block["resource"].get("text"), str):
+            texts.append(block["resource"]["text"])
+        elif block.get("type") == "resource_link":
+            texts.append(json.dumps({"resourceLink": block.get("uri"), "name": block.get("name")}, separators=(",", ":")))
+        else:
+            unsupported.append(str(block.get("type", "unknown")) if isinstance(block, dict) else "invalid")
+    if result.get("structuredContent") is not None:
+        texts.append(json.dumps(result["structuredContent"], separators=(",", ":")))
+    if unsupported:
+        texts.append("Unsupported tool content retained in evidence: " + ", ".join(sorted(set(unsupported))) + ".")
+    return "\n".join(texts), sorted(set(unsupported))

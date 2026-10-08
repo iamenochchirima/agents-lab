@@ -94,3 +94,31 @@ The Python tool node validates the same JSON Schema with pinned `jsonschema`
 registered extensions; the standard library cannot validate Draft 2020-12.
 Hosted HTTP calls are bounded, interrupt their connection on cancellation, and
 retain uncertain side effects as unknown outcomes.
+
+## Invocation review and renewal
+
+The graph has a dedicated approval node between the model and tools. It prepares
+an exact-call proposal through the authenticated capability host, then uses a
+native LangGraph interrupt. The interruption checkpoints pending calls and the
+unfinished transcript. A decision resumes the same thread using `Command(resume)`;
+it does not submit the original prompt or perform another inference while waiting.
+
+The service persists the original admitted request alongside its SQLite lifecycle
+record, so a suspended execution can be reconstructed after service restart.
+Suspended rows are excluded from generic interrupted-execution reconciliation and
+keep the session occupied. The resume endpoint requires the trusted host credential
+and validates request, call and revision against the native interrupt. Cancellation
+of a waiting execution settles it without dispatch. Arbitrary in-flight model or
+source recovery is not implied by this waiting boundary.
+
+Expired proposals can be renewed through the control plane. A renewal carries the
+same request/call identity and the next revision. The native node fetches the
+current proposal and interrupts again without dispatch or inference. Cached renewal
+values replay as the node resumes, while the host revision cannot move backwards.
+Approval/denial still targets the exact current revision. The capability host
+rechecks actual decision authority immediately before external execution.
+
+The text-only model projection includes text, structured JSON and textual resources.
+Unsupported image/audio content is explicitly identified and retained in evidence.
+Business-effect certainty, output validation and original content blocks stay in
+native events independently of the projected model message.

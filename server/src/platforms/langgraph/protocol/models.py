@@ -28,7 +28,7 @@ class ProtocolModel(BaseModel):
 
 
 Provider = Literal["fake", "openrouter"]
-PlatformStatus = Literal["queued", "running", "completed", "failed", "cancelled", "unknown"]
+PlatformStatus = Literal["queued", "running", "suspended", "completed", "failed", "cancelled", "unknown"]
 FailureKind = Literal[
     "configuration",
     "pre_dispatch",
@@ -290,3 +290,13 @@ class CancelRunResponse(ProtocolModel):
     accepted: bool
     already_terminal: bool
     message: str
+
+
+class ResumeRunRequest(ProtocolModel):
+    kind: Literal["invocation_review"]
+    request_id: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=1)
+    decision_id: str = Field(min_length=1, max_length=128)
+    tool_call_id: str = Field(min_length=1, max_length=128)
+    decision: Literal["approved", "denied", "renewed"]
+    reason: str | None = Field(default=None, max_length=512)
