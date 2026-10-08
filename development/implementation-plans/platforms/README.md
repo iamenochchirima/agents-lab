@@ -9,9 +9,10 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [Extensible tools and skills](active/extensible-tools-and-skills.md): capability
-  packages, frozen catalogs, generic native adapters, real workspace tools and
-  model-selected skills, based on Waku/Pi/Hermes research.
+- [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
+  next implementation milestone, with architecture decisions, capability adapters,
+  skills, task environments, native integration, minimal acceptance checks and
+  commit checkpoints. Proposal ready; implementation paused.
 
 - [Free-model live agent evals](active/free-model-live-evals.md) — implemented:
   historical first slice: three real-model tasks passed on Mastra, LangGraph and

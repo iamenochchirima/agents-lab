@@ -1,10 +1,15 @@
-# Extensible tools and skills implementation
+# Real agent tools and skills implementation plan
 
 Status: proposal ready for review; implementation paused. Updated 2026-10-08.
 
 This is a temporary development plan, outside curated Docs. Earlier uncommitted
 implementation changes are drafts to review against this plan, not accepted
 milestones. Updating the plan does not authorize resuming implementation.
+
+This document owns the complete next tools-support milestone: architecture,
+adapters, skills, task environments, native platform integration, frontend,
+acceptance evidence and commit checkpoints. It is independent of the earlier
+baseline-eval plans.
 
 ## Goal and scope
 
@@ -13,6 +18,13 @@ native Mastra, LangGraph, Temporal and Restate execution. Use Waku, Pi, Hermes a
 primary tool/skill specifications as research references. Keep catalog discovery,
 permissions, execution, context and evidence distinct. Add actual workspace and
 skill resources plus configured MCP/HTTP integrations, not simulated tool results.
+
+Research reference: [Waku, Pi, Hermes, MCP and Agent Skills](../../../../docs/research/extensible-agent-capabilities.md).
+
+Adding a tool to an existing adapter or adding a skill package should require a
+catalog/configuration change. Adding a new execution backend requires an adapter,
+without changing the native agent loops. Completion means agents can perform real
+workspace and service tasks and apply a follow-up correction with inspectable evidence.
 
 ## Constraints
 
@@ -23,31 +35,12 @@ skill resources plus configured MCP/HTTP integrations, not simulated tool result
   full test runs. No arbitrary plugin code installation or implied permissions.
 - Temporary plan outside docs; permanent cited research and usage notes in docs/code.
 
-## Initial research checklist
-
-- [x] Research Waku/Pi/Hermes and official MCP/Agent Skills, inspect runtime coupling.
-- [ ] Freeze resolved descriptors with full schemas, versions/digests, routing identity,
-      effective limits and declared known-error feedback policy at run admission.
-- [ ] Add a trusted capability host and generic adapter. Native execution still owns
-      calls, cancellation and durable steps; the host owns source implementations.
-- [ ] Load declarative package contributions, configured MCP/HTTP sources and real
-      SKILL.md metadata, instructions and referenced resources.
-- [ ] Implement actual workspace list/read/search/write/patch operations with scoped
-      roots and explicit write grants. Use separate task environments per comparison.
-- [ ] Replace native per-tool declarations/registration/failure-name switches with
-      generic projections, including Python JSON Schema validation.
-- [ ] Show effective package/tools/skills in the existing capability selection flow.
-- [ ] Prove adding a catalog contribution works without a runtime source change.
-- [ ] Run focused admission/dispatch/policy/skill-resource checks, relevant builds and
-      actual free-model multi-step execution on each available native profile.
-- [ ] Update usage/architecture/research and record commits, evidence and limitations.
-
 ## Design and alternatives
 
-The existing inline calculator and fixture routes remain compatible. Hosted
-contributions cross an authenticated internal HTTP interface so Python and TS
-native workers share implementations and configuration without importing each
-other's code. Resolve declarations before durable execution; never rediscover tools
+The existing inline calculator and fixture routes remain compatible. The proposed
+capability host uses an authenticated internal HTTP interface so Python and TS
+native workers can share implementations and configuration without importing each
+other's code. Phase 1 settles this boundary before accepting the draft. Resolve declarations before durable execution; never rediscover tools
 inside workflow replay. The host rechecks retained run grants and revision before
 execution. It is infrastructure, not an agent loop or a model proxy.
 
@@ -78,11 +71,12 @@ Filesystem access is one environment, not a requirement for every agent.
 
 ## Full implementation phases
 
-The initial checklist above records the earlier proposal. The phases below govern
-the revised implementation and review of existing drafts.
+The phases below are the single implementation checklist for this milestone.
+Each phase ends with a focused commit and its relevant validation.
 
 ### 1. Reconcile architecture and review drafts
 
+- [x] Research primary sources and inspect existing runtime coupling.
 - [ ] Map catalog, policy, connection, tool execution, skill and environment ownership.
 - [ ] Identify reusable draft work, duplicated responsibilities and missing lifecycle behaviour.
 - [ ] Resolve the capability-host decision and package/source terminology.
