@@ -49,7 +49,11 @@ replace a failed objective assertion with a favorable subjective judgment.
 ## Remaining readiness work
 
 The historical B01–B12 milestone recorded 48 passing reports, one trial per case
-across four baselines. The protocol's three-clean-trial gate is a separate readiness
+across four baselines. A later recorded selection contains 144 scripted passes, three per core case and
+baseline at runtime revision `dc3a445`. It includes corrected deployment trials with
+retained failed originals, rather than one clean combined batch. A subsequent Temporal
+context-heartbeat fix has focused native acceptance; full core readiness at that final
+runtime revision remains unmeasured. The protocol gate is a separate readiness
 measurement at a frozen revision. Larger live reliability campaigns are deferred
 under the current minimal-testing preference; one observation is not a success rate.
 
