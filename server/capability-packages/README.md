@@ -67,3 +67,9 @@ skill. Its script is an inert resource until the agent submits it to the admitte
 read/arithmetic/report procedure against saved business data. Script identity and
 resource digest are verified; the skill cannot authorize itself or execute locally.
 See [provider startup and limits](../src/capabilities/integrations/procedure-service/README.md).
+
+Document write/patch selections explicitly configure the provider's documented
+pre-write rejection codes. This lets a model correct a no-match patch or stale
+digest after inspecting feedback. Generic MCP write errors still require
+reconciliation. The trusted contract is part of the frozen source digest and
+changes future admissions only; it does not rewrite historical trial outcomes.

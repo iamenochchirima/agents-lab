@@ -19,7 +19,7 @@ export interface McpSourceOptions extends Source {
   readonly endpoint: string;
   readonly protocolVersion?: string;
   readonly trustedContext?: "session";
-  readonly tools?: readonly { readonly remoteName: string; readonly name: string; readonly riskClass: ToolRiskClass; readonly limits?: Partial<ToolLimits>; readonly approvalMode?: ToolApprovalMode }[];
+  readonly tools?: readonly { readonly remoteName: string; readonly name: string; readonly riskClass: ToolRiskClass; readonly limits?: Partial<ToolLimits>; readonly approvalMode?: ToolApprovalMode; readonly effectContract?: { readonly rejectionErrorCodes: readonly string[] } }[];
 }
 export interface HttpSourceOptions extends Source {
   readonly baseUrl: string;
@@ -57,6 +57,8 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
   if (!selections.length) return [];
   assertDistinct(selections.map(item => item.name));
   return selections.map(selection => {
+    const rejectionCodes = selection.effectContract?.rejectionErrorCodes;
+    if (selection.effectContract !== undefined && (!record(selection.effectContract) || Object.keys(selection.effectContract).some(key => key !== "rejectionErrorCodes") || !Array.isArray(rejectionCodes) || rejectionCodes.length > 32 || rejectionCodes.some(code => typeof code !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(code)) || new Set(rejectionCodes).size !== rejectionCodes.length)) throw new Error("MCP rejection contract requires at most 32 distinct documented error codes.");
     const remote = manifests.find(tool => tool.name === selection.remoteName);
     if (!remote) throw new Error(`Configured MCP tool was not discovered: ${selection.name}.`);
     const definition: ToolDefinition = { schemaVersion: 1, name: selection.name, description: remote.description, inputSchema: remote.inputSchema,
@@ -66,7 +68,7 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
     const outputValidator = remote.outputSchema ? compileToolSchema(remote.outputSchema) : undefined;
     const frozenRemoteDigest = digest(remote);
     return contribution(options, definition, { kind: "mcp", endpoint: new URL(options.endpoint).toString(), protocolVersion: discovery.protocolVersion,
-      authorizationContextDigest: authorityDigest(options), trustedContext: options.trustedContext ?? null, remoteName: remote.name, remoteDigest: frozenRemoteDigest }, async (input, context, state) => {
+      authorizationContextDigest: authorityDigest(options), trustedContext: options.trustedContext ?? null, remoteName: remote.name, remoteDigest: frozenRemoteDigest, effectContract: selection.effectContract ?? null }, async (input, context, state) => {
       const headers = await sourceHeaders(options, state.signal);
       if (options.trustedContext === "session") {
         if (!context.sessionId || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(context.sessionId)) throw new Error("The connected provider requires a trusted session identity.");
@@ -95,9 +97,11 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
         const raw = connection.output, result = sanitizeOutput(raw, headers) as Record<string, unknown>;
         const knownFailure = result.isError === true;
         const invalidOutput = !knownFailure && outputValidator !== undefined && !outputValidator(raw.structuredContent);
-        const unresolved = !isReadOnly(definition) && (knownFailure || invalidOutput);
+        const structuredError = record(raw.structuredContent) && record(raw.structuredContent.error) ? raw.structuredContent.error : null;
+        const rejected = knownFailure && typeof structuredError?.code === "string" && rejectionCodes?.includes(structuredError.code) === true;
+        const unresolved = !isReadOnly(definition) && ((knownFailure && !rejected) || invalidOutput);
         return { status: unresolved ? "unknown" : knownFailure || invalidOutput ? "failed" : "completed", content: JSON.stringify(result),
-          effect: { state: isReadOnly(definition) ? "none" : knownFailure ? "unknown" : "acknowledged", evidence: knownFailure ? "MCP tool error does not establish absence of effects." : "Correlated MCP result received." },
+          effect: { state: isReadOnly(definition) ? "none" : rejected ? "rejected" : knownFailure ? "unknown" : "acknowledged", evidence: rejected ? `Provider-documented pre-effect rejection: ${structuredError!.code}.` : knownFailure ? "MCP tool error does not establish absence of effects." : "Correlated MCP result received." },
           presentation: invalidOutput ? "invalid" : outputValidator ? "valid" : "not_declared",
           error: unresolved ? { code: "TOOL_UNKNOWN", message: "The MCP write requires reconciliation; do not repeat it." } : knownFailure ? { code: "TOOL_EXECUTION_FAILED", message: errorText(result) } : invalidOutput ? { code: "TOOL_EXECUTION_FAILED", message: "The MCP result does not match its declared output schema." } : null,
           durationMs: 0, attemptCount: connection.attempts.length, connection: evidence,

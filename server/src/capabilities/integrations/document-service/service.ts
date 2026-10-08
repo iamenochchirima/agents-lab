@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { workspaceContributions } from "./files.js";
+import { DocumentRejectedError, workspaceContributions } from "./files.js";
 import { capabilityWorkspaceRoot } from "../../extensions/runtime.js";
 
 /** Optional external document provider. Its process owns storage and permissions.
@@ -31,13 +31,19 @@ export async function createDocumentService(options: { port?: number; token: str
     const tool = tools.find(value => value.descriptor.definition.name === body.params?.name);
     if (!tool) return envelope({ isError: true, content: [{ type: "text", text: "Unknown document operation." }] });
     const argumentsValue = body.params?.arguments ?? {};
+    let validated: Readonly<Record<string, unknown>>;
+    try { validated = tool.implementation.validateArguments(argumentsValue); } catch {
+      const message = "Document arguments do not match the published schema.";
+      return envelope({isError: true, content: [{type: "text", text: message}], structuredContent: {error: {code: "DOCUMENT_INVALID_ARGUMENTS", message}}});
+    }
     const controller = new AbortController();
     const onDisconnect = () => { if (!request.raw.complete) controller.abort(); };
     request.raw.once("close", onDisconnect);
     try {
-      const text = await tool.implementation.execute(tool.implementation.validateArguments(argumentsValue), { runId: "provider-request", turnId: "provider-request", sessionId, signal: controller.signal });
+      const text = await tool.implementation.execute(validated, { runId: "provider-request", turnId: "provider-request", sessionId, signal: controller.signal });
       return envelope({ content: [{ type: "text", text }], structuredContent: JSON.parse(text) });
     } catch (error) {
+      if (error instanceof DocumentRejectedError) return envelope({isError: true, content: [{type: "text", text: error.message}], structuredContent: {error: {code: error.code, message: error.message}}});
       return envelope({ isError: true, content: [{ type: "text", text: error && typeof error === "object" && "code" in error ? `Document operation failed (${String(error.code)}).` : error instanceof Error ? error.message : "Document operation failed." }] });
     } finally { request.raw.off("close", onDisconnect); }
   });

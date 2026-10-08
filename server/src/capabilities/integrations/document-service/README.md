@@ -39,3 +39,34 @@ There is no native filesystem fallback. Legacy `source: "workspace"` package
 configuration fails with an explicit migration error; retained historical run
 records stay unchanged. Independent acceptance reads actual provider storage
 to establish report effects rather than trusting the assistant's final answer.
+
+## Documented pre-write rejection contract
+
+The provider returns `isError: true` and `structuredContent.error.code` for these
+specific checks before changing the requested document:
+
+| Code | Rejection |
+| --- | --- |
+| `DOCUMENT_INVALID_ARGUMENTS` | Published input schema does not match |
+| `DOCUMENT_PATH_REJECTED` | Relative path escapes the scope or encounters a link |
+| `DOCUMENT_WRITE_SCOPE` | Target is outside configured writable directories |
+| `DOCUMENT_CONTENT_LIMIT` | New content exceeds the bounded write limit |
+| `DOCUMENT_DIGEST_CONFLICT` | Current file does not match the observed digest |
+| `DOCUMENT_PATCH_MATCH` | Patch text is absent or matches more than once |
+
+These codes establish that the requested file edit did not occur. Provider session
+initialization and internal execution receipts remain separate environment/evidence
+state. Digest and content checks run before parent-directory creation. After write
+preparation starts, I/O/path-race errors remain unclassified. Lost replies, failed
+rename acknowledgements and arbitrary MCP errors never receive a no-effect code.
+
+Trusted MCP tool configuration may opt into `effectContract.rejectionErrorCodes`.
+The adapter checks the structured code only when `isError` is true and the exact
+code was configured. It does not trust tool annotations, an arbitrary provider
+`effect` claim, a message containing a code, or model arguments. Undeclared write
+errors remain unknown and require reconciliation. Declared rejections become
+identified feedback, allowing the agent to inspect and correct a bad patch safely.
+
+The contract participates in the frozen source digest. Updating configuration
+applies to future admissions; it does not upgrade existing run permissions or
+rewrite failed model evidence. Restart a provider only after active trials finish.

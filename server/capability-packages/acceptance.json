@@ -30,12 +30,32 @@
         {
           "remoteName": "task-workspace_write_file",
           "name": "task-workspace_write_file",
-          "riskClass": "write"
+          "riskClass": "write",
+          "effectContract": {
+            "rejectionErrorCodes": [
+              "DOCUMENT_INVALID_ARGUMENTS",
+              "DOCUMENT_PATH_REJECTED",
+              "DOCUMENT_WRITE_SCOPE",
+              "DOCUMENT_CONTENT_LIMIT",
+              "DOCUMENT_DIGEST_CONFLICT",
+              "DOCUMENT_PATCH_MATCH"
+            ]
+          }
         },
         {
           "remoteName": "task-workspace_patch_file",
           "name": "task-workspace_patch_file",
-          "riskClass": "write"
+          "riskClass": "write",
+          "effectContract": {
+            "rejectionErrorCodes": [
+              "DOCUMENT_INVALID_ARGUMENTS",
+              "DOCUMENT_PATH_REJECTED",
+              "DOCUMENT_WRITE_SCOPE",
+              "DOCUMENT_CONTENT_LIMIT",
+              "DOCUMENT_DIGEST_CONFLICT",
+              "DOCUMENT_PATCH_MATCH"
+            ]
+          }
         }
       ]
     },

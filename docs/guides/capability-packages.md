@@ -273,3 +273,24 @@ This configured fixture supports its pinned declarative script only. General
 Python/JavaScript execution needs a separately configured provider and is not
 implied by the presence of a script resource. If execution is absent or denied,
 the agent should report that limitation instead of claiming it ran the script.
+
+For provider-documented MCP rejections that occur before an effect, configure an
+explicit tool contract, for example:
+
+```json
+{
+  "remoteName": "task-workspace_patch_file",
+  "name": "task-workspace_patch_file",
+  "riskClass": "write",
+  "effectContract": {
+    "rejectionErrorCodes": ["DOCUMENT_PATCH_MATCH", "DOCUMENT_DIGEST_CONFLICT"]
+  }
+}
+```
+
+Only `isError: true` plus a configured `structuredContent.error.code` establishes
+that rejection. The contract is frozen into source identity and applies to new
+admissions. Generic write failures and lost acknowledgements remain unknown; a
+provider message or annotation alone cannot authorize a repeated write. The
+[document provider contract](../../server/src/capabilities/integrations/document-service/README.md)
+lists the verified checks and their boundaries.

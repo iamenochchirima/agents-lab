@@ -6,15 +6,20 @@ import type { HostedToolContribution } from "../../extensions/contracts.js";
 import type { ToolExecutionContext } from "../../tools/contracts.js";
 import { aborted, contribution, digest, integerSchema, objectSchema, relativePathSchema, textSchema, type PackageIdentity } from "../../extensions/package-utils.js";
 
+/** Only raised before file mutation. Transport/I/O failures never use this class. */
+export class DocumentRejectedError extends Error {
+  constructor(readonly code: string, message: string) { super(message); this.name = "DocumentRejectedError"; }
+}
+
 /** Application path confinement; this is not an operating-system sandbox. */
 export async function confinedPath(root: string, input: string, allowMissing = false): Promise<string> {
-  if (!input || input.includes("\\") || input.includes("\0") || input.startsWith("/") || input.split("/").includes("..")) throw new Error("Use a relative package path without traversal.");
+  if (!input || input.includes("\\") || input.includes("\0") || input.startsWith("/") || input.split("/").includes("..")) throw new DocumentRejectedError("DOCUMENT_PATH_REJECTED", "Use a relative package path without traversal.");
   const path = resolve(root, input);
-  if (!inside(root, path)) throw new Error("Path leaves the configured root.");
+  if (!inside(root, path)) throw new DocumentRejectedError("DOCUMENT_PATH_REJECTED", "Path leaves the configured root.");
   let current = root;
   for (const part of relative(root, path).split(sep).filter(Boolean)) {
     current = resolve(current, part);
-    try { if ((await lstat(current)).isSymbolicLink()) throw new Error("Symbolic links are not accessible through workspace tools."); }
+    try { if ((await lstat(current)).isSymbolicLink()) throw new DocumentRejectedError("DOCUMENT_PATH_REJECTED", "Symbolic links are not accessible through workspace tools."); }
     catch (error) { if (allowMissing && hasCode(error, "ENOENT")) continue; throw error; }
   }
   return path;
@@ -55,15 +60,15 @@ export async function workspaceContributions(identity: PackageIdentity, configur
   let mutations = Promise.resolve();
   async function mutate<T>(task: () => Promise<T>): Promise<T> { const before = mutations; let release!: () => void; mutations = new Promise<void>((resolveValue) => { release = resolveValue; }); await before; try { return await task(); } finally { release(); } }
   async function write(pathInput: string, content: string, expectedDigest?: string): Promise<Record<string, unknown>> {
-    if (!writable.some((directory) => pathInput.startsWith(`${directory}/`))) throw new Error(`Writes are limited to: ${writable.join(", ")}.`);
-    if (Buffer.byteLength(content) > 128 * 1024) throw new Error("File content exceeds 131072 bytes.");
+    if (!writable.some((directory) => pathInput.startsWith(`${directory}/`))) throw new DocumentRejectedError("DOCUMENT_WRITE_SCOPE", `Writes are limited to: ${writable.join(", ")}.`);
+    if (Buffer.byteLength(content) > 128 * 1024) throw new DocumentRejectedError("DOCUMENT_CONTENT_LIMIT", "File content exceeds 131072 bytes.");
     const path = await confinedPath(root, pathInput, true);
-    await mkdir(dirname(path), { recursive: true });
-    await confinedPath(root, pathInput, true);
     let previous: string | null = null;
     try { previous = await readBoundedText(path); } catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
-    if (previous !== null && expectedDigest !== digest(previous)) throw new Error("Existing file requires its current expectedDigest. Read the file before replacing it.");
-    if (previous === null && expectedDigest !== undefined) throw new Error("File does not exist; expectedDigest cannot match.");
+    if (previous !== null && expectedDigest !== digest(previous)) throw new DocumentRejectedError("DOCUMENT_DIGEST_CONFLICT", "Existing file requires its current expectedDigest. Read the file before replacing it.");
+    if (previous === null && expectedDigest !== undefined) throw new DocumentRejectedError("DOCUMENT_DIGEST_CONFLICT", "File does not exist; expectedDigest cannot match.");
+    await mkdir(dirname(path), { recursive: true });
+    try { await confinedPath(root, pathInput, true); } catch { throw new Error("Write path changed during filesystem preparation; inspect provider state."); }
     const temporary = resolve(dirname(path), `.agentlab-${randomUUID()}.tmp`);
     try {
       const handle = await open(temporary, "wx", 0o600);
@@ -98,7 +103,7 @@ export async function workspaceContributions(identity: PackageIdentity, configur
     make("write_file", "Create an output file and missing parent directories within the writable scope, or replace a previously read file using expectedDigest. Writes require the package write grant.", objectSchema({ ...pathProperties, content: textSchema, expectedDigest: { type: "string", pattern: "^[a-f0-9]{64}$" } }, ["path", "content"]), "write", async (args, context) => mutate(async () => { aborted(context.signal); return JSON.stringify(await write(String(args.path), String(args.content), args.expectedDigest as string | undefined)); })),
     make("patch_file", "Replace exactly one text occurrence in a previously read output file. Requires expectedDigest and fails if the text is absent or ambiguous.", objectSchema({ ...pathProperties, oldText: { type: "string", minLength: 1 }, newText: textSchema, expectedDigest: { type: "string", pattern: "^[a-f0-9]{64}$" } }, ["path", "oldText", "newText", "expectedDigest"]), "write", async (args, context) => mutate(async () => {
       aborted(context.signal); const original = await readBoundedText(await confinedPath(root, String(args.path))); const oldText = String(args.oldText); const first = original.indexOf(oldText);
-      if (first < 0 || original.indexOf(oldText, first + oldText.length) >= 0) throw new Error("oldText must match exactly one occurrence.");
+      if (first < 0 || original.indexOf(oldText, first + oldText.length) >= 0) throw new DocumentRejectedError("DOCUMENT_PATCH_MATCH", "oldText must match exactly one occurrence.");
       return JSON.stringify(await write(String(args.path), original.slice(0, first) + String(args.newText) + original.slice(first + oldText.length), String(args.expectedDigest)));
     })),
   ];
