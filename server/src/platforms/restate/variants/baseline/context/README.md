@@ -15,3 +15,10 @@ The preparation action is safe to replay because the context service derives a
 stable snapshot ID from the session revision and compaction revision, and the
 store rejects conflicting content for an existing snapshot. Provider-overflow
 recovery and a platform-native context store are not part of this baseline yet.
+
+When compaction is needed, the selected adapter receives an explicit summary system
+instruction and a user message rendering the historical roles and content. The
+OpenRouter transport uses `messages` directly; passing raw old conversation messages
+would omit the separate `systemInstruction` field and continue the old task instead
+of summarizing it. The X05 scripted native experiment inspects that actual request,
+summary provenance and the following generation request independently.

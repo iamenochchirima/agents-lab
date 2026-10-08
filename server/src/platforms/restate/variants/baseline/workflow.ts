@@ -641,19 +641,23 @@ async function prepareContextSnapshot(
       const summarizer: ContextSummaryGenerator = {
         async summarize(request) {
           if (input.liveEval) throw new Error("LIVE_EVAL_COMPACTION_DISABLED: live development probes cannot dispatch an unobserved summary request.");
+          const summaryInstruction = "Summarize the earlier conversation for context continuity. Preserve facts, decisions, unresolved requests, and tool results. Return only the concise summary.";
+          const summaryPrompt = request.messages.map((message) => `[${message.role}]\n${message.content}`).join("\n\n");
           const adapter = createRestateModel(input.model.provider, input.model.model, {
             openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || null,
             openRouterBaseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
           });
           const result = await adapter.complete({
             runId: `${input.runId}:context:${request.sourceRevision}`,
-            prompt: request.messages.map((message) => `[${message.role}]\n${message.content}`).join("\n\n"),
-            systemInstruction: "Summarize the earlier conversation for context continuity. Preserve facts, decisions, unresolved requests, and tool results. Return only the concise summary.",
+            prompt: summaryPrompt,
+            systemInstruction: summaryInstruction,
             provider: input.model.provider,
             model: input.model.model,
             round: 1,
             attempt: 1,
-            messages: request.messages.map(toModelMessage),
+            // The transport uses messages directly; raw history would omit the
+            // summary instruction and continue the old task instead.
+            messages: [{ role: "system", content: summaryInstruction }, { role: "user", content: summaryPrompt }],
             tools: [],
           }, ctx.request().attemptCompletedSignal);
           if (result.kind !== "success" || !result.output) throw new Error(result.kind === "failure" ? result.message : "The context summarizer returned no text.");
