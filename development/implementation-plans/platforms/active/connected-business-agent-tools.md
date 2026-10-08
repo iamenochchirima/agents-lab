@@ -171,8 +171,10 @@ Acceptance: a slow tool works, cancellation settles, and an uncertain write neve
 becomes an invitation to submit the same business action again.
 
 Minimum checks: a table-driven effect-classification test, one applied-write/lost-or-invalid
-reply test asserting no redispatch, and one real Temporal worker check with a tool
-lasting longer than the heartbeat deadline followed by cancellation.
+reply test asserting no redispatch, and one real Temporal worker fixture with two
+invocations: a slow tool completes beyond the heartbeat deadline, then a separate
+in-flight tool is cancelled and settles. Cancelling the only invocation would not
+establish successful slow-tool execution.
 
 Commit: `fix: preserve business effect certainty and heartbeat tool activities`.
 
@@ -272,6 +274,9 @@ Commit: `feat: persist invocation review and approved action dispatch`.
   thread and pending call. Put `interrupt` in a dedicated approval node before
   effects and use `Command(resume=...)`. The pinned 1.2.10 does not support newer
   typed interrupt examples requiring 1.2.12; do not upgrade merely to copy a snippet.
+  Extend Python/TypeScript protocol enums, service-store projection and runner
+  mapping with nonterminal `suspended`, so an interrupt is not reported as completed
+  or unknown.
 - [ ] Temporal: wait on a validated workflow signal/update after persisting the
   proposal; execute approved I/O in an Activity with the same logical call ID.
 - [ ] Restate: use durable state and a call-specific `ctx.promise` resolved by a
@@ -452,6 +457,7 @@ implementation or new model trial belongs to this planning task.
 | Baseline audit | Native tool loops, default workspace, static credentials, upfront approvals, effect classification and Temporal heartbeat inspected on 2026-10-08 |
 | Research | Primary protocols and native platform sources recorded in the linked research note |
 | Planning validation | Local Markdown links passed; documentation catalog generation passed; nine milestones and 87 unchecked implementation/acceptance items; planning changes are committed separately from runtime work |
+| Plan review | Connected-source and native-platform reviews found no material blockers; clarified LangGraph suspended projection and the separate Temporal completion/cancellation invocations |
 | Implementation checkpoints | Add commit, narrow verification, native/run evidence and remaining limitations as each milestone completes |
 
 Before completion, re-read the user's filesystem restriction and this definition
