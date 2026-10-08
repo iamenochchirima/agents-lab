@@ -99,9 +99,8 @@ test("Mastra runs a real Agent.generate call and duplicate start is idempotent",
   const firstReference = await runner.start(manifest);
   const secondReference = await runner.start(manifest);
   assert.deepEqual(secondReference, firstReference);
-  assert.equal(modelFactoryCalls, 1);
-
   const inspection = await waitForTerminal(runner, firstReference);
+  assert.equal(modelFactoryCalls, 1, "Duplicate admission must execute one native agent after storage preparation");
   assert.equal(inspection.status, "completed");
   assert.equal(inspection.result?.output, "Hello from Mastra.");
   assert.equal(inspection.result?.attemptCount, 1);

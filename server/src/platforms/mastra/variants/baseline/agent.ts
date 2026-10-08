@@ -1,3 +1,4 @@
+import type { LibSQLStore } from "@mastra/libsql";
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
 import { createTool } from "@mastra/core/tools";
@@ -8,11 +9,13 @@ import { getDefaultConnectionRuntime, type ConnectionRuntime } from "../../../..
 import type { ToolExecutionResult, ToolCall, ToolImplementation, ToolLifecycleKind, ToolLifecyclePayload } from "../../../../capabilities/tools/contracts.js";
 import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
+import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
 import { createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
 
 export interface BaselineAgentOptions {
+  readonly storage?: LibSQLStore;
   readonly runId: string;
   readonly turnId: string;
   readonly signal: AbortSignal;
@@ -45,6 +48,7 @@ export function createBaselineAgentRuntime(
   const mastra = new Mastra({
     agents: { [MASTRA_AGENT_ID]: agent },
     logger: false,
+    ...(options?.storage ? { storage: options.storage } : {}),
   });
 
   return { mastra, agent: mastra.getAgent(MASTRA_AGENT_ID) };
@@ -86,6 +90,7 @@ function catalogAgentTool(
     id: implementation.definition.name,
     description: implementation.definition.description,
     inputSchema: implementation.definition.inputSchema,
+    requireApproval: implementation.definition.approvalMode === "invocation",
     execute: async (input, context) => {
       const toolCallCount = nextToolCall();
       const call: ToolCall = { toolCallId: context.agent?.toolCallId ?? `mastra-tool-${toolCallCount}`, name: implementation.definition.name, arguments: input, round: options.currentRound?.() ?? 1 };
@@ -121,12 +126,13 @@ function catalogAgentTool(
         status: result.status,
         durationMs: result.durationMs,
         resultBytes: new TextEncoder().encode(result.content).byteLength,
+        ...toolResultEvidence(result),
         ...(result.connection ? { connection: result.connection } : {}),
         ...(result.error ? { code: result.error.code, message: result.error.message } : {}),
       });
       // Known failures become model feedback only through the frozen tool policy.
       // Unknown side effects remain terminal and never become automatic retries.
-      if (result.status === "failed" && implementation.definition.failurePolicy === "feedback") return result.content;
+      if (result.status === "failed" && implementation.definition.failurePolicy === "feedback") return projectToolResult(result).content;
       if (result.status !== "completed") {
         if (result.status === "cancelled" || result.status === "timed_out") throw abortError();
         if (result.status === "unknown") {
@@ -134,7 +140,7 @@ function catalogAgentTool(
         }
         throw mastraToolError(result.error?.code ?? "TOOL_EXECUTION_FAILED", "The Mastra selected tool failed.");
       }
-      return result.content;
+      return projectToolResult(result).content;
     },
   });
 }

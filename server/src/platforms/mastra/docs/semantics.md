@@ -18,13 +18,14 @@ this direct call, so the adapter exposes a safe process-scoped reference:
     "mastraVersion": "1.66.0",
     "operation": "agent.generate",
     "processScoped": true,
-    "storage": "none"
+    "storage": "libsql-file"
   }
 }
 ```
 
-This is not a Mastra workflow run, snapshot, memory thread, or crash-durable
-execution.
+This direct agent uses native approval snapshots; it is not a Mastra workflow
+or memory thread. The process-scoped label applies to arbitrary in-flight inference,
+while explicit approval waits have persisted continuation state.
 
 ## Workflow variant
 
@@ -84,18 +85,21 @@ result, trajectory, and metrics. The adapter never writes `lab/runs/` directly.
 
 ## Restart and process loss
 
-The execution registry, promise, abort controller, and terminal result live in the
-runner process. Replacing the runner loses in-flight execution state. Inspection of a
+Active promises and abort controllers live in the runner process. Pending reviews,
+native snapshots and terminal projections persist. Replacing the runner loses
+arbitrary in-flight execution state. Inspection of a
 retained reference then returns not-found to the common server, which projects
 `reconciliation_required` without inventing completion.
 
-There is no orphan adoption, replay, or automatic restart in the baseline. The workflow
-variant is the separate storage-backed suspension/resumption profile described above.
+The baseline persists native tool-approval snapshots and a protected pending-run
+projection. A replacement runner can reconstruct a suspended approval and resume
+its original tool call. It cannot adopt arbitrary in-flight inference or repair
+unknown effects. The separate workflow variant retains its workflow replay scope.
 
 ## Deliberately excluded features
 
 - automatic workflow replay or orphan adoption
-- Mastra memory and storage
+- Mastra memory (native approval snapshot storage is enabled)
 - social channels, plugin marketplace, and provider-specific business integrations
 - distributed workflow storage and multi-process ownership
 - exactly-once provider-call claims

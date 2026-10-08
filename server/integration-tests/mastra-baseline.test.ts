@@ -18,7 +18,7 @@ import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mas
 
 test("Mastra baseline projects a deterministic Agent.generate run through the common evidence path", async () => {
   await withTemporaryRunRoot(async (root) => {
-    const runner = new MastraBaselineRunner();
+    const runner = new MastraBaselineRunner({ contextRoot: join(root, "context") });
     const store = new RunEvidenceStore(root);
     const service = new RunService({
       config: loadServerConfig({ AGENTLAB_RUN_ROOT: root }, "/repo"),
@@ -40,7 +40,7 @@ test("Mastra baseline projects a deterministic Agent.generate run through the co
     const native = JSON.parse(await readFile(join(root, completed.runId, "native/mastra.json"), "utf8")) as Record<string, unknown>;
     const nativeReference = native.native as Record<string, unknown>;
     assert.equal(nativeReference.operation, "agent.generate");
-    assert.equal(nativeReference.storage, "none");
+    assert.equal(nativeReference.storage, "libsql-file");
     assert.equal(JSON.stringify(native).includes("OPENROUTER_API_KEY"), false);
 
     for (const file of ["config.json", "events.jsonl", "trajectory.json", "metrics.json", "result.json", "native/mastra.json"]) {

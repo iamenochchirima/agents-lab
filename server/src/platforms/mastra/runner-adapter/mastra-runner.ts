@@ -1,3 +1,9 @@
+import { LibSQLStore } from "@mastra/libsql";
+import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
+import { prepareToolInvocation } from "../../../capabilities/extensions/runtime.js";
 import { getFreeEvalSettings, isFreeEval } from "../../../models/openrouter/free-model-policy.js";
 import type {
   PlatformExecutionReference,
@@ -14,6 +20,7 @@ import type {
   RunnerCancellationResult,
   RunnerConnectivity,
   RunnerInspection,
+  RunnerResumeResult,
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
 import {
@@ -65,9 +72,9 @@ type MastraContextMessage = NonNullable<AgentExecutionOptionsBase<unknown>["cont
 /**
  * Runs one direct Mastra Agent.generate() call in the Lab server process.
  *
- * The registry is intentionally in memory. The common evidence store may
- * retain the reference and completed projection, but it cannot recover an
- * in-flight Agent.generate() after this runner instance disappears.
+ * Native suspended snapshots and the safe execution projection persist in
+ * LibSQL/state storage. Waiting runs can be reconstructed without new inference;
+ * arbitrary in-flight Agent.generate() recovery remains unsupported.
  */
 export class MastraBaselineRunner implements PlatformRunner {
   readonly platform = "mastra" as const;
@@ -105,6 +112,7 @@ export class MastraBaselineRunner implements PlatformRunner {
       operation: MASTRA_OPERATION,
       storage: MASTRA_STORAGE_MODE,
       processScoped: true,
+      waitingRecovery: "native-suspended-only",
     };
   }
 
@@ -151,12 +159,13 @@ export class MastraBaselineRunner implements PlatformRunner {
       timeoutRequested: false,
     };
     this.executions.set(manifest.runId, record);
+    await this.persist(record);
     void this.execute(record);
     return reference;
   }
 
   async cancel(reference: PlatformExecutionReference, reason: string): Promise<RunnerCancellationResult> {
-    const record = this.requireExecution(reference);
+    const record = await this.requireExecution(reference);
     if (isTerminal(record.status)) {
       return {
         accepted: false,
@@ -167,11 +176,53 @@ export class MastraBaselineRunner implements PlatformRunner {
 
     record.cancellationReason = reason.trim() || "Cancellation requested.";
     record.controller.abort(record.cancellationReason);
+    if (record.status === "suspended") {
+      this.addEvent(record, "AgentCancelled", { reason: record.cancellationReason });
+      this.addEvent(record, "RunCancelled", {});
+      record.status = "cancelled";
+      record.pendingReview = null;
+      record.result = resultFor(record, "cancelled", null, failureFor(record, abortError()), emptyUsage());
+      record.trajectory = trajectoryFor(record);
+      record.metrics = metricsFor(record, emptyUsage());
+      await this.persist(record);
+    }
     return { accepted: true, alreadyTerminal: false, message: record.cancellationReason };
   }
 
+  async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const decision = input as InvocationResumeInput;
+    const record = await this.requireExecution(reference);
+    if (isTerminal(record.status)) return { accepted: false, alreadyTerminal: true, message: "Mastra run is terminal." };
+    const pending = record.pendingReview;
+    if (decision?.kind === "invocation_review" && decision.decision === "renewed" && pending && record.status === "suspended" &&
+        decision.requestId === pending.requestId && decision.toolCallId === pending.call.toolCallId && decision.revision === pending.revision + 1) {
+      const fresh = await prepareToolInvocation(record.manifest.capabilities!.toolCatalog!, record.pendingCall!, {
+        runId: record.manifest.runId, turnId: record.manifest.context.turnId!, signal: record.controller.signal });
+      if (!fresh || fresh.revision !== decision.revision || fresh.status !== "pending") return { accepted: false, alreadyTerminal: false, message: "Renewed review is unavailable." };
+      record.pendingReview = fresh;
+      this.addEvent(record, "WorkflowSuspended", { reason: "invocation_review", requestId: fresh.requestId, revision: fresh.revision,
+        toolCallId: fresh.call.toolCallId, toolName: fresh.call.name, argumentDigest: fresh.argumentDigest });
+      await this.persist(record);
+      return { accepted: true, alreadyTerminal: false, message: "Waiting on the renewed review without executing the tool." };
+    }
+    if (!decision || decision.kind !== "invocation_review" || !pending || record.status !== "suspended" ||
+        decision.requestId !== pending.requestId || decision.revision !== pending.revision ||
+        decision.toolCallId !== pending.call.toolCallId || typeof decision.decisionId !== "string" ||
+        !["approved", "denied"].includes(decision.decision)) {
+      return { accepted: false, alreadyTerminal: false, message: "Mastra is not awaiting this exact action decision." };
+    }
+    record.status = "running";
+    if (decision.decision === "denied") this.addEvent(record, "ToolPolicyDenied", {
+      toolCallId: pending.call.toolCallId, toolName: pending.call.name, code: "TOOL_APPROVAL_DENIED" });
+    this.addEvent(record, "WorkflowResumed", { reason: "invocation_review", requestId: pending.requestId,
+      toolCallId: pending.call.toolCallId, decision: decision.decision });
+    await this.persist(record);
+    void this.execute(record, decision);
+    return { accepted: true, alreadyTerminal: false, message: "Continuing the existing Mastra suspended run." };
+  }
+
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
-    const record = this.requireExecution(reference);
+    const record = await this.requireExecution(reference);
     const native = { ...record.reference.native, ...nativeSummaryFor(record) };
     validateMastraNativeEvidence(native, "baseline");
     return {
@@ -187,11 +238,11 @@ export class MastraBaselineRunner implements PlatformRunner {
     };
   }
 
-  private async execute(record: MastraExecutionRecord): Promise<void> {
+  private async execute(record: MastraExecutionRecord, resume?: InvocationResumeInput): Promise<void> {
     const configuration = configurationFromManifest(record.manifest);
     record.status = "running";
-    this.addEvent(record, "AgentStarted", { agentId: configuration.agentId });
-    this.addEvent(record, "ModelRequested", {
+    if (!resume) this.addEvent(record, "AgentStarted", { agentId: configuration.agentId });
+    if (!resume) this.addEvent(record, "ModelRequested", {
       model: record.manifest.model.model,
       provider: record.manifest.model.provider,
     });
@@ -202,24 +253,32 @@ export class MastraBaselineRunner implements PlatformRunner {
     }, configuration.executionTimeoutMs);
 
     try {
-      const context = await this.prepareContext(record, configuration.contextRoot);
+      const context = resume ? null : await this.prepareContext(record, configuration.contextRoot);
+      const directory = this.recordDirectory(record.manifest.runId);
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      const storage = new LibSQLStore({ id: `agentlab-mastra-${record.manifest.runId}`, url: `file:${join(directory, "snapshots.db")}` });
+      await storage.init();
       const liveEval = isFreeEval(record.manifest.selection?.experimentId);
       const modelFactory = liveEval ? (manifest: RunManifest) => liveOpenRouterModel(manifest,
         (observation) => this.addEvent(record, "EvalModelObserved", { observation })) : this.modelFactory;
       const runtime = createBaselineAgentRuntime(record.manifest, modelFactory, {
+        storage,
         runId: record.manifest.runId,
         turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
         signal: record.controller.signal,
-        maxToolCalls: configuration.maxToolCalls,
-        currentRound: () => record.events.filter(event => event.kind === "AgentStepCompleted").length + 1,
+        maxToolCalls: configuration.maxToolCalls - record.events.filter(event => event.kind === "ToolExecutionStarted").length,
+        currentRound: () => record.pendingReview?.call.round ?? record.events.filter(event => event.kind === "AgentStepCompleted").length + 1,
         connectionBindings: record.manifest.capabilities?.connections,
         onToolObservation: (call, result) => {
           this.onToolObservation?.(record.manifest.runId, call, result);
           if (liveEval) this.addEvent(record, "EvalToolObserved", { toolCallId: call.toolCallId, name: call.name, arguments: call.arguments, output: result.content, status: result.status });
         },
-        onToolEvent: (kind, payload) => this.addEvent(record, kind, payload),
+        onToolEvent: (kind, payload) => {
+          if (kind !== "ToolCallRequested" || !record.events.some(event => event.kind === kind && event.payload.toolCallId === payload.toolCallId)) this.addEvent(record, kind, payload);
+          if (kind === "ToolExecutionStarted" && payload.toolCallId === record.pendingReview?.call.toolCallId) record.pendingReview = null;
+        },
       });
-      const output = await runtime.agent.generate(record.manifest.task.prompt, {
+      const generationOptions = {
         runId: record.manifest.runId,
         abortSignal: record.controller.signal,
         ...(context ? {
@@ -227,7 +286,8 @@ export class MastraBaselineRunner implements PlatformRunner {
             .filter((message) => !(message.role === "system" && message.source === "system") && message.messageId !== context.currentMessageId)
             .map(toMastraMessage),
         } : {}),
-        maxSteps: configuration.maxToolRounds,
+        maxSteps: Math.max(1, configuration.maxToolRounds - record.events.filter(event => event.kind === "AgentStepCompleted").length),
+        stopWhen: () => record.controller.signal.aborted || record.events.some(event => event.kind === "ToolExecutionUnknown"),
         ...(liveEval ? { modelSettings: { maxOutputTokens: getFreeEvalSettings(record.manifest.selection?.experimentId)!.maxOutputTokens } } : {}),
         onStepFinish: (step) => {
           // Mastra can reject schema-invalid or absent tools before our execute
@@ -253,7 +313,31 @@ export class MastraBaselineRunner implements PlatformRunner {
             usage: safeUsage((step as unknown as { usage?: unknown }).usage),
           });
         },
-      });
+      } satisfies AgentExecutionOptionsBase<unknown>;
+      const output = resume
+        ? resume.decision === "approved"
+          ? await runtime.agent.approveToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: resume.toolCallId })
+          : await runtime.agent.declineToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: resume.toolCallId, reason: JSON.stringify({ code: "TOOL_APPROVAL_DENIED", error: resume.reason ?? "The proposed action was declined." }) })
+        : await runtime.agent.generate(record.manifest.task.prompt, generationOptions);
+      if (output.finishReason === "suspended") {
+        const payload = output.suspendPayload as { toolCallId?: string; toolName?: string; args?: unknown } | undefined;
+        if (!payload?.toolCallId || !payload.toolName || !record.manifest.capabilities?.toolCatalog) throw new Error("Mastra suspended without an admitted tool identity.");
+        const call = { toolCallId: payload.toolCallId, name: payload.toolName, arguments: payload.args,
+          round: Math.max(1, record.events.filter(event => event.kind === "AgentStepCompleted").length) };
+        const review = await prepareToolInvocation(record.manifest.capabilities.toolCatalog, call, {
+          runId: record.manifest.runId, turnId: record.manifest.context.turnId!, signal: record.controller.signal });
+        if (!review) throw new Error("Mastra suspension has no invocation review policy.");
+        record.pendingReview = review;
+        record.pendingCall = call;
+        this.addEvent(record, "ToolCallRequested", { toolCallId: call.toolCallId, toolName: call.name, round: call.round });
+        this.addEvent(record, "WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
+          revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
+        record.status = "suspended";
+        await this.persist(record);
+        return;
+      }
+      record.pendingReview = null;
+      record.pendingCall = null;
       // Mastra's generate() may resolve with an empty output after an abort
       // rather than reject. Treat that as a known cancellation. If a real
       // response survived the cancellation race, preserve the observed result.
@@ -302,6 +386,7 @@ export class MastraBaselineRunner implements PlatformRunner {
       record.metrics = metricsFor(record, emptyUsage());
     } finally {
       clearTimeout(timeout);
+      await this.persist(record);
     }
   }
 
@@ -350,16 +435,36 @@ export class MastraBaselineRunner implements PlatformRunner {
     });
   }
 
-  private requireExecution(reference: PlatformExecutionReference): MastraExecutionRecord {
+  private recordDirectory(runId: string): string {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(runId)) throw new Error("Unsafe Mastra run identity.");
+    return join(this.contextRoot, ".mastra-baseline", runId);
+  }
+
+  private async persist(record: MastraExecutionRecord): Promise<void> {
+    const directory = this.recordDirectory(record.manifest.runId);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const { controller: _controller, ...retained } = record;
+    const temporary = join(directory, `state.${randomUUID()}.pending`);
+    await writeFile(temporary, JSON.stringify(retained), { mode: 0o600 });
+    await rename(temporary, join(directory, "state.json"));
+  }
+
+  private async requireExecution(reference: PlatformExecutionReference): Promise<MastraExecutionRecord> {
     if (reference.platform !== this.platform || reference.variant !== this.variant) {
       throw new Error("The execution reference does not belong to the Mastra baseline runner.");
     }
 
-    const record = this.executions.get(reference.executionId.slice(EXECUTION_ID_PREFIX.length));
-    if (!record) {
-      throw new Error(`Mastra execution was not found: ${reference.executionId}.`);
-    }
-    return record;
+    const runId = reference.executionId.slice(EXECUTION_ID_PREFIX.length);
+    const current = this.executions.get(runId);
+    if (current) return current;
+    try {
+      const saved = JSON.parse(await readFile(join(this.recordDirectory(runId), "state.json"), "utf8")) as Omit<MastraExecutionRecord, "controller">;
+      if (saved.manifest.runId !== runId || saved.reference.executionId !== reference.executionId ||
+          (saved.status !== "suspended" && !isTerminal(saved.status))) throw new Error("Only durable waiting or terminal runs can be reconstructed.");
+      const record = { ...saved, controller: new AbortController() };
+      this.executions.set(runId, record);
+      return record;
+    } catch { throw new Error(`Mastra execution was not found or cannot be safely reconstructed: ${reference.executionId}.`); }
   }
 }
 

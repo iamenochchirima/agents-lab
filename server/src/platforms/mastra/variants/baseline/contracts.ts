@@ -1,3 +1,5 @@
+import type { ToolCall } from "../../../../capabilities/tools/contracts.js";
+import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import type {
   PlatformExecutionReference,
   RunEventIntent,
@@ -15,7 +17,9 @@ export interface MastraExecutionRecord {
   readonly controller: AbortController;
   readonly events: RunEventIntent[];
   readonly startedAt: string;
-  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  status: "queued" | "running" | "suspended" | "completed" | "failed" | "cancelled";
+  pendingReview?: InvocationReviewView | null;
+  pendingCall?: ToolCall | null;
   result: RunResult | null;
   trajectory: RunTrajectory | null;
   metrics: RunMetrics | null;

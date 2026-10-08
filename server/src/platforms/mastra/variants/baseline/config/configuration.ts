@@ -3,7 +3,7 @@ import type { RunManifest } from "../../../../../control-plane/domain/types.js";
 export const MASTRA_CORE_VERSION = "1.66.0" as const;
 export const MASTRA_AGENT_ID = "mastra-baseline-agent" as const;
 export const MASTRA_OPERATION = "agent.generate" as const;
-export const MASTRA_STORAGE_MODE = "none" as const;
+export const MASTRA_STORAGE_MODE = "libsql-file" as const;
 export const DEFAULT_EXECUTION_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_TOOL_ROUNDS = 6;
 export const DEFAULT_MAX_TOOL_CALLS = 8;
