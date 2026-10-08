@@ -2,6 +2,10 @@
 
 Research date: 2026-10-08. This note records source findings and design recommendations. It is not an implementation claim or a temporary execution plan. The comparison concerns ShenSeanChen's Waku Agent, not the unrelated Waku messaging network.
 
+The follow-up [Waku filesystem and execution environment study](waku-filesystem-environment.md)
+examines project directories, persistent scratch work, Pi delegation, and the
+difference between a working directory and an operating-system sandbox.
+
 ## Recommendation
 
 Build a capability package and adapter boundary that native agents consume as data. A package contributes tool definitions, dispatch bindings, skill directories and provenance. A trusted resolver selects what a run may use. Each platform projects that resolved snapshot into its own model declarations and executes calls through its existing native I/O boundary.
