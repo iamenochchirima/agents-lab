@@ -59,6 +59,15 @@ run `eval:capabilities -- --tasks support,workspace` for the reviewed business
 workflow and optional connected-document workflow. The driver has an explicit
 fictional trial review policy. It is not production authorization.
 
+## Real Memos notes app
+
+`customer-support.json` also includes `memos-notes` and the independent
+`notes-agent` profile. It selects five upstream Memos MCP tools for listing,
+reading, creating, updating and deleting notes. Writes require exact invocation
+review. The `conn_memos_local` connection reads `AGENTLAB_MEMOS_AUTHORIZATION`
+server-side; Memos owns account access and storage. No session header or native
+filesystem is provided. See the [Memos setup and verification guide](../../docs/guides/memos-notes.md).
+
 ## Optional script execution service
 
 `execution.json` connects a separate procedure provider and the `adjustment-summary`

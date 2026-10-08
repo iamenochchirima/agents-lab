@@ -153,6 +153,44 @@
         }
       ],
       "connectionRef": "conn_support_local"
+    },
+    {
+      "id": "memos-notes",
+      "version": "0.31.0",
+      "source": "mcp",
+      "endpoint": "http://127.0.0.1:5230/mcp",
+      "protocolVersion": "2026-07-28",
+      "connectionRef": "conn_memos_local",
+      "tools": [
+        {
+          "remoteName": "memo_list_memos",
+          "name": "memo_list_memos",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "memo_get_memo",
+          "name": "memo_get_memo",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "memo_create_memo",
+          "name": "memo_create_memo",
+          "riskClass": "write",
+          "approvalMode": "invocation"
+        },
+        {
+          "remoteName": "memo_update_memo",
+          "name": "memo_update_memo",
+          "riskClass": "write",
+          "approvalMode": "invocation"
+        },
+        {
+          "remoteName": "memo_delete_memo",
+          "name": "memo_delete_memo",
+          "riskClass": "write",
+          "approvalMode": "invocation"
+        }
+      ]
     }
   ],
   "profiles": [
@@ -171,6 +209,13 @@
         "support-mcp",
         "support-api",
         "task-procedures"
+      ]
+    },
+    {
+      "id": "notes-agent",
+      "version": "1.0.0",
+      "packages": [
+        "memos-notes"
       ]
     }
   ],
@@ -203,6 +248,23 @@
         "kind": "static",
         "headersEnv": {
           "Authorization": "AGENTLAB_DOCUMENT_PROVIDER_AUTHORIZATION"
+        }
+      }
+    },
+    {
+      "ref": "conn_memos_local",
+      "displayName": "Memos notes",
+      "provider": "memos",
+      "owner": "lab-development",
+      "resource": "http://127.0.0.1:5230/mcp",
+      "scopes": [
+        "memos:read",
+        "memos:write"
+      ],
+      "auth": {
+        "kind": "static",
+        "headersEnv": {
+          "Authorization": "AGENTLAB_MEMOS_AUTHORIZATION"
         }
       }
     }

@@ -11,6 +11,10 @@ service or worker you intend to use. Free-model runs require an OpenRouter
 credential in server-owned configuration and a currently available zero-priced
 model. Paid models are outside unattended evaluation use.
 
+For CRUD operations against an upstream notes application, follow
+[the Memos connection guide](memos-notes.md). Its dedicated profile uses the same
+MCP adapter and requires review of each create, update or delete action.
+
 ## Load the example
 
 From the repository root:

@@ -62,7 +62,8 @@
     {
       "title": "External integrations",
       "documents": [
-        "server/src/integrations/README.md"
+        "server/src/integrations/README.md",
+        "docs/guides/memos-notes.md"
       ]
     },
     {
