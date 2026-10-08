@@ -520,7 +520,11 @@ export class RunService {
     }
 
     const snapshot = await this.dependencies.evidence.readSnapshot(runId);
-    return toRunView(snapshot, inspection.result?.status ?? deriveStatus(snapshot.events, snapshot.result), await this.contextProjection(snapshot.manifest));
+    // Native runtimes need not emit AgentStarted. Preserve their observed
+    // nonterminal state instead of treating every such run as queued.
+    const observedStatus = ["queued", "running", "suspended"].includes(inspection.status)
+      ? inspection.status : deriveStatus(snapshot.events, snapshot.result);
+    return toRunView(snapshot, inspection.result?.status ?? observedStatus, await this.contextProjection(snapshot.manifest));
   }
 
   private async admitContextTurn(request: RunRequest, runId: string) {
@@ -801,7 +805,7 @@ function deriveStatus(events: readonly RunEvent[], result: RunResult | null): Ru
   }
   const suspended = [...events].reverse().find((event) => ["WorkflowSuspended", "WorkflowResumed", "RunSuspended", "RunResumed"].includes(event.kind));
   if (suspended && ["WorkflowSuspended", "RunSuspended"].includes(suspended.kind)) return "suspended";
-  if (events.some((event) => event.kind === "AgentStarted")) {
+  if (events.some((event) => ["AgentStarted", "PlatformExecutionStarted"].includes(event.kind))) {
     return "running";
   }
   if (events.some((event) => event.kind === "RunDispatched")) {

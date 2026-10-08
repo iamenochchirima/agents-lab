@@ -415,6 +415,27 @@ test("creates a run before dispatch and projects a completed runner result", asy
   });
 });
 
+test("projects native running state without an AgentStarted event and preserves it during outage", async () => {
+  await withService(async (service, _store, runner) => {
+    runner.state = "running";
+    const originalInspect = runner.inspect.bind(runner);
+    runner.inspect = async reference => {
+      const observed = await originalInspect(reference);
+      return { ...observed, eventIntents: observed.eventIntents.map(event => event.kind === "AgentStarted"
+        ? { ...event, kind: "PlatformExecutionStarted" } : event) };
+    };
+    const view = await service.createRun({ platform: "temporal", variant: "baseline",
+      task: { kind: "prompt", prompt: "Native running projection" }, model: { provider: "fake", model: "fake-success" } });
+    assert.equal(view.status, "running");
+    assert.equal(view.result, null);
+    runner.unavailable = true;
+    const stale = await service.getRun(view.runId);
+    assert.equal(stale.status, "running");
+    assert.equal(stale.projection.state, "stale");
+    assert.equal(runner.startCalls, 1);
+  });
+});
+
 test("freezes server-resolved model context metadata in the run manifest", async () => {
   await withService(async (service) => {
     const view = await service.createRun({
