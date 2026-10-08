@@ -140,6 +140,9 @@ Implementation coverage and observed acceptance are separate. Map each assertion
 retained native runs before reporting a platform as passed. Commands, current results
 and environmental blockers are recorded in the
 [development milestone record](../../../development/implementation-plans/platforms/completed/cross-platform-agent-behaviour-milestone.md).
-Full readiness still follows the experiment protocol. The broader M02 correction
-measurement and optional X01–X05 capability extensions are not implied by this core
-implementation.
+Full readiness still follows the experiment protocol. Live L07 (suite 3, case 1,
+grader 4, rubric 1) measures M02 with a fresh three-turn French report → English
+correction → later report. Deterministic grading verifies actual retained native
+context; language and factual compliance require a separate human assessment. L03
+continues to measure marker recall. Optional X01–X05 capability extensions are not
+implied by the core implementation. See the [live correction procedure](../../../lab/experiments/agent-harness-baseline/development-evals.md#retained-language-correction-l07--m02).

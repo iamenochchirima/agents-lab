@@ -317,7 +317,7 @@ create a derived invocation instead of overwriting the original report:
 pnpm --filter @agent-harness-lab/lab-server run eval:regrade-live -- --invocation retained-live-invocation-id
 ```
 
-This bounded command supports grader `3`. It reads one complete live summary,
+This bounded command uses the current grader `4` (the previous revision was `3`). It reads one complete live summary,
 verifies its run identities, reconstructs declared skill metadata from immutable
 manifests, and checks that current allowlisted skill content matches those exact
 recorded digests. It reuses captured model/tool observations and fixture snapshots;
@@ -325,9 +325,56 @@ it never dispatches a model, tool or agent run. An unverifiable skill revision
 stops regrading rather than silently supplying changed instructions.
 
 Original `artifacts/eval.json` reports stay immutable. The supported evidence store
-writes a separate immutable `artifacts/eval-grader-3.json`. A new summary retains
+writes a separate immutable `artifacts/eval-grader-4.json`. A new summary retains
 `sourceInvocationId`, grader version, original run IDs and comparison controls.
-Repeating the command reuses an identical grader-3 judgment; disagreement requires
+Repeating the command reuses an identical grader-4 judgment; disagreement requires
 a new grader version. Original provider/runtime errors remain errors, and missing
 identity interpretation remains blocked for human review. The frontend links each
 summary to its corresponding report revision.
+
+### Retained language correction: L07 / M02
+
+Live suite `3`, grader `4`, adds L07 case version `1` and language rubric version
+`1`. L01–L06 retain their task meanings and objective contracts; L03 remains a
+marker-recall probe and does not stand in for correction compliance. Existing
+reports and grader-3 artifacts remain unchanged.
+
+```bash
+pnpm --filter @agent-harness-lab/lab-server run eval:live -- --platform langgraph --model nvidia/nemotron-3.5-lightning:free --cases L07 --trials 1
+```
+
+Use `--platforms mastra,langgraph,temporal,restate` for one observation on each
+native baseline once those services and the verified zero-price model are available.
+The driver admits three successive turns in one fresh session: a compact French
+report on Cedar completing 3 of 5 tasks, an explicit correction to English for this
+and later reports, and a later report without repeating the language preference.
+No tools or failure injections are enabled. Free-only routing, captured model
+requests, limits and per-turn native identities are retained using the existing
+live experiment path.
+
+The deterministic grader checks completion, identities, actual tasks, configured
+limits, no tool demands, exact instruction delivery and the complete ordered
+conversation at every mapped native request. The first request must have no
+previous conversation, and the final request must include the correction and its
+immediate answer. Missing context is an objective failure regardless of prose.
+The retained fixture supplies case/requirement/rubric versions and the exact rubric.
+
+Objective success remains `blocked` with `reviewRequired: true`. A human checks
+three questions: first report French and factually faithful; immediate rewrite
+English and faithful; later report still English and faithful. Each answer is
+`yes`, `no` or `uncertain`: all yes passes the semantic assessment, any no fails,
+otherwise inconclusive. Names, numbers, isolated language labels and keywords are
+not language classifiers. The assessment is a separate record; it never overwrites
+the objective report.
+
+Calibration examples: "Cedar a terminé 3 tâches sur 5. Les 2 restantes sont
+prévues pour vendredi." followed twice by "Cedar completed 3 of 5 tasks. The
+remaining 2 are scheduled for Friday." answers yes/yes/yes. Repeating the French
+report on the final turn answers yes/yes/no. These are grader/reviewer controls,
+not claimed real-model results. Both satisfy delivery assertions and require actual
+semantic assessment. Empty or ambiguous replies cannot gain an automatic language
+pass. One observation establishes no stable success rate.
+
+Regrading uses the current bounded grader `4` and writes a separate immutable
+`artifacts/eval-grader-4.json`; saved grader-3 artifacts remain available. It creates
+no model requests and retains source invocation and original grader lineage.

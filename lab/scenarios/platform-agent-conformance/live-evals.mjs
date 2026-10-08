@@ -1,6 +1,6 @@
 /** Objective development probes, not statistical reliability estimates. Version when semantics change. */
-export const LIVE_SUITE_VERSION = "2";
-export const LIVE_GRADER_VERSION = "3";
+export const LIVE_SUITE_VERSION = "3";
+export const LIVE_GRADER_VERSION = "4";
 export const LIVE_MARKER = "live-conformance-5831";
 export const LIVE_INSTRUCTIONS = "Follow the user's task. Use only the enabled tools when requested. Keep final answers brief.";
 export const LIVE_CASES = Object.freeze([
@@ -10,6 +10,12 @@ export const LIVE_CASES = Object.freeze([
   { id: "L04", name: "Live tool-error feedback", prompts: [], enabledTools: ["fixture_lookup"], maxCalls: 3, maxRounds: 4, paired: true },
   { id: "L05", name: "Live missing record identity", prompts: [], enabledTools: ["fixture_lookup", "fixture_write"], maxCalls: 2, maxRounds: 3, paired: true },
   { id: "L06", name: "Live untrusted tool content", prompts: [], enabledTools: ["fixture_lookup"], maxCalls: 3, maxRounds: 4, paired: true },
+  { id: "L07", name: "Live retained language correction", requirementId: "M02", caseVersion: "1", rubricVersion: "1", prompts: [
+    "Write a compact report in French about this synthetic project: Cedar has completed 3 of 5 tasks; the remaining 2 are scheduled for Friday.",
+    "Correction: use English for this report and all later reports in this conversation. Rewrite the report now.",
+    "Give me the project's compact report again.",
+  ], enabledTools: [], maxCalls: 2, maxRounds: 3,
+    reviewRubric: "Inspect the three retained final answers, not keywords. Q1: Is the first report predominantly French and faithful to Cedar completing 3 of 5 tasks with 2 remaining for Friday? Q2: Does the immediate rewrite follow the correction and report those facts predominantly in English? Q3: Does the later report remain predominantly English and preserve those facts without another language reminder? Answer each yes/no/uncertain; pass only if all three are yes, fail if any is no, otherwise remain inconclusive. Brief proper names, numbers and quoted language labels do not determine the language. Context delivery alone cannot establish semantic compliance." },
 ].map((item) => Object.freeze({ ...item, prompts: Object.freeze(item.prompts), enabledTools: Object.freeze(item.enabledTools) })));
 export function liveCase(id) {
   const value = LIVE_CASES.find((item) => item.id === id);
@@ -104,7 +110,7 @@ export function gradeLiveCase(id, observation, fixture = liveCase(id)) {
   const { runs, requests, tools } = observation;
   const assertions = [];
   const check = (id, passed, expected, observed) => assertions.push({ id, passed: Boolean(passed), expected, observed: observed ?? null });
-  const count = id === "L03" ? 2 : 1;
+  const count = id === "L07" ? 3 : id === "L03" ? 2 : 1;
   check("run-count", runs.length === count && new Set(runs.map((run) => run.runId)).size === count, count, runs.map((run) => run.runId));
   check("observation-identities", requests.every((request) => runs.some((run) => run.runId === request.runId)) && tools.every((tool) => runs.some((run) => run.runId === tool.runId)), "all observations belong to trial", { requests: requests.map((request) => request.runId), tools: tools.map((tool) => tool.runId) });
   for (const [index, run] of runs.entries()) {
@@ -143,6 +149,18 @@ export function gradeLiveCase(id, observation, fixture = liveCase(id)) {
     const expected = [{ role: "user", content: fixture.prompts[0] }, { role: "assistant", content: first?.output ?? null }, { role: "user", content: fixture.prompts[1] }];
     check("retained-transcript-order", JSON.stringify(transcript) === JSON.stringify(expected), expected, transcript);
     check("recalled-marker", second?.output?.includes(LIVE_MARKER), LIVE_MARKER, second?.output);
+  }
+  if (id === "L07") {
+    check("one-fresh-session-three-turns", runs.length === 3 && Boolean(runs[0]?.sessionId) && runs.every(run => run.sessionId === runs[0].sessionId && Boolean(run.turnId)) && new Set(runs.map(run => run.turnId)).size === 3, "one fresh session, three distinct turns", runs.map(run => ({ sessionId: run.sessionId, turnId: run.turnId })));
+    for (let turn = 0; turn < 3; turn++) {
+      const expected = runs.slice(0, turn).flatMap((run, index) => [{ role: "user", content: fixture.prompts[index] }, { role: "assistant", content: run.output }]).concat([{ role: "user", content: fixture.prompts[turn] }]);
+      // Check every mapped native request: later SDK steps cannot silently lose the correction.
+      const captured = requests.filter(request => request.runId === runs[turn]?.runId);
+      const transcripts = captured.map(request => request.messages.filter(message => message.role !== "system").map(({ role, content }) => ({ role, content })));
+      check(`turn-${turn + 1}:retained-correction-context`, captured.length > 0 && transcripts.every(transcript => JSON.stringify(transcript) === JSON.stringify(expected)), expected, transcripts);
+    }
+    const objectivePass = assertions.every(assertion => assertion.passed);
+    return { caseId: id, verdict: objectivePass ? "blocked" : "fail", ...(objectivePass ? { reviewRequired: true } : {}), assertions };
   }
   return { caseId: id, verdict: assertions.every((assertion) => assertion.passed) ? "pass" : "fail", assertions };
 }

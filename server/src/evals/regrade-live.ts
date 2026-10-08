@@ -40,7 +40,8 @@ async function main() {
   const root = await workspace(); loadLocalServerEnvironment();
   const config = loadServerConfig(process.env, root), source = await summary(config.runsRoot, args[1]);
   const suite = await import(pathToFileURL(join(root, "lab/scenarios/platform-agent-conformance/live-evals.mjs")).href) as typeof import("../../../lab/scenarios/platform-agent-conformance/live-evals.mjs");
-  if (suite.LIVE_GRADER_VERSION !== "3") throw new Error("Only the bounded grader-3 revision is supported.");
+  if (!["3", "4"].includes(suite.LIVE_GRADER_VERSION)) throw new Error("Unsupported live grader revision.");
+  const artifact = suite.LIVE_GRADER_VERSION === "4" ? "artifacts/eval-grader-4.json" : "artifacts/eval-grader-3.json";
   const evidence = new RunEvidenceStore(config.runsRoot), skills = createDefaultSkillCatalog();
   const invocationId = `regrade-${randomUUID()}`, startedAt = new Date().toISOString();
   const directory = join(config.runsRoot, ".evals", invocationId); await mkdir(directory, { recursive: true });
@@ -74,12 +75,12 @@ async function main() {
       reviewRequired: Boolean(grade.reviewRequired && verdict === "blocked"), assertions: grade.assertions.map(assertion => ({ ...assertion, expected: assertion.expected as EvalJson, observed: assertion.observed as EvalJson })),
       observations: [JSON.parse(JSON.stringify(observation)), ...report.observations.slice(1), { regrade: { sourceInvocationId: source.invocationId, originalGraderVersion: report.graderVersion, evaluatedAt: new Date().toISOString(), modelDispatchCount: 0 } }],
       metadata: { ...report.metadata, environment: { original: report.metadata.environment ?? null, regradeOnly: true, sourceInvocationId: source.invocationId } } };
-    const existingRevision = await evidence.readEvalReport(report.ownerRunId, "artifacts/eval-grader-3.json");
+    const existingRevision = await evidence.readEvalReport(report.ownerRunId, artifact);
     if (existingRevision) {
-      if (existingRevision.verdict !== revised.verdict || JSON.stringify(existingRevision.assertions) !== JSON.stringify(revised.assertions)) throw new Error("The immutable grader-3 revision disagrees with current grading; version the grader before revising again.");
+      if (existingRevision.verdict !== revised.verdict || JSON.stringify(existingRevision.assertions) !== JSON.stringify(revised.assertions)) throw new Error(`The immutable grader-${suite.LIVE_GRADER_VERSION} revision disagrees with current grading; version the grader before revising again.`);
     } else await evidence.writeEvalReport(report.ownerRunId, revised, { graderRevision: true });
     const reason = verdict === "error" ? item.reason : grade.reviewRequired ? fixture?.fixture?.reviewRubric : grade.assertions.filter(assertion => !assertion.passed).map(assertion => assertion.id).join(", ");
-    cases.push({ caseId: item.caseId, trial: item.trial, verdict, runIds: report.runIds, evidence: "artifacts/eval-grader-3.json", ...(grade.reviewRequired && verdict === "blocked" ? { reviewRequired: true } : {}), ...(reason ? { reason } : {}) }); counts[verdict]++; await save(null);
+    cases.push({ caseId: item.caseId, trial: item.trial, verdict, runIds: report.runIds, evidence: artifact, ...(grade.reviewRequired && verdict === "blocked" ? { reviewRequired: true } : {}), ...(reason ? { reason } : {}) }); counts[verdict]++; await save(null);
     console.log(`${item.caseId} trial ${item.trial}: ${verdict.toUpperCase()} (regraded existing evidence)`);
   }
   await save(new Date().toISOString()); console.log(`Summary: ${join(directory, "summary.json")}`);

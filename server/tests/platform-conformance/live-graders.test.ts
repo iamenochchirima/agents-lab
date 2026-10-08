@@ -99,3 +99,43 @@ test("paired live probes require observed controls and retain human clarificatio
   const unapproved = paired("L05"); unapproved.observation.approvals![1] = false;
   assert.equal(gradeLiveCase("L05", unapproved.observation, unapproved.fixture).verdict, "fail");
 });
+
+/** Semantic controls deliberately share valid delivery; only a real rubric assessment can separate them. */
+function correction(outputs: string[]): LiveObservation {
+  const fixture = liveCase("L07"), observation: LiveObservation = { runs: [], requests: [], tools: [] };
+  fixture.prompts.forEach((prompt, turn) => {
+    const runId = `correction-${turn}`;
+    observation.runs.push({ runId, sessionId: "fresh-correction", turnId: `turn-${turn}`, status: "completed", output: outputs[turn], instructions: "Use brief answers.", maxCalls: fixture.maxCalls, maxRounds: fixture.maxRounds });
+    observation.requests.push({ runId, sequence: 1, messages: [{ role: "system", content: "Use brief answers." }, ...outputs.slice(0, turn).flatMap((output, index) => [{ role: "user" as const, content: fixture.prompts[index] }, { role: "assistant" as const, content: output }]), { role: "user", content: prompt }] });
+  });
+  return observation;
+}
+test("L07 maps M02 without replacing marker recall and requires semantic language review", () => {
+  const french = "Cedar a terminé 3 tâches sur 5. Les 2 restantes sont prévues pour vendredi.";
+  const english = "Cedar completed 3 of 5 tasks. The remaining 2 are scheduled for Friday.";
+  const passingLanguage = correction([french, english, english]);
+  const failingLanguage = correction([french, english, french]);
+  for (const observation of [passingLanguage, failingLanguage]) {
+    const grade = gradeLiveCase("L07", observation);
+    assert.equal(grade.verdict, "blocked");
+    assert.equal(grade.reviewRequired, true);
+    assert.ok(grade.assertions.every(assertion => assertion.passed));
+  }
+  assert.equal(liveCase("L07").requirementId, "M02");
+  assert.equal(liveCase("L07").rubricVersion, "1");
+  assert.equal(gradeLiveCase("L03", valid("L03")).verdict, "pass");
+  const missingCorrection = structuredClone(passingLanguage);
+  missingCorrection.requests[2].messages.splice(3, 2);
+  const failed = gradeLiveCase("L07", missingCorrection);
+  assert.equal(failed.verdict, "fail");
+  assert.equal(failed.reviewRequired, undefined);
+  assert.ok(failed.assertions.some(assertion => assertion.id === "turn-3:retained-correction-context" && !assertion.passed));
+  const secondStepDropsCorrection = structuredClone(passingLanguage);
+  secondStepDropsCorrection.requests.push({ ...structuredClone(missingCorrection.requests[2]), sequence: 2 });
+  assert.equal(gradeLiveCase("L07", secondStepDropsCorrection).verdict, "fail");
+  const leakedSession = structuredClone(passingLanguage);
+  leakedSession.requests[0].messages.splice(1, 0, { role: "user", content: "Previous session context" });
+  assert.equal(gradeLiveCase("L07", leakedSession).verdict, "fail");
+  const wrongSession = structuredClone(passingLanguage); wrongSession.runs[2].sessionId = "unrelated";
+  assert.equal(gradeLiveCase("L07", wrongSession).verdict, "fail");
+});
