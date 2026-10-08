@@ -2,7 +2,7 @@
 
 Allow an external side effect to succeed while its acknowledgement is lost, then measure duplicate-side-effect protection.
 
-This directory will hold the experiment protocol, deterministic fault plan, analyzers, and experiment tests.
+The bounded native acceptance below implements a provider-key reconciliation control. Broader crash and failure campaigns remain outside this experiment.
 
 ## Executable X02 provider-key reconciliation
 
@@ -35,3 +35,17 @@ A small passing/failing provider control is executable with:
 ```sh
 node --test server/dist/tests/evals/effect-recovery-fixture.test.js
 ```
+
+## Recorded observations (2026-10-08)
+
+The four-platform report
+`lab/runs/.review-proof/native-review-ffeb524c-da66-4f47-a03f-c6cbd1f76163/extensions.json`
+contains passing X02 observations for Mastra, Temporal and Restate. LangGraph was
+incomplete because the evaluator initially asserted a generic terminal failure.
+Its native adapter correctly retains `reconciliation_required`, with
+`LANGGRAPH_OUTCOME_UNKNOWN` and failure kind `reconciliation`. After asserting that
+native policy explicitly, the focused report
+`lab/runs/.review-proof/native-review-3abed55d-0df9-4aed-b5c9-42c0d63e4185/extensions.json`
+contains passing X02 LangGraph observations. All four have an independently counted
+single ticket and recovered original receipt. Original agent outcomes remain
+uncertain/failed; the provider reconciliation is separate evidence.

@@ -55,3 +55,15 @@ pnpm --filter @agent-harness-lab/lab-server exec tsx src/evals/extensions.ts /ab
 This bounded scripted-native acceptance measures suspension mechanics, not model
 judgment or authenticated reviewer identity. It does not establish X01 recovery
 at arbitrary persistence boundaries or X02 lost external acknowledgement recovery.
+
+## Recorded bounded acceptance (2026-10-08)
+
+The four-platform exercise retained
+`lab/runs/.review-proof/native-review-ffeb524c-da66-4f47-a03f-c6cbd1f76163/extensions.json`: X04 passed on all four selected baselines. That combined
+integration invocation failed an X02 LangGraph assertion that incorrectly expected
+the Mastra terminal category; its original partial report remains unchanged.
+A focused LangGraph exercise after the evaluator correction at revision `856766e`
+passed all five integration subtests and retained
+`lab/runs/.review-proof/native-review-3abed55d-0df9-4aed-b5c9-42c0d63e4185/extensions.json`.
+These are one-trial scripted-native observations; no stable model success rate or
+arbitrary process recovery is inferred.
