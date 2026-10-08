@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { loadServerConfig } from "../../src/control-plane/bootstrap/config.js";
 import { CharacterTokenEstimator, ContextService, ContextSessionStore } from "../../src/capabilities/context/index.js";
-import { createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
+import { CapabilityCatalog, DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES, createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
 import { RunEvidenceStore } from "../../src/control-plane/application/evidence-store.js";
 import { PlatformRegistry } from "../../src/control-plane/application/platform-registry.js";
 import { RunService } from "../../src/control-plane/application/run-service.js";
@@ -133,7 +133,7 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
 async function withApp(
   run: (app: ReturnType<typeof buildControlPlaneServer>, runner: HttpRunner, root: string) => Promise<void>,
   modelCatalog?: OpenRouterCatalogClient,
-  options: { readonly context?: boolean; readonly environment?: NodeJS.ProcessEnv } = {},
+  options: { readonly context?: boolean; readonly environment?: NodeJS.ProcessEnv; readonly capabilities?: CapabilityCatalog } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "agentlab-http-"));
   try {
@@ -147,7 +147,7 @@ async function withApp(
     const context = options.context
       ? new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator())
       : undefined;
-    const capabilities = createDefaultCapabilityCatalog();
+    const capabilities = options.capabilities ?? createDefaultCapabilityCatalog();
     const registry = new PlatformRegistry([runner]);
     const service = new RunService({ config, context, evidence, registry, capabilities });
     const app = buildControlPlaneServer({ config, service, evidence, registry, modelCatalog, capabilities });
@@ -371,6 +371,37 @@ test("a selected capability profile is resolved before dispatch and retained as 
     assert.equal(metrics.json().approvalRequiredCount, 0);
     assert.equal(metrics.json().unknownOutcomeCount, 0);
   });
+});
+
+test("unavailable or stale capability profiles return an actionable conflict without dispatch", async () => {
+  const reason = "The connected tool service is unavailable. Refresh it before starting a run.";
+  const capabilities = new CapabilityCatalog(
+    DEFAULT_CAPABILITY_MANIFESTS,
+    DEFAULT_CAPABILITY_PROFILES.map(profile => profile.id === "local-safe" ? { ...profile, unavailableReason: reason } : profile),
+  );
+  await withApp(async (app, runner) => {
+    const payload = {
+      platform: "temporal",
+      variant: "baseline",
+      task: { kind: "prompt", prompt: "List the tools configured for this run." },
+      model: { provider: "fake", model: "fake-success" },
+      capabilities: { profileId: "local-safe", tools: { enabledNames: [], maxRounds: 6, maxCalls: 8 } },
+    };
+    const unavailable = await app.inject({ method: "POST", url: "/api/runs", payload });
+    assert.equal(unavailable.statusCode, 409);
+    assert.deepEqual(unavailable.json().error, { code: "CAPABILITY_PROFILE_UNAVAILABLE", message: reason });
+
+    const stale = await app.inject({ method: "POST", url: "/api/runs", payload: {
+      ...payload,
+      capabilities: { ...payload.capabilities, profileId: "removed-profile" },
+    } });
+    assert.equal(stale.statusCode, 409);
+    assert.deepEqual(stale.json().error, {
+      code: "CAPABILITY_PROFILE_NOT_FOUND",
+      message: "The selected capability profile is no longer available. Refresh the capability list and choose an available profile.",
+    });
+    assert.equal(runner.startCalls, 0, "an unavailable profile must never dispatch a run");
+  }, undefined, { capabilities });
 });
 
 test("HTTP retains an explicit write approval in the immutable run manifest", async () => {

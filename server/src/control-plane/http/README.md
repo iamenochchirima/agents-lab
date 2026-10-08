@@ -11,6 +11,12 @@ case verdicts, reasons, run IDs, and a safe report marker. It never returns raw
 runner configuration, provider credentials, or local evidence paths, and it never
 dispatches model work. Historical summaries without `mode` remain scripted.
 
+`POST /api/runs` resolves the selected capability profile before dispatch. If the
+profile was removed or one of its required dependencies is unavailable, the
+request returns `409` with `CAPABILITY_PROFILE_NOT_FOUND` or
+`CAPABILITY_PROFILE_UNAVAILABLE`; no model run is started. Refresh the capability
+list and choose an available profile before retrying.
+
 Interrupted summaries have `status: "incomplete"` and `completedAt: null`.
 Malformed, oversized, missing, or unsafe summaries produce incomplete placeholders
 with no case verdicts. Linked directories are excluded and linked summary files

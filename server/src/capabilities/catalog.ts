@@ -44,6 +44,17 @@ export interface CapabilityCatalogOptions {
   readonly skillResolver?: (ids: readonly string[]) => Promise<readonly UntrustedSkillContextText[]>;
 }
 
+/** A selected profile can become stale or unavailable after its dependencies change. */
+export class CapabilityResolutionError extends Error {
+  constructor(
+    readonly code: "CAPABILITY_PROFILE_NOT_FOUND" | "CAPABILITY_PROFILE_UNAVAILABLE",
+    message: string,
+  ) {
+    super(message);
+    this.name = "CapabilityResolutionError";
+  }
+}
+
 export interface CapabilityProfileResolution {
   readonly profile: CapabilityProfile;
   readonly resolution: CapabilityResolution;
@@ -105,9 +116,12 @@ export class CapabilityCatalog {
 
   resolve(profileId: string, approvals: readonly CapabilityApproval[] = []): CapabilityProfileResolution {
     const profile = this.profiles.get(profileId);
-    if (!profile) throw new Error(`Capability profile is not available: ${profileId}`);
+    if (!profile) throw new CapabilityResolutionError(
+      "CAPABILITY_PROFILE_NOT_FOUND",
+      "The selected capability profile is no longer available. Refresh the capability list and choose an available profile.",
+    );
     const availability = this.profileAvailability(profile);
-    if (!availability.available) throw new Error(availability.reason);
+    if (!availability.available) throw new CapabilityResolutionError("CAPABILITY_PROFILE_UNAVAILABLE", availability.reason);
     const resolution = this.resolver.resolve({ policy: profile.policy, grants: profile.grants, approvals });
     const skills = this.skills.resolve(profile.skillIds ?? []);
     return { profile, resolution, skills };

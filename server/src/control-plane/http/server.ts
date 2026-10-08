@@ -15,7 +15,7 @@ import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunCapabilities, RunRequest, RunSelection } from "../domain/types.js";
 import type { RunView } from "../application/run-service.js";
 import { OpenRouterCatalogError, OpenRouterModelCatalog, type OpenRouterCatalogClient } from "../../models/openrouter/catalog.js";
-import type { CapabilityCatalog } from "../../capabilities/catalog.js";
+import { CapabilityResolutionError, type CapabilityCatalog } from "../../capabilities/catalog.js";
 import { validateCapabilityApproval } from "../../capabilities/validation.js";
 import { readEvalResults, readEvalTrialDetail } from "../application/eval-results.js";
 import { EvalAssessmentStore, EvalAssessmentError, assessmentContext } from "../application/eval-assessments.js";
@@ -493,6 +493,9 @@ function parseLimit(value: string | undefined): number {
 }
 
 function sendError(reply: FastifyReply, error: unknown) {
+  if (error instanceof CapabilityResolutionError) {
+    return reply.code(409).send({ error: { code: error.code, message: error.message } });
+  }
   if (error instanceof InvocationReviewError) return reply.code(409).send({ error: { code: "ACTION_REVIEW_CONFLICT", message: error.message } });
   if (error instanceof InvalidApiRequestError || error instanceof InvalidRunRequestError) {
     return reply.code(400).send({ error: { code: "INVALID_REQUEST", message: error.message } });
