@@ -65,8 +65,7 @@ endpoints, credentials, filesystem roots or executable handlers.
 
 ## Contributions and authority
 
-A package has a safe ID, exact version and configured source. Workspace and skill
-sources use trusted roots. MCP sources discover tools from a configured endpoint.
+A package has a safe ID, exact version and configured source. Skill sources use trusted package roots. Optional file providers own their storage. MCP sources discover tools from a configured endpoint.
 HTTP sources declare specific methods, paths and input schemas. A package can
 contribute several operations. Profiles can explicitly compose package IDs;
 there is no implicit all-packages grant.
@@ -80,7 +79,7 @@ Admission freezes the catalog used by a run. A package reload supplies new
 admissions; an older run cannot silently dispatch against changed source/schema
 identity. MCP tools are checked against current discovery before invocation.
 Skill instructions and resources are checked against their admitted digests.
-Changing a workspace root changes its opaque source digest.
+Changing provider identity or authorization changes its source binding.
 
 Write and external tools require explicit approval through the existing policy
 resolver. A skill's Markdown, frontmatter or resource cannot supply that approval.
@@ -88,10 +87,11 @@ Generic schema validation uses JSON Schema 2020-12 or declared draft-07 without
 coercion, defaults or remote reference loading. Resource-specific checks enforce
 additional path and edit invariants.
 
-## Skill and workspace lifecycle
+## Skill and external document lifecycle
 
-The example `workspace-agent` profile combines five workspace operations and
-three skill operations. Skill metadata is available without adding every body
+The default `business-agent` profile exposes skill operations without depending
+on a remote service. The optional `workspace-agent` profile combines five
+external document operations with three skill operations. Skill metadata is available without adding every body
 to model context. The model can list procedures, load one `SKILL.md`, then read
 the particular resource it needs. Loaded results retain package identity and
 digest. Skill scripts are returned as source text; no script executor is implied.
@@ -107,21 +107,13 @@ protects these records and includes their actual size in the context budget.
 Binary assets remain tool evidence rather than permanently occupying model context.
 Preselected legacy skills remain separate admission configuration.
 
-Workspace tools list, read and search files, then create or patch scoped output
-files. Existing-file replacement requires the previously observed digest. Patches
-require an unambiguous match. Local mutations serialize within that package
-instance, and file replacement uses a temporary file and rename. This is not a
-distributed lock against unrelated processes changing the directory.
-
-Session isolation is optional. The example freezes a template limited to 256
-files, 256 directories and 10 MiB, rejects links and special files, then publishes
-one clone per host-admitted session identity. Follow-ups keep that clone. Other
-sessions use separate directories. An ownership marker records the template and
-package revision. A revised template requires a new session instead of overwriting
-an existing session's work. The default operates on the configured workspace.
-
-Path and symlink checks provide application confinement. They do not substitute
-for a container or operating-system sandbox.
+The separately running document provider lists, reads and searches files, then
+creates or patches scoped outputs. It owns session storage, template cloning,
+path checks, edit digests and local write serialization. The host injects the
+admitted session identity; the model cannot choose a host directory. Existing-file
+replacement requires the observed digest, and patching requires an unambiguous
+match. Provider confinement is an application boundary, not an operating-system
+sandbox. There is no native workspace source or implicit local shell fallback.
 
 ## Calls, interruption and evidence
 
@@ -141,7 +133,8 @@ still leaving an uncertain external outcome. It is not an exactly-once guarantee
 Known tool failures retain correlated corrective feedback where the admitted
 policy allows it. Connected write calls with a lost response or post-dispatch
 timeout/cancellation return unknown and do not retry automatically. HTTP success
-with a malformed declared output is recorded as a failure. MCP execution errors
+with a malformed declared output retains the acknowledgement and invalid presentation.
+For writes, native continuation stops rather than inviting redispatch. MCP execution errors
 retain `isError`, content blocks and structured content rather than turning every
 reply into successful text. Native events, trajectory and metrics remain alongside
 the source receipts.
@@ -150,18 +143,49 @@ The implemented MCP boundary covers configured legacy initialization and modern
 request metadata, paginated discovery and bounded request/result handling. It is
 not a full implementation of every MCP extension. Sampling, interactive elicitation,
 subscription-driven inventory refresh, arbitrary stdio servers and task execution
-require separate support. HTTP operations use same-origin configured paths; GET
-arguments become query values and other methods use JSON bodies.
+require separate support. HTTP operations use configured same-origin paths and declarative path/query/header/body
+bindings. Supported encodings are JSON and form; provider idempotency and rejection
+semantics are explicit operation contracts.
 
 ## Operational limits
 
 Native workers need access to the host URL and the configured private key. This
 local shared-user setup does not establish a multi-tenant deployment boundary.
 There is no arbitrary executable plugin loader, marketplace installation or
-automatic OAuth onboarding in these package sources. Larger native capabilities
+universal OAuth onboarding. Configured pre-registered clients and the documented
+MCP discovery subset use the connection manager; unsupported registration modes
+remain explicit. Larger native capabilities
 such as terminal or browser execution can be added through a new source adapter
 without redefining profiles or tool-call semantics.
 
 Use the [package guide](../guides/capability-packages.md) for runnable setup and
 the [local module notes](../../server/src/capabilities/extensions/README.md) for
 implementation ownership.
+
+## Connected authority and action review
+
+Trusted connection definitions identify a deployment owner, target resource and
+permitted scopes. The configured owner is a local authority label, not proof of a
+remote user identity. Late credential resolution permits token rotation within the
+same grant. Revocation, reconnect and configuration changes advance durable authority
+generations and block old bindings. Optional unavailable sources do not stop the
+control plane. Catalog refresh updates future admissions atomically.
+
+Automatic execution, upfront tool grants and invocation review are separate modes.
+The review host retains exact arguments and source identity before native suspension.
+Approve/deny binds the retained revision; renewal creates a fresh review without
+inference or effects. The unfinished context turn stays occupied while waiting.
+Cancellation, decisions and final dispatch reservation share a single-host lock.
+See the [review contract](../../server/src/capabilities/reviews/README.md).
+
+Mastra persists SDK suspended snapshots in LibSQL. LangGraph uses a dedicated
+checkpointed approval node and `Command(resume=...)`. Temporal waits on a workflow
+signal and heartbeats source Activities. Restate waits on a call/revision-specific
+durable promise. A common runner interface projects these native lifecycles without
+replacing their orchestration. Waiting recovery does not establish recovery of every
+in-flight model request or external effect.
+
+Text-only model projections preserve supported text/JSON and resource references.
+Original content blocks, response validity and effect evidence stay in canonical
+records. Unsupported image/audio content is identified explicitly. The model is
+never credited with perceiving media that its adapter did not provide.

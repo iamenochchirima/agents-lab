@@ -91,3 +91,23 @@ handshake and the current per-request MCP protocol shape without requiring Docke
 For rollback, set `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=false` before starting the server.
 The API keeps affected profiles visible with an unavailable reason, resolution fails closed,
 and pure inline tools remain usable.
+
+## Connected package authority and invocation review
+
+Generic package sources use the connection manager separately from the legacy local
+fixture connections above. Admission freezes the tool descriptor's safe connection
+reference, resource, scopes and authority revision. Credentials resolve immediately
+before source I/O; token rotation preserves authority while revoke/reconnect or
+configuration changes invalidate old bindings. No model or browser input can supply
+a new endpoint, account owner or secret header.
+
+A grant may allow automatic execution, require an upfront tool grant, or permit
+proposing an invocation for review. The last mode does not authorize effects at
+admission. Its decision binds the retained call, source and argument digest, and
+native continuation resumes the unfinished turn. Renewal advances the review without
+inference or effects. Skills cannot grant tool access or approve an action.
+
+The [connected architecture](extensible-capabilities.md),
+[action-review contract](../../server/src/capabilities/reviews/README.md), and
+[connected business guide](../guides/connected-business-agents.md) describe these
+paths and their explicit local-deployment and recovery limits.
