@@ -1,3 +1,4 @@
+import { appendFile } from "node:fs/promises";
 import { OpenRouterModelAdapter } from "./openrouter.js";
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
 
@@ -9,6 +10,9 @@ const FIXTURE_DELAY_MS = 60_000;
  */
 export class FakeModelAdapter implements ModelAdapter {
   async complete(input: ModelRequestInput, signal: AbortSignal): Promise<ModelCallResult> {
+    // Opt-in synthetic provider dispatch ledger survives worker replacement.
+    // Never records prompts, tool arguments or credentials.
+    if (process.env.AGENTLAB_X01_MODEL_ATTEMPTS_FILE) await appendFile(process.env.AGENTLAB_X01_MODEL_ATTEMPTS_FILE, JSON.stringify({ runId: input.runId, model: input.model, observedAt: new Date().toISOString() }) + "\n");
     if (input.model === "fake-eval-behaviour") {
       const match = input.prompt.match(/\[eval-behaviour:([A-Za-z0-9_-]+)\]/);
       if (!match) throw new Error("A behaviour eval requires a bounded directive.");

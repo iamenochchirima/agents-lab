@@ -1,7 +1,8 @@
+import { retainRestartEvidence } from "../src/evals/restart-evidence.js";
 import assert from "node:assert/strict";
 import { ChildProcess, spawn } from "node:child_process";
 import { createConnection, createServer } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -30,6 +31,7 @@ test(
     const restateEnvironment = {
       ...process.env,
       AGENTLAB_CONTEXT_ROOT: contextRoot,
+      AGENTLAB_X01_MODEL_ATTEMPTS_FILE: join(contextRoot, "synthetic-model-attempts.jsonl"),
       AGENTLAB_RESTATE_INGRESS_URL: `http://127.0.0.1:${ingressPort}`,
       AGENTLAB_RESTATE_ADMIN_URL: `http://127.0.0.1:${adminPort}`,
       AGENTLAB_RESTATE_SERVICE_URL: `http://127.0.0.1:${servicePort}`,
@@ -101,7 +103,15 @@ test(
       );
       let mcpReference = await runner.start(mcpManifest);
       await waitForMcpCall(fixture);
-      await stopProcess(serviceProcess);
+      let beforeMcpRestart = await runner.inspect(mcpReference);
+      for (let attempt = 0; attempt < 100 && !(beforeMcpRestart.eventIntents.some(event => event.kind === "ToolExecutionCompleted") && beforeMcpRestart.eventIntents.filter(event => event.kind === "ModelRequested").length >= 2); attempt++) {
+        await delay(25); beforeMcpRestart = await runner.inspect(mcpReference);
+      }
+      assert.ok(beforeMcpRestart.eventIntents.some(event => event.kind === "ToolExecutionCompleted"));
+      assert.ok(beforeMcpRestart.eventIntents.filter(event => event.kind === "ModelRequested").length >= 2);
+      const providerCallsBefore = fixture.mcpCallCount;
+      serviceProcess!.kill("SIGKILL");
+      await new Promise<void>(done => serviceProcess!.once("exit", () => done()));
       serviceProcess = startServiceProcess(restateEnvironment);
       await waitForTcp(servicePort);
       await registerService(restateEnvironment.AGENTLAB_RESTATE_ADMIN_URL, restateEnvironment.AGENTLAB_RESTATE_SERVICE_URL, true);
@@ -114,6 +124,12 @@ test(
       assert.equal((mcpCompletion?.payload.connection as { providerRequestIds?: readonly string[] } | undefined)?.providerRequestIds?.length, 1);
       assert.equal(fixture.mcpCallCount, 1, "the completed MCP action must be replayed from Restate's journal, not dispatched again");
       assert.equal(mcpReference.executionId, `agentlab:${mcpRunId}`);
+      await retainRestartEvidence(process.env.AGENTLAB_X01_EVIDENCE, { platform: "restate", deployment: `native:${restateEnvironment.AGENTLAB_RESTATE_INGRESS_URL}`, runId: mcpRunId,
+        before: { status: beforeMcpRestart.status, events: beforeMcpRestart.eventIntents, native: beforeMcpRestart.reference }, after: { status: mcpResult.status, events: mcpResult.eventIntents, result: mcpResult.result, native: mcpReference },
+        beforeModelOutcomePersistence: beforeMcpRestart.eventIntents.filter(event => event.kind === "ModelRequested").length >= 2 && beforeMcpRestart.result === null,
+        afterToolPersistence: beforeMcpRestart.eventIntents.some(event => event.kind === "ToolExecutionCompleted"), sameNativeIdentity: beforeMcpRestart.reference.executionId === mcpReference.executionId,
+        retainedState: mcpResult.result?.status === "completed" && !!mcpCompletion, providerCallsBefore, providerCallsAfter: fixture.mcpCallCount,
+        normalizedModelRequests: mcpResult.eventIntents.filter(event => event.kind === "ModelRequested").length, nativeModelActivityAttempts: null, providerModelDispatches: (await readFile(restateEnvironment.AGENTLAB_X01_MODEL_ATTEMPTS_FILE, "utf8")).trim().split("\n").map(line => JSON.parse(line)).filter(record => record.runId === mcpRunId) });
 
       const serverRunId = `restate-restart-server-${Date.now()}`;
       const serverManifest = buildRunManifest(

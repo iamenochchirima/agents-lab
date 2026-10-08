@@ -1,6 +1,8 @@
+import { retainRestartEvidence } from "../src/evals/restart-evidence.js";
+import { Client, Connection } from "@temporalio/client";
 import assert from "node:assert/strict";
 import { ChildProcess, spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -30,6 +32,7 @@ test(
     const environment = {
       ...process.env,
       AGENTLAB_RUN_ROOT: root,
+      AGENTLAB_X01_MODEL_ATTEMPTS_FILE: join(root, "synthetic-model-attempts.jsonl"),
       AGENTLAB_CONTEXT_ROOT: contextRoot,
       AGENTLAB_TEMPORAL_ENDPOINT: process.env.AGENTLAB_TEMPORAL_ENDPOINT ?? "localhost:7233",
       AGENTLAB_TEMPORAL_NAMESPACE: process.env.AGENTLAB_TEMPORAL_NAMESPACE ?? "default",
@@ -66,7 +69,10 @@ test(
       });
 
       await waitForModelActivityAfterMcp(service, created.runId, worker);
-      await stopWorker(worker);
+      const beforeRestart = await service.getRun(created.runId);
+      const providerCallsBefore = fixture.mcpCallCount;
+      worker.kill("SIGKILL");
+      await new Promise<void>(done => worker!.once("exit", () => done()));
       worker = startWorker(environment);
       const completed = await waitForTerminal(service, created.runId);
 
@@ -77,9 +83,25 @@ test(
       assert.equal((toolCompletion.payload.connection as { providerRequestIds?: readonly string[] } | undefined)?.providerRequestIds?.length, 1);
       assert.equal(fixture.mcpCallCount, 1, "Temporal history must replay the completed MCP Activity instead of dispatching it again");
       assert.equal(completed.executionReference?.native.workflowId, `agentlab:${created.runId}`);
+      const connection = await Connection.connect({ address: environment.AGENTLAB_TEMPORAL_ENDPOINT });
+      try {
+        const history = await new Client({ connection, namespace: environment.AGENTLAB_TEMPORAL_NAMESPACE }).workflow.getHandle(`agentlab:${created.runId}`).fetchHistory();
+        const scheduled = new Set((history.events ?? []).filter(event => event.activityTaskScheduledEventAttributes?.activityType?.name === "requestModel").map(event => String(event.eventId)));
+        const activityAttempts = (history.events ?? []).filter(event => event.activityTaskStartedEventAttributes && scheduled.has(String(event.activityTaskStartedEventAttributes.scheduledEventId))).length;
+        await retainRestartEvidence(process.env.AGENTLAB_X01_EVIDENCE, { platform: "temporal", deployment: `native:${environment.AGENTLAB_TEMPORAL_ENDPOINT}/${taskQueue}`, runId: created.runId,
+          before: { status: beforeRestart.status, events: beforeRestart.events, native: beforeRestart.executionReference }, after: { status: completed.status, events: completed.events, result: completed.result, native: completed.executionReference },
+          beforeModelOutcomePersistence: beforeRestart.events.filter(event => event.kind === "ModelRequested").length >= 2 && beforeRestart.status === "running",
+          afterToolPersistence: beforeRestart.events.some(event => event.kind === "ToolExecutionCompleted"),
+          sameNativeIdentity: beforeRestart.executionReference?.executionId === completed.executionReference?.executionId,
+          retainedState: !!toolCompletion && completed.result?.error?.failureKind === "outcome_unknown", providerCallsBefore, providerCallsAfter: fixture.mcpCallCount,
+          normalizedModelRequests: completed.events.filter(event => event.kind === "ModelRequested").length, nativeModelActivityAttempts: activityAttempts, providerModelDispatches: (await readFile(environment.AGENTLAB_X01_MODEL_ATTEMPTS_FILE, "utf8")).trim().split("\n").map(line => JSON.parse(line)) });
+      } finally { await connection.close(); }
     } finally {
-      await stopWorker(worker);
+      // Let timed-out workflow queries settle while the replacement worker can
+      // still service them, then close the client before stopping that worker.
+      await delay(2_500);
       await runner?.close();
+      await stopWorker(worker);
       await fixture.close();
       await rm(root, { recursive: true, force: true });
       await rm(contextRoot, { recursive: true, force: true });

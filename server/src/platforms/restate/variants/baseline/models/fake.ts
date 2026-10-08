@@ -1,3 +1,4 @@
+import { appendFile } from "node:fs/promises";
 import { OpenRouterRestateModel } from "./openrouter.js";
 import type { ModelAdapter, ModelCallResult, ModelRequest } from "../contracts.js";
 
@@ -8,6 +9,9 @@ import type { ModelAdapter, ModelCallResult, ModelRequest } from "../contracts.j
  */
 export class FakeRestateModel implements ModelAdapter {
   async complete(input: ModelRequest, signal: AbortSignal): Promise<ModelCallResult> {
+    // Opt-in synthetic provider dispatch ledger survives worker replacement.
+    // Never records prompts, tool arguments or credentials.
+    if (process.env.AGENTLAB_X01_MODEL_ATTEMPTS_FILE) await appendFile(process.env.AGENTLAB_X01_MODEL_ATTEMPTS_FILE, JSON.stringify({ runId: input.runId, model: input.model, observedAt: new Date().toISOString() }) + "\n");
     if (signal.aborted) return cancelledResult();
 
     if (input.model === "fake-eval-behaviour") {

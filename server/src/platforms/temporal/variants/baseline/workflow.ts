@@ -536,7 +536,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   }
 }
 
-function classifyActivityFailure(error: unknown): TemporalRunError {
+export function classifyActivityFailure(error: unknown): TemporalRunError {
   if (isCancellation(error)) {
     return {
       code: "MODEL_CANCELLED",
@@ -544,6 +544,11 @@ function classifyActivityFailure(error: unknown): TemporalRunError {
       failureKind: "cancelled",
       retryable: false,
     };
+  }
+  if (error instanceof ActivityFailure && error.cause instanceof TimeoutFailure && error.cause.timeoutType === "HEARTBEAT") {
+    // Worker loss proves missing liveness, not that the dispatched provider call
+    // failed. Stop safely instead of presenting an ordinary elapsed model budget.
+    return { code: "MODEL_ACTIVITY_HEARTBEAT_LOST", message: "The model Activity lost its heartbeat; the dispatched outcome is unknown.", failureKind: "outcome_unknown", retryable: false };
   }
   if (error instanceof ActivityFailure && error.cause instanceof TimeoutFailure) {
     return {
