@@ -1,21 +1,39 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { loadLocalServerEnvironment } from "../control-plane/bootstrap/local-env.js";
 import { loadServerConfig } from "../control-plane/bootstrap/config.js";
 import type { CapabilityProfileView } from "../capabilities/catalog.js";
 import type { RunView } from "../control-plane/application/run-service.js";
 import { capabilityWorkspaceRoot } from "../capabilities/extensions/runtime.js";
-import { COMPARISON_FREE_MODEL, assertFreeModelCatalog, assertFreeModelRequest, getFreeEvalSettings } from "../models/openrouter/free-model-policy.js";
+import { validateCapabilityRouting } from "./capability-evidence.js";
+import { COMPARISON_FREE_MODEL, assertFreeModelCatalog, getFreeEvalSettings } from "../models/openrouter/free-model-policy.js";
 
 /** Acceptance driver only: the selected native platform owns model and tool steps.
  * It submits the same fictional task and correction, then inspects real artifacts.
  * This is a bounded integration observation, not a model-quality benchmark.
  */
 async function main() {
-  loadLocalServerEnvironment();
   const args = process.argv.slice(2).filter(value => value !== "--");
+  // Reinspect retained dispatch bodies without calling a model or replacing evidence.
+  if (args.length === 2 && args[0] === "--review-routing") {
+    const path = resolve(args[1]);
+    const report = JSON.parse(await readFile(path, "utf8"));
+    if (report.mode !== "capability-acceptance" || !Array.isArray(report.outcomes)) throw new Error("Select a retained capability acceptance summary.json.");
+    const runsRoot = resolve(dirname(path), "../..");
+    const outcomes = [];
+    for (const outcome of report.outcomes) {
+      if (!Array.isArray(outcome.runIds) || outcome.runIds.some((id: unknown) => typeof id !== "string" || !/^[a-f0-9-]{36}$/.test(id))) throw new Error("Invalid retained run identity.");
+      const runs = await Promise.all(outcome.runIds.map(async (id: string) => ({events: (await readFile(join(runsRoot, id, "events.jsonl"), "utf8")).split("\n").filter(Boolean).map(line => JSON.parse(line))})));
+      outcomes.push({platform: outcome.platform, task: outcome.task, originalVerdict: outcome.verdict, routingValid: validateCapabilityRouting(runs, report.controls.model.id, report.controls.experimentId)});
+    }
+    const reviewPath = join(dirname(path), "routing-review.json");
+    await writeFile(reviewPath, JSON.stringify({schemaVersion: 1, mode: "capability-routing-review", originalReport: path, reviewedAt: new Date().toISOString(), graderRevision: execFileSync("git", ["rev-parse", "HEAD"], {cwd: capabilityWorkspaceRoot(), encoding: "utf8"}).trim(), outcomes}, null, 2) + "\n");
+    console.log(`Routing review: ${reviewPath}`);
+    return;
+  }
+  loadLocalServerEnvironment();
   let api = "http://127.0.0.1:4318", platforms = ["mastra", "langgraph", "temporal", "restate"], tasks = ["workspace", "service"], model = COMPARISON_FREE_MODEL;
   for (let i = 0; i < args.length; i += 2) {
     const value = args[i + 1];
@@ -114,16 +132,7 @@ async function main() {
       correctedOwner: records[1]?.owner === "Avery" && records[1]?.revision === 3,
       preservedFacts: records.length === 2 && records.every(record => record.approvedDate === "2026-10-22" && record.status === "in_progress" && record.dependency === "Integration documentation incomplete"),
     };
-    let routingValid = runs.length > 0;
-    const observedRequests = new Set<string>();
-    for (const run of runs) for (const event of run.events) {
-      const observation = event.kind === "EvalModelObserved" ? event.payload.observation as { phase?: string; providerRequest?: unknown } : undefined;
-      if (observation?.phase === "request") {
-        observedRequests.add(run.runId);
-        try { assertFreeModelRequest(observation.providerRequest, model, experimentId); } catch { routingValid = false; }
-      }
-    }
-    routingValid = routingValid && runs.every(run => observedRequests.has(run.runId));
+    const routingValid = validateCapabilityRouting(runs, model, experimentId);
     const outcome = {platform, task, profileId: profile.id, prompts, sessionId, runIds: runs.map(value => value.runId), statuses: runs.map(value => value.status), assertions: {...assertions, routingValid}, toolEvidence, verdict: error ? "error" : routingValid && Object.values(assertions).every(Boolean) ? "pass" : "fail", ...(error ? {error} : {}), artifact, serviceSnapshots};
     outcomes.push(outcome); await save(); console.log(`${platform} ${task}: ${outcome.verdict}`);
     if (outcome.verdict !== "pass") process.exitCode = 1;

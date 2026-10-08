@@ -85,6 +85,20 @@ Retain both. Classify a failure as adapter, harness, model, provider, environmen
 or unresolved only after inspecting its evidence; the driver does not infer a
 cause merely from an unsuccessful outcome.
 
+Dispatch evidence differs by native runtime. TypeScript can retain separate
+request/response observations; Python retains a combined observation with the
+actual dispatched request. Both must satisfy the same free-routing policy.
+To reinspect a retained report after an observation-format fix, without calling
+a model or replacing its original verdicts:
+
+```sh
+pnpm --filter @agent-harness-lab/lab-server eval:capabilities -- \
+  --review-routing /absolute/path/lab/runs/.evals/capabilities-ID/summary.json
+```
+
+The adjacent `routing-review.json` records only the new routing assessment and
+grader revision. Task assertions and original failures remain in `summary.json`.
+
 These live workflows do not inject crashes, duplicate events, cancellation at a
 controlled effect boundary or lost acknowledgements. Focused adapter and lifecycle
 checks cover named contracts separately. Passing this experiment does not establish
