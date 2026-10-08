@@ -9,6 +9,10 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Agent capability awareness and discovery](active/agent-capability-awareness.md):
+  proposed milestone for generated model inventories, enabled skill metadata,
+  authorized tool discovery, native schema activation and frontend parity.
+
 - [Real agent tools and skills](active/real-agent-tools-and-skills.md): standalone
   next implementation milestone, with architecture decisions, capability adapters,
   skills, task environments, native integration, minimal acceptance checks and
