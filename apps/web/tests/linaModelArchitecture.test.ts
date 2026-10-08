@@ -7,13 +7,13 @@ import { plannedBlockRegions } from '../src/features/lina/plannedBlocks';
 
 test('an 87-node saved design gains four Model nodes once without moving user content', () => {
  const old=structuredClone(linaArchitecture);
- old.nodes=old.nodes.filter(node=>!node.id.startsWith('lina-model-') && !node.id.startsWith('lina-safety-') && !node.id.startsWith('lina-state-') && !node.id.startsWith('lina-memory-') && !node.id.startsWith('lina-subagents-') && !node.id.startsWith('lina-planning-') && !node.id.startsWith('lina-environment-')).map(node=>({...node,x:node.x+220,y:node.y+600,status:'studying',experiments:'Saved user experiment'}));
+ old.nodes=old.nodes.filter(node=>!node.id.startsWith('lina-model-') && !node.id.startsWith('lina-safety-') && !node.id.startsWith('lina-state-') && !node.id.startsWith('lina-memory-') && !node.id.startsWith('lina-subagents-') && !node.id.startsWith('lina-planning-') && !node.id.startsWith('lina-environment-') && !node.id.startsWith('lina-output-')).map(node=>({...node,x:node.x+220,y:node.y+600,status:'studying',experiments:'Saved user experiment'}));
  old.edges=old.edges.filter(edge=>!edge.id.startsWith('lina-model-edge-'));
  assert.equal(old.nodes.length,87);
  const custom={...old.nodes[0],id:'custom-model-study',title:'My model notes',x:80,y:10000};
  old.nodes.push(custom);old.edges.push({id:'custom-model-route',source:old.nodes[0].id,target:custom.id,label:'User route'});
  const before=structuredClone(old),updated=refreshDocumentation(old);
- assert.equal(updated.nodes.length,141);
+ assert.equal(updated.nodes.length,154);
  for(const saved of old.nodes){const actual=updated.nodes.find(node=>node.id===saved.id)!;assert.deepEqual([actual.x,actual.y,actual.status,actual.experiments],[saved.x,saved.y,saved.status,saved.experiments]);}
  assert.deepEqual(updated.edges.find(edge=>edge.id==='custom-model-route'),old.edges.at(-1));
  assert.deepEqual(refreshDocumentation(updated),updated);assert.deepEqual(old,before);
@@ -37,7 +37,7 @@ test('Model group restoration follows the saved group and replaces only its empt
 });
 
 test('Model has only four nodes and all metadata, auth, cancellation and terminal endpoints exist', () => {
- assert.equal(linaArchitecture.nodes.length,140);assert.equal(linaModelBlock.nodes.length,4);
+ assert.equal(linaArchitecture.nodes.length,153);assert.equal(linaModelBlock.nodes.length,4);
  assert.equal(linaModelBlock.edges.length,21);
  const ids=new Set(linaArchitecture.nodes.map(node=>node.id));
  for(const edge of linaModelBlock.edges){assert.ok(ids.has(edge.source),edge.id);assert.ok(ids.has(edge.target),edge.id);}

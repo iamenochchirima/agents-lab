@@ -130,3 +130,5 @@ comparison. Other components and Context alternatives remain planned.
 - [Studio Context research runtime](completed/studio-context-research-runtime.md)
 
 - [Lina Planning and task management](completed/lina-planning-block.md)
+
+- [Lina Output and delivery](completed/lina-output-delivery.md)

@@ -1,3 +1,4 @@
+import type { OutputCase, OutputSettings } from './outputFixtures';
 import type { EnvironmentCase, EnvironmentSettings } from './environmentFixtures';
 import type { PlanningCase, PlanningSettings } from './planningFixtures';
 import type { SubagentCase, SubagentSettings } from './subagentsFixtures';
@@ -26,7 +27,7 @@ const api = (import.meta.env.VITE_AGENTLAB_STUDIO_API_URL || 'http://127.0.0.1:4
 const draftKey = `agents-lab.lina.draft:${api}`;
 const panelsKey = 'agents-lab.lina.panels';
 const layoutKey = `${draftKey}:compact-layout-applied`;
-const layoutRevision = 'environment-relationships-2026-10-08';
+const layoutRevision = 'output-relationships-2026-10-09';
 function savedPanels(): { left: boolean; right: boolean } {
   try {
     const value = JSON.parse(localStorage.getItem(panelsKey) || 'null');
@@ -97,6 +98,7 @@ export function LinaPage() {
   const safetyNodes = doc.nodes.filter(n => blockForNode(n) === 'safety');
   const stateNodes = doc.nodes.filter(n => blockForNode(n) === 'state');
   const subagentNodes = doc.nodes.filter(n => blockForNode(n) === 'subagents');
+  const outputNodes = doc.nodes.filter(n => blockForNode(n) === 'output');
   const environmentNodes = doc.nodes.filter(n => blockForNode(n) === 'environment');
   const planningNodes = doc.nodes.filter(n => blockForNode(n) === 'planning');
   const memoryNodes = doc.nodes.filter(n => blockForNode(n) === 'memory');
@@ -109,6 +111,7 @@ export function LinaPage() {
     { key: 'safety', title: '08 · Safety and permissions', nodes: safetyNodes },
     { key: 'state', title: '13 · State, persistence and recovery', nodes: stateNodes },
     { key: 'memory', title: '04 · Memory', nodes: memoryNodes },
+    { key: 'output', title: '11 · Output and delivery', nodes: outputNodes },
     { key: 'environment', title: '09 · Execution Environment', nodes: environmentNodes },
     { key: 'planning', title: '07 · Planning and task management', nodes: planningNodes },
     { key: 'subagents', title: '14 · Subagents / multi-agent orchestration', nodes: subagentNodes },
@@ -179,10 +182,10 @@ export function LinaPage() {
     setSelectedEdgeId(null);
     setCollapsed(v => v.right ? { ...v, right: false } : v);
   }
-  function runSimulation(channel: SimulationChannel, automatic: boolean, executionCase: SimulationCase, maxRounds: number, contextCase: ContextCase, toolScenario: ToolScenario, follow: boolean, modelProtocol: ModelProtocol, modelCase: ModelCase, safetyCase: SafetyCase, stateCase: StateCase, memoryCase: MemoryCase, subagentCase: SubagentCase, subagentSettings: Partial<SubagentSettings>, planningCase: PlanningCase, planningSettings: Partial<PlanningSettings>, environmentCase: EnvironmentCase, environmentSettings: Partial<EnvironmentSettings>) {
+  function runSimulation(channel: SimulationChannel, automatic: boolean, executionCase: SimulationCase, maxRounds: number, contextCase: ContextCase, toolScenario: ToolScenario, follow: boolean, modelProtocol: ModelProtocol, modelCase: ModelCase, safetyCase: SafetyCase, stateCase: StateCase, memoryCase: MemoryCase, subagentCase: SubagentCase, subagentSettings: Partial<SubagentSettings>, planningCase: PlanningCase, planningSettings: Partial<PlanningSettings>, environmentCase: EnvironmentCase, environmentSettings: Partial<EnvironmentSettings>, outputCase: OutputCase, outputSettings: Partial<OutputSettings>) {
     setFollowSimulation(follow);
     setView('map'); setExecutionTrail([]);
-    setSimulation(startSimulation(channel, doc, automatic, executionCase, maxRounds, contextCase, toolScenario, modelProtocol, modelCase, safetyCase, simulation?.safetyGrants ?? [], stateCase, memoryCase, subagentCase, subagentSettings, planningCase, planningSettings, environmentCase, environmentSettings));
+    setSimulation(startSimulation(channel, doc, automatic, executionCase, maxRounds, contextCase, toolScenario, modelProtocol, modelCase, safetyCase, simulation?.safetyGrants ?? [], stateCase, memoryCase, subagentCase, subagentSettings, planningCase, planningSettings, environmentCase, environmentSettings, outputCase, outputSettings));
   }
   useEffect(() => {
     if (simulationNode && followSimulation) centerNode(simulationNode);
@@ -302,7 +305,7 @@ export function LinaPage() {
       onSelectWait={waitId => setSimulation(current => current ? selectSimulationWait(current, waitId) : current)}
       onAnswer={answer => setSimulation(current => current ? answerSimulation(current, doc, answer) : current)}/>
     {view === 'path' && ready && <LinaExecutionPath document={doc} onFocus={focusNode} onTrail={setExecutionTrail}/>}
-    <div className="lina-block-tools"><span>Input, Turn Execution, Context, Tools, Model, Safety, State, Memory, Subagents, Planning and Environment · design draft</span><button disabled={busy} onClick={() => void load()} title="Reload stored design while preserving the browser draft"><RefreshCw size={14}/> Reload design</button><button disabled={!ready || busy} onClick={() => {
+    <div className="lina-block-tools"><span>Input, Turn Execution, Context, Tools, Model, Safety, State, Memory, Subagents, Planning, Environment and Output · design draft</span><button disabled={busy} onClick={() => void load()} title="Reload stored design while preserving the browser draft"><RefreshCw size={14}/> Reload design</button><button disabled={!ready || busy} onClick={() => {
         setLayoutUndo(doc.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })));
         change(relationshipBlockLayout(doc));
         requestAnimationFrame(fitMap);

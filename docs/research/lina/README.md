@@ -218,5 +218,5 @@ No live sandbox or process durability is established by this implementation.
 
 The research covers prompts, progress, proactive notices, internal child results,
 media custody, per-part receipts and uncertain-send recovery alongside replies.
-Output remains an empty reserved graph region. This is a research proposal, not
-an implemented delivery system or measured reliability result.
+The Output region now contains thirteen nodes with JSON contracts and controlled
+delivery playback. See the [implementation checklist](../../../development/implementation-plans/studio/completed/lina-output-delivery.md). Live channel sends, runtime outbox storage and measured platform reliability remain unimplemented.

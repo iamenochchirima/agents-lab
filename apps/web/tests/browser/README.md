@@ -85,3 +85,18 @@ This uses the deterministic `fake-slow-success` model, reopens the existing run 
 the server replacement, and expects one completed assistant message. It is also
 destructive and opt-in; use a repository-owned server PID and keep the LangGraph
 service running during the check.
+
+The Lina Output design path can be checked without live provider calls when the
+web service and Studio API are running. It uses an isolated browser profile and
+never saves over the user's architecture:
+
+```bash
+node --test apps/web/tests/browser/lina-output.browser.test.mjs
+```
+
+This checks the delivery modal, manual traversal, mismatched/matched reconciliation,
+automatic playback, manual graph following and collapsible colored JSON contracts.
+Set `AGENTLAB_WEB_URL` for another local web origin. Studio's allowed web origin must
+match it, for example `STUDIO_API_WEB_ORIGIN=http://127.0.0.1:5173`. The test requires
+Chrome, with an optional `AGENTLAB_CHROME_BIN` override. `AGENTLAB_LINA_SCREENSHOT`
+can point to a local PNG proof path.

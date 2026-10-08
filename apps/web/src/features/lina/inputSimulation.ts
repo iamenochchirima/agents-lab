@@ -1,3 +1,5 @@
+import { attachOutputState } from './outputState';
+import { withOutput, DEFAULT_OUTPUT_SETTINGS, outputScenarioSettings, type OutputCase, type OutputSettings, type OutputEvidence, type OutputFixtureState } from './outputFixtures';
 import { attachEnvironmentState } from './environmentState';
 import { withEnvironment, environmentModelEvent, DEFAULT_ENVIRONMENT_SETTINGS, environmentScenarioSettings, type EnvironmentCase, type EnvironmentSettings, type EnvironmentEvidence, type EnvironmentFixtureState } from './environmentFixtures';
 import { attachPlanningState } from './planningState';
@@ -28,7 +30,7 @@ export interface SimulationOperation {
   catalogRevision: number;
 }
 export interface SimulationResult { callId: string; status: 'success' | 'error' | 'denied' | 'cancelled' | 'skipped'; value?: number; artifactRef: string }
-export type SimulationWait = {id:string;kind:'environment-readiness'|'environment-reconciliation';owner:'environment';environmentId:string;operationId:string;ownerNodeId:string} | {id:string;kind:'planning-review'|'planning-commit';owner:'planning';planId:string;ownerNodeId:string} | {id:string;kind:'subagent';owner:'subagents';taskId:string;ownerNodeId:string} | {id:string;kind:'memory-review';owner:'memory';candidateId:string;ownerNodeId:string} | { id: string; kind: 'delivery-reconciliation'; owner: 'delivery'; deliveryId: string; ownerNodeId: string } | { id: string; kind: 'approval' | 'auth' | 'input' | 'reconciliation'; owner?: 'tool'; reviewedMatcher?: SafetyGrant['matcher']; callId: string; batchId: string; ownerNodeId: string } | { id: string; kind: 'auth' | 'model-settlement'; owner: 'model'; intentId: string; purpose: 'metadata' | 'invocation'; attemptId?: string; ownerNodeId: string };
+export type SimulationWait = {id:string;kind:'output-policy'|'output-reconciliation'|'output-receipt';owner:'output';deliveryId:string;ownerNodeId:string} | {id:string;kind:'environment-readiness'|'environment-reconciliation';owner:'environment';environmentId:string;operationId:string;ownerNodeId:string} | {id:string;kind:'planning-review'|'planning-commit';owner:'planning';planId:string;ownerNodeId:string} | {id:string;kind:'subagent';owner:'subagents';taskId:string;ownerNodeId:string} | {id:string;kind:'memory-review';owner:'memory';candidateId:string;ownerNodeId:string} | { id: string; kind: 'delivery-reconciliation'; owner: 'delivery'; deliveryId: string; ownerNodeId: string } | { id: string; kind: 'approval' | 'auth' | 'input' | 'reconciliation'; owner?: 'tool'; reviewedMatcher?: SafetyGrant['matcher']; callId: string; batchId: string; ownerNodeId: string } | { id: string; kind: 'auth' | 'model-settlement'; owner: 'model'; intentId: string; purpose: 'metadata' | 'invocation'; attemptId?: string; ownerNodeId: string };
 export interface SimulationModelWork { intentId: string; purpose: 'metadata' | 'invocation'; phase: 'resolving' | 'encoding' | 'waiting' | 'running' | 'terminal' | 'cancelled'; nodeId: string; attemptId?: string }
 export interface SimulationProgress {
   contextPreparations: number;
@@ -44,6 +46,7 @@ export interface SimulationProgress {
 /** Fixture events carry graph transitions and work updates separately. A result
  * can arrive at the same node while another operation remains active. */
 export interface SimulationEvent {
+  outputEvidence?:OutputEvidence;outputSnapshot?:OutputFixtureState;
   id: string;
   fixtureId?: string;
   agentId?: string;
@@ -80,6 +83,7 @@ export interface SimulationEvent {
   stateRestore?: StateRestore;
 }
 export interface SimulationState extends SimulationProgress {
+  outputCase:OutputCase;outputSettings:OutputSettings;outputEvidence?:OutputEvidence;outputSnapshot?:OutputFixtureState;
   environmentCase: EnvironmentCase;
   environmentSettings: EnvironmentSettings;
   planningCase: PlanningCase;
@@ -438,7 +442,7 @@ function withSafety(base:SimulationEvent[], document:LinaDocument, scenario:Safe
       const ordered=Object.keys(answers).flatMap(id=>waits.filter(wait=>wait.id===id));
       const handled:string[]=[];
       for(const wait of ordered){
-        if(wait.owner==='model'||wait.owner==='delivery'||wait.owner==='memory'||wait.owner==='subagents'||wait.owner==='planning'||wait.owner==='environment')continue;
+        if(wait.owner==='model'||wait.owner==='delivery'||wait.owner==='output'||wait.owner==='memory'||wait.owner==='subagents'||wait.owner==='planning'||wait.owner==='environment')continue;
         const answer=answers[wait.id];
         if(!answer)continue;
         output.push({id:`safety-answer-input:${wait.id}`,nodeId:'lina-input-prompt',update:{detail:'Fixture answer correlates exact prompt and eligible responder'}});
@@ -551,7 +555,7 @@ function reduceInstanceEvent(state:SimulationState,event:SimulationEvent,step:nu
     const restore = event.stateRestore;
     state = { ...state, ...restore.progress, operations: restore.operations, results: restore.results,
       waits: restore.waits, wait: undefined, stopRequested: restore.stopRequested ?? state.stopRequested,
-      safetyGrants: restore.safetyGrants ?? state.safetyGrants, environmentSnapshot: restore.environmentSnapshot ?? state.environmentSnapshot, memorySnapshot: restore.memorySnapshot ?? state.memorySnapshot, planningSnapshot: restore.planningSnapshot ?? state.planningSnapshot };
+      safetyGrants: restore.safetyGrants ?? state.safetyGrants, outputSnapshot: restore.outputSnapshot ?? state.outputSnapshot, environmentSnapshot: restore.environmentSnapshot ?? state.environmentSnapshot, memorySnapshot: restore.memorySnapshot ?? state.memorySnapshot, planningSnapshot: restore.planningSnapshot ?? state.planningSnapshot };
   }
   if (state.stopRequested && (event.edgeId === 'lina-execution-edge-prepare-model' || event.modelEvent?.type === 'launch')) return {...state,status:'blocked',error:'Stopped turn cannot launch another provider attempt.'};
   const operations=new Map(state.operations.map(op=>[op.callId,op]));
@@ -564,11 +568,11 @@ function reduceInstanceEvent(state:SimulationState,event:SimulationEvent,step:nu
     if(event.modelEvent.type==='launch' && model?.attemptId!==event.modelEvent.attemptId){if(model)modelHistory.push(model);model=createModelFixtureState(event.modelEvent.attemptId,state.modelProtocol);}
     if(model)model=applyModelFixtureEvent(model,event.modelEvent);
   }
-  return {...state,...event.update,stopRequested:event.stopRequested??state.stopRequested,environmentSnapshot:event.environmentSnapshot??state.environmentSnapshot,environmentEvidence:event.environmentEvidence??state.environmentEvidence,planningSnapshot:event.planningSnapshot??state.planningSnapshot,planningEvidence:event.planningEvidence??state.planningEvidence,memoryEvidence:event.memoryEvidence??state.memoryEvidence,memorySnapshot:event.memorySnapshot??state.memorySnapshot,stateEvidence:event.stateEvidence??state.stateEvidence,stateSnapshot:event.stateSnapshot??state.stateSnapshot,...((event.stateError||event.memoryError)?{error:event.stateError??event.memoryError}:{}),model,modelHistory,modelWork:event.modelWork??state.modelWork,modelRequest:event.modelRequest??state.modelRequest,modelOutcome:event.modelEvent?.type==='launch'?undefined:event.prelaunchOutcome??(event.nodeId==='lina-model-normalize'?model?.outcome:undefined)??state.modelOutcome,detail:event.update.detail,operations:[...operations.values()],results:[...results.values()].sort((a,b)=>[...operations.keys()].indexOf(a.callId)-[...operations.keys()].indexOf(b.callId)),safetyGrants:event.safetyGrants??state.safetyGrants,safetyEvidence:event.safetyEvidence??state.safetyEvidence,waits:event.waits??(event.wait?[event.wait]:event.resumeWait&&state.wait?state.waits.filter(wait=>wait.id!==state.wait!.id):state.waits),wait:event.waits?.[0]??event.wait??(event.resumeWait?undefined:state.wait),step,status:event.stateError||event.memoryError?'blocked':event.wait||event.waits?.length?'waiting':step===state.events.length-1?'completed':state.automatic?'running':'paused'};
+  return {...state,...event.update,stopRequested:event.stopRequested??state.stopRequested,environmentSnapshot:event.environmentSnapshot??state.environmentSnapshot,outputEvidence:event.outputEvidence??state.outputEvidence,outputSnapshot:event.outputSnapshot??state.outputSnapshot,environmentEvidence:event.environmentEvidence??state.environmentEvidence,planningSnapshot:event.planningSnapshot??state.planningSnapshot,planningEvidence:event.planningEvidence??state.planningEvidence,memoryEvidence:event.memoryEvidence??state.memoryEvidence,memorySnapshot:event.memorySnapshot??state.memorySnapshot,stateEvidence:event.stateEvidence??state.stateEvidence,stateSnapshot:event.stateSnapshot??state.stateSnapshot,...((event.stateError||event.memoryError)?{error:event.stateError??event.memoryError}:{}),model,modelHistory,modelWork:event.modelWork??state.modelWork,modelRequest:event.modelRequest??state.modelRequest,modelOutcome:event.modelEvent?.type==='launch'?undefined:event.prelaunchOutcome??(event.nodeId==='lina-model-normalize'?model?.outcome:undefined)??state.modelOutcome,detail:event.update.detail,operations:[...operations.values()],results:[...results.values()].sort((a,b)=>[...operations.keys()].indexOf(a.callId)-[...operations.keys()].indexOf(b.callId)),safetyGrants:event.safetyGrants??state.safetyGrants,safetyEvidence:event.safetyEvidence??state.safetyEvidence,waits:event.waits??(event.wait?[event.wait]:event.resumeWait&&state.wait?state.waits.filter(wait=>wait.id!==state.wait!.id):state.waits),wait:event.waits?.[0]??event.wait??(event.resumeWait?undefined:state.wait),step,status:event.stateError||event.memoryError?'blocked':event.wait||event.waits?.length?'waiting':step===state.events.length-1?'completed':state.automatic?'running':'paused'};
 }
 /** Each child reuses the harness compiler but owns its request, grants and state.
  * Interleaving is a deterministic display schedule, not measured concurrency. */
-type SimulationConfiguration = Pick<SimulationState,'channel'|'executionCase'|'maxRounds'|'contextCase'|'toolScenario'|'modelProtocol'|'modelCase'|'safetyCase'|'initialSafetyGrants'|'stateCase'|'memoryCase'|'subagentCase'|'subagentSettings'|'planningCase'|'planningSettings'|'environmentCase'|'environmentSettings'>;
+type SimulationConfiguration = Pick<SimulationState,'channel'|'executionCase'|'maxRounds'|'contextCase'|'toolScenario'|'modelProtocol'|'modelCase'|'safetyCase'|'initialSafetyGrants'|'stateCase'|'memoryCase'|'subagentCase'|'subagentSettings'|'planningCase'|'planningSettings'|'environmentCase'|'environmentSettings'|'outputCase'|'outputSettings'>;
 function compileSimulationProgram(config:SimulationConfiguration,document:LinaDocument,answers:Record<string,SimulationAnswer>):SimulationEvent[]{
   const base=withState(withMemory(withSafety(compileFixture(config.channel,config.executionCase,config.maxRounds,config.contextCase,config.toolScenario,document,config.modelProtocol,config.modelCase,answers).map(event=>environmentModelEvent(event,config.environmentCase)),document,config.safetyCase,config.initialSafetyGrants,answers,config.toolScenario),document,config.memoryCase,undefined,{answers}),document,config.stateCase,answers);
   const childTraces=new Map<string,SimulationEvent[]>();
@@ -603,7 +607,8 @@ function compileSimulationProgram(config:SimulationConfiguration,document:LinaDo
   const environment=completeEnvironmentSettlement(withEnvironment(execution,document,config.environmentCase,config.environmentSettings,{answers}),document);
   const planned=completePlanningSettlement(withPlanning(environment,document,config.planningCase,config.planningSettings,{answers}),document);
   const journal=attachEnvironmentState(attachPlanningState(planned));
-  return config.planningCase==='stop-uncertain'?applyPlanningFixtureStop(journal,document,config):journal;
+  const completed=config.planningCase==='stop-uncertain'?applyPlanningFixtureStop(journal,document,config):journal;
+  return attachOutputState(withOutput(completed,document,config.outputCase,config.outputSettings,{answers,channel:config.channel}),config.channel);
 }
 function completeEnvironmentSettlement(events:SimulationEvent[],document:LinaDocument):SimulationEvent[]{
  const last=events.at(-1);
@@ -724,7 +729,12 @@ export function simulationView(state:SimulationState):SimulationState {
   return {...state,...program(events),step:Math.max(0,events.length-1)};
 }
 /** Start one reproducible simulation. Missing fixture edges stop rather than being skipped. */
-export function startSimulation(channel:SimulationChannel,document:LinaDocument,running=true,executionCase:SimulationCase='direct-answer',maxRounds=3,contextCase:ContextCase='fits',toolScenario:ToolScenario='parallel',modelProtocol:ModelProtocol='openai-chat',modelCase:ModelCase='answer',safetyCase:SafetyCase='policy-allow',safetyGrants:SafetyGrant[]=[],stateCase:StateCase='fresh',memoryCase:MemoryCase='baseline',subagentCase:SubagentCase='disabled',subagentSettings:Partial<SubagentSettings>={},planningCase:PlanningCase='disabled',planningSettings:Partial<PlanningSettings>={},environmentCase:EnvironmentCase='disabled',environmentSettings:Partial<EnvironmentSettings>={}):SimulationState{
+export function startSimulation(channel:SimulationChannel,document:LinaDocument,running=true,executionCase:SimulationCase='direct-answer',maxRounds=3,contextCase:ContextCase='fits',toolScenario:ToolScenario='parallel',modelProtocol:ModelProtocol='openai-chat',modelCase:ModelCase='answer',safetyCase:SafetyCase='policy-allow',safetyGrants:SafetyGrant[]=[],stateCase:StateCase='fresh',memoryCase:MemoryCase='baseline',subagentCase:SubagentCase='disabled',subagentSettings:Partial<SubagentSettings>={},planningCase:PlanningCase='disabled',planningSettings:Partial<PlanningSettings>={},environmentCase:EnvironmentCase='disabled',environmentSettings:Partial<EnvironmentSettings>={},outputCase:OutputCase='final',outputSettings:Partial<OutputSettings>={}):SimulationState{
+  const outputConfig={...DEFAULT_OUTPUT_SETTINGS,...outputScenarioSettings(outputCase),...outputSettings};
+  if(['tool-dedupe','distinct-tool-content'].includes(outputCase))executionCase='tool-round';
+  if(['internal','child-announcement'].includes(outputCase))subagentCase='one-child';
+  if(outputCase==='clarification'){executionCase='tool-round';toolScenario='input';}
+  if(['prompt','prompt-fallback'].includes(outputCase)){executionCase='tool-round';safetyCase='mandatory-review';toolScenario='approval';}
   const environmentConfig={...DEFAULT_ENVIRONMENT_SETTINGS,...environmentScenarioSettings(environmentCase),...environmentSettings};
   if(!['disabled','pure-bypass','external-bypass'].includes(environmentCase))executionCase='tool-round';
   if(environmentCase==='child-shared'||environmentCase==='child-separate')subagentCase='parallel';
@@ -743,9 +753,9 @@ export function startSimulation(channel:SimulationChannel,document:LinaDocument,
   safetyCase = configured.safetyCase ?? safetyCase;
   const limit=Math.max(1,Math.min(10,Math.trunc(maxRounds)||3));
   const settings={...DEFAULT_SUBAGENT_SETTINGS,...subagentScenarioSettings(subagentCase),...subagentSettings};
-  const events=compileSimulationProgram({channel,executionCase,maxRounds:limit,contextCase,toolScenario,modelProtocol,modelCase,safetyCase,initialSafetyGrants:safetyGrants,stateCase,memoryCase,subagentCase,subagentSettings:settings,planningCase,planningSettings:planningConfig,environmentCase,environmentSettings:environmentConfig},document,{});
+  const events=compileSimulationProgram({channel,executionCase,maxRounds:limit,contextCase,toolScenario,modelProtocol,modelCase,safetyCase,initialSafetyGrants:safetyGrants,stateCase,memoryCase,subagentCase,subagentSettings:settings,planningCase,planningSettings:planningConfig,environmentCase,environmentSettings:environmentConfig,outputCase,outputSettings:outputConfig},document,{});
   const error=eventError(events,document);
-  return {environmentCase,environmentSettings:environmentConfig,planningCase,planningSettings:planningConfig,subagentCase,subagentSettings:settings,agents:{},selectedAgentId:"active",activeAgentId:"main",memoryCase,stateCase,safetyCase,initialSafetyGrants:safetyGrants.map(grant=>({...grant})),safetyGrants:safetyGrants.map(grant=>({...grant})),waits:[],channel,executionCase,contextCase,toolScenario,modelProtocol,modelCase,modelHistory:[],maxRounds:limit,automatic:running,...program(events),step:0,rounds:0,attempts:0,contextPreparations:0,contextReductions:0,catalogRevision:7,operations:[],results:[],stopRequested:false,status:error?'blocked':running?'running':'paused',...(error?{error}:{})};
+  return {outputCase,outputSettings:outputConfig,environmentCase,environmentSettings:environmentConfig,planningCase,planningSettings:planningConfig,subagentCase,subagentSettings:settings,agents:{},selectedAgentId:"active",activeAgentId:"main",memoryCase,stateCase,safetyCase,initialSafetyGrants:safetyGrants.map(grant=>({...grant})),safetyGrants:safetyGrants.map(grant=>({...grant})),waits:[],channel,executionCase,contextCase,toolScenario,modelProtocol,modelCase,modelHistory:[],maxRounds:limit,automatic:running,...program(events),step:0,rounds:0,attempts:0,contextPreparations:0,contextReductions:0,catalogRevision:7,operations:[],results:[],stopRequested:false,status:error?'blocked':running?'running':'paused',...(error?{error}:{})};
 }
 /** Both timer and Next apply this reducer. External waits require a matched simulated answer. */
 export function advanceSimulation(state:SimulationState,document:LinaDocument):SimulationState{
@@ -784,8 +794,12 @@ export function answerSimulation(state:SimulationState,document:LinaDocument,ans
     const error = eventError(events, document);
     return { ...state, ...program(events), answers: { ...state.answers, [state.wait.id]: answer }, wait: undefined, waits: [], status: error ? 'blocked' : state.automatic ? 'running' : 'paused', ...(error ? { error } : {}) };
   }
-  const allowed:Record<SimulationWait['kind'],SimulationAnswer[]>={approval:['approve','allow-once','allow-session','allow-always','deny','expire'],auth:['ready'],input:['ready'],reconciliation:['known-success','known-no-effect'],'delivery-reconciliation':['known-success','known-no-effect'],'model-settlement':['ready'],'memory-review':['allow-once','deny','expire'],subagent:['known-success','known-no-effect'],'planning-review':['allow-once','deny','expire'],'planning-commit':['known-success','known-no-effect'],'environment-readiness':['ready'],'environment-reconciliation':['known-success','known-no-effect']};
+  const allowed:Record<SimulationWait['kind'],SimulationAnswer[]>={approval:['approve','allow-once','allow-session','allow-always','deny','expire'],auth:['ready'],input:['ready'],reconciliation:['known-success','known-no-effect'],'delivery-reconciliation':['known-success','known-no-effect'],'model-settlement':['ready'],'memory-review':['allow-once','deny','expire'],subagent:['known-success','known-no-effect'],'planning-review':['allow-once','deny','expire'],'planning-commit':['known-success','known-no-effect'],'environment-readiness':['ready'],'environment-reconciliation':['known-success','known-no-effect'],'output-policy':['allow-once','deny','expire'],'output-reconciliation':['known-success','known-no-effect'],'output-receipt':['ready']};
   if(!(state.wait.owner==='model'&&state.wait.kind==='auth'?['ready','deny','expire']:allowed[state.wait.kind]).includes(answer))return {...state,detail:'Stale or mismatched simulated answer refused; original wait retained'};
+  if(state.stopRequested&&state.wait.owner==='output'&&state.outputSnapshot){
+    const answers={...state.answers,[state.wait.id]:answer};const tail=withOutput([],document,state.outputCase,state.outputSettings,{seed:state.outputSnapshot,answers,stopped:true,channel:state.channel});
+    const events=attachOutputState(joinSimulationContinuation(state.events.slice(0,state.step+1),tail),state.channel);return {...state,...program(events),answers,wait:undefined,waits:[],status:state.automatic?'running':'paused'};
+  }
   if(state.stopRequested&&state.wait.owner==='environment'&&state.environmentSnapshot){
     const answers={...state.answers,[state.wait.id]:answer};
     const settle:SimulationEvent={id:'environment-stop-settle',nodeId:'lina-execution-settle',update:{outcome:'cancelled'}};
@@ -821,7 +835,7 @@ export function answerSimulation(state:SimulationState,document:LinaDocument,ans
   }
   if(state.stopRequested){
     const retainedWait=state.wait;
-    if(retainedWait.owner==='model'||retainedWait.owner==='memory'||retainedWait.owner==='subagents'||retainedWait.owner==='planning'||retainedWait.owner==='environment')return state;
+    if(retainedWait.owner==='output'||retainedWait.owner==='model'||retainedWait.owner==='memory'||retainedWait.owner==='subagents'||retainedWait.owner==='planning'||retainedWait.owner==='environment')return state;
     const operation=state.operations.find(op=>op.callId===retainedWait.callId)!;
     const resolved=state.operations.map(op=>op.callId===operation.callId?{...op,status:answer==='known-success'?'success' as const:'cancelled' as const}:op);
     const tail:SimulationEvent[]=[{id:'stop-effect-reconciled',nodeId:'lina-execution-settle',edgeId:'lina-execution-edge-reconcile-settle',sourceNodeId:'lina-input-reconcile',update:{outcome:'cancelled',detail:'Effect evidence established; stopped turn can settle'},resumeWait:true,operations:resolved,results:[{callId:operation.callId,status:answer==='known-success'?'success':'cancelled',artifactRef:`artifact:${operation.callId}:reconciled`}]},{id:'stop-owner-released',nodeId:'lina-execution-release',edgeId:'lina-execution-edge-settle-release',sourceNodeId:'lina-execution-settle',update:{}}];
@@ -847,6 +861,11 @@ export function answerSimulation(state:SimulationState,document:LinaDocument,ans
 /** Stop is an execution event. Unlike Pause it replaces future launch events and joins owned work. */
 export function stopSimulation(state:SimulationState,document:LinaDocument):SimulationState{
   if(state.wait?.owner==='delivery'||state.stopRequested||['blocked','completed'].includes(state.status)||!state.route.slice(0,state.step+1).includes('lina-execution-start'))return state;
+  if(state.outputSnapshot&&state.route.slice(0,state.step+1).includes('lina-execution-release')){
+    const observed=state.events.slice(0,state.step+1),tail=withOutput([],document,state.outputCase,state.outputSettings,{stopped:true,seed:state.outputSnapshot,answers:state.answers,channel:state.channel});
+    const events=attachOutputState(joinSimulationContinuation(observed,tail),state.channel);
+    return {...state,...program(events),stopRequested:true,wait:undefined,waits:[],status:state.automatic?'running':'paused'};
+  }
   const pending=state.operations.filter(op=>!terminal(op.status)&&!op.callId.startsWith('call:delegation:')&&!op.callId.startsWith('call:join:'));
   const unknown=pending.filter(op=>op.effectClass==='write'&&['running','unknown'].includes(op.status));
   const tail:SimulationEvent[]=[];
@@ -912,10 +931,11 @@ export function stopSimulation(state:SimulationState,document:LinaDocument):Simu
   }
   stoppedTail=withPlanning(stoppedTail,document,state.planningCase,state.planningSettings,{stopped:true,seed:state.planningSnapshot,answers:state.answers,childAgentId:state.childTaskId?state.activeAgentId:undefined});
   stoppedTail=withEnvironment(stoppedTail,document,state.environmentCase,state.environmentSettings,{stopped:true,seed:state.environmentSnapshot,answers:state.answers,agentId:state.childTaskId?state.activeAgentId:undefined});
-  const events=attachEnvironmentState(attachPlanningState(joinSimulationContinuation(state.events.slice(0,state.step+1),stoppedTail)));const error=eventError(events,document);
+  stoppedTail=withOutput(stoppedTail,document,state.outputCase,state.outputSettings,{stopped:true,seed:state.outputSnapshot,answers:state.answers,channel:state.channel});
+  const events=attachOutputState(attachEnvironmentState(attachPlanningState(joinSimulationContinuation(state.events.slice(0,state.step+1),stoppedTail))),state.channel);const error=eventError(events,document);
   return {...state,...program(events),waits:[],wait:undefined,stopRequested:true,status:error?'blocked':state.automatic?'running':'paused',...(error?{error}:{})};
 }
-export function resetSimulation(state:SimulationState,document:LinaDocument):SimulationState{return startSimulation(state.channel,document,false,state.executionCase,state.maxRounds,state.contextCase,state.toolScenario,state.modelProtocol,state.modelCase,state.safetyCase,state.initialSafetyGrants,state.stateCase,state.memoryCase,state.subagentCase,state.subagentSettings,state.planningCase,state.planningSettings,state.environmentCase,state.environmentSettings);}
+export function resetSimulation(state:SimulationState,document:LinaDocument):SimulationState{return startSimulation(state.channel,document,false,state.executionCase,state.maxRounds,state.contextCase,state.toolScenario,state.modelProtocol,state.modelCase,state.safetyCase,state.initialSafetyGrants,state.stateCase,state.memoryCase,state.subagentCase,state.subagentSettings,state.planningCase,state.planningSettings,state.environmentCase,state.environmentSettings,state.outputCase,state.outputSettings);}
 
 /** Select one retained wait without answering another operation. */
 export function selectSimulationWait(state:SimulationState,waitId:string):SimulationState {const wait=state.waits.find(wait=>wait.id===waitId);return wait?{...state,wait}:state;}

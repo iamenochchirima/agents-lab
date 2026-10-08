@@ -599,3 +599,48 @@ is independent of tool placement. External services and MCP tools retain their
 declared execution location. Browser provisioning is a future capability; Computer
 Use interaction remains deferred. See the [research](../../../../../docs/research/lina/environment-research.md)
 and [implementation checklist](../../../../../development/implementation-plans/studio/completed/lina-execution-environment.md).
+
+## Output and delivery design slice
+
+`outputBlock.ts` defines thirteen responsibility nodes and their owner handoffs.
+`contracts/outputRecords.ts` and `contracts/outputDelivery.ts` supply provisional
+JSON schemas, examples and outcomes. `outputFixtures.ts` prepares canonical
+content, tracks recipient/part/attempt identities and runs controlled adapter
+outcomes. `outputState.ts` records fixture outbox custody and restores the latest
+channel ledger independently of an older execution checkpoint.
+
+The default main reply now traverses Output. The Run modal exposes delivery cases,
+final-only or preview presentation, completion evidence, unknown-send policy,
+retry budget, fixture part limits and CLI presentation. Auto and Next use the same
+reducers. Graph following remains independent of playback. Stop becomes Stop delivery after
+execution ownership has been released; it cancels future transport work while
+retaining uncertain effects for reconciliation. Tool clarification prompts preserve
+the original input wait and use an answer schema rather than approval choices.
+Open Delivery evidence
+to inspect recipients, parts, attempts, native observations and retained artifacts.
+No fixture sends an actual external message.
+
+Required output transfers to retained delivery ownership before execution release.
+Prompt custody does not terminate the reviewed turn or grant permission. Preview
+acceptance does not fulfill required final output. Each recipient and ordered part
+has its own evidence; safe retry preserves accepted siblings. Unknown sends retain
+original identity for matched reconciliation, and Stop cannot undo external
+acceptance. Restoring a turn never regenerates a saved answer merely to repair its
+delivery.
+
+CLI, Telegram and WhatsApp have separate declared fixture capabilities. CLI JSONL
+and RPC output preserve machine records and keep diagnostics on stderr. Delivery
+and read facts are available in the WhatsApp fixture; unsupported thresholds remain
+explicitly unresolved on CLI/Telegram. The simulation's text/media limits are
+teaching controls, not assertions of current provider/account limits. Live native
+API versions, credentials, durable queues and remote guarantees remain future
+harness work.
+
+Internal child results return to their parent, while admitted external announcements
+and notifications use the shared output path. Tool-requested messages record
+confirmed target-specific evidence; equivalent final text may be suppressed without
+losing distinct new content. Media requires retained authorized bytes, with original
+upload intent and uncertain-upload recovery kept separate from message delivery.
+
+See the [research and comparison](../../../../../docs/research/lina/output-research.md)
+and the [implementation checklist](../../../../../development/implementation-plans/studio/completed/lina-output-delivery.md).

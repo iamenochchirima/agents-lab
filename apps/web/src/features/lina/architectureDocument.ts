@@ -10,14 +10,15 @@ import { linaMemoryBlock } from './memoryBlock';
 import { linaSubagentsBlock } from './subagentsBlock';
 import { linaPlanningBlock } from './planningBlock';
 import { linaEnvironmentBlock } from './environmentBlock';
+import { linaOutputBlock } from './outputBlock';
 import { blockForNode } from './blockMembership';
 import { LINA_NODE_WIDTH, LINA_NODE_HEIGHT } from './edgeRouting';
 
 /** Maintained design data, separate from transient simulated execution. */
 export const linaArchitecture: LinaDocument = {
   version: 1,
-  nodes: [...linaInputBlock.nodes, ...linaExecutionBlock.nodes, ...linaContextBlock.nodes, ...linaToolsBlock.nodes, ...linaModelBlock.nodes, ...linaSafetyBlock.nodes, ...linaStateBlock.nodes, ...linaMemoryBlock.nodes, ...linaSubagentsBlock.nodes, ...linaPlanningBlock.nodes, ...linaEnvironmentBlock.nodes],
-  edges: [...linaInputBlock.edges, ...linaExecutionBlock.edges, ...linaContextBlock.edges, ...linaToolsBlock.edges, ...linaModelBlock.edges, ...linaSafetyBlock.edges, ...linaStateBlock.edges, ...linaMemoryBlock.edges, ...linaSubagentsBlock.edges, ...linaPlanningBlock.edges, ...linaEnvironmentBlock.edges],
+  nodes: [...linaInputBlock.nodes, ...linaExecutionBlock.nodes, ...linaContextBlock.nodes, ...linaToolsBlock.nodes, ...linaModelBlock.nodes, ...linaSafetyBlock.nodes, ...linaStateBlock.nodes, ...linaMemoryBlock.nodes, ...linaSubagentsBlock.nodes, ...linaPlanningBlock.nodes, ...linaEnvironmentBlock.nodes, ...linaOutputBlock.nodes],
+  edges: [...linaInputBlock.edges, ...linaExecutionBlock.edges, ...linaContextBlock.edges, ...linaToolsBlock.edges, ...linaModelBlock.edges, ...linaSafetyBlock.edges, ...linaStateBlock.edges, ...linaMemoryBlock.edges, ...linaSubagentsBlock.edges, ...linaPlanningBlock.edges, ...linaEnvironmentBlock.edges, ...linaOutputBlock.edges],
 };
 
 /** Adopt reviewed notes/connections without resetting saved layout or user notes.
@@ -254,8 +255,26 @@ export function refreshDocumentation(document: LinaDocument): LinaDocument {
     nodes.push({ ...maintained, x, y });
   }
 
+  const outputAnchor = linaOutputBlock.nodes.find(node => nodes.some(saved => saved.id === node.id));
+  const savedOutputAnchor = outputAnchor && nodes.find(node => node.id === outputAnchor.id);
+  const outputDx = outputAnchor && savedOutputAnchor ? savedOutputAnchor.x - outputAnchor.x
+    : Math.min(...inputs.map(node => node.x)) - Math.min(...linaOutputBlock.nodes.map(node => node.x));
+  let outputDy = outputAnchor && savedOutputAnchor ? savedOutputAnchor.y - outputAnchor.y
+    : Math.max(...inputs.map(node => node.y + LINA_NODE_HEIGHT)) + 220 - Math.min(...linaOutputBlock.nodes.map(node => node.y));
+  // Output stays near originating routes. Saved nodes and annotations keep their positions.
+  if (!outputAnchor) {
+    while (linaOutputBlock.nodes.some(node => overlaps(node.x + outputDx, node.y + outputDy))) outputDy += LINA_NODE_HEIGHT + 100;
+  }
+  for (const maintained of linaOutputBlock.nodes) {
+    if (nodes.some(node => node.id === maintained.id)) continue;
+    let x = Math.max(20, maintained.x + outputDx);
+    const y = maintained.y + outputDy;
+    while (overlaps(x, y)) x += LINA_NODE_WIDTH + 80;
+    nodes.push({ ...maintained, x, y });
+  }
+
   const customEdges = document.edges.filter(edge =>
     !edge.id.startsWith('lina-input-edge-') && !edge.id.startsWith('lina-execution-edge-')
-    && !edge.id.startsWith('lina-context-edge-') && !edge.id.startsWith('lina-tools-edge-') && !edge.id.startsWith('lina-model-edge-') && !edge.id.startsWith('lina-safety-edge-') && !edge.id.startsWith('lina-state-edge-') && !edge.id.startsWith('lina-memory-edge-') && !edge.id.startsWith('lina-subagents-edge-') && !edge.id.startsWith('lina-planning-edge-') && !edge.id.startsWith('lina-environment-edge-'));
+    && !edge.id.startsWith('lina-context-edge-') && !edge.id.startsWith('lina-tools-edge-') && !edge.id.startsWith('lina-model-edge-') && !edge.id.startsWith('lina-safety-edge-') && !edge.id.startsWith('lina-state-edge-') && !edge.id.startsWith('lina-memory-edge-') && !edge.id.startsWith('lina-subagents-edge-') && !edge.id.startsWith('lina-planning-edge-') && !edge.id.startsWith('lina-environment-edge-') && !edge.id.startsWith('lina-output-edge-'));
   return { ...document, nodes, edges: [...linaArchitecture.edges, ...customEdges] };
 }

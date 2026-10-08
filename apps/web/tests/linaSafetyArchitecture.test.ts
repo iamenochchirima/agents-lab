@@ -54,7 +54,7 @@ test('resource and prompt acquisition retain their original owners and fresh lau
 
 test('a saved 91-node graph gains Safety beside Tools without moving annotations or unrelated nodes', () => {
   const old = copy(linaArchitecture);
-  old.nodes = old.nodes.filter(node => blockForNode(node) !== 'safety' && blockForNode(node) !== 'state' && blockForNode(node) !== 'memory' && blockForNode(node) !== 'subagents' && blockForNode(node) !== 'planning' && blockForNode(node) !== 'environment').map(node => ({ ...node, x: node.x + 470, y: node.y + 290 }));
+  old.nodes = old.nodes.filter(node => blockForNode(node) !== 'safety' && blockForNode(node) !== 'state' && blockForNode(node) !== 'memory' && blockForNode(node) !== 'subagents' && blockForNode(node) !== 'planning' && blockForNode(node) !== 'environment' && blockForNode(node) !== 'output').map(node => ({ ...node, x: node.x + 470, y: node.y + 290 }));
   old.edges = old.edges.filter(edge => !edge.id.startsWith('lina-safety-edge-'));
   assert.equal(old.nodes.length, 91);
   const tools = blockBounds(old.nodes.filter(node => blockForNode(node) === 'tools'));
@@ -62,7 +62,7 @@ test('a saved 91-node graph gains Safety beside Tools without moving annotations
   old.nodes.push(obstacle);
   old.edges.push({ id: 'custom-safety-link', source: obstacle.id, target: old.nodes[0].id, label: 'Keep my connection' });
   const snapshot = copy(old), restored = refreshDocumentation(old);
-  assert.equal(restored.nodes.length, 141);
+  assert.equal(restored.nodes.length, linaArchitecture.nodes.length + 1);
   for (const node of old.nodes) {
     const updated = restored.nodes.find(item => item.id === node.id)!;
     assert.deepEqual([updated.x, updated.y, updated.title, updated.experiments], [node.x, node.y, node.title, node.experiments]);

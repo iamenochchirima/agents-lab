@@ -2,6 +2,11 @@
 
 Reviewed 2026-10-08 against the working design, including uncommitted prior blocks. Output is still an empty reserved region. The preceding Environment slice records 140 nodes and 643 connections. This is a contract and fixture audit, not a live runtime inspection.
 
+Implementation note, 2026-10-09: these gaps now inform the populated Output graph
+and deterministic simulation. The audit below preserves the pre-implementation
+baseline; see the [Output implementation checklist](../../../development/implementation-plans/studio/completed/lina-output-delivery.md)
+for current coverage and limitations.
+
 ## Current ownership and gaps
 
 Paths refer to [the Lina feature](../../../apps/web/src/features/lina/README.md).

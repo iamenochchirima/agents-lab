@@ -1,7 +1,7 @@
 import type { LinaNode } from './linaModel';
 
 /** Reconciliation keeps its original public ID while execution owns its lifecycle. */
-export function blockForNode(node: LinaNode): 'input' | 'execution' | 'context' | 'tools' | 'model' | 'safety' | 'state' | 'memory' | 'subagents' | 'planning' | 'environment' | undefined {
+export function blockForNode(node: LinaNode): 'input' | 'execution' | 'context' | 'tools' | 'model' | 'safety' | 'state' | 'memory' | 'subagents' | 'planning' | 'environment' | 'output' | undefined {
   if (node.id === 'lina-input-reconcile' || node.id.startsWith('lina-execution-')) return 'execution';
   if (node.id.startsWith('lina-input-')) return 'input';
   if (node.id.startsWith('lina-context-')) return 'context';
@@ -13,4 +13,5 @@ export function blockForNode(node: LinaNode): 'input' | 'execution' | 'context' 
   if (node.id.startsWith('lina-subagents-')) return 'subagents';
   if (node.id.startsWith('lina-planning-')) return 'planning';
   if (node.id.startsWith('lina-environment-')) return 'environment';
+  if (node.id.startsWith('lina-output-')) return 'output';
 }

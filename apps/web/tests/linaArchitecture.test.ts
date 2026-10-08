@@ -210,14 +210,14 @@ test('restoring a Tools node follows its moved group and preserves user annotati
 test('the 79-node saved design gains eight boundaries and relocates reconciliation once', () => {
   const added = new Set(['lina-execution-wait', 'lina-execution-cancel', 'lina-context-scope', 'lina-context-observations', 'lina-tools-resource-read', 'lina-tools-prompt-get', 'lina-tools-hooks', 'lina-tools-retry']);
   const old = copy(linaArchitecture);
-  old.nodes = old.nodes.filter(node => !node.id.startsWith('lina-model-') && !node.id.startsWith('lina-safety-') && !node.id.startsWith('lina-state-') && !node.id.startsWith('lina-memory-') && !node.id.startsWith('lina-subagents-') && !node.id.startsWith('lina-planning-') && !node.id.startsWith('lina-environment-') && !added.has(node.id)).map(node => node.id === 'lina-input-reconcile'
+  old.nodes = old.nodes.filter(node => !node.id.startsWith('lina-model-') && !node.id.startsWith('lina-safety-') && !node.id.startsWith('lina-state-') && !node.id.startsWith('lina-memory-') && !node.id.startsWith('lina-subagents-') && !node.id.startsWith('lina-planning-') && !node.id.startsWith('lina-environment-') && !node.id.startsWith('lina-output-') && !added.has(node.id)).map(node => node.id === 'lina-input-reconcile'
     ? { ...node, area: 'Input', x: 1800, y: 2400, status: 'studying', experiments: 'Retain my reconciliation comparison' }
     : { ...node, x: node.x + 300, y: node.y + 400 });
   old.edges = old.edges.filter(edge => !added.has(edge.source) && !added.has(edge.target));
   assert.equal(old.nodes.length, 79);
   const before = copy(old);
   const updated = refreshDocumentation(old);
-  assert.equal(updated.nodes.length, 140);
+  assert.equal(updated.nodes.length, 153);
   const reconcile = updated.nodes.find(node => node.id === 'lina-input-reconcile')!;
   assert.equal(blockForNode(reconcile), 'execution');
   assert.equal(reconcile.area, 'Turn Execution');

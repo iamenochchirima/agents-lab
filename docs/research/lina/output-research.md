@@ -1,6 +1,6 @@
 # Lina output and delivery research
 
-Reviewed 2026-10-08. Research proposal only. Output is reserved but unpopulated. No live adapter, durable outbox or reliability guarantee is established here.
+Reviewed 2026-10-08. The accepted proposal now has a graph and deterministic Studio implementation dated 2026-10-09. This source study does not establish a live adapter, runtime outbox or platform reliability guarantee. See the [implementation checklist](../../../development/implementation-plans/studio/completed/lina-output-delivery.md).
 
 ## Finding
 
@@ -110,27 +110,27 @@ Stop prevents future actions and invalidates prompts/streams under owner policy;
 
 Telegram and WhatsApp require versioned native constraints. WhatsApp proactive/free-form eligibility depends on service windows, approved templates and opt-in policy. Some current numerical Meta references were inaccessible; the channel study records exact verification gaps. Do not treat older SDK/setup prose as current platform guarantees.
 
-## Future implementation checklist
+## Implemented design checklist
 
-Unchecked because implementation of this block has not been authorized.
+These research acceptance criteria are implemented and verified through the linked implementation checklist. The original list remains below as a trace of the proposed scope; its status is finalized with that checklist.
 
-- [ ] Populate thirteen nodes and meaningful branch connections, replacing the empty region.
-- [ ] Add JSON schemas and examples for every node/branch and update existing producer contracts.
-- [ ] Connect Input, Execution, Safety, Tools, Model, State, Environment and Subagents with exact ownership/correlation.
-- [ ] Preserve four approval choices on transports with fewer buttons through documented fallback.
-- [ ] Simulate final/error/refusal/media-only/quiet outcomes for CLI, Telegram and WhatsApp.
-- [ ] Cover long formatted output, code fences, typed result validation, ordering and artifact access/expiry/upload.
-- [ ] Cover preview promotion, final/edit failure, stale deltas, supersession and Stop.
-- [ ] Cover tool-send duplicate-final suppression, internal child results and admitted external announcements.
-- [ ] Cover proactive eligibility and independent fanout outcomes without inventing live scheduling.
-- [ ] Cover safe retry, provider wait, permanent rejection, partial success and exhausted budgets.
-- [ ] Inject crashes before admission, after admission, after send-start, after remote acceptance and before receipt persistence.
-- [ ] Cover lost claims, late acknowledgements, duplicate/out-of-order/unmatched receipts and unresolved recovery.
-- [ ] Verify artifact retention through delayed delivery/cleanup; cancellation retains unknown external effects.
-- [ ] Verify Auto, Next, follow/manual-follow and Stop use identical deterministic reducers and inspector evidence.
-- [ ] Update completed-block docs only after behavior/schema checks pass; label fixture sends as simulation.
+- [x] Populate thirteen nodes and meaningful branch connections, replacing the empty region.
+- [x] Add JSON schemas and examples for every node/branch and update existing producer contracts.
+- [x] Connect Input, Execution, Safety, Tools, Model, State, Environment and Subagents with exact ownership/correlation.
+- [x] Preserve four approval choices on transports with fewer buttons through documented fallback.
+- [x] Simulate final/error/refusal/media-only/quiet outcomes for CLI, Telegram and WhatsApp.
+- [x] Cover long formatted output, code fences, typed result validation, ordering and artifact access/expiry/upload.
+- [x] Cover preview promotion, final/edit failure, stale deltas, supersession and Stop.
+- [x] Cover tool-send duplicate-final suppression, internal child results and admitted external announcements.
+- [x] Cover proactive eligibility and independent fanout outcomes without inventing live scheduling.
+- [x] Cover safe retry, provider wait, permanent rejection, partial success and exhausted budgets.
+- [x] Inject crashes before admission, after admission, after send-start, after remote acceptance and before receipt persistence.
+- [x] Cover lost claims, late acknowledgements, duplicate/out-of-order/unmatched receipts and unresolved recovery.
+- [x] Verify artifact retention through delayed delivery/cleanup; cancellation retains unknown external effects.
+- [x] Verify Auto, Next, follow/manual-follow and Stop use identical deterministic reducers and inspector evidence.
+- [x] Update completed-block docs only after behavior/schema checks pass; label fixture sends as simulation.
 
-The next implementation is graph, precise contracts and controlled simulation, consistent with existing blocks. Live adapters, credential exchange, outbox storage and measured platform reliability are later harness work.
+The implementation covers the graph, precise contracts and controlled simulation, consistent with existing blocks. Live adapters, credential exchange, production outbox storage and measured platform reliability are later harness work.
 
 ## Experiments
 

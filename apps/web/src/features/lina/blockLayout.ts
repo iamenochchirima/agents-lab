@@ -17,7 +17,7 @@ export function blockBounds(nodes: LinaNode[]) {
  * This is a deliberate architecture layout, not an assertion of serial execution.
  */
 export function relationshipBlockLayout(document: LinaDocument): LinaDocument {
-  const keys: Block[] = ['input', 'execution', 'context', 'tools', 'model', 'safety', 'state', 'memory', 'subagents', 'planning', 'environment'];
+  const keys: Block[] = ['input', 'execution', 'context', 'tools', 'model', 'safety', 'state', 'memory', 'subagents', 'planning', 'environment', 'output'];
   const groups = new Map(keys.map(key => [key, document.nodes.filter(node => blockForNode(node) === key)]));
   const bounds = new Map(keys.filter(key => groups.get(key)!.length).map(key => [key, blockBounds(groups.get(key)!)]));
   if (!bounds.size) return document;
@@ -33,7 +33,8 @@ export function relationshipBlockLayout(document: LinaDocument): LinaDocument {
     planning: { x: middleX, y: 120 },
     subagents: { x: middleX + (bounds.get('memory')?.width ?? 0) + 320, y: Math.max(contextY + (bounds.get('context')?.height ?? 0) + 360, Math.max(contextY, middleY + tools.height + 340) + (bounds.get('model')?.height ?? 0) + 320) },
     memory: { x: middleX, y: contextY + (bounds.get('context')?.height ?? 0) + 360 },
-    state: { x: 80, y: 120 + input.height + 620 },
+    output: { x: 80, y: 120 + input.height + 320 },
+    state: { x: 80, y: 120 + input.height + 640 + (bounds.get('output')?.height ?? 0) },
     input: { x: 80, y: 120 }, execution: { x: middleX, y: middleY },
     context: { x: middleX, y: contextY }, tools: { x: rightX, y: middleY },
     safety: { x: rightX + tools.width + 320, y: middleY },

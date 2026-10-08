@@ -1,3 +1,4 @@
+import { outputDeliveryContracts, attachOutputProducerHandoffs } from './outputDelivery';
 import { environmentExecutionContracts, attachEnvironmentProducerHandoffs } from './environmentExecution';
 import { planningTaskContracts, attachPlanningProducerHandoffs } from './planningTasks';
 import { subagentOrchestrationContracts, attachSubagentProducerHandoffs } from './subagentOrchestration';
@@ -23,7 +24,8 @@ export interface NodeContract extends ContractDefinition {
   status: 'provisional';
   input: { schema: Schema; examples: InputExample[] };
 }
-export const contractDefinitions: ContractDefinition[] = [...inputAdmissionContracts, ...inputFailureContracts, ...inputExecutionContracts, ...turnExecutionContracts, ...contextAssemblyContracts, ...toolsConnectionContracts, ...toolsCapabilityContracts, ...toolsCallContracts, ...modelInterfaceContracts, ...safetyPermissionContracts, ...statePersistenceContracts, ...memoryKnowledgeContracts, ...subagentOrchestrationContracts, ...planningTaskContracts, ...environmentExecutionContracts];
+export const contractDefinitions: ContractDefinition[] = [...inputAdmissionContracts, ...inputFailureContracts, ...inputExecutionContracts, ...turnExecutionContracts, ...contextAssemblyContracts, ...toolsConnectionContracts, ...toolsCapabilityContracts, ...toolsCallContracts, ...modelInterfaceContracts, ...safetyPermissionContracts, ...statePersistenceContracts, ...memoryKnowledgeContracts, ...subagentOrchestrationContracts, ...planningTaskContracts, ...environmentExecutionContracts, ...outputDeliveryContracts];
+attachOutputProducerHandoffs(contractDefinitions);
 attachEnvironmentProducerHandoffs(contractDefinitions);
 attachPlanningProducerHandoffs(contractDefinitions);
 attachMemoryProducerHandoffs(contractDefinitions);
