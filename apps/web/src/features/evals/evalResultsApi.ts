@@ -1,5 +1,5 @@
 export type EvalVerdict = "pass" | "fail" | "blocked" | "error";
-export type EvalMode = "live" | "scripted" | "unknown";
+export type EvalMode = "live" | "scripted" | "capability-acceptance" | "unknown";
 
 export interface SavedEvalCase {
   readonly caseId: string;
@@ -7,6 +7,10 @@ export interface SavedEvalCase {
   readonly verdict: EvalVerdict;
   readonly reason?: string;
   readonly reviewRequired?: boolean;
+  readonly platform?: string;
+  readonly task?: string;
+  readonly statuses?: readonly string[];
+  readonly assertions?: Readonly<Record<string, boolean>>;
   readonly runIds: readonly string[];
   readonly evidence: string | null;
 }

@@ -93,3 +93,31 @@ test("trial detail is anchored to summary runs, bounds artifacts and retains mat
     assert.equal(list.invocations.find(item => item.invocationId === "scripted-one")?.comparisonKey, list.invocations.find(item => item.invocationId === "different-platform")?.comparisonKey);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("eight retained business workflows preserve platform verdicts/assertions and reject malformed acceptance", async () => {
+  const root = await mkdtemp(join(tmpdir(), "eval-business-"));
+  try {
+    const outcomes = ["mastra", "langgraph", "temporal", "restate"].flatMap(platform => ["support", "workspace"].map(task => ({ platform, task, runIds: [`run-${platform}-${task}`], statuses: [platform === "mastra" ? "failed" : "completed"], assertions: { independentlySaved: platform !== "mastra", routingValid: true }, verdict: platform === "mastra" ? "error" : "pass", ...(platform === "mastra" ? { error: "Bearer fixture-secret timed out" } : {}), toolEvidence: [], serviceSnapshots: [{ adjustmentCents: 500 }], artifact: null })));
+    const acceptance = { schemaVersion: 1, mode: "capability-acceptance", invocationId: "business-eight", startedAt: "2026-10-08T01:00:00Z", completedAt: "2026-10-08T01:10:00Z", status: "completed", controls: { platforms: ["mastra", "langgraph", "temporal", "restate"], tasks: ["support", "workspace"], model: { id: "fixture-model:free" } }, outcomes };
+    await save(root, "business-eight", acceptance);
+    await save(root, "business-malformed", { ...acceptance, invocationId: "business-malformed", outcomes: [{ ...outcomes[0], assertions: { routingValid: "true" } }] });
+    const projected = (await readEvalResults(root)).invocations;
+    const saved = projected.find(value => value.invocationId === "business-eight")!;
+    assert.equal(saved.mode, "capability-acceptance"); assert.equal(saved.platform, "multiple"); assert.equal(saved.modelId, "fixture-model:free"); assert.equal(saved.status, "complete");
+    assert.deepEqual(saved.counts, { pass: 6, fail: 0, blocked: 0, error: 2 }); assert.equal(saved.cases.length, 8);
+    assert.equal(saved.cases[0].platform, "mastra"); assert.equal(saved.cases[0].verdict, "error"); assert.equal(saved.cases[0].assertions?.independentlySaved, false);
+    assert.equal(saved.comparisonKey, null); assert.doesNotMatch(JSON.stringify(saved), /fixture-secret/);
+    assert.equal(projected.find(value => value.invocationId === "business-malformed")?.mode, "unknown");
+    const runId = "run-mastra-support";
+    await mkdir(join(root, runId), { recursive: true });
+    const artifacts = { "events.jsonl": "", "context.json": "{}", "trajectory.json": "{}", "result.json": JSON.stringify({ status: "failed" }) };
+    for (const [file, raw] of Object.entries(artifacts)) await writeFile(join(root, runId, file), raw);
+    const detail = await readEvalTrialDetail(root, { readAllowlistedFile: async (_id, file) => artifacts[file as keyof typeof artifacts] }, "business-eight", "mastra-support", 1);
+    assert.equal((detail.report as { verdict: string }).verdict, "error");
+    assert.deepEqual((detail.report as { assertions: unknown[] }).assertions[0], { id: "independentlySaved", passed: false, expected: true, observed: false });
+    assert.equal(detail.runs[0].runId, runId); assert.equal(detail.issues.length, 0);
+    await save(root, "business-historical", { ...acceptance, invocationId: "business-historical", startedAt: undefined, completedAt: undefined, status: undefined });
+    const historical = (await readEvalResults(root)).invocations.find(value => value.invocationId === "business-historical")!;
+    assert.equal(historical.status, "incomplete"); assert.equal(historical.cases.length, 8); assert.match(historical.summaryIssue!, /no retained timing/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

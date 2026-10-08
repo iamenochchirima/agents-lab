@@ -5,6 +5,17 @@ specification. The page never starts evaluations. Refresh reloads the latest 25
 invocations from `GET /api/evals?limit=25` on the existing lab control-plane server,
 configured by `VITE_AGENTLAB_API_URL` and defaulting to port 4318.
 
+Saved `capability-acceptance` summaries appear as Business workflows, preserving
+original per-platform/task verdicts, boolean assertions, native run statuses and
+model identity. Multi-platform invocations are labelled Multiple platforms and can
+be filtered by their individual platform/task outcomes. Inline details use the
+bounded retained summary for business assertions and service/review observations,
+then anchor event/context/trajectory/result reads to its run IDs. They never invent
+an `eval.json` artifact or regrade a failed workflow. Historical acceptance summaries
+without timing/completion metadata remain visibly incomplete while their recorded
+outcomes stay accessible. New completion markers require the declared platform ×
+task outcome set. These workflows do not join benchmark comparison groups.
+
 Filter saved results by execution mode, platform and task. Cross-platform comparison
 includes only matching retained suite, grader version, model, settings, context, tool, fault and
 profile controls. Historical summaries without those controls stay readable and

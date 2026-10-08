@@ -13,7 +13,7 @@ export function SavedEvalResults({ invocations }: { invocations: readonly SavedE
   return <div className="evals-saved-list">
     {invocations.map(invocation => <article key={invocation.invocationId} className="evals-invocation">
       <header>
-        <div><h3>{invocation.platform}<span>{invocation.mode === "live" ? "Live model" : invocation.mode === "scripted" ? "Scripted" : "Unknown execution"}</span></h3>
+        <div><h3>{invocation.platform === "multiple" ? "Multiple platforms" : invocation.platform}<span>{invocation.mode === "capability-acceptance" ? "Business workflows" : invocation.mode === "live" ? "Live model" : invocation.mode === "scripted" ? "Scripted" : "Unknown execution"}</span></h3>
           <p>{invocation.modelId ?? (invocation.mode === "scripted" ? "Scripted model" : "Model identity unavailable")}</p></div>
         <time dateTime={invocation.startedAt}>{new Date(invocation.startedAt).toLocaleString()}</time>
       </header>
@@ -32,10 +32,11 @@ export function SavedEvalResults({ invocations }: { invocations: readonly SavedE
 function TrialResult({ invocation, item }: { invocation: SavedEvalInvocation; item: SavedEvalCase }) {
   const [expanded, setExpanded] = useState(false);
   return <details onToggle={event => setExpanded(event.currentTarget.open)}>
-        <summary><code>{item.caseId}</code><strong>{taskLabels[item.caseId] ?? item.caseId}</strong>
-          <span>Trial {item.trial}</span><span className={`evals-verdict evals-verdict-${item.verdict}`}>{item.reviewRequired ? "Review required" : item.verdict}</span></summary>
+        <summary><code>{item.caseId}</code><strong>{item.task === "support" ? "Reviewed customer adjustment" : item.task === "workspace" ? "Document report and correction" : item.task === "service" ? "Connected service workflow" : taskLabels[item.caseId] ?? item.caseId}</strong>
+          <span>{item.platform ? `${item.platform} · ` : ""}Trial {item.trial}</span><span className={`evals-verdict evals-verdict-${item.verdict}`}>{item.reviewRequired ? "Review required" : item.verdict}</span></summary>
         <div className="evals-trial-detail">
           {item.reason && <p>{item.reason}</p>}
+          {item.statuses && item.statuses.length > 0 && <p>Recorded run outcomes: {item.statuses.join(" → ")}</p>}
           {item.runIds.length === 0 ? <p>No run was admitted. There is no run evidence for this trial.</p> :
             item.runIds.map((runId, index) => <div className="evals-evidence-links" key={runId}>
               <code>Run {index + 1}: {runId}</code>
@@ -44,7 +45,7 @@ function TrialResult({ invocation, item }: { invocation: SavedEvalInvocation; it
               <a href={evalEvidenceUrl(runId, "events.jsonl")} target="_blank" rel="noreferrer">Model and tool events</a>
               <a href={evalEvidenceUrl(runId, "context.json")} target="_blank" rel="noreferrer">Context</a>
             </div>)}
-          {expanded && item.runIds.length > 0 && <TrialInspector invocation={invocation} item={item} />}
+          {expanded && (item.runIds.length > 0 || invocation.mode === "capability-acceptance") && <TrialInspector invocation={invocation} item={item} />}
           <small>Invocation <code>{invocation.invocationId}</code>{invocation.suiteVersion && ` · suite ${invocation.suiteVersion}`}{invocation.graderVersion && ` · grader ${invocation.graderVersion}`}{invocation.sourceInvocationId && <> · Regraded from <code>{invocation.sourceInvocationId}</code></>}</small>
         </div>
       </details>;
@@ -154,12 +155,17 @@ export function EvalResults() {
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [refresh]);
-  const visible = invocations.filter(invocation => (mode === "all" || invocation.mode === mode) && (platform === "all" || invocation.platform === platform)).map(invocation => ({ ...invocation, cases: invocation.cases.filter(item => caseId === "all" || item.caseId === caseId) })).filter(invocation => invocation.cases.length > 0 || caseId === "all");
+  const visible = invocations.filter(invocation => (mode === "all" || invocation.mode === mode) && (platform === "all" || invocation.platform === platform || invocation.cases.some(item => item.platform === platform))).map(invocation => {
+    const cases = invocation.cases.filter(item => (platform === "all" || (item.platform ?? invocation.platform) === platform) && (caseId === "all" || (item.task ?? item.caseId) === caseId));
+    const counts = { pass: 0, fail: 0, blocked: 0, error: 0 };
+    for (const item of cases) counts[item.verdict]++;
+    return { ...invocation, cases, counts };
+  }).filter(invocation => invocation.cases.length > 0 || caseId === "all" && (platform === "all" || invocation.platform === platform));
   return <section className="evals-results" aria-labelledby="evals-results-title">
     <div className="evals-heading"><div><h2 id="evals-results-title">Saved results</h2><p>Recent retained trials. A single trial is development feedback, not a reliability score.</p></div>
       <div className="evals-result-controls"><label>Execution<select value={mode} onChange={event => setMode(event.target.value as EvalMode | "all")}>
-        <option value="all">All results</option><option value="live">Live model</option><option value="scripted">Scripted</option>
-      </select></label><label>Platform<select value={platform} onChange={event => setPlatform(event.target.value)}><option value="all">All platforms</option>{[...new Set(invocations.map(item => item.platform))].sort().map(value => <option key={value}>{value}</option>)}</select></label><label>Task<select value={caseId} onChange={event => setCaseId(event.target.value)}><option value="all">All tasks</option>{[...new Set(invocations.flatMap(item => item.cases.map(entry => entry.caseId)))].sort().map(value => <option key={value}>{value}</option>)}</select></label><button type="button" disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div></div>
+        <option value="all">All results</option><option value="live">Live model</option><option value="scripted">Scripted</option><option value="capability-acceptance">Business workflows</option>
+      </select></label><label>Platform<select value={platform} onChange={event => setPlatform(event.target.value)}><option value="all">All platforms</option>{[...new Set(invocations.flatMap(item => item.platform === "multiple" ? item.cases.map(entry => entry.platform ?? "Unknown") : [item.platform]))].sort().map(value => <option key={value}>{value}</option>)}</select></label><label>Task<select value={caseId} onChange={event => setCaseId(event.target.value)}><option value="all">All tasks</option>{[...new Set(invocations.flatMap(item => item.cases.map(entry => entry.task ?? entry.caseId)))].sort().map(value => <option key={value}>{value}</option>)}</select></label><button type="button" disabled={loading} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div></div>
     <div aria-live="polite">
       {loading && <p className="evals-empty">Reading saved results…</p>}
       {error && <p className="evals-empty" role="alert">{error} Start or check the lab server, then refresh.</p>}

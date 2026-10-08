@@ -19,11 +19,15 @@ export interface EvalResultCase {
   readonly evidence: "artifacts/eval.json" | "artifacts/eval-grader-3.json" | null;
   readonly reason?: string;
   readonly reviewRequired?: boolean;
+  readonly platform?: string;
+  readonly task?: string;
+  readonly statuses?: readonly string[];
+  readonly assertions?: Readonly<Record<string, boolean>>;
 }
 
 export interface EvalResultInvocation {
   readonly invocationId: string;
-  readonly mode: "live" | "scripted" | "unknown";
+  readonly mode: "live" | "scripted" | "capability-acceptance" | "unknown";
   readonly platform: string;
   readonly modelId: string | null;
   readonly suiteVersion?: string;
@@ -91,14 +95,15 @@ export async function readEvalResults(runsRoot: string, limit = 25, secrets: rea
         const buffer = Buffer.alloc(maxSummaryBytes + 1);
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
         if (bytesRead > maxSummaryBytes) return fallback;
-        return projectSummary(JSON.parse(buffer.subarray(0, bytesRead).toString("utf8")), candidate.id, secrets);
+        return projectSummary(JSON.parse(buffer.subarray(0, bytesRead).toString("utf8")), candidate.id, secrets, new Date(candidate.modified).toISOString());
       } finally { await handle.close(); }
     } catch { return fallback; }
   }));
   return { invocations, scanTruncated };
 }
 
-function projectSummary(value: unknown, invocationId: string, secrets: readonly string[]): EvalResultInvocation {
+function projectSummary(value: unknown, invocationId: string, secrets: readonly string[], fallbackStartedAt?: string): EvalResultInvocation {
+  if (record(value) && value.mode === "capability-acceptance") return projectAcceptance(value, invocationId, secrets, fallbackStartedAt);
   if (!record(value) || value.schemaVersion !== 1 || value.invocationId !== invocationId ||
       !idPattern.test(String(value.platform)) || !date(value.startedAt) ||
       (value.completedAt !== null && (!date(value.completedAt) || Date.parse(String(value.completedAt)) < Date.parse(String(value.startedAt)))) ||
@@ -138,6 +143,45 @@ function projectSummary(value: unknown, invocationId: string, secrets: readonly 
     ...(incomplete ? { summaryIssue: "Invocation has no retained completion. Recorded trials are partial." } : {}), counts, cases };
 }
 
+/** Preserve original acceptance verdicts; boolean workflow assertions are evidence, not a new grader. */
+function projectAcceptance(value: Record<string, unknown>, invocationId: string, secrets: readonly string[], fallbackStartedAt?: string): EvalResultInvocation {
+  if (value.schemaVersion !== 1 || value.invocationId !== invocationId || !record(value.controls) || !record(value.controls.model) || !text(value.controls.model.id) || !Array.isArray(value.outcomes) || value.outcomes.length > 100) invalid();
+  const historical = value.startedAt === undefined;
+  if ((!historical && !date(value.startedAt)) ||
+      (value.completedAt !== undefined && value.completedAt !== null &&
+        (!date(value.completedAt) || (!historical && Date.parse(String(value.completedAt)) < Date.parse(String(value.startedAt)))))) invalid();
+  if (value.status !== undefined && !["complete", "completed", "incomplete"].includes(String(value.status))) invalid();
+  const controls = value.controls;
+  const allowedPlatforms = ["mastra", "langgraph", "temporal", "restate"], allowedTasks = ["support", "workspace", "service"];
+  for (const [key, allowed] of [["platforms", allowedPlatforms], ["tasks", allowedTasks]] as const) {
+    const selected = controls[key];
+    if (selected !== undefined && (!Array.isArray(selected) || !selected.length || selected.length > allowed.length || selected.some(item => !allowed.includes(String(item))) || new Set(selected).size !== selected.length)) invalid();
+  }
+  const counts = emptyCounts(), identities = new Set<string>();
+  const cases: EvalResultCase[] = value.outcomes.map(item => {
+    if (!record(item) || !allowedPlatforms.includes(String(item.platform)) || !allowedTasks.includes(String(item.task)) ||
+        !verdicts.includes(item.verdict as Verdict) || !Array.isArray(item.runIds) || item.runIds.length > 16 ||
+        item.runIds.some(id => typeof id !== "string" || !idPattern.test(id)) || new Set(item.runIds).size !== item.runIds.length ||
+        !Array.isArray(item.statuses) || item.statuses.length !== item.runIds.length ||
+        item.statuses.some(status => !["created", "queued", "running", "suspended", "completed", "failed", "cancelled", "reconciliation_required"].includes(String(status))) ||
+        !record(item.assertions) || Object.keys(item.assertions).length > 64 ||
+        Object.entries(item.assertions).some(([name, passed]) => !idPattern.test(name) || typeof passed !== "boolean") ||
+        (item.verdict === "pass" && item.runIds.length === 0) || (item.error !== undefined && !text(item.error, 4096))) invalid();
+    if ((Array.isArray(controls.platforms) && !controls.platforms.includes(item.platform)) ||
+        (Array.isArray(controls.tasks) && !controls.tasks.includes(item.task))) invalid();
+    const caseId = `${item.platform}-${item.task}`;
+    if (identities.has(caseId)) invalid(); identities.add(caseId);
+    const verdict = item.verdict as Verdict; counts[verdict]++;
+    return { caseId, trial: 1, platform: String(item.platform), task: String(item.task), verdict, runIds: item.runIds as string[], statuses: item.statuses as string[], assertions: item.assertions as Record<string, boolean>, evidence: null, ...(item.error ? { reason: safeReason(String(item.error), secrets) } : {}) };
+  });
+  const platforms = [...new Set(cases.map(item => item.platform!))];
+  const expected = Array.isArray(value.controls.platforms) && Array.isArray(value.controls.tasks) ? value.controls.platforms.length * value.controls.tasks.length : null;
+  const complete = !historical && date(value.completedAt) && value.status !== "incomplete" && cases.length > 0 && (expected === null || cases.length === expected);
+  return { invocationId, mode: "capability-acceptance", platform: platforms.length === 1 ? platforms[0]! : "multiple", modelId: safeReason(value.controls.model.id, secrets), startedAt: historical ? fallbackStartedAt ?? new Date(0).toISOString() : String(value.startedAt), completedAt: date(value.completedAt) ? String(value.completedAt) : null, status: complete ? "complete" : "incomplete", counts, cases,
+    comparisonKey: null, comparisonIssue: "Business workflow observations preserve platform outcomes; equivalent benchmark controls have not been established.",
+    ...(complete ? {} : { summaryIssue: historical ? "Historical workflow summary has no retained timing/completion marker; recorded outcomes are preserved." : "Workflow invocation has no complete retained outcome set." }) };
+}
+
 function safeReason(value: string, secrets: readonly string[]): string {
   let result = value;
   for (const secret of secrets) if (secret) result = result.split(secret).join("[REDACTED]");
@@ -163,7 +207,7 @@ function comparisonControls(value: Record<string, unknown>, mode: string, modelI
   return { controls, comparisonKey: createHash("sha256").update(canonical({ suiteVersion: value.suiteVersion, graderVersion: text(value.graderVersion) ? value.graderVersion : null, mode, modelId, controls })).digest("hex") };
 }
 
-async function readInvocation(root: string, id: string, secrets: readonly string[]): Promise<EvalResultInvocation> {
+async function readInvocation(root: string, id: string, secrets: readonly string[]): Promise<{ invocation: EvalResultInvocation; summary: Record<string, unknown> }> {
   if (!idPattern.test(id)) throw new Error("Invalid eval invocation identity.");
   const directory = join(resolve(root), ".evals", id);
   for (const path of [join(resolve(root), ".evals"), directory]) {
@@ -178,7 +222,9 @@ async function readInvocation(root: string, id: string, secrets: readonly string
     const bytes = Buffer.alloc(maxSummaryBytes + 1);
     const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
     if (bytesRead > maxSummaryBytes) throw new Error("Eval summary exceeds the read limit.");
-    return projectSummary(JSON.parse(bytes.subarray(0, bytesRead).toString("utf8")), id, secrets);
+    const summary: unknown = JSON.parse(bytes.subarray(0, bytesRead).toString("utf8"));
+    if (!record(summary)) invalid();
+    return { invocation: projectSummary(summary, id, secrets, new Date(info.mtimeMs).toISOString()), summary };
   } finally { await handle.close(); }
 }
 
@@ -188,7 +234,7 @@ async function readInvocation(root: string, id: string, secrets: readonly string
 export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEvidenceStore, "readAllowlistedFile">,
   invocationId: string, caseId: string, trial: number, secrets: readonly string[] = []) {
   if (!idPattern.test(caseId) || !Number.isSafeInteger(trial) || trial < 1 || trial > 100) throw new Error("Invalid eval trial identity.");
-  const invocation = await readInvocation(runsRoot, invocationId, secrets);
+  const { invocation, summary } = await readInvocation(runsRoot, invocationId, secrets);
   const item = invocation.cases.find(value => value.caseId === caseId && value.trial === trial);
   if (!item) throw new Error("Retained eval trial was not found.");
   const root = await realpath(runsRoot);
@@ -207,6 +253,11 @@ export async function readEvalTrialDetail(runsRoot: string, evidence: Pick<RunEv
   };
   let report: unknown = null;
   const issues: string[] = [];
+  if (invocation.mode === "capability-acceptance") {
+    const outcome = (summary.outcomes as Record<string, unknown>[]).find(value => `${value.platform}-${value.task}` === caseId)!;
+    report = { verdict: item.verdict, assertions: Object.entries(item.assertions ?? {}).map(([id, passed]) => ({ id, passed, expected: true, observed: passed })),
+      observations: [sanitizeDetail({ platform: item.platform, task: item.task, statuses: item.statuses, prompts: outcome.prompts, toolEvidence: outcome.toolEvidence, serviceSnapshots: outcome.serviceSnapshots, reviews: outcome.reviews, artifact: outcome.artifact }, secrets)] };
+  }
   if (item.evidence && item.runIds[0]) {
     try {
       report = await read(item.runIds[0], item.evidence);
