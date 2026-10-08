@@ -446,6 +446,7 @@ function parseLimit(value: string | undefined): number {
 }
 
 function sendError(reply: FastifyReply, error: unknown) {
+  if (error instanceof InvocationReviewError) return reply.code(409).send({ error: { code: "ACTION_REVIEW_CONFLICT", message: error.message } });
   if (error instanceof InvalidApiRequestError || error instanceof InvalidRunRequestError) {
     return reply.code(400).send({ error: { code: "INVALID_REQUEST", message: error.message } });
   }

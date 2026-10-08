@@ -2,6 +2,9 @@ import { AlertTriangle, Check, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { getCapabilityProfiles, type CapabilityApproval, type CapabilityProfile } from "./platformApi";
+import { ConnectionPanel } from "./ConnectionPanel";
+import { requiresUpfrontApproval } from "./connectedToolState";
+import "./connected-tools.css";
 
 interface CapabilityPickerProps {
   readonly disabled?: boolean;
@@ -17,17 +20,18 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
   const [profiles, setProfiles] = useState<readonly CapabilityProfile[]>([]);
   const [failed, setFailed] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<CapabilityProfile | null>(null);
+  const [catalogRevision, setCatalogRevision] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     void getCapabilityProfiles(controller.signal)
-      .then((next) => setProfiles(next))
+      .then((next) => { setProfiles(next); setFailed(false); })
       .catch((error) => {
         if (isAbortError(error)) return;
         setFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [catalogRevision]);
 
   const selectedProfile = profiles.find((profile) => profile.id === value);
   const supported = (profile: CapabilityProfile) => profile.available !== false && (!profile.supportedVariants || targets.every(target => profile.supportedVariants!.includes(target)));
@@ -36,7 +40,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
     const profile = profiles.find((candidate) => candidate.id === profileId);
     if (!profile || !supported(profile)) return;
     onSkillsChange?.([]);
-    if (profile.capabilities.some((capability) => capability.risk === "write" || capability.risk === "external")) {
+    if (profile.capabilities.some(requiresUpfrontApproval)) {
       setPendingProfile(profile);
       return;
     }
@@ -45,7 +49,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
 
   function decideApproval(decision: CapabilityApproval["decision"]): void {
     if (!pendingProfile) return;
-    const writeCapabilities = pendingProfile.capabilities.filter((capability) => capability.risk === "write" || capability.risk === "external");
+    const writeCapabilities = pendingProfile.capabilities.filter(requiresUpfrontApproval);
     if (writeCapabilities.length === 0) return;
     const decidedAt = new Date();
     const expiresAt = new Date(decidedAt.getTime() + 15 * 60 * 1000);
@@ -55,6 +59,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
       capabilityId: writeCapability.id,
       version: writeCapability.version,
       allowedOperations: writeCapability.operations,
+      ...(writeCapability.connectionRef ? { connectionRef: writeCapability.connectionRef } : {}),
       decision,
       decidedAt: decidedAt.toISOString(),
       expiresAt: expiresAt.toISOString(),
@@ -72,6 +77,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
         {selectedProfile && <div className="capability-picker-summary" aria-live="polite">
           {!supported(selectedProfile) && <small>This profile is unavailable for the selected platform variant.</small>}
           <span>{selectedProfile.capabilities.map((capability) => capability.displayName).join(", ")}</span>
+          {selectedProfile.capabilities.some(capability => capability.approvalMode === "invocation") && <small>Sensitive actions are reviewed when proposed.</small>}
           {selectedProfile.skills.length > 0 && <small>Preloaded: {selectedProfile.skills.map((skill) => skill.name).join(", ")}</small>}
           {(selectedProfile.availableSkills?.length ?? 0) > 0 && <small>Available skills: {selectedProfile.availableSkills!.map((skill) => skill.name).join(", ")}</small>}
           {onSkillsChange && (selectedProfile.availableSkills?.length ?? 0) > 0 && <label>
@@ -83,6 +89,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
           </label>}
         </div>}
       </div>
+      <ConnectionPanel selectedRefs={[...new Set(selectedProfile?.capabilities.flatMap(capability => capability.connectionRef ? [capability.connectionRef] : []) ?? [])]} disabled={disabled} onChanged={() => setCatalogRevision(current => current + 1)} />
 
       {pendingProfile && (
         <div className="model-select-backdrop" onMouseDown={() => setPendingProfile(null)} role="presentation">
@@ -95,7 +102,7 @@ export function CapabilityPicker({ disabled, onChange, value, selectedSkillIds =
               <AlertTriangle aria-hidden="true" size={18} />
               <p>{pendingProfile.displayName} includes the actions below. Approve them for this run?</p>
               <ul>
-                {pendingProfile.capabilities.filter((capability) => capability.risk === "write" || capability.risk === "external").map((capability) => <li key={`${capability.id}@${capability.version}`}><strong>{capability.displayName}</strong><span>{capability.operations.join(", ")}</span></li>)}
+                {pendingProfile.capabilities.filter(requiresUpfrontApproval).map((capability) => <li key={`${capability.id}@${capability.version}`}><strong>{capability.displayName}</strong><span>{capability.operations.join(", ")}</span></li>)}
               </ul>
             </div>
             <footer className="model-select-footer">

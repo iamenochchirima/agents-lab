@@ -1,0 +1,20 @@
+.connection-panel { font-size: .8rem; width: 100%; }
+.connection-panel > details > summary { cursor: pointer; color: var(--muted-foreground); }
+.connection-row { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; padding: .75rem 0; border-bottom: 1px solid var(--border); }
+.connection-row > div:first-child { flex: 1; min-width: 10rem; }
+.connection-row strong, .connection-row small { display: block; }
+.connection-status { display: inline-block; margin-top: .25rem; color: var(--muted-foreground); }
+.connection-status-available { color: #258656; }
+.connection-actions { display: flex; gap: .35rem; }
+.connection-row details { width: 100%; }
+.connection-row dl { display: grid; grid-template-columns: 5rem 1fr; gap: .4rem; }
+.connection-row dd { margin: 0; overflow-wrap: anywhere; }
+.invocation-review-panel { margin: 1rem 0; }
+.invocation-review { padding: 1rem; border: 1px solid var(--border); border-radius: .6rem; margin-bottom: .7rem; }
+.invocation-review header { display: flex; justify-content: space-between; gap: 1rem; }
+.invocation-review header span { color: var(--muted-foreground); font-size: .8rem; }
+.invocation-arguments > div { display: grid; grid-template-columns: minmax(5rem, 25%) 1fr; gap: .6rem; margin: .6rem 0; }
+.invocation-arguments dt { color: var(--muted-foreground); }
+.invocation-arguments dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.invocation-review-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.invocation-review-actions small { margin-right: auto; color: var(--muted-foreground); }

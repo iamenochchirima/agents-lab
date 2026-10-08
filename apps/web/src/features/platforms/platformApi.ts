@@ -201,7 +201,28 @@ export interface CapabilityProfile {
     readonly description: string;
     readonly risk: string;
     readonly operations: readonly string[];
+    readonly approvalMode?: "automatic" | "tool_grant" | "invocation";
+    readonly connectionRef?: string;
   }[];
+}
+
+export interface ConnectionSummary {
+  readonly ref: string; readonly displayName: string; readonly provider: string;
+  readonly owner: string; readonly resource: string; readonly scopes: readonly string[];
+  readonly status: "available" | "unavailable" | "authorization_required" | "expired" | "revoked" | "connecting";
+  readonly reason: string | null; readonly authorityRevision: string; readonly expiresAt: string | null;
+}
+export interface InvocationReviewView {
+  readonly requestId: string; readonly revision: number; readonly runId: string; readonly turnId: string;
+  readonly call: { readonly toolCallId: string; readonly name: string; readonly round: number };
+  readonly argumentDigest: string; readonly sourceDigest: string; readonly connectionIdentity: string | null;
+  readonly displayArguments: Readonly<Record<string, unknown>>; readonly createdAt: string; readonly expiresAt: string;
+  readonly status: "pending" | "approved" | "denied" | "expired" | "cancelled" | "dispatching" | "completed";
+  readonly decision?: InvocationDecision | null;
+}
+export interface InvocationDecision {
+  readonly requestId: string; readonly revision: number; readonly argumentDigest: string;
+  readonly decisionId: string; readonly decision: "approved" | "denied"; readonly reason?: string;
 }
 
 /** The only capability exposed by the current browser workload. */
@@ -290,6 +311,24 @@ export async function getModels(query = "", signal?: AbortSignal): Promise<Model
 export async function getCapabilityProfiles(signal?: AbortSignal): Promise<readonly CapabilityProfile[]> {
   const body = await requestJson<{ readonly profiles?: readonly CapabilityProfile[] }>("/api/capabilities", { signal });
   return Array.isArray(body.profiles) ? body.profiles : [];
+}
+
+export async function getConnections(signal?: AbortSignal): Promise<readonly ConnectionSummary[]> {
+  const body = await requestJson<{ readonly connections: readonly ConnectionSummary[] }>("/api/connections", { signal });
+  return body.connections;
+}
+export async function manageConnection(ref: string, operation: "connect" | "refresh" | "revoke", signal?: AbortSignal): Promise<{ readonly connection: ConnectionSummary; readonly authorizationUrl?: string }> {
+  return requestJson(`/api/connections/${encodeURIComponent(ref)}/${operation}`, { method: "POST", body: "{}", signal });
+}
+export async function getInvocationReviews(runId: string, signal?: AbortSignal): Promise<readonly InvocationReviewView[]> {
+  const body = await requestJson<{ readonly actions: readonly InvocationReviewView[] }>(`/api/runs/${encodeURIComponent(runId)}/actions`, { signal });
+  return body.actions;
+}
+export async function renewInvocation(runId: string, requestId: string): Promise<RunView> {
+  return requestJson(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(requestId)}/renew`, { method: "POST", body: "{}" });
+}
+export async function decideInvocation(runId: string, decision: InvocationDecision, signal?: AbortSignal): Promise<RunView> {
+  return requestJson(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(decision.requestId)}/decision`, { method: "POST", body: JSON.stringify(decision), signal });
 }
 
 export async function createRun(request: PlatformRunRequest, signal?: AbortSignal): Promise<RunView> {

@@ -6,6 +6,8 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
 import { CapabilityPicker } from "./CapabilityPicker";
+import { InvocationReviewPanel } from "./InvocationReviewPanel";
+import { defaultBusinessProfile } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -47,7 +49,7 @@ export function PlatformChatPage() {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
-  const [capabilityProfileId, setCapabilityProfileId] = useState("local-safe");
+  const [capabilityProfileId, setCapabilityProfileId] = useState(() => defaultBusinessProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
   const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
   const [requestedSkillIds, setRequestedSkillIds] = useState<readonly string[]>([]);
   const [scenarioId, setScenarioId] = useState(scenarioCatalog[0].id);
@@ -79,6 +81,11 @@ export function PlatformChatPage() {
   const hasActiveRun = activeRunId !== null;
   const modelPickerDisabled = isModelPickerDisabled({ hasActiveRun, preservesSession, sessionId });
   const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null;
+
+  useEffect(() => {
+    setCapabilityProfileId(defaultBusinessProfile(platform.id, variantId));
+    setCapabilityApprovals([]); setRequestedSkillIds([]);
+  }, [platform.id, variantId]);
 
   useEffect(() => {
     setMessages((current) => {
@@ -133,6 +140,8 @@ export function PlatformChatPage() {
     setRetryTurn(null);
     setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
     setVariantId(platform.variants[0]?.id ?? "baseline");
+    setCapabilityProfileId(defaultBusinessProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
+    setCapabilityApprovals([]); setRequestedSkillIds([]);
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
     eventCursor.current = 0;
     conversationVersion.current += 1;
@@ -488,7 +497,7 @@ export function PlatformChatPage() {
           {error && !latestRun && <p className="chat-availability-error" role="status">{error}</p>}
           {(latestRun?.context?.activeSkills?.length ?? 0) > 0 && <details className="chat-session-note"><summary>Loaded skills and references</summary><ul>{latestRun!.context!.activeSkills!.map(skill => <li key={skill.id}>{skill.id} · {skill.version}</li>)}</ul></details>}
           {latestRun?.context && <ContextBudgetMeter context={latestRun.context} />}
-          {latestRun && <ChatRunDetails error={error} events={latestEvents} isResuming={isResuming} onNewChat={newConversation} onResume={() => void resumeActiveRun()} run={latestRun} />}
+          {latestRun && <ChatRunDetails error={error} events={latestEvents} isResuming={isResuming} onNewChat={newConversation} onResume={() => void resumeActiveRun()} onRun={run => { setLatestRun(run); setLatestEvents(current => mergeEvents(current, run.events)); setMessages(current => upsertRunMessages(current, run)); if (!terminalStatuses.has(run.status)) setActiveRunId(run.runId); }} run={latestRun} />}
         </aside>
       </main>
     </div>
@@ -530,14 +539,16 @@ function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
     : "Tool");
   const state = event.kind === "ToolExecutionCompleted"
     ? "completed"
+    : event.kind === "ToolExecutionUnknown" ? "unknown"
     : event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionCancelled" || event.kind === "ToolPolicyDenied" || event.kind === "ToolCallRejected"
       ? "failed"
       : "active";
-  const label = state === "completed" ? `${toolName} · Completed` : state === "failed" ? `${toolName} · Stopped` : `${toolName} · Running`;
+  const label = state === "completed" ? `${toolName} · Completed` : state === "unknown" ? `${toolName} · Needs reconciliation` : state === "failed" ? `${toolName} · Stopped` : `${toolName} · Running`;
   return <div aria-live="polite" className={`chat-tool-activity chat-tool-${state}`} role="status"><Wrench aria-hidden="true" size={13} /> {label}</div>;
 }
 
-function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }: { error: string | null; events: readonly RunEvent[]; isResuming: boolean; onNewChat: () => void; onResume: () => void; run: RunView }) {
+function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun, run }: { error: string | null; events: readonly RunEvent[]; isResuming: boolean; onNewChat: () => void; onResume: () => void; onRun: (run: RunView) => void; run: RunView }) {
+  const [hasInvocationActions, setHasInvocationActions] = useState(false);
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
   const nativePlatform = run.executionReference?.platform;
@@ -558,7 +569,8 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, run }:
             <button className="chat-retry-button" onClick={onNewChat} type="button">New chat</button>
           </div>
         )}
-        {run.status === "suspended" && (
+        <InvocationReviewPanel run={run} onRun={onRun} onLoaded={setHasInvocationActions} />
+        {run.status === "suspended" && !hasInvocationActions && run.manifest.platform === "mastra" && run.manifest.variant === "workflow" && (
           <div className="chat-availability-error" role="status">
             <CircleAlert aria-hidden="true" size={14} />
             <span>This workflow is waiting for approval.</span>
