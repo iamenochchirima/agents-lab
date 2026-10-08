@@ -6,6 +6,7 @@ export interface McpToolManifest {
   readonly version: string;
   readonly description: string;
   readonly inputSchema: Readonly<Record<string, unknown>>;
+  readonly outputSchema?: Readonly<Record<string, unknown>>;
 }
 
 export interface McpServer {
@@ -17,7 +18,7 @@ export interface McpServer {
     argumentsValue: Readonly<Record<string, unknown>>,
     requestId: string,
     signal: AbortSignal,
-  ): Promise<{ readonly providerRequestId: string; readonly output: Readonly<Record<string, unknown>> }>;
+  ): Promise<{ readonly providerRequestId: string; readonly output: Readonly<Record<string, unknown>>; readonly isError?: boolean }>;
 }
 
 export interface McpToolSelection {
@@ -35,6 +36,8 @@ export interface McpTransportOptions {
   readonly limits: ConnectionLimits;
   /** Optional server-owned selection that discovery and invocation must match. */
   readonly selectedTool?: McpToolSelection;
+  /** Writes become unknown when cancellation or a deadline loses their acknowledgement. */
+  readonly readOnly?: boolean;
 }
 
 export class McpTransport {
@@ -85,9 +88,13 @@ export class McpTransport {
     const attempts: ConnectionAttempt[] = [];
     for (let attempt = 1; attempt <= this.options.limits.maxAttempts; attempt += 1) {
       const attemptStartedAt = attempt === 1 ? startedAt : new Date().toISOString();
+      let dispatched = false;
       try {
         const result = await withDeadline(
-          (attemptSignal) => this.options.server.callTool(tool.name, argumentsValue, requestId, attemptSignal),
+          (attemptSignal) => {
+            dispatched = true;
+            return this.options.server.callTool(tool.name, argumentsValue, requestId, attemptSignal);
+          },
           this.options.limits.timeoutMs,
           signal,
         );
@@ -100,29 +107,29 @@ export class McpTransport {
           attempt,
           startedAt: attemptStartedAt,
           finishedAt: new Date().toISOString(),
-          status: "completed",
+          status: result.isError ? "failed" : "completed",
           retryable: false,
           providerRequestId: result.providerRequestId,
-          errorCode: null,
-          errorMessage: null,
+          errorCode: result.isError ? "MCP_TOOL_ERROR" : null,
+          errorMessage: result.isError ? "The MCP tool reported an error." : null,
         });
         return {
           requestId,
-          status: "completed",
+          status: result.isError ? "failed" : "completed",
           output: result.output,
           attempts,
-          error: null,
+          error: result.isError ? { code: "MCP_TOOL_ERROR", message: "The MCP tool reported an error." } : null,
           mcp: this.invocationEvidence(),
         };
       } catch (error) {
         const timedOut = error instanceof DeadlineError;
         const cancelled = signal.aborted && !timedOut;
-        const unknown = error instanceof McpDispatchUnknownError;
+        const unknown = error instanceof McpDispatchUnknownError || (dispatched && this.options.readOnly === false && (timedOut || cancelled));
         const preDispatch = error instanceof McpPreDispatchError;
         const retryable = preDispatch && !signal.aborted && attempt < this.options.limits.maxAttempts;
-        const status = cancelled ? "cancelled" : unknown ? "unknown" : timedOut ? "timed_out" : "failed" as const;
-        const code = cancelled ? "MCP_CANCELLED" : unknown ? "MCP_OUTCOME_UNKNOWN" : timedOut ? "MCP_TIMEOUT" : preDispatch ? "MCP_PRE_DISPATCH" : "MCP_CALL_FAILED";
-        const message = cancelled ? "MCP call was cancelled." : unknown ? "The MCP tool call may have been dispatched; outcome is unknown." : timedOut ? "MCP call exceeded its deadline." : safeMessage(error);
+        const status = unknown ? "unknown" : cancelled ? "cancelled" : timedOut ? "timed_out" : "failed" as const;
+        const code = unknown ? "MCP_OUTCOME_UNKNOWN" : cancelled ? "MCP_CANCELLED" : timedOut ? "MCP_TIMEOUT" : preDispatch ? "MCP_PRE_DISPATCH" : "MCP_CALL_FAILED";
+        const message = unknown ? "The MCP tool call may have been dispatched; outcome is unknown." : cancelled ? "MCP call was cancelled." : timedOut ? "MCP call exceeded its deadline." : safeMessage(error);
         attempts.push({
           requestId,
           attempt,
@@ -238,7 +245,7 @@ function bounded(value: string): string {
 }
 
 function validateToolManifest(tool: McpToolManifest): void {
-  if (!/^[a-z][a-z0-9_.-]{0,127}$/.test(tool.name) || !/^\d+\.\d+\.\d+$/.test(tool.version) || tool.description.length > 8_192) {
+  if (!/^[A-Za-z0-9_.-]{1,128}$/.test(tool.name) || !/^\d+\.\d+\.\d+$/.test(tool.version) || tool.description.length > 8_192) {
     throw new Error("MCP tool manifest is invalid or unbounded.");
   }
   const schemaBytes = new TextEncoder().encode(JSON.stringify(tool.inputSchema)).byteLength;

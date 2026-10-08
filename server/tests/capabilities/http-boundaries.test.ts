@@ -83,12 +83,13 @@ test("HTTP MCP uses the current per-request protocol without a legacy handshake"
     protocolVersion: "2026-07-28",
     serverName: "modern-fixture",
     fetchImplementation: async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as { method: string };
+      const body = JSON.parse(String(init?.body)) as { method: string; id: string; params: { _meta: Record<string, unknown> } };
       methods.push(body.method);
+      assert.equal(body.params._meta["io.modelcontextprotocol/protocolVersion"], "2026-07-28");
       const result = body.method === "tools/list"
         ? { tools: [{ name: "fixture.lookup", description: "Read fixture data", inputSchema: { type: "object" }, _meta: { agentlabVersion: "1.0.0" } }] }
         : { structuredContent: { key: "alpha", value: "modern fixture" }, content: [], isError: false };
-      return new Response(`data: ${JSON.stringify({ jsonrpc: "2.0", id: "response-1", result })}\n\n`, {
+      return new Response(`data: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/message", params: { data: "progress" } })}\n\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result })}\n\n`, {
         status: 200,
         headers: { "content-type": "text/event-stream" },
       });
@@ -106,15 +107,20 @@ test("HTTP MCP uses the current per-request protocol without a legacy handshake"
 
 test("HTTP MCP classifies a lost tool-call response as an unknown outcome", async () => {
   const endpoint = "https://mcp.example.test/unknown";
+  let calls = 0;
   const server = new HttpMcpServer({
     endpoint,
     protocolVersion: "2026-07-28",
     fetchImplementation: async (_input, init) => {
-      const body = JSON.parse(String(init?.body)) as { method: string };
-      if (body.method === "tools/call") throw new Error("socket closed after dispatch");
+      const body = JSON.parse(String(init?.body)) as { method: string; id: string };
+      if (body.method === "tools/call") {
+        calls++;
+        if (calls === 1) throw new Error("socket closed after dispatch");
+        return new Response(JSON.stringify({jsonrpc:"2.0",id:"unrelated",result:{content:[]}}),{status:200});
+      }
       return new Response(JSON.stringify({
         jsonrpc: "2.0",
-        id: "response-1",
+        id: body.id,
         result: { tools: [{ name: "fixture.lookup", description: "Read fixture data", inputSchema: { type: "object" } }] },
       }), { status: 200, headers: { "content-type": "application/json" } });
     },
@@ -127,4 +133,6 @@ test("HTTP MCP classifies a lost tool-call response as an unknown outcome", asyn
   assert.equal(result.status, "unknown");
   assert.equal(result.error?.code, "MCP_OUTCOME_UNKNOWN");
   assert.equal(result.attempts[0]?.retryable, false);
+  assert.equal((await transport.invoke(tool!, "malformed-mcp-1", { key: "alpha" }, new AbortController().signal)).status,"unknown");
+  assert.equal(calls,2,"lost or corrupt acknowledgements are never retried automatically");
 });
