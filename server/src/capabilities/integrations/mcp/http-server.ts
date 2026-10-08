@@ -1,3 +1,4 @@
+import type { McpProgressDiagnostics } from "../contracts.js";
 import type { McpServer, McpToolManifest } from "./local-transport.js";
 
 const DEFAULT_MAX_RESPONSE_BYTES = 256 * 1024;
@@ -47,6 +48,19 @@ export class HttpMcpServer implements McpServer {
   private initialized = false;
   private requestSequence = 0;
   private sessionId: string | null = null;
+  private progress: { notifications: { progress?: number; total?: number; message?: string }[]; omitted: number } = { notifications: [], omitted: 0 };
+  /** Diagnostics of the most recent tool call; copied before the per-invocation client is closed. */
+  get progressDiagnostics(): McpProgressDiagnostics { return { notifications: [...this.progress.notifications], omitted: this.progress.omitted }; }
+  private retainProgress(envelope: unknown): void {
+    if (!isRecord(envelope) || envelope.method !== "notifications/progress") return;
+    if (this.progress.notifications.length >= 32) { this.progress.omitted++; return; }
+    const params = isRecord(envelope.params) ? envelope.params : {};
+    this.progress.notifications.push({
+      ...(typeof params.progress === "number" && Number.isFinite(params.progress) ? { progress: params.progress } : {}),
+      ...(typeof params.total === "number" && Number.isFinite(params.total) ? { total: params.total } : {}),
+      ...(typeof params.message === "string" ? { message: params.message.slice(0, 512) } : {}),
+    });
+  }
 
   constructor(options: HttpMcpServerOptions) {
     this.endpoint = normalizeEndpoint(options.endpoint);
@@ -170,6 +184,7 @@ export class HttpMcpServer implements McpServer {
   }
 
   private async request(method: string, params: Readonly<Record<string, unknown>>, signal: AbortSignal, requestId?: string, inputSchema?: Readonly<Record<string, unknown>>): Promise<unknown> {
+    if (method === "tools/call") this.progress = { notifications: [], omitted: 0 };
     const id = requestId ?? `agentlab-${++this.requestSequence}`;
     let response: Response;
     try {
@@ -205,7 +220,7 @@ export class HttpMcpServer implements McpServer {
         throw new Error(`MCP request failed with HTTP ${response.status}.`);
       }
       envelope = response.headers.get("content-type")?.toLowerCase().includes("text/event-stream")
-        ? await correlatedSseResponse(response, this.maxResponseBytes, id)
+        ? await correlatedSseResponse(response, this.maxResponseBytes, id, envelope => { if (method === "tools/call") this.retainProgress(envelope); })
         : parseResponse(await boundedResponseText(response, this.maxResponseBytes), response.headers.get("content-type"), id);
       if (!isRecord(envelope) || envelope.jsonrpc !== JSON_RPC_VERSION || envelope.id !== id) throw new Error("MCP returned an invalid JSON-RPC envelope.");
     } catch (error) {
@@ -289,7 +304,7 @@ function parseResponse(text: string, contentType: string | null, requestId: stri
 /** A correlated final envelope completes a request even when the server keeps
  * its response stream open. Byte limits include progress and ignored events.
  */
-async function correlatedSseResponse(response: Response, maxBytes: number, requestId: string): Promise<unknown> {
+async function correlatedSseResponse(response: Response, maxBytes: number, requestId: string, onEnvelope: (envelope: unknown) => void): Promise<unknown> {
   if (!response.body) throw new Error("MCP event stream has no response body.");
   const reader = response.body.getReader(), decoder = new TextDecoder();
   let buffer = "", bytes = 0;
@@ -301,6 +316,7 @@ async function correlatedSseResponse(response: Response, maxBytes: number, reque
       const data = event.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, "")).join("\n");
       if (!data.trim()) continue;
       const envelope = parseJson(data);
+      onEnvelope(envelope);
       if (isRecord(envelope) && envelope.id === requestId && ("result" in envelope || "error" in envelope)) return envelope;
     }
   };

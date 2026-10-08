@@ -32,6 +32,10 @@ export interface HttpSourceOptions extends Source {
     readonly bindings?: { readonly path?: Readonly<Record<string, string>>; readonly query?: Readonly<Record<string, string>>; readonly headers?: Readonly<Record<string, string>>; readonly body?: Readonly<Record<string, string>> };
     readonly requestEncoding?: "json" | "form";
     readonly idempotency?: { readonly header: string };
+    /** A single page per call. The model decides whether to request the bounded next cursor. */
+    readonly pagination?: { readonly cursorArgument: string; readonly cursorQuery: string; readonly nextCursorPath: readonly string[] };
+    /** Select JSON fields without an expression engine; the output schema validates the mapped result. */
+    readonly responseMapping?: { readonly valuePath?: readonly string[]; readonly requestIdHeader?: string };
     /** Only provider-documented rejections establish no effects after dispatch. */
     readonly effectContract?: { readonly rejectionStatusCodes?: readonly number[]; readonly successConfirmsEffect?: boolean };
   }[];
@@ -82,7 +86,10 @@ export async function loadMcpSource(options: McpSourceOptions): Promise<HostedTo
             const output = await server.callToolResult(name, args, requestId, signal, remote.inputSchema);
             return { providerRequestId: requestId, output, isError: output.isError === true };
           } }, endpoint: options.endpoint, allowedEndpoints: [options.endpoint], limits: connectionLimits(definition.limits), readOnly: isReadOnly(definition) });
-        const connection = await transport.invoke(remote, requestIdentity(context), input, state.signal);
+        const invoked = await transport.invoke(remote, requestIdentity(context), input, state.signal);
+        const progress = server.progressDiagnostics;
+        const connection: ConnectionResult = progress.notifications.length || progress.omitted
+          ? { ...invoked, attempts: invoked.attempts.map(attempt => ({ ...attempt, progress })) } : invoked;
         const evidence = recordConnection(connection, context, headers);
         if (!connection.output) return { ...connectionFailure(connection, evidence), effect: { state: isReadOnly(definition) ? "none" : "unknown", evidence: "No valid MCP acknowledgement." } };
         const raw = connection.output, result = sanitizeOutput(raw, headers) as Record<string, unknown>;
@@ -138,7 +145,7 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
             response = { ok: rawResponse.ok, status: rawResponse.status, text };
             let parsed: unknown;
             try { parsed = JSON.parse(text); } catch { parsed = { text }; }
-            return { providerRequestId: rawResponse.headers.get("x-request-id") ?? requestIdentity(context),
+            return { providerRequestId: rawResponse.headers.get(operation.responseMapping?.requestIdHeader ?? "x-request-id")?.slice(0, 256) ?? requestIdentity(context),
               statusCode: rawResponse.status, body: record(parsed) ? parsed : { value: parsed } };
           } catch (error) {
             if (!isReadOnly(definition)) throw new DispatchUnknownError("The HTTP request may have been dispatched; its effects are unknown.");
@@ -157,7 +164,9 @@ export function loadHttpSource(options: HttpSourceOptions): HostedToolContributi
       const text = response.text;
       let structuredContent: unknown;
       try { structuredContent = JSON.parse(text); } catch { /* Text responses stay text. */ }
-      const invalidOutput = response.ok && outputValidator !== undefined && !outputValidator(structuredContent);
+      const mapped = response.ok ? mapHttpResponse(operation, structuredContent) : { valid: true, value: structuredContent };
+      structuredContent = mapped.value;
+      const invalidOutput = response.ok && (!mapped.valid || outputValidator !== undefined && !outputValidator(structuredContent));
       structuredContent = structuredContent === undefined ? undefined : sanitizeOutput(structuredContent, headers);
       const content = structuredContent === undefined ? String(sanitizeOutput(text, headers)) : JSON.stringify(structuredContent);
       const rejected = !response.ok && operation.effectContract?.rejectionStatusCodes?.includes(response.status) === true;
@@ -223,6 +232,10 @@ function validateHttpOperation(operation: HttpOperation): void {
   if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(operation.method)) throw new Error("Unsupported HTTP operation method.");
   if (operation.requestEncoding !== undefined && operation.requestEncoding !== "json" && operation.requestEncoding !== "form") throw new Error("Unsupported HTTP request encoding.");
   if (operation.approvalMode !== undefined && !["automatic", "tool_grant", "invocation"].includes(operation.approvalMode)) throw new Error("Invalid tool approval mode.");
+  const pathValid = (path: readonly string[]) => Array.isArray(path) && path.length <= 16 && path.every(part => typeof part === "string" && part.length > 0 && part.length <= 128 && !["__proto__", "constructor", "prototype"].includes(part));
+  if (operation.responseMapping?.valuePath && !pathValid(operation.responseMapping.valuePath)) throw new Error("Invalid HTTP response selector.");
+  if (operation.responseMapping?.requestIdHeader && !headerName.test(operation.responseMapping.requestIdHeader)) throw new Error("Invalid provider request-ID header.");
+  if (operation.pagination && (operation.method !== "GET" || !operation.pagination.cursorArgument || !operation.pagination.cursorQuery || operation.pagination.cursorQuery.length > 128 || !pathValid(operation.pagination.nextCursorPath))) throw new Error("Pagination requires a GET cursor binding and bounded response selector.");
   for (const mapping of Object.values(operation.bindings ?? {})) {
     if (!record(mapping) || Object.keys(mapping).length > 64 || Object.entries(mapping).some(([destination, argument]) => !destination || typeof argument !== "string" || !argument)) throw new Error("HTTP bindings require bounded destination-to-argument mappings.");
   }
@@ -245,8 +258,13 @@ function bindHttpRequest(operation: HttpOperation, base: URL, input: Readonly<Re
   if (url.origin !== base.origin) throw new Error("HTTP operation escaped its configured source.");
   const headers = { ...credentials };
   const scalar = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value);
-  const query = operation.bindings ? operation.bindings.query ?? {} : operation.method === "GET" ? Object.fromEntries(Object.keys(input).map(key => [key, key])) : {};
+  const query = operation.bindings ? operation.bindings.query ?? {} : operation.method === "GET" ? Object.fromEntries(Object.keys(input).filter(key => key !== operation.pagination?.cursorArgument).map(key => [key, key])) : {};
   for (const [name, argument] of Object.entries(query)) if (input[argument] !== undefined) url.searchParams.set(name, scalar(input[argument]));
+  if (operation.pagination && input[operation.pagination.cursorArgument] !== undefined) {
+    const cursor = input[operation.pagination.cursorArgument];
+    if (typeof cursor !== "string" || cursor.length > 2048) throw new Error("HTTP pagination cursor must be a bounded string.");
+    url.searchParams.set(operation.pagination.cursorQuery, cursor);
+  }
   for (const [name, argument] of Object.entries(operation.bindings?.headers ?? {})) if (input[argument] !== undefined) {
     const value = scalar(input[argument]);
     if (/[\r\n\u0000]/.test(value)) throw new Error("HTTP header binding contains an invalid value.");
@@ -260,6 +278,22 @@ function bindHttpRequest(operation: HttpOperation, base: URL, input: Readonly<Re
     else { body = JSON.stringify(payload); headers["content-type"] = "application/json"; }
   }
   return { url, headers, body };
+}
+function mapHttpResponse(operation: HttpOperation, raw: unknown): { valid: boolean; value: unknown } {
+  const select = (path: readonly string[] | undefined): unknown => {
+    let value = raw;
+    for (const part of path ?? []) {
+      if (!record(value) || !Object.hasOwn(value, part)) return undefined;
+      value = value[part];
+    }
+    return value;
+  };
+  const value = select(operation.responseMapping?.valuePath);
+  if (operation.responseMapping?.valuePath && value === undefined) return { valid: false, value: raw };
+  if (!operation.pagination) return { valid: true, value };
+  const cursor = select(operation.pagination.nextCursorPath);
+  if (cursor !== undefined && cursor !== null && (typeof cursor !== "string" || cursor.length > 2048)) return { valid: false, value: raw };
+  return { valid: true, value: { value, nextCursor: cursor ?? null } };
 }
 function failure(status: ToolExecutionResult["status"], code: NonNullable<ToolExecutionResult["error"]>["code"], message: string, started: number): RichResult { return { status, content: JSON.stringify({ error: message, code }), error: { code, message }, durationMs: Date.now() - started, attemptCount: 1 }; }
 function errorText(value: unknown): string {

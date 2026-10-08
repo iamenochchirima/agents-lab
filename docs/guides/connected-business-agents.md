@@ -5,6 +5,9 @@ through their own native agent loops. Tools come from trusted package declaratio
 skills describe procedures and load on demand. An optional document provider owns
 file storage. Core agents have no native filesystem workspace.
 
+The [compatibility matrix](connected-tool-compatibility.md) lists the exact HTTP,
+MCP, authentication, approval and retained-evidence subset, with verified limits.
+
 ## Start the development services
 
 Use the [local setup](local-development.md) for the selected platform's worker or

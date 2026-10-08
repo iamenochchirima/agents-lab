@@ -115,7 +115,8 @@ test("MCP consumes correlated chunked SSE without waiting for EOF and mirrors tr
     const input = await body(request);
     if (input.method === "tools/list") return json(response, { jsonrpc: "2.0", id: input.id, result: { tools: [{ name: "lookup", inputSchema: annotated }] } });
     calls++; assert.equal(request.headers["x-agentlab-session-id"], "trusted-session"); assert.equal(request.headers["mcp-param-businesskey"], "=?base64?5LiW55WM?=");
-    response.writeHead(200, { "content-type": "text/event-stream" }); response.write(': keepalive\n\ndata: {"jsonrpc":"2.0","method":"notifications/progress"}\n\n');
+    response.writeHead(200, { "content-type": "text/event-stream" }); response.write(': keepalive\n\n');
+    for (let index = 0; index < 40; index++) response.write(`data: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/progress", params: { progress: index, total: 40, message: `Bearer ${token}` } })}\n\n`);
     const event = `data: ${JSON.stringify({ jsonrpc: "2.0", id: input.id, result: { content: [{ type: "text", text: "complete" }] } })}\n\n`;
     response.write(event.slice(0, 17)); response.write(event.slice(17)); // Deliberately never call end().
   });
@@ -124,5 +125,27 @@ test("MCP consumes correlated chunked SSE without waiting for EOF and mirrors tr
     token = "second";
     const result = await tool.implementation.executeResult!({ key: "世界" }, { ...context, sessionId: "trusted-session" });
     assert.equal(result.status, "completed"); assert.match(result.content, /complete/); assert.equal(calls, 1); assert.equal(result.effect?.state, "none");
+    const progress = connections.at(-1)?.attempts[0].progress;
+    assert.equal(progress?.notifications.length, 32); assert.equal(progress?.omitted, 8);
+    assert.equal(progress?.notifications[0].progress, 0); assert.equal(progress?.notifications[0].message, "[REDACTED]");
+  } finally { await local.close(); }
+});
+
+
+test("HTTP pagination binds one bounded cursor and maps payload and provider request ID", async () => {
+  let calls = 0, invalidCursor = false;
+  const local = await serve(async (request, response) => {
+    calls++; assert.equal(request.url, "/records?after=page%2Ftwo");
+    response.setHeader("X-Provider-Trace", "provider-page-two");
+    json(response, { result: { records: [{ id: "record-two" }] }, paging: { next: invalidCursor ? "x".repeat(2049) : "page/three" } });
+  });
+  try {
+    const [tool] = loadHttpSource({ id: "pagination", version: "1.0.0", baseUrl: local.base, operations: [{ name: "list_records", method: "GET", path: "/records", description: "List one page", riskClass: "read", inputSchema: { type: "object", properties: { cursor: { type: "string" } } },
+      pagination: { cursorArgument: "cursor", cursorQuery: "after", nextCursorPath: ["paging", "next"] }, responseMapping: { valuePath: ["result", "records"], requestIdHeader: "X-Provider-Trace" } }] });
+    const result = await invoke(tool, { cursor: "page/two" });
+    assert.equal(result.status, "completed"); assert.deepEqual(result.structuredContent, { value: [{ id: "record-two" }], nextCursor: "page/three" });
+    assert.equal(connections.at(-1)?.attempts[0].providerRequestId, "provider-page-two"); assert.equal(calls, 1, "pagination never silently requests the next page");
+    invalidCursor = true; assert.equal((await invoke(tool, { cursor: "page/two" })).status, "failed");
+    assert.equal((await invoke(tool, { cursor: "x".repeat(2049) })).effect?.state, "not_dispatched"); assert.equal(calls, 2);
   } finally { await local.close(); }
 });

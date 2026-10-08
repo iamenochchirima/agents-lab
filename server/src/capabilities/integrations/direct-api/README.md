@@ -52,3 +52,30 @@ Invalid output after an acknowledged write stays `effect.state=acknowledged`,
 `presentation=invalid`, with execution status unknown to require reconciliation
 without inviting another write. Original bounded replies and source attempts
 remain inspectable. Configure reconciliation reads separately from write retries.
+
+## Explicit cursor and response mapping
+
+A GET operation can configure one page per tool call:
+
+```json
+{
+  "pagination": {
+    "cursorArgument": "cursor",
+    "cursorQuery": "after",
+    "nextCursorPath": ["paging", "next"]
+  },
+  "responseMapping": {
+    "valuePath": ["result", "records"],
+    "requestIdHeader": "X-Provider-Trace"
+  }
+}
+```
+
+Property-path selectors have at most 16 segments. Pagination maps the selected
+payload to `{ "value": ..., "nextCursor": ... }`; absent/null next cursor becomes
+null. Cursors are strings of at most 2048 characters. The configured output schema
+validates this final mapped result. Missing selected payload or invalid next cursor
+is a presentation failure, with acknowledged mutation semantics preserved. No
+expression evaluation or implicit next-page calls occur; the native model decides
+whether to request another page. Original provider payload stays in source evidence.
+`requestIdHeader` defaults to `x-request-id`; retained IDs are bounded to 256 characters.

@@ -60,6 +60,11 @@ export interface ConnectionRequest {
   readonly mcp?: McpConnectionBinding;
 }
 
+export interface McpProgressDiagnostics {
+  readonly notifications: readonly { readonly progress?: number; readonly total?: number; readonly message?: string }[];
+  readonly omitted: number;
+}
+
 export interface ConnectionAttempt {
   readonly requestId: string;
   readonly attempt: number;
@@ -70,6 +75,8 @@ export interface ConnectionAttempt {
   readonly providerRequestId: string | null;
   readonly errorCode: string | null;
   readonly errorMessage: string | null;
+  /** Sanitized bounded progress from this request, never a completion acknowledgement. */
+  readonly progress?: McpProgressDiagnostics;
 }
 
 export interface ConnectionResult {

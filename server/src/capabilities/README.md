@@ -7,3 +7,7 @@ runtime. A platform variant composes these capabilities with its own execution m
 The server-owned capability catalog also resolves the small built-in skill catalog. A
 profile may select context-only skills, but the resulting skill projection is kept in the
 context session and cannot authorize a tool or connection.
+
+See the [connected business guide](../../../docs/guides/connected-business-agents.md)
+and its [compatibility matrix](../../../docs/guides/connected-tool-compatibility.md)
+for the implemented adapter, authentication and retained-evidence contracts.

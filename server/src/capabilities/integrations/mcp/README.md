@@ -54,8 +54,9 @@ Streamable HTTP supports the sessionless `2026-07-28` protocol and the initializ
 `2025-06-18`/`2025-11-25` protocols. Legacy session IDs returned by initialization
 are carried on subsequent requests. Discovery follows bounded pagination and
 permits missing descriptions, supplying a short callable description. Unknown
-protocol versions fail explicitly. Stdio transport and OAuth onboarding remain
-separate work; a configured HTTP source does not implement them.
+protocol versions fail explicitly. Stdio is unsupported. Optional connection-backed
+OAuth onboarding belongs to the [connection manager](../oauth/README.md); a static
+Bearer source alone does not implement that flow.
 
 The sessionless requests include the required protocol-version and client-capability
 metadata in `params._meta`, alongside the HTTP routing headers. Remote tool names
@@ -70,7 +71,11 @@ and [tool naming rules](https://modelcontextprotocol.io/specification/2026-07-28
 SSE replies are parsed incrementally with a total response-byte limit. Progress
 and unrelated envelopes cannot complete a call: only the correlated final result
 or error does. A valid final response returns without waiting for stream EOF,
-and the response reader is released. Modern tool calls mirror supported
+and the response reader is released. Up to 32 progress notifications per tool call
+retain finite progress/total values and messages bounded to 512 characters in the
+sanitized source-attempt receipt, with an omitted count. Progress does not establish
+completion; tokens, request envelopes and unrelated notifications are not retained.
+Modern tool calls mirror supported
 `x-mcp-header` properties using the protocol's header-value encoding; unsafe,
 duplicate or composition/array annotations are rejected. Unsupported interactive
 results remain explicit failures rather than simulated tool completion.
