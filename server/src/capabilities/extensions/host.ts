@@ -35,7 +35,10 @@ interface CompleteReceipt extends Omit<PendingReceipt, "status"> {
  * restart stays unknown; inspecting it never dispatches the operation again.
  */
 export class CapabilityHost {
-  private contributions: ReadonlyMap<string, HostedToolContribution>;
+  // A catalog refresh must not substitute a new implementation for a run that
+  // already admitted an older source. Historical bindings are reconstructed by
+  // the management repository on restart; live authority checks still apply.
+  private readonly contributions = new Map<string, HostedToolContribution>();
   private readonly inFlight = new Map<string, { fingerprint: string; promise: Promise<ToolExecutionResult> }>();
 
   constructor(
@@ -45,7 +48,7 @@ export class CapabilityHost {
     private readonly sessions?: ContextSessionStore,
     private readonly reviews: InvocationReviewStore = new InvocationReviewStore(dirname(evidence.runDirectory("review-root"))),
   ) {
-    this.contributions = new Map(tools.map(tool => [tool.descriptor.definition.name, tool]));
+    this.retain(tools);
   }
 
   static async create(evidence: RunEvidenceStore, tools: readonly HostedToolContribution[], sessions?: ContextSessionStore, reviews?: InvocationReviewStore): Promise<CapabilityHost> {
@@ -67,8 +70,20 @@ export class CapabilityHost {
 
   private readonly cleanups = new Set<() => Promise<void>>();
 
+  private retain(tools: readonly HostedToolContribution[]): void {
+    for (const tool of tools) {
+      const identity = contributionIdentity(tool.descriptor);
+      const retained = this.contributions.get(identity);
+      if (retained && canonical(retained.descriptor) !== canonical(tool.descriptor)) {
+        throw new Error("An admitted source identity cannot change its descriptor.");
+      }
+      this.contributions.set(identity, tool);
+    }
+  }
+
+  /** Publish contributions for new admission while retaining old source bindings. */
   replace(tools: readonly HostedToolContribution[]): void {
-    this.contributions = new Map(tools.map(tool => [tool.descriptor.definition.name, tool]));
+    this.retain(tools);
     for (const tool of tools) if (tool.close) this.cleanups.add(tool.close);
   }
 
@@ -112,7 +127,7 @@ export class CapabilityHost {
     const snapshot = manifest.capabilities?.toolCatalog;
     if (!snapshot || snapshot.revision !== input.catalogRevision || manifest.context.turnId !== input.turnId) throw new Error("Catalog or turn mismatch.");
     const descriptor = snapshot.tools.find(value => value.definition.name === input.call.name);
-    const contribution = this.contributions.get(input.call.name);
+    const contribution = descriptor ? this.contributions.get(contributionIdentity(descriptor)) : undefined;
     if (!descriptor || !contribution || canonical(descriptor.source) !== canonical(contribution.descriptor.source)
       || descriptor.execution.kind !== "hosted") throw new Error("Frozen source unavailable.");
     if (descriptor.definition.approvalMode !== "invocation") return null;
@@ -145,7 +160,7 @@ export class CapabilityHost {
       throw new Error("Catalog or turn mismatch.");
     }
     const descriptor = snapshot.tools.find(tool => tool.definition.name === input.call.name);
-    const contribution = this.contributions.get(input.call.name);
+    const contribution = descriptor ? this.contributions.get(contributionIdentity(descriptor)) : undefined;
     if (!descriptor || descriptor.execution.kind !== "hosted" || !contribution ||
         contribution.descriptor.execution.kind !== "hosted" ||
         canonical(descriptor.source) !== canonical(contribution.descriptor.source) ||
@@ -293,4 +308,8 @@ function canonical(value: unknown): string {
     return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${canonical(record[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function contributionIdentity(descriptor: HostedToolContribution["descriptor"]): string {
+  return canonical({ name: descriptor.definition.name, source: descriptor.source, execution: descriptor.execution });
 }

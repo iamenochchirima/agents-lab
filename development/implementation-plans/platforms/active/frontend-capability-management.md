@@ -1,6 +1,6 @@
 # Frontend capability management implementation plan
 
-Status: researched and planned; implementation has not started.
+Status: implementing; milestone 1 in progress.
 Prepared: 2026-10-08, Africa/Johannesburg.
 
 This standalone working plan belongs outside `docs/`. It covers a substantial
@@ -391,9 +391,10 @@ No exhaustive eval rerun is required for a documentation-only plan.
 
 ## Current position
 
-Research and planning only. No capability-manager runtime or frontend code has
-been implemented by this task. Start with milestone 1, then saved credentials and
-HTTP connection setup before expanding package imports and stdio hosting.
+Milestone 1 in progress. Repository, credential store and stdio transport are
+independent delegated workstreams; primary agent owns source retention and
+integration. Baseline commit: `60ae6a3`. Unrelated Studio/Lina and context changes
+were present and remain user-owned. No milestone acceptance is claimed yet.
 
 ## Open deployment choices and limits
 
@@ -407,3 +408,10 @@ A backend can support many compatible servers; it cannot make every foreign
 transport, plugin hook, authentication scheme or provider permission model work
 by accepting a URL alone. Report unsupported requirements and the precise next
 setup step instead of hiding them.
+
+## Implementation evidence ledger
+
+- Source retention foundation: server build and three focused capability-host tests
+  passed. Old and new admitted runs dispatch their own implementation after hot
+  publication; an unchanged source identity cannot substitute a changed descriptor.
+  Restart reconstruction awaits the management registry integration.

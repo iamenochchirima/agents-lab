@@ -67,3 +67,31 @@ test('explicit unknown side effects survive abort classification, and empty skil
   assert.equal((await registry.execute(validation,{runId:'run',turnId:'turn',signal:signal.signal})).status,'unknown');
   assert.deepEqual(createDefaultSkillCatalog().resolve([]),[]);
 });
+
+test('catalog publication retains the implementation admitted by old and new runs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'capability-revisions-'));
+  try {
+    const schema = { type: 'object', additionalProperties: false };
+    const oldTool = contribution({ id: 'versioned', version: '1.0.0' }, 'read', 'Read revision.', schema, 'read', async () => 'old', 'a'.repeat(64));
+    const newTool = contribution({ id: 'versioned', version: '2.0.0' }, 'read', 'Read revision.', schema, 'read', async () => 'new', 'c'.repeat(64));
+    const evidence = new RunEvidenceStore(root);
+    const admit = async (tool: typeof oldTool, runId: string) => {
+      const catalog = new CapabilityCatalog([], [], undefined, undefined, { toolDescriptors: [tool.descriptor] });
+      const snapshot = catalog.toolSnapshot([tool.descriptor.definition.name]);
+      await evidence.createRun(buildRunManifest({
+        platform: 'mastra', variant: 'baseline', task: { kind: 'prompt', prompt: 'Read the revision.' },
+        model: { provider: 'fake', model: 'fake-completion' },
+        capabilities: { tools: { enabledNames: [tool.descriptor.definition.name], maxRounds: 4, maxCalls: 4 }, toolCatalog: snapshot },
+      }, { runId, context: { turnId: 'turn' } }));
+      return { runId, turnId: 'turn', catalogRevision: snapshot.revision, call: { toolCallId: 'read', name: tool.descriptor.definition.name, arguments: {}, round: 1 } };
+    };
+    const oldCall = await admit(oldTool, 'old-run');
+    const newCall = await admit(newTool, 'new-run');
+    const host = new CapabilityHost(evidence, [oldTool], 'b'.repeat(64));
+    host.replace([newTool]);
+    assert.equal((await host.execute(oldCall, AbortSignal.timeout(1000))).content, 'old');
+    assert.equal((await host.execute(newCall, AbortSignal.timeout(1000))).content, 'new');
+    // Source content cannot be replaced under the same declared identity.
+    assert.throws(() => host.replace([{ ...newTool, descriptor: { ...newTool.descriptor, definition: { ...newTool.descriptor.definition, description: 'Changed without new identity' } } }]), /cannot change/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

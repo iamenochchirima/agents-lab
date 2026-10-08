@@ -58,3 +58,11 @@ LangGraph uses pinned `jsonschema` for its equivalent Python declaration checks.
 Standard-library JSON and line parsing do not provide these contracts. Validators
 do not coerce arguments or fetch remote schema references; `format` annotations
 remain descriptive.
+
+Catalog publication retains hosted contributions by tool name plus admitted source
+identity and execution binding. An existing run therefore cannot be routed to a
+new package merely because it uses the same tool name. Changing a descriptor under
+an unchanged source identity is rejected. Live connection authority checks still
+apply to retained contributions. This in-memory retention does not by itself
+reconstruct older sources after a backend restart; managed installation state must
+supply those revisions during bootstrap.
