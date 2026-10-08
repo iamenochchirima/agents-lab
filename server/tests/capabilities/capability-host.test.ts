@@ -32,6 +32,10 @@ test('host rechecks frozen admission and authentication, deduplicates calls and 
     assert.equal((await host.execute(body,new AbortController().signal)).status,'completed');assert.equal(effects,1);
     await assert.rejects(host.execute({...body,call:{...body.call,arguments:{value:'other'}}},new AbortController().signal),/Conflicting/);
     await assert.rejects(host.execute({...body,catalogRevision:'c'.repeat(64)},new AbortController().signal),/Catalog/);
+    const changedSource={...tool,descriptor:{...tool.descriptor,source:{...tool.descriptor.source,digest:'c'.repeat(64)}}};
+    const replacementHost=new CapabilityHost(evidence,[changedSource],'b'.repeat(64));
+    await assert.rejects(replacementHost.execute({...body,call:{...body.call,toolCallId:'changed-source'}},new AbortController().signal),/Frozen source is unavailable or changed/);
+    assert.equal(effects,1,'a retained manifest must not dispatch a replacement source under its old authority');
     const invalid=await host.execute({...body,call:{...body.call,toolCallId:'two',arguments:{value:12}}},new AbortController().signal);
     assert.equal(invalid.status,'failed');assert.equal(effects,1);
     const denied=buildRunManifest({...manifest,task:manifest.task,capabilities:{...manifest.capabilities!,tools:{...manifest.capabilities!.tools,approvedNames:[]}}},{runId:'denied-run',context:{turnId:'test-turn'}});

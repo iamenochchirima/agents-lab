@@ -3,6 +3,31 @@ import test from "node:test";
 
 import { CapabilityCatalog, builtinToolDescriptors, createDefaultCapabilityCatalog } from "../../src/capabilities/catalog.js";
 import { createProjectedToolRegistry } from "../../src/capabilities/extensions/projection.js";
+import { createRuntimeToolRegistry } from "../../src/capabilities/extensions/runtime.js";
+import { projectToolResult, toolResultEvidence } from "../../src/capabilities/tools/result-projection.js";
+import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
+
+test("retained schema-v1 built-in manifests execute without new catalog or effect fields", async () => {
+  const retained = JSON.parse(JSON.stringify(buildRunManifest({
+    platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "Add two numbers." },
+    model: { provider: "fake", model: "fake-tool-call" },
+    capabilities: { tools: { enabledNames: ["calculator"], maxCalls: 1, maxRounds: 2 } },
+  }, { runId: "legacy-schema-one" })));
+  assert.equal(retained.schemaVersion, 1);
+  assert.equal(retained.capabilities.toolCatalog, undefined);
+  assert.equal(retained.capabilities.approvals, undefined);
+  const registry = createRuntimeToolRegistry(retained.capabilities.tools, retained.capabilities.toolCatalog);
+  const call = registry.validateCall({ toolCallId: "legacy-calculator", name: "calculator", round: 1,
+    arguments: { operation: "add", left: 17, right: 25 } });
+  assert.equal(call.accepted, true);
+  if (!call.accepted) return;
+  assert.equal(call.definition.approvalMode, undefined);
+  const result = await registry.execute(call, { runId: retained.runId, turnId: "legacy-turn", signal: new AbortController().signal });
+  assert.equal(result.status, "completed");
+  assert.deepEqual(JSON.parse(projectToolResult(result).content), { value: 42 });
+  assert.equal(result.effect, undefined, "Legacy completion must not invent confirmed business effects");
+  assert.equal(toolResultEvidence(result).effect, undefined);
+});
 
 test("default capability profiles are server-owned and resolve read-only grants", () => {
   const catalog = createDefaultCapabilityCatalog(() => "2026-09-20T00:00:00.000Z");
