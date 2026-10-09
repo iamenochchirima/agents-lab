@@ -113,6 +113,8 @@ connection and resource; changing a destination does not transfer an old token
 to the new destination.
 
 Network policy permits supported public destinations and local loopback services.
+Each backend request pins the validated DNS address and its IPv4/IPv6 family;
+the original hostname still controls HTTP routing and TLS certificate validation.
 Private network hosts require the explicit comma-separated
 `AGENTLAB_CAPABILITY_PRIVATE_HOSTS` deployment allowlist. Redirects and resolved
 addresses are checked by the integration host. Do not expand that allowlist merely

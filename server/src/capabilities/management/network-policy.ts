@@ -32,6 +32,9 @@ export class IntegrationNetworkPolicy {
     return new Promise<Response>((resolve, reject) => {
       const request = (target.url.protocol === 'https:' ? httpsRequest : httpRequest)(target.url, {
         method: init.method ?? 'GET', headers, signal: init.signal ?? undefined, agent: false,
+        // DNS has already been validated and pinned. Node's automatic family
+        // selection otherwise requests an address array from this scalar lookup.
+        family: target.family,
         lookup: (_hostname, _options, callback) => callback(null, target.address, target.family),
       }, response => {
         if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400) { response.destroy(); reject(new Error('Integration redirects require a separately validated endpoint.')); return; }

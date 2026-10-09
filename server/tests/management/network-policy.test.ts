@@ -3,6 +3,16 @@ import test from 'node:test';
 import { createServer } from 'node:http';
 import { IntegrationNetworkPolicy } from '../../src/capabilities/management/network-policy.js';
 
+test('hostname requests use the validated DNS address with Node family selection enabled by default', async () => {
+  const server = createServer((_request, response) => { response.end('connected'); });
+  await new Promise<void>(resolve => server.listen(0, 'localhost', resolve));
+  try {
+    const address = server.address(); if (!address || typeof address === 'string') throw new Error('No fixture port');
+    const response = await new IntegrationNetworkPolicy().fetch(`http://localhost:${address.port}`, { signal: AbortSignal.timeout(2000) });
+    assert.equal(await response.text(), 'connected');
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
 test('integration policy permits explicit loopback but blocks metadata and credential URLs', async () => {
   const server = createServer((_request, response) => { response.setHeader('content-type', 'application/json'); response.end('{"connected":true}'); });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
