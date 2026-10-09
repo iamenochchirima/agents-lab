@@ -9,9 +9,9 @@ export function canReviewAction(action: InvocationReviewView, now = Date.now()):
 export function invocationDecision(action: InvocationReviewView, decision: InvocationDecision["decision"], decisionId: string): InvocationDecision {
   return { requestId: action.requestId, revision: action.revision, argumentDigest: action.argumentDigest, decisionId, decision, reason: decision === "denied" ? "Action denied from Chat." : "Action approved from Chat." };
 }
-/** New chats use the built-in profile that exists independently of managed packages. */
+/** New platform chats implicitly use the shared connected-tools profile. */
 export function defaultCapabilityProfile(_platform: string, _variant: string): string {
-  return "local-safe";
+  return "connected-agent";
 }
 
 

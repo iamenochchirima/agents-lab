@@ -29,6 +29,13 @@ test("managed seed imports once and profile edits survive restart independently 
     assert.equal(service.repository.read().profiles[0].id, "seed-agent");
     await service.saveProfile(service.repository.read().revision, { id: "focused-agent", version: "1.0.0", displayName: "Focused agent", packages: ["procedures"], skills: ["procedures:notes-check"] });
     assert.deepEqual(service.loaded.profiles.find(p => p.id === "focused-agent")?.availableSkills?.map(skill => skill.id), ["procedures:notes-check"]);
+    const connected = service.loaded.profiles.find(p => p.id === "connected-agent");
+    assert.ok(connected, "ordinary platform chat receives an automatically composed capability set");
+    assert.deepEqual(connected.availableSkills?.map(skill => skill.id), ["procedures:notes-check"]);
+    assert.ok(connected.grants.some(grant => grant.capabilityId === "calculator"), "the built-in calculator remains available");
+    assert.ok(connected.grants.some(grant => grant.capabilityId === "fixture_lookup"), "the existing read-only local tool remains available");
+    assert.deepEqual(connected.skillIds, ["research-summary"], "the existing built-in skill remains available");
+    assert.ok(connected.grants.some(grant => grant.capabilityId.endsWith("_list_skills")), "enabled skills expose discovery and loading tools");
     const revision = service.repository.read().revision;
     await service.close();
     await rm(seedPath);
@@ -37,6 +44,7 @@ test("managed seed imports once and profile edits survive restart independently 
     assert.ok(createPackageCapabilityCatalog(service.loaded).get("focused-agent"));
     assert.equal(service.repository.read().packages[0].source, "skills");
     await assert.rejects(service.saveProfile(revision, { id: "procedures", version: "1.0.0", displayName: "Colliding profile", packages: ["procedures"] }), /duplicated|collid/i);
+    await assert.rejects(service.saveProfile(revision, { id: "connected-agent", version: "1.0.0", displayName: "Override automatic chat", packages: [] }), /reserved/i);
     assert.equal(service.repository.read().revision, revision, "Failed admission must not publish unusable profile metadata");
   } finally { await service.close(); }
 });
@@ -55,6 +63,9 @@ test("profile-selected skills exclude siblings from schemas and actual execution
   try {
     const profile = { id: "chosen-agent", version: "1.0.0", displayName: "Chosen agent", packages: ["procedures"], skills: ["procedures:chosen-procedure"] };
     await service.saveProfile(service.repository.read().revision, profile);
+    const connected = service.loaded.profiles.find(value => value.id === "connected-agent")!;
+    assert.deepEqual(connected.availableSkills?.map(skill => skill.id), ["procedures:chosen-procedure", "procedures:sibling-procedure"], "normal chat sees all skills in enabled packages without requiring activation");
+    assert.ok(connected.grants.some(grant => grant.capabilityId.endsWith("_load_skill")));
     const admitted = createPackageCapabilityCatalog(service.loaded).get(profile.id)!;
     assert.deepEqual(admitted.availableSkills?.map(skill => skill.id), profile.skills);
     const enabled = admitted.grants.filter(grant => grant.enabled).map(grant => grant.capabilityId);
@@ -78,6 +89,9 @@ test("profile-selected skills exclude siblings from schemas and actual execution
     await assert.rejects(resource.implementation.execute({ name: "sibling-procedure", path: "reference.txt" }, context), /not selected/i);
     const pkg = service.repository.read().packages.find(pkg => pkg.id === "procedures")!;
     await service.savePackage(service.repository.read().revision, { ...pkg, enabled: false });
+    const disconnected = service.loaded.profiles.find(value => value.id === "connected-agent")!;
+    assert.deepEqual(disconnected.availableSkills, [], "disabled package skills are removed from normal chat");
+    assert.deepEqual(disconnected.grants.map(grant => grant.capabilityId).sort(), ["calculator", "fixture_lookup"], "disabled package tools are not admitted");
     assert.ok(service.loaded.profiles.find(value => value.id === profile.id)?.unavailableReason);
     await service.saveProfile(service.repository.read().revision, { ...profile, version: "1.0.1" });
     assert.ok(createPackageCapabilityCatalog(service.loaded).get(profile.id)?.unavailableReason);
@@ -126,6 +140,10 @@ test("saved PAT discovers live MCP tools, updates profile and rejects stale auth
     await service.saveProfile(service.repository.read().revision, { id: "notes-agent", version: "1.0.0", displayName: "Notes agent", packages: [pkg.id],
       tools: [{ packageId: pkg.id, name: tool.descriptor.definition.name, enabled: true, riskClass: "external", approvalMode: "automatic" }] });
     assert.equal(createPackageCapabilityCatalog(service.loaded).get("notes-agent")?.grants[0].approvalMode, "none");
+    const connected = service.loaded.profiles.find(value => value.id === "connected-agent")!;
+    assert.ok(connected.grants.some(grant => grant.capabilityId === tool.descriptor.definition.name), "normal chat includes discovered tools from enabled connections");
+    assert.ok(connected.grants.some(grant => grant.capabilityId === "calculator"));
+    assert.ok(createPackageCapabilityCatalog(service.loaded).get("connected-agent"), "the automatically composed chat inventory can be admitted by every platform adapter");
     const oldTool = service.loaded.tools.find(value => value.descriptor.definition.name === tool.descriptor.definition.name)!;
     assert.equal((await invoke(oldTool)).status, "completed");
     assert.equal(calls, 1);

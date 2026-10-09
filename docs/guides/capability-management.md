@@ -43,11 +43,11 @@ If the capability service is unavailable, check that the Lab API is running at
 the configured URL and choose **Try again**. A failed request does not mean the
 saved connector list is empty. Local sessions renew automatically without a prompt.
 
-New chats start with the built-in **Local safe** profile. Select another saved
-profile to use its connected tools. A missing recorded profile is shown as
-unavailable rather than displaying a different selection. Tools are scoped to
-the selected profile; connecting a service does not expose its tools to every
-chat. Use **New chat** before changing the profile of an established session.
+Normal platform chats automatically receive tools from enabled, available shared
+packages. A new chat captures that inventory; established runs keep the exact
+capabilities admitted when they started. Controlled setup and comparison runs
+can still select an explicit saved profile. A missing recorded profile is shown
+as unavailable rather than silently switching to another selection.
 Agent replies render Markdown lists, emphasis, links, code blocks and tables;
 user messages retain their literal formatting.
 

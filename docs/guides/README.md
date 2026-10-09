@@ -7,8 +7,8 @@ Guides should state prerequisites, commands, expected output, cleanup, and commo
 - [Capability packages](capability-packages.md) gives native agents connected tools, optional external document access,
   procedural skills and configured MCP/HTTP operations.
 
-- [Connected business agents](connected-business-agents.md) covers service setup,
-  connection administration and action review across the four baselines.
+- [Run an agent with connected tools](connected-agent-tools.md) covers service
+  setup, shared platform-chat tools and action review across the four baselines.
 
 - [Connected tool compatibility](connected-tool-compatibility.md) records supported
   transports, authentication, action review, results and recovery limits.

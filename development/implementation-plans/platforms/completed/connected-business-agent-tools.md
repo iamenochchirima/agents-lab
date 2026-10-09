@@ -695,7 +695,7 @@ are complete for the declared four-baseline subset. The optional external compat
 not run because no suitable third-party connection is configured.
 
 A concrete manual approve/deny recipe is now in the
-[business-agent guide](../../../../docs/guides/connected-business-agents.md#manually-verify-action-review).
+[connected-tools guide](../../../../docs/guides/connected-agent-tools.md#manually-verify-action-review).
 It specifies valid fresh namespaces, exact UI labels, pending zero-effect state,
 independent provider inspection, approval/denial outcomes, screenshots and run IDs.
 The recipe was checked against configuration, routes and current component labels;

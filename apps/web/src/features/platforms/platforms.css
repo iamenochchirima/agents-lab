@@ -1009,6 +1009,45 @@
   color: var(--text-2);
 }
 
+.chat-connected-capabilities {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.chat-connected-capabilities > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.chat-connected-capabilities strong {
+  color: var(--text-2);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.chat-connected-capabilities span {
+  color: var(--text-3);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.chat-capability-list summary {
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 0.66rem;
+}
+
+.chat-capability-list ul {
+  color: var(--text-3);
+  font-size: 0.66rem;
+  line-height: 1.45;
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
 .capability-approval-dialog {
   background: var(--surface);
   border: 1px solid var(--border-strong);

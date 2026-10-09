@@ -1,4 +1,4 @@
-# Run a connected business agent
+# Run an agent with connected tools
 
 Mastra, LangGraph, Temporal and Restate baselines use configured MCP/HTTP tools
 through their own native agent loops. Tools come from trusted package declarations;
@@ -47,12 +47,13 @@ example, a page at `http://localhost:5173` needs that origin even if its API is
 `http://127.0.0.1:4322`. The default `http://127.0.0.1:5173` is a different origin.
 Restart the API after changing its origin configuration.
 
-## Select connections and review actions
+## Chat with the shared tools
 
-In platform Chat, choose `support-agent`. The connection panel shows configured
-identity and availability. Refresh retries discovery; reconnect creates new authority
-after revoke. These are trusted local administrative operations, not a product login
-system. Unsupported transports or missing credentials remain unavailable.
+Open Chat on the platform you want to use. New chats automatically receive tools and
+skills from enabled, available packages, including the configured support service.
+There is no profile or skill selection step. Use **Plugins** to check connections,
+refresh discovery, or manage which tools and approval rules are enabled. Unsupported
+transports or missing credentials remain unavailable.
 
 Ask the agent to inspect the fictional customer/order and adjustment policy, load
 the customer-support skill, propose a permitted adjustment and verify the saved state.
@@ -62,13 +63,14 @@ An expired proposal needs fresh review; old decisions cannot authorize its new r
 If delivery of an already-retained decision fails, continue that reviewed action with
 the same decision identity rather than approving a new operation.
 
-Reopening a saved Chat run restores its admitted capability profile, requested skills
-and run options from the manifest. The selected connection panel still shows current
-connection availability; retained authority and provider receipts are run evidence.
+Reopening a saved Chat run restores its admitted tools, skills and run options from
+the manifest. Current connection availability is managed from **Plugins**; retained
+authority and provider receipts remain part of the run evidence.
 
-Choose `workspace-agent` for document work. File tools execute in the external
-provider; they do not expose the Lab server's filesystem. Reports and follow-up
-corrections stay in provider-owned session storage.
+If an external document provider is enabled, its tools are also included in normal
+platform Chat. File operations execute in that provider; the Lab does not expose a
+native agent filesystem. Reports and follow-up corrections stay in provider-owned
+storage.
 
 ## Manually verify action review
 
@@ -76,12 +78,12 @@ This walkthrough checks the actual browser controls. API fixtures and component
 checks do not establish that the browser interaction works. Use the fictional
 development service above and record the selected platform, model and run IDs.
 
-1. Open a baseline platform's Chat, start **New chat**, choose `support-agent`,
-   and select an approved currently available free tool model. Under **Run options**,
+1. Open a baseline platform's Chat, start **New chat**, and select an approved
+   currently available free tool model. Under **Run options**,
    choose **Free model capability trial** to enforce server-owned price ceilings
    and disable paid fallback. Confirm that
-   **Fictional customer support** is available in the connection panel. If needed,
-   use **Refresh** and record any connection error before submitting a task.
+   the shared **Tools** list includes the support actions. If needed, open **Plugins**
+   to inspect the connection and refresh discovery before submitting a task.
 2. Choose an unused lowercase namespace beginning `cap-ui-approve-`, followed by
    a short unique suffix. Substitute it for `NAMESPACE` in this prompt:
 

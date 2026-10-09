@@ -6,9 +6,9 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
-import { CapabilityPicker } from "./CapabilityPicker";
+import { ConnectedCapabilitiesSummary } from "./ConnectedCapabilitiesSummary";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
-import { defaultCapabilityProfile, toolOutcomeView } from "./connectedToolState";
+import { defaultCapabilityProfile, requiresUpfrontApproval, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -24,8 +24,9 @@ import {
   getRunToolReceiptUrl,
   PlatformApiError,
   resumeRun,
-  type ModelSelection,
   type CapabilityApproval,
+  type CapabilityProfile,
+  type ModelSelection,
   type PlatformConnectivity,
   type PlatformRunRequest,
   type RunEvidenceFile,
@@ -52,7 +53,10 @@ export function PlatformChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
   const [capabilityProfileId, setCapabilityProfileId] = useState(() => defaultCapabilityProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
+  const [connectedProfile, setConnectedProfile] = useState<CapabilityProfile | null>(null);
   const [capabilityApprovals, setCapabilityApprovals] = useState<readonly CapabilityApproval[]>([]);
+  const [grantReviewOpen, setGrantReviewOpen] = useState(false);
+  const [pendingGrantPrompt, setPendingGrantPrompt] = useState<string | null>(null);
   const [requestedSkillIds, setRequestedSkillIds] = useState<readonly string[]>([]);
   const [scenarioId, setScenarioId] = useState(scenarioCatalog[0].id);
   const [backendProfileId, setBackendProfileId] = useState(platform.backendProfiles[0]?.id ?? "");
@@ -89,11 +93,12 @@ export function PlatformChatPage() {
     if (latestRun?.manifest.platform === platform.id && latestRun.manifest.variant === variantId) {
       setCapabilityProfileId(latestRun.manifest.capabilities?.profileId ?? defaultCapabilityProfile(platform.id, variantId));
       setRequestedSkillIds(latestRun.manifest.capabilities?.requestedSkillIds ?? []);
-      setCapabilityApprovals([]);
+      setCapabilityApprovals(latestRun.manifest.capabilities?.approvals ?? []);
       return;
     }
     setCapabilityProfileId(defaultCapabilityProfile(platform.id, variantId));
-    setCapabilityApprovals([]); setRequestedSkillIds([]);
+    setRequestedSkillIds([]);
+    setCapabilityApprovals([]);
   }, [platform.id, variantId, latestRun]);
 
   useEffect(() => {
@@ -160,7 +165,10 @@ export function PlatformChatPage() {
     setBackendProfileId(platform.backendProfiles[0]?.id ?? "");
     setVariantId(platform.variants[0]?.id ?? "baseline");
     setCapabilityProfileId(defaultCapabilityProfile(platform.id, platform.variants[0]?.id ?? "baseline"));
-    setCapabilityApprovals([]); setRequestedSkillIds([]);
+    setRequestedSkillIds([]);
+    setCapabilityApprovals([]);
+    setGrantReviewOpen(false);
+    setPendingGrantPrompt(null);
     setInfrastructureId(platform.infrastructure[0]?.id ?? "none");
     eventCursor.current = 0;
     conversationVersion.current += 1;
@@ -281,11 +289,25 @@ export function PlatformChatPage() {
     }
   }, [activeRunId, latestRun, searchParams]);
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit || !selectedModel) return;
 
     const text = prompt.trim();
+    const requiredGrants = capabilityProfileId === "connected-agent"
+      ? connectedProfile?.capabilities.filter(requiresUpfrontApproval) ?? []
+      : [];
+    const missingApproval = requiredGrants.some(capability => !hasCurrentApproval(capabilityApprovals, capability.id, capability.version));
+    if (missingApproval) {
+      setPendingGrantPrompt(text);
+      setGrantReviewOpen(true);
+      return;
+    }
+    void startPrompt(text, capabilityApprovals);
+  }
+
+  async function startPrompt(text: string, approvals: readonly CapabilityApproval[]): Promise<void> {
+    if (!selectedModel) return;
     const currentConversationVersion = conversationVersion.current;
     const clientTurnId = preservesSession ? createClientTurnId() : undefined;
     const requestSessionId = preservesSession ? sessionId ?? createId("session") : undefined;
@@ -296,7 +318,7 @@ export function PlatformChatPage() {
       variant: variantId,
       task: { kind: "prompt", prompt: text },
       model: selectedModel,
-      capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, requestedSkillIds, ...(capabilityApprovals.length > 0 ? { approvals: capabilityApprovals } : {}) },
+      capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, requestedSkillIds, ...(approvals.length > 0 ? { approvals } : {}) },
       ...(preservesSession && requestSessionId ? { sessionId: requestSessionId } : {}),
       ...(clientTurnId ? { clientTurnId } : {}),
       selection: {
@@ -328,6 +350,28 @@ export function PlatformChatPage() {
     setPrompt("");
     if (requestSessionId && requestSessionId !== sessionId) setSessionId(requestSessionId);
     await dispatchTurn(pendingTurn);
+  }
+
+  function decideToolGrant(decision: CapabilityApproval["decision"]): void {
+    const capabilities = connectedProfile?.capabilities.filter(requiresUpfrontApproval) ?? [];
+    const decidedAt = new Date();
+    const expiresAt = new Date(decidedAt.getTime() + 15 * 60 * 1000);
+    const approvals = capabilities.map(capability => ({
+      schemaVersion: 1 as const,
+      decisionId: createId("approval"),
+      capabilityId: capability.id,
+      version: capability.version,
+      allowedOperations: capability.operations,
+      ...(capability.connectionRef ? { connectionRef: capability.connectionRef } : {}),
+      decision,
+      decidedAt: decidedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    }));
+    setCapabilityApprovals(approvals);
+    setGrantReviewOpen(false);
+    const approvedPrompt = pendingGrantPrompt;
+    setPendingGrantPrompt(null);
+    if (approvedPrompt) void startPrompt(approvedPrompt, approvals);
   }
 
   async function dispatchTurn(pendingTurn: PendingTurn): Promise<void> {
@@ -417,6 +461,11 @@ export function PlatformChatPage() {
     setLatestEvents([]);
     setError(null);
     setRetryTurn(null);
+    setCapabilityProfileId(defaultCapabilityProfile(platform.id, variantId));
+    setRequestedSkillIds([]);
+    setCapabilityApprovals([]);
+    setGrantReviewOpen(false);
+    setPendingGrantPrompt(null);
     clearPendingTurn(platform.id);
     eventCursor.current = 0;
     const next = new URLSearchParams(searchParams);
@@ -487,7 +536,14 @@ export function PlatformChatPage() {
               <span className={isReady ? "chat-ready" : "chat-unavailable"}>{isReady ? "Ready" : "Unavailable"}</span>
             </div>
             <ModelPicker disabled={modelPickerDisabled} onChange={setSelectedModel} value={selectedModel} />
-            <CapabilityPicker targets={[`${platform.id}/${variantId}`]} disabled={modelPickerDisabled} onChange={(profileId, approvals) => { setCapabilityProfileId(profileId); setCapabilityApprovals(approvals); }} value={capabilityProfileId} selectedSkillIds={requestedSkillIds} onSkillsChange={setRequestedSkillIds} />
+            <ConnectedCapabilitiesSummary
+              run={latestRun}
+              approvals={capabilityApprovals}
+              reviewOpen={grantReviewOpen}
+              onProfileLoaded={setConnectedProfile}
+              onReviewCancel={() => { setGrantReviewOpen(false); setPendingGrantPrompt(null); }}
+              onApprovalDecision={decideToolGrant}
+            />
             {latestRun?.manifest.capabilities?.inventory && <details className="chat-session-note capability-inventory">
               <summary>Capabilities given to the agent</summary>
               <small>{latestRun.manifest.capabilities.inventory.profile.name} · {latestRun.manifest.capabilities.inventory.profile.id} · catalog {latestRun.manifest.capabilities.inventory.toolCatalogRevision.slice(0, 12)}</small>
@@ -590,7 +646,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun,
     : null;
   const retrying = isRunRetrying(run, events);
   return (
-    <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "suspended" || run.status === "reconciliation_required"}>
+    <details className="chat-run-details" open={hasInvocationActions || run.status === "running" || run.status === "queued" || run.status === "suspended" || run.status === "reconciliation_required"}>
       <summary><span>Run details</span><small>{retrying ? "retrying" : run.status.replaceAll("_", " ")}</small></summary>
       <div className="chat-run-details-body">
         {retrying && <p className="chat-run-retrying" role="status"><LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> Retrying model request…</p>}
@@ -819,6 +875,12 @@ function clearPendingTurn(platformId: string): void {
 
 function pendingTurnStorageKey(platformId: string): string {
   return `${pendingTurnStoragePrefix}${platformId}`;
+}
+
+function hasCurrentApproval(approvals: readonly CapabilityApproval[], capabilityId: string, version: string): boolean {
+  return approvals.some(approval => approval.capabilityId === capabilityId
+    && approval.version === version
+    && Date.parse(approval.expiresAt) > Date.now());
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

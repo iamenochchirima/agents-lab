@@ -1,7 +1,8 @@
 # Connect a real notes app through MCP
 
-The `notes-agent` profile connects the upstream Memos notes application to the
-four baseline agents through the existing MCP adapter. Memos owns its account,
+This guide connects the upstream Memos notes application to the four baseline
+agents through the existing MCP adapter. Once enabled and available, the notes
+tools are included automatically in normal platform chats. Memos owns its account,
 notes and persistent database. The Lab owns tool admission, action review and
 run evidence. This connection gives models no native filesystem tools.
 
@@ -56,7 +57,7 @@ settings from `.env.capabilities`; explicitly supplied environment values take
 precedence. Keep the encryption key stable: replacing it makes existing saved
 connection credentials unreadable. Both the Memos token and encryption key are
 passed only to the API process. If either required value is missing, the saved
-credential or connection remains unavailable and the profile is not admitted.
+credential or connection remains unavailable and its tools are not admitted.
 
 For an already running control plane, preserve its port, run roots, native
 endpoints and other settings when restarting. New connection definitions require
@@ -66,8 +67,9 @@ shared private host-key file.
 
 Inspect `/api/connections` and `/api/capabilities` on the configured API port.
 An unavailable provider or missing token is reported as unavailable; startup does
-not invent a working connection. Select `notes-agent` in a baseline platform's
-Chat after availability is confirmed.
+not invent a working connection. Once the connection is available, open a new chat
+on any baseline platform. The platform's regular agent receives the Memos tools
+alongside other enabled shared tools; no notes-specific chat setup is needed.
 
 | Tool | Purpose | Review |
 | --- | --- | --- |
@@ -77,11 +79,13 @@ Chat after availability is confirmed.
 | `memo_update_memo` | Change an existing note | Exact invocation |
 | `memo_delete_memo` | Delete one note | Exact invocation |
 
-The profile exposes these five tools only. It does not supply the document,
-support or skill packages. Each tool's schema and description are discovered from
-Memos and frozen when a run is admitted. Authentication is resolved server-side;
-the model does not receive the token. No Lab session header is injected because
-Memos account permissions own the resource boundary.
+An explicit `notes-agent` profile remains available in controlled run and
+comparison flows that need only these five tools. Normal platform chats receive
+the enabled shared inventory, including the Memos tools, document or support tools,
+and skill-discovery tools as configured. Each tool's schema and description are
+discovered from its provider and frozen when a run is admitted. Authentication is
+resolved server-side; the model does not receive the token. No Lab session header
+is injected because Memos account permissions own the resource boundary.
 
 ## Verify the connection before agent trials
 

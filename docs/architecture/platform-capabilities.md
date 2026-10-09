@@ -6,8 +6,10 @@ defines bounded JSON-safe manifests, grants, risks, approvals, skills, and conne
 results; it does not import a platform SDK or call a provider.
 
 ```text
-Chat / Compare
-  -> profile ID and optional approval reference
+Normal Chat
+  -> server-composed connected-agent profile for enabled, available packages
+Run Setup / Compare
+  -> explicitly selected server-owned profile
 server admission
   -> immutable manifest + capabilities.json + CapabilityResolutionRecorded
 capability catalog
@@ -18,11 +20,20 @@ local or configured connection
   -> bounded result + native lifecycle evidence
 ```
 
-The first local profile contains `calculator`, `fixture_lookup`, and the
+The built-in `local-safe` profile contains `calculator`, `fixture_lookup`, and the
 `research-summary` skill. `fixture_write` is separate and remains unavailable until the
 run includes a matching approval. A skill becomes an untrusted developer-context
 message; it has no grants, authority, secret access, or execution path. Run evidence
 redacts skill bodies but retains safe IDs, versions, digests, and policy decisions.
+
+Normal platform Chat is composed by the capability management service when it loads
+the catalog. It preserves the read-only `local-safe` foundation (calculator,
+`fixture_lookup`, and the `research-summary` skill), adds tools from each enabled,
+available managed package, and exposes discovery/loading tools for enabled skills.
+It excludes disabled or unavailable packages. Individual tool approval modes remain
+attached to their grants, so automatically including a write tool does not
+automatically approve its invocation. Admission freezes the resulting tool schemas
+and authority for that run; later catalog changes affect only new chats.
 
 Connection seams are deliberately independent:
 
@@ -109,5 +120,5 @@ inference or effects. Skills cannot grant tool access or approve an action.
 
 The [connected architecture](extensible-capabilities.md),
 [action-review contract](../../server/src/capabilities/reviews/README.md), and
-[connected business guide](../guides/connected-business-agents.md) describe these
+[connected tools guide](../guides/connected-agent-tools.md) describe these
 paths and their explicit local-deployment and recovery limits.

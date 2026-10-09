@@ -51,12 +51,16 @@ facts used by the platform workspace and coverage screen. The runner collects a
 platform's server profile, infrastructure, variant, model, and experiment configuration;
 its start controls remain unavailable until they can create real evidence.
 
-Platform Chat and Compare consume server-owned capability profiles. Chat shows the
-selected model, capability names, tool/connection activity, approval state, context-window
-usage, and native run details through progressive disclosure. Compare sends the same task
-and profile to independent platform runs; each row keeps its own session, grant set,
-native execution identity, and evidence. Missing services, denied policy, cancellation,
-and unknown external outcomes remain explicit UI states.
+Normal Platform Chat automatically receives the enabled, available shared tool and
+skill inventory for a new run, without asking the user to choose a profile or activate
+a skill. The server records that resolved set as the run's immutable internal profile
+snapshot. Run Setup and Compare can still select explicit profiles for controlled
+experiments. Chat shows the selected model, available capabilities, tool/connection
+activity, approval state, context-window usage, and native run details through
+progressive disclosure. Compare sends the same task and explicit profile to independent
+platform runs; each row keeps its own session, grant set, native execution identity,
+and evidence. Missing services, denied policy, cancellation, and unknown external
+outcomes remain explicit UI states.
 
 The frontend uses a browser-history route tree rather than a custom hash router. The
 route composition is kept in `apps/web/src/routes/router.tsx`; layout modules render

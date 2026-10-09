@@ -1,10 +1,13 @@
 # Give native agents tools and skills
 
-The default example package configuration supplies procedural skills through a
-reproducible capability profile. Optional document tools connect through an
-external MCP provider; the Lab runtime does not manage an agent filesystem. Agents on Mastra, LangGraph, Temporal and Restate
-receive the selected tool declarations through native adapters. Source execution
-uses the control plane's authenticated capability host.
+The default example package configuration supplies procedural skills. Normal
+platform chats automatically receive tools and skill-discovery tools from enabled,
+available packages, plus the built-in calculator. You do not select a capability
+profile or activate a skill before chatting. Optional document tools connect through
+an external MCP provider; the Lab runtime does not manage an agent filesystem.
+Agents on Mastra, LangGraph, Temporal and Restate receive the shared tool declarations
+through native adapters. Source execution uses the control plane's authenticated
+capability host.
 
 Follow [local development setup](local-development.md) first. Start the platform
 service or worker you intend to use. Free-model runs require an OpenRouter
@@ -12,8 +15,8 @@ credential in server-owned configuration and a currently available zero-priced
 model. Paid models are outside unattended evaluation use.
 
 For CRUD operations against an upstream notes application, follow
-[the Memos connection guide](memos-notes.md). Its dedicated profile uses the same
-MCP adapter and requires review of each create, update or delete action.
+[the Memos connection guide](memos-notes.md). Once enabled, its tools appear in
+normal platform chats; create, update and delete actions still require review.
 
 ## Load the example
 
@@ -60,9 +63,10 @@ workers; do not copy its value into a run, browser setting or committed config.
 
 ## Run a useful task
 
-With the optional provider configured, in a platform's Chat select `workspace-agent` and a free model from the available
-model catalog. Approve the scoped workspace writes through the normal capability
-approval control. The model can then use:
+With the optional provider configured, open a platform's Chat and choose a free
+model from the available model catalog. The enabled package tools are supplied
+automatically. Approve scoped writes through the normal capability approval
+control. The model can then discover and use:
 
 | Tools | Purpose |
 | --- | --- |
@@ -97,8 +101,9 @@ load does not duplicate context. Changed package content requires a new session;
 the previous procedure is not silently rewritten. Each retained activation is
 limited to 64 KiB and participates in the normal safe context budget.
 
-Chat exposes persisted skill and reference identities under Loaded skills and references.
-The identities come from session state; selecting a skill alone does not claim it loaded.
+The model can discover the enabled skills and load the relevant instructions when
+needed. Chat evidence records which skill instructions and references were actually
+loaded; merely having a skill available does not claim it was used.
 
 Inspect the actual model decisions, tool results and saved artifact. A successful
 message without the expected file is not task completion. Provider failure is
@@ -170,11 +175,12 @@ and LangGraph, and `AGENTLAB_TEMPORAL_ACTIVITY_TIMEOUT_MS=180000` for Temporal.
 The driver has a 180-second observation deadline per turn. These workload settings
 are recorded; they do not change existing baseline experiment controls.
 
-Chat supports explicit skill activation through the **Activate a skill** selector.
-**Agent chooses** leaves activation to the model. Both paths use the selected
-profile's inventory and persist authority-free skill context. Hosted packages are
-supported on the four verified baseline variants; other variants show them as
-unavailable and reject admission.
+Normal platform Chat gives the agent discovery and load tools for every skill in
+enabled, available packages, so it can choose relevant instructions during the task.
+Run Setup and comparison flows may still use an explicit profile and skill selection
+when a controlled experiment needs a fixed inventory. Hosted packages are supported
+on the four verified baseline variants; other variants show them as unavailable and
+reject admission.
 
 ## Add another package
 

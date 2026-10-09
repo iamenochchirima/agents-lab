@@ -15,8 +15,8 @@ test("invocation policy skips blanket approval and exact action review retains r
   assert.equal(canReviewAction(action, Date.parse(action.expiresAt)), false);
   assert.equal(canReviewAction({ ...action, status: "cancelled" }, Date.parse(action.createdAt)), false);
   assert.deepEqual(invocationDecision(action, "approved", "stable-decision-id"), { requestId: "action-one", revision: 3, argumentDigest: "current-arguments", decisionId: "stable-decision-id", decision: "approved", reason: "Action approved from Chat." });
-  for (const platform of ["mastra", "langgraph", "temporal", "restate"]) assert.equal(defaultCapabilityProfile(platform, "baseline"), "local-safe");
-  assert.equal(defaultCapabilityProfile("mastra", "workflow"), "local-safe"); assert.equal(defaultCapabilityProfile("inngest", "baseline"), "local-safe");
+  for (const platform of ["mastra", "langgraph", "temporal", "restate"]) assert.equal(defaultCapabilityProfile(platform, "baseline"), "connected-agent");
+  assert.equal(defaultCapabilityProfile("mastra", "workflow"), "connected-agent"); assert.equal(defaultCapabilityProfile("inngest", "baseline"), "connected-agent");
 });
 
 

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { ManagedRepository, ManagedRevisionConflict } from './repository.js';
-import { emptyManagedState, validateManagedState, type ManagedState, type ManagedConnectionRecord, type ManagedPackageRecord, type ManagedProfileRecord } from './records.js';
+import { CONNECTED_AGENT_PROFILE_ID, emptyManagedState, validateManagedState, type ManagedState, type ManagedConnectionRecord, type ManagedPackageRecord, type ManagedProfileRecord } from './records.js';
 import { EncryptedCredentialStore, type CredentialBinding, type CredentialSecret } from './credentials.js';
 import { IntegrationNetworkPolicy } from './network-policy.js';
 import { ConnectionManager, validateConnectionDefinition, type ConnectionDefinition } from '../integrations/connections.js';
@@ -10,7 +10,8 @@ import type { OAuthTokenSet, SecretStore } from '../integrations/oauth/flow.js';
 import { EncryptedFileSecretStore } from '../integrations/oauth/encrypted-file-store.js';
 import { loadCapabilityPackageRecords, type LoadedCapabilityPackages, type PackageConnectionResolver } from '../extensions/packages.js';
 import { createPackageCapabilityCatalog } from '../extensions/catalog.js';
-import { CapabilityCatalog, type CapabilityProfile } from '../catalog.js';
+import { CapabilityCatalog, DEFAULT_CAPABILITY_PROFILES, type CapabilityProfile } from '../catalog.js';
+import type { CapabilityRisk } from '../contracts.js';
 import { CapabilityHost } from '../extensions/host.js';
 import { loadMcpSource } from '../extensions/connected-sources.js';
 import type { HostedToolContribution } from '../extensions/contracts.js';
@@ -440,6 +441,49 @@ export class CapabilityManagement {
       const unavailable = record.packages.some(id => !loaded.packages.some(pkg => pkg.id === id && !pkg.unavailableReason));
       loaded.profiles.push({ ...makeProfile(record, tools), availableSkills, ...(unavailable ? { unavailableReason: 'A selected package is disabled or unavailable.' } : {}) });
     }
+    const availablePackageIds = new Set(loaded.packages.filter(pkg => !pkg.unavailableReason).map(pkg => pkg.id));
+    const activePackages = new Map(enabled.filter(pkg => availablePackageIds.has(pkg.id)).map(pkg => [pkg.id, pkg]));
+    const connectedTools = loaded.tools.filter(tool => {
+      const pkg = activePackages.get(tool.descriptor.source.id);
+      return pkg !== undefined && pkg.source !== 'skills';
+    });
+    const availableSkills = loaded.packages.filter(pkg => availablePackageIds.has(pkg.id))
+      .flatMap(pkg => pkg.skills.map(skill => ({ id: `${pkg.id}:${skill.name}`, version: pkg.version, ...skill })));
+    for (const pkg of activePackages.values()) {
+      if (pkg.source !== 'skills') continue;
+      const contributions = await skillContributions({ id: pkg.id, version: pkg.version }, pkg.root);
+      const namespaced = contributions.tools.map(tool => {
+        const name = toolName(CONNECTED_AGENT_PROFILE_ID, tool.descriptor.definition.name);
+        const definition = { ...tool.descriptor.definition, name };
+        return { ...tool, descriptor: { ...tool.descriptor, definition,
+          source: { ...tool.descriptor.source, digest: digest(JSON.stringify({ descriptor: tool.descriptor, profile: CONNECTED_AGENT_PROFILE_ID })) },
+          execution: { kind: 'hosted' as const, key: `${CONNECTED_AGENT_PROFILE_ID}:${name}` } },
+        implementation: { ...tool.implementation, definition } };
+      });
+      loaded.tools.push(...namespaced);
+      connectedTools.push(...namespaced);
+    }
+    const localSafe = DEFAULT_CAPABILITY_PROFILES.find(profile => profile.id === 'local-safe');
+    if (!localSafe) throw new Error('Built-in local-safe capabilities are unavailable.');
+    const autoRecord: ManagedProfileRecord = {
+      id: CONNECTED_AGENT_PROFILE_ID,
+      version: `1.0.${state.revision}`,
+      displayName: 'Connected tools',
+      description: 'Tools and skills enabled for normal platform chat.',
+      packages: [...activePackages.keys()],
+    };
+    const autoProfile = makeProfile(autoRecord, connectedTools);
+    loaded.profiles.push({
+      ...autoProfile,
+      skillIds: localSafe.skillIds,
+      policy: { ...autoProfile.policy,
+        allowedCapabilityIds: [...new Set([...autoProfile.policy.allowedCapabilityIds, ...localSafe.policy.allowedCapabilityIds])],
+        allowedRiskClasses: [...new Set<CapabilityRisk>([...autoProfile.policy.allowedRiskClasses, 'pure'])],
+        allowedConnectionRefs: [...new Set([...autoProfile.policy.allowedConnectionRefs, ...localSafe.policy.allowedConnectionRefs])],
+      },
+      grants: [...autoProfile.grants, ...localSafe.grants],
+      availableSkills,
+    });
     return loaded;
   }
   credentialBinding(connection: ManagedConnectionRecord, purpose = 'connection-auth'): CredentialBinding { return { ownerId: connection.owner, connectionId: connection.ref, resource: connection.resource, purpose }; }

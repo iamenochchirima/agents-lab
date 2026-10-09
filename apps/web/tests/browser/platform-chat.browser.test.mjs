@@ -64,7 +64,7 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
       target: link.getAttribute("target"),
     })))` ).then(JSON.parse);
     assert.deepEqual(evidence.map((item) => item.name), ["config.json", "capabilities.json", "events.jsonl", "logs/operations.jsonl", "context.json", "trajectory.json", "metrics.json", "result.json"]);
-    assert.ok(evidence.every((item) => item.href?.startsWith(`http://127.0.0.1:5173/api/runs/${fixture.state.runIds[0]}/evidence/`)));
+    assert.ok(evidence.every((item) => new URL(item.href ?? "", "http://127.0.0.1:5173").href.startsWith(`http://127.0.0.1:5173/api/runs/${fixture.state.runIds[0]}/evidence/`)));
     assert.ok(evidence.every((item) => item.target === "_blank"));
 
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Keep this session going.");
@@ -91,48 +91,30 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
   }
 });
 
-test("Platform Chat displays and submits the selected capability profile", async () => {
+test("Platform Chat uses shared tools without a profile selector and Run Setup retains explicit selection", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
 
   try {
     await navigate(browser.cdp, "/platforms/temporal/chat");
     await waitForText(browser.cdp, "Temporal");
+    await waitForExpression(browser.cdp, 'document.querySelector(".chat-connected-capabilities")?.textContent?.includes("Notes")');
+    assert.equal(await browser.cdp.evaluate('document.querySelector(\'select[aria-label="Capability profile"]\') === null'), true);
+    assert.equal(await browser.cdp.evaluate('document.querySelector(\'.chat-connected-capabilities a[href="/platforms/temporal/plugins"]\')?.textContent?.trim()'), "Plugins");
+    assert.match(await browser.cdp.evaluate('document.querySelector(".chat-connected-capabilities")?.textContent ?? ""'), /Tools4 available/);
+    assert.match(await browser.cdp.evaluate('document.querySelector(".chat-connected-capabilities")?.textContent ?? ""'), /Skills1 available/);
+    await clickSummary(browser.cdp, "View tools");
+    assert.match(await browser.cdp.evaluate('document.querySelector(".chat-capability-list[open]")?.textContent ?? ""'), /MCP Notes.*Approval write fixture/s);
+
     await chooseModel(browser.cdp);
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 3');
-
-    const profileOptions = await browser.cdp.evaluate(`JSON.stringify({
-      selected: document.querySelector('select[aria-label="Capability profile"]')?.selectedOptions[0]?.textContent?.trim(),
-      options: Array.from(document.querySelectorAll('select[aria-label="Capability profile"] option')).map((option) => ({ value: option.value, text: option.textContent?.trim() })),
-    })`).then(JSON.parse);
-    assert.equal(profileOptions.selected, "Local safe · 1 skill");
-    assert.deepEqual(profileOptions.options, [
-      { value: "local-safe", text: "Local safe · 1 skill" },
-      { value: "local-mcp-safe", text: "Local MCP safe" },
-      { value: "local-write-approved", text: "Local write test · 1 skill" },
-    ]);
-
-    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
-      capabilities: document.querySelector('.capability-picker-summary span')?.textContent?.trim(),
-      skills: document.querySelector('.capability-picker-summary small')?.textContent?.trim(),
-    })`).then(JSON.parse), {
-      capabilities: "Calculator, Local read fixture",
-      skills: "Research summary",
-    });
-
-    await chooseCapabilityProfile(browser.cdp, "local-safe");
-    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
-      value: document.querySelector('select[aria-label="Capability profile"]')?.value,
-      label: document.querySelector('select[aria-label="Capability profile"]')?.selectedOptions[0]?.textContent?.trim(),
-    })`).then(JSON.parse), {
-      value: "local-safe",
-      label: "Local safe · 1 skill",
-    });
-
-    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Use the selected capability profile.");
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Use the connected tools.");
     await clickButton(browser.cdp, "Send");
     await waitForText(browser.cdp, "The calculator result is 42.");
-    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "local-safe");
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "connected-agent");
+
+    await browser.cdp.evaluate('document.querySelector("a[href=\\"/platforms/temporal\\"]")?.click()');
+    await waitForElement(browser.cdp, 'textarea[aria-label="Task prompt"]');
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 4');
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -147,20 +129,10 @@ test("Platform Chat exposes the native MCP connection details", async () => {
     await navigate(browser.cdp, "/platforms/temporal/chat");
     await waitForText(browser.cdp, "Temporal");
     await chooseModel(browser.cdp);
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 3');
-    await chooseCapabilityProfile(browser.cdp, "local-mcp-safe");
-    assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
-      value: document.querySelector('select[aria-label="Capability profile"]')?.value,
-      capabilities: document.querySelector('.capability-picker-summary span')?.textContent?.trim(),
-    })`).then(JSON.parse), {
-      value: "local-mcp-safe",
-      capabilities: "Calculator, Local MCP read fixture",
-    });
-
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Read alpha through MCP.");
     await clickButton(browser.cdp, "Send");
     await waitForText(browser.cdp, "MCP fixture returned alpha.");
-    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "local-mcp-safe");
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "connected-agent");
 
     await clickSummary(browser.cdp, "Run details");
     await clickSummary(browser.cdp, "MCP connection");
@@ -176,7 +148,7 @@ test("Platform Chat exposes the native MCP connection details", async () => {
   }
 });
 
-test("Platform Chat uses an application approval dialog for a write-capable profile", async () => {
+test("a reopened chat shows its recorded capability inventory instead of the live catalog", async () => {
   const browser = await openBrowser();
   const fixture = await installFixture(browser.cdp);
 
@@ -184,25 +156,94 @@ test("Platform Chat uses an application approval dialog for a write-capable prof
     await navigate(browser.cdp, "/platforms/temporal/chat");
     await waitForText(browser.cdp, "Temporal");
     await chooseModel(browser.cdp);
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'select[aria-label="Capability profile"] option\').length === 3');
-    await chooseCapabilityProfile(browser.cdp, "local-write-approved");
-    await waitForText(browser.cdp, "Allow write access?");
-    await waitForText(browser.cdp, "Approval write fixture");
-    assert.equal(await browser.cdp.evaluate('document.querySelector(".capability-approval-dialog")?.getAttribute("role")'), "dialog");
-
-    await clickButton(browser.cdp, "Approve");
-    await waitForExpression(browser.cdp, 'document.querySelector(\'select[aria-label="Capability profile"]\')?.value === "local-write-approved"');
-    assert.equal(await browser.cdp.evaluate('document.querySelector(".capability-approval-dialog") === null'), true);
-
-    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Run with approved write capability.");
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Record this connected tool set.");
     await clickButton(browser.cdp, "Send");
     await waitForText(browser.cdp, "The calculator result is 42.");
-    const approval = fixture.state.requests[0]?.capabilities?.approvals?.[0];
-    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "local-write-approved");
-    assert.equal(approval?.capabilityId, "fixture_write");
-    assert.equal(approval?.decision, "approved");
-    assert.match(approval?.decisionId ?? "", /^approval_/);
-    assert.equal(browser.dialogs.length, 0, "capability approval must use application UI, not a browser dialog");
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "connected-agent");
+
+    fixture.setConnectedProfile({
+      ...capabilityProfiles()[0],
+      capabilities: [{ id: "live_only", version: "1.0.0", kind: "connection", displayName: "Changed live tool", description: "Current catalog only.", risk: "read", operations: ["read"] }],
+      availableSkills: [],
+    });
+    await browser.cdp.send("Page.reload", { ignoreCache: true });
+    await waitForElement(browser.cdp, ".chat-page");
+    await waitForExpression(browser.cdp, 'document.querySelector(".chat-connected-capabilities")?.textContent?.includes("memo_search")');
+    const summary = await browser.cdp.evaluate('document.querySelector(".chat-connected-capabilities")?.textContent ?? ""');
+    assert.match(summary, /memo_search/);
+    assert.doesNotMatch(summary, /Changed live tool/);
+    assert.match(await browser.cdp.evaluate('document.querySelector(".capability-inventory")?.textContent ?? ""'), /connected-agent/);
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Chat requests run-level approval only when connected tools require it", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    fixture.setConnectedProfile({
+      ...capabilityProfiles()[0],
+      capabilities: [...capabilityProfiles()[0].capabilities, {
+        id: "records_delete",
+        version: "1.0.0",
+        kind: "connection",
+        displayName: "Delete records",
+        description: "Delete a connected record.",
+        risk: "write",
+        operations: ["delete"],
+        approvalMode: "tool_grant",
+      }],
+    });
+    await navigate(browser.cdp, "/platforms/temporal/chat");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Review the delete permission.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Allow connected actions?");
+    assert.equal(fixture.state.createRequests, 0, "the run must wait for the required permission decision");
+    await clickButton(browser.cdp, "Deny");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+    assert.equal(fixture.state.requests[0]?.capabilities?.approvals?.[0]?.capabilityId, "records_delete");
+    assert.equal(fixture.state.requests[0]?.capabilities?.approvals?.[0]?.decision, "denied");
+
+    await clickButton(browser.cdp, "New chat");
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Review the permission again.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Allow connected actions?");
+    await clickButton(browser.cdp, "Approve for this run");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+    const request = fixture.state.requests[1];
+    assert.equal(request?.capabilities?.profileId, "connected-agent");
+    assert.equal(request?.capabilities?.approvals?.[0]?.capabilityId, "records_delete");
+    assert.equal(request?.capabilities?.approvals?.[0]?.decision, "approved");
+    assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("Platform Chat keeps invocation-level review for connected tools", async () => {
+  const browser = await openBrowser();
+  const fixture = await installFixture(browser.cdp);
+
+  try {
+    await navigate(browser.cdp, "/platforms/temporal/chat");
+    await waitForText(browser.cdp, "Temporal");
+    await chooseModel(browser.cdp);
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "[action] Update the connected note.");
+    await clickButton(browser.cdp, "Send");
+    await waitForElement(browser.cdp, ".invocation-review-panel");
+    await waitForText(browser.cdp, "Approve action");
+    assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "connected-agent");
+    const reviewPanel = await browser.cdp.evaluate('JSON.stringify({ label: document.querySelector(".invocation-review-panel")?.getAttribute("aria-label"), markup: document.querySelector(".invocation-review-panel")?.outerHTML })').then(JSON.parse);
+    assert.equal(reviewPanel.label, "Action review", JSON.stringify(reviewPanel));
+    await clickButton(browser.cdp, "Approve action");
+    await waitForFixture(() => fixture.state.actionDecisions.get(fixture.state.runIds[0])?.decision === "approved");
+    assert.equal(fixture.state.actionDecisions.get(fixture.state.runIds[0])?.decision, "approved");
+    assert.equal(browser.dialogs.length, 0, "invocation approval must use application UI, not a browser dialog");
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
     await browser.close();
@@ -395,7 +436,7 @@ test("Compare displays one capability profile and sends it to each platform run"
     await chooseModel(browser.cdp);
     await clickButton(browser.cdp, "Compare");
     await waitForText(browser.cdp, "One task, multiple platforms");
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 3');
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 4');
 
     await chooseCapabilityProfile(browser.cdp, "local-safe", ".compare-modal");
     assert.deepEqual(await browser.cdp.evaluate(`JSON.stringify({
@@ -405,7 +446,7 @@ test("Compare displays one capability profile and sends it to each platform run"
     })`).then(JSON.parse), {
       label: "Local safe · 1 skill",
       capabilities: "Calculator, Local read fixture",
-      skills: "Research summary",
+      skills: "Preloaded: Research summary",
     });
     await toggleComparisonPlatform(browser.cdp, "Mastra");
     await waitForExpression(browser.cdp, 'document.querySelectorAll(".comparison-platform-picker input:checked").length === 2');
@@ -432,7 +473,7 @@ test("Compare keeps MCP capability evidence independent for each platform run", 
     await chooseModel(browser.cdp);
     await clickButton(browser.cdp, "Compare");
     await waitForText(browser.cdp, "One task, multiple platforms");
-    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 3');
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(\'.compare-modal select[aria-label="Capability profile"] option\').length === 4');
     await chooseCapabilityProfile(browser.cdp, "local-mcp-safe", ".compare-modal");
     await waitForExpression(browser.cdp, 'document.querySelector(\'.compare-modal select[aria-label="Capability profile"]\')?.value === "local-mcp-safe"');
     await toggleComparisonPlatform(browser.cdp, "Mastra");
@@ -1012,6 +1053,9 @@ async function installFixture(cdp) {
     runReadsById: new Map(),
     runIds: [],
     requests: [],
+    runInventories: new Map(),
+    actionDecisions: new Map(),
+    profileCatalog: capabilityProfiles(),
     clientTurnIds: [],
     runRequests: new Map(),
     mode: "complete",
@@ -1052,7 +1096,7 @@ async function installFixture(cdp) {
 
     if (url.pathname === "/api/capabilities" && event.request.method === "GET") {
       state.capabilityRequests += 1;
-      await fulfill(cdp, event.requestId, { status: 200, body: { profiles: capabilityProfiles() } });
+      await fulfill(cdp, event.requestId, { status: 200, body: { profiles: state.profileCatalog } });
       return;
     }
 
@@ -1086,7 +1130,9 @@ async function installFixture(cdp) {
       const runId = `run-${request.platform}-${state.createRequests}`;
       state.runIds.push(runId);
       state.runRequests.set(runId, request);
-      await fulfill(cdp, event.requestId, { status: 202, body: makeRun(request, state.mode === "cancel" ? "running" : "queued", runId, state.mode) });
+      const inventory = capabilityInventory(request, state.profileCatalog);
+      state.runInventories.set(runId, inventory);
+      await fulfill(cdp, event.requestId, { status: 202, body: makeRun(request, state.mode === "cancel" ? "running" : "queued", runId, state.mode, new Set(), inventory) });
       return;
     }
 
@@ -1101,8 +1147,27 @@ async function installFixture(cdp) {
       state.runReads += 1;
       const runReads = (state.runReadsById.get(runId) ?? 0) + 1;
       state.runReadsById.set(runId, runReads);
-      const status = fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms, state.resumedRunIds, runId);
-      await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode) });
+      const awaitingToolApproval = request.task?.prompt?.startsWith("[action]") && !state.actionDecisions.has(runId);
+      const status = awaitingToolApproval ? "running" : fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms, state.resumedRunIds, runId);
+      await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode, new Set(), state.runInventories.get(runId)) });
+      return;
+    }
+
+    const actionListMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph|mastra)-\d+)\/actions$/);
+    if (actionListMatch && event.request.method === "GET") {
+      const runId = actionListMatch[1];
+      const request = state.runRequests.get(runId);
+      const actions = request?.task?.prompt?.startsWith("[action]") ? [invocationAction(runId, state.actionDecisions.get(runId))] : [];
+      await fulfill(cdp, event.requestId, { status: 200, body: { actions } });
+      return;
+    }
+
+    const actionDecisionMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph|mastra)-\d+)\/actions\/([^/]+)\/decision$/);
+    if (actionDecisionMatch && event.request.method === "POST") {
+      const runId = actionDecisionMatch[1];
+      state.actionDecisions.set(runId, JSON.parse(event.request.postData ?? "{}"));
+      const request = state.runRequests.get(runId);
+      await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, "completed", runId, state.mode, new Set(), state.runInventories.get(runId)) });
       return;
     }
 
@@ -1152,6 +1217,7 @@ async function installFixture(cdp) {
     setRestateAvailable: (available) => { state.restateAvailable = available; },
     setLangGraphAvailable: (available) => { state.langGraphAvailable = available; },
     setFailedPlatforms: (platforms) => { state.failedPlatforms = new Set(platforms); },
+    setConnectedProfile: (profile) => { state.profileCatalog = state.profileCatalog.map(candidate => candidate.id === "connected-agent" ? profile : candidate); },
   };
 }
 
@@ -1167,12 +1233,12 @@ function fixtureStatus(request, mode, runReads, cancelled, failedPlatforms = new
   return runReads > 1 ? "completed" : "running";
 }
 
-function makeRun(request, status, runIdOverride, mode = "complete", resumedRunIds = new Set()) {
+function makeRun(request, status, runIdOverride, mode = "complete", resumedRunIds = new Set(), inventory = capabilityInventory(request)) {
   const platform = request.platform ?? "temporal";
   const runId = runIdOverride ?? `run-${platform}-1`;
   const langGraph = platform === "langgraph";
   const mastra = platform === "mastra";
-  const mcp = request.capabilities?.profileId === "local-mcp-safe";
+  const mcp = request.task?.prompt === "Read alpha through MCP.";
   const compaction = (platform === "restate" || platform === "langgraph") && mode === "compaction";
   const retrying = (platform === "restate" || platform === "langgraph") && mode === "retrying";
   const approvalWorkflow = mastra && request.variant === "workflow";
@@ -1288,6 +1354,7 @@ function makeRun(request, status, runIdOverride, mode = "complete", resumedRunId
         model: request.model?.model ?? "cohere/north-mini-code:free",
         contextWindowTokens: 100_000,
       },
+      ...(request.capabilities ? { capabilities: { ...request.capabilities, ...(inventory ? { inventory } : {}) } } : {}),
       ...(isSessionPlatform ? { context: { sessionId, turnId: request.clientTurnId ?? "turn-chat", clientTurnId: request.clientTurnId, snapshotId: `snapshot-${runId}` } } : {}),
     },
     events,
@@ -1356,6 +1423,23 @@ function modelOption() {
 function capabilityProfiles() {
   return [
     {
+      id: "connected-agent",
+      version: "1.0.0",
+      displayName: "Connected tools",
+      description: "The shared default tools and connected services.",
+      available: true,
+      skills: [],
+      availableSkills: [
+        { id: "research-summary", version: "1.0.0", name: "Research summary", description: "Keeps research summaries concise and evidence-aware.", digest: "sha256:fixture-research-summary" },
+      ],
+      capabilities: [
+        { id: "calculator", version: "1.0.0", kind: "tool", displayName: "Calculator", description: "Bounded deterministic arithmetic.", risk: "pure", operations: ["calculate"] },
+        { id: "fixture_lookup", version: "1.0.0", kind: "connection", displayName: "Local read fixture", description: "Read-only provider-shaped local data.", risk: "read", operations: ["lookup"] },
+        { id: "memo_search", version: "1.0.0", kind: "connection", displayName: "MCP Notes", description: "Search connected notes.", risk: "read", operations: ["search"], approvalMode: "automatic" },
+        { id: "memo_update", version: "1.0.0", kind: "connection", displayName: "Approval write fixture", description: "A connected note update reviewed per action.", risk: "write", operations: ["update"], approvalMode: "invocation" },
+      ],
+    },
+    {
       id: "local-safe",
       version: "1.0.0",
       displayName: "Local safe",
@@ -1390,6 +1474,50 @@ function capabilityProfiles() {
       ],
     },
   ];
+}
+
+function capabilityInventory(request, profiles = capabilityProfiles()) {
+  const profile = profiles.find(candidate => candidate.id === request.capabilities?.profileId);
+  if (!profile) return null;
+  const sourceTools = profile.capabilities.map(capability => ({
+    id: capability.kind === "tool" ? "agentlab:built-in" : `fixture:${capability.id}`,
+    version: "1.0.0",
+    tools: [{
+      name: capability.id,
+      risk: capability.risk,
+      approvalMode: capability.approvalMode ?? "automatic",
+    }],
+  }));
+  const skills = [...(profile.skills ?? []), ...(profile.availableSkills ?? [])].map(skill => ({
+    ...skill,
+    activation: (profile.skills ?? []).some(preloaded => preloaded.id === skill.id) ? "preloaded" : "available",
+  }));
+  return {
+    schemaVersion: 1,
+    revision: "a".repeat(64),
+    toolCatalogRevision: "b".repeat(64),
+    profile: { id: profile.id, version: profile.version, name: profile.displayName },
+    sources: sourceTools,
+    skills,
+  };
+}
+
+function invocationAction(runId, decision) {
+  return {
+    requestId: `action-${runId}`,
+    revision: 1,
+    runId,
+    turnId: `turn-${runId}`,
+    call: { toolCallId: `call-${runId}`, name: "memo_update", round: 1 },
+    argumentDigest: "c".repeat(64),
+    sourceDigest: "d".repeat(64),
+    connectionIdentity: "memos-local",
+    displayArguments: { note: "Disposable test note" },
+    createdAt: new Date(Date.now() - 60_000).toISOString(),
+    expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    status: decision?.decision === "approved" ? "approved" : decision?.decision === "denied" ? "denied" : "pending",
+    ...(decision ? { decision } : {}),
+  };
 }
 
 async function openBrowser() {
@@ -1550,6 +1678,15 @@ async function waitForExpression(cdp, expression, timeoutMs = 10_000) {
     await delay(50);
   }
   throw new Error(`Timed out waiting for expression: ${expression}`);
+}
+
+async function waitForFixture(predicate, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await delay(50);
+  }
+  throw new Error("Fixture did not receive the expected approval decision.");
 }
 
 function waitForCdpEvent(cdp, method, timeoutMs = 10_000) {
