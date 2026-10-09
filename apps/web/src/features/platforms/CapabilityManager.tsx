@@ -8,6 +8,7 @@ import {
 } from "./managementApi";
 import "./management.css";
 import { ConnectorDirectory, ConnectorModal } from "./ConnectorDirectory";
+import { ConnectorAddFlow } from "./ConnectorAddFlow";
 
 type Tab = "Connections" | "Tools" | "Skills" | "Plugins" | "Profiles";
 const tabs: Tab[] = ["Connections", "Tools", "Skills", "Plugins", "Profiles"];
@@ -78,8 +79,8 @@ export function CapabilityManager({ onClose, onChanged, presentation = "dialog" 
       <nav className="cap-manager-tabs" aria-label="Capability categories">{tabs.map(item => <button key={item} className={item === tab ? "active" : ""} aria-current={item === tab ? "page" : undefined} type="button" onClick={() => { setTab(item); setError(null); }} disabled={busy}>{item === "Connections" ? "Connectors" : item}</button>)}{state && <button className="cap-manager-reload" type="button" disabled={busy} onClick={() => void run(async () => setState(await getManagementState()))}>Reload</button>}</nav>
       {loadFailed ? <div className="cap-manager-body"><p className="cap-manager-muted">The capability service is unavailable. Your saved connectors have not been removed.</p><button type="button" className="button button-primary" disabled={busy} onClick={() => void load()}>Try again</button></div> : !state ? <p className="cap-manager-body" role="status">Loading connections…</p> : <>
         <div className="cap-manager-body">
-          {authorizationUrl && <p><a href={authorizationUrl} rel="noreferrer" target="_blank">Continue account authorization</a><span className="cap-manager-muted"> · Refresh the connection after returning.</span></p>}
-          {tab === "Connections" && <Connections state={state} busy={busy} run={run} publish={publish} operate={operate} error={error} authorizationUrl={authorizationUrl} />}
+          {authorizationUrl && <p><a href={authorizationUrl} rel="noreferrer" target="_blank">Continue account authorization</a><span className="cap-manager-muted"> · After approval, return and choose Discover tools.</span></p>}
+          {tab === "Connections" && <Connections state={state} busy={busy} run={run} publish={publish} operate={operate} error={error} authorizationUrl={authorizationUrl} onAuthorization={setAuthorizationUrl} onClearAuthorization={() => setAuthorizationUrl(null)} />}
           {tab === "Tools" && <Tools state={state} busy={busy} run={run} publish={publish} />}
           {(tab === "Skills" || tab === "Plugins") && <Installations key={tab} state={state} kind={tab} busy={busy} run={run} publish={publish} />}
           {tab === "Profiles" && <Profiles state={state} busy={busy} run={run} publish={publish} />}
@@ -105,22 +106,23 @@ function Tools({ state, busy, run, publish }: Shared) {
   </>;
 }
 
-function Connections({ state, busy, run, publish, operate, error, authorizationUrl }: Shared & { operate: (ref: string, action: "discover" | "connect" | "refresh" | "revoke") => Promise<void>; error: string | null; authorizationUrl: string | null }) {
+function Connections({ state, busy, run, publish, operate, error, authorizationUrl, onAuthorization, onClearAuthorization }: Shared & { operate: (ref: string, action: "discover" | "connect" | "refresh" | "revoke") => Promise<void>; error: string | null; authorizationUrl: string | null; onAuthorization: (url: string) => void; onClearAuthorization: () => void }) {
   const [selectedRef, setSelectedRef] = useState<string | null>(null);
   const [editing, setEditing] = useState<ConnectionRecord | "new" | null>(null);
   const [editingPackage, setEditingPackage] = useState<PackageRecord | null>(null);
   const [apiEditor, setApiEditor] = useState(false);
+  const [adding, setAdding] = useState(false);
   const selected = state.connections.find(item => item.ref === selectedRef);
   const packages = selected ? state.packages.filter(item => item.connectionRef === selected.ref) : [];
   const counts = Object.fromEntries(state.connections.map(connection => [connection.ref, state.packages.filter(item => item.connectionRef === connection.ref && item.enabled !== false).reduce((total, item) => total + (item.tools?.length ?? state.capabilitiesByPackage?.[item.id]?.length ?? item.operations?.length ?? 0), 0)]));
-  function close() { setEditing(null); setEditingPackage(null); setSelectedRef(null); setApiEditor(false); }
-  const title = editing ? editing === "new" ? "Add connector" : "Edit connector" : editingPackage ? "Choose tools" : apiEditor ? "Add HTTP integration" : selected?.displayName ?? "Connector";
+  function close() { setEditing(null); setEditingPackage(null); setSelectedRef(null); setApiEditor(false); setAdding(false); }
+  const title = editing ? editing === "new" ? "Add custom MCP server" : "Edit connector" : editingPackage ? "Choose tools" : apiEditor ? "Add HTTP integration" : adding ? "Add a connector" : selected?.displayName ?? "Connector";
   return <>
-    <ConnectorDirectory connections={state.connections} toolCounts={counts} busy={busy} onAdd={() => setEditing("new")} onSelect={setSelectedRef} />
-    {(editing || editingPackage || selected || apiEditor) && <ConnectorModal title={title} busy={busy} onClose={close}>
+    <ConnectorDirectory connections={state.connections} toolCounts={counts} busy={busy} onAdd={() => { onClearAuthorization(); setAdding(true); }} onSelect={ref => { onClearAuthorization(); setSelectedRef(ref); }} />
+    {(editing || editingPackage || selected || apiEditor || adding) && <ConnectorModal title={title} busy={busy} onClose={close}>
       {error && <p className="cap-manager-error" role="alert">{error}</p>}
       {authorizationUrl && <p><a href={authorizationUrl} target="_blank" rel="noreferrer">Continue account authorization</a></p>}
-      {editing ? <ConnectionForm key={editing === "new" ? "new" : editing.ref} connection={editing === "new" ? undefined : editing} state={state} busy={busy} run={run} publish={value => { publish(value); setEditing(null); }} cancel={() => setEditing(null)} /> : editingPackage ? <ToolPackageForm key={editingPackage.id} capabilityPackage={editingPackage} tools={state.discovery?.[editingPackage.connectionRef ?? ""] ?? []} state={state} busy={busy} run={run} publish={value => { publish(value); setEditingPackage(null); }} cancel={() => setEditingPackage(null)} /> : apiEditor ? <HttpPackageForm state={state} busy={busy} run={run} publish={value => { publish(value); close(); }} /> : selected && <>
+      {editing ? <ConnectionForm key={editing === "new" ? "new" : editing.ref} connection={editing === "new" ? undefined : editing} state={state} busy={busy} run={run} publish={value => { publish(value); setEditing(null); }} cancel={() => setEditing(null)} /> : editingPackage ? <ToolPackageForm key={editingPackage.id} capabilityPackage={editingPackage} tools={state.discovery?.[editingPackage.connectionRef ?? ""] ?? []} state={state} busy={busy} run={run} publish={value => { publish(value); setEditingPackage(null); }} cancel={() => setEditingPackage(null)} /> : apiEditor ? <HttpPackageForm state={state} busy={busy} run={run} publish={value => { publish(value); close(); }} /> : adding ? <ConnectorAddFlow state={state} busy={busy} run={run} publish={publish} onCustom={() => { setAdding(false); setEditing("new"); }} onCancel={close} onAuthorization={onAuthorization} onComplete={() => setAdding(false)} /> : selected && <>
         <p className="cap-manager-muted">{selected.status === "available" ? "Connected" : selected.status?.replaceAll("_", " ") ?? "Needs setup"}{!selected.enabled ? " · disabled" : ""}</p>
         <div className="connector-detail-actions"><button type="button" className="button button-primary" disabled={busy} onClick={() => void operate(selected.ref, "discover")}>Discover tools</button>{selected.auth.kind === "oauth" && <button type="button" className="quiet-button" disabled={busy} onClick={() => void operate(selected.ref, "connect")}>Connect account</button>}<button type="button" className="quiet-button" disabled={busy} onClick={() => void operate(selected.ref, "refresh")}>Refresh</button><button type="button" className="quiet-button" disabled={busy} onClick={() => setEditing(selected)}>Edit connection</button></div>
         <h3>Agent tools</h3>{packages.length ? packages.map(item => <div className="cap-manager-package" key={item.id}><span>{item.displayName ?? item.id}<small>{item.tools?.length ?? state.capabilitiesByPackage?.[item.id]?.length ?? item.operations?.length ?? 0} configured tools{item.enabled === false ? " · disabled" : ""}</small></span><button type="button" className="quiet-button" disabled={busy} onClick={() => setEditingPackage(item)}><Settings2 size={14} /> Choose tools</button></div>) : <p className="cap-manager-muted">Discover tools to make them available to agent profiles.</p>}

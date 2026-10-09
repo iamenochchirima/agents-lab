@@ -57,28 +57,46 @@ The Connectors tab lists configured services as searchable cards. Click a card
 to discover or refresh tools, edit the connection, or choose agent tools. Server
 addresses and masked credential summaries are under **Connection details**;
 disconnection and deletion are under **Disconnect or remove**. The Add dialog
-starts with a name, server URL and authentication choice, with optional settings
-behind **Advanced settings**.
+starts with guided connectors that can register OAuth clients automatically.
+Choose **Add a custom MCP server** for a service that needs its URL and
+authentication configured manually.
 
-1. Open **Connectors → Add** and enter a name and Streamable HTTP MCP
-   URL, such as a local Memos instance's `/mcp` endpoint.
-2. Choose no authentication, a personal access token, secret custom headers or
-   OAuth. Credential inputs clear after submission, and the server stores only
+1. Open **Connectors → Add**. The guided catalog currently includes Notion,
+   Linear and Atlassian Rovo. Notion uses its provider's default OAuth scope.
+   Linear's hosted endpoint currently requests both read and write scopes.
+   Linear documents read-only options, but the Lab follows the endpoint's
+   request. Atlassian starts read-only, with write scopes as an explicit opt-in.
+   Write actions still need your review. The Lab discovers tools from the
+   selected server after authorization; it does not hardcode them.
+2. Approve the requested access on the provider's OAuth page. The Lab pins each
+   catalog entry's MCP endpoint and trusted OAuth issuer, then uses dynamic
+   client registration where the provider supports it. Notion's hosted MCP,
+   Linear and Atlassian Rovo advertise this flow. [Notion MCP](https://www.notion.com/help/notion-mcp) · [Linear MCP](https://linear.app/docs/mcp) · [Atlassian Rovo MCP](https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/).
+3. For a custom MCP server, enter its name and Streamable HTTP URL, such as a
+   local Memos instance's `/mcp` endpoint. Choose no authentication, a personal
+   access token, secret custom headers or OAuth. Credential inputs clear after
+   submission, and the server stores only
    encrypted secret payloads plus references in configuration. When replacing a
    token, you can record its known expiration in local time; unknown expiration
    remains explicitly unknown. Safe summaries show presence, expiration and
    whether credentials are deployment-managed without revealing their values.
-3. Save, open the connector card, then select **Discover tools**. Discovery validates the provider's
+4. Save, open the connector card, then select **Discover tools**. Discovery validates the provider's
    advertised definitions; it does not grant permission based on its annotations.
-4. Select **Choose tools**, enable the required tools, classify their effects and
+5. Select **Choose tools**, enable the required tools, classify their effects and
    choose review on each action, approval before a run or automatic execution.
-5. Attach the package to an agent profile in **Profiles**.
+   Connected tools are shared with new platform chats; established runs keep
+   their original admitted configuration. Profiles remain available for
+   controlled comparison runs.
 
-OAuth supports an existing client ID or `auto` registration discovery. Advanced
-settings expose an optional client metadata URL, client secret and redirect URL.
-Authorize the saved connection and return to refresh it. Provider support and
-configuration determine which registration flow is available; entering a URL
-does not guarantee that every MCP server's authentication is compatible.
+Google Calendar is not in the guided catalog yet. Google's Calendar MCP is in
+the Workspace Developer Preview and requires a Google Cloud project, API setup
+and a provider-registered OAuth client. GitHub's hosted MCP does not support
+dynamic client registration, and Slack asks you to supply a client ID and
+secret. Use the custom flow after completing that provider setup. [Google
+Calendar setup](https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server) · [GitHub host integration](https://github.com/github/github-mcp-server/blob/main/docs/host-integration.md) · [Slack MCP setup](https://docs.slack.dev/ai/slack-mcp-server).
+Other MCP servers can use the custom flow when their OAuth and transport details
+are compatible. Entering a URL alone does not make every server's authentication
+compatible.
 
 Use **Refresh** after authentication or provider changes. **Disconnect** makes
 the connection unavailable. Remove profile references and dependent packages
