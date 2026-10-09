@@ -71,6 +71,48 @@ load_local_provider_env() {
   done < "$env_file"
 }
 
+load_local_memos_authorization() {
+  [[ -n "${AGENTLAB_MEMOS_AUTHORIZATION:-}" ]] && return 0
+  local env_file="$SERVER_DIR/.env.memos"
+  [[ -f "$env_file" ]] || return 0
+
+  local line value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*AGENTLAB_MEMOS_AUTHORIZATION[[:space:]]*=(.*)$ ]] || continue
+    value="${BASH_REMATCH[1]}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ ${#value} -ge 2 && ( ( "${value:0:1}" == "'" && "${value: -1}" == "'" ) || ( "${value:0:1}" == '"' && "${value: -1}" == '"' ) ) ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    if [[ -n "$value" ]]; then
+      export AGENTLAB_MEMOS_AUTHORIZATION="$value"
+    fi
+    return 0
+  done < "$env_file"
+}
+
+load_local_capability_credentials() {
+  local env_file="$SERVER_DIR/.env.capabilities"
+  [[ -f "$env_file" ]] || return 0
+
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(AGENTLAB_CREDENTIAL_KEY_HEX|AGENTLAB_CREDENTIAL_KEYRING_JSON|AGENTLAB_CREDENTIAL_KEY_ID|AGENTLAB_OAUTH_SECRET_KEY_HEX)[[:space:]]*=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"
+    [[ -n "${!key:-}" ]] && continue
+    value="${BASH_REMATCH[2]}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ ${#value} -ge 2 && ( ( "${value:0:1}" == "'" && "${value: -1}" == "'" ) || ( "${value:0:1}" == '"' && "${value: -1}" == '"' ) ) ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    export "$key=$value"
+  done < "$env_file"
+}
+
 load_local_provider_env
 
 require_command() {
@@ -503,6 +545,8 @@ run_server() {
 
   ensure_port_available "Lab server" "$API_HOST" "$API_PORT"
   echo "Starting Agent Harness Lab server at http://${API_HOST}:${API_PORT}"
+  load_local_memos_authorization
+  load_local_capability_credentials
   AGENTLAB_API_HOST="$API_HOST" \
     AGENTLAB_API_PORT="$API_PORT" \
     AGENTLAB_API_ORIGIN="$API_ORIGIN" \
@@ -826,6 +870,11 @@ start_all() {
   stack_processes_alive
 
   echo "Starting Lab server, Temporal worker, and web app."
+  # Memos credentials belong only in the API process that resolves connection
+  # references, and the credential-store key belongs only in the API process;
+  # do not propagate either secret to the worker or browser process.
+  load_local_memos_authorization
+  load_local_capability_credentials
   start_background "server" env \
     AGENTLAB_API_HOST="$API_HOST" \
     AGENTLAB_API_PORT="$API_PORT" \
@@ -843,6 +892,7 @@ start_all() {
     AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL="$VERCEL_WORKFLOWS_SERVICE_URL" \
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev
+  unset AGENTLAB_MEMOS_AUTHORIZATION AGENTLAB_CREDENTIAL_KEY_HEX AGENTLAB_CREDENTIAL_KEYRING_JSON AGENTLAB_OAUTH_SECRET_KEY_HEX AGENTLAB_CREDENTIAL_KEY_ID
   start_background "worker" env \
     AGENTLAB_RUN_ROOT="$RUN_ROOT" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \

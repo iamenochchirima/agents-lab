@@ -33,23 +33,30 @@ Keep this file private. The token represents the Memos account and grants access
 to the resources that account can use. This example does not provide per-agent
 or per-session accounts. Use a dedicated test account and keep personal notes out
 of it. A desktop connector's credentials do not automatically authorize the Lab
-backend.
+backend. The local stack launcher reads this one setting and passes it only to
+the Lab API process; the worker and web process do not inherit the token.
 
 ## Configure the Lab
 
 `server/capability-packages/customer-support.json` includes the `memos-notes`
 package, `conn_memos_local` connection and `notes-agent` profile. Its endpoint is
-`http://127.0.0.1:5230/mcp`. Start the control plane with the token loaded into its
-environment and the existing document-provider credential still available if
-using that provider:
+`http://127.0.0.1:5230/mcp`. Start the full local stack, or the API by itself, to
+load the token from `server/.env.memos` and the credential-store key from the
+ignored `server/.env.capabilities` file:
 
 ```sh
-set -a
-. server/.env.memos
-set +a
-AGENTLAB_CAPABILITY_PACKAGES="$PWD/server/capability-packages/customer-support.json" \
-  pnpm --filter @agent-harness-lab/lab-server run dev
+./scripts/run_local_stack.sh
+# Or, when the other services are already running:
+./scripts/run_local_stack.sh server
 ```
+
+An explicitly supplied `AGENTLAB_MEMOS_AUTHORIZATION` environment value takes
+precedence over the file. The launcher reads only the documented credential-key
+settings from `.env.capabilities`; explicitly supplied environment values take
+precedence. Keep the encryption key stable: replacing it makes existing saved
+connection credentials unreadable. Both the Memos token and encryption key are
+passed only to the API process. If either required value is missing, the saved
+credential or connection remains unavailable and the profile is not admitted.
 
 For an already running control plane, preserve its port, run roots, native
 endpoints and other settings when restarting. New connection definitions require
