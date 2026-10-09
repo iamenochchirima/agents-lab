@@ -10,11 +10,16 @@ const response = (id: string, result: unknown) => Response.json({ jsonrpc: "2.0"
 test("HTTP discovery accepts provider catalogs above 64 tools while retaining a 128-tool bound", async () => {
   const signal = new AbortController().signal;
   for (const count of [70, 129]) {
-    const server = new HttpMcpServer({ endpoint: "https://provider.example/mcp", protocolVersion: "2026-07-28", fetchImplementation: async (_url, init) => {
+    const fetchImplementation: typeof fetch = async (_url, init) => {
       const input = JSON.parse(String(init?.body));
       return response(input.id, { tools: Array.from({ length: count }, (_, index) => ({ ...manifest, name: `tool_${index}` })) });
-    } });
-    if (count <= 128) assert.equal((await server.listTools(signal)).length, count);
+    };
+    const server = new HttpMcpServer({ endpoint: "https://provider.example/mcp", protocolVersion: "2026-07-28", fetchImplementation });
+    if (count <= 128) {
+      assert.equal((await server.listTools(signal)).length, count);
+      const loaded = await loadCapabilityPackageRecords({ schemaVersion: 1, packages: [{ id: "large-provider", version: "1.0.0", source: "mcp", endpoint: "https://provider.example/mcp", protocolVersion: "2026-07-28", tools: Array.from({ length: count }, (_, index) => ({ remoteName: `tool_${index}`, name: `provider_${index}`, riskClass: "external", approvalMode: "invocation" })) }] }, process.cwd(), { fetchImplementation });
+      assert.equal(loaded.tools.length, count);
+    }
     else await assert.rejects(server.listTools(signal), /too many tools/);
   }
 });
