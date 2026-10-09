@@ -61,17 +61,18 @@ starts with guided connectors that can register OAuth clients automatically.
 Choose **Add a custom MCP server** for a service that needs its URL and
 authentication configured manually.
 
-1. Open **Connectors → Add**. The guided catalog currently includes Notion,
-   Linear and Atlassian Rovo. Notion uses its provider's default OAuth scope.
-   Linear's hosted endpoint currently requests both read and write scopes.
-   Linear documents read-only options, but the Lab follows the endpoint's
-   request. Atlassian starts read-only, with write scopes as an explicit opt-in.
-   Write actions still need your review. The Lab discovers tools from the
-   selected server after authorization; it does not hardcode them.
-2. Approve the requested access on the provider's OAuth page. The Lab pins each
-   catalog entry's MCP endpoint and trusted OAuth issuer, then uses dynamic
-   client registration where the provider supports it. Notion's hosted MCP,
-   Linear and Atlassian Rovo advertise this flow. [Notion MCP](https://www.notion.com/help/notion-mcp) · [Linear MCP](https://linear.app/docs/mcp) · [Atlassian Rovo MCP](https://developer.atlassian.com/cloud/rovo-mcp/guides/getting-started/).
+1. Open **Connectors → Add**. The guided catalog includes 15 hosted services:
+   Notion, Linear, Atlassian Rovo, monday.com, Miro, Intercom, PostHog, New
+   Relic (US), Cloudflare, Cloudflare Observability, Railway, Supabase, GitLab,
+   Stripe and WordPress.com. Search by service, category or description. The
+   catalog fixes each endpoint and trusted issuer; you approve access on the
+   provider's sign-in page. The Lab discovers tools from the selected server
+   after authorization; it does not hardcode them.
+2. Check each provider's access note before connecting. Several providers use a
+   broad account-level grant rather than distinct read and write scopes, and
+   some require workspace-admin approval or limit availability by region or
+   plan. Start with the narrowest provider grant available, enable only the
+   tools needed, and keep write actions set to review.
 3. For a custom MCP server, enter its name and Streamable HTTP URL, such as a
    local Memos instance's `/mcp` endpoint. Choose no authentication, a personal
    access token, secret custom headers or OAuth. Credential inputs clear after
@@ -88,12 +89,17 @@ authentication configured manually.
    their original admitted configuration. Profiles remain available for
    controlled comparison runs.
 
-Google Calendar is not in the guided catalog yet. Google's Calendar MCP is in
-the Workspace Developer Preview and requires a Google Cloud project, API setup
-and a provider-registered OAuth client. GitHub's hosted MCP does not support
-dynamic client registration, and Slack asks you to supply a client ID and
-secret. Use the custom flow after completing that provider setup. [Google
-Calendar setup](https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server) · [GitHub host integration](https://github.com/github/github-mcp-server/blob/main/docs/host-integration.md) · [Slack MCP setup](https://docs.slack.dev/ai/slack-mcp-server).
+The 15 entries are the providers we have identified as compatible with the
+current guided OAuth discovery path; the first account connection still needs
+to confirm the provider accepts the Lab's dynamic client registration. Google
+Calendar is not listed because its current setup needs Workspace Developer
+Preview access, Google Cloud API setup and a user-created OAuth client. Dropbox
+currently accepts DCR only from a provider-approved client list; Vercel and
+Figma also restrict clients to approved clients. Airtable advertises DCR but
+its resource metadata and GET behavior do not match the Lab's current discovery
+assumptions. Use the custom flow for services that need setup, and see the
+[hosted MCP quick-connect catalog research](../research/hosted-mcp-quick-connect-catalog.md)
+for provider sources and the comparison list. [Google Calendar setup](https://developers.google.com/workspace/calendar/api/guides/configure-mcp-server) · [Dropbox MCP setup](https://help.dropbox.com/integrations/connect-dropbox-mcp-server?fallback=true) · [Vercel MCP](https://vercel.com/docs/agent-resources/vercel-mcp) · [Figma MCP](https://developers.figma.com/docs/figma-mcp-server/).
 Other MCP servers can use the custom flow when their OAuth and transport details
 are compatible. Entering a URL alone does not make every server's authentication
 compatible.

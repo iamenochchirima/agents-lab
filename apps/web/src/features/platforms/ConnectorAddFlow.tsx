@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Blocks, ExternalLink, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Blocks, ExternalLink, Plus, Search } from "lucide-react";
 import { useState } from "react";
 import {
   connectionAction,
@@ -37,6 +37,10 @@ export function ConnectorAddFlow({
   const [preset, setPreset] = useState<GuidedConnectorPreset | null>(null);
   const [access, setAccess] = useState<ConnectorAccess>("read");
   const [saved, setSaved] = useState<SavedConnector | null>(null);
+  const [search, setSearch] = useState("");
+  const matchingConnectors = guidedConnectorCatalog.filter(item =>
+    `${item.name} ${item.category} ${item.description}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
 
   async function connect() {
     if (!preset) return;
@@ -71,14 +75,19 @@ export function ConnectorAddFlow({
     return <div className="connector-add-flow">
       <div className="connector-catalog-intro">
         <span className="connector-icon"><Blocks size={22} /></span>
-        <div><h3>Connect a service</h3><p>Choose a supported service. You’ll approve access on its own sign-in page.</p></div>
+        <div><h3>Connect a service</h3><p>Choose a service, then approve access on its sign-in page.</p></div>
       </div>
+      <label className="connector-catalog-search">
+        <Search size={16} aria-hidden="true" />
+        <input aria-label="Search available connectors" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search services" />
+      </label>
       <div className="connector-catalog-grid">
-        {guidedConnectorCatalog.map(item => <button className="connector-catalog-card" type="button" key={item.id} disabled={busy} onClick={() => { setPreset(item); setAccess(item.readOnlyAvailable ? "read" : "read_write"); }}>
+        {matchingConnectors.map(item => <button className="connector-catalog-card" type="button" key={item.id} disabled={busy} onClick={() => { setPreset(item); setAccess(item.readOnlyAvailable ? "read" : "read_write"); }}>
           <span className="connector-catalog-mark" data-provider={item.id}>{connectorMark(item)}</span>
           <span className="connector-catalog-copy"><strong>{item.name}</strong><span>{item.description}</span><small>{item.category} · OAuth sign-in</small></span>
           <ArrowRight size={17} aria-hidden="true" />
         </button>)}
+        {matchingConnectors.length === 0 && <div className="connector-empty">No services match “{search.trim()}”. Try another name or category.</div>}
       </div>
       <div className="connector-catalog-custom"><span>Looking for another service?</span><button type="button" className="quiet-button" disabled={busy} onClick={onCustom}><Plus size={15} /> Add a custom MCP server</button></div>
       <div className="connector-add-actions"><button type="button" className="quiet-button" disabled={busy} onClick={onCancel}>Cancel</button></div>
@@ -117,5 +126,11 @@ function uniqueDisplayName(preset: GuidedConnectorPreset, connections: readonly 
 }
 
 function connectorMark(preset: GuidedConnectorPreset) {
-  return preset.id === "linear" ? "L" : preset.id === "notion" ? "N" : "A";
+  const marks: Record<string, string> = {
+    notion: "N", linear: "L", "atlassian-rovo": "A", monday: "m", miro: "M",
+    intercom: "i", posthog: "P", "new-relic-us": "NR", cloudflare: "CF",
+    "cloudflare-observability": "CF", railway: "R", supabase: "S", gitlab: "GL",
+    stripe: "S", "wordpress-com": "W",
+  };
+  return marks[preset.id] ?? preset.name.slice(0, 1).toUpperCase();
 }
