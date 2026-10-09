@@ -2,8 +2,10 @@
 
 `/evals` reads recent retained evaluation summaries and browses the baseline
 specification. The page never starts evaluations. Refresh reloads the latest 25
-invocations from `GET /api/evals?limit=25` on the existing lab control-plane server,
-configured by `VITE_AGENTLAB_API_URL` and defaulting to port 4318.
+invocations from `GET /api/evals?limit=25` on the existing lab control-plane server.
+During development, Vite proxies the same-origin `/api` path to port 4318; set
+`AGENTLAB_API_PROXY_TARGET` to use a different API address. Production deployments
+need a same-origin reverse proxy or an explicit API URL.
 
 Saved `capability-acceptance` summaries appear as Business workflows, preserving
 original per-platform/task verdicts, boolean assertions, native run statuses and

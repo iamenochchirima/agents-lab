@@ -290,7 +290,11 @@ export class PlatformApiError extends Error {
   }
 }
 
-const API_BASE_URL = (import.meta.env.VITE_AGENTLAB_API_URL || "http://127.0.0.1:4318").replace(/\/$/, "");
+// In local development the browser can reach the Vite origin reliably; Vite
+// proxies /api to the control plane. Keep an absolute override for deployments.
+const API_BASE_URL = import.meta.env.DEV
+  ? ""
+  : (import.meta.env.VITE_AGENTLAB_API_URL || "").replace(/\/$/, "");
 
 export function getPlatformApiBaseUrl(): string {
   return API_BASE_URL;

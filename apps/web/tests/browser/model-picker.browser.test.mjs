@@ -47,7 +47,7 @@ test("model picker handles loading, keyboard selection, empty/error, and stale c
     });
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
-    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*127.0.0.1:4318/api/models*", requestStage: "Request" }] });
+    await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*127.0.0.1:5173/api/models*", requestStage: "Request" }] });
     await cdp.send("Page.navigate", { url: `${WEB_URL}/platforms/temporal` });
 
     await waitForText(cdp, "Select a model");

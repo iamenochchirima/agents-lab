@@ -8,7 +8,9 @@ const webRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, webRoot, "VITE_");
-  const apiTarget = process.env.VITE_AGENTLAB_API_URL ?? environment.VITE_AGENTLAB_API_URL ?? "http://127.0.0.1:4318";
+  const apiTarget = process.env.AGENTLAB_API_PROXY_TARGET
+    || environment.VITE_AGENTLAB_API_URL
+    || `http://127.0.0.1:${process.env.AGENTLAB_API_PORT ?? "4318"}`;
   return {
   root: webRoot,
   plugins: [react()],
@@ -20,9 +22,10 @@ export default defineConfig(({ mode }) => {
   server: {
     port: 5173,
     strictPort: true,
-    // Administration stays on the frontend origin so its HttpOnly cookie and
-    // Origin/CSRF checks work. Public/native execution routes keep their API URL.
-    proxy: { "/api/management": { target: apiTarget, changeOrigin: false }, "/api/connections": { target: apiTarget, changeOrigin: false } },
+    // Keep every browser API call same-origin. This preserves management cookies
+    // and lets the in-app browser reach the control plane without opening a
+    // second loopback port to the browser.
+    proxy: { "/api": { target: apiTarget, changeOrigin: false } },
     fs: {
       allow: [path.resolve(webRoot, "../..")],
     },

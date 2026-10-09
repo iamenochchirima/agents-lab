@@ -36,7 +36,9 @@ export interface SavedEvalInvocation {
   readonly cases: readonly SavedEvalCase[];
 }
 
-const baseUrl = (import.meta.env?.VITE_AGENTLAB_API_URL || "http://127.0.0.1:4318").replace(/\/$/, "");
+const baseUrl = import.meta.env?.DEV
+  ? ""
+  : (import.meta.env?.VITE_AGENTLAB_API_URL || "").replace(/\/$/, "");
 
 /** Read bounded saved summaries; this endpoint never dispatches an evaluation. */
 export async function getSavedEvals(signal: AbortSignal): Promise<{ invocations: readonly SavedEvalInvocation[]; scanTruncated?: boolean }> {

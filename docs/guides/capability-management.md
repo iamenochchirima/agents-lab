@@ -27,11 +27,12 @@ session for request integrity; its cookie is HttpOnly and its CSRF value stays
 in memory. Expiration and backend restarts renew the session automatically.
 This is a single-user local workspace, not a hosted account system.
 
-In development, Vite proxies `/api/management` and the safe `/api/connections` directory to `VITE_AGENTLAB_API_URL`, which
-defaults to `http://127.0.0.1:4318`. If your API runs on another port, set that
-variable when starting Vite. Account mutations use this same-origin route; public
-platform/run reads continue to use the configured API URL. A deployed frontend
-needs an equivalent reverse proxy and the explicitly allowed frontend origin.
+In development, Vite proxies browser `/api` requests to
+`http://127.0.0.1:4318` by default. The browser stays on the frontend origin for
+capability management, connections, model lookup, and platform/run requests. If
+your API runs on another address, set `AGENTLAB_API_PROXY_TARGET` when starting
+Vite. A deployed frontend needs an equivalent reverse proxy or an explicit API
+URL and the allowed frontend origin.
 Management requests are restricted to the local frontend. For a loopback
 frontend, `localhost`, `127.0.0.1` and `[::1]` are accepted with the configured
 scheme and port, so switching local hostnames does not break the UI. Other

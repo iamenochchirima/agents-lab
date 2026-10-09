@@ -44,9 +44,12 @@ settings at the document root. IBM Plex Sans Variable is the current interface f
 and IBM Plex Mono is used for code and technical values; both are bundled locally.
 Settings are available at `/settings`.
 
-The Temporal runner calls the Fastify API through `VITE_AGENTLAB_API_URL`. It
-defaults to `http://127.0.0.1:4318` for local development. The browser never
-receives a provider credential.
+In development, browser API requests use the frontend origin and Vite proxies
+`/api` to the Fastify server at `http://127.0.0.1:4318`. Set
+`AGENTLAB_API_PROXY_TARGET` when the API runs at a different address; the local
+stack launcher sets this target from its API host and port. `VITE_AGENTLAB_API_URL`
+is retained for production builds that use a separate API origin or same-origin
+reverse proxy. The browser never receives a provider credential.
 
 Platform runner and Compare pages use the shared `features/models/ModelPicker`.
 It searches the server's OpenRouter catalog through `GET /api/models`; the selected

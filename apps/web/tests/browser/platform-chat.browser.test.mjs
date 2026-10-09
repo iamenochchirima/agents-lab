@@ -64,7 +64,7 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
       target: link.getAttribute("target"),
     })))` ).then(JSON.parse);
     assert.deepEqual(evidence.map((item) => item.name), ["config.json", "capabilities.json", "events.jsonl", "logs/operations.jsonl", "context.json", "trajectory.json", "metrics.json", "result.json"]);
-    assert.ok(evidence.every((item) => item.href?.startsWith(`http://127.0.0.1:4318/api/runs/${fixture.state.runIds[0]}/evidence/`)));
+    assert.ok(evidence.every((item) => item.href?.startsWith(`http://127.0.0.1:5173/api/runs/${fixture.state.runIds[0]}/evidence/`)));
     assert.ok(evidence.every((item) => item.target === "_blank"));
 
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Keep this session going.");
@@ -1032,7 +1032,7 @@ async function installFixture(cdp) {
     }
     void respond(event).catch(() => undefined);
   });
-  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*127.0.0.1:4318/api/*", requestStage: "Request" }] });
+  await cdp.send("Fetch.enable", { patterns: [{ urlPattern: "*127.0.0.1:5173/api/*", requestStage: "Request" }] });
 
   async function respond(event) {
     const url = new URL(event.request.url);

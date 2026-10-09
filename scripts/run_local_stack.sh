@@ -852,6 +852,7 @@ start_all() {
     AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev:worker
   start_background "web" env \
+    AGENTLAB_API_PROXY_TARGET="http://${API_HOST}:${API_PORT}" \
     VITE_AGENTLAB_API_URL="${VITE_AGENTLAB_API_URL:-http://${API_HOST}:${API_PORT}}" \
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/web run dev --host "$WEB_HOST" --port "$WEB_PORT"
 
