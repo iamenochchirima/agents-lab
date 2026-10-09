@@ -5,7 +5,8 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { CapabilityManagement } from "../../src/capabilities/management/service.js";
+import type { ManagedConnectionRecord } from "../../src/capabilities/management/records.js";
+import { CapabilityManagement, CapabilitySetupRequired } from "../../src/capabilities/management/service.js";
 import { createPackageCapabilityCatalog } from "../../src/capabilities/extensions/catalog.js";
 import type { HostedToolContribution } from "../../src/capabilities/extensions/contracts.js";
 import type { ToolExecutionContext, ToolExecutionResult } from "../../src/capabilities/tools/contracts.js";
@@ -14,6 +15,26 @@ import { ToolRegistry } from "../../src/capabilities/tools/registry.js";
 
 const context: ToolExecutionContext = { runId: "managed-test", turnId: "turn-one", toolCallId: "call-one", signal: new AbortController().signal };
 const invoke = (tool: HostedToolContribution) => (tool.implementation as typeof tool.implementation & { executeResult(input: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolExecutionResult> }).executeResult({}, context);
+
+test("OAuth setup fails clearly before contacting providers when encrypted storage is not configured", async t => {
+  const root = await mkdtemp(join(tmpdir(), "lab-managed-oauth-storage-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const service = await CapabilityManagement.create({ root: join(root, "managed"), environment: {} });
+  try {
+    const connection: ManagedConnectionRecord = {
+      ref: "conn_oauth_storage_test", displayName: "OAuth test", provider: "fixture", owner: "local-workspace",
+      resource: "https://mcp.example/mcp", scopes: [], enabled: true,
+      auth: { kind: "oauth", clientId: "auto", redirectUri: "http://localhost:5173/api/management/connections/conn_oauth_storage_test/callback", discovery: { kind: "mcp", allowedIssuers: ["https://auth.example"] } },
+    };
+    await assert.rejects(
+      service.saveConnection(service.repository.read().revision, connection),
+      error => error instanceof CapabilitySetupRequired && /encrypted local credential storage/.test(error.message),
+    );
+    assert.equal(service.repository.read().connections.length, 0);
+  } finally {
+    await service.close();
+  }
+});
 
 test("managed seed imports once and profile edits survive restart independently of seed files", async t => {
   const root = await mkdtemp(join(tmpdir(), "lab-managed-service-"));

@@ -19,7 +19,9 @@ before starting the API to save connection tokens, custom headers, OAuth secrets
 or managed-process environment secrets. `AGENTLAB_CREDENTIAL_KEY_ID` defaults to
 `primary`. Keep the encryption key outside the state directory and retain it for
 restarts: losing it makes saved credentials unreadable. Without a configured key,
-the UI disables credential entry; anonymous integrations remain available.
+the UI disables credential entry and guided OAuth connections, and explains how
+to configure the local key; anonymous integrations remain available. The server
+also rejects OAuth setup before contacting a provider when this store is missing.
 
 The local workspace opens capability management directly. No administrator token,
 login or unlock step is required. The browser automatically establishes a local

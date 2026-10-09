@@ -8,6 +8,10 @@
 
 .connector-toolbar h3 { font-size: 16px; font-weight: 600; }
 .connector-catalog-caption { margin: -10px 0 16px; color: var(--text-2); font-size: 13px; }
+.connector-setup-hint { margin: -4px 0 16px; padding: 12px 14px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; font-size: 12px; line-height: 1.6; }
+.connector-setup-hint code { color: var(--text-1); font-size: 11px; }
+.connector-setup-hint a { color: var(--accent); text-decoration: none; }
+.connector-setup-hint a:hover { text-decoration: underline; }
 .connector-toolbar-controls { display: flex; align-items: center; gap: 12px; }
 .connector-search {
   display: flex;

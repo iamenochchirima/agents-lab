@@ -7,11 +7,12 @@ import "./connectors.css";
 type Connector = { ref: string; displayName: string; provider: string; resource: string; status?: string; enabled?: boolean };
 
 /** The guided service catalog is the default view; custom MCP connections remain manageable below it. */
-export function ConnectorDirectory({ connections, onAdd, onSelect, onConnect, busy, toolCounts = {} }: {
+export function ConnectorDirectory({ connections, onAdd, onSelect, onConnect, credentialStorageAvailable, busy, toolCounts = {} }: {
   connections: readonly Connector[];
   onAdd: () => void;
   onSelect: (ref: string) => void;
   onConnect: (preset: GuidedConnectorPreset) => void;
+  credentialStorageAvailable?: boolean;
   busy: boolean;
   toolCounts?: Record<string, number>;
 }) {
@@ -33,6 +34,7 @@ export function ConnectorDirectory({ connections, onAdd, onSelect, onConnect, bu
       </div>
     </div>
     <p className="connector-catalog-caption">Connect a service to make its tools available to agents.</p>
+    {credentialStorageAvailable === false && <p className="connector-setup-hint" role="status">Account connections need encrypted local credential storage. Configure it in <code>server/.env.capabilities</code>, then restart the local stack. <a href="/docs/guides/capability-management.md">Local setup guide</a></p>}
     <div className="connector-grid">
       {visiblePresets.map(preset => {
         const matching = connections.filter(item => normalizeResource(item.resource) === normalizeResource(preset.resource));
@@ -44,7 +46,7 @@ export function ConnectorDirectory({ connections, onAdd, onSelect, onConnect, bu
           <span className="connector-card-copy"><strong>{preset.name}</strong><span>{preset.description}</span><small>{preset.category} · OAuth</small></span>
           {connected && existing
             ? <button className="connector-card-action is-connected" type="button" disabled={busy} aria-label={`Manage ${preset.name} connection`} title="Manage connection" onClick={() => onSelect(existing.ref)}><Check size={18} /></button>
-            : <button className="connector-card-action" type="button" disabled={busy} aria-label={`${existing ? "Reconnect" : "Connect"} ${preset.name}`} title={existing ? "Reconnect" : "Connect"} onClick={() => onConnect(preset)}><Plus size={18} /></button>}
+            : <button className="connector-card-action" type="button" disabled={busy || credentialStorageAvailable === false} aria-label={`${existing ? "Reconnect" : "Connect"} ${preset.name}`} title={credentialStorageAvailable === false ? "Configure local credential storage to connect" : existing ? "Reconnect" : "Connect"} onClick={() => onConnect(preset)}><Plus size={18} /></button>}
         </article>;
       })}
       {visiblePresets.length === 0 && customConnections.length === 0 && <p className="connector-empty">No connectors match “{query.trim()}”.</p>}

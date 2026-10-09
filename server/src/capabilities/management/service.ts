@@ -186,6 +186,7 @@ export class CapabilityManagement {
       const connection = structuredClone(input), current = this.repository.read();
       if (expectedRevision !== current.revision) throw new ManagedRevisionConflict(expectedRevision, current.revision);
       if (connection.owner !== 'local-workspace') throw new Error('Connection must belong to the local workspace.');
+      if (connection.auth.kind === 'oauth') this.requireOAuthCredentialStorage();
       await this.network.destination(connection.resource);
       if (connection.auth.kind === 'oauth' && connection.auth.clientId === 'auto') {
         const auth = connection.auth;
@@ -271,6 +272,8 @@ export class CapabilityManagement {
   async connectionAction(ref: string, action: 'connect' | 'refresh' | 'revoke' | 'discover') {
     return this.serial(async () => {
       let authorizationUrl: string | undefined;
+      const connection = this.repository.read().connections.find(value => value.ref === ref);
+      if (connection?.auth.kind === 'oauth' && action !== 'revoke') this.requireOAuthCredentialStorage();
       if (action === 'connect') authorizationUrl = (await this.connections.connect(ref)).authorizationUrl;
       else if (action === 'revoke') await this.connections.revoke(ref);
       else if (action === 'refresh') await this.connections.refresh(ref);
@@ -487,6 +490,9 @@ export class CapabilityManagement {
     return loaded;
   }
   credentialBinding(connection: ManagedConnectionRecord, purpose = 'connection-auth'): CredentialBinding { return { ownerId: connection.owner, connectionId: connection.ref, resource: connection.resource, purpose }; }
+  private requireOAuthCredentialStorage(): void {
+    if (!this.credentials) throw new CapabilitySetupRequired('OAuth connections need encrypted local credential storage. Configure the credential key in server/.env.capabilities and restart the local stack.');
+  }
   private serial<T>(operation: () => Promise<T>): Promise<T> { const next = this.queue.catch(() => undefined).then(operation); this.queue = next; return next; }
 }
 function upsert<T>(items: T[], value: T, key: keyof T): void { const index = items.findIndex(item => item[key] === value[key]); if (index < 0) items.push(structuredClone(value)); else items[index] = structuredClone(value); }

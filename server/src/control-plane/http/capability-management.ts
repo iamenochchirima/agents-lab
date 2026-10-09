@@ -3,6 +3,7 @@ import { CapabilitySetupRequired, type CapabilityManagement } from '../../capabi
 import type { CapabilityAdminSessions } from '../../capabilities/management/admin-session.js';
 import type { ManagedConnectionRecord, ManagedPackageRecord, ManagedProfileRecord } from '../../capabilities/management/records.js';
 import { ManagedRevisionConflict } from '../../capabilities/management/repository.js';
+import { OAuthDiscoveryError } from '../../capabilities/management/oauth-discovery.js';
 import type { CredentialSecret } from '../../capabilities/management/credentials.js';
 
 /** Trusted local management endpoints. Safe read models contain references,
@@ -66,6 +67,8 @@ export interface InstallationInput { archiveBase64?: string; repositoryUrl?: str
 function failure(reply: import('fastify').FastifyReply, error: unknown) {
   if (error instanceof CapabilitySetupRequired) return reply.code(400).send({ error: error.message, code: 'SETUP_REQUIRED' });
   if (error instanceof ManagedRevisionConflict) return reply.code(409).send({ error: error.message, code: 'REVISION_CONFLICT' });
+  // OAuthDiscoveryError messages are authored locally and never include provider response bodies or credentials.
+  if (error instanceof OAuthDiscoveryError) return reply.code(400).send({ error: error.message, code: error.code });
   // Provider and credential errors may include untrusted/private material.
   // Named safe application errors can be introduced as a separate read model.
   return reply.code(400).send({ error: 'Capability operation could not complete. Check the connection, setup fields, dependencies and current configuration.' });

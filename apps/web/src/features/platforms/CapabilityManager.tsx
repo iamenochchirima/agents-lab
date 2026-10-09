@@ -164,7 +164,7 @@ function Connections({ state, busy, run, publish, operate, error, authorizationU
     if (!authorizationStarted) popup?.close();
   }
   return <>
-    <ConnectorDirectory connections={state.connections} toolCounts={counts} busy={busy} onAdd={() => { onClearAuthorization(); setEditing("new"); }} onSelect={ref => { onClearAuthorization(); setSelectedRef(ref); }} onConnect={preset => void connectPreset(preset)} />
+    <ConnectorDirectory connections={state.connections} toolCounts={counts} credentialStorageAvailable={state.credentialStorageAvailable} busy={busy} onAdd={() => { onClearAuthorization(); setEditing("new"); }} onSelect={ref => { onClearAuthorization(); setSelectedRef(ref); }} onConnect={preset => void connectPreset(preset)} />
     {(editing || editingPackage || selected || apiEditor) && <ConnectorModal title={title} busy={busy} onClose={close}>
       {error && <p className="cap-manager-error" role="alert">{error}</p>}
       {authorizationUrl && <p><a href={authorizationUrl} target="_blank" rel="noreferrer">Continue account authorization</a></p>}
