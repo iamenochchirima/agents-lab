@@ -130,6 +130,17 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
   };
 }
 
+test("oversized retained run configuration returns a clear limit error before dispatch", async () => {
+  await withApp(async (app, runner) => {
+    runner.manifestConfiguration = () => ({ providerMetadata: "x".repeat(1024 * 1024) });
+    const response = await app.inject({ method: "POST", url: "/api/runs", payload: { platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt: "Hello" }, model: { provider: "fake", model: "fake-success" } } });
+    assert.equal(response.statusCode, 413);
+    assert.equal(response.json().error.code, "EVIDENCE_LIMIT_EXCEEDED");
+    assert.equal(JSON.stringify(response.json()).includes("agentlab-http-"), false);
+    assert.equal(runner.startCalls, 0);
+  });
+});
+
 async function withApp(
   run: (app: ReturnType<typeof buildControlPlaneServer>, runner: HttpRunner, root: string) => Promise<void>,
   modelCatalog?: OpenRouterCatalogClient,

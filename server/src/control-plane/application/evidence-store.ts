@@ -27,14 +27,16 @@ interface ResolvedEventIdentity extends RunEventIdentity {
   /** Whether the event uses the post-legacy explicit identity fields. */
   readonly scoped: boolean;
 }
-const MAX_MANIFEST_BYTES = 256 * 1024;
+// Admitted MCP catalogs retain provider schemas alongside resolution evidence.
+// Bound configuration records separately from call and result payloads.
+const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_EVENT_BYTES = 256 * 1024;
 const MAX_EXECUTION_REFERENCE_BYTES = 128 * 1024;
 const MAX_RESULT_BYTES = 512 * 1024;
 const MAX_TRAJECTORY_BYTES = 512 * 1024;
 const MAX_METRICS_BYTES = 128 * 1024;
 const MAX_CONTEXT_BYTES = 512 * 1024;
-const MAX_CAPABILITIES_BYTES = 256 * 1024;
+const MAX_CAPABILITIES_BYTES = 1024 * 1024;
 const MAX_EVAL_REPORT_BYTES = 256 * 1024;
 const MAX_OPERATIONAL_LOG_LINE_BYTES = 32 * 1024;
 const MAX_OPERATIONAL_LOG_BYTES = 8 * 1024 * 1024;

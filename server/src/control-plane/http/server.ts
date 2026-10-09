@@ -7,7 +7,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 
 import type { ServerConfig } from "../bootstrap/config.js";
 import { trustedFrontendOrigins } from "../bootstrap/frontend-origins.js";
-import { EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
+import { EvidenceLimitError, EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError, RunnerConnectionUnavailableError, RunnerCancellationUnconfirmedError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
 import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError } from "../../capabilities/context/session-store.js";
@@ -493,6 +493,9 @@ function parseLimit(value: string | undefined): number {
 }
 
 function sendError(reply: FastifyReply, error: unknown) {
+  if (error instanceof EvidenceLimitError) {
+    return reply.code(413).send({ error: { code: "EVIDENCE_LIMIT_EXCEEDED", message: `The run configuration or evidence exceeds its ${error.maxBytes}-byte limit. Reduce the enabled tool catalog or configuration size.` } });
+  }
   if (error instanceof CapabilityResolutionError) {
     return reply.code(409).send({ error: { code: error.code, message: error.message } });
   }

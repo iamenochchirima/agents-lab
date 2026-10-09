@@ -5,6 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { buildRunManifest } from "../../src/control-plane/domain/manifest.js";
+import { loadCapabilityPackageRecords } from "../../src/capabilities/extensions/packages.js";
+import { createPackageCapabilityCatalog } from "../../src/capabilities/extensions/catalog.js";
 import type { RunEvalReport } from "../../src/control-plane/domain/eval-report.js";
 import type { ContextSnapshot } from "../../src/capabilities/context/contracts.js";
 import type { PlatformExecutionReference, RunEventIntent, RunMetrics, RunResult, RunTrajectory } from "../../src/control-plane/domain/types.js";
@@ -27,6 +29,25 @@ const manifest = buildRunManifest(
   },
   { runId: "run-evidence-1", now: "2026-09-15T08:00:00.000Z" },
 );
+
+test("retains an expanded admitted MCP catalog and still rejects oversized manifests", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-large-catalog-"));
+  try {
+    const loaded = await loadCapabilityPackageRecords({ schemaVersion: 1, packages: [{ id: "large-provider", version: "1.0.0", source: "mcp", protocolVersion: "2026-07-28", endpoint: "https://provider.example/mcp", tools: Array.from({ length: 68 }, (_, index) => ({ remoteName: `tool_${index}`, name: `provider_${index}`, riskClass: "external", approvalMode: "invocation" })) }] }, root, { fetchImplementation: async (_url, init) => {
+      const input = JSON.parse(String(init?.body));
+      return Response.json({ jsonrpc: "2.0", id: input.id, result: { tools: Array.from({ length: 68 }, (_, index) => ({ name: `tool_${index}`, description: "Provider tool", inputSchema: { type: "object", properties: { query: { type: "string", description: "x".repeat(3000) } } } })) } });
+    } });
+    const catalog = createPackageCapabilityCatalog(loaded);
+    const { resolution } = catalog.resolve("large-provider");
+    const toolCatalog = catalog.toolSnapshot(loaded.tools.map(tool => tool.descriptor.definition.name), resolution);
+    const expanded = { ...manifest, capabilities: { profileId: "large-provider", tools: { enabledNames: loaded.tools.map(tool => tool.descriptor.definition.name), maxRounds: 8, maxCalls: 16 }, resolution, toolCatalog } };
+    assert.ok(Buffer.byteLength(JSON.stringify(expanded)) > 256 * 1024);
+    const store = new RunEvidenceStore(root);
+    await store.createRun(expanded);
+    assert.deepEqual(await store.readManifest(expanded.runId), expanded);
+    await assert.rejects(store.createRun({ ...expanded, runId: "oversized-provider", platformConfig: { padding: "x".repeat(1024 * 1024) } }), error => error instanceof EvidenceLimitError);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 function intent(source: RunEventIntent["source"], sourceSequence: number, kind: string): RunEventIntent {
   return {

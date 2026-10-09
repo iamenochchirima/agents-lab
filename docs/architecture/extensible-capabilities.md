@@ -150,6 +150,13 @@ semantics are explicit operation contracts.
 
 ## Operational limits
 
+Run manifests and capability-resolution evidence each have a 1 MiB retention
+budget, including the full admitted provider schemas. The tool count limit does
+not replace this byte limit: a catalog with very large schemas may still exceed
+the budget. Oversized evidence returns HTTP 413 with `EVIDENCE_LIMIT_EXCEEDED`
+before native dispatch, rather than an unexpected server error. Other evidence
+files retain their separate limits.
+
 Native workers need access to the host URL and the configured private key. This
 local shared-user setup does not establish a multi-tenant deployment boundary.
 There is no arbitrary executable plugin loader, marketplace installation or
