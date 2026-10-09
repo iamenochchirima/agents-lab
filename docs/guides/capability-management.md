@@ -53,18 +53,18 @@ user messages retain their literal formatting.
 
 ## Connect an MCP server
 
-The Connectors tab lists configured services as searchable cards. Click a card
-to discover or refresh tools, edit the connection, or choose agent tools. Server
-addresses and masked credential summaries are under **Connection details**;
-disconnection and deletion are under **Disconnect or remove**. The Add dialog
-starts with guided connectors that can register OAuth clients automatically.
-Choose **Add a custom MCP server** for a service that needs its URL and
-authentication configured manually.
+The Connectors tab shows the guided service catalog by default. Use a service's
+**+** button to begin OAuth setup; after connecting, its check button opens the
+saved connection. Search the list by service, category or description. **Add**
+opens the form for a custom MCP server. Open any saved connection to discover or
+refresh tools, change its settings, or choose agent tools. Server addresses and
+masked credential summaries are under **Connection details**; disconnection and
+deletion are under **Disconnect or remove**.
 
-1. Open **Connectors → Add**. The guided catalog includes 15 hosted services:
+1. Open **Connectors**. The default catalog shows 15 hosted services:
    Notion, Linear, Atlassian Rovo, monday.com, Miro, Intercom, PostHog, New
    Relic (US), Cloudflare, Cloudflare Observability, Railway, Supabase, GitLab,
-   Stripe and WordPress.com. Search by service, category or description. The
+   Stripe and WordPress.com. Select **+** on a card to start its OAuth flow. The
    catalog fixes each endpoint and trusted issuer; you approve access on the
    provider's sign-in page. The Lab discovers tools from the selected server
    after authorization; it does not hardcode them.
@@ -73,7 +73,7 @@ authentication configured manually.
    some require workspace-admin approval or limit availability by region or
    plan. Start with the narrowest provider grant available, enable only the
    tools needed, and keep write actions set to review.
-3. For a custom MCP server, enter its name and Streamable HTTP URL, such as a
+3. For a custom MCP server, choose **Add**, then enter its name and Streamable HTTP URL, such as a
    local Memos instance's `/mcp` endpoint. Choose no authentication, a personal
    access token, secret custom headers or OAuth. Credential inputs clear after
    submission, and the server stores only
