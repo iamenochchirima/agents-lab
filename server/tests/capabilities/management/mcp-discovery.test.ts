@@ -7,6 +7,18 @@ import { loadCapabilityPackageRecords } from "../../../src/capabilities/extensio
 const manifest = { name: "echo", description: "Echo test input.", inputSchema: { type: "object" } };
 const response = (id: string, result: unknown) => Response.json({ jsonrpc: "2.0", id, result });
 
+test("HTTP discovery accepts provider catalogs above 64 tools while retaining a 128-tool bound", async () => {
+  const signal = new AbortController().signal;
+  for (const count of [70, 129]) {
+    const server = new HttpMcpServer({ endpoint: "https://provider.example/mcp", protocolVersion: "2026-07-28", fetchImplementation: async (_url, init) => {
+      const input = JSON.parse(String(init?.body));
+      return response(input.id, { tools: Array.from({ length: count }, (_, index) => ({ ...manifest, name: `tool_${index}` })) });
+    } });
+    if (count <= 128) assert.equal((await server.listTools(signal)).length, count);
+    else await assert.rejects(server.listTools(signal), /too many tools/);
+  }
+});
+
 test("HTTP discovery falls back from stateless protocol and pins server-negotiated legacy version", async () => {
   const requests: { method: string; version: string }[] = [];
   const fetchImplementation: typeof fetch = async (_url, init) => {

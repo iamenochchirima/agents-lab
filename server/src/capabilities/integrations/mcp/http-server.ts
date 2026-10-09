@@ -93,7 +93,8 @@ export class HttpMcpServer implements McpServer {
         try { toolParameterHeaders(tool.inputSchema, undefined); return true; }
         catch { return false; } // Invalid header annotations exclude only that declaration.
       }));
-      if (tools.length > 64) throw new Error("MCP discovery returned too many tools.");
+      // Match managed package selection capacity; hosted providers can exceed 64.
+      if (tools.length > 128) throw new Error("MCP discovery returned too many tools.");
       cursor = typeof result.nextCursor === "string" ? result.nextCursor : undefined;
       if (cursor) {
         if (seenCursors.has(cursor) || seenCursors.size >= 64) throw new Error("MCP discovery returned a repeated or excessive cursor.");

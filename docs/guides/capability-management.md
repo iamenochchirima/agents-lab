@@ -69,7 +69,9 @@ deletion are under **Disconnect or remove**.
    Stripe and WordPress.com. Select **+** on a card to start its OAuth flow. The
    catalog fixes each endpoint and trusted issuer; you approve access on the
    provider's sign-in page. The Lab discovers tools from the selected server
-   after authorization; it does not hardcode them.
+   automatically after authorization; it does not hardcode them. Return to the
+   Lab and start a new chat to use the added tools. An existing chat retains its
+   recorded catalog. The connection list refreshes when you return from sign-in.
 2. Check each provider's access note before connecting. Several providers use a
    broad account-level grant rather than distinct read and write scopes, and
    some require workspace-admin approval or limit availability by region or
@@ -83,8 +85,12 @@ deletion are under **Disconnect or remove**.
    token, you can record its known expiration in local time; unknown expiration
    remains explicitly unknown. Safe summaries show presence, expiration and
    whether credentials are deployment-managed without revealing their values.
-4. Save, open the connector card, then select **Discover tools**. Discovery validates the provider's
+4. OAuth sign-in automatically discovers and publishes tools. For other custom
+   authentication methods, save, open the connector card, then select **Discover
+   tools**. Discovery accepts up to 128 tools per HTTP server and validates the
    advertised definitions; it does not grant permission based on its annotations.
+   If discovery fails after OAuth sign-in, the account remains authorized; use
+   **Discover tools** to retry without signing in again.
 5. Select **Choose tools**, enable the required tools, classify their effects and
    choose review on each action, approval before a run or automatic execution.
    Connected tools are shared with new platform chats; established runs keep

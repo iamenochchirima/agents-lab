@@ -7,6 +7,29 @@ import type { CapabilityManagement } from "../../src/capabilities/management/ser
 import { trustedFrontendOrigins } from "../../src/control-plane/bootstrap/frontend-origins.js";
 import { registerCapabilityManagement } from "../../src/control-plane/http/capability-management.js";
 
+for (const discoveryFails of [false, true]) test(`OAuth callback publishes tools automatically; discovery failure=${discoveryFails}`, async () => {
+  const app = Fastify();
+  const sessions = await CapabilityAdminSessions.create(trustedFrontendOrigins("http://localhost:5173"));
+  const calls: string[] = [];
+  const management = {
+    connections: { complete: async () => { calls.push("authorize"); } },
+    reload: async () => { calls.push("reload"); },
+    connectionAction: async (ref: string, action: string) => {
+      calls.push(`${ref}:${action}`);
+      if (discoveryFails) throw new Error("private provider detail");
+      return {};
+    },
+  } as unknown as CapabilityManagement;
+  registerCapabilityManagement(app, management, sessions);
+  try {
+    const response = await app.inject({ method: "GET", url: "/api/management/connections/conn_fixture/callback?state=fixture-state&code=fixture-code" });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(calls, ["authorize", "conn_fixture:discover", ...(discoveryFails ? ["reload"] : [])]);
+    assert.equal(response.json().toolDiscovery, discoveryFails ? "failed" : "completed");
+    assert.equal(JSON.stringify(response.json()).includes("private provider detail"), false);
+  } finally { await app.close(); }
+});
+
 test("management API returns sanitized OAuth setup diagnostics instead of its generic failure", async () => {
   const app = Fastify();
   const origin = "http://localhost:5173";

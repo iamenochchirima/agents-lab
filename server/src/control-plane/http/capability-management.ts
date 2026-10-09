@@ -48,10 +48,17 @@ export function registerCapabilityManagement(app: FastifyInstance, management: C
       if (typeof state !== 'string' || typeof code !== 'string' || state.length > 1024 || code.length > 4096 || (iss !== undefined && (typeof iss !== 'string' || iss.length > 2048))) return reply.code(400).send({ error: 'Invalid OAuth callback.' });
       try {
         await management.connections.complete(request.params.ref, state, code, iss);
-        await management.reload();
-        reply.header('cache-control', 'no-store');
-        return { message: 'Account connected. Return to capability management and refresh.' };
       } catch { return reply.code(409).send({ error: 'OAuth callback was rejected. Start authorization again.' }); }
+      reply.header('cache-control', 'no-store');
+      try {
+        await management.connectionAction(request.params.ref, 'discover');
+        return { message: 'Account connected and tools added. Start a new chat to use them.', toolDiscovery: 'completed' };
+      } catch {
+        // The grant is already persisted. Discovery failure must not consume the
+        // callback again or make a successful sign-in appear to have failed.
+        await management.reload();
+        return { message: 'Account connected, but tools could not be discovered. Return to Plugins and choose Discover tools to retry.', toolDiscovery: 'failed' };
+      }
     });
   }
   app.post<{ Body: InstallationInput }>('/api/management/installations/preview', { bodyLimit: 24 * 1024 * 1024 }, async (request, reply) => {

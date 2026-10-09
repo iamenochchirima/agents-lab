@@ -37,6 +37,12 @@ export function CapabilityManager({ onClose, onChanged, presentation = "dialog" 
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
+    if (!authorizationUrl) return;
+    const refresh = () => { void load().then(onChanged); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [authorizationUrl]);
+  useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
     if (presentation === "dialog") dialog.current?.focus();
     let active = true;
@@ -93,7 +99,7 @@ export function CapabilityManager({ onClose, onChanged, presentation = "dialog" 
       <nav className="cap-manager-tabs" aria-label="Capability categories">{tabs.map(item => <button key={item} className={item === tab ? "active" : ""} aria-current={item === tab ? "page" : undefined} type="button" onClick={() => { setTab(item); setError(null); }} disabled={busy}>{item === "Connections" ? "Connectors" : item}</button>)}{state && <button className="cap-manager-reload" type="button" disabled={busy} onClick={() => void run(async () => setState(await getManagementState()))}>Reload</button>}</nav>
       {loadFailed ? <><div className="cap-manager-body"><p className="cap-manager-muted">The capability service is unavailable. Your saved connectors have not been removed.</p><button type="button" className="button button-primary" disabled={busy} onClick={() => void load()}>Try again</button></div><div className="cap-manager-body">{catalogOnly}</div></> : !state ? <><p className="cap-manager-body" role="status">Loading connections…</p><div className="cap-manager-body">{catalogOnly}</div></> : <>
         <div className="cap-manager-body">
-          {authorizationUrl && <p><a href={authorizationUrl} rel="noreferrer" target="_blank">Continue account authorization</a><span className="cap-manager-muted"> · After approval, return and choose Discover tools.</span></p>}
+          {authorizationUrl && <p><a href={authorizationUrl} rel="noreferrer" target="_blank">Continue account authorization</a><span className="cap-manager-muted"> · Tools are added after approval. Start a new chat to use them.</span></p>}
           {tab === "Connections" && <Connections state={state} busy={busy} run={run} publish={publish} operate={operate} error={error} authorizationUrl={authorizationUrl} onAuthorization={setAuthorizationUrl} onClearAuthorization={() => setAuthorizationUrl(null)} />}
           {tab === "Tools" && <Tools state={state} busy={busy} run={run} publish={publish} />}
           {(tab === "Skills" || tab === "Plugins") && <Installations key={tab} state={state} kind={tab} busy={busy} run={run} publish={publish} />}
