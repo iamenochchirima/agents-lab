@@ -106,3 +106,26 @@ an existing request. Explicit top-level schema titles label arguments; fields
 without titles retain their recorded names. Older snapshots keep the generic
 name/argument fallback. Presentation fields do not participate in a decision's
 authorization identity and do not establish whether an effect succeeded.
+
+## Failure explanations
+
+`RunFailureDetails.tsx` displays actionable guidance with a bounded phase, code
+and category chain under Failure details. `failureExplanation.ts` derives the
+chain from known adapter error codes. HTTP 429 explains provider capacity; action
+review preparation failure explains the pre-dispatch boundary; unresolved model
+or tool acknowledgement asks for evidence inspection before another request.
+Review preparation does not identify whether the host connection or policy
+failed, because the recorded code does not distinguish them.
+
+The chain preserves the distinction between native execution status and the
+agent result. A native workflow can complete with a failed model request. Tool
+response validity and confirmed effects remain separate in action cards. The
+failure explanation does not establish a rollback or authorize another action.
+
+This is derived inspection, not a reconstructed exception stack. It excludes
+arbitrary error messages, nested causes, response bodies, task prompts and
+connection settings. Unknown codes receive a generic explanation rather than an
+invented cause. Only known native status values appear in this summary; the raw
+native record remains available in retained evidence. `failureExplanation.test.tsx`
+checks the recorded boundaries, native completion with agent failure, and
+redaction using synthetic secrets and private paths.
