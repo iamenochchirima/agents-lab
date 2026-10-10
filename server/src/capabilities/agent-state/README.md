@@ -25,6 +25,11 @@ Recall ranks lexical matches deterministically and includes explicit preferences
 first. Its projection records every included source and revision, omitted count,
 UTF-8 byte count and digest. It never shortens a record into a different fact.
 The surrounding context service remains responsible for token accounting.
+Admission freezes that recall text and its metadata on the turn. Context snapshots
+retain the namespace, enablement, each included record's revision, omitted count,
+byte count and digest even when no memory message is included. Retries reuse this
+evidence rather than consulting updated memory. Older turns and snapshots omit
+the optional metadata; absence means unavailable evidence, not zero omissions.
 
 `createAgentMemoryTools(store, resolveBinding)` returns hosted catalog contributions.
 The resolver reads namespace and enablement from the recorded run; model arguments

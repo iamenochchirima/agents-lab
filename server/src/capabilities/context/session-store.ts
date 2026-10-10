@@ -5,6 +5,7 @@ import { join, relative, sep as pathSeparator } from "node:path";
 import {
   DEFAULT_CONTEXT_SESSION_LIMITS,
   type ContextMessage,
+  type ContextMemoryRecall,
   type ContextProjection,
   type ContextSessionLimits,
   type ContextSnapshot,
@@ -74,7 +75,7 @@ export interface ContextTurn {
   readonly sessionRevision: number;
   readonly contextSnapshotId: string | null;
   /** Immutable data projection admitted before native dispatch. */
-  readonly memoryContext?: { readonly content: string; readonly namespace: string; readonly recordIds: readonly string[]; readonly revision: number; readonly enabled: boolean };
+  readonly memoryContext?: { readonly content: string; readonly namespace: string; readonly recordIds: readonly string[]; readonly revision: number; readonly enabled: boolean; readonly recall?: ContextMemoryRecall };
   readonly output: string | null;
   readonly error: string | null;
   readonly createdAt: string;

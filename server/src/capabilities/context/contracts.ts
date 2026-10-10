@@ -86,6 +86,18 @@ export interface ContextCompactionRecord {
   readonly after: ContextBudget;
 }
 
+/** Exact admission-time recall evidence, including empty or disabled projections. */
+export interface ContextMemoryRecall {
+  readonly schemaVersion: 1;
+  readonly namespace: string;
+  readonly enabled: boolean;
+  readonly records: readonly { readonly id: string; readonly revision: number }[];
+  readonly omitted: number;
+  readonly bytes: number;
+  /** SHA-256 of the complete UTF-8 recall text before context assembly. */
+  readonly digest: string;
+}
+
 export interface ContextSnapshot {
   readonly schemaVersion: typeof CONTEXT_SCHEMA_VERSION;
   readonly snapshotId: string;
@@ -95,6 +107,8 @@ export interface ContextSnapshot {
   readonly model: string;
   /** Revision of the generated admitted-capability message, when present. */
   readonly capabilityRevision?: string;
+  /** Absent on older snapshots; missing evidence must not be reconstructed from current memory. */
+  readonly memoryRecall?: ContextMemoryRecall;
   readonly messages: readonly ContextMessage[];
   readonly sources: readonly ContextSourceKind[];
   readonly budget: ContextBudget;

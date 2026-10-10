@@ -1,5 +1,6 @@
 import { AgentStateStore } from "../../src/capabilities/agent-state/store.js";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1011,6 +1012,7 @@ test("identity stays fixed per session while scoped memory recall is refreshed o
     const state = new AgentStateStore(join(root, "agent-state"));
     const identity = await state.getIdentity();
     const memory = await state.saveMemory("workspace-local", { operationId: "save-fixture", expectedRevision: 0, kind: "preference", title: "Fixture style", content: "Use concise bullet points.", provenance: { source: "fixture" } });
+    await state.saveMemory("workspace-local", { operationId: "save-omitted-fixture", expectedRevision: 0, kind: "preference", title: "Oversized preference", content: "x".repeat(4096), provenance: { source: "fixture" } });
     const request = { platform: "temporal", variant: "baseline", sessionId: "identity-session", task: { kind: "prompt" as const, prompt: "Hello" }, model: { provider: "fake", model: "fake-success", contextWindowTokens: 8192 } };
     const first = await service.createRun(request);
     assert.equal(first.manifest.context.identityRevision, identity.revision);
@@ -1021,22 +1023,55 @@ test("identity stays fixed per session while scoped memory recall is refreshed o
     const recalled = projected.snapshot.messages.find(message => message.source === "memory");
     assert.equal(recalled?.role, "user"); assert.equal(recalled?.metadata?.authority, "none");
     assert.ok(recalled?.content.includes("Use concise bullet points."));
+    assert.deepEqual(projected.snapshot.memoryRecall, {
+      schemaVersion: 1, namespace: "workspace-local", enabled: true,
+      records: [{ id: memory.id, revision: memory.revision }], omitted: 1,
+      bytes: Buffer.byteLength(recalled!.content, "utf8"),
+      digest: createHash("sha256").update(recalled!.content).digest("hex"),
+    });
     runner.state = "completed"; await service.getRun(first.runId);
+    const corrected = await state.updateMemory("workspace-local", memory.id, { operationId: "correct-fixture", expectedRevision: memory.revision, kind: memory.kind, title: memory.title, provenance: { source: "fixture" }, content: "Use clear numbered steps." });
+    runner.state = "running";
+    const correctionRun = await service.createRun({ ...request, sessionId: "corrected-memory-session" });
+    const correctionContext = await context.prepareTurn("corrected-memory-session", correctionRun.manifest.context.turnId!, { summarize: async () => "unused" });
+    const correctedRecall = correctionContext.snapshot.messages.find(message => message.source === "memory");
+    assert.ok(correctedRecall?.content.includes("Use clear numbered steps."));
+    assert.equal(correctedRecall?.content.includes("Use concise bullet points."), false);
+    assert.deepEqual(correctionContext.snapshot.memoryRecall?.records, [{ id: memory.id, revision: corrected.revision }]);
+    runner.state = "completed"; await service.getRun(correctionRun.runId);
     await state.updateIdentity({ name: "Updated fixture identity", purpose: identity.purpose, style: identity.style, initiative: identity.initiative, behavior: identity.behavior }, { operationId: "identity-edit", expectedRevision: identity.revision });
-    await state.forgetMemory("workspace-local", memory.id, { operationId: "forget-fixture", expectedRevision: memory.revision });
+    await state.forgetMemory("workspace-local", memory.id, { operationId: "forget-fixture", expectedRevision: corrected.revision });
+    runner.state = "running";
     const retained = await service.createRun({ ...request, memory: { enabled: false } });
     assert.equal(retained.manifest.context.identityRevision, identity.revision);
     assert.equal(retained.manifest.context.systemInstruction, first.manifest.context.systemInstruction);
     assert.deepEqual(retained.manifest.context.memoryRecordIds, []);
     assert.equal(retained.manifest.context.memoryEnabled, false);
+    const disabledContext = await context.prepareTurn(request.sessionId, retained.manifest.context.turnId!, { summarize: async () => "unused" });
+    assert.equal(disabledContext.snapshot.messages.some(message => message.source === "memory"), false);
+    assert.deepEqual(disabledContext.snapshot.memoryRecall?.records, []);
+    assert.equal(disabledContext.snapshot.memoryRecall?.enabled, false);
+    assert.equal(disabledContext.snapshot.memoryRecall?.omitted, 0);
+    assert.equal(disabledContext.snapshot.memoryRecall?.bytes, 0);
+    assert.equal(disabledContext.snapshot.memoryRecall?.digest, createHash("sha256").update("").digest("hex"));
+    runner.state = "completed"; await service.getRun(retained.runId);
+    runner.state = "running";
     const fresh = await service.createRun({ ...request, sessionId: "fresh-identity-session" });
     assert.equal(fresh.manifest.context.identityRevision, identity.revision + 1);
     assert.ok(fresh.manifest.context.systemInstruction.includes("Updated fixture identity"));
     assert.deepEqual(fresh.manifest.context.memoryRecordIds, []);
+    const emptyContext = await context.prepareTurn("fresh-identity-session", fresh.manifest.context.turnId!, { summarize: async () => "unused" });
+    assert.equal(emptyContext.snapshot.messages.some(message => message.source === "memory"), false);
+    assert.equal(emptyContext.snapshot.memoryRecall?.enabled, true);
+    assert.equal(emptyContext.snapshot.memoryRecall?.omitted, 1);
+    assert.equal(emptyContext.snapshot.memoryRecall?.bytes, 0);
+    runner.state = "completed"; await service.getRun(fresh.runId);
     const isolated = await service.createRun({ ...request, sessionId: "isolated-identity-session", comparisonId: "comparison-fixture" });
     assert.match(isolated.manifest.context.memoryNamespace!, /^experiment-/);
     await assert.rejects(service.createRun({ ...request, comparisonId: "comparison-fixture" }), /Memory scope changed/);
     await assert.rejects(service.createRun({ ...request, sessionId: "isolated-identity-session", comparisonId: "different-comparison" }), /Memory scope changed/);
     assert.equal((await sessions.readSnapshot(request.sessionId, projected.snapshot.snapshotId)).messages.find(message => message.source === "memory")?.content, recalled?.content);
+    assert.deepEqual((await sessions.readSnapshot(request.sessionId, projected.snapshot.snapshotId)).memoryRecall, projected.snapshot.memoryRecall);
+    assert.deepEqual((await sessions.readTurn(request.sessionId, first.manifest.context.turnId!))?.memoryContext?.recall, projected.snapshot.memoryRecall);
   }, { agentState: true });
 });

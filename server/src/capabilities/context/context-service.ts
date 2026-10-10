@@ -117,6 +117,7 @@ export class ContextService {
       compactionRevision,
       model: session.model,
       ...(options.capabilityInventory ? { capabilityRevision: options.capabilityInventory.revision } : {}),
+      ...(turns.memoryContext?.recall ? { memoryRecall: turns.memoryContext.recall } : {}),
       messages: contextMessages,
       sources: [...new Set(contextMessages.map((message) => message.source))],
       budget,

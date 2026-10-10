@@ -785,6 +785,11 @@ export class RunService {
       const turn = await this.dependencies.context.sessions.retainTurnMemory(session.sessionId, admitted.turn.turnId, {
         content: projection.text, namespace: projection.namespace, recordIds: projection.records.map(record => record.id),
         revision: Math.max(0, ...projection.records.map(record => record.revision)), enabled: projection.enabled,
+        recall: {
+          schemaVersion: 1, namespace: projection.namespace, enabled: projection.enabled,
+          records: projection.records.map(record => ({ id: record.id, revision: record.revision })),
+          omitted: projection.omitted, bytes: projection.bytes, digest: projection.digest,
+        },
       });
       return { ...admitted, turn };
     }
