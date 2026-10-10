@@ -155,6 +155,36 @@ ensure_port_available() {
     echo "The port is not owned by an Agent Harness Lab process, so it was left untouched." >&2
     return 1
   fi
+  export AGENTLAB_LAUNCHER_INSTANCE="$ROOT_DIR:standalone:$name:$port:$$:$RANDOM"
+}
+
+# Launcher instance tokens are inherited only by its selected process tree.
+# Following equal-token ancestry includes tsx/pnpm watchers without reaching
+# unrelated process-group siblings or an unmarked interactive shell.
+process_launcher_instance() {
+  local pid="$1" entry
+  [[ -r "/proc/$pid/environ" ]] || return 1
+  while IFS= read -r -d '' entry; do
+    if [[ "$entry" == AGENTLAB_LAUNCHER_INSTANCE=* ]]; then
+      printf '%s\n' "${entry#*=}"
+      return 0
+    fi
+  done < "/proc/$pid/environ" 2>/dev/null
+  return 1
+}
+
+launcher_tree_root() {
+  local pid="$1" instance parent parent_instance
+  instance="$(process_launcher_instance "$pid")" || return 1
+  [[ "$instance" == "$ROOT_DIR:"* ]] || return 1
+  while :; do
+    parent="$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d ' ')"
+    [[ "$parent" =~ ^[0-9]+$ && "$parent" -gt 1 ]] || break
+    parent_instance="$(process_launcher_instance "$parent")" || break
+    [[ "$parent_instance" == "$instance" ]] || break
+    pid="$parent"
+  done
+  printf '%s\n' "$pid"
 }
 
 terminate_process_tree() {
@@ -174,7 +204,7 @@ stop_existing_lab_processes() {
   require_command ps
   require_command pgrep
 
-  local listener_pid command process_group current_process_group
+  local listener_pid command tree_root
   while read -r listener_pid; do
     [[ -n "$listener_pid" ]] || continue
     command="$(ps -p "$listener_pid" -o args= 2>/dev/null || true)"
@@ -184,14 +214,12 @@ stop_existing_lab_processes() {
       return 1
     fi
 
-    echo "Stopping existing Agent Harness Lab process on port $port (PID $listener_pid)."
-    process_group="$(ps -p "$listener_pid" -o pgid= 2>/dev/null | tr -d ' ')"
-    current_process_group="$(ps -p "$$" -o pgid= 2>/dev/null | tr -d ' ')"
-    if [[ "$process_group" =~ ^[0-9]+$ && "$process_group" != "$current_process_group" ]]; then
-      kill -TERM -- "-$process_group" 2>/dev/null || terminate_process_tree "$listener_pid"
-    else
-      terminate_process_tree "$listener_pid"
+    if ! tree_root="$(launcher_tree_root "$listener_pid")"; then
+      echo "$name cannot replace PID $listener_pid on port $port: launcher ownership is unknown or unreadable. Stop its watcher explicitly; it was left untouched." >&2
+      return 1
     fi
+    echo "Stopping launcher-owned process tree on port $port (PID $tree_root)."
+    terminate_process_tree "$tree_root"
   done < <(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | sort -nu)
 
   for _ in {1..30}; do
@@ -204,35 +232,66 @@ stop_existing_lab_processes() {
   return 1
 }
 
+# Only workers launched with a complete matching identity are replaceable.
+# /proc unavailable/unreadable, direct invocations and older unmarked workers
+# fail closed: contributors must stop those explicitly if they want replacement.
+worker_matches_selected_configuration() {
+  local pid="$1" entry key require_owner="${2:-true}"
+  [[ -r "/proc/$pid/environ" ]] || return 1
+  local -A expected=(
+    [AGENTLAB_LAUNCHER_WORKER_OWNER]="$ROOT_DIR/temporal-worker-v1"
+    [AGENTLAB_TEMPORAL_ENDPOINT]="$TEMPORAL_ENDPOINT"
+    [AGENTLAB_TEMPORAL_NAMESPACE]="$TEMPORAL_NAMESPACE"
+    [AGENTLAB_TEMPORAL_TASK_QUEUE]="$TEMPORAL_TASK_QUEUE"
+    [AGENTLAB_RUN_ROOT]="$RUN_ROOT"
+    [AGENTLAB_CONTEXT_ROOT]="$CONTEXT_ROOT"
+    [AGENTLAB_CAPABILITY_HOST_URL]="$AGENTLAB_CAPABILITY_HOST_URL"
+  )
+  [[ "$require_owner" == true ]] || unset 'expected[AGENTLAB_LAUNCHER_WORKER_OWNER]'
+  while IFS= read -r -d '' entry; do
+    key="${entry%%=*}"
+    case "$key" in
+      AGENTLAB_LAUNCHER_WORKER_OWNER|AGENTLAB_TEMPORAL_ENDPOINT|AGENTLAB_TEMPORAL_NAMESPACE|AGENTLAB_TEMPORAL_TASK_QUEUE|AGENTLAB_RUN_ROOT|AGENTLAB_CONTEXT_ROOT|AGENTLAB_CAPABILITY_HOST_URL)
+        [[ "$key" != AGENTLAB_LAUNCHER_WORKER_OWNER || "$require_owner" == true ]] || continue
+        [[ "${entry#*=}" == "${expected[$key]-}" ]] || return 1
+        unset 'expected[$key]'
+        ;;
+    esac
+  done < "/proc/$pid/environ" 2>/dev/null || return 1
+  [[ "${#expected[@]}" == 0 ]]
+}
+
 stop_existing_lab_workers() {
   require_command ps
   require_command pgrep
 
-  local worker_pid command process_group current_process_group
+  local worker_pid command tree_root
   while read -r worker_pid; do
     [[ -n "$worker_pid" ]] || continue
     command="$(ps -p "$worker_pid" -o args= 2>/dev/null || true)"
-    if [[ "$command" != *"$ROOT_DIR"* || "$command" != *"worker-entry.ts"* ]]; then
+    [[ "$command" == *"$ROOT_DIR"* && "$command" == *"worker-entry.ts"* ]] || continue
+    if ! worker_matches_selected_configuration "$worker_pid"; then
+      if worker_matches_selected_configuration "$worker_pid" false; then
+        echo "A Temporal worker already matches the selected configuration (PID $worker_pid), but launcher ownership is unknown. Stop its watcher explicitly before starting a duplicate; it was left untouched." >&2
+        return 1
+      fi
       continue
     fi
-
-    echo "Stopping existing Agent Harness Lab Temporal worker (PID $worker_pid)."
-    process_group="$(ps -p "$worker_pid" -o pgid= 2>/dev/null | tr -d ' ')"
-    current_process_group="$(ps -p "$$" -o pgid= 2>/dev/null | tr -d ' ')"
-    if [[ "$process_group" =~ ^[0-9]+$ && "$process_group" != "$current_process_group" ]]; then
-      kill -TERM -- "-$process_group" 2>/dev/null || terminate_process_tree "$worker_pid"
-    else
-      terminate_process_tree "$worker_pid"
+    if ! tree_root="$(launcher_tree_root "$worker_pid")"; then
+      echo "Matching Temporal worker PID $worker_pid has unknown launcher ancestry. Stop its watcher explicitly; it was left untouched." >&2
+      return 1
     fi
+    echo "Stopping matching launcher-owned Temporal worker tree (PID $tree_root)."
+    terminate_process_tree "$tree_root"
   done < <(pgrep -f 'worker-entry\.ts' 2>/dev/null | sort -nu || true)
 
   for _ in {1..30}; do
-    local remaining_worker_pid remaining_command
-    remaining_worker_pid=""
+    local remaining_worker_pid=""
     while read -r worker_pid; do
       [[ -n "$worker_pid" ]] || continue
-      remaining_command="$(ps -p "$worker_pid" -o args= 2>/dev/null || true)"
-      if [[ "$remaining_command" == *"$ROOT_DIR"* && "$remaining_command" == *"worker-entry.ts"* ]]; then
+      command="$(ps -p "$worker_pid" -o args= 2>/dev/null || true)"
+      [[ "$command" == *"$ROOT_DIR"* && "$command" == *"worker-entry.ts"* ]] || continue
+      if worker_matches_selected_configuration "$worker_pid"; then
         remaining_worker_pid="$worker_pid"
         break
       fi
@@ -240,7 +299,7 @@ stop_existing_lab_workers() {
     [[ -z "$remaining_worker_pid" ]] && return 0
     sleep 0.1
   done
-  echo "The previous Agent Harness Lab Temporal worker did not stop." >&2
+  echo "The matching launcher-owned Temporal worker did not stop." >&2
   return 1
 }
 
@@ -477,7 +536,7 @@ run_studio() {
   start_background() {
     local name="$1"
     shift
-    setsid "$@" >"$stack_log_directory/$name.log" 2>&1 &
+    setsid env AGENTLAB_LAUNCHER_INSTANCE="$ROOT_DIR:stack:$name:$$:$RANDOM" "$@" >"$stack_log_directory/$name.log" 2>&1 &
     stack_pids+=("$!")
     stack_process_names+=("$name")
   }
@@ -574,7 +633,9 @@ run_worker() {
   stop_existing_lab_workers
 
   echo "Starting Temporal worker on task queue $TEMPORAL_TASK_QUEUE"
-  AGENTLAB_RUN_ROOT="$RUN_ROOT" \
+  AGENTLAB_LAUNCHER_INSTANCE="$ROOT_DIR:worker:$$:$RANDOM" \
+    AGENTLAB_LAUNCHER_WORKER_OWNER="$ROOT_DIR/temporal-worker-v1" \
+    AGENTLAB_RUN_ROOT="$RUN_ROOT" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
     AGENTLAB_LOCAL_FIXTURE_URL="$LOCAL_FIXTURE_URL" \
     AGENTLAB_TEMPORAL_ENDPOINT="$TEMPORAL_ENDPOINT" \
@@ -770,7 +831,7 @@ start_all() {
   start_background() {
     local name="$1"
     shift
-    setsid "$@" >"$stack_log_directory/$name.log" 2>&1 &
+    setsid env AGENTLAB_LAUNCHER_INSTANCE="$ROOT_DIR:stack:$name:$$:$RANDOM" "$@" >"$stack_log_directory/$name.log" 2>&1 &
     stack_pids+=("$!")
     stack_process_names+=("$name")
   }
@@ -902,6 +963,7 @@ start_all() {
     pnpm --dir "$ROOT_DIR" --filter @agent-harness-lab/lab-server run dev
   unset AGENTLAB_MEMOS_AUTHORIZATION AGENTLAB_CREDENTIAL_KEY_HEX AGENTLAB_CREDENTIAL_KEYRING_JSON AGENTLAB_OAUTH_SECRET_KEY_HEX AGENTLAB_CREDENTIAL_KEY_ID
   start_background "worker" env \
+    AGENTLAB_LAUNCHER_WORKER_OWNER="$ROOT_DIR/temporal-worker-v1" \
     AGENTLAB_RUN_ROOT="$RUN_ROOT" \
     AGENTLAB_CONTEXT_ROOT="$CONTEXT_ROOT" \
     AGENTLAB_TEMPORAL_ENDPOINT="$TEMPORAL_ENDPOINT" \

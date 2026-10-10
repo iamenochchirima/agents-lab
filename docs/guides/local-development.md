@@ -25,8 +25,20 @@ comparison services (Restate, LangGraph, and Vercel Workflows; Mastra executes
 in the API process), followed by the Lab
 server, Temporal worker, and web app. It prints the URLs only after their readiness
 checks pass. Running it again replaces an existing Agent Harness Lab stack on the
-configured ports and replaces stale Lab Temporal workers. Press Ctrl-C to stop the
-current stack; an existing Temporal process is not stopped.
+configured ports when the process carries an inspectable launcher instance identity.
+Replacement follows that instance's watcher ancestry and stops its process tree;
+it does not signal unrelated process-group siblings. Temporal workers are replaced
+only when their launcher owner, endpoint, namespace, task queue, run root, context
+root, and capability-host endpoint match the selected configuration. Other queues
+and roots remain running. An unmarked worker already using the selected
+configuration blocks a duplicate launch and is left untouched.
+
+Ownership inspection uses Linux `/proc/<pid>/environ`. Unknown, unreadable,
+manual, or older unmarked service owners are not automatically replaced. Stop the
+original watcher explicitly before retrying a conflicting port or matching worker
+configuration. On systems without readable `/proc`, automatic replacement is
+unavailable. Press Ctrl-C to stop the current launcher-owned stack; an existing
+Temporal server process is not stopped.
 
 The launcher also starts the no-Docker local connection fixture at
 `http://127.0.0.1:9191`. Platform capability runs use it through the opaque
