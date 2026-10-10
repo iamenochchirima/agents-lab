@@ -305,3 +305,20 @@ Browser proof: `lab/runs/.connected-proof/browser-sustained-20261010/summary.jso
 Remaining acceptance work: investigate model task comprehension and capability descriptions under fixed controls, retain any changed prompt/catalog identity, then run a bounded free cohort when capacity permits. Do not force a fixed correction loop, authorize undeclared actions, weaken verification criteria or erase prior failures. All implementation work is in focused commits; the plan remains active for this unresolved acceptance gate.
 
 - `d813fab`: generic observer-abort evidence now retains failed stage, observer error, cancellation response and independent native/provider observations, including a failed cancellation response. One focused regression and server build passed. Earlier reports remain unchanged.
+
+
+### Continued context audit
+
+The goal continuation audited actual model requests rather than assuming every failure was model quality. `2449c97` removes duplicate equivalent text/structured JSON from model projections on all five while retaining distinct blocks and raw receipts; four focused checks and server build passed. The audit also found dynamically loaded skill procedures could be removed by compaction in Mastra and LangGraph; both fixes now have targeted proofs below. Earlier loaded-skill claims covered admission and later requests at normal context size, not this missing forced-compaction case.
+
+`ce24d29` adds shared default guidance to account for multipart outcomes/verification and compare observed values before reconciliation, leaving already-matching values unchanged. It does not select tools, inject a per-scenario loop or authorize actions. Five existing manifest checks passed. Subsequent model trials must record this changed instruction and projection revision separately.
+
+- `943a09f`: Mastra genuinely loaded skill activation survives forced completed-tool-group compaction as protected authority-free user context with retained digest/version/trust provenance. Two focused cases and server build passed; original red regression established the gap.
+
+- `9bd6ef4`: LangGraph captures only validated admitted packaged-loader procedures as native authority-free state. Protected skill bodies survive completed-group compaction and SQLite checkpoint readback. 48 targeted graph/recovery/review checks passed. Temporal/Restate and Vercel counterparts already append protected active skill bodies at native context boundaries.
+- Additional audit correction: the final Mastra Cohere run confirmed Lab cancellation, but native SDK snapshots remained suspended. The Stop/native-cancel boundary was corrected in `dc99cac`; do not interpret the original Lab terminal observation as proof of native SDK cancellation.
+
+- `dc99cac`: Mastra Stop now acquires the native owner and confirms the retained outer workflow snapshot is canceled before Lab cancellation. Busy/unconfirmed cancellation retains nonterminal state. 53 Mastra checks and seven genuine native review cases passed; before/after proof `lab/runs/.review-proof/native-review-a658685a-1688-4af3-9c93-0566a60a366b/659045a9-9829-4b9b-9336-98b20c1fe369/artifacts/native-stop-proof.json`. Suspended deadline expiry requires the local API observer/adapter inspection; no absent-host native timer is claimed.
+- Corrective Cohere cohort `connected-16d52dc2-31be-4dab-8d3e-016750d08b15` started against the latest isolated owned stack after these fixes. Model output allowance, zero-price routing, six-record task and grading rules are unchanged; default instruction, result projection and skill retention are changed controls. Original cohorts remain immutable.
+
+- `3a2d8ae`: admits the exact `nvidia/nemotron-3-ultra-550b-a55b:free` ID as a separate sustained-task model control. Fresh live zero-price/tool-parameter checks and zero-price routing remain mandatory. Eleven focused policy checks and server build passed. No result is inferred from model size or catalog availability.

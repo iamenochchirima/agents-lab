@@ -313,7 +313,7 @@ The observer was subsequently corrected to retain abort/cancellation observation
 for future runs, including explicit failed-observation fields; it does not infer terminal
 state from a cancellation request. A separate read-only
 [terminal observation](../../lab/runs/.sustained-proof/runs/.connected-proof/terminal-followup-20261010.json)
-confirms cancellation and exactly one saved Cedar effect in each of Temporal,
+confirms Lab cancellation and exactly one saved Cedar effect in each of Temporal,
 LangGraph, Mastra and Vercel; the unauthorized Birch actions had no effect. It does
 not change the original verdicts. Restate independently retained exactly three effects.
 
@@ -344,3 +344,37 @@ hardening is deferred. A separate broad evidence-store check also exposed an exi
 grader-error wording mismatch (17/18 passed); that unrelated assertion was not weakened.
 For usage, defaults and recovery contracts, see
 [connected agent tools](../guides/connected-agent-tools.md).
+
+
+### Corrective context and cancellation audit
+
+A later audit found two implementation gaps beyond model task failures. Mastra and
+LangGraph could drop dynamically loaded skill procedures when completed tool groups
+were compacted. Both now retain the admitted skill body as protected, authority-free
+user context with package, version, digest and trust provenance. Mastra has a real
+activation/forced-compaction regression; LangGraph also proves the state survives a
+SQLite checkpoint readback. The existing Temporal, Restate and Vercel context steps
+already preserve the active skill body.
+
+Equivalent text and structured JSON tool results now appear once in model context
+on all five. Distinct content and original receipts remain available. The shared
+default instruction also asks the model to track multipart outcomes and verification,
+and to leave already-matching values unchanged. These are changed controls, recorded
+separately from the original cohorts. Neither change chooses an action or grants
+approval.
+
+The old Mastra aborted trial proved Lab cancellation but left the native SDK snapshot
+suspended. The corrected Stop path confirms cancellation of the retained outer native
+workflow before recording Lab cancellation. A busy owner or unconfirmed native stop
+leaves cancellation pending. The native proof records suspended before and canceled
+after, with zero effects:
+[`native-stop-proof`](../../lab/runs/.review-proof/native-review-a658685a-1688-4af3-9c93-0566a60a366b/659045a9-9829-4b9b-9336-98b20c1fe369/artifacts/native-stop-proof.json).
+This does not claim that every historical nested snapshot is terminal. Suspended
+Mastra deadline expiry requires local API observation; it is not an absent-host SDK
+timer.
+
+The explicit additional model control is
+`nvidia/nemotron-3-ultra-550b-a55b:free`. Each trial must still fetch the
+[live catalog](https://openrouter.ai/api/v1/models), confirm every listed billing
+dimension is zero and retain the same zero-price restrictions. Catalog availability
+and model size do not establish task success.

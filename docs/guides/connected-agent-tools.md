@@ -130,7 +130,7 @@ control decision to be retried with its original identity after host restart.
 Acceptance acknowledges control delivery; inspect the native run and provider
 receipt to establish the effect. Cancellation requests native stop and preserves
 uncertain outcomes; it cannot undo an external dispatch. Deadline codes are native
-(`RUN_DEADLINE_EXCEEDED` or LangGraph's `EXECUTION_DEADLINE_EXCEEDED`) and retain a
+(`RUN_DEADLINE_EXCEEDED`, LangGraph's `EXECUTION_DEADLINE_EXCEEDED`, or Vercel's `TASK_DEADLINE_EXCEEDED`) and retain a
 timeout classification. An uncertain operation takes precedence over a simple
 timeout where the effect cannot be established.
 
