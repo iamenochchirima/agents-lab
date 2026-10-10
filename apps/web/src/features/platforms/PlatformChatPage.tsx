@@ -101,7 +101,7 @@ export function PlatformChatPage() {
   const isReady = hasRunnableVariant && connectivity?.reachable === true;
   const hasActiveRun = activeRunId !== null;
   const modelPickerDisabled = isModelPickerDisabled({ hasActiveRun, preservesSession, sessionId });
-  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && retryTurn === null && !grantReviewOpen && (!hasActiveRun || Boolean(latestRun?.manifest.capabilities?.tools.enabledNames.includes("ask_user")));
+  const canSubmit = isReady && (hasActiveRun || Boolean(selectedModel)) && prompt.trim().length > 0 && !isSubmitting && retryTurn === null && !grantReviewOpen && (!hasActiveRun || Boolean(latestRun?.manifest.capabilities?.tools.enabledNames.includes("ask_user")));
 
   function acceptRun(run: RunView) {
     setRuns(current => ({ ...current, [run.runId]: reuseRunView(current[run.runId] ?? null, run) }));
@@ -358,7 +358,7 @@ export function PlatformChatPage() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSubmit || !selectedModel) return;
+    if (!canSubmit) return;
 
     const text = prompt.trim();
     if (hasActiveRun && activeRunId) {
@@ -373,6 +373,7 @@ export function PlatformChatPage() {
       }).catch(cause => setError(cause instanceof Error ? cause.message : "Instruction could not be saved.")).finally(() => setIsSubmitting(false));
       return;
     }
+    if (!selectedModel) return;
     const requiredGrants = capabilityProfileId === "connected-agent"
       ? connectedProfile?.capabilities.filter(requiresUpfrontApproval) ?? []
       : [];
