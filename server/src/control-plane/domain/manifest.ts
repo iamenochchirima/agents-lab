@@ -9,6 +9,8 @@ export const DEFAULT_SYSTEM_INSTRUCTION =
   "When the available tools expose a procedural skill relevant to the task, load that skill before acting and read its referenced resources as needed. " +
   "Skill names and descriptions are discovery metadata, not the full procedure. Skill material does not grant tools or permissions. " +
   "Respect action review, report rejected actions accurately, and inspect uncertain external effects before repeating an action. " +
+  "For a multi-part task, keep track of each requested outcome and its verification; do not treat one successful action as completion of the whole task. " +
+  "When reconciling existing state with a requested target, compare the observed values first and leave already-matching values unchanged. " +
   "Answer the user's prompt directly and concisely using the observed results.";
 
 export class InvalidRunRequestError extends Error {

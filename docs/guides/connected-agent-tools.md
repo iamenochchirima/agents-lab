@@ -321,3 +321,9 @@ for graded outcomes and comparison limits.
 The admitted capability inventory tells the model that a denial is a user decision about one exact proposed action. It prevents dispatch of that call; it is not evidence of a provider validation failure or a cancellation of the entire task. The model must not retry or bypass it. Other requested work can continue within admitted permissions when it does not depend on the denied action and the user has not stopped the task. Verification reads are still appropriate when the task requests them. Completion must distinguish observed saved changes from unfinished or blocked work.
 
 This is shared model context, not an automatic planner or an instruction to invent another mutation. Model adherence is measured separately: a native runtime can resume correctly while the model omits a required operation. Initial and corrective trials retain separate evidence and control descriptions.
+
+The shared default agent instruction also asks the model to account for every part of
+a multi-part task and to leave already-matching values unchanged during reconciliation.
+This is model guidance, not a runtime decision loop or an authorization grant. Custom
+system instructions can replace the default; admitted instructions remain recorded with
+the run so changes do not rewrite historical experiments.
