@@ -144,6 +144,7 @@ test("LangGraph runner maps start, inspect, and cancel without leaking native ty
     const runner = LangGraphBaselineRunner.fromOptions({ serviceUrl: "http://127.0.0.1:2024" });
     const runManifest: RunManifest = {
       ...manifest(runner),
+      execution: { schemaVersion: 1, mode: "sustained", deadlineAt: "2026-10-10T12:00:00Z", modelTimeoutMs: 60_000 },
       context: { systemInstruction: "Respond directly." },
       capabilities: { tools: { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 } },
     };
@@ -154,6 +155,7 @@ test("LangGraph runner maps start, inspect, and cancel without leaking native ty
     assert.equal(reference.executionId, "langgraph:run-langgraph-test");
     assert.equal(reference.native["threadId"], "run-langgraph-test");
     assert.equal(requestBodies[0]?.context, undefined);
+    assert.deepEqual(requestBodies[0]?.execution, { schemaVersion: 1, mode: "sustained", deadlineAt: "2026-10-10T12:00:00Z", modelTimeoutMs: 60_000 });
     assert.deepEqual(requestBodies[0]?.tools, { enabledNames: ["calculator"], maxRounds: 3, maxCalls: 2 });
 
     const inspection = await runner.inspect(reference);

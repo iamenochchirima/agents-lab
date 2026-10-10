@@ -2,7 +2,7 @@
 
 ## What is implemented
 
-The baseline is a small `StateGraph` with one model node and a bounded tools node. The
+The baseline is a small `StateGraph` with context, model, approval and bounded tools nodes. The
 graph is compiled with `SqliteSaver`, invoked with a stable `thread_id`, and consumed
 through the platform-local FastAPI service. The service streams LangGraph `v2` updates,
 tasks, and checkpoint parts into a redacted native event log.
@@ -121,11 +121,20 @@ WAL journaling, `synchronous=FULL`, foreign-key checks, and a five-second busy t
 for its process-owned connection. The service record tables and LangGraph checkpoint
 tables share the file but have separate responsibilities.
 
-On startup, queued or running service records are changed to `unknown` with a
+On startup, legacy queued or running service records are changed to `unknown` with a
 `RunReconciliationRequired` event. A later POST with the same immutable run identity
 returns that persisted unknown record with `idempotent=true`; it does not start a
 second graph execution. A late worker completion cannot overwrite that reconciliation
 record.
+
+Sustained admissions add an absolute deadline and model timeout to the retained
+request. Startup resumes an original native checkpoint only when its run identity
+matches and any recorded I/O intent is already represented in checkpoint state.
+The service passes no fresh graph input, and preserves counters and call IDs.
+Unresolved provider calls remain unknown. The state directory has one local
+execution owner, enforced by an exclusive file lock. See
+[durability](../variants/baseline/durability/README.md) for the recovery classification
+and [context](../variants/baseline/context/README.md) for within-run compaction.
 
 `GET /v1/recovery/diagnostics` is a bounded, read-only operator check. It reports
 checkpoint threads with no owning service run, orphan writes, and admitted

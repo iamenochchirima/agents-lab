@@ -197,6 +197,7 @@ export class LangGraphBaselineRunner implements PlatformRunner {
       durability: "sqlite-sync",
       maxAttempts: configuration.maxAttempts,
       timeoutMs: configuration.timeoutMs,
+      ...(manifest.execution ? { execution: manifest.execution } : {}),
       ...(identity.context ? { context: identity.context } : {}),
       tools: manifest.capabilities?.tools ?? configuration.tools,
       ...(manifest.capabilities?.toolCatalog ? { toolCatalog: manifest.capabilities.toolCatalog } : {}),

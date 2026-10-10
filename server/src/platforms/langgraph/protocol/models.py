@@ -8,6 +8,7 @@ into the common server runner seam.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -117,6 +118,20 @@ class ToolCatalogSnapshot(ProtocolModel):
     tools: list[dict[str, Any]] = Field(max_length=128)
 
 
+class ExecutionPolicy(ProtocolModel):
+    schema_version: Literal[1]
+    mode: Literal["sustained"]
+    deadline_at: str
+    model_timeout_ms: int = Field(ge=100, le=300_000)
+
+    @model_validator(mode="after")
+    def validate_deadline(self) -> "ExecutionPolicy":
+        deadline = datetime.fromisoformat(self.deadline_at.replace("Z", "+00:00"))
+        if deadline.tzinfo is None:
+            raise ValueError("deadlineAt must contain a timezone.")
+        return self
+
+
 class StartRunRequest(ProtocolModel):
     # Only synthetic live evals opt into bounded request evidence and free routing.
     live_eval: bool = False
@@ -137,6 +152,7 @@ class StartRunRequest(ProtocolModel):
     tools: ToolConfiguration | None = None
     tool_catalog: ToolCatalogSnapshot | None = None
     connections: list[ConnectionBinding] = Field(default_factory=list, max_length=32)
+    execution: ExecutionPolicy | None = None
 
     @model_validator(mode="after")
     def validate_connections(self) -> "StartRunRequest":

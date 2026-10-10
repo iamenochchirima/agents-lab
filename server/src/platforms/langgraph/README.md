@@ -125,7 +125,11 @@ The complete resolved environment is in [`requirements.lock`](requirements.lock)
   waits briefly, remains cancellable, and then completes without an external side
   effect. It is not a production model profile.
 - Node retries are bounded. A retried model call can be duplicated; the baseline does not claim exactly-once model execution.
-- Cancellation is cooperative. A process restart that interrupts an active run produces `unknown` and requires reconciliation rather than fabricated success or failure.
+- Cancellation is cooperative. Sustained executions recover only an owned safe
+  native checkpoint under the original run, thread and deadline. An interrupted
+  model/tool/summary operation missing from that checkpoint becomes `unknown` and
+  requires reconciliation. Legacy active runs retain the conservative unknown
+  policy. See [native durability](variants/baseline/durability/README.md).
 
 ## Related docs
 

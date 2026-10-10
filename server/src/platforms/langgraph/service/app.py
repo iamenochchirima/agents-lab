@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -10,7 +11,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -44,6 +45,7 @@ from variants.baseline.graph import (
     LangGraphModelError,
     ModelConfig,
     OutcomeUnknownError,
+    ExecutionDeadlineError,
     build_baseline_graph,
 )
 
@@ -54,9 +56,17 @@ SERVICE_PACKAGE_VERSION = "0.1.0"
 class LangGraphService:
     def __init__(self, config: ServiceConfig) -> None:
         self.config = config
+        config.state_dir.mkdir(parents=True, exist_ok=True)
+        self._owner_lock = (config.state_dir / ".execution-owner.lock").open("a")
+        try:
+            fcntl.flock(self._owner_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            self._owner_lock.close()
+            raise RuntimeError("Another LangGraph service owns this local state directory.") from None
         self.store = SQLiteRunStore(config.database_path)
         self.active_tasks: dict[str, asyncio.Task[None]] = {}
         self.cancel_events: dict[str, threading.Event] = {}
+        self.deadline_tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
 
     async def start_run(self, request: StartRunRequest) -> tuple[dict[str, Any], bool]:
@@ -77,7 +87,77 @@ class LangGraphService:
             cancel_event = threading.Event()
             self.cancel_events[execution_id] = cancel_event
             self.active_tasks[execution_id] = asyncio.create_task(self._execute(request, cancel_event))
+            self._watch_deadline(request)
         return record, created
+
+    def _watch_deadline(self, request: StartRunRequest) -> None:
+        if request.execution is None:
+            return
+        execution_id = f"langgraph:{request.run_id}"
+        if execution_id not in self.deadline_tasks:
+            self.deadline_tasks[execution_id] = asyncio.create_task(self._expire_run(request))
+
+    async def _expire_run(self, request: StartRunRequest) -> None:
+        execution_id = f"langgraph:{request.run_id}"
+        await asyncio.sleep(max(0, execution_remaining_ms(request)) / 1000)
+        record = self.store.get(execution_id)
+        if record["status"] == "suspended":
+            self._finish_deadline(record)
+        elif record["status"] in {"queued", "running"}:
+            event = self.cancel_events.get(execution_id)
+            if event:
+                event.set()
+
+    def _finish_deadline(self, record: dict[str, Any]) -> None:
+        self.store.finish(record["execution_id"], status="failed", finished_at=now_iso(), output=None,
+            error={"code": "EXECUTION_DEADLINE_EXCEEDED", "message": "The retained execution deadline was reached.", "failureKind": "timeout", "retryable": False},
+            attempt_count=record["attempt_count"], usage=record["usage"])
+        self.store.append_event(record["execution_id"], "RunFailed", {"code": "EXECUTION_DEADLINE_EXCEEDED", "failureKind": "timeout"})
+
+    async def recover_runs(self) -> None:
+        """Resume only proven safe native checkpoints under the original owner."""
+        for record in self.store.active_runs():
+            execution_id = record["execution_id"]
+            try:
+                request = StartRunRequest.model_validate(json.loads(record["request_json"]))
+            except (TypeError, ValueError):
+                continue  # Legacy admissions retain the conservative unknown policy.
+            if request.execution is None:
+                continue
+            if record["status"] == "suspended":
+                if record["cancel_requested"]:
+                    await self.cancel_run(execution_id, record["cancel_reason"] or "Retained cancellation")
+                elif execution_remaining_ms(request) <= 0:
+                    self._finish_deadline(record)
+                else:
+                    self._watch_deadline(request)
+                continue
+            with SqliteSaver.from_conn_string(str(self.config.database_path)) as saver:
+                native = saver.get_tuple({"configurable": {"thread_id": request.thread_id}})
+            values = native.checkpoint.get("channel_values", {}) if native else {}
+            operation = json.loads(record["pending_operation_json"]) if record.get("pending_operation_json") else None
+            safe = values.get("execution_run_id") == request.run_id and checkpoint_contains_operation(values, operation)
+            if not safe:
+                self.store.finish(execution_id, status="unknown", finished_at=now_iso(), output=None,
+                    error={"code": "LANGGRAPH_RECOVERY_RECONCILIATION_REQUIRED", "message": "No safe owned checkpoint proves the interrupted operation. Reconcile before resuming.", "failureKind": "outcome_unknown", "retryable": False},
+                    attempt_count=record["attempt_count"], usage=record["usage"])
+                self.store.append_event(execution_id, "RunReconciliationRequired", {"reason": "unresolved_native_boundary", "operation": operation})
+                continue
+            if record["cancel_requested"]:
+                self.store.finish(execution_id, status="cancelled", finished_at=now_iso(), output=None,
+                    error={"code": "LANGGRAPH_CANCELLED", "message": record["cancel_reason"] or "Cancellation retained before recovery.", "failureKind": "cancelled", "retryable": False},
+                    attempt_count=record["attempt_count"], usage=record["usage"])
+                self.store.append_event(execution_id, "RunCancelled", {"reason": "persisted_cancellation"})
+                continue
+            if execution_remaining_ms(request) <= 0:
+                self._finish_deadline(record)
+                continue
+            self.store.set_pending_operation(execution_id, None)
+            self.store.append_event(execution_id, "RunRecovered", {"threadId": request.thread_id, "checkpointId": native.config["configurable"]["checkpoint_id"]})
+            cancel_event = threading.Event()
+            self.cancel_events[execution_id] = cancel_event
+            self.active_tasks[execution_id] = asyncio.create_task(self._execute(request, cancel_event, recovery=True))
+            self._watch_deadline(request)
 
     async def cancel_run(self, execution_id: str, reason: str) -> tuple[dict[str, Any], bool]:
         record, accepted = self.store.request_cancel(execution_id, reason)
@@ -118,6 +198,8 @@ class LangGraphService:
             return self.store.get(execution_id)
 
     async def shutdown(self) -> None:
+        for task in self.deadline_tasks.values():
+            task.cancel()
         for event in self.cancel_events.values():
             event.set()
         active_tasks = [task for task in self.active_tasks.values() if not task.done()]
@@ -132,21 +214,22 @@ class LangGraphService:
         # overwrite the persisted unknown outcome.
         if all(task.done() for task in active_tasks):
             self.store.close()
+            self._owner_lock.close()
 
-    async def _execute(self, request: StartRunRequest, cancel_event: threading.Event, resume: dict[str, Any] | None = None) -> None:
+    async def _execute(self, request: StartRunRequest, cancel_event: threading.Event, resume: dict[str, Any] | None = None, recovery: bool = False) -> None:
         execution_id = f"langgraph:{request.run_id}"
         try:
-            await asyncio.to_thread(self._execute_sync, request, cancel_event, resume)
+            await asyncio.to_thread(self._execute_sync, request, cancel_event, resume, recovery)
         finally:
             self.active_tasks.pop(execution_id, None)
             self.cancel_events.pop(execution_id, None)
 
-    def _execute_sync(self, request: StartRunRequest, cancel_event: threading.Event, resume: dict[str, Any] | None = None) -> None:
+    def _execute_sync(self, request: StartRunRequest, cancel_event: threading.Event, resume: dict[str, Any] | None = None, recovery: bool = False) -> None:
         execution_id = f"langgraph:{request.run_id}"
         started_at = now_iso()
         self.store.update_status(execution_id, "running", started_at=started_at)
         self.store.append_event(execution_id, "PlatformExecutionStarted", {"graph": request.graph, "threadId": request.thread_id})
-        attempt_count = 0
+        attempt_count = self.store.get(execution_id)["attempt_count"]
         started_clock = time.monotonic()
 
         def emit(kind: str, payload: dict[str, Any]) -> None:
@@ -154,13 +237,15 @@ class LangGraphService:
             if isinstance(payload.get("attempt"), int):
                 attempt_count = max(attempt_count, int(payload["attempt"]))
                 self.store.update_attempt_count(execution_id, attempt_count)
+            if kind in {"ModelRequested", "ToolExecutionStarted"}:
+                self.store.set_pending_operation(execution_id, {"kind": "tool" if kind == "ToolExecutionStarted" else "context" if payload.get("node") == "context" else "model", **payload})
             self.store.append_event(execution_id, kind, payload)
 
         model = ModelConfig(
             provider=request.model.provider,
             model=request.model.model,
             api_key=os.environ.get("OPENROUTER_API_KEY"),
-            timeout_ms=request.timeout_ms,
+            timeout_ms=min(request.execution.model_timeout_ms if request.execution else request.timeout_ms, max(1, execution_remaining_ms(request))),
             base_url=os.environ.get("AGENTLAB_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
         )
         status = "completed"
@@ -168,7 +253,9 @@ class LangGraphService:
         error: dict[str, Any] | None = None
         usage = {"inputTokens": None, "outputTokens": None, "totalTokens": None}
         try:
-            initial_messages = load_context_messages(self.config.context_root, request, emit) if resume is None else []
+            if execution_remaining_ms(request) <= 0:
+                raise ExecutionDeadlineError("The retained execution deadline was reached.")
+            initial_messages = load_context_messages(self.config.context_root, request, emit) if resume is None and not recovery else []
             tool_configuration = request.tools
             with SqliteSaver.from_conn_string(str(self.config.database_path)) as checkpointer:
                 graph = build_baseline_graph(
@@ -190,24 +277,35 @@ class LangGraphService:
                     turn_id=request.context.turn_id if request.context else f"{request.run_id}:turn:1",
                     max_rounds=tool_configuration.max_rounds if tool_configuration else 6,
                     max_calls=tool_configuration.max_calls if tool_configuration else 8,
+                    execution_deadline_reached=lambda: execution_remaining_ms(request) <= 0,
+                    context_window_tokens=request.context.context_window_tokens if request.context else None,
                 )
                 graph_config = {
                     "configurable": {"thread_id": request.thread_id},
                     "run_id": request.run_id,
                 }
                 checkpoint = graph.get_state(graph_config)
-                graph_input = Command(resume=resume) if resume is not None else graph_input_for_turn(request, initial_messages, checkpoint, emit)
+                graph_input = None if recovery else Command(resume=resume) if resume is not None else {**graph_input_for_turn(request, initial_messages, checkpoint, emit), "execution_run_id": request.run_id, "working_compaction_revision": 0}
                 for part in graph.stream(
                     graph_input,
                     graph_config,
                     stream_mode=["updates", "checkpoints", "tasks"],
                     version="v2",
+                    durability="sync",
                 ):
                     self._record_stream_part(execution_id, request.run_id, part)
                 snapshot = graph.get_state(graph_config)
                 if any(task.interrupts for task in snapshot.tasks):
                     status = "suspended"
                     self.store.update_status(execution_id, "suspended")
+                    # The deadline timer can fire while the worker transitions
+                    # into suspension. Recheck after committing the wait so a
+                    # timer that observed 'running' cannot leave it parked.
+                    if execution_remaining_ms(request) <= 0:
+                        self._finish_deadline(self.store.get(execution_id))
+                        return
+                    if cancel_event.is_set() or self.store.cancellation_requested(execution_id)[0]:
+                        raise CancellationError("Cancellation retained before review suspension.")
                     pending = next(item.value for task in snapshot.tasks for item in task.interrupts)
                     self.store.append_event(execution_id, "RunSuspended", {"reason": "invocation_review", "threadId": request.thread_id,
                         "checkpointId": snapshot.config.get("configurable", {}).get("checkpoint_id"),
@@ -230,6 +328,8 @@ class LangGraphService:
                 self.store.update_attempt_count(execution_id, attempt_count)
                 self.store.append_event(execution_id, "RunCompleted", {"outputCharacters": len(output or "")})
         except LangGraphModelError as exc:
+            if isinstance(exc, CancellationError) and execution_remaining_ms(request) <= 0:
+                exc = ExecutionDeadlineError("The retained execution deadline was reached.")
             status = "cancelled" if isinstance(exc, CancellationError) else "unknown" if isinstance(exc, OutcomeUnknownError) else "failed"
             error = {
                 "code": exc.code,
@@ -237,7 +337,7 @@ class LangGraphService:
                 "failureKind": exc.failure_kind,
                 "retryable": bool(exc.retryable),
             }
-            if self.store.get(execution_id)["status"] in {"queued", "running"}:
+            if self.store.get(execution_id)["status"] in {"queued", "running", "suspended"}:
                 self.store.append_event(
                     execution_id,
                     "RunCancelled" if status == "cancelled" else "RunReconciliationRequired" if status == "unknown" else "RunFailed",
@@ -251,7 +351,7 @@ class LangGraphService:
                 "failureKind": "internal" if status == "failed" else "outcome_unknown",
                 "retryable": False,
             }
-            if self.store.get(execution_id)["status"] in {"queued", "running"}:
+            if self.store.get(execution_id)["status"] in {"queued", "running", "suspended"}:
                 self.store.append_event(execution_id, "RunFailed" if status == "failed" else "RunReconciliationRequired", {"code": error["code"]})
         finally:
             finished = False if status == "suspended" else self.store.finish(
@@ -347,9 +447,11 @@ class LangGraphService:
 async def lifespan(app: FastAPI):
     config = getattr(app.state, "config", ServiceConfig.from_environment())
     service = LangGraphService(config)
+    await service.recover_runs()
     service.store.mark_incomplete_unknown(
         "SERVICE_RESTARTED",
         "The LangGraph service restarted before a terminal result was recorded.",
+        legacy_only=True,
     )
     app.state.service = service
     try:
@@ -472,6 +574,26 @@ def fingerprint(request: dict[str, Any]) -> str:
         )
     }
     return hashlib.sha256(canonical_json(immutable).encode()).hexdigest()
+
+
+def execution_remaining_ms(request: StartRunRequest) -> int:
+    if request.execution is None:
+        return 2**31 - 1
+    deadline = datetime.fromisoformat(request.execution.deadline_at.replace("Z", "+00:00"))
+    return int((deadline - datetime.now(timezone.utc)).total_seconds() * 1000)
+
+
+def checkpoint_contains_operation(values: dict[str, Any], operation: dict[str, Any] | None) -> bool:
+    """A receipt alone is insufficient; graph state must contain the operation."""
+    if operation is None:
+        return True
+    if operation["kind"] == "model":
+        return values.get("round_count", 0) >= operation.get("round", 1)
+    if operation["kind"] == "context":
+        return values.get("working_compaction_revision", 0) >= operation.get("compactionRevision", 1)
+    return values.get("round_count", 0) >= operation.get("round", 1) and values.get("tool_call_count", 0) >= operation.get("callCount", 1) and any(
+        message.get("role") == "tool" and message.get("tool_call_id") == operation.get("toolCallId")
+        for message in values.get("messages", []))
 
 
 def graph_input_for_turn(

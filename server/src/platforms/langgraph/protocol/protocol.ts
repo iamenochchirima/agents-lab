@@ -2,6 +2,7 @@ import type { FreeEvalExperiment } from "../../../models/openrouter/free-model-p
 import type { ToolCatalogSnapshot } from "../../../capabilities/extensions/contracts.js";
 import { createHash } from "node:crypto";
 import type { ConnectionBinding } from "../../../capabilities/integrations/contracts.js";
+import type { RunExecutionPolicy } from "../../../capabilities/execution/policy.js";
 
 export const LANGGRAPH_PROTOCOL_VERSION = 1 as const;
 
@@ -17,6 +18,7 @@ export type LangGraphFailureKind =
   | "reconciliation";
 
 export interface LangGraphStartRequest {
+  readonly execution?: RunExecutionPolicy;
   readonly liveEval?: boolean;
   readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly protocolVersion: typeof LANGGRAPH_PROTOCOL_VERSION;

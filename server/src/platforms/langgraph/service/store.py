@@ -101,6 +101,7 @@ class SQLiteRunStore:
                 """
             )
             self._ensure_column("service_runs", "request_json", "TEXT")
+            self._ensure_column("service_runs", "pending_operation_json", "TEXT")
             self._ensure_column("service_runs", "session_id", "TEXT")
             self._ensure_column("service_runs", "turn_id", "TEXT")
             self._ensure_column("service_runs", "client_turn_id", "TEXT")
@@ -254,7 +255,7 @@ class SQLiteRunStore:
     def update_status(self, execution_id: str, status: str, *, started_at: str | None = None) -> None:
         with self._lock, self._connection:
             self._connection.execute(
-                "UPDATE service_runs SET status = ?, started_at = COALESCE(?, started_at) WHERE execution_id = ?",
+                "UPDATE service_runs SET status = ?, started_at = COALESCE(started_at, ?) WHERE execution_id = ?",
                 (status, started_at, execution_id),
             )
 
@@ -270,6 +271,22 @@ class SQLiteRunStore:
             self._connection.execute(
                 "UPDATE service_runs SET attempt_count = MAX(attempt_count, ?) WHERE execution_id = ?",
                 (attempt_count, execution_id),
+            )
+
+    def active_runs(self) -> list[dict[str, Any]]:
+        """Retain only the admitted owners, never adopt orphan checkpoints."""
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM service_runs WHERE status IN ('queued', 'running', 'suspended')"
+            ).fetchall()
+        return [self._row_to_run(row) for row in rows]
+
+    def set_pending_operation(self, execution_id: str, operation: dict[str, Any] | None) -> None:
+        """Commit intent before I/O; only a native checkpoint can prove its result."""
+        with self._lock, self._connection:
+            self._connection.execute(
+                "UPDATE service_runs SET pending_operation_json = ? WHERE execution_id = ?",
+                (canonical_json(operation) if operation else None, execution_id),
             )
 
     def request_cancel(self, execution_id: str, reason: str) -> tuple[dict[str, Any], bool]:
@@ -311,13 +328,20 @@ class SQLiteRunStore:
             )
             return result.rowcount == 1
 
-    def mark_incomplete_unknown(self, reason_code: str, reason: str) -> None:
+    def mark_incomplete_unknown(self, reason_code: str, reason: str, *, legacy_only: bool = False) -> None:
         with self._lock:
             rows = self._connection.execute(
                 "SELECT execution_id FROM service_runs WHERE status IN ('queued', 'running')"
             ).fetchall()
         for row in rows:
             execution_id = row["execution_id"]
+            if legacy_only:
+                request_json = self.get(execution_id).get("request_json")
+                try:
+                    if request_json and json.loads(request_json).get("execution") is not None:
+                        continue
+                except (ValueError, AttributeError):
+                    pass
             error = {
                 "code": reason_code,
                 "message": reason,

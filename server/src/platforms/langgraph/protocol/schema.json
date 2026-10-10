@@ -515,6 +515,17 @@
         }
       }
     },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "mode", "deadlineAt", "modelTimeoutMs"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "mode": { "const": "sustained" },
+        "deadlineAt": { "type": "string", "format": "date-time" },
+        "modelTimeoutMs": { "type": "integer", "minimum": 100, "maximum": 300000 }
+      }
+    },
     "startRequest": {
       "type": "object",
       "additionalProperties": false,
@@ -581,6 +592,9 @@
           "type": "integer",
           "minimum": 100,
           "maximum": 300000
+        },
+        "execution": {
+          "$ref": "#/$defs/executionPolicy"
         },
         "context": {
           "$ref": "#/$defs/context"

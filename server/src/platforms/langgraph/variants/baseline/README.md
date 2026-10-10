@@ -7,10 +7,11 @@ Status: implemented locally and registered through the common runner seam.
 The baseline is intentionally one graph with explicit model and tool nodes:
 
 ```text
-START -> model -> (tools -> model)* -> END
+START -> context -> model -> (approval -> tools -> context -> model)* -> END
 ```
 
-The `model` node owns the model call. The `tools` node validates and executes the
+The `context` node checks pressure and persists native working summaries. The
+`model` node owns the agent model call. The `tools` node validates and executes the
 effective tools selected by the shared server profile, then routes each result back to
 the model. The current bounded tools are the pure `calculator`, read-only
 `fixture_lookup`, server-owned MCP `mcp_fixture_lookup`, and approval-gated `fixture_write`. The fixture tools are local
@@ -59,8 +60,10 @@ reported as `unknown` and is not retried automatically.
 
 ## What this does not establish
 
-This graph does not establish durable scheduling, automatic in-flight process recovery,
-exactly-once model or tool calls, long-term memory, or hosted LangGraph/LangSmith
+Sustained runs support local safe checkpoint recovery, described in
+[durability](durability/README.md). This graph does not establish distributed durable
+scheduling, automatic replay of unresolved external calls, exactly-once model or
+tool calls, long-term memory, or hosted LangGraph/LangSmith
 deployment semantics. The local fixture write is deliberately not an external side
 effect and does not prove idempotent provider writes. The MCP read boundary is real but
 local: discovery and invocation happen inside the native graph tool node, while the
