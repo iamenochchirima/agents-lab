@@ -207,3 +207,14 @@ Text-only model projections preserve supported text/JSON and resource references
 Original content blocks, response validity and effect evidence stay in canonical
 records. Unsupported image/audio content is identified explicitly. The model is
 never credited with perceiving media that its adapter did not provide.
+
+### Skill information in model context
+
+The admitted capability inventory includes each skill's name, version,
+description and activation state. The model context renders the description
+with a 600-character bound so an agent can select a relevant skill by purpose.
+Available skills contain metadata only; the agent must call the declared loader
+before following their instructions. Preloaded instructions are already in
+context. This guidance comes from the admitted inventory and does not grant tool
+permissions or replace the exact callable schemas. A model skipping a requested
+loader remains an observed model behavior, rather than a successful skill trial.

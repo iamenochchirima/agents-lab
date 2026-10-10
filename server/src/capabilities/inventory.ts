@@ -12,10 +12,10 @@ export function capabilityInventoryContext(inventory: CapabilityInventorySnapsho
     const tools = source.tools.map(tool => `${JSON.stringify(tool.name)} (${tool.risk}; ${approvalDescription(tool.approvalMode)})`).join(", ");
     lines.push(`- ${JSON.stringify(source.id)}@${source.version}: ${tools}`);
   }
-  lines.push("Available procedural skills. Use the declared skill discovery and loading tools to inspect and load a relevant procedure before following it:");
+  lines.push("Procedural skills. Preloaded skill instructions are already in context. Available skills below contain metadata only; use a declared skill loader to obtain their instructions before following or claiming to use them:");
   if (inventory.skills.length === 0) lines.push("- No procedural skills are available in this run.");
   for (const skill of inventory.skills) {
-    lines.push(`- ${JSON.stringify(skill.name)} (${skill.activation}; ${skill.id}@${skill.version})`);
+    lines.push(`- ${JSON.stringify(skill.name)} (${skill.activation}; ${skill.id}@${skill.version}): ${JSON.stringify(skill.description.slice(0, 600))}`);
   }
   lines.push("Only the tool definitions supplied with this run are callable. This inventory does not add permissions.");
   return lines.join("\n");

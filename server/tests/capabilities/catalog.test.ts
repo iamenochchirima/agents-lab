@@ -63,6 +63,8 @@ test("capability inventory contains only the selected profile tools and scoped s
   assert.equal(inventory.toolCatalogRevision, toolCatalog.revision);
   assert.deepEqual(inventory.skills.map(value => [value.id, value.activation]), [["research-summary", "preloaded"], ["notes:review", "available"]]);
   assert.match(context, /review-notes/);
+  assert.match(context, /Check existing notes before editing/);
+  assert.match(context, /metadata only/);
   assert.match(context, new RegExp(toolCatalog.revision));
   assert.doesNotMatch(JSON.stringify(inventory), /https?:\/\//);
   assert.doesNotMatch(context, /fixture_write/);
