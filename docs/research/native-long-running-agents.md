@@ -378,3 +378,41 @@ The explicit additional model control is
 [live catalog](https://openrouter.ai/api/v1/models), confirm every listed billing
 dimension is zero and retain the same zero-price restrictions. Catalog availability
 and model size do not establish task success.
+
+
+The post-context-correction Cohere cohort is
+[`connected-16d52dc2`](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-16d52dc2-31be-4dab-8d3e-016750d08b15/summary.json).
+Temporal verified its acted-on records but omitted Willow. LangGraph saved and
+verified all three expected writes but omitted proposing the Pine discrepancy.
+Restate and Mastra again proposed an already-matching Birch change after Cedar; the
+observer refused it, and native cancellation was confirmed. All four retained their
+original first review through the declared wait and process replacement.
+
+Vercel completed natively with three saved and verified writes, but likewise omitted
+proposing Pine. Its extended native result was 621,989 bytes because it also included
+157 events. Passing that object to the common final-result writer breached the
+512 KiB result limit and left common state stale. The corrected adapter writes only
+canonical result fields to that file; events, trajectory and metrics remain in their
+existing separate evidence lanes, and native metadata remains on the reference. A
+regression persists all 157 event payloads while keeping the final result below the
+limit.
+
+The original cohort was ended by deliberately restarting the owned isolated stack
+after independent confirmation that Vercel had completed. Its observer records
+`fetch failed`; the preceding native result and independent three-effect state are
+retained in a separate
+[projection diagnostic](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-16d52dc2-31be-4dab-8d3e-016750d08b15/vercel-completion-projection-diagnostic.json).
+No original result was regraded as a pass.
+
+The first single-platform Nemotron Ultra trial loaded the skill, then failed with no
+assistant text or tool call:
+[`connected-309b8f77`](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-309b8f77-8df8-4482-a04a-214e305ee9ce/summary.json).
+It had zero external effects. The old error observation lacked finish reason and
+token usage, so that trial alone cannot establish whether reasoning consumed the
+2,048-token allowance. The Temporal/Restate transport now preserves bounded finish
+reason, provider identity and safe token counts on parsed successes and failures,
+without retaining private reasoning content. OpenRouter documents that reasoning
+and visible output generally share `max_tokens`:
+[reasoning token budgets](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
+A separate native diagnostic trial is required before claiming this was budget
+exhaustion.
