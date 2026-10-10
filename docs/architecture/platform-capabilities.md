@@ -15,7 +15,7 @@ server admission
 capability catalog
   -> resolved grants + context-only skill projections
 platform adapter
-  -> native Temporal activity, Restate action, LangGraph node, or Mastra tool
+  -> native Temporal activity, Restate action, LangGraph node, Mastra tool, or Workflow step
 local or configured connection
   -> bounded result + native lifecycle evidence
 ```
@@ -33,7 +33,8 @@ available managed package, and exposes discovery/loading tools for enabled skill
 It excludes disabled or unavailable packages. Individual tool approval modes remain
 attached to their grants, so automatically including a write tool does not
 automatically approve its invocation. Admission freezes the resulting tool schemas
-and authority for that run; later catalog changes affect only new chats.
+and authority for that run; later catalog changes affect subsequent admitted turns, including turns in the
+same conversation. A pending call keeps its original frozen descriptor.
 
 Connection seams are deliberately independent:
 
@@ -49,7 +50,8 @@ Connection seams are deliberately independent:
 
 The platform owns durability and native evidence. Temporal keeps activity history and
 retries, Restate keeps journaled named actions, LangGraph keeps SQLite checkpoints, and
-Mastra keeps its native agent/workflow lifecycle. The local fixtures prove these seams
+Mastra keeps its native agent/workflow lifecycle, and Vercel Workflows keeps
+local World history, durable steps and revision-specific hooks. The local fixtures prove these seams
 without claiming that every external provider has been integrated. In a full local
 stack, the provider-shaped fixture is a separate HTTP process. `conn_local_fixture` is
 an opaque allowlisted binding; its endpoint is configured by the server and never comes

@@ -1,9 +1,10 @@
 # Manage agent capabilities
 
 Open the **Plugins** tab at the top of any platform workspace. This dedicated
-page contains Connectors, Tools, Skills, Plugins and Profiles; the capability selector's
-management link opens the same page. Connections, installed packages and profiles are
-shared across the Lab's platform agents; their orchestration remains native.
+page contains Connectors, Tools, Skills and Plugins, with advanced Profiles for
+controlled setup/comparison runs. Normal Chat has no profile selection step: open
+a platform, select a model and submit a message. Connections and installed packages
+are shared across platform agents; their orchestration remains native.
 Saving a supported integration requires no changes to a platform's agent loop
 and no API restart.
 
@@ -46,8 +47,9 @@ the configured URL and choose **Try again**. A failed request does not mean the
 saved connector list is empty. Local sessions renew automatically without a prompt.
 
 Normal platform chats automatically receive tools from enabled, available shared
-packages. A new chat captures that inventory; established runs keep the exact
-capabilities admitted when they started. Controlled setup and comparison runs
+packages. Each new turn captures the currently published inventory; an admitted run
+keeps the exact capabilities it received, including any action waiting for review.
+Controlled setup and comparison runs
 can still select an explicit saved profile. A missing recorded profile is shown
 as unavailable rather than silently switching to another selection.
 Agent replies render Markdown lists, emphasis, links, code blocks and tables;
@@ -70,8 +72,9 @@ deletion are under **Disconnect or remove**.
    catalog fixes each endpoint and trusted issuer; you approve access on the
    provider's sign-in page. The Lab discovers tools from the selected server
    automatically after authorization; it does not hardcode them. Return to the
-   Lab and start a new chat to use the added tools. An existing chat retains its
-   recorded catalog. The connection list refreshes when you return from sign-in.
+   Lab and submit a new turn to use the added tools. A run already executing or
+   waiting for review retains its recorded catalog. The connection list refreshes
+   when you return from sign-in.
 2. Check each provider's access note before connecting. Several providers use a
    broad account-level grant rather than distinct read and write scopes, and
    some require workspace-admin approval or limit availability by region or
@@ -93,8 +96,8 @@ deletion are under **Disconnect or remove**.
    **Discover tools** to retry without signing in again.
 5. Select **Choose tools**, enable the required tools, classify their effects and
    choose review on each action, approval before a run or automatic execution.
-   Connected tools are shared with new platform chats; established runs keep
-   their original admitted configuration. Profiles remain available for
+   Connected tools are shared with subsequent platform turns; already admitted runs
+   keep their original configuration. Profiles remain available for
    controlled comparison runs.
 
 The 15 entries are the providers we have identified as compatible with the
@@ -154,8 +157,10 @@ hooks are not silently accepted.
 
 For this example, place skills under `skills/<skill-name>/SKILL.md` beside the
 manifest. Installed packages initially remain disabled. Inspect them, supply any
-needed connection credentials, then choose **Enable package** and add them to a
-profile. Edit imported connection templates to authorize their accounts, or
+needed connection credentials, then choose **Enable package**. Enabled, available
+packages join normal Chat automatically; a controlled comparison profile can
+select a narrower subset. Edit imported connection templates to authorize their
+accounts, or
 rebind an MCP package to another saved connection in **Choose tools**. Installation
 does not automatically give an agent authority.
 
@@ -182,9 +187,10 @@ resource limits and administrator approval still apply.
 Unavailable sources are reported as unavailable; a saved package is not proof of
 a working transport or successful tool call.
 
-## Compose a profile and run
+## Controlled setup and comparisons
 
-Choose packages in **Profiles**, select tools and their approval rules, and choose
+Normal Chat needs no profile configuration. For an explicit experiment, choose
+packages in **Profiles**, select tools and their approval rules, and choose
 which available skills should be preloaded. Save the profile, select it on the
 platform and start a run. **Duplicate** opens a new profile draft retaining its
 packages, tools, approvals and skills, with a distinct name and version `1.0.0`;

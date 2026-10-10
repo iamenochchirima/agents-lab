@@ -21,7 +21,8 @@ pnpm --filter @agent-harness-lab/web run typecheck
 ```
 
 The one-command launcher starts or reuses local Temporal and starts the priority
-comparison services (Restate, LangGraph, and Vercel Workflows), followed by the Lab
+comparison services (Restate, LangGraph, and Vercel Workflows; Mastra executes
+in the API process), followed by the Lab
 server, Temporal worker, and web app. It prints the URLs only after their readiness
 checks pass. Running it again replaces an existing Agent Harness Lab stack on the
 configured ports and replaces stale Lab Temporal workers. Press Ctrl-C to stop the
@@ -42,7 +43,7 @@ supports bounded lookup and idempotent write requests so platform adapters can b
 over HTTP without Docker. A lost write acknowledgement remains `unknown`; the client
 must not retry it automatically.
 
-To run the same connected profile through the four priority platform boundaries, keep the
+The legacy capability matrix below covers four platform boundaries, keep the
 stack running and use a shared context root:
 
 ```bash
@@ -50,6 +51,12 @@ AGENTLAB_LOCAL_FIXTURE_URL=http://127.0.0.1:9191 \
 AGENTLAB_CONTEXT_ROOT="$PWD/lab/sessions" \
 pnpm --filter @agent-harness-lab/lab-server run test:platform-capability-matrix
 ```
+
+This matrix does not exercise Vercel connected review delivery or establish
+five-platform live acceptance. Vercel's native connected lifecycle check lives at
+`server/tests/platforms/vercel-workflows/connected-native.test.ts`; see the
+[connected tools guide](connected-agent-tools.md) for the five native boundaries
+and the distinction between fixture checks and real-model evidence.
 
 The matrix checks the read-only fixture, an explicitly approved write, and cancellation
 through Temporal, Restate, LangGraph, and Mastra. Native platform suites separately cover

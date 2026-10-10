@@ -199,8 +199,11 @@ not admit a new turn or dispatch a provider action.
 Mastra persists SDK suspended snapshots in LibSQL. LangGraph uses a dedicated
 checkpointed approval node and `Command(resume=...)`. Temporal waits on a workflow
 signal and heartbeats source Activities. Restate waits on a call/revision-specific
-durable promise. A common runner interface projects these native lifecycles without
-replacing their orchestration. Waiting recovery does not establish recovery of every
+durable promise. Vercel Workflows uses registered revision-specific hooks, durable
+steps and a stored progress projection for inspection while waiting. Its admission
+ledger retains pending/accepted/unknown submission outcomes, and its resume ledger
+binds wake retries to the original decision. A common runner interface projects
+these native lifecycles without replacing their orchestration. Waiting recovery does not establish recovery of every
 in-flight model request or external effect.
 
 Text-only model projections preserve supported text/JSON and resource references.

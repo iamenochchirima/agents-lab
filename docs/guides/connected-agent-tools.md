@@ -1,6 +1,6 @@
 # Run an agent with connected tools
 
-Mastra, LangGraph, Temporal and Restate baselines use configured MCP/HTTP tools
+Temporal, Restate, LangGraph, Mastra and Vercel Workflows baselines use configured MCP/HTTP tools
 through their own native agent loops. Tools come from trusted package declarations;
 skills describe procedures and load on demand. An optional document provider owns
 file storage. Core agents have no native filesystem workspace.
@@ -57,14 +57,20 @@ transports or missing credentials remain unavailable.
 
 Ask the agent to inspect the fictional customer/order and adjustment policy, load
 the customer-support skill, propose a permitted adjustment and verify the saved state.
-The agent chooses its calls. When it proposes a write, Chat shows the exact business
-arguments and waits for approval or denial. No effect occurs while review is pending.
+The agent chooses its calls. When it proposes an action requiring review, Chat places an approval card
+inside the assistant turn that proposed it. The card shows the tool, bounded
+redacted arguments and recorded source details when available; review controls
+are not in the configuration sidebar. Multiple proposals have separate cards. No effect occurs while review is pending.
 An expired proposal needs fresh review; old decisions cannot authorize its new revision.
-If delivery of an already-retained decision fails, continue that reviewed action with
-the same decision identity rather than approving a new operation.
+If delivery of an already-retained decision fails, use **Retry retained decision**
+or **Continue reviewed action** with the same decision identity. **Request fresh
+review** renews an expired proposal without another model choice or effect. A
+cancelled or terminal run cannot authorize another dispatch from its old card.
 
-Reopening a saved Chat run restores its admitted tools, skills and run options from
-the manifest. Current connection availability is managed from **Plugins**; retained
+Reopening a saved Chat run restores the conversation's retained turns and review
+cards. **Load earlier turns** retrieves older pages. Each run restores its admitted
+tools, skills and run options from its manifest; a subsequent turn captures the
+current shared catalog. Current connection availability is managed from **Plugins**; retained
 authority and provider receipts remain part of the run evidence.
 
 If an external document provider is enabled, its tools are also included in normal
@@ -142,8 +148,15 @@ write with an invalid result and an uncertain effect. Expand an entry to inspect
 response validity, effect evidence, provider request IDs and returned data. Its
 source receipt link opens the protected record, including retained source attempts
 and replies. Unknown effects need reconciliation and stop continuation.
+A review-preparation failure is a pre-dispatch failure: that proposed call was not
+sent to its source. A call that timed out after dispatch may instead have changed
+provider state. An **Outcome unknown** card requires receipt inspection and
+independent provider reconciliation before a fresh write; an **Approved** card
+alone is not evidence that an effect happened. Denial returns feedback to the model
+and does not dispatch the declined call.
+
 Same-call receipt replay and provider idempotency do not establish exactly-once
-business effects across independently generated actions.
+external effects across independently generated actions.
 
 After the native lifecycle gate passes, use the two controlled workflows with a
 currently verified free model and paid fallback disabled:
@@ -163,12 +176,42 @@ observations. See the [experiment](../../lab/experiments/agent-capabilities-live
 
 New baseline sessions tell the model to activate a relevant procedural skill,
 use admitted tools, verify saved results and respect action review/effect certainty.
-The same instructions apply to all four baselines. Metadata remains visible before
+The same instructions apply to all five priority baselines. Metadata remains visible before
 activation; the model still chooses whether to call the loader, and acceptance
 records that decision. The driver never preloads a skill to make the check pass.
 Existing sessions preserve their original system instruction and record it in each
 run manifest. Start a new conversation to use a changed baseline instruction.
 
+
+## Platform execution and evidence limits
+
+| Baseline | Native execution and review waiter |
+| --- | --- |
+| Temporal | Workflow orchestration, source Activities and workflow signals |
+| Restate | Journaled actions and a call/revision-specific durable promise |
+| LangGraph | Graph nodes, SQLite checkpoints and `Command(resume=...)` |
+| Mastra | SDK agent loop and persisted suspended snapshots in LibSQL |
+| Vercel Workflows | Workflow-owned model/tool loop, durable steps and revision-specific hooks in local World |
+
+These implementations share admitted schemas, policy, reviews and the capability
+host; they do not share a replacement agent loop. Vercel publishes pending-review
+progress after its hook registers, and retains admission and decision delivery
+identities across service restart. A native Workflow may complete by returning a
+failed agent result; the Lab keeps both statuses instead of presenting a successful
+task. Native fixture checks and provider-shaped controls are separate from live
+model decisions and real-account execution. Current live acceptance must be read
+from each trial's evidence, not inferred from this implementation table.
+
+Inngest, DBOS, Hatchet and Trigger.dev, plus hosted deployments, are not validated
+for connected-tool parity in this phase. A reachable health endpoint does not
+establish tool exposure, approval continuation or effect recovery.
+
+Live trials use the exact approved free model after a fresh raw catalog price check.
+The `agent-harness-live` and `agent-capabilities-live` experiments apply zero price
+ceilings, required provider parameters, no provider fallback and 512/2048 output
+tokens respectively. Rejection happens before model transport if these controls
+cannot be retained. Interactive model choices outside these experiments are
+independent; the free driver never silently substitutes a paid model.
 
 ## Recorded browser acceptance
 
