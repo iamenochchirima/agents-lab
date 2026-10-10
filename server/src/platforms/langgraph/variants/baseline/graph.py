@@ -813,7 +813,7 @@ def complete_openrouter_response(
         payload_data["tools"] = definitions
         payload_data["tool_choice"] = "auto"
     if state.get("_live_eval"):
-        if model.model not in {"google/gemma-4-31b-it:free", "nvidia/nemotron-3.5-lightning:free", "cohere/north-mini-code:free"}:
+        if model.model not in {"google/gemma-4-31b-it:free", "nvidia/nemotron-3.5-lightning:free", "cohere/north-mini-code:free", "nvidia/nemotron-3-ultra-550b-a55b:free"}:
             raise ConfigurationError("Live evals require an exact :free model ID.")
         payload_data["provider"] = {"require_parameters": True, "allow_fallbacks": False,
                                     "max_price": {"prompt": 0, "completion": 0, "request": 0, "image": 0}}

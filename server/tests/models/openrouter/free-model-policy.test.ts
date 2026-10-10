@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertFreeModelCatalog, assertFreeModelRequest, DEFAULT_FREE_MODEL, COHERE_FREE_MODEL, FREE_PROVIDER_ROUTING, LIVE_MAX_OUTPUT_TOKENS } from "../../../src/models/openrouter/free-model-policy.js";
+import { assertFreeModelCatalog, assertFreeModelRequest, DEFAULT_FREE_MODEL, COHERE_FREE_MODEL, SUSTAINED_FREE_MODEL, FREE_PROVIDER_ROUTING, LIVE_MAX_OUTPUT_TOKENS } from "../../../src/models/openrouter/free-model-policy.js";
 const catalog = () => ({ data: [{ id: DEFAULT_FREE_MODEL, context_length: 32768, pricing: { prompt: "0", completion: "0", request: "0" }, supported_parameters: ["tools", "tool_choice", "max_tokens"] }] });
 const request = () => ({ model: DEFAULT_FREE_MODEL, max_tokens: LIVE_MAX_OUTPUT_TOKENS, provider: structuredClone(FREE_PROVIDER_ROUTING) });
 test("free policy validates current exact models and rejects paid, missing or unsupported catalog entries", () => {
   assert.equal(assertFreeModelCatalog(catalog(), DEFAULT_FREE_MODEL).id, DEFAULT_FREE_MODEL);
-  const alternate = catalog(); alternate.data[0].id = COHERE_FREE_MODEL;
-  assert.equal(assertFreeModelCatalog(alternate, COHERE_FREE_MODEL).id, COHERE_FREE_MODEL);
-  assert.doesNotThrow(() => assertFreeModelRequest({ ...request(), model: COHERE_FREE_MODEL }, COHERE_FREE_MODEL));
+  for (const model of [COHERE_FREE_MODEL, SUSTAINED_FREE_MODEL]) {
+    const alternate = catalog(); alternate.data[0].id = model;
+    assert.equal(assertFreeModelCatalog(alternate, model).id, model);
+    assert.doesNotThrow(() => assertFreeModelRequest({ ...request(), model }, model));
+  }
   assert.throws(() => assertFreeModelCatalog(catalog(), "openrouter/auto"), /approved exact/);
   assert.throws(() => assertFreeModelCatalog({ data: [] }, DEFAULT_FREE_MODEL), /unavailable/);
   const paid = catalog(); paid.data[0].pricing.completion = "0.01";

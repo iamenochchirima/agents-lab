@@ -80,3 +80,12 @@ snapshots are also saved in the usual stage artifact. These are immediate
 observations after the cancellation attempt. A running snapshot does not establish
 termination, and an observed terminal state does not roll back prior effects.
 Original cohort reports are not rewritten by this change.
+
+An explicit additional model control is available with
+`--model nvidia/nemotron-3-ultra-550b-a55b:free`. Run it as a separate cohort with
+the same task, tool/review rules, output allowance and reasoning settings. Model
+choice can affect whether a task completes, so it must remain distinct from
+harness recovery evidence. Each trial still validates the current raw catalog,
+required tool parameters and all listed zero-price dimensions; transport keeps
+zero price ceilings and fallbacks disabled. Admission of this candidate does not
+establish model quality or a platform winner.
