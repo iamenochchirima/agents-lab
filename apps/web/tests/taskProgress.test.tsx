@@ -34,3 +34,14 @@ test("saved review delivery is shown inline without implying tool completion", (
   assert.match(markup, /Continue reviewed action/);
   assert.doesNotMatch(markup, />Completed</);
 });
+
+
+test("a retained approval wait survives running fallback inspection until a recorded resume or dispatch", () => {
+  const waiting = { ...run, events: [event("TaskProgress", { phase: "model", round: 2 }), event("WorkflowSuspended", { reason: "invocation_review", toolCallId: "a", requestId: "q" }, 2)] };
+  assert.equal(taskProgress(waiting).phase, "Waiting for approval");
+  assert.equal(waiting.status, "running", "phase projection must preserve native status");
+  for (const kind of ["WorkflowResumed", "ToolExecutionStarted"]) {
+    assert.equal(taskProgress({ ...waiting, events: [...waiting.events, event(kind, { toolCallId: "a", requestId: "q" }, 3)] }).phase, "Model response");
+  }
+  assert.equal(taskProgress({ ...waiting, status: "failed" }).phase, "failed", "terminal evidence supersedes an earlier wait");
+});
