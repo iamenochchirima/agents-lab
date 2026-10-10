@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Agent identity, memory and live interaction](active/agent-identity-memory-and-interaction.md):
+  proposed shared identity and cross-chat memory, native clarification/steering,
+  inline chat controls, focused acceptance and separate commit checkpoints across
+  the five main platform baselines.
+
 - [Agent capability awareness and discovery](active/agent-capability-awareness.md):
   proposed milestone for generated model inventories, enabled skill metadata,
   authorized tool discovery, native schema activation and frontend parity.
