@@ -68,6 +68,9 @@ Exact-call cards keep their identity when renewed. If a focused decision button 
 removed by an update, focus moves to its card without requesting a scroll. Polling
 does not take focus from another control or an inactive page. Actual focus/scroll
 behavior still needs the frontend observation listed in the readiness checkpoint.
+A retained decision awaiting delivery shows **Decision saved · waiting to resume**.
+The server retries delivery of that same reviewed action; this does not establish
+that its tool has completed. If delivery stops, inspect the recorded run state.
 If delivery of an already-retained decision fails, use **Retry retained decision**
 or **Continue reviewed action** with the same decision identity. Failed turns show
 safe guidance with a bounded recorded phase/code chain under **Failure details**.
@@ -81,6 +84,14 @@ cards. **Load earlier turns** retrieves older pages. Each run restores its admit
 tools, skills and run options from its manifest; a subsequent turn captures the
 current shared catalog. Current connection availability is managed from **Plugins**; retained
 authority and provider receipts remain part of the run evidence.
+
+For the five baseline platforms, **Run options → Allow longer tasks** opts the
+next turn into sustained execution with a retained deadline and limits of 24 model
+rounds and 48 tool calls. It is off by default. Run details show the last recorded
+phase, model round, distinct completed tool calls and deadline. These are observed
+records, not a completion percentage. Context compaction can make additional model
+requests within a round. **Stop requested** remains visible until native execution
+confirms a terminal state; a stop request cannot roll back a dispatched effect.
 
 If an external document provider is enabled, its tools are also included in normal
 platform Chat. File operations execute in that provider; the Lab does not expose a

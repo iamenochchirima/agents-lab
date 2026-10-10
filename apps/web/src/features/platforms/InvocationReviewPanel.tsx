@@ -25,6 +25,8 @@ export function InvocationReviewPanel({ run, action, busy, uncertain, now, evide
     : action.status === "denied" || outcome?.kind === "ToolPolicyDenied" ? "Denied"
     : stopped || action.status === "cancelled" ? "Stopped"
     : action.status === "completed" ? "Finished · inspect evidence"
+    : action.delivery?.status === "pending" ? "Decision saved · waiting to resume"
+    : action.delivery?.status === "stopped" ? "Delivery stopped"
     : action.status === "approved" && run.status === "suspended" ? "Approved · waiting to resume"
     : action.status === "dispatching" ? "Running"
     : expired ? "Review expired" : action.status.replaceAll("_", " "));
@@ -34,6 +36,8 @@ export function InvocationReviewPanel({ run, action, busy, uncertain, now, evide
     {outcomeView?.presentation && <small>Response: {outcomeView.presentation}</small>}
     <small>Exact action{action.presentation ? ` · ${action.presentation.risk} action` : ""}</small>
     <dl className="invocation-arguments">{Object.entries(action.displayArguments).map(([name, value]) => <div key={name}><dt>{action.presentation?.argumentLabels[name] ?? name}</dt><dd>{boundedArgument(value)}</dd></div>)}</dl>
+    {action.delivery?.status === "pending" && !terminal && <p>The decision is saved. The server is retrying delivery of this same reviewed action.</p>}
+    {action.delivery?.status === "stopped" && <p>Delivery stopped. Inspect the recorded run state before continuing.</p>}
     {action.status === "denied" && <p>This action was denied. Approval did not authorize dispatch.</p>}
     {stopped && !unknown && <p>The run stopped. This does not establish whether a dispatched action changed provider state. Inspect the recorded evidence before repeating it.</p>}
     {unknown && <p>Inspect provider state and the recorded receipt before repeating this action. Cancellation does not roll back a dispatched call.</p>}

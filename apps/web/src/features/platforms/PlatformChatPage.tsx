@@ -1,3 +1,4 @@
+import { sustainedTaskOptions, isStopRequested, taskProgress } from "./taskProgress";
 import "./connected-tools.css";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { Ban, CheckCircle2, CircleAlert, ChevronDown, LoaderCircle, MessageSquare, Plus, Send, Wrench, XCircle } from "lucide-react";
@@ -67,6 +68,7 @@ export function PlatformChatPage() {
   const [variantId, setVariantId] = useState(platform.variants[0]?.id ?? "baseline");
   const [infrastructureId, setInfrastructureId] = useState(platform.infrastructure[0]?.id ?? "none");
   const [experimentId, setExperimentId] = useState("none");
+  const [allowLongerTasks, setAllowLongerTasks] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(() => searchParams.get("run"));
   const [runs, setRuns] = useState<Record<string, RunView>>({});
@@ -153,6 +155,8 @@ export function PlatformChatPage() {
     setExperimentId(manifest.selection?.experimentId ?? "none");
   }, [latestRun, platform]);
 
+  useEffect(() => { setAllowLongerTasks(latestRun?.manifest.execution?.mode === "sustained"); }, [latestRun?.runId, platform.id]);
+
   useEffect(() => {
     setMessages((current) => {
       const next = deduplicateMessages(current);
@@ -201,6 +205,7 @@ export function PlatformChatPage() {
     setSessionId(null);
     setActiveRunId(null);
     setLatestRun(null);
+    setAllowLongerTasks(false);
     setRuns({}); setHistoryCursor(null); setGrantAssistantId(null);
     setLatestEvents([]);
     setError(null);
@@ -364,7 +369,7 @@ export function PlatformChatPage() {
       variant: variantId,
       task: { kind: "prompt", prompt: text },
       model: selectedModel,
-      capabilities: { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, requestedSkillIds, ...(approvals.length > 0 ? { approvals } : {}) },
+      ...sustainedTaskOptions(allowLongerTasks && variantId === "baseline" && ["temporal", "restate", "langgraph", "mastra", "vercel-workflows"].includes(platform.id), { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, requestedSkillIds, ...(approvals.length > 0 ? { approvals } : {}) }),
       ...(preservesSession && requestSessionId ? { sessionId: requestSessionId } : {}),
       ...(clientTurnId ? { clientTurnId } : {}),
       selection: {
@@ -504,6 +509,7 @@ export function PlatformChatPage() {
     setSessionId(null);
     setActiveRunId(null);
     setLatestRun(null);
+    setAllowLongerTasks(false);
     setRuns({}); setHistoryCursor(null); setGrantAssistantId(null);
     setLatestEvents([]);
     setError(null);
@@ -581,7 +587,7 @@ export function PlatformChatPage() {
               <span>{latestRun?.status === "suspended" || grantReviewOpen ? "Waiting for approval" : chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, selectedModel, preservesSession })}</span>
               <div className="chat-composer-actions">
                 {grantReviewOpen && <button className="quiet-button" type="button" onClick={() => { setGrantReviewOpen(false); setPendingGrantPrompt(null); setMessages(current => current.map(message => message.id === grantAssistantId ? { ...message, content: "Tool access request cancelled before starting the run.", status: "cancelled" } : message)); }}>Stop</button>}
-                {hasActiveRun && <button className="quiet-button" disabled={isCancelling} onClick={() => void stopActiveRun()} type="button"><Ban aria-hidden="true" size={14} /> {isCancelling ? "Cancelling" : "Stop"}</button>}
+                {hasActiveRun && <button className="quiet-button" disabled={isCancelling} onClick={() => void stopActiveRun()} type="button"><Ban aria-hidden="true" size={14} /> {isCancelling || latestRun && isStopRequested(latestRun) ? "Stop requested" : "Stop"}</button>}
                 <button className="button button-primary" disabled={!canSubmit} type="submit">
                   {isSubmitting ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Send aria-hidden="true" size={14} />}
                   {isSubmitting ? "Starting" : "Send"}
@@ -617,6 +623,7 @@ export function PlatformChatPage() {
             </details>}
             <details className="chat-options">
               <summary>Run options <ChevronDown aria-hidden="true" size={14} /></summary>
+              {variantId === "baseline" && ["temporal", "restate", "langgraph", "mastra", "vercel-workflows"].includes(platform.id) && <label className="chat-session-note"><input type="checkbox" checked={allowLongerTasks} disabled={hasActiveRun} onChange={event => setAllowLongerTasks(event.target.checked)} /> Allow longer tasks</label>}
               <div className="chat-option-grid">
                 <ChatSelect label="Scenario" onChange={setScenarioId} value={scenarioId}>
                   {scenarioCatalog.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
@@ -678,6 +685,7 @@ function chatMessageStatusLabel(status: ChatMessage["status"]): string {
 }
 
 function ChatRunDetails({ error, events, onNewChat, run }: { error: string | null; events: readonly RunEvent[]; onNewChat: () => void; run: RunView }) {
+  const progress = taskProgress(run);
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
   const nativePlatform = run.executionReference?.platform;
@@ -701,7 +709,13 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
         <dl className="chat-run-meta">
           <div><dt>Run</dt><dd title={run.runId}>{run.runId}</dd></div>
           {getRunSessionId(run) && <div><dt>Session</dt><dd title={getRunSessionId(run) ?? undefined}>{getRunSessionId(run)}</dd></div>}
-          <div><dt>Platform status</dt><dd>{formatRunStatus(run.status)}</dd></div>
+          <div><dt>Platform status</dt><dd>{isStopRequested(run) ? "Stop requested" : formatRunStatus(run.status)}</dd></div>
+          {progress.phase && <div><dt>Last observed phase</dt><dd>{progress.phase}</dd></div>}
+          {progress.round !== null && <div><dt>Model round</dt><dd>{progress.round}</dd></div>}
+          <div><dt>Tools completed</dt><dd>{progress.completedTools}</dd></div>
+          {progress.modelCalls !== null && <div><dt>Recorded model calls</dt><dd>{progress.modelCalls}</dd></div>}
+          {progress.toolAttempts !== null && <div><dt>Recorded tool attempts</dt><dd>{progress.toolAttempts}</dd></div>}
+          {progress.deadlineAt && <div><dt>Task deadline</dt><dd>{new Date(progress.deadlineAt).toLocaleString()}</dd></div>}
           <div><dt>Projection</dt><dd>{run.projection.state === "stale" ? "Stale" : "Current"}</dd></div>
           <div><dt>Events</dt><dd>{events.length}</dd></div>
           <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
