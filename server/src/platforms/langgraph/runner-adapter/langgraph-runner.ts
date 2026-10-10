@@ -276,10 +276,11 @@ export class LangGraphBaselineRunner implements PlatformRunner {
   }
 
   async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const wake = input as { kind?: string; runId?: string };
     const decision = input as InvocationResumeInput;
-    if (!decision || decision.kind !== "invocation_review" || !Number.isSafeInteger(decision.revision) ||
+    if (wake?.kind !== "task_input" && (!decision || decision.kind !== "invocation_review" || !Number.isSafeInteger(decision.revision) ||
         typeof decision.requestId !== "string" || typeof decision.decisionId !== "string" ||
-        typeof decision.toolCallId !== "string" || !["approved", "denied", "renewed"].includes(decision.decision)) {
+        typeof decision.toolCallId !== "string" || !["approved", "denied", "renewed"].includes(decision.decision))) {
       throw new Error("LangGraph requires an identified invocation review decision.");
     }
     const native = langGraphExecutionFromReference(reference);

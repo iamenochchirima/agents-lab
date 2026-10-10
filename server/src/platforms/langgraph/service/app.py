@@ -23,6 +23,7 @@ import secrets
 
 from protocol.models import (
     ResumeRunRequest,
+    TaskInputResumeRequest,
     CancelRunRequest,
     CancelRunResponse,
     HealthResponse,
@@ -172,9 +173,17 @@ class LangGraphService:
                 self.store.append_event(execution_id, "RunCancelled", {"reason": reason})
         return self.store.get(execution_id), accepted
 
-    async def resume_run(self, execution_id: str, resume: ResumeRunRequest) -> dict[str, Any]:
+    async def resume_run(self, execution_id: str, resume: ResumeRunRequest | TaskInputResumeRequest) -> dict[str, Any]:
         async with self._lock:
             record = self.store.get(execution_id)
+            if isinstance(resume, TaskInputResumeRequest) and record["status"] in {"queued", "running"}:
+                if not record.get("request_json"):
+                    raise RunConflictError("This execution has no retained input admission.")
+                admitted = json.loads(record["request_json"])
+                turn = (admitted.get("context") or {}).get("turnId") or f'{record["run_id"]}:turn:1'
+                if resume.run_id != record["run_id"] or resume.turn_id != turn or record["cancel_requested"]:
+                    raise RunConflictError("Task input targets another or cancelled execution.")
+                return record  # The active native graph fetches retained content at its next gate.
             if record["status"] != "suspended" or record["cancel_requested"]:
                 raise RunConflictError("Only an uncancelled suspended invocation can resume.")
             if not record.get("request_json"):
@@ -185,15 +194,21 @@ class LangGraphService:
                 pending = checkpointer.get_tuple({"configurable": {"thread_id": request.thread_id}})
                 interrupts = [value for _, channel, value in pending.pending_writes if channel == "__interrupt__"] if pending else []
                 reviews = [item.value for values in interrupts for item in (values if isinstance(values, (list, tuple)) else [values]) if hasattr(item, "value")]
-                if not any(review.get("requestId") == resume.request_id and (review.get("revision") + 1 == resume.revision if resume.decision == "renewed" else review.get("revision") == resume.revision) and review.get("call", {}).get("toolCallId") == resume.tool_call_id for review in reviews):
-                    raise RunConflictError("The resume identity does not match the checkpoint's pending invocation.")
+                if isinstance(resume, TaskInputResumeRequest):
+                    turn_id = request.context.turn_id if request.context else f"{request.run_id}:turn:1"
+                    if resume.run_id != request.run_id or resume.turn_id != turn_id or not any(
+                        resume.input_kind == "steering" or (value.get("kind") == "clarification" and value.get("questionId") == resume.question_id) for value in reviews):
+                        raise RunConflictError("Task input does not match the original native wait.")
+                else:
+                    if not any(review.get("requestId") == resume.request_id and (review.get("revision") + 1 == resume.revision if resume.decision == "renewed" else review.get("revision") == resume.revision) and review.get("call", {}).get("toolCallId") == resume.tool_call_id for review in reviews):
+                        raise RunConflictError("The resume identity does not match the checkpoint's pending invocation.")
             previous_task = self.active_tasks.get(execution_id)
             if previous_task is not None and not previous_task.done():
                 await previous_task
             cancel_event = threading.Event()
             self.cancel_events[execution_id] = cancel_event
             self.store.update_status(execution_id, "running")
-            self.store.append_event(execution_id, "RunResumed", {"reason": "invocation_review", "requestId": resume.request_id, "revision": resume.revision, "toolCallId": resume.tool_call_id, "decision": resume.decision})
+            self.store.append_event(execution_id, "RunResumed", resume.model_dump(by_alias=True))
             self.active_tasks[execution_id] = asyncio.create_task(self._execute(request, cancel_event, resume.model_dump(by_alias=True)))
             return self.store.get(execution_id)
 
@@ -307,10 +322,11 @@ class LangGraphService:
                     if cancel_event.is_set() or self.store.cancellation_requested(execution_id)[0]:
                         raise CancellationError("Cancellation retained before review suspension.")
                     pending = next(item.value for task in snapshot.tasks for item in task.interrupts)
-                    self.store.append_event(execution_id, "RunSuspended", {"reason": "invocation_review", "threadId": request.thread_id,
+                    self.store.append_event(execution_id, "RunSuspended", {"reason": "clarification" if pending.get("kind") == "clarification" else "invocation_review",
+                        "questionId": pending.get("questionId"), "question": pending.get("question"), "threadId": request.thread_id,
                         "checkpointId": snapshot.config.get("configurable", {}).get("checkpoint_id"),
                         "requestId": pending.get("requestId"), "revision": pending.get("revision"),
-                        "toolCallId": pending.get("call", {}).get("toolCallId")})
+                        "toolCallId": pending.get("call", {}).get("toolCallId") or pending.get("toolCallId")})
                     return
                 output = snapshot.values.get("output") if isinstance(snapshot.values, dict) else None
                 attempt_count = max(attempt_count, int(snapshot.values.get("attempt_count", 0)))
@@ -550,7 +566,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         )
 
     @app.post("/v1/runs/{execution_id}/resume")
-    async def resume_run(request: Request, execution_id: str, body: ResumeRunRequest):
+    async def resume_run(request: Request, execution_id: str, body: ResumeRunRequest | TaskInputResumeRequest):
         service = request.app.state.service
         try:
             expected = "Bearer " + host_key(str(service.config.capability_host_key_file))

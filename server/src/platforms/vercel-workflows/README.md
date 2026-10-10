@@ -33,3 +33,19 @@ Further reading:
 - [execution semantics](docs/semantics.md)
 - [hosted profile](docs/hosted-profile.md)
 - [official Workflow repository](https://github.com/vercel/workflow)
+
+## Live task input
+
+The native Workflow intercepts only the admitted `ask_user` descriptor from
+`agentlab/task-interaction`. A persisted step creates the exact question and registers
+a native hook before publishing its suspended state. An exact reply wakes that hook
+and is read from the authenticated interaction host; hook replay and local service
+replacement retain the original Workflow run, question and absolute deadline.
+A durable sleep races the wait against that deadline.
+
+Ordered steering is consumed in native steps at model, completed-response, review
+and per-call dispatch boundaries. Steering wakes a question or review hook, cancels
+the obsolete question and closes all remaining proposals before another model round.
+Live instructions, exact clarification answers and recalled factual memory are
+protected during compaction. Wake delivery metadata is retained separately from the
+question and action-review lifecycle; retries cannot create a new Workflow execution.

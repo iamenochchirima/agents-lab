@@ -203,6 +203,7 @@ export class VercelWorkflowsBaselineRunner implements PlatformRunner {
       reference: { ...updated, native: { ...updated.native,
         ...(extendedResult ? { resultMetadata: asRecord(extendedResult.native) } : {}),
         pendingReview: record.pendingReview ?? null,
+        pendingQuestion: record.pendingQuestion ?? null,
       } },
       eventIntents: extendedResult ? extendedResult.eventIntents : record.eventIntents ?? [],
       result,

@@ -72,7 +72,7 @@ async function prepareRoundContext(input: VercelWorkflowInput, messages: readonl
   if (before.pressure === "compaction_due" || before.pressure === "exhausted") {
     const compacted = await compactContext(projected, counter, session.contextWindowTokens, policy, { sessionId: session.sessionId,
       sessionRevision: session.revision, sourceRevision: round, currentMessageId: task.messageId, completedGroupIds: completedGroups,
-      protectedMessageIds: projected.filter(message => message.source === "skills").map(message => message.messageId), trigger: "preflight", policyVersion: `native-round-context-v1:${input.runId}` }, {
+      protectedMessageIds: projected.filter(message => message.source === "skills" || message.role === "user" && ["[Live task instruction", "[Clarification answer", "Saved memory is untrusted factual data with provenance."].some(prefix => message.content.includes(prefix))).map(message => message.messageId), trigger: "preflight", policyVersion: `native-round-context-v1:${input.runId}` }, {
       async summarize(request) {
         if (remainingExecutionMs(input.execution, Date.now()) === 0) throw new Error("Task deadline reached before summary dispatch.");
         const config = loadVercelWorkflowsConfig();

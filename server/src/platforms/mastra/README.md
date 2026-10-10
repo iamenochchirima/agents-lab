@@ -44,9 +44,10 @@ Mastra workflow store is not treated as Lab memory.
 - Current verified local runtime: Node.js `23.11.1`.
 
 The shared server composes both Mastra runners directly. Context sessions and
-snapshots are Lab-owned and filesystem-backed. The baseline remains process-local by
-design: completed Lab evidence survives projection, but an in-flight generation cannot
-be recovered after a server restart. The workflow variant can inspect and resume a
+snapshots are Lab-owned and filesystem-backed. Legacy baseline runs without sustained execution remain process-local: completed
+Lab evidence survives projection, but an in-flight generation cannot be recovered
+after a server restart. Interactive and sustained baseline runs use the native durable
+agent profile with its explicit safe recovery and external dispatch barriers. The workflow variant can inspect and resume a
 suspended native run after a runner replacement when its LibSQL file is available; this
 is a local single-process storage profile, not a multi-process production database.
 
@@ -59,3 +60,22 @@ is a local single-process storage profile, not a multi-process production databa
 - [Mastra workflows](https://mastra.ai/docs/workflows/overview)
 - [Mastra workflow snapshots](https://mastra.ai/en/reference/workflows/snapshots)
 - [Mastra OpenRouter gateway](https://mastra.ai/models/gateways/openrouter)
+
+## Live task input
+
+New interactive baseline runs use the native durable agent path and its retained
+LibSQL snapshot. The admitted `ask_user` tool from `agentlab/task-interaction` calls
+native `suspend` with the exact question identity; runner replacement resumes it with
+`resumeGenerate` and reads the exact retained reply from the interaction host.
+Clarification is a separate lifecycle from action review. Its wait keeps the original
+absolute deadline, and steering cancels the old question or pending proposal.
+
+Ordered input is consumed before model and tool dispatch and after a completed model
+response. Live constraints, clarification answers and recalled factual memory remain
+protected during compaction. The installed Mastra 1.66 durable output processor's
+abort/retry path returns an empty final response; the adapter therefore checks the
+completed model transport response inside the existing durable model step before
+exposing it to the SDK. Streams are buffered up to 1 MiB. Only newly retained steering
+permits another inference, bounded by the persisted model round count and original
+deadline. Failed or ambiguous transport outcomes are not retried by this boundary.
+The existing unresolved external-dispatch recovery barrier remains in force.

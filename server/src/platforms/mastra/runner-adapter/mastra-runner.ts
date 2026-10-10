@@ -1,3 +1,5 @@
+import { consumeTaskInputs, taskInputText } from "../../../capabilities/interaction/runtime.js";
+import type { TaskInputResume } from "../../../capabilities/interaction/contracts.js";
 import { DurableAgent, type AgentSuspendedEventData } from "@mastra/core/agent/durable";
 import { remainingExecutionMs, executionDeadlineReached } from "../../../capabilities/execution/policy.js";
 import { prepareMastraRoundContext } from "./round-context.js";
@@ -213,6 +215,7 @@ export class MastraBaselineRunner implements PlatformRunner {
       this.addEvent(record, "RunCancelled", {});
       record.status = "cancelled";
       record.pendingReview = null;
+      record.pendingQuestion = null;
       record.pendingCall = null;
       record.result = resultFor(record, "cancelled", null, failureFor(record, abortError()), emptyUsage());
       record.trajectory = trajectoryFor(record);
@@ -224,7 +227,20 @@ export class MastraBaselineRunner implements PlatformRunner {
 
   async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
     const decision = input as InvocationResumeInput;
+    const wake = input as TaskInputResume;
     const record = await this.requireExecution(reference);
+    if (wake?.kind === "task_input") {
+      if (isTerminal(record.status) || wake.runId !== record.manifest.runId || wake.turnId !== record.manifest.context.turnId) return { accepted: false, alreadyTerminal: isTerminal(record.status), message: "Input targets another or terminal execution." };
+      if (record.status !== "suspended") return { accepted: true, alreadyTerminal: false, message: "Retained input will be consumed at the next native boundary." };
+      if (wake.inputKind === "clarification_reply" && record.pendingQuestion?.questionId !== wake.questionId) return { accepted: false, alreadyTerminal: false, message: "Reply does not match the retained question." };
+      const owner = await acquireLocalOwner(this.recordDirectory(record.manifest.runId));
+      if (!owner) return { accepted: false, alreadyTerminal: false, message: "The native wait still has an owner." };
+      record.status = "running";
+      this.addEvent(record, "WorkflowResumed", { reason: "task_input", inputId: wake.inputId, sequence: wake.sequence });
+      try { await this.persist(record); } catch (error) { await owner(); throw error; }
+      this.launch(record, wake, false, owner);
+      return { accepted: true, alreadyTerminal: false, message: "Continuing the original native task input wait." };
+    }
     if (isTerminal(record.status)) return { accepted: false, alreadyTerminal: true, message: "Mastra run is terminal." };
     const pending = record.pendingReview;
     if (decision?.kind === "invocation_review" && decision.decision === "renewed" && pending && record.status === "suspended" &&
@@ -278,7 +294,7 @@ export class MastraBaselineRunner implements PlatformRunner {
     await Promise.all(this.operations.values());
   }
 
-  private launch(record: MastraExecutionRecord, resume?: InvocationResumeInput, recover = false, owner?: () => Promise<void>): void {
+  private launch(record: MastraExecutionRecord, resume?: InvocationResumeInput | TaskInputResume, recover = false, owner?: () => Promise<void>): void {
     const operation = this.execute(record, resume, recover, owner);
     this.operations.set(record.manifest.runId, operation);
     void operation.finally(() => {
@@ -286,7 +302,7 @@ export class MastraBaselineRunner implements PlatformRunner {
     }).catch(() => undefined);
   }
 
-  private async execute(record: MastraExecutionRecord, resume?: InvocationResumeInput, recover = false, owner?: () => Promise<void>): Promise<void> {
+  private async execute(record: MastraExecutionRecord, resume?: InvocationResumeInput | TaskInputResume, recover = false, owner?: () => Promise<void>): Promise<void> {
     const sustained = record.manifest.execution !== undefined;
     let release: (() => Promise<void>) | null = owner ?? null;
     let storage: LibSQLStore | null = null;
@@ -335,7 +351,24 @@ export class MastraBaselineRunner implements PlatformRunner {
           await this.persist(record);
         } : undefined,
         onModelTimeout: sustained ? () => { record.timeoutRequested = true; record.controller.abort("Mastra model request timed out."); } : undefined,
+        afterModelResponse: async () => {
+          const step = record.events.filter(event => event.kind === "DurableModelRequested").length;
+          const changed = await this.consumeInputs(record, `response:${record.events.filter(event => event.kind === "DurableModelRequested").length}`);
+          if (changed) { record.supersededRound = step; this.addEvent(record, "TaskOutputSuperseded", { step }); await this.persist(record); }
+          return changed;
+        },
+        onQuestion: async question => { record.pendingQuestion = question; await this.persist(record); },
+        onAnswer: async (question, answer) => {
+          record.pendingQuestion = null;
+          record.liveConstraints = [...(record.liveConstraints ?? []), `[Clarification answer ${question.questionId}]\n${answer.content}`];
+          this.addEvent(record, "TaskInputConsumed", { ...answer });
+          await this.persist(record);
+        },
         beforeModelRequest: sustained ? async input => {
+          if (record.events.filter(event => event.kind === "DurableModelRequested").length >= (record.manifest.capabilities?.tools.maxRounds ?? 6)) throw new Error("The native model round limit has been reached.");
+          await this.consumeInputs(record, `model:${record.events.filter(event => event.kind === "DurableModelRequested").length + 1}`);
+          record.supersededRound = undefined;
+          if (Array.isArray(input.prompt)) input = { ...input, prompt: [...input.prompt, ...(record.liveConstraints ?? []).filter(content => !JSON.stringify(input.prompt).includes(JSON.stringify(content).slice(1, -1))).map(content => ({ role: "user", content: [{ type: "text", text: content }] }))] };
           const summary = createMastraContextSummaryGenerator({ ...this.summaryObservationOptions(record), manifest: record.manifest, modelFactory: modelFactory ?? defaultMastraModelFactory,
             signal: AbortSignal.any([record.controller.signal, AbortSignal.timeout(Math.max(1, Math.min(record.manifest.execution!.modelTimeoutMs, remainingExecutionMs(record.manifest.execution, this.now().getTime()))))]) });
           const prepared = await prepareMastraRoundContext(record.manifest, this.contextRoot, directory,
@@ -354,6 +387,9 @@ export class MastraBaselineRunner implements PlatformRunner {
           return prepared.prompt;
         } : undefined,
         beforeToolDispatch: sustained ? async call => {
+          if (await this.consumeInputs(record, `tool:${call.round}:${record.events.filter(event => event.kind === "ToolCallRequested").length}`)) record.supersededRound = call.round;
+          if (record.supersededRound === call.round) return "New task input superseded this proposal before dispatch.";
+          if (call.name === "ask_user" && record.manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === call.name && tool.source.id === "agentlab/task-interaction")) return;
           if (executionDeadlineReached(record.manifest.execution, this.now().getTime())) throw new Error("The sustained execution deadline has expired before tool dispatch.");
           const isExternal = (record.manifest.capabilities?.connections ?? []).some(binding => binding.toolName === call.name)
             || record.manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === call.name && (tool.execution.kind === "hosted" || tool.definition.executionKind === "connection" || ["write", "external"].includes(tool.definition.riskClass)));
@@ -441,7 +477,11 @@ export class MastraBaselineRunner implements PlatformRunner {
       const output = recovered
         ? await Promise.race([recovered.output.getFullOutput(), suspension])
         : resume
-        ? resume.decision === "approved"
+        ? resume.kind === "task_input"
+          ? record.pendingQuestion
+            ? await runtime.agent.resumeGenerate(record.manifest.runId, resume, generationOptions)
+            : await runtime.agent.declineToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: record.pendingReview!.call.toolCallId, reason: JSON.stringify({ code: "TASK_INPUT_SUPERSEDED", message: "New task input superseded the pending proposal." }) })
+          : resume.decision === "approved"
           ? await runtime.agent.approveToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: resume.toolCallId })
           : await runtime.agent.declineToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: resume.toolCallId, reason: JSON.stringify({ code: "TOOL_APPROVAL_DENIED", error: resume.reason ?? "The proposed action was declined." }) })
         : await runtime.agent.generate(record.manifest.task.prompt, generationOptions);
@@ -450,6 +490,10 @@ export class MastraBaselineRunner implements PlatformRunner {
         recovered.cleanup();
       }
       if (output.finishReason === "suspended") {
+        if (record.pendingQuestion) {
+          this.addEvent(record, "WorkflowSuspended", { reason: "clarification", ...record.pendingQuestion });
+          record.status = "suspended"; await this.persist(record); return;
+        }
         const payload = output.suspendPayload as { toolCallId?: string; toolName?: string; args?: unknown } | undefined;
         if (!payload?.toolCallId || !payload.toolName || !record.manifest.capabilities?.toolCatalog) throw new Error("Mastra suspended without an admitted tool identity.");
         const call = { toolCallId: payload.toolCallId, name: payload.toolName, arguments: payload.args,
@@ -467,6 +511,7 @@ export class MastraBaselineRunner implements PlatformRunner {
         return;
       }
       record.pendingReview = null;
+      record.pendingQuestion = null;
       record.pendingCall = null;
       // Mastra's generate() may resolve with an empty output after an abort
       // rather than reject. Treat that as a known cancellation. If a real
@@ -633,6 +678,20 @@ export class MastraBaselineRunner implements PlatformRunner {
     record.trajectory = trajectoryFor(record);
     record.metrics = metricsFor(record, emptyUsage());
     await this.persist(record);
+  }
+
+  private async consumeInputs(record: MastraExecutionRecord, boundary: string): Promise<boolean> {
+    if (!record.manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === "ask_user" && tool.source.id === "agentlab/task-interaction")) return false;
+    const inputs = await consumeTaskInputs(record.manifest.runId, record.manifest.context.turnId!, boundary);
+    const fresh = inputs.filter(input => !(record.liveInputIds ?? []).includes(input.inputId));
+    for (const input of fresh) {
+      record.liveInputIds = [...(record.liveInputIds ?? []), input.inputId];
+      record.liveConstraints = [...(record.liveConstraints ?? []), taskInputText([input])];
+      this.addEvent(record, "TaskInputConsumed", { ...input });
+    }
+    if (fresh.length) record.pendingQuestion = null;
+    await this.persist(record);
+    return fresh.length > 0;
   }
 
   private summaryObservationOptions(record: MastraExecutionRecord) {

@@ -14,6 +14,7 @@ export interface AdmissionRecord {
   readonly input: VercelWorkflowInput;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly inputDeliveries?: Readonly<Record<string, import("../../../../../capabilities/interaction/contracts.js").TaskInputResume>>;
   readonly deliveries?: Readonly<Record<string, InvocationResumeInput>>;
 }
 
@@ -95,6 +96,16 @@ export class AdmissionStore {
     const prior = record.deliveries?.[token];
     if (prior) return prior.decisionId === decision.decisionId && prior.decision === decision.decision && prior.revision === decision.revision;
     this.records.set(runId, { ...record, deliveries: { ...record.deliveries, [token]: decision } });
+    await this.persist();
+    return true;
+  }
+
+  async retainInputDelivery(runId: string, token: string, input: import("../../../../../capabilities/interaction/contracts.js").TaskInputResume): Promise<boolean> {
+    const record = this.records.get(runId);
+    if (!record) return false;
+    const prior = record.inputDeliveries?.[input.inputId];
+    if (prior) return JSON.stringify(prior) === JSON.stringify(input);
+    this.records.set(runId, { ...record, inputDeliveries: { ...record.inputDeliveries, [input.inputId]: input } });
     await this.persist();
     return true;
   }

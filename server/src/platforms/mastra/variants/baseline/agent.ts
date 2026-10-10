@@ -1,3 +1,5 @@
+import { prepareTaskQuestion, readTaskAnswer } from "../../../../capabilities/interaction/runtime.js";
+import type { TaskInput, TaskQuestion } from "../../../../capabilities/interaction/contracts.js";
 import type { LibSQLStore } from "@mastra/libsql";
 import { Agent } from "@mastra/core/agent";
 import { createDurableAgent, DurableAgent } from "@mastra/core/agent/durable";
@@ -24,7 +26,10 @@ export interface BaselineAgentOptions {
   readonly onModelError?: (error: unknown) => Promise<void>;
   readonly beforeModelRequest?: (input: { prompt?: unknown; tools?: unknown; abortSignal?: AbortSignal }) => Promise<unknown>;
   /** Persist the dispatch boundary before the SDK allows a tool to escape. */
-  readonly beforeToolDispatch?: (call: ToolCall) => Promise<void>;
+  readonly beforeToolDispatch?: (call: ToolCall) => Promise<void | string>;
+  readonly afterModelResponse?: () => Promise<boolean>;
+  readonly onQuestion?: (question: TaskQuestion) => Promise<void>;
+  readonly onAnswer?: (question: TaskQuestion, answer: TaskInput) => Promise<void>;
   readonly afterToolDispatch?: (call: ToolCall, result: ToolExecutionResult) => Promise<void>;
   readonly runId: string;
   readonly turnId: string;
@@ -88,10 +93,10 @@ export function createBaselineAgent(
     id: MASTRA_AGENT_ID,
     name: "Mastra baseline agent",
     instructions: manifest.context.systemInstruction,
-    model: options?.sustained ? sustainedModel(modelFactory(manifest), manifest, options.beforeModelRequest, options.onModelTimeout, options.onModelError) : modelFactory(manifest),
+    model: options?.sustained ? sustainedModel(modelFactory(manifest), manifest, options.beforeModelRequest, options.onModelTimeout, options.onModelError, options.afterModelResponse) : modelFactory(manifest),
     ...(manifest.selection?.experimentId === "agent-harness-live" ? { maxRetries: 0 } : {}),
     ...(options ? {
-      tools: Object.fromEntries(registry.definitions().map((definition) => [definition.name, catalogAgentTool(registry, registry.resolve(definition.name)!, options, nextToolCall)])),
+      tools: Object.fromEntries(registry.definitions().map((definition) => [definition.name, catalogAgentTool(registry, registry.resolve(definition.name)!, options, nextToolCall, manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === definition.name && tool.source.id === "agentlab/task-interaction") ?? false)])),
     } : {}),
     maxRetries: 0,
   });
@@ -102,6 +107,7 @@ function catalogAgentTool(
   implementation: ToolImplementation,
   options: BaselineAgentOptions,
   nextToolCall: () => number,
+  interactionTool: boolean,
 ) {
   return createTool({
     id: implementation.definition.name,
@@ -129,8 +135,27 @@ function catalogAgentTool(
         options.onToolEvent?.("ToolPolicyDenied", { ...payload, code: policy.code, message: policy.message });
         return JSON.stringify({ error: policy.message, code: policy.code });
       }
+      const superseded = await options.beforeToolDispatch?.(validation.call);
+      if (superseded) {
+        options.onToolEvent?.("ToolCallRejected", { ...payload, code: "TASK_INPUT_SUPERSEDED", message: superseded });
+        return JSON.stringify({ error: { code: "TASK_INPUT_SUPERSEDED", message: superseded } });
+      }
+      if (interactionTool && call.name === "ask_user") {
+        const question = await prepareTaskQuestion(options.runId, options.turnId, validation.call);
+        const wake = context.agent?.resumeData as { kind?: string; inputKind?: string; questionId?: string } | undefined;
+        if (wake?.kind === "task_input" && wake.inputKind === "clarification_reply" && wake.questionId !== question.questionId) throw new Error("Clarification reply targets another question.");
+        const answer = await readTaskAnswer(options.runId, options.turnId, question.questionId);
+        if (!answer) {
+          await options.onQuestion?.(question);
+          if (!context.agent) throw new Error("Clarification requires a native agent tool suspension.");
+          await context.agent.suspend({ kind: "clarification", ...question });
+          return; // Installed SDK requires immediate return after custom suspension.
+        }
+        await options.onAnswer?.(question, answer);
+        options.onToolEvent?.("ToolExecutionCompleted", { ...payload, status: "completed", durationMs: 0 });
+        return answer.content;
+      }
       options.onToolEvent?.("ToolExecutionStarted", payload);
-      await options.beforeToolDispatch?.(validation.call);
       const result = await registry.execute(validation, {
         runId: options.runId,
         turnId: options.turnId,

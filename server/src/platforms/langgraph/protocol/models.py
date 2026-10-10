@@ -326,3 +326,19 @@ class ResumeRunRequest(ProtocolModel):
     tool_call_id: str = Field(min_length=1, max_length=128)
     decision: Literal["approved", "denied", "renewed"]
     reason: str | None = Field(default=None, max_length=512)
+
+
+class TaskInputResumeRequest(ProtocolModel):
+    kind: Literal['task_input']
+    run_id: str = Field(min_length=1, max_length=128)
+    turn_id: str = Field(min_length=1, max_length=128)
+    input_id: str = Field(min_length=1, max_length=128)
+    sequence: int = Field(ge=1)
+    input_kind: Literal['steering', 'clarification_reply']
+    question_id: str | None = Field(default=None, max_length=128)
+
+    @model_validator(mode='after')
+    def question_matches_kind(self):
+        if (self.input_kind == 'clarification_reply') != (self.question_id is not None):
+            raise ValueError('Only a clarification reply must identify a question.')
+        return self

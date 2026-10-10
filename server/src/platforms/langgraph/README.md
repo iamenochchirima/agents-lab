@@ -138,3 +138,18 @@ The complete resolved environment is in [`requirements.lock`](requirements.lock)
 - [`variants/baseline/README.md`](variants/baseline/README.md) — graph scope.
 - [deployment profile](../../../deployments/platforms/langgraph/README.md) — local operation.
 - [development playground](../../../../development/playground/langgraph-baseline/README.md) — hands-on walkthrough.
+
+## Live task input
+
+The admitted `ask_user` tool from `agentlab/task-interaction` is intercepted by a
+dedicated graph node. Its exact question and call identity are retained through a
+synchronous SQLite checkpoint and `interrupt`; an exact reply resumes that original
+thread. This follows the same local single-owner recovery eligibility as action review.
+The service deadline watcher remains active during clarification waits.
+
+Ordered steering is pulled at model, completed-response, review and per-call dispatch
+boundaries. It closes every remaining proposal in a superseded batch before adding
+the user instruction, preserving assistant/tool message pairing. Clarification answers
+and live instructions remain user constraints across native context compaction.
+A wake notification carries identity only; the graph reads the retained input from the
+shared authenticated interaction host. Delivery retries do not create another run.

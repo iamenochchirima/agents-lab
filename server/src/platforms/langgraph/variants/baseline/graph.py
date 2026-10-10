@@ -24,6 +24,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import RetryPolicy, interrupt
 
+from .interaction import invoke_interaction
 from .hosted_tools import catalog_tools, validate_arguments, execute_hosted, prepare_hosted, project_model_content
 
 
@@ -45,6 +46,9 @@ MAX_MCP_SCHEMA_BYTES = 32_768
 class GraphState(TypedDict, total=False):
     execution_run_id: str
     loaded_skill_contexts: list[dict[str, Any]]
+    live_input_ids: list[str]
+    live_constraints: list[str]
+    input_changed: bool
     prompt: str
     system_instruction: str
     messages: list[dict[str, Any]]
@@ -279,6 +283,7 @@ def build_baseline_graph(
     capability_host_key_file: str = "lab/runs/.capability-host.key",
     execution_deadline_reached: Callable[[], bool] = lambda: False,
     context_window_tokens: int | None = None,
+    interaction: Callable[[str, dict[str, Any]], Any] | None = None,
 ):
     enabled_tools = list(tool_names if tool_names is not None else ["calculator"])
     selected_catalog = catalog_tools(tool_catalog, enabled_tools)
@@ -296,9 +301,95 @@ def build_baseline_graph(
         if is_cancelled():
             raise CancellationError("Cancellation was requested before the next native step.")
 
+    interaction_enabled = selected_catalog.get("ask_user", {}).get("source", {}).get("id") == "agentlab/task-interaction"
+    def input_request(operation: str, **payload: Any) -> Any:
+        value = {"runId": run_id, "turnId": turn_id or f"{run_id}:turn:1", **payload}
+        return interaction(operation, value) if interaction else invoke_interaction(operation, value, capability_host_url, capability_host_key_file)
+
+    def consume_inputs(state: GraphState, boundary: str, supersede: bool = False) -> GraphState:
+        if not interaction_enabled:
+            return {}
+        inputs = input_request("boundary", boundaryId=boundary)
+        ids = list(state.get("live_input_ids", []))
+        messages = list(state.get("messages", []))
+        changed = False
+        new_messages = []
+        for item in inputs:
+            if item["inputId"] in ids:
+                continue
+            changed = True
+            ids.append(item["inputId"])
+            new_messages.append({"role": "user", "content": f'[Live task instruction {item["sequence"]}; input {item["inputId"]}]\n{item["content"]}'})
+            emit("TaskInputConsumed", item)
+        calls = list(state.get("pending_tool_calls", []))
+        if changed and supersede:
+            # No prepared call from the prior model response remains dispatchable.
+            completed_ids = {item.get("tool_call_id") for item in messages if item.get("role") == "tool"}
+            for call in calls:
+                if call["id"] in completed_ids:
+                    continue
+                messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"],
+                    "content": json.dumps({"error": {"code": "TASK_INPUT_SUPERSEDED", "message": "New task input superseded this proposal before dispatch."}})})
+                emit("ToolCallRejected", {"toolCallId": call["id"], "toolName": call["name"], "code": "TASK_INPUT_SUPERSEDED"})
+            calls = []
+        messages.extend(new_messages)
+        return {"messages": messages, "live_input_ids": ids, "pending_tool_calls": calls, "input_changed": changed}
+
+    def input_boundary(state: GraphState) -> GraphState:
+        check_execution()
+        return consume_inputs(state, f'model:{int(state.get("round_count", 0)) + 1}')
+
+    def proposal_boundary(state: GraphState) -> GraphState:
+        check_execution()
+        return consume_inputs(state, f'proposal:{state.get("round_count", 0)}', True)
+
+    def clarify(state: GraphState) -> GraphState:
+        check_execution()
+        messages = list(state.get("messages", []))
+        remaining_calls = []
+        constraints = list(state.get("live_constraints", []))
+        count = int(state.get("tool_call_count", 0))
+        for raw in state.get("pending_tool_calls", []):
+            if not interaction_enabled or raw["name"] != "ask_user":
+                remaining_calls.append(raw)
+                continue
+            call = ToolCall(raw["id"], raw["name"], raw["arguments"])
+            validation = validate_catalog_call(call, selected_catalog[call.name], approved_tools, state.get("round_count", 0))
+            if validation:
+                messages.append({"role": "tool", "tool_call_id": call.tool_call_id, "name": call.name, "content": json.dumps({"error": validation})})
+                continue
+            count += 1
+            if count > max_calls:
+                raise ConfigurationError("The tool call limit was reached before clarification.")
+            question = input_request("question", toolCallId=call.tool_call_id, question=call.arguments["question"])
+            answer = input_request("answer", questionId=question["questionId"])
+            while answer is None:
+                emit("ClarificationPending", question)
+                wake = interrupt({"kind": "clarification", **question})
+                check_execution()
+                if not isinstance(wake, dict) or wake.get("kind") != "task_input" or wake.get("runId") != run_id or wake.get("turnId") != question["turnId"]:
+                    raise ConfigurationError("Clarification wake targets another native execution.")
+                if wake.get("inputKind") == "steering":
+                    # Steering does not fabricate an answer or authorize an effect.
+                    updated = consume_inputs({**state, "messages": messages}, "question:" + question["questionId"], True)
+                    if updated.get("pending_tool_calls") == []:
+                        return updated
+                elif wake.get("questionId") != question["questionId"]:
+                    raise ConfigurationError("Clarification reply targets another question.")
+                answer = input_request("answer", questionId=question["questionId"])
+            messages.append({"role": "tool", "tool_call_id": call.tool_call_id, "name": call.name, "content": answer["content"]})
+            # Replies are live constraints too, outside completed tool-group summaries.
+            constraints.append(f'[Clarification answer {question["questionId"]}]\n{answer["content"]}')
+            emit("TaskInputConsumed", answer)
+            emit("ToolExecutionCompleted", {"toolCallId": call.tool_call_id, "toolName": call.name, "round": state.get("round_count", 0), "status": "completed", "questionId": question["questionId"]})
+        return {"messages": messages, "pending_tool_calls": remaining_calls, "tool_call_count": count, "live_constraints": constraints}
+
     def prepare_round_context(state: GraphState) -> GraphState:
         check_execution()
         messages = list(state.get("messages", []))
+        for constraint in state.get("live_constraints", []):
+            if not any(item.get("role") == "user" and item.get("content") == constraint for item in messages):
+                messages.append({"role": "user", "content": constraint})
         for skill in state.get("loaded_skill_contexts", []):
             if not any(item.get("role") == "user" and item.get("content") == skill["content"] for item in messages):
                 messages.append({"role": "user", "content": skill["content"]})
@@ -475,6 +566,8 @@ def build_baseline_graph(
             while True:
                 emit("InvocationReviewPending", {"requestId": review["requestId"], "toolCallId": call.tool_call_id, "revision": review["revision"]})
                 resumed = interrupt(review)
+                if isinstance(resumed, dict) and resumed.get("kind") == "task_input" and resumed.get("inputKind") == "steering" and resumed.get("runId") == run_id and resumed.get("turnId") == (turn_id or f"{run_id}:turn:1"):
+                    return consume_inputs(state, "review:" + hashlib.sha256(call.tool_call_id.encode()).hexdigest(), True)
                 if not isinstance(resumed, dict) or resumed.get("kind") != "invocation_review" or resumed.get("requestId") != review["requestId"] or resumed.get("toolCallId") != call.tool_call_id or resumed.get("decision") not in {"approved", "denied", "renewed"}:
                     raise ConfigurationError("The resumed decision does not match this pending invocation.")
                 if resumed["decision"] == "renewed":
@@ -499,12 +592,20 @@ def build_baseline_graph(
     def execute_tools(state: GraphState, runtime: Runtime[Any]) -> GraphState:
         check_execution()
         del runtime
+        updated = consume_inputs(state, f'dispatch:{state.get("round_count", 0)}', True)
+        state = {**state, **updated}
         messages = list(state.get("messages", []))
         calls = list(state.get("pending_tool_calls", []))
         skills = list(state.get("loaded_skill_contexts", []))
         call_count = int(state.get("tool_call_count", 0))
-        for raw_call in calls:
+        for index, raw_call in enumerate(calls):
             check_execution()
+            boundary_state = {**state, "messages": messages, "pending_tool_calls": calls[index:]}
+            changed = consume_inputs(boundary_state, f'dispatch:{state.get("round_count", 0)}:{index}', True)
+            state = {**state, **changed}
+            messages = list(state.get("messages", messages))
+            if changed.get("input_changed"):
+                break
             call = ToolCall(
                 tool_call_id=str(raw_call.get("id", "")),
                 name=str(raw_call.get("name", "")),
@@ -610,15 +711,18 @@ def build_baseline_graph(
             skill = loaded_skill_context(descriptor, call, result.content)
             if skill and not any(item["packageId"] == skill["packageId"] and item["name"] == skill["name"] and item["digest"] == skill["digest"] for item in skills):
                 skills.append(skill)
-        return {"messages": messages, "pending_tool_calls": [], "tool_call_count": call_count, "loaded_skill_contexts": skills}
+        return {"messages": messages, "pending_tool_calls": [], "tool_call_count": call_count, "loaded_skill_contexts": skills, "live_input_ids": state.get("live_input_ids", [])}
 
     def retry_on(exception: BaseException) -> bool:
         return isinstance(exception, RetryablePreDispatchError)
 
     def route_after_model(state: GraphState) -> str:
-        return "tools" if state.get("pending_tool_calls") else END
+        return "tools"
 
     builder = StateGraph(GraphState)
+    builder.add_node("input", input_boundary)
+    builder.add_node("proposal", proposal_boundary)
+    builder.add_node("clarification", clarify)
     builder.add_node("context", prepare_round_context)
     builder.add_node(
         "model",
@@ -627,11 +731,14 @@ def build_baseline_graph(
     )
     builder.add_node("approval", review_tools)
     builder.add_node("tools", execute_tools)
-    builder.add_edge(START, "context")
+    builder.add_edge(START, "input")
+    builder.add_edge("input", "context")
     builder.add_edge("context", "model")
-    builder.add_conditional_edges("model", route_after_model, {"tools": "approval", END: END})
-    builder.add_edge("approval", "tools")
-    builder.add_edge("tools", "context")
+    builder.add_conditional_edges("model", route_after_model, {"tools": "proposal", END: END})
+    builder.add_conditional_edges("proposal", lambda state: "clarification" if state.get("pending_tool_calls") else "input" if state.get("input_changed") else END)
+    builder.add_conditional_edges("clarification", lambda state: "approval" if state.get("pending_tool_calls") else "input")
+    builder.add_conditional_edges("approval", lambda state: "tools" if state.get("pending_tool_calls") else "input")
+    builder.add_edge("tools", "input")
     return builder.compile(checkpointer=checkpointer)
 
 

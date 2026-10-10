@@ -18,6 +18,10 @@ export interface MastraExecutionRecord {
   readonly events: RunEventIntent[];
   readonly startedAt: string;
   status: "queued" | "running" | "suspended" | "completed" | "failed" | "cancelled";
+  pendingQuestion?: import("../../../../capabilities/interaction/contracts.js").TaskQuestion | null;
+  liveInputIds?: string[];
+  liveConstraints?: string[];
+  supersededRound?: number;
   pendingReview?: InvocationReviewView | null;
   pendingCall?: ToolCall | null;
   result: RunResult | null;

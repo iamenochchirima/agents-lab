@@ -22,6 +22,7 @@ export type VercelModelMessage =
   | { readonly role: "assistant"; readonly content: string | null; readonly toolCalls?: readonly ToolCall[] }
   | { readonly role: "tool"; readonly toolCallId: string; readonly name: string; readonly content: string };
 export interface VercelWorkflowProgress {
+  readonly pendingQuestion?: import("../../../../capabilities/interaction/contracts.js").TaskQuestion | null;
   readonly eventIntents: readonly RunEventIntent[];
   readonly pendingReview: InvocationReviewView | null;
 }

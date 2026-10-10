@@ -18,6 +18,7 @@ import { buildVercelWorkflowBundle, type VercelWorkflowBundle } from "../variant
 import { createWorld, getRun, setWorld, start, resumeHook } from "../sdk.js";
 import { ProgressStore } from "../variants/baseline/state/progress-store.js";
 import type { InvocationReviewView, InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
+import type { TaskInputResume, TaskQuestion } from "../../../capabilities/interaction/contracts.js";
 import type { LocalWorld } from "../sdk.js";
 
 const MAX_BODY_BYTES = 1_048_576;
@@ -35,6 +36,7 @@ export interface VercelWorkflowPublicRunRecord {
   readonly workflowRunId: string;
   readonly workflowName: string;
   readonly status: "pending" | "running" | "suspended" | "completed" | "failed" | "cancelled";
+  readonly pendingQuestion?: TaskQuestion | null;
   readonly pendingReview?: InvocationReviewView | null;
   readonly eventIntents?: readonly RunEventIntent[];
   readonly createdAt: string;
@@ -257,7 +259,8 @@ export class VercelWorkflowsPlatformService {
       workflowId: this.workflowId,
       workflowRunId,
       workflowName: await run.workflowName,
-      status: status === "running" && progress?.pendingReview ? "suspended" : status,
+      status: status === "running" && (progress?.pendingReview || progress?.pendingQuestion) ? "suspended" : status,
+      pendingQuestion: ["completed", "failed", "cancelled"].includes(status) ? null : progress?.pendingQuestion ?? null,
       pendingReview: ["completed", "failed", "cancelled"].includes(status) ? null : progress?.pendingReview ?? null,
       eventIntents: progress?.eventIntents ?? [],
       createdAt: createdAt.toISOString(),
@@ -273,7 +276,25 @@ export class VercelWorkflowsPlatformService {
     const record = this.admissionStore.findByWorkflowRunId(workflowRunId);
     if (!record || !(await run.exists)) { this.writeJson(response, 404, { accepted: false }); return; }
     const status = await run.status;
-    const decision = await readJson(request) as InvocationResumeInput;
+    const value = await readJson(request) as InvocationResumeInput | TaskInputResume;
+    if (value.kind === "task_input") {
+      if (["completed", "failed", "cancelled"].includes(status)) { this.writeJson(response, 200, { accepted: false, alreadyTerminal: true }); return; }
+      if (value.runId !== record.runId || value.turnId !== (record.input.turnId ?? `${record.runId}:turn:1`) || !Number.isSafeInteger(value.sequence) || value.sequence < 1 || typeof value.inputId !== "string" || !value.inputId || !["steering", "clarification_reply"].includes(value.inputKind)) {
+        this.writeJson(response, 409, { accepted: false, message: "Task input targets another execution." }); return;
+      }
+      const progress = await this.progressStore.read(record.runId);
+      const question = progress?.pendingQuestion;
+      if (value.inputKind === "clarification_reply" && (!question || question.questionId !== value.questionId)) {
+        this.writeJson(response, 409, { accepted: false, message: "Reply does not match the retained question." }); return;
+      }
+      const token = question ? `agentlab-question:${record.runId}:${question.questionId}` : progress?.pendingReview ? `agentlab-review:${record.runId}:${progress.pendingReview.requestId}:${progress.pendingReview.revision}` : null;
+      if (token) {
+        if (!await this.admissionStore.retainInputDelivery(record.runId, token, value)) { this.writeJson(response, 409, { accepted: false }); return; }
+        await resumeHook(token, value);
+      }
+      this.writeJson(response, 202, { accepted: true, alreadyTerminal: false, message: "Retained input will be consumed at the original native boundary." }); return;
+    }
+    const decision = value;
     const prior = Object.entries(record.deliveries ?? {}).find(([, value]) => value.decisionId === decision.decisionId &&
       value.requestId === decision.requestId && value.revision === decision.revision && value.toolCallId === decision.toolCallId && value.decision === decision.decision);
     if (["completed", "failed", "cancelled"].includes(status)) { this.writeJson(response, 200, { accepted: !!prior, alreadyTerminal: true }); return; }

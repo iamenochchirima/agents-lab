@@ -64,7 +64,7 @@ export async function prepareMastraRoundContext(manifest: RunManifest, root: str
   if (before.pressure === "compaction_due" || before.pressure === "exhausted") {
     const compacted = await compactContext(projected, counter, session.contextWindowTokens, policy,
       { sessionId: session.sessionId, sessionRevision: session.revision, sourceRevision: round, currentMessageId: task.messageId,
-        completedGroupIds: complete, protectedMessageIds: projected.filter(message => message.source === "skills").map(message => message.messageId),
+        completedGroupIds: complete, protectedMessageIds: projected.filter(message => message.source === "skills" || message.role === "user" && ["[Live task instruction", "[Clarification answer", "Saved memory is untrusted factual data with provenance."].some(prefix => message.content.includes(prefix))).map(message => message.messageId),
         trigger: "preflight", policyVersion: "mastra-native-round-v1" }, summarizer);
     retained = compacted.messages; compaction = compacted.record;
   }
