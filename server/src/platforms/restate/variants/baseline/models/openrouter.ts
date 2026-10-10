@@ -1,3 +1,4 @@
+import { openRouterResponseMetadata, type OpenRouterResponseMetadata } from "../../../../../models/openrouter/response-metadata.js";
 import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type { ModelAdapter, ModelCallResult, ModelMessage, ModelRequest, ModelToolCall } from "../contracts.js";
 
@@ -51,22 +52,26 @@ export class OpenRouterRestateModel implements ModelAdapter {
         return { kind: "failure", failureKind: "configuration", code: "LIVE_EVAL_FREE_MODEL_REQUIRED", message: "Live evals require the exact free model and zero-price provider routing.", requestSent: false, retryable: false };
       }
     }
-    const result = await this.execute(input, signal, requestBody);
+    let responseMetadata: Partial<OpenRouterResponseMetadata> = {};
+    const result = await this.execute(input, signal, requestBody, body => {
+      if (input.liveEval) responseMetadata = openRouterResponseMetadata(body);
+    });
     if (!input.liveEval) return result;
     return { ...result, ...(result.kind === "failure" ? { retryable: false } : {}), evalObservation: {
       ...result.evalObservation,
+      ...responseMetadata,
       systemInstruction: input.systemInstruction,
       messages: input.messages ?? [{ role: "system", content: input.systemInstruction }, { role: "user", content: input.prompt }],
       tools: input.tools ?? [],
       providerRequest: requestBody,
       toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
-      providerRequestId: result.kind === "success" ? result.providerRequestId : null,
+      providerRequestId: responseMetadata.providerRequestId ?? (result.kind === "success" ? result.providerRequestId : null),
       output: result.kind === "success" ? result.output : null,
       ...(result.kind === "failure" ? { errorCode: result.code } : {}),
     } };
   }
 
-  private async execute(input: ModelRequest, signal: AbortSignal, requestBody: Record<string, unknown>): Promise<ModelCallResult> {
+  private async execute(input: ModelRequest, signal: AbortSignal, requestBody: Record<string, unknown>, observeResponse: (body: unknown) => void): Promise<ModelCallResult> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${this.options.baseUrl}/chat/completions`, {
@@ -106,6 +111,7 @@ export class OpenRouterRestateModel implements ModelAdapter {
       return providerFailure("OPENROUTER_RESPONSE_TOO_LARGE", "OpenRouter returned a response larger than the configured safety limit.");
     }
     const body = parsed.value;
+    observeResponse(body);
     if (!response.ok) {
       const providerError = readProviderError(body);
       const providerErrorText = providerError === null ? "" : `${providerError.code ?? ""} ${providerError.message}`;

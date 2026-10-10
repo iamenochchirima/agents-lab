@@ -1,3 +1,4 @@
+import type { OpenRouterResponseMetadata } from "../../../../models/openrouter/response-metadata.js";
 import type { RunExecutionPolicy } from "../../../../capabilities/execution/policy.js";
 import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
@@ -188,7 +189,7 @@ export interface TemporalToolExecutionInput {
 export type TemporalToolExecutionResult = ToolExecutionResult;
 
 /** Bounded synthetic eval evidence, never authentication headers. */
-export interface ModelEvalObservation {
+export interface ModelEvalObservation extends Partial<OpenRouterResponseMetadata> {
   readonly faultKind?: "provider" | "malformed";
   readonly messages: readonly TemporalModelMessage[];
   readonly systemInstruction: string;

@@ -1,3 +1,4 @@
+import { openRouterResponseMetadata, type OpenRouterResponseMetadata } from "../../../../../models/openrouter/response-metadata.js";
 import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type { ModelAdapter, ModelCallResult, ModelRequestInput } from "../contracts.js";
 import type { ToolDefinition } from "../../../../../capabilities/tools/contracts.js";
@@ -43,22 +44,26 @@ export class OpenRouterModelAdapter implements ModelAdapter {
         return { kind: "failure", failureKind: "configuration", code: "LIVE_EVAL_FREE_MODEL_REQUIRED", message: "Live evals require the exact free model and zero-price provider routing.", requestSent: false };
       }
     }
-    const result = await this.execute(input, signal, requestBody);
+    let responseMetadata: Partial<OpenRouterResponseMetadata> = {};
+    const result = await this.execute(input, signal, requestBody, body => {
+      if (input.liveEval) responseMetadata = openRouterResponseMetadata(body);
+    });
     if (!input.liveEval) return result;
     return { ...result,  evalObservation: {
       ...result.evalObservation,
+      ...responseMetadata,
       systemInstruction: input.systemInstruction,
       messages: input.messages ?? [{ role: "system", content: input.systemInstruction }, { role: "user", content: input.prompt }],
       tools: input.tools ?? [],
       providerRequest: requestBody,
       toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
-      providerRequestId: result.kind === "success" ? result.providerRequestId : null,
+      providerRequestId: responseMetadata.providerRequestId ?? (result.kind === "success" ? result.providerRequestId : null),
       output: result.kind === "success" ? result.output : null,
       ...(result.kind === "failure" ? { errorCode: result.code } : {}),
     } };
   }
 
-  private async execute(input: ModelRequestInput, signal: AbortSignal, requestBody: Record<string, unknown>): Promise<ModelCallResult> {
+  private async execute(input: ModelRequestInput, signal: AbortSignal, requestBody: Record<string, unknown>, observeResponse: (body: unknown) => void): Promise<ModelCallResult> {
     const apiKey = this.options.apiKey?.trim();
     if (!apiKey) {
       return {
@@ -115,6 +120,10 @@ export class OpenRouterModelAdapter implements ModelAdapter {
     }
 
     const responseText = responseBody.text;
+    let body: unknown;
+    let invalidJson = false;
+    try { body = JSON.parse(responseText); } catch { invalidJson = true; }
+    if (!invalidJson) observeResponse(body);
     if (!response.ok) {
       if ((response.status === 400 || response.status === 413) && isContextOverflowResponse(responseText)) {
         return {
@@ -134,10 +143,7 @@ export class OpenRouterModelAdapter implements ModelAdapter {
       };
     }
 
-    let body: unknown;
-    try {
-      body = JSON.parse(responseText);
-    } catch {
+    if (invalidJson) {
       return {
         kind: "failure",
         failureKind: "provider",

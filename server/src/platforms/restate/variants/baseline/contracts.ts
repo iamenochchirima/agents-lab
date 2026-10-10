@@ -1,3 +1,4 @@
+import type { OpenRouterResponseMetadata } from "../../../../models/openrouter/response-metadata.js";
 import type { RunExecutionPolicy } from "../../../../capabilities/execution/policy.js";
 import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import { getFreeEvalSettings } from "../../../../models/openrouter/free-model-policy.js";
@@ -95,7 +96,7 @@ export interface ModelToolCall {
 }
 
 /** Bounded synthetic eval evidence, never authentication headers. */
-export interface ModelEvalObservation {
+export interface ModelEvalObservation extends Partial<OpenRouterResponseMetadata> {
   readonly faultKind?: "provider" | "malformed";
   readonly messages: readonly ModelMessage[];
   readonly systemInstruction: string;

@@ -48,3 +48,23 @@ test("live restate refuses paid models and retains provider failures without ret
   assert.equal(failed.evalObservation?.errorCode, "OPENROUTER_HTTP_429");
   assert.equal(failed.evalObservation?.providerRequest?.model, input.model);
 });
+
+test("live restate retains safe diagnostics for reasoning-only and successful responses", async () => {
+  for (const content of [null, "done"]) {
+    const model = new OpenRouterRestateModel({ apiKey: "test-secret", baseUrl: "https://example.invalid", fetchImpl: async () => Response.json({
+      id: "provider-budget-1", model: "actual-model", provider: "actual-provider",
+      choices: [{ finish_reason: content ? "stop" : "length", message: { content, reasoning: "PRIVATE REASONING", reasoning_details: [{ text: "PRIVATE DETAILS" }] } }],
+      usage: { prompt_tokens: 120, completion_tokens: 2048, total_tokens: 2168,
+        completion_tokens_details: { reasoning_tokens: 2048 } },
+    }) });
+    const result = await model.complete(input, new AbortController().signal);
+    assert.equal(result.kind, content ? "success" : "failure");
+    if (result.kind === "failure") assert.equal(result.code, "OPENROUTER_INVALID_RESPONSE");
+    assert.equal(result.evalObservation?.finishReason, content ? "stop" : "length");
+    assert.deepEqual(result.evalObservation?.providerUsage, { inputTokens: 120, outputTokens: 2048, totalTokens: 2168, reasoningTokens: 2048 });
+    assert.equal(result.evalObservation?.providerRequestId, "provider-budget-1");
+    assert.equal(result.evalObservation?.providerModel, "actual-model");
+    assert.equal(result.evalObservation?.providerName, "actual-provider");
+    assert.ok(!JSON.stringify(result.evalObservation).includes("PRIVATE"));
+  }
+});
