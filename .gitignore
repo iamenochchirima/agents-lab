@@ -31,6 +31,7 @@ apps/web/src/generated/document-catalog.ts
 lab/restate-data/
 lab/restate-native-data/
 server/lab/mastra/mastra-workflows.db*
+lab/mastra/mastra-workflows.db*
 lab/runs/*
 !lab/runs/README.md
 lab/sessions/*
