@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "collection-records",
+      "version": "1.0.0",
+      "source": "mcp",
+      "endpoint": "http://127.0.0.1:19196/mcp",
+      "protocolVersion": "2026-07-28",
+      "tools": [
+        {
+          "remoteName": "collection.list",
+          "name": "collection_list",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "collection.inspect",
+          "name": "record_inspect",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "collection.correct",
+          "name": "record_correct",
+          "riskClass": "write",
+          "approvalMode": "invocation",
+          "effectContract": {
+            "rejectionErrorCodes": [
+              "REVISION_CONFLICT",
+              "RECORD_NOT_FOUND",
+              "INVALID_OWNER"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "release-reference",
+      "version": "1.0.0",
+      "source": "http",
+      "baseUrl": "http://127.0.0.1:19196",
+      "operations": [
+        {
+          "name": "release_reference",
+          "description": "Read authoritative fictional release owner reference and immutable release constraints.",
+          "method": "GET",
+          "path": "/collection-reference",
+          "riskClass": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "record-review-skills",
+      "version": "1.0.0",
+      "source": "skills",
+      "root": "./skills"
+    }
+  ]
+}

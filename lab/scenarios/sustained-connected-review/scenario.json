@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "fixtureOnly": true,
+  "id": "sustained-connected-review",
+  "provider": "http://127.0.0.1:19196",
+  "profileId": "connected-agent",
+  "statePath": "/collection-state/{namespace}",
+  "mutationTool": "record_correct",
+  "sustained": {
+    "maxDurationMs": 900000,
+    "modelTimeoutMs": 120000,
+    "holdFirstReviewMs": 65000,
+    "requireRestart": true
+  },
+  "stages": [
+    {
+      "id": "collection-review",
+      "goal": "Review the entire six-record release collection in disposable namespace {namespace}. Use both connected sources and the available collection review skill to compare the current records with the release reference. Propose documentation-owner corrections for every discrepancy, wait for each action decision, and verify the actual record after every approval or denial. Preserve approved dates, dependencies and blocked status; a denied correction must remain unchanged. Report all six records, the source comparison, the corrections that were saved, and the denied correction. Do not modify any other namespace.",
+      "decision": null,
+      "reviewRules": [
+        {
+          "decision": "approved",
+          "allowedArguments": {
+            "key": "cedar",
+            "owner": "Morgan"
+          }
+        },
+        {
+          "decision": "approved",
+          "allowedArguments": {
+            "key": "maple",
+            "owner": "Jordan"
+          }
+        },
+        {
+          "decision": "denied",
+          "allowedArguments": {
+            "key": "pine",
+            "owner": "Riley"
+          }
+        },
+        {
+          "decision": "approved",
+          "allowedArguments": {
+            "key": "willow",
+            "owner": "Casey"
+          }
+        }
+      ],
+      "collection": {
+        "keys": [
+          "cedar",
+          "birch",
+          "maple",
+          "oak",
+          "pine",
+          "willow"
+        ],
+        "listTool": "collection_list",
+        "inspectTool": "record_inspect",
+        "referenceTool": "release_reference",
+        "skillTool": "connected-agent_record-review-skills_load_skill",
+        "reference": {
+          "source": "release-reference",
+          "revision": 1,
+          "records": [
+            {
+              "key": "cedar",
+              "owner": "Morgan"
+            },
+            {
+              "key": "birch",
+              "owner": "Avery"
+            },
+            {
+              "key": "maple",
+              "owner": "Jordan"
+            },
+            {
+              "key": "oak",
+              "owner": "Taylor"
+            },
+            {
+              "key": "pine",
+              "owner": "Riley"
+            },
+            {
+              "key": "willow",
+              "owner": "Casey"
+            }
+          ],
+          "constraints": {
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked",
+            "rule": "Correct discrepant documentation owners only. Preserve dates, dependencies and blocked status. A denied correction stays unchanged."
+          }
+        }
+      },
+      "requiredTools": {
+        "record_correct": 3
+      },
+      "expected": {
+        "effectCount": 3,
+        "records": {
+          "cedar": {
+            "key": "cedar",
+            "owner": "Morgan",
+            "revision": 2,
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked"
+          },
+          "birch": {
+            "key": "birch",
+            "owner": "Avery",
+            "revision": 1,
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked"
+          },
+          "maple": {
+            "key": "maple",
+            "owner": "Jordan",
+            "revision": 2,
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked"
+          },
+          "oak": {
+            "key": "oak",
+            "owner": "Taylor",
+            "revision": 1,
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked"
+          },
+          "pine": {
+            "key": "pine",
+            "owner": "Devon",
+            "revision": 1,
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked"
+          },
+          "willow": {
+            "key": "willow",
+            "owner": "Casey",
+            "revision": 2,
+            "approvedDate": "2026-11-12",
+            "dependency": "Documentation incomplete",
+            "status": "blocked"
+          }
+        }
+      }
+    }
+  ]
+}
