@@ -20,6 +20,29 @@ The restart module must export `restartOwnedNative(input)`. Input contains `api`
 
 Saved evidence under `lab/runs/.connected-proof/` includes the original native execution/review/call identities before and after the wait, hook evidence, elapsed wait, decisions with independently read state, final state and effect count, native events, versions, free-model price observation, manifest-bound receipt checks and criteria. Receipt fingerprints bind the source reads and mutations to this run's catalog, turn, call, arguments and round. The skill must retain untrusted/no-authority metadata and appear in a later provider request. The original user task must appear in a later model request after the first review decision. All records must be read before a mutation; every approved or denied proposal needs a fresh record read afterward. The report must cover all six records.
 
+Grader revision 2 accepts either an exact individual record read or a complete
+collection read after the relevant mutation or denial. A collection receipt must
+contain each declared record exactly once with its full independently observed
+state, including revision and immutable fields. Its namespace, catalog, turn,
+call, arguments and round remain receipt-bound. A read before the decision cannot
+verify it. This does not require immediate verification before the next action;
+the original grader also allowed later individual reads. Revision 1 accidentally
+required the individual inspection tool for verification despite accepting the
+same collection source for initial reads.
+
+To reassess retained evidence without running a model, from `server` run:
+
+```sh
+pnpm eval:regrade-connected /absolute/path/to/connected-report/summary.json
+```
+
+The command writes `assessment-grader-v2-<code-revision>.json` beside the original report with
+original verdicts, the execution and grader code revisions, and SHA-256 hashes of every consumed evidence file and grading module. Other original criteria remain retained gates; they are not independently recomputed. It refuses
+to overwrite an existing assessment. It preserves every other criterion and
+leaves incomplete or genuinely failed native runs failed. Original summaries,
+receipts and native snapshots remain unchanged; report both assessments when
+discussing the correction.
+
 A passing result does not establish fault tolerance for a crash inside an unacknowledged external mutation. Such a result requires reconciliation and a separate failure-injection experiment. Compaction events and retained summaries remain visible in native run events when the context policy triggers them; this scenario does not force a summary by manufacturing history.
 
 ## Owned five-platform local stack

@@ -52,6 +52,8 @@ export function matchesFixtureState(actual: Record<string, unknown>, expected: R
   return Object.entries(expected).every(([key, value]) => Object.hasOwn(actual, key) && argumentDigest(actual[key]) === argumentDigest(value));
 }
 
+export const CONNECTED_GRADER_REVISION = 2;
+
 /** Grade tool evidence against independently observed fixture state. Runtime
  * completion and the model's own report cannot substitute for source receipts. */
 export function sustainedTaskCriteria(input: { stage: Scenario['stages'][number]; record: any; run: RunView; receipts: any[]; manifest: any; namespace: string }): Record<string, boolean> {
@@ -63,9 +65,23 @@ export function sustainedTaskCriteria(input: { stage: Scenario['stages'][number]
       catalogRevision: manifest.capabilities.toolCatalog.revision, turnId: manifest.context.turnId,
       toolCallId: String(event.payload.toolCallId), toolName: name, round: Number(event.payload.round), arguments: args, expectedState: state,
       sequence: { actual: event.recordedSequence, ...phase } }));
+  // A full source snapshot reads each record just as an individual inspect does.
+  // Require exact unique membership and state; names or model prose are insufficient.
+  const verifiedCollection = (records: Record<string, unknown>, phase?: { before?: number; after?: number }) => events.some(event => {
+    if (event.payload.toolName !== collection.listTool) return false;
+    const receipt = receipts.find(receipt => receipt.toolCallId === event.payload.toolCallId);
+    if (!matchesConnectedVerification({ receipt, catalogRevision: manifest.capabilities.toolCatalog.revision,
+      turnId: manifest.context.turnId, toolCallId: String(event.payload.toolCallId), toolName: collection.listTool,
+      round: Number(event.payload.round), arguments: { namespace }, expectedState: {}, sequence: { actual: event.recordedSequence, ...phase } })) return false;
+    const rows = receipt.result.structuredContent.records;
+    return Array.isArray(rows) && rows.length === collection.keys.length && new Set(rows.map(row => row?.key)).size === rows.length &&
+      rows.every(row => row && collection.keys.includes(row.key) && argumentDigest(row) === argumentDigest(records[row.key]));
+  });
+  const verifiedRecord = (key: string, after: number) => verified(collection.inspectTool, { namespace, key }, record.after.records[key], { after }) ||
+    verifiedCollection(record.after.records, { after });
   const firstEffect = Math.min(Infinity, ...record.reviews.filter((review: any) => review.decision === 'approved').map((review: any) =>
     events.find(event => event.payload.toolCallId === review.call.toolCallId)?.recordedSequence ?? Infinity));
-  const collectionRead = verified(collection.listTool, { namespace }, { records: Object.values(record.before.records) }, { before: firstEffect });
+  const collectionRead = verifiedCollection(record.before.records, { before: firstEffect });
   const recordsRead = collectionRead || collection.keys.every(key => verified(collection.inspectTool, { namespace, key }, record.before.records[key], { before: firstEffect }));
   const rulesReviewed = stage.reviewRules!.every(rule => record.reviews.some((review: any) => review.decision === rule.decision && matchesFixtureState(review.arguments, rule.allowedArguments)));
   const mutationsVerified = record.reviews.every((review: any) => {
@@ -74,11 +90,11 @@ export function sustainedTaskCriteria(input: { stage: Scenario['stages'][number]
     if (!decision) return false;
     const mutation = events.find(event => event.payload.toolCallId === review.call.toolCallId);
     if (review.decision === 'denied') return !mutation && argumentDigest(record.after.records[key]) === argumentDigest(review.stateBeforeDecision.records[key]) &&
-      verified(collection.inspectTool, { namespace, key }, record.after.records[key], { after: decision.recordedSequence });
+      verifiedRecord(key, decision.recordedSequence);
     return !!mutation && matchesConnectedVerification({ receipt: receipts.find(receipt => receipt.toolCallId === review.call.toolCallId),
       catalogRevision: manifest.capabilities.toolCatalog.revision, turnId: manifest.context.turnId, toolCallId: review.call.toolCallId,
       toolName: String(mutation.payload.toolName), round: review.call.round, arguments: review.arguments, expectedState: record.after.records[key] }) &&
-      verified(collection.inspectTool, { namespace, key }, record.after.records[key], { after: mutation.recordedSequence });
+      verifiedRecord(key, mutation.recordedSequence);
   });
   const immutableConstraints = collection.keys.every(key => ['approvedDate', 'dependency', 'status'].every(field =>
     record.before.records[key]?.[field] === record.after.records[key]?.[field]));
@@ -146,7 +162,7 @@ async function main() {
   const priceObservation = { fetchedAt: new Date().toISOString(), catalogUrl: `${process.env.AGENTLAB_OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1'}/models`, id: rawSelectedEntry.id, pricing: rawSelectedEntry.pricing, supportedParameters: rawSelectedEntry.supported_parameters };
   const versions = await installedRuntimeVersions();
   const experimentId = 'agent-capabilities-live';
-  const report: Record<string, any> = { schemaVersion: 1, mode: 'real-model-controlled-connected', startedAt: new Date().toISOString(), sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(), versions, priceObservation, scenario, ...(continuation ? { continuation, interpretation: 'Separate bounded continuation with retained session/state; not initial full-workflow acceptance' } : {}),
+  const report: Record<string, any> = { schemaVersion: 1, graderRevision: CONNECTED_GRADER_REVISION, mode: 'real-model-controlled-connected', startedAt: new Date().toISOString(), sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(), versions, priceObservation, scenario, ...(continuation ? { continuation, interpretation: 'Separate bounded continuation with retained session/state; not initial full-workflow acceptance' } : {}),
     controls: { model: catalogObservation, experimentId, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, freeOnly: true, catalogCheckedAt: new Date().toISOString(), nativeExecutionTimeoutMs: Number(process.env.AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS ?? 180000), temporalActivityTimeoutMs: Number(process.env.AGENTLAB_TEMPORAL_ACTIVITY_TIMEOUT_MS ?? 120000), reviewDecisions: 'scripted-local-fixture-only; not frontend verification', deadlineMs: scenario.sustained?.maxDurationMs ?? 180000,
       ...(scenario.sustained ? { sustained: scenario.sustained, restartHook: values.get('--restart-hook') ?? null } : {}) }, outcomes: [] };
   const directory = resolve(process.env.AGENTLAB_RUN_ROOT ?? '../lab/runs', '.connected-proof', `connected-${randomUUID()}`);
