@@ -139,7 +139,11 @@ variant rejects it. Evidence retains baseline identity and adds
 
 The Lab checks deadlines before model/tool dispatch and bounds each model request.
 Approval waiting releases the active timer and owner; resumption retains the original
-absolute deadline. Cancellation aborts native work and preserves uncertain outcomes.
+absolute deadline. Inspection after a waiting deadline acquires the local lease,
+cancels the persisted native workflow through its public `cancel()` API, confirms
+`canceled` storage status, and reports `RUN_DEADLINE_EXCEEDED` without dispatching
+the proposed action. The common observer can then settle the shared context turn.
+Cancellation aborts native work and preserves uncertain outcomes.
 Native retries remain disabled. Recovery can repeat interrupted model inference,
 so provider requests are not exactly-once.
 
@@ -186,7 +190,10 @@ no provider call. Cost remains unknown because this adapter lacks provider prici
 Validation uses pinned SDK/LibSQL: a child dies during the second model request after
 a calculator result is checkpointed; a fresh runner completes without duplicating
 the calculator effect. A separate fresh-process probe resumes exact persisted
-approval. Injecting an unresolved external ID verifies refusal without inference;
+approval. The sustained hosted review fixture also reconstructs a wait after a
+completed external read, resumes two original write decisions independently, and
+verifies waiting deadline expiry with zero effects. Injecting an unresolved
+external ID verifies refusal without inference;
 it does not establish a real remote lost-acknowledgement outcome. Native prompt
 projection tests cover completed and pending tool groups. A model timeout test
 verifies no automatic request retry. Deterministic fixtures measure harness

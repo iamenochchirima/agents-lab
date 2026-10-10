@@ -77,7 +77,10 @@ test("native invocation review pauses before effects and resumes the original ca
     grants: [{ schemaVersion: 1, capabilityId: definition.name, version: "1.0.0", enabled: true, allowedOperations: ["execute"],
       approvalMode: "invocation", timeoutMs: 30_000, maxInputBytes: 65_536, maxOutputBytes: 262_144 }, { schemaVersion: 1, capabilityId: read.descriptor.definition.name, version: "1.0.0", enabled: true, allowedOperations: ["execute"], approvalMode: "none", timeoutMs: 30_000, maxInputBytes: 65_536, maxOutputBytes: 262_144 }] };
   const readManifest: CapabilityManifest = { ...manifest, id: read.descriptor.definition.name, displayName: "Read owner", description: read.descriptor.definition.description, risk: "read", inputSchema: read.descriptor.definition.inputSchema as CapabilityManifest["inputSchema"] };
-  const modelFactory = (admitted: Parameters<typeof scriptedMastraModel>[0]) => admitted.task.prompt === "[mixed-review-batch]" ? mixedBatchModel(admitted, captures, definition.name, read.descriptor.definition.name) : scriptedMastraModel(admitted, captures);
+  const modelFactory = (admitted: Parameters<typeof scriptedMastraModel>[0]) => {
+    const model = admitted.task.prompt === "[mixed-review-batch]" ? mixedBatchModel(admitted, captures, definition.name, read.descriptor.definition.name) : scriptedMastraModel(admitted, captures);
+    return admitted.execution ? streamableFixture(model) : model;
+  };
   const catalog = new CapabilityCatalog([manifest, readManifest], [profile], undefined, undefined, { connectedEnabled: true, toolDescriptors: [tool.descriptor, read.descriptor] });
   let app = Fastify();
   let host = new CapabilityHost(evidence, [tool, read], key, sessions, reviews);
@@ -237,7 +240,7 @@ test("native invocation review pauses before effects and resumes the original ca
       observe(runner.platform, ["noEffectBeforeApproval", "exactArgumentsRetained", "nativeWaitingRecovery", "hostWaitingRecovery", "sameNativeIdentity", "expiryNoEffect", "renewalNoRedispatch", "approvedSingleEffect"], created.runId);
       reports.push({ platform: runner.platform, runId: created.runId, status: completed.status, effects: effects - before, waitingRestart: !!worker || runner.platform === "mastra", apiHostRestart: true, reviewRenewals: 2 });
     });
-    if (process.env.AGENTLAB_NATIVE_SUSTAINED === "1") for (const runner of runners.filter(runner => ["temporal", "restate"].includes(runner.platform))) {
+    if (process.env.AGENTLAB_NATIVE_SUSTAINED === "1") for (const runner of runners.filter(runner => ["temporal", "restate", "mastra"].includes(runner.platform))) {
       await t.test(`${runner.platform}-retained-wait-deadline`, async () => {
         const before = effects;
         const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "Deadline" } })).toString("base64url")}]`;
@@ -253,11 +256,23 @@ test("native invocation review pauses before effects and resumes the original ca
     const mastra = runners.find(value => value.platform === "mastra");
     if (mastra) await t.test("mixed native batch gates each write independently", async () => {
       const before = effects, beforeReads = reads;
-      const created = await service.createRun({ platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "[mixed-review-batch]" },
+      const created = await service.createRun({ platform: "mastra", variant: "baseline",
+        ...(process.env.AGENTLAB_NATIVE_SUSTAINED === "1" ? { execution: { mode: "sustained" as const, maxDurationMs: 180_000 } } : {}),
+        task: { kind: "prompt", prompt: "[mixed-review-batch]" },
         model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16_384 },
         capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
       await waitFor(service, created.runId, view => view.status === "suspended");
       assert.equal(effects, before);
+      if (process.env.AGENTLAB_NATIVE_SUSTAINED === "1") {
+        await (mastra as MastraBaselineRunner).close();
+        assert.equal(reads, beforeReads + 1, "The read checkpoint must precede the retained approval.");
+        const replacement = new MastraBaselineRunner({ contextRoot, modelFactory });
+        runners[runners.indexOf(mastra)] = replacement;
+        service = new RunService({ config, evidence, reviews, renewReview, capabilities: catalog,
+          context: new ContextService(sessions, new CharacterTokenEstimator()), registry: new PlatformRegistry(runners) });
+        const restored = await waitFor(service, created.runId, view => view.status === "suspended");
+        assert.equal(restored.executionReference?.executionId, created.executionReference?.executionId);
+      }
       let pending = (await service.actions(created.runId)).find(value => value.status === "pending")!;
       assert.equal(pending.call.toolCallId, "mixed-write-first");
       await service.decideAction(created.runId, pending.requestId, { requestId: pending.requestId, revision: pending.revision,
@@ -424,4 +439,25 @@ function mixedBatchModel(manifest: Parameters<typeof scriptedMastraModel>[0], ca
     },
     doStream: async () => { throw new Error("Mixed batch uses generate."); },
   } as unknown as ReturnType<typeof scriptedMastraModel>;
+}
+
+
+/** DurableAgent consumes the streaming transport even through its generate API. */
+function streamableFixture(config: ReturnType<typeof scriptedMastraModel>): ReturnType<typeof scriptedMastraModel> {
+  const model = config as unknown as { doGenerate(input: unknown): Promise<{ content: { type: string; toolCallId?: string; toolName?: string; input?: string; text?: string }[]; finishReason: string; usage: unknown }> };
+  return { ...model, doStream: async (input: unknown) => {
+    const output = await model.doGenerate(input);
+    return { stream: new ReadableStream({ start(controller) {
+      controller.enqueue({ type: "stream-start", warnings: [] });
+      for (const part of output.content) {
+        if (part.type === "tool-call") controller.enqueue({ type: "tool-call", toolCallId: part.toolCallId, toolName: part.toolName, input: part.input });
+        else if (part.type === "text") {
+          controller.enqueue({ type: "text-start", id: "text" });
+          controller.enqueue({ type: "text-delta", id: "text", delta: part.text });
+          controller.enqueue({ type: "text-end", id: "text" });
+        }
+      }
+      controller.enqueue({ type: "finish", finishReason: output.finishReason, usage: output.usage }); controller.close();
+    } }) };
+  } } as unknown as ReturnType<typeof scriptedMastraModel>;
 }

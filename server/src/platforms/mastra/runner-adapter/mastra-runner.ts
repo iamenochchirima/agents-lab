@@ -250,6 +250,7 @@ export class MastraBaselineRunner implements PlatformRunner {
 
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const record = await this.requireExecution(reference);
+    if (record.status === "suspended" && executionDeadlineReached(record.manifest.execution, this.now().getTime())) await this.expireSuspended(record);
     const native = { ...record.reference.native, ...nativeSummaryFor(record) };
     validateMastraNativeEvidence(native, "baseline");
     return {
@@ -334,7 +335,7 @@ export class MastraBaselineRunner implements PlatformRunner {
               await this.persist(record);
               return content;
             } });
-          if (prepared.budget) this.addEvent(record, "RoundContextPrepared", { budget: prepared.budget, compaction: prepared.compaction });
+          if (prepared.budget) this.addEvent(record, "ContextRoundPrepared", { budget: prepared.budget, compaction: prepared.compaction });
           this.addEvent(record, "DurableModelRequested", { purpose: "agent", operation: recover ? "recovery" : "execution" });
           await this.persist(record);
           return prepared.prompt;
@@ -502,7 +503,7 @@ export class MastraBaselineRunner implements PlatformRunner {
     } finally {
       // The pinned generate API emits its final output before native settlement.
       // Keep storage and local ownership until the workflow has finished writing.
-      if (durable && record.status !== "suspended") await waitForDurableSettlement(durable, record.manifest.runId);
+      if (durable) await waitForDurableSettlement(durable, record.manifest.runId);
       clearTimeout(timeout);
       if (record.status === "completed") record.pendingDispatches = [];
       await this.persist(record);
@@ -578,6 +579,35 @@ export class MastraBaselineRunner implements PlatformRunner {
     const temporary = join(directory, `state.${randomUUID()}.pending`);
     await writeFile(temporary, JSON.stringify(retained), { mode: 0o600 });
     await rename(temporary, join(directory, "state.json"));
+  }
+
+  /** Cancel the persisted native wait without approving or dispatching its tool. */
+  private async expireSuspended(record: MastraExecutionRecord): Promise<void> {
+    const directory = this.recordDirectory(record.manifest.runId);
+    const owner = await acquireLocalOwner(directory);
+    if (!owner) return;
+    const storage = new LibSQLStore({ id: `agentlab-mastra-expiry-${record.manifest.runId}`, url: `file:${join(directory, "snapshots.db")}` });
+    try {
+      await storage.init();
+      const runtime = createBaselineAgentRuntime(record.manifest, this.modelFactory, { storage, sustained: true,
+        runId: record.manifest.runId, turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
+        signal: record.controller.signal, maxToolCalls: 0 });
+      const workflow = runtime.agent.getWorkflow();
+      const nativeRun = await workflow.createRun({ runId: record.manifest.runId });
+      await nativeRun.cancel();
+      const observed = await workflow.getWorkflowRunById(record.manifest.runId);
+      if (observed?.status !== "canceled") throw new Error("The Mastra persisted wait cancellation was not confirmed.");
+      record.status = "failed";
+      record.pendingReview = null;
+      record.pendingCall = null;
+      this.addEvent(record, "WorkflowCanceled", { reason: "task_deadline", nativeStatus: observed.status });
+      this.addEvent(record, "RunFailed", { code: "RUN_DEADLINE_EXCEEDED", failureKind: "timeout" });
+      record.result = resultFor(record, "failed", null, { code: "RUN_DEADLINE_EXCEEDED",
+        message: "The admitted task deadline expired while waiting for approval.", failureKind: "timeout", retryable: false }, emptyUsage());
+      record.trajectory = trajectoryFor(record);
+      record.metrics = metricsFor(record, emptyUsage());
+      await this.persist(record);
+    } finally { await storage.close(); await owner(); }
   }
 
   private summaryObservationOptions(record: MastraExecutionRecord) {
