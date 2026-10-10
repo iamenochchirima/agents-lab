@@ -197,6 +197,38 @@ export class RunEvidenceStore {
     }
   }
 
+  /** Allocate control source ordering under the same queue as native projections.
+   * A supplied identity distinguishes repeated controls (for example action
+   * decisions); omitted identity retains the singleton-per-kind lifecycle rule.
+   * Retrying an identity preserves its first event and rejects changed payloads.
+   * This queue coordinates one evidence-store owner, not writers on other hosts.
+   */
+  async appendControlEvent(
+    intent: Omit<RunEventIntent, "source" | "sourceSequence">,
+    identity?: Readonly<Record<string, unknown>>,
+  ): Promise<RunEvent> {
+    const safeIntent = sanitizeEvidenceValue(intent) as typeof intent;
+    const safeIdentity = identity === undefined ? undefined : sanitizeEvidenceValue(identity) as Record<string, unknown>;
+    const previous = this.eventQueues.get(safeIntent.runId) ?? Promise.resolve();
+    const operation = previous.catch(() => undefined).then(async () => {
+      const events = await this.readEvents(safeIntent.runId);
+      const existing = events.find(event => event.source === "control-plane" && event.kind === safeIntent.kind &&
+        (!safeIdentity || Object.entries(safeIdentity).every(([key, value]) => deepEqual(event.payload[key], value))));
+      if (existing) {
+        if (safeIdentity && !deepEqual(existing.payload, safeIntent.payload)) {
+          throw new EvidenceConflictError(`Control identity has different content: ${safeIntent.kind}`);
+        }
+        return existing;
+      }
+      const sourceSequence = events.reduce((maximum, event) => event.source === "control-plane"
+        ? Math.max(maximum, event.sourceSequence) : maximum, 0) + 1;
+      return this.appendEventNow({ ...safeIntent, source: "control-plane", sourceSequence });
+    });
+    this.eventQueues.set(safeIntent.runId, operation);
+    try { return await operation; }
+    finally { if (this.eventQueues.get(safeIntent.runId) === operation) this.eventQueues.delete(safeIntent.runId); }
+  }
+
   /**
    * Appends bounded operator evidence without making it part of the run's
    * event ordering contract. Operational logs are diagnostic and at-least-once:

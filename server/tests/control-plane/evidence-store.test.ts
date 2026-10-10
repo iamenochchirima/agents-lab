@@ -591,3 +591,19 @@ test("reports corrupt JSONL and rejects unsafe run identifiers", async () => {
     assert.throws(() => new RunEvidenceStore(root).runDirectory("../escape"), (error: unknown) => error instanceof InvalidRunIdError);
   });
 });
+
+test("control identity allocation shares the native append queue and rejects conflicting retries", async () => {
+  await withStore(async store => {
+    const control = (requestId: string) => ({ runId: manifest.runId, kind: "InvocationReviewDecided", occurredAt: "2026-10-10T12:00:00Z", payload: { requestId, revision: 1, decisionId: `decision-${requestId}`, decision: "approved" } });
+    const [first, second] = await Promise.all([
+      store.appendControlEvent(control("one"), { requestId: "one", revision: 1, decisionId: "decision-one" }),
+      store.appendControlEvent(control("two"), { requestId: "two", revision: 1, decisionId: "decision-two" }),
+      store.appendEvent(intent("temporal-workflow", 1, "WorkflowSuspended")),
+    ]);
+    assert.deepEqual([first.sourceSequence, second.sourceSequence], [1, 2]);
+    const retry = await store.appendControlEvent({ ...control("one"), occurredAt: "2026-10-10T12:01:00Z" }, { requestId: "one", revision: 1, decisionId: "decision-one" });
+    assert.equal(retry.recordedSequence, first.recordedSequence);
+    await assert.rejects(store.appendControlEvent({ ...control("one"), payload: { ...control("one").payload, decision: "denied" } }, { requestId: "one", revision: 1, decisionId: "decision-one" }), EvidenceConflictError);
+    assert.equal((await store.readEvents(manifest.runId)).length, 3);
+  });
+});

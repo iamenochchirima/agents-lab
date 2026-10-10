@@ -61,6 +61,8 @@ test("retained approval delivery recovers after API replacement and completion s
     await replacement.observeActiveRuns();
     await replacement.observeActiveRuns();
     assert.equal(runner.deliveries.length, 1);
+    assert.equal((await evidence.readEvents(run.runId)).filter(event => event.kind === "InvocationReviewDecided").length, 1);
+    assert.equal((await evidence.readEvents(run.runId)).filter(event => event.kind === "InvocationReviewDelivered").length, 1);
     assert.equal(runner.deliveries[0]?.toolCallId, "original-call");
     assert.equal(runner.deliveries[0]?.decisionId, "retained-decision");
     assert.equal((await reviews.get(run.runId, review.requestId)).delivery?.status, "accepted");
@@ -84,5 +86,47 @@ test("cancelled retained decisions are not delivered by background recovery", as
     await new RunService({ evidence, reviews, registry: new PlatformRegistry([runner]), config: loadServerConfig({}) }).observeActiveRuns();
     assert.equal(runner.deliveries.length, 0);
     assert.equal((await reviews.get(manifest.runId, review.requestId)).delivery?.status, "stopped");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("three sequential review decisions survive concurrent native pulls and duplicate delivery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agentlab-three-review-events-"));
+  try {
+    const evidence = new RunEvidenceStore(root); const reviews = new InvocationReviewStore(root);
+    const base = buildRunManifest({ platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt: "Review independent changes" }, model: { provider: "fake", model: "fake-success" } });
+    const manifest = { ...base, capabilities: { profileId: "fixture", tools: { enabledNames: [], maxRounds: 8, maxCalls: 16 }, toolCatalog: { schemaVersion: 1 as const, revision: "fixture", tools: [] } } };
+    await evidence.createRun(manifest); await evidence.writeExecutionReference(manifest.runId, ref(manifest.runId));
+    class PullingRunner extends RetainedRunner {
+      rounds = 0;
+      override async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
+        const inspection = await super.inspect(reference);
+        return { ...inspection, eventIntents: Array.from({ length: this.rounds }, (_, index) => ({ runId: manifest.runId,
+          source: "temporal-workflow" as const, sourceSequence: index + 1, kind: "WorkflowSuspended", occurredAt: "2026-10-10T12:00:00Z",
+          payload: { toolCallId: `call-${index + 1}` } })) };
+      }
+    }
+    const runner = new PullingRunner(); runner.offline = false;
+    const deps = { evidence, reviews, registry: new PlatformRegistry([runner]), config: loadServerConfig({}) };
+    let service = new RunService(deps);
+    for (let index = 1; index <= 3; index++) {
+      runner.rounds = index;
+      const review = await reviews.propose({ runId: manifest.runId, turnId: "turn", call: { toolCallId: `call-${index}`, name: "update_fixture", arguments: { index }, round: index }, argumentDigest: argumentDigest({ index }), catalogRevision: "fixture", sourceDigest: "fixture", connectionIdentity: null, displayArguments: { index } });
+      const input = { requestId: review.requestId, revision: review.revision, argumentDigest: review.argumentDigest, decisionId: `decision-${index}`, decision: index === 3 ? "denied" : "approved" };
+      await Promise.all([service.decideAction(manifest.runId, review.requestId, input), service.getRun(manifest.runId), service.observeActiveRuns()]);
+      await service.decideAction(manifest.runId, review.requestId, input);
+      // API reconstruction must retain control sequence and idempotence.
+      service = new RunService(deps);
+    }
+    const events = await evidence.readEvents(manifest.runId);
+    const decided = events.filter(event => event.kind === "InvocationReviewDecided");
+    assert.equal(decided.length, 3);
+    assert.deepEqual(decided.map(event => event.payload.decisionId), ["decision-1", "decision-2", "decision-3"]);
+    assert.deepEqual(decided.map(event => event.payload.decision), ["approved", "approved", "denied"]);
+    assert.equal(events.filter(event => event.kind === "InvocationReviewDelivered").length, 3);
+    assert.equal(events.filter(event => event.kind === "WorkflowSuspended").length, 3);
+    assert.deepEqual(events.map(event => event.recordedSequence), events.map((_, index) => index + 1));
+    const controls = events.filter(event => event.source === "control-plane");
+    assert.deepEqual(controls.map(event => event.sourceSequence), controls.map((_, index) => index + 1));
+    assert.equal(runner.deliveries.length, 3);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

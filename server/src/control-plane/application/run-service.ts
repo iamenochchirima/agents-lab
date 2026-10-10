@@ -544,6 +544,20 @@ export class RunService {
       // not classify that transient window as a lost submission or redispatch it.
       if (!snapshot.executionReference && !snapshot.result) return;
       for (const review of await this.dependencies.reviews?.list(runId) ?? []) {
+        // The review record is authoritative if the host crashed after retaining
+        // control but before appending its projection. Repair only recorded
+        // decisions/acceptance; this never creates authorization or dispatches.
+        if (review.decision) await this.appendControlEvent(runId, "InvocationReviewDecided", {
+          requestId: review.requestId, revision: review.revision, decisionId: review.decision.decisionId,
+          decision: review.decision.decision, toolCallId: review.call.toolCallId,
+        });
+        if (review.renewalId) await this.appendControlEvent(runId, "InvocationReviewRenewed", {
+          requestId: review.requestId, revision: review.revision, renewalId: review.renewalId, toolCallId: review.call.toolCallId,
+        });
+        if (review.delivery?.status === "accepted") await this.appendControlEvent(runId, "InvocationReviewDelivered", {
+          requestId: review.requestId, revision: review.revision, decisionId: review.decision?.decisionId ?? review.renewalId,
+          toolCallId: review.call.toolCallId,
+        });
         if ((review.decision || review.renewalId) && (!review.delivery || review.delivery.status === "pending")
           && (!review.delivery?.nextAttemptAt || Date.parse(review.delivery.nextAttemptAt) <= Date.now())) {
           await this.deliverReview(runId, review.requestId);
@@ -785,20 +799,14 @@ export class RunService {
   }
 
   private async appendControlEvent(runId: string, kind: string, payload: Record<string, unknown>): Promise<void> {
-    const events = await this.dependencies.evidence.readEvents(runId);
-    if (events.some((event) => event.source === "control-plane" && event.kind === kind)) {
-      return;
-    }
-    const sourceSequence =
-      events.reduce((maximum, event) => (event.source === "control-plane" ? Math.max(maximum, event.sourceSequence) : maximum), 0) + 1;
-    await this.dependencies.evidence.appendEvent({
-      source: "control-plane",
-      sourceSequence,
-      kind,
-      runId,
-      occurredAt: new Date().toISOString(),
-      payload,
-    });
+    // Lifecycle controls are singletons; each reviewed action/revision has its
+    // own immutable control identity. Kind-only deduplication hid later reviews.
+    const identity = kind.startsWith("InvocationReview") ? {
+      requestId: payload.requestId, revision: payload.revision,
+      ...(payload.decisionId ? { decisionId: payload.decisionId } : {}),
+      ...(payload.renewalId ? { renewalId: payload.renewalId } : {}),
+    } : undefined;
+    await this.dependencies.evidence.appendControlEvent({ kind, runId, occurredAt: new Date().toISOString(), payload }, identity);
   }
 
   private async recordCapabilityResolution(manifest: RunManifest): Promise<void> {

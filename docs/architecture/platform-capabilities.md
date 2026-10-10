@@ -77,6 +77,18 @@ fields keep their existing `runId:source:sourceSequence` IDs and are read as one
 attempt, so existing run evidence remains readable while new platform retries can be
 deduplicated independently.
 
+Action review controls have per-action identities: request, revision and retained
+decision/renewal ID. Multiple decisions of the same event kind are retained;
+repeating one immutable control preserves its first record. The evidence store
+allocates control source sequence under the same per-run queue as native event
+projection, preventing concurrent controls from claiming one sequence. This is
+single-store-owner serialization, not a distributed writer lock. Lifecycle controls
+without an action identity keep their historical singleton-per-kind behavior.
+The observer can reconstruct missing control projections from authoritative saved
+review records after an interrupted host write; it cannot invent authorization or
+infer tool completion from delivery acceptance. Existing historical events are
+not rewritten or renumbered.
+
 ## Operational evidence and retention
 
 Normalized lifecycle events are the authoritative run record. The server derives
