@@ -6,12 +6,13 @@ import { loadLocalServerEnvironment } from '../control-plane/bootstrap/local-env
 import { COMPARISON_FREE_MODEL, assertFreeModelCatalog, getFreeEvalSettings } from '../models/openrouter/free-model-policy.js';
 import { installedRuntimeVersions } from './runtime-versions.js';
 import type { RunView } from '../control-plane/application/run-service.js';
+import { matchesConnectedVerification } from './connected-verification.js';
 import { validateConnectedContinuation } from './connected-continuation.js';
 import type { InvocationReviewView } from '../capabilities/reviews/contracts.js';
 
 interface Scenario {
   schemaVersion: 1; fixtureOnly: true; id: string; provider: string; profileId: string;
-  mutationTool: string; stages: { id: string; goal: string; decision: 'approved' | 'denied' | null; allowedArguments?: Record<string, unknown>; requiredTools?: Record<string, number>; requiredFailureTools?: string[]; requiredErrorCode?: string; verificationTool?: string; expected: Record<string, unknown> }[];
+  mutationTool: string; stages: { id: string; goal: string; decision: 'approved' | 'denied' | null; allowedArguments?: Record<string, unknown>; requiredTools?: Record<string, number>; requiredFailureTools?: string[]; requiredErrorCode?: string; requiredFailureArguments?: Record<string, unknown>; verificationTool?: string; verificationArguments?: Record<string, unknown>; expected: Record<string, unknown> }[];
 }
 /** Real-model observation driver; native platforms own every model/tool step.
  * Automated decisions authorize only a declared local fictional provider. */
@@ -104,23 +105,31 @@ async function main() {
         const reviewObserved = stage.decision === null || record.reviews.length > 0;
         const toolCounts = Object.entries(stage.requiredTools ?? {}).every(([name, count]) => run.events.filter(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === name).length >= count);
         const failuresObserved = (stage.requiredFailureTools ?? []).every(name => run.events.some(event => event.kind === 'ToolExecutionFailed' && event.payload.toolName === name));
+        const receiptRoot = resolve(process.env.AGENTLAB_RUN_ROOT ?? '../lab/runs', run.runId, 'artifacts/capability-calls');
+        const receipts = await readdir(receiptRoot).catch(error => { if (error.code === 'ENOENT') return []; throw error; }).then(files => Promise.all(files.map(async filename => JSON.parse(await readFile(join(receiptRoot, filename), 'utf8')))));
+        const manifest = JSON.parse(await readFile(resolve(process.env.AGENTLAB_RUN_ROOT ?? '../lab/runs', run.runId, 'config.json'), 'utf8'));
+        const verificationArguments = Object.fromEntries(Object.entries(stage.verificationArguments ?? {}).map(([key, value]) => [key, typeof value === 'string' ? value.replaceAll('{namespace}', namespace) : value]));
+        const verificationReads = (state: Record<string, unknown>, phase?: { before?: number; after?: number }) => run.events.filter(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === stage.verificationTool &&
+          !!stage.verificationArguments && matchesConnectedVerification({ receipt: receipts.find(receipt => receipt.toolCallId === event.payload.toolCallId),
+            catalogRevision: manifest.capabilities.toolCatalog.revision, turnId: manifest.context.turnId,
+            toolCallId: String(event.payload.toolCallId), toolName: String(event.payload.toolName), round: Number(event.payload.round), arguments: verificationArguments, expectedState: state, sequence: { actual: event.recordedSequence, ...phase } }));
         const deniedEvent = run.events.find(event => event.kind === 'InvocationReviewDecided' && event.payload.decision === 'denied');
-        const denialVerified = stage.decision !== 'denied' || (!!deniedEvent && run.events.some(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === stage.verificationTool && event.recordedSequence > deniedEvent.recordedSequence));
-        // Two reads could both precede the mutation. Verification must observe
-        // saved state after the final successful mutation in this stage.
+        const denialVerified = stage.decision !== 'denied' || (!!deniedEvent && verificationReads(before, { before: deniedEvent.recordedSequence }).length > 0 && verificationReads(after, { after: deniedEvent.recordedSequence }).length > 0);
+        // Verification must target the same record and return the independently
+        // observed state. Another namespace's successful read cannot count.
         const completedMutations = run.events.filter(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === scenario.mutationTool);
         const lastMutationSequence = Math.max(-1, ...completedMutations.map(event => event.recordedSequence));
-        const approvalVerified = stage.decision !== 'approved' || (lastMutationSequence >= 0 && !!stage.verificationTool && run.events.some(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === stage.verificationTool && event.recordedSequence > lastMutationSequence));
-        let errorObserved = !stage.requiredErrorCode;
-        if (stage.requiredErrorCode) {
-          const receiptRoot = resolve(process.env.AGENTLAB_RUN_ROOT ?? '../lab/runs', run.runId, 'artifacts/capability-calls');
-          for (const filename of await readdir(receiptRoot)) {
-            const receipt = JSON.parse(await readFile(join(receiptRoot, filename), 'utf8'));
-            if (receipt.status === 'complete' && receipt.result?.status === 'failed' && JSON.stringify(receipt.result).includes(stage.requiredErrorCode)) errorObserved = true;
-          }
-        }
-        record.toolCriteria = { toolCounts, failuresObserved, denialVerified, approvalVerified, errorObserved };
-        record.verdict = run.status === 'completed' && expected && reviewObserved && toolCounts && failuresObserved && denialVerified && approvalVerified && errorObserved ? 'pass' : 'fail';
+        const firstMutationSequence = Math.min(Infinity, ...completedMutations.map(event => event.recordedSequence));
+        const approvalVerified = stage.decision !== 'approved' || (lastMutationSequence >= 0 && verificationReads(before, { before: firstMutationSequence }).length > 0 && verificationReads(after, { after: lastMutationSequence }).length > 0);
+        const retrievalVerified = stage.decision !== null || !stage.verificationTool || verificationReads(after).length > 0;
+        const failureArguments = Object.fromEntries(Object.entries(stage.requiredFailureArguments ?? {}).map(([key, value]) => [key, typeof value === 'string' ? value.replaceAll('{namespace}', namespace) : value]));
+        const errorObserved = !stage.requiredErrorCode || (!!stage.requiredFailureArguments && !!stage.requiredFailureTools?.length && stage.requiredFailureTools.every(name => run.events.some(event => event.kind === 'ToolExecutionFailed' && event.payload.toolName === name &&
+          matchesConnectedVerification({ receipt: receipts.find(receipt => receipt.toolCallId === event.payload.toolCallId),
+            catalogRevision: manifest.capabilities.toolCatalog.revision, turnId: manifest.context.turnId,
+            toolCallId: String(event.payload.toolCallId), toolName: name, round: Number(event.payload.round), arguments: failureArguments,
+            resultStatus: 'failed', expectedState: { code: stage.requiredErrorCode } }))));
+        record.toolCriteria = { toolCounts, failuresObserved, denialVerified, approvalVerified, retrievalVerified, errorObserved };
+        record.verdict = run.status === 'completed' && expected && reviewObserved && toolCounts && failuresObserved && denialVerified && approvalVerified && retrievalVerified && errorObserved ? 'pass' : 'fail';
         await save();
         if (record.verdict !== 'pass') throw new Error(`Stage ${stage.id} did not establish its native/result/state/review criteria`);
         if (run.events.some(event => event.kind === 'ToolExecutionUnknown')) throw new Error('Unknown effects require reconciliation before a fresh mutation');
