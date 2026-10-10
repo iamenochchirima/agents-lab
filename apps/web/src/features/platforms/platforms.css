@@ -796,6 +796,7 @@
 
 .chat-thread {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 16px;
   min-height: 500px;
@@ -846,6 +847,7 @@
 .chat-message {
   display: grid;
   gap: 6px;
+  min-width: 0;
   max-width: min(82%, 760px);
 }
 
@@ -872,6 +874,8 @@
   color: var(--text-1);
   font-size: 0.83rem;
   line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 11px 13px;
 }
 

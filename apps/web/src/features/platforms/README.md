@@ -129,3 +129,5 @@ invented cause. Only known native status values appear in this summary; the raw
 native record remains available in retained evidence. `failureExplanation.test.tsx`
 checks the recorded boundaries, native completion with agent failure, and
 redaction using synthetic secrets and private paths.
+
+Chat uses a bounded grid column and permits message text to wrap within the bubble. This keeps long tool names, identifiers and review arguments inside the conversation on narrow screens. The connected-tool readiness guide distinguishes browser observations from native execution evidence.
