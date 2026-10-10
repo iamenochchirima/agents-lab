@@ -99,3 +99,22 @@ The opt-in `native-invocation-review` fixture with
 action waits, then checks the same approved call produces one fixture effect.
 A separate three-second native wait reaches the task deadline with zero effects.
 These deterministic mechanism checks do not establish real-model task quality.
+
+## Clarification and instructions during a task
+
+`ask_user` publishes its question in a named `ctx.run` action, stores the native
+pending question, and waits on a separately named workflow promise. The shared
+`taskInput` handler checks run/turn/question identities and resolves the original
+promise. Human waiting owns no HTTP request and remains bounded by the admitted
+task deadline. The handler also wakes pending review when steering arrives.
+
+This implementation uses existing workflow promises and shared handlers rather
+than requiring named Signals support from the local Restate server. Each question
+and review revision gets a new promise name; resolved promises are never reused
+for another request. Shared handlers remain callable while the run is waiting.
+
+Named boundary actions consume ordered steering before model/call decisions,
+review resumption and final completion. The whole remaining old call batch is
+superseded with feedback when constraints change. Question replies and input
+consumption replay from the journal without rerunning a completed model request.
+The shared host separately rejects an external dispatch if new steering is pending.

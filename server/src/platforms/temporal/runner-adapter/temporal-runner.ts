@@ -1,3 +1,4 @@
+import type { TaskInputResume } from "../../../capabilities/interaction/contracts.js";
 import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import { getFreeEvalSettings } from "../../../models/openrouter/free-model-policy.js";
 import {
@@ -18,7 +19,7 @@ import type {
   RunnerResumeResult,
   RunnerValidationResult,
 } from "../../../control-plane/ports/runner.js";
-import { baselineCancelSignal, baselineSnapshotQuery, baselineReviewSignal, temporalBaselineWorkflow } from "../variants/baseline/workflow.js";
+import { baselineTaskInputSignal, baselineCancelSignal, baselineSnapshotQuery, baselineReviewSignal, temporalBaselineWorkflow } from "../variants/baseline/workflow.js";
 import type {
   TemporalEventIntent,
   TemporalWorkflowInput,
@@ -155,6 +156,14 @@ export class TemporalBaselineRunner implements PlatformRunner {
   }
 
   async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const taskInput = input as TaskInputResume;
+    if (taskInput?.kind === "task_input") {
+      const handle = this.handle(reference);
+      const description = await handle.describe();
+      if (isTerminalStatus(description.status.name)) return {accepted: false, alreadyTerminal: true, message: "Workflow is terminal."};
+      await handle.signal(baselineTaskInputSignal, taskInput);
+      return {accepted: true, alreadyTerminal: false, message: "Retained task input wake signalled."};
+    }
     const value = input as InvocationResumeInput;
     if (!value || value.kind !== "invocation_review" || typeof value.requestId !== "string" ||
         !Number.isInteger(value.revision) || typeof value.toolCallId !== "string" ||

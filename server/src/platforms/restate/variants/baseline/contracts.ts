@@ -55,6 +55,7 @@ export interface RestateWorkflowInput {
 
 /** Bounded native events visible while the workflow is still executing. */
 export interface RestateWorkflowProgress {
+  readonly pendingQuestion?: import("../../../../capabilities/interaction/contracts.js").TaskQuestion | null;
   readonly pendingReview?: InvocationReviewView | null;
   readonly schemaVersion: 1;
   readonly runId: string;

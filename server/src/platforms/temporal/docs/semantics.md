@@ -127,3 +127,18 @@ retains a 60-second Temporal approval wait, replaces its owned worker and API ho
 then verifies the original approved call produces one independent fixture effect.
 Its deadline case verifies zero effects after a three-second native review wait.
 These are scripted native-mechanism checks, separate from real-model task quality.
+
+## Clarification and instructions during a task
+
+The admitted `ask_user` declaration is intercepted by the native Workflow. A short
+Activity publishes a stable question and reads the matched reply. Human waiting
+uses Workflow `condition`, bounded by the original task deadline. The
+`baselineTaskInput` Signal wakes that wait with retained input identity. The host
+remains the content authority; a signal itself never grants permissions.
+
+Steering is fetched through short Activities before model decisions, before each
+call, while resuming review, and before final completion. Exact boundary receipts
+survive Activity retries. A changed instruction supersedes the remainder of the
+old model call batch and its pending proposal, without undoing confirmed effects.
+A question superseded by steering returns tool feedback and resumes reasoning.
+Workflow history retains the question, answer, input receipts and original run.

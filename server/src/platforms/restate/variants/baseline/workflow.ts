@@ -1,3 +1,5 @@
+import type { TaskInputResume } from "../../../../capabilities/interaction/contracts.js";
+import { consumeTaskInputs, prepareTaskQuestion, readTaskAnswer, taskInputText } from "../../../../capabilities/interaction/runtime.js";
 import { prepareRoundContext } from "../../../../capabilities/context/round-context.js";
 import { executionDeadlineReached, remainingExecutionMs } from "../../../../capabilities/execution/policy.js";
 import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
@@ -53,7 +55,7 @@ export const baselineWorkflow = restate.workflow({
   handlers: {
     progress: restate.handlers.workflow.shared(async (ctx: restate.WorkflowSharedContext): Promise<RestateWorkflowProgress | null> => {
       const progress = await ctx.get<RestateWorkflowProgress>("progress");
-      return progress ? { ...progress, pendingReview: await ctx.get("pendingReview") } : null;
+      return progress ? { ...progress, pendingReview: await ctx.get("pendingReview"), pendingQuestion: await ctx.get("pendingQuestion") } : null;
     }),
     reviewDecision: restate.handlers.workflow.shared(async (ctx: restate.WorkflowSharedContext, decision: InvocationResumeInput): Promise<{ accepted: boolean }> => {
       const pending = await ctx.get<import("../../../../capabilities/reviews/contracts.js").InvocationReviewView>("pendingReview");
@@ -67,6 +69,29 @@ export const baselineWorkflow = restate.workflow({
       await promise.resolve(decision);
       return { accepted: true };
     }),
+    taskInput: restate.handlers.workflow.shared(async (ctx: restate.WorkflowSharedContext, value: TaskInputResume): Promise<{accepted: boolean}> => {
+      const progress = await ctx.get<RestateWorkflowProgress>("progress");
+      if (value?.kind !== "task_input" || !progress || progress.runId !== value.runId) return {accepted: false};
+      if (value.inputKind === "clarification_reply") {
+        const question = await ctx.get<{questionId: string; turnId: string}>("pendingQuestion");
+        if (!question || question.questionId !== value.questionId || question.turnId !== value.turnId) return {accepted: false};
+        const waiter = ctx.promise<TaskInputResume>(`question:${question.questionId}`);
+        const prior = await waiter.peek();
+        if (!prior) await waiter.resolve(value);
+        return {accepted: !prior || prior.inputId === value.inputId};
+      }
+      const question = await ctx.get<{questionId: string; turnId: string}>("pendingQuestion");
+      if (question && question.turnId === value.turnId) {
+        const waiter = ctx.promise<TaskInputResume>(`question:${question.questionId}`);
+        if (!(await waiter.peek())) await waiter.resolve(value);
+      }
+      const review = await ctx.get<InvocationReviewView>("pendingReview");
+      if (review && review.turnId === value.turnId) {
+        const waiter = ctx.promise<InvocationResumeInput | TaskInputResume>(`approval:${review.requestId}:${review.revision}`);
+        if (!(await waiter.peek())) await waiter.resolve(value);
+      }
+      return {accepted: true};
+    }),
     run: async (ctx: restate.WorkflowContext, input: RestateWorkflowInput): Promise<RestateWorkflowResult> => {
       const events: RunEventIntent[] = [];
       const phases: Array<RunTrajectory["phases"][number]> = [];
@@ -74,6 +99,7 @@ export const baselineWorkflow = restate.workflow({
       const toolConfiguration = normalizeToolConfiguration(input.tools);
       const registry = createProjectedToolRegistry(toolConfiguration, input.toolCatalog);
       const toolDefinitions = registry.definitions();
+      const interactive = input.toolCatalog?.tools.some(tool => tool.definition.name === "ask_user" && tool.source.id === "agentlab/task-interaction") ?? false;
       const turnId = input.turnId ?? `${input.runId}:turn:1`;
       let sequence = 0;
       let modelCallCount = 0;
@@ -83,6 +109,8 @@ export const baselineWorkflow = restate.workflow({
       let contextRecoveryUsed = false;
       let usage = emptyUsage();
       let usageObserved = false;
+      let inToolBatch = false;
+      let queuedUserInputs: ModelMessage[] = [];
       let messages: ModelMessage[] = [
         { role: "system", content: input.systemInstruction },
         { role: "user", content: input.prompt },
@@ -106,6 +134,16 @@ export const baselineWorkflow = restate.workflow({
           truncated: recent.length !== events.length, eventIntents: recent } satisfies RestateWorkflowProgress);
       };
 
+      const consumeInputs = async (boundaryId: string): Promise<boolean> => {
+        if (!interactive) return false;
+        const values = await ctx.run(`input.${boundaryId}`, () => consumeTaskInputs(input.runId, turnId, boundaryId), {maxRetryAttempts: 1});
+        if (values.length) {
+          const message: ModelMessage = {role: "user", content: taskInputText(values)};
+          if (inToolBatch) queuedUserInputs.push(message); else messages.push(message);
+        }
+        for (const value of values) await record("TaskInputConsumed", {inputId: value.inputId, sequence: value.sequence, kind: value.kind, content: value.content});
+        return values.length > 0;
+      };
       const recordTool = async (kind: string, call: ToolCall, payload: ToolEventDetails): Promise<void> => {
         const safePayload = {
           ...payload,
@@ -160,6 +198,7 @@ export const baselineWorkflow = restate.workflow({
 
         for (let round = 1; round <= toolConfiguration.maxRounds; round += 1) {
           await assertDeadline();
+          await consumeInputs(`model:${round}`);
           if (input.execution) await record("TaskProgress", { round, completedToolCount: events.filter(event => event.kind === "ToolExecutionCompleted").length, phase: "model" });
           if (input.execution && input.context) {
             const prepared = await ctx.run(`context.round.${round}`, async () => {
@@ -379,6 +418,7 @@ export const baselineWorkflow = restate.workflow({
           const toolCalls = modelResult.toolCalls;
           messages = [...messages, assistantMessage(modelResult)];
           if (toolCalls.length === 0) {
+            if (await consumeInputs(`completion:${round}`)) { await record("TaskOutputSuperseded", {round}); continue; }
             if (!modelResult.output) {
               const failure = internalFailure("MODEL_EMPTY_OUTPUT", "The model returned neither text nor a tool call.");
               await record("AgentFailed", { code: failure.code, failureKind: failure.failureKind, round });
@@ -441,7 +481,9 @@ export const baselineWorkflow = restate.workflow({
           let executionHalted = false;
           let toolOutcomeUnknown = false;
           let toolCancelled = false;
+          inToolBatch = true;
           let callLimitExceeded = false;
+          let batchSuperseded = false;
 
           for (let index = 0; index < calls.length; index += 1) {
             const call = calls[index];
@@ -490,6 +532,45 @@ export const baselineWorkflow = restate.workflow({
               continue;
             }
 
+            if (batchSuperseded || await consumeInputs(`tool:${round}:${index + 1}`)) {
+              batchSuperseded = true;
+              messages.push(toolResultMessage(resultId, call.name, toolErrorContent("TASK_INPUT_SUPERSEDED", "New user instructions arrived. Reconsider this call with the updated constraints.")));
+              await recordTool("ToolCallRejected", call, {attempt: 1, round, code: "TASK_INPUT_SUPERSEDED"});
+              continue;
+            }
+            if (interactive && call.name === "ask_user") {
+              const question = await ctx.run(`question.prepare.${round}.${index + 1}`, () => prepareTaskQuestion(input.runId, turnId, call), {maxRetryAttempts: 1});
+              ctx.set("pendingQuestion", question);
+              await recordTool("ToolExecutionStarted", call, {attempt: 1, round});
+              await record("WorkflowSuspended", {reason: "clarification", ...question});
+              if (await consumeInputs(`question-wait:${round}:${index + 1}`)) {
+                batchSuperseded = true; ctx.clear("pendingQuestion");
+                messages.push(toolResultMessage(resultId, call.name, toolErrorContent("TASK_INPUT_SUPERSEDED", "The question was superseded by new user instructions.")));
+                await record("WorkflowResumed", {reason: "task_input", questionId: question.questionId, code: "TASK_INPUT_SUPERSEDED"}); continue;
+              }
+              let answer = await ctx.run(`question.answer.initial.${round}.${index + 1}`, () => readTaskAnswer(input.runId, turnId, question.questionId), {maxRetryAttempts: 1});
+              if (!answer) {
+                const waiter = ctx.promise<TaskInputResume>(`question:${question.questionId}`);
+                let resumed: TaskInputResume;
+                try { resumed = input.execution ? await waiter.get().orTimeout(Math.max(1, remainingExecutionMs(input.execution, await ctx.date.now()))) : await waiter; }
+                catch (error) { await assertDeadline(); throw error; }
+                if (resumed.inputKind === "steering") {
+                  await consumeInputs(`question-resume:${round}:${index + 1}`);
+                  batchSuperseded = true; ctx.clear("pendingQuestion");
+                  messages.push(toolResultMessage(resultId, call.name, toolErrorContent("TASK_INPUT_SUPERSEDED", "The question was superseded by new user instructions.")));
+                  await record("WorkflowResumed", {reason: "task_input", questionId: question.questionId, code: "TASK_INPUT_SUPERSEDED"}); continue;
+                }
+                await assertDeadline();
+                answer = await ctx.run(`question.answer.resumed.${round}.${index + 1}`, () => readTaskAnswer(input.runId, turnId, question.questionId), {maxRetryAttempts: 1});
+              }
+              if (!answer) throw new restate.TerminalError("Clarification woke without a retained answer.");
+              ctx.clear("pendingQuestion"); toolAttemptCount += 1;
+              await record("TaskInputConsumed", {inputId: answer.inputId, sequence: answer.sequence, kind: answer.kind, content: answer.content, questionId: question.questionId});
+              await record("WorkflowResumed", {reason: "clarification", questionId: question.questionId, toolCallId: call.toolCallId});
+              messages.push(toolResultMessage(resultId, call.name, JSON.stringify({questionId: question.questionId, answer: answer.content})));
+              await recordTool("ToolExecutionCompleted", call, {attempt: 1, round, status: "completed", resultBytes: Buffer.byteLength(answer.content), durationMs: 0});
+              continue;
+            }
             if (validation.definition.approvalMode === "invocation" && input.toolCatalog) {
               const initialReview = await ctx.run(`tool.prepare.${round}.${index + 1}.${stableStepId(call.toolCallId)}`,
                 () => prepareToolInvocation(input.toolCatalog!, validation.call, {
@@ -502,14 +583,23 @@ export const baselineWorkflow = restate.workflow({
                   ctx.set("pendingReview", review);
                   await record("WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
                     revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
-                  let resumed: InvocationResumeInput;
-                  const waiter = ctx.promise<InvocationResumeInput>(`approval:${review.requestId}:${review.revision}`);
+                  if (await consumeInputs(`review-wait:${round}:${index + 1}:${review.revision}`)) {
+                    batchSuperseded = true; decision = "denied"; ctx.clear("pendingReview");
+                    await record("WorkflowResumed", {reason: "task_input", requestId: review.requestId, code: "TASK_INPUT_SUPERSEDED"}); break;
+                  }
+                  let resumed: InvocationResumeInput | TaskInputResume;
+                  const waiter = ctx.promise<InvocationResumeInput | TaskInputResume>(`approval:${review.requestId}:${review.revision}`);
                   if (input.execution) {
                     await assertDeadline();
                     try { resumed = await waiter.get().orTimeout(Math.max(1, remainingExecutionMs(input.execution, await ctx.date.now()))); }
                     catch (error) { await assertDeadline(); throw error; }
                   } else resumed = await waiter;
                   await assertDeadline();
+                  if (resumed.kind === "task_input") {
+                    await consumeInputs(`review-resume:${round}:${index + 1}:${review.revision}`);
+                    batchSuperseded = true; decision = "denied"; ctx.clear("pendingReview");
+                    await record("WorkflowResumed", {reason: "task_input", requestId: review.requestId, code: "TASK_INPUT_SUPERSEDED"}); break;
+                  }
                   decision = resumed.decision;
                   if (decision === "renewed") {
                     const renewed: InvocationReviewView | null = await ctx.run(`tool.renew.${round}.${index + 1}.${stableStepId(call.toolCallId)}.${resumed.revision}`,
@@ -525,7 +615,10 @@ export const baselineWorkflow = restate.workflow({
                     toolCallId: call.toolCallId, decision });
                   break;
                 }
-                if (review.status === "cancelled") throw new restate.TerminalError("The review was cancelled.");
+                if (review.status === "cancelled") {
+                  if (await consumeInputs(`review-cancelled:${round}:${index + 1}`)) { batchSuperseded = true; decision = "denied"; }
+                  else throw new restate.TerminalError("The review was cancelled.");
+                }
                 if (decision === "denied") {
                   messages = [...messages, toolResultMessage(resultId, call.name,
                     toolErrorContent("TOOL_APPROVAL_DENIED", "The proposed action was declined."))];
@@ -584,6 +677,8 @@ export const baselineWorkflow = restate.workflow({
             return finish(input.runId, "failed", startedAt, null, failure, usage, modelCallCount, modelAttemptCount, toolCallCount, toolAttemptCount, events, phases);
           }
 
+          inToolBatch = false;
+          messages.push(...queuedUserInputs); queuedUserInputs = [];
           if (callLimitExceeded) {
             const failure = internalFailure("TOOL_CALL_LIMIT_EXCEEDED", "The run reached its maximum tool-call limit.", "validation");
             await record("AgentFailed", { code: failure.code, failureKind: failure.failureKind, round });

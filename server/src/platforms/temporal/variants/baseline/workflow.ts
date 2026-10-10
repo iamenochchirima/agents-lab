@@ -1,3 +1,4 @@
+import type { TaskInputResume } from "../../../../capabilities/interaction/contracts.js";
 import { executionDeadlineReached, remainingExecutionMs } from "../../../../capabilities/execution/policy.js";
 import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
 import type { InvocationResumeInput, InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
@@ -32,7 +33,7 @@ import {
   type TemporalModelMessage,
 } from "./contracts.js";
 
-const { prepareContext, prepareRoundContext, requestModel, executeTool, prepareInvocation } = proxyActivities<typeof baselineActivities>({
+const { prepareContext, prepareRoundContext, requestModel, executeTool, prepareInvocation, taskInputBoundary, taskQuestion, taskAnswer } = proxyActivities<typeof baselineActivities>({
   startToCloseTimeout: "30s",
   heartbeatTimeout: "1s",
   retry: { maximumAttempts: 1 },
@@ -47,6 +48,7 @@ const DEFAULT_TOOL_CONFIGURATION = Object.freeze({
 
 export const baselineSnapshotQuery = defineQuery<TemporalWorkflowSnapshot>(BASELINE_QUERY_NAME);
 export const baselineCancelSignal = defineSignal<[string]>(BASELINE_CANCEL_SIGNAL);
+export const baselineTaskInputSignal = defineSignal<[TaskInputResume]>("baselineTaskInput");
 export const baselineReviewSignal = defineSignal<[InvocationResumeInput]>(BASELINE_REVIEW_SIGNAL);
 
 /**
@@ -76,6 +78,14 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   let continuationMessages: TemporalModelMessage[] = [];
   let roundMessages: readonly TemporalModelMessage[] | null = null;
   let usageObserved = false;
+  let inToolBatch = false;
+  let queuedUserInputs: TemporalModelMessage[] = [];
+  let taskWakeSequence = 0;
+  const turnId = input.context?.turnId ?? `${input.runId}:turn:1`;
+  const interactive = input.toolCatalog?.tools.some(tool => tool.definition.name === "ask_user" && tool.source.id === "agentlab/task-interaction") ?? false;
+  setHandler(baselineTaskInputSignal, value => {
+    if (value?.kind === "task_input" && value.runId === input.runId && value.turnId === turnId && Number.isSafeInteger(value.sequence)) taskWakeSequence = Math.max(taskWakeSequence, value.sequence);
+  });
   const toolConfiguration = normalizeToolConfiguration(input.tools);
   const toolRegistry = createProjectedToolRegistry(toolConfiguration, input.toolCatalog);
   const toolDefinitions = toolRegistry.definitions();
@@ -113,6 +123,17 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
       occurredAt: timestamp(),
       payload,
     });
+  };
+
+  const consumeInputs = async (boundaryId: string): Promise<boolean> => {
+    if (!interactive) return false;
+    const inputs = await taskInputBoundary({runId: input.runId, turnId, boundaryId});
+    for (const value of inputs) {
+      const message: TemporalModelMessage = {role: "user", content: `[Live task instruction ${value.sequence}; input ${value.inputId}]\n${value.content}`};
+      if (inToolBatch) queuedUserInputs.push(message); else continuationMessages.push(message);
+      record("TaskInputConsumed", {inputId: value.inputId, sequence: value.sequence, kind: value.kind, content: value.content});
+    }
+    return inputs.length > 0;
   };
 
   const finishPhase = (phase: { name: string; startedAt: string; finishedAt: string | null }): void => {
@@ -248,6 +269,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     }
 
     for (let round = 1; round <= toolConfiguration.maxRounds; round += 1) {
+      await consumeInputs(`model:${round}`);
       if (executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
       if (input.execution) record("TaskProgress", { round, completedToolCount: eventIntents.filter(event => event.kind === "ToolExecutionCompleted").length, phase: "model" });
       if (input.execution && input.context && contextSnapshotId) {
@@ -422,6 +444,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         toolCallCount: toolCalls.length,
       });
       if (toolCalls.length === 0) {
+        if (await consumeInputs(`completion:${round}`)) { record("TaskOutputSuperseded", {round}); continue; }
         if (!result.output) return fail(temporalFailure("MODEL_EMPTY_OUTPUT", "The model returned neither text nor a tool call.", "provider"), attemptCount);
         record("AgentCompleted", { attempt: attemptCount, round });
         finishPhase(executionPhase);
@@ -429,8 +452,10 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
         return terminal("completed");
       }
 
+      inToolBatch = true;
       const callIds = new Set<string>();
       let toolLimitExceeded = false;
+      let batchSuperseded = false;
       for (const modelToolCall of toolCalls) {
         const call: ToolCall = { ...modelToolCall, round };
         const resultId = call.toolCallId || `invalid-call-${round}-${callIds.size + 1}`;
@@ -463,6 +488,52 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           continue;
         }
 
+        if (batchSuperseded || await consumeInputs(`tool:${round}:${callIds.size}`)) {
+          batchSuperseded = true;
+          continuationMessages.push(toolResultMessage(resultId, call.name, toolErrorContent("TASK_INPUT_SUPERSEDED", "New user instructions arrived. Reconsider this call with the updated constraints.")));
+          record("ToolCallRejected", {...toolEventPayload(call, 1), code: "TASK_INPUT_SUPERSEDED"});
+          continue;
+        }
+        if (interactive && call.name === "ask_user") {
+          const question = await taskQuestion({runId: input.runId, turnId, call});
+          status = "suspended";
+          record("ToolExecutionStarted", toolEventPayload(call, 1));
+          record("WorkflowSuspended", {reason: "clarification", ...question});
+          if (await consumeInputs(`question-wait:${round}:${callIds.size}`)) {
+            batchSuperseded = true; status = "running";
+            continuationMessages.push(toolResultMessage(resultId, call.name, toolErrorContent("TASK_INPUT_SUPERSEDED", "The question was superseded by new user instructions.")));
+            record("WorkflowResumed", {reason: "task_input", questionId: question.questionId, code: "TASK_INPUT_SUPERSEDED"});
+            continue;
+          }
+          let answerWake = taskWakeSequence;
+          let answer = await taskAnswer({runId: input.runId, turnId, questionId: question.questionId});
+          while (!answer) {
+            const wake = answerWake;
+            const arrived = input.execution
+              ? await condition(() => taskWakeSequence > wake || cancellationRequested, Math.max(1, remainingExecutionMs(input.execution, Date.now())))
+              : (await condition(() => taskWakeSequence > wake || cancellationRequested), true);
+            if (cancellationRequested) return cancel(attemptCount);
+            if (!arrived || executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
+            if (await consumeInputs(`question-input:${round}:${callIds.size}:${taskWakeSequence}`)) {
+              batchSuperseded = true; break;
+            }
+            answerWake = taskWakeSequence;
+            answer = await taskAnswer({runId: input.runId, turnId, questionId: question.questionId});
+          }
+          status = "running";
+          if (batchSuperseded || !answer) {
+            continuationMessages.push(toolResultMessage(resultId, call.name, toolErrorContent("TASK_INPUT_SUPERSEDED", "The question was superseded by new user instructions.")));
+            record("WorkflowResumed", {reason: "task_input", questionId: question.questionId, code: "TASK_INPUT_SUPERSEDED"});
+            continue;
+          }
+          toolAttemptCount += 1;
+          record("TaskInputConsumed", {inputId: answer.inputId, sequence: answer.sequence, kind: answer.kind, content: answer.content, questionId: question.questionId});
+          record("WorkflowResumed", {reason: "clarification", questionId: question.questionId, toolCallId: call.toolCallId});
+          continuationMessages.push(toolResultMessage(resultId, call.name, JSON.stringify({questionId: question.questionId, answer: answer.content})));
+          record("ToolExecutionCompleted", {...toolEventPayload(call, 1), content: JSON.stringify({questionId: question.questionId, answer: answer.content}), durationMs: 0});
+          continue;
+        }
+
         if (validation.definition.approvalMode === "invocation") {
           currentActivityScope = new CancellationScope();
           let review: InvocationReviewView | null;
@@ -486,11 +557,23 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               status = "suspended";
               record("WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
                 revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
+              const reviewWake = taskWakeSequence;
+              if (await consumeInputs(`review-wait:${round}:${callIds.size}:${review.revision}`)) {
+                batchSuperseded = true; decision = "denied"; pendingReview = null; status = "running";
+                record("WorkflowResumed", {reason: "task_input", requestId: review.requestId, code: "TASK_INPUT_SUPERSEDED"});
+                break;
+              }
               const delivered = input.execution
-                ? await condition(() => reviewDecision !== null || cancellationRequested, Math.max(1, remainingExecutionMs(input.execution, Date.now())))
-                : (await condition(() => reviewDecision !== null || cancellationRequested), true);
+                ? await condition(() => reviewDecision !== null || cancellationRequested || taskWakeSequence > reviewWake, Math.max(1, remainingExecutionMs(input.execution, Date.now())))
+                : (await condition(() => reviewDecision !== null || cancellationRequested || taskWakeSequence > reviewWake), true);
               if (!delivered || executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
               if (cancellationRequested) return cancel(attemptCount);
+              if (taskWakeSequence > reviewWake && await consumeInputs(`review:${round}:${callIds.size}:${review.revision}`)) {
+                batchSuperseded = true; decision = "denied";
+                pendingReview = null; status = "running";
+                record("WorkflowResumed", {reason: "task_input", requestId: review.requestId, code: "TASK_INPUT_SUPERSEDED"});
+                break;
+              }
               const resumed = reviewDecision as InvocationResumeInput | null;
               decision = resumed?.decision;
               if (decision === "renewed") {
@@ -518,7 +601,10 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
                 toolCallId: call.toolCallId, decision });
               break;
             }
-            if (review.status === "cancelled") return cancel(attemptCount);
+            if (review.status === "cancelled") {
+              if (await consumeInputs(`review-cancelled:${round}:${callIds.size}`)) { batchSuperseded = true; decision = "denied"; }
+              else return cancel(attemptCount);
+            }
             if (decision === "denied") {
               continuationMessages = [...continuationMessages, toolResultMessage(resultId, call.name,
                 toolErrorContent("TOOL_APPROVAL_DENIED", "The proposed action was declined."))];
@@ -573,6 +659,8 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           return fail(failure, attemptCount);
         }
       }
+      inToolBatch = false;
+      continuationMessages.push(...queuedUserInputs); queuedUserInputs = [];
       if (toolLimitExceeded) return fail(temporalFailure("TOOL_CALL_LIMIT_EXCEEDED", "The run reached its maximum tool-call limit.", "provider"), attemptCount);
     }
 

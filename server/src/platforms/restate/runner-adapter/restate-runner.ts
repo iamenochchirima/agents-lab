@@ -1,3 +1,4 @@
+import type { TaskInputResume } from "../../../capabilities/interaction/contracts.js";
 import { registeredEndpoint, discoverEndpoint } from "./service-discovery.js";
 import type { InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import * as clients from "@restatedev/restate-sdk-clients";
@@ -37,6 +38,7 @@ export interface RestateWorkflowClient {
   workflowSubmit(input: RestateWorkflowInput, options?: unknown): Promise<RestateWorkflowSubmission>;
   workflowOutput(): Promise<{ readonly ready: boolean; readonly result?: RestateWorkflowResult }>;
   progress?(): Promise<RestateWorkflowProgress | null>;
+  taskInput?(input: TaskInputResume): Promise<{ accepted: boolean }>;
   reviewDecision?(input: InvocationResumeInput): Promise<{ accepted: boolean }>;
 }
 
@@ -212,6 +214,14 @@ export class RestateBaselineRunner implements PlatformRunner {
   }
 
   async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const taskInput = input as TaskInputResume;
+    if (taskInput?.kind === "task_input") {
+      const native = nativeReferenceFromExecution(reference);
+      const client = this.workflowClient(native.workflowKey);
+      if (!client.taskInput) throw new Error("The deployed workflow does not support task input.");
+      const response = await client.taskInput(taskInput);
+      return {accepted: response.accepted, alreadyTerminal: false, message: response.accepted ? "Task input wake delivered." : "Native input wait is not ready."};
+    }
     const decision = input as InvocationResumeInput;
     if (!decision || decision.kind !== "invocation_review" || typeof decision.requestId !== "string" ||
         !Number.isInteger(decision.revision) || typeof decision.toolCallId !== "string" ||
@@ -277,7 +287,7 @@ export class RestateBaselineRunner implements PlatformRunner {
     }
     if (terminalOutputError && !isPlatformTerminalError(terminalOutputError)) throw terminalOutputError;
     return {
-      status: progress?.pendingReview ? "suspended" : nativeStatus,
+      status: (progress?.pendingReview || progress?.pendingQuestion) ? "suspended" : nativeStatus,
       reference: updatedReference,
       eventIntents: progress?.eventIntents ?? [],
       result: null,

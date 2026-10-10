@@ -72,7 +72,11 @@ export class TaskInteractionStore {
       if (previous) return state.inputs.filter(item => previous.includes(item.inputId));
       const pending = state.inputs.filter(item => item.turnId === turnId && item.kind === "steering" && ["accepted", "delivered"].includes(item.status));
       const consumedAt = new Date(this.now()).toISOString();
-      const inputs = state.inputs.map(item => pending.some(value => value.inputId === item.inputId) ? {...item, status: "consumed" as const, consumedAt, boundaryId} : item);
+      const cancelledQuestions = pending.length ? state.questions.filter(question => question.turnId === turnId && question.status === "pending").map(question => question.questionId) : [];
+      const inputs = state.inputs.map(item => pending.some(value => value.inputId === item.inputId)
+        ? {...item, status: "consumed" as const, consumedAt, boundaryId}
+        : item.kind === "clarification_reply" && item.questionId && cancelledQuestions.includes(item.questionId) && ["accepted", "delivered"].includes(item.status)
+          ? {...item, status: "rejected" as const} : item);
       await this.write({...state, inputs, questions: pending.length ? state.questions.map(question => question.turnId === turnId && question.status === "pending" ? {...question, status: "cancelled" as const} : question) : state.questions, boundaries: {...state.boundaries, [boundaryId]: pending.map(item => item.inputId)}});
       return inputs.filter(item => pending.some(value => value.inputId === item.inputId));
     });

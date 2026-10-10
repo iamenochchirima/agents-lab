@@ -23,7 +23,7 @@ export async function registerInternalInteraction(app: FastifyInstance, store: T
         if (snapshot.result || snapshot.events.some(event => event.kind === "RunCancellationRequested")) throw new Error("Run no longer accepts task input.");
         if (operation === "boundary") return reply.send(await store.consume(body.runId, body.turnId, body.boundaryId));
         if (operation === "answer") return reply.send(await store.answer(body.runId, body.turnId, body.questionId));
-        if (!manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === "ask_user")) throw new Error("Clarification capability is not admitted.");
+        if (!manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === "ask_user" && tool.source.id === "agentlab/task-interaction")) throw new Error("Clarification capability is not admitted.");
         return reply.send(await store.question(body));
       } catch { return reply.code(409).send({error: "Task input boundary rejected. Inspect the run and retained input identity."}); }
     });

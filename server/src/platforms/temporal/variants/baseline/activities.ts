@@ -1,3 +1,4 @@
+import { consumeTaskInputs, prepareTaskQuestion, readTaskAnswer } from "../../../../capabilities/interaction/runtime.js";
 import { prepareRoundContext as projectRoundContext } from "../../../../capabilities/context/round-context.js";
 import { prepareToolInvocation, createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
@@ -165,7 +166,17 @@ export async function prepareRoundContext(input: ModelRequestInput & { round: nu
   } finally { clearInterval(timer); }
 }
 
-export const baselineActivities = { prepareContext, prepareRoundContext, requestModel, executeTool, prepareInvocation };
+export async function taskInputBoundary(input: {runId: string; turnId: string; boundaryId: string}) { return interactionActivity(() => consumeTaskInputs(input.runId, input.turnId, input.boundaryId)); }
+export async function taskQuestion(input: {runId: string; turnId: string; call: import("../../../../capabilities/tools/contracts.js").ToolCall}) { return interactionActivity(() => prepareTaskQuestion(input.runId, input.turnId, input.call)); }
+export async function taskAnswer(input: {runId: string; turnId: string; questionId: string}) { return interactionActivity(() => readTaskAnswer(input.runId, input.turnId, input.questionId)); }
+
+async function interactionActivity<T>(action: () => Promise<T>): Promise<T> {
+  const timer = setInterval(() => heartbeat({phase: "task_input"}), 250);
+  try { heartbeat({phase: "task_input"}); return await action(); }
+  finally { clearInterval(timer); }
+}
+
+export const baselineActivities = { prepareContext, prepareRoundContext, requestModel, executeTool, prepareInvocation, taskInputBoundary, taskQuestion, taskAnswer };
 
 async function loadContextMessages(rootDirectory: string, sessionId: string, snapshotId: string): Promise<readonly import("../../../../capabilities/context/contracts.js").ContextMessage[]> {
   const store = new ContextSessionStore(rootDirectory);

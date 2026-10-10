@@ -41,6 +41,14 @@ test("clarification requires matched pending question, retains one answer and ca
     assert.equal((await store.read("run")).questions[0]?.status, "answered");
     assert.deepEqual(await new TaskInteractionStore(root).answer("run", "turn", question.questionId), answer);
     assert.equal(Object.hasOwn(answer!, "approval"), false);
+    const second = await store.question({runId: "run", turnId: "turn", toolCallId: "other-call", question: "Which owner?"});
+    await store.accept({...input, inputId: "old-reply", questionId: second.questionId});
+    await store.accept({runId: "run", turnId: "turn", inputId: "steering", kind: "steering", content: "Do not change owners."});
+    await store.consume("run", "turn", "model:2");
+    const snapshot = await store.read("run");
+    assert.equal(snapshot.questions.find(item => item.questionId === second.questionId)?.status, "cancelled");
+    assert.equal(snapshot.inputs.find(item => item.inputId === "old-reply")?.status, "rejected");
+    await assert.rejects(store.answer("run", "turn", second.questionId), /cancelled/);
     await assert.rejects(store.question({runId: "run", turnId: "turn", toolCallId: "call", question: "Changed question?"}), /identity changed/);
   } finally { await rm(root, {recursive: true, force: true}); }
 });
