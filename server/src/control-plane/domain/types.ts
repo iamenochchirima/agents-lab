@@ -1,3 +1,4 @@
+import type { RunExecutionPolicy, RunExecutionRequest } from "../../capabilities/execution/policy.js";
 import type { ToolCatalogSnapshot } from "../../capabilities/extensions/contracts.js";
 export const RUN_STATUSES = [
   "created",
@@ -67,6 +68,7 @@ export interface RunCapabilities {
 }
 
 export interface RunRequest {
+  readonly execution?: RunExecutionRequest;
   readonly platform: string;
   readonly variant: string;
   /** Correlates independent members of one browser comparison. */
@@ -90,6 +92,7 @@ export interface RunRequest {
 }
 
 export interface RunManifest {
+  readonly execution?: RunExecutionPolicy;
   readonly schemaVersion: 1;
   readonly runId: string;
   readonly createdAt: string;

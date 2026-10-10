@@ -1,3 +1,4 @@
+import { validateExecutionRequest } from "../../capabilities/execution/policy.js";
 import { readExtensionEvidence } from "../application/eval-extension-evidence.js";
 import { readEvalCoverage } from "../application/eval-coverage.js";
 import { randomUUID } from "node:crypto";
@@ -317,6 +318,8 @@ function parseRunRequest(body: unknown): RunRequest {
     throw new InvalidApiRequestError("experiments are not supported by this run path yet.");
   }
   const selection = parseRunSelection(body.selection);
+  try { validateExecutionRequest(body.execution); }
+  catch (error) { throw new InvalidApiRequestError(error instanceof Error ? error.message : "Invalid execution policy."); }
   const capabilities = parseRunCapabilities(body.capabilities);
   return {
     platform: body.platform,
@@ -324,6 +327,7 @@ function parseRunRequest(body: unknown): RunRequest {
     comparisonId: body.comparisonId,
     sessionId: body.sessionId,
     clientTurnId: body.clientTurnId,
+    ...(body.execution ? { execution: body.execution } : {}),
     task: { kind: "prompt", prompt: body.task.prompt },
     model: {
       provider: body.model.provider,

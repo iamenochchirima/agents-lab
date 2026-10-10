@@ -1,3 +1,4 @@
+import { admitExecutionPolicy, validateExecutionRequest } from "../../capabilities/execution/policy.js";
 import { randomUUID } from "node:crypto";
 
 import type { ModelProvider, RunManifest, RunRequest } from "./types.js";
@@ -34,10 +35,13 @@ export interface ManifestOptions {
 export function buildRunManifest(request: RunRequest, options: ManifestOptions = {}): Readonly<RunManifest> {
   validateRunRequest(request);
 
+  const createdAt = options.now ?? new Date().toISOString();
+  const execution = admitExecutionPolicy(request.execution, createdAt);
   const manifest: RunManifest = {
     schemaVersion: 1,
     runId: options.runId ?? randomUUID(),
-    createdAt: options.now ?? new Date().toISOString(),
+    createdAt,
+    ...(execution ? { execution } : {}),
     serverVersion: options.serverVersion ?? "0.0.0-dev",
     platform: request.platform.trim(),
     variant: request.variant.trim(),
@@ -80,6 +84,8 @@ function deepFreeze<T>(value: T): Readonly<T> {
 }
 
 export function validateRunRequest(request: RunRequest): void {
+  try { validateExecutionRequest(request.execution); }
+  catch (error) { throw new InvalidRunRequestError(error instanceof Error ? error.message : "Invalid execution policy."); }
   if (!isIdentifier(request.platform, "platform") || !isIdentifier(request.variant, "variant")) {
     throw new InvalidRunRequestError("platform and variant must use lowercase letters, numbers, and hyphens.");
   }

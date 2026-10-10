@@ -1,6 +1,6 @@
 # Native long-running agents across the five priority platforms
 
-Status: proposed, research and implementation planning complete; execution not started.
+Status: implementing; execution authorized and goal started 2026-10-10.
 Planning validation: documentation generation and local links passed; no runtime or model tests performed.
 Prepared: 2026-10-10. Baseline commit: `116b670`.
 
@@ -241,8 +241,12 @@ Personal-account writes require an explicitly agreed disposable target and the e
 
 ## Current position and open questions
 
-Current position: research complete; ready for implementation authorization. No runtime changes or live acceptance performed for this planning request.
+Current position: milestone 1 in progress. Shared execution-policy admission and native compatibility/recovery work started in parallel. No new live acceptance claimed yet.
 
 Execution should start with milestone 1 and the Mastra compatibility probe, then reliable delivery, followed by independent adapter work. The first full vertical proof should use Temporal, followed by the other four under the same scenario and controls.
 
 Open implementation checks, not blockers to planning: exact pinned Mastra durable snapshot/review behavior; which LangGraph checkpoint transitions safely establish no unacknowledged model dispatch; existing adapter duplicate-resume acknowledgment behavior; native deadline mapping without changing old-run semantics. Record concrete results before marking their checklist items complete.
+
+## Execution evidence ledger
+
+- Shared policy admission: focused contract check passed; server typecheck passed. Sustained requests retain an absolute deadline and model timeout; legacy manifests have no new execution policy. Native enforcement is being integrated independently.
