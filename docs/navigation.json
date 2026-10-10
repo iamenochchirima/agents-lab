@@ -13,7 +13,8 @@
       "documents": [
         "docs/architecture/system-overview.md",
         "docs/architecture/repository-map.md",
-        "docs/architecture/ui-and-docs.md"
+        "docs/architecture/ui-and-docs.md",
+        "docs/architecture/agent-identity-memory-interaction.md"
       ]
     },
     {

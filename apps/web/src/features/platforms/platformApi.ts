@@ -54,7 +54,7 @@ export interface RunView {
     readonly comparisonId?: string;
     readonly execution?: { readonly schemaVersion: 1; readonly mode: "sustained"; readonly deadlineAt: string; readonly modelTimeoutMs: number };
     readonly task: { readonly prompt: string };
-    readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly clientTurnId?: string; readonly snapshotId?: string };
+    readonly context?: { readonly sessionId?: string; readonly turnId?: string; readonly clientTurnId?: string; readonly snapshotId?: string; readonly identityRevision?: number; readonly memoryNamespace?: string; readonly memoryEnabled?: boolean; readonly memoryRecordIds?: readonly string[] };
     readonly model: { readonly provider: string; readonly model: string; readonly contextWindowTokens?: number };
     readonly selection?: RunSelection;
     readonly capabilities?: PlatformRunManifestCapabilities;
@@ -146,6 +146,7 @@ export interface ModelCatalog {
 }
 
 export interface PlatformRunRequest {
+  readonly memory?: { readonly enabled: boolean };
   readonly execution?: { readonly mode: "sustained"; readonly maxDurationMs?: number; readonly modelTimeoutMs?: number };
   readonly platform: string;
   readonly variant: string;

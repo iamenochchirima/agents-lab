@@ -23,7 +23,7 @@ export function taskProgress(run: RunView) {
   const retainedApprovalWait = waitBoundary?.kind === "WorkflowSuspended" && waitBoundary.payload.reason === "invocation_review";
   const count = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
   return {
-    phase: isStopRequested(run) ? "Stop requested" : !terminal.has(run.status) && (run.status === "suspended" || retainedApprovalWait) ? "Waiting for approval"
+    phase: isStopRequested(run) ? "Stop requested" : !terminal.has(run.status) && (run.status === "suspended" || retainedApprovalWait) ? (waitBoundary?.payload.reason === "clarification" ? "Waiting for your input" : "Waiting for approval")
       : terminal.has(run.status) ? run.status.replaceAll("_", " ") : typeof phase === "string" ? phases[phase] ?? "Running" : null,
     round: typeof round === "number" && Number.isSafeInteger(round) && round >= 0 ? round : null,
     completedTools: completed.size,

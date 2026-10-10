@@ -162,15 +162,15 @@ Existing absolute task deadlines still apply while awaiting human input.
 
 ### 1. Shared identity and persistence contracts
 
-- [ ] Audit current instruction construction, context sources, Studio storage
+- [x] Audit current instruction construction, context sources, Studio storage
   mechanics and installed native APIs; record concrete choices in this document.
-- [ ] Define versioned identity/preferences/memory records, workspace namespace,
+- [x] Define versioned identity/preferences/memory records, workspace namespace,
   provenance, limits, revision conflicts and operation idempotency.
-- [ ] Implement persistence and management API with empty defaults and migration
+- [x] Implement persistence and management API with empty defaults and migration
   behavior for existing sessions; preserve recorded system instructions.
-- [ ] Add bounded identity Markdown import/export as content, without executable
+- [x] Add bounded identity Markdown import/export as content, without executable
   imports or access to arbitrary server paths.
-- [ ] Add a small identity editor reachable from platform chat settings; shared
+- [x] Add a small identity editor reachable from platform chat settings; shared
   changes are visible across platforms and apply to new chats.
 
 Acceptance: edit identity, restart the backend, open a new chat and inspect the
@@ -180,15 +180,15 @@ Commit: `feat: add shared agent identity and durable memory records`.
 
 ### 2. Memory tools and model-visible recall
 
-- [ ] Register generic memory operations through the current tool catalog with
+- [x] Register generic memory operations through the current tool catalog with
   schema validation, workspace binding, receipts and no provider-name branches.
-- [ ] Implement bounded recall and preference injection with exact source IDs,
+- [x] Implement bounded recall and preference injection with exact source IDs,
   versions, token accounting and compaction protection.
-- [ ] Make explicit save, correction and forget requests effective across new
+- [x] Make explicit save, correction and forget requests effective across new
   chats; exclude forgotten records from all future retrieval and stale caches.
-- [ ] Add Memory management with search, edit, delete and enable/disable. Show
+- [x] Add Memory management with search, edit, delete and enable/disable. Show
   saved-memory notifications in chat and explain the scope of forgetting.
-- [ ] Give experiments isolated memory namespaces and an explicit memory policy;
+- [x] Give experiments isolated memory namespaces and an explicit memory policy;
   personal local memories must never contaminate fixture comparisons.
 
 Acceptance: a preference saved in one platform is usable in a fresh chat on another;
@@ -199,13 +199,13 @@ Commit: `feat: integrate shared memory recall and management`.
 
 ### 3. Durable task input and clarification delivery
 
-- [ ] Add input API/storage, duplicate handling, target validation, lifecycle
+- [x] Add input API/storage, duplicate handling, target validation, lifecycle
   events, observer delivery and recorded consumption acknowledgements.
-- [ ] Implement matched clarification requests/replies and steering sequences;
+- [x] Implement matched clarification requests/replies and steering sequences;
   keep one native execution owner and the original admitted run/deadline.
-- [ ] Define terminal, timed-out, stopped and uncertain-effect behavior. Do not
+- [x] Define terminal, timed-out, stopped and uncertain-effect behavior. Do not
   silently convert a late input into a different task.
-- [ ] Keep task input independent of external approvals and capability grants.
+- [x] Keep task input independent of external approvals and capability grants.
 
 Acceptance: the same retried input ID produces one stored input; a conflicting
 payload is rejected; delivery survives a control-plane restart.
@@ -294,9 +294,7 @@ those files or presenting them as failures of this implementation.
 
 ## Current position and open decisions
 
-Planning only. No runtime changes or implementation goal created by this plan.
-First implementation item: finalize namespace/storage and installed SDK contracts.
-Confirm bounded retrieval limits during that audit. Semantic embeddings, automatic
+Implementation goal active. Shared storage, management, context admission and input delivery are committed. Temporal/Restate native recovery and browser memory/clarification checks passed. Final LangGraph/Mastra/Vercel integration checks and five-platform real-model acceptance are in progress. Semantic embeddings, automatic
 memory extraction, persona self-rewriting, background dreaming/consolidation,
 multi-user auth and hosted durability are deferred. No credential or user choice
 currently blocks planning; native API limitations must be recorded rather than
@@ -311,3 +309,16 @@ hidden behind simulated behavior.
 - [ ] Reconcile every unchecked item and distinguish implementation from evidence.
 - [ ] Inspect complete staged diffs and preserved unrelated changes.
 - [ ] Document remaining limits before reporting completion.
+
+
+### Implementation checkpoints
+
+- `46af333`, `3f761c9`: explicit versioned identity/memory storage and tools, four lifecycle tests. Empty startup defaults; semver source identity and schema-copy startup compatibility corrected.
+- `273d981`: shared settings dialog; web typecheck passed. Direct browser on isolated 5174 saved identity revision 2 and saved/updated/forgot a fictional preference.
+- `ace76d9`, `a0a62bf`: ordered input storage and native Temporal/Restate boundaries, five focused lifecycle/replay checks and existing 38 relevant checks passed.
+- `65ae633`: real-model scenario/driver and three grader checks. Execution evidence pending, code is not itself a passing observation.
+- `6b18bb9`, `a1768b1`: local HTTP management, immutable identity, per-turn untrusted recall, isolated namespaces, dispatch gate and consumed-input history. Combined 42 focused checks passed; build passed. A reused session cannot cross into a different experiment namespace.
+- `958e28d`: actual owned Temporal/Restate process replacement kept the original native execution/question/deadline and consumed exactly one retried answer. Summary `lab/runs/.sustained-proof/runs/.identity-memory-proof/native-clarification-079f8339-bb9e-47b1-803d-ee399077874d/summary.json`. Initial missing synthetic model-window failures retained separately. Restate discovery metadata must refresh when a shared handler is added; owned launcher now does this without replacing the journal.
+- Browser Temporal run `78e995fb-db45-48fd-8a97-ece42ae409d8`: inline question and answer, unsent draft survived refresh; native execution completed after Reply. This uses a scripted model and does not measure model choice.
+
+Persistence defaults: local single API owner, 12 KiB/12-record recall, 4 KiB preferences; existing identity sessions remain frozen. Clarification available in normal bounded native chat; no VM/filesystem added. Mastra installed SDK final-output retry behavior needs a transport boundary workaround, retained in platform documentation. All unrelated Lina work remains unstaged.

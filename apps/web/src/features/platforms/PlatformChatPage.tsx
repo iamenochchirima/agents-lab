@@ -1,3 +1,6 @@
+import { TaskInteractionPanel } from "./TaskInteractionPanel";
+import { sendTaskInput } from "./taskInteractionApi";
+import { AgentStatePanel } from "./AgentStatePanel";
 import { sustainedTaskOptions, isStopRequested, taskProgress } from "./taskProgress";
 import "./connected-tools.css";
 import { ChatMarkdown } from "./ChatMarkdown";
@@ -54,6 +57,9 @@ interface PendingTurn {
 export function PlatformChatPage() {
   const { platform } = useOutletContext<PlatformOutletContext>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [agentSettingsOpen, setAgentSettingsOpen] = useState(false);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const steeringRetry = useRef<{runId: string; content: string; inputId: string} | null>(null);
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelSelection | null>(null);
@@ -95,7 +101,7 @@ export function PlatformChatPage() {
   const isReady = hasRunnableVariant && connectivity?.reachable === true;
   const hasActiveRun = activeRunId !== null;
   const modelPickerDisabled = isModelPickerDisabled({ hasActiveRun, preservesSession, sessionId });
-  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null && !grantReviewOpen;
+  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && retryTurn === null && !grantReviewOpen && (!hasActiveRun || Boolean(latestRun?.manifest.capabilities?.tools.enabledNames.includes("ask_user")));
 
   function acceptRun(run: RunView) {
     setRuns(current => ({ ...current, [run.runId]: reuseRunView(current[run.runId] ?? null, run) }));
@@ -156,7 +162,7 @@ export function PlatformChatPage() {
     setExperimentId(manifest.selection?.experimentId ?? "none");
   }, [latestRun, platform]);
 
-  useEffect(() => { setAllowLongerTasks(latestRun?.manifest.execution?.mode === "sustained"); }, [latestRun?.runId, platform.id]);
+  useEffect(() => { setAllowLongerTasks(latestRun?.manifest.execution?.mode === "sustained"); if (latestRun?.manifest.context?.memoryEnabled !== undefined) setMemoryEnabled(latestRun.manifest.context.memoryEnabled); }, [latestRun?.runId, platform.id]);
 
   useEffect(() => {
     setMessages((current) => {
@@ -338,11 +344,35 @@ export function PlatformChatPage() {
     }
   }, [activeRunId, latestRun, searchParams]);
 
+  useEffect(() => {
+    if (!activeRunId) return;
+    const saved = localStorage.getItem(`agentlab.task-draft.${activeRunId}`);
+    if (!saved) return;
+    try {
+      const input = JSON.parse(saved) as { runId: string; content: string; inputId: string };
+      if (input.runId === activeRunId && typeof input.content === "string" && typeof input.inputId === "string") {
+        steeringRetry.current = input; setPrompt(input.content);
+      }
+    } catch { localStorage.removeItem(`agentlab.task-draft.${activeRunId}`); }
+  }, [activeRunId]);
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit || !selectedModel) return;
 
     const text = prompt.trim();
+    if (hasActiveRun && activeRunId) {
+      const previous = steeringRetry.current;
+      const input = previous?.runId === activeRunId && previous.content === text ? previous : { runId: activeRunId, content: text, inputId: `input-${crypto.randomUUID()}` };
+      steeringRetry.current = input;
+      localStorage.setItem(`agentlab.task-draft.${activeRunId}`, JSON.stringify(input));
+      setIsSubmitting(true); setError(null);
+      void sendTaskInput(activeRunId, { inputId: input.inputId, kind: "steering", content: text }).then(() => {
+        localStorage.removeItem(`agentlab.task-draft.${activeRunId}`);
+        steeringRetry.current = null; setPrompt("");
+      }).catch(cause => setError(cause instanceof Error ? cause.message : "Instruction could not be saved.")).finally(() => setIsSubmitting(false));
+      return;
+    }
     const requiredGrants = capabilityProfileId === "connected-agent"
       ? connectedProfile?.capabilities.filter(requiresUpfrontApproval) ?? []
       : [];
@@ -369,6 +399,7 @@ export function PlatformChatPage() {
       platform: platform.id,
       variant: variantId,
       task: { kind: "prompt", prompt: text },
+      memory: { enabled: memoryEnabled },
       model: selectedModel,
       ...sustainedTaskOptions(allowLongerTasks && variantId === "baseline" && ["temporal", "restate", "langgraph", "mastra", "vercel-workflows"].includes(platform.id), { ...DEFAULT_PLATFORM_CAPABILITIES, profileId: capabilityProfileId, requestedSkillIds, ...(approvals.length > 0 ? { approvals } : {}) }),
       ...(preservesSession && requestSessionId ? { sessionId: requestSessionId } : {}),
@@ -531,12 +562,14 @@ export function PlatformChatPage() {
 
   return (
     <div className="chat-page">
+      {agentSettingsOpen && <AgentStatePanel onClose={() => setAgentSettingsOpen(false)} />}
       <header className="chat-heading">
         <div>
           <span className="eyebrow">{platform.name}</span>
           <h1>Chat</h1>
         </div>
         <div className="chat-heading-actions">
+          <button className="quiet-button" onClick={() => setAgentSettingsOpen(true)} type="button">Agent settings</button>
           <Link className="quiet-button" to={appPaths.platform(platform.id)}>Run setup</Link>
           <button className="quiet-button" onClick={newConversation} type="button"><Plus aria-hidden="true" size={14} /> New chat</button>
         </div>
@@ -560,6 +593,7 @@ export function PlatformChatPage() {
                   {/* Preserve the card across renewal; submissions below still bind the current revision. */}
                   {projectTurnActivity(run, reviews.actions[run.runId] ?? []).map(item => item.kind === "review" ? <InvocationReviewPanel key={`${run.runId}:${item.action.requestId}`} run={run} action={item.action} evidenceUrl={getRunToolReceiptUrl(run.runId, item.action.call.toolCallId)} now={reviews.now} busy={reviews.busy !== null} uncertain={reviews.uncertain[`${run.runId}:${item.action.requestId}:${item.action.revision}`]} onSubmit={(choice, renewal) => void reviews.submit(item.action, choice, renewal)} /> : <div className="chat-tool-activity" key={item.event.eventId}><ToolOutcomeDetails event={item.event} runId={run.runId} /></div>)}
                   {reviews.errors[run.runId] && <p role="alert">{reviews.errors[run.runId]}</p>}
+                  {run.manifest.capabilities?.tools.enabledNames.includes("ask_user") && <TaskInteractionPanel runId={run.runId} active={!terminalStatuses.has(run.status)} />}
                   <RunFailureDetails run={run} />
                   {run.status === "suspended" && reviews.actions[run.runId]?.length === 0 && run.manifest.platform === "mastra" && run.manifest.variant === "workflow" && <section className="invocation-review" aria-label="Workflow approval"><p>This workflow is paused. This decision resumes the workflow, without approving exact tool arguments.</p><button className="quiet-button" disabled={isResuming} onClick={() => void resumeWorkflow(run, false)} type="button">Deny workflow</button><button className="button button-primary" disabled={isResuming} onClick={() => void resumeWorkflow(run)} type="button">Approve and resume workflow</button></section>}
                 </>}
@@ -573,25 +607,32 @@ export function PlatformChatPage() {
             <textarea
               aria-label="Message"
               disabled={!isReady}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                const content = event.target.value; setPrompt(content);
+                if (hasActiveRun && activeRunId) {
+                  const pending = { runId: activeRunId, content, inputId: `input-${crypto.randomUUID()}` };
+                  steeringRetry.current = pending;
+                  localStorage.setItem(`agentlab.task-draft.${activeRunId}`, JSON.stringify(pending));
+                }
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
-              placeholder="Message the agent…"
+              placeholder={hasActiveRun ? "Send an instruction for the running task…" : "Message the agent…"}
               rows={3}
               value={prompt}
             />
             <div className="chat-composer-footer">
-              <span>{latestRun?.status === "suspended" || grantReviewOpen ? "Waiting for approval" : chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, selectedModel, preservesSession })}</span>
+              <span>{latestRun?.status === "suspended" || grantReviewOpen ? "Waiting for your input" : chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, selectedModel, preservesSession })}</span>
               <div className="chat-composer-actions">
                 {grantReviewOpen && <button className="quiet-button" type="button" onClick={() => { setGrantReviewOpen(false); setPendingGrantPrompt(null); setMessages(current => current.map(message => message.id === grantAssistantId ? { ...message, content: "Tool access request cancelled before starting the run.", status: "cancelled" } : message)); }}>Stop</button>}
                 {hasActiveRun && <button className="quiet-button" disabled={isCancelling} onClick={() => void stopActiveRun()} type="button"><Ban aria-hidden="true" size={14} /> {isCancelling || latestRun && isStopRequested(latestRun) ? "Stop requested" : "Stop"}</button>}
                 <button className="button button-primary" disabled={!canSubmit} type="submit">
                   {isSubmitting ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Send aria-hidden="true" size={14} />}
-                  {isSubmitting ? "Starting" : "Send"}
+                  {isSubmitting ? "Sending" : hasActiveRun ? "Send instruction" : "Send"}
                 </button>
               </div>
             </div>
@@ -604,6 +645,7 @@ export function PlatformChatPage() {
               <div><span className="eyebrow">Configuration</span><h2>{platform.name}</h2></div>
               <span className={isReady ? "chat-ready" : "chat-unavailable"}>{isReady ? "Ready" : "Unavailable"}</span>
             </div>
+            <label className="chat-session-note"><input type="checkbox" checked={memoryEnabled} disabled={hasActiveRun} onChange={event => setMemoryEnabled(event.target.checked)} /> Use saved memory</label>
             <ModelPicker disabled={modelPickerDisabled} onChange={setSelectedModel} value={selectedModel} />
             <ConnectedCapabilitiesSummary
               run={latestRun}
@@ -678,7 +720,7 @@ function chatMessageStatusLabel(status: ChatMessage["status"]): string {
   switch (status) {
     case "pending": return "Starting…";
     case "running": return "Working…";
-    case "suspended": return "Waiting for approval";
+    case "suspended": return "Waiting for your input";
     case "completed": return "Completed";
     case "failed": return "Failed";
     case "cancelled": return "Cancelled";
