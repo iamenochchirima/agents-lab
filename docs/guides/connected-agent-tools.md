@@ -96,6 +96,68 @@ records, not a completion percentage. Context compaction can make additional mod
 requests within a round. **Stop requested** remains visible until native execution
 confirms a terminal state; a stop request cannot roll back a dispatched effect.
 
+## Native sustained execution and recovery
+
+Sustained mode is an opt-in policy for the five core baseline platforms below.
+Ordinary turns keep their existing limits; other variants must declare support
+before admission. The API accepts `execution: { mode: "sustained" }`, optionally
+with `maxDurationMs` and `modelTimeoutMs`. Defaults are a one-hour task duration
+and a 60-second model-request timeout. Duration can be reduced to 1–3600 seconds;
+model timeout can be set to 1–300 seconds. Admission retains one absolute
+`deadlineAt`. Approval waits consume that duration, and renewal, restart or resume
+does not grant another duration. Chat's longer-task option admits 24 model rounds
+and 48 tool calls; API callers retain their explicit tool budgets. Tool limits and
+exact-action permissions remain separate.
+
+| Core baseline | Native owner and retained wait | Recovery boundary and limits |
+| --- | --- | --- |
+| [Mastra](../../server/src/platforms/mastra/docs/semantics.md) | Native DurableAgent with LibSQL workflow snapshots; native approval/decline resumes the original call. A local PID/token lease excludes another owner. | Native recovery can repeat interrupted inference. An external dispatch barrier stays recorded through native settlement, even after an acknowledged result; unresolved external work refuses recovery as `MASTRA_RECOVERY_UNSAFE`. Inspection expires an overdue suspended workflow through public native cancellation. Pinned Core 1.66.0 uses a public `pruneSnapshot` workaround to retain complete running nested snapshots; this is documented compatibility behavior, not an SDK change. Local ownership does not cover multiple hosts. |
+| [Temporal](../../server/src/platforms/temporal/variants/baseline/README.md) | Temporal Workflow owns the loop and recorded wait; Activities own model and host I/O. Workflow history preserves the original review/call identity. | Replay restores recorded workflow decisions and completed Activity results. Remaining-time checks and native wait timers apply the admitted deadline. A completed Activity or a review decision cannot prove that an external effect occurred exactly once; ambiguous dispatched operations require reconciliation. |
+| [Restate](../../server/src/platforms/restate/docs/semantics.md) | Native Workflow and journaled `ctx.run` actions own rounds, context summaries and I/O; a durable promise retains action review. | Journaled native time and promise timeout preserve the original deadline across handler replacement. Completed context actions restore their recorded summary. A post-dispatch transport failure stays unknown; safe pre-dispatch failures have explicit bounded retries. Durable execution depends on the Restate service and its retained journal. |
+| [LangGraph](../../server/src/platforms/langgraph/variants/baseline/durability/README.md) | The Python service owns the native graph and SQLite checkpointer under one exclusive local state-directory lock. Native interrupt state retains review identity. | Only an original same-run checkpoint with any pending operation proven present is eligible for active recovery; no fresh prompt is submitted. Uncheckpointed model, summary or tool intent requires reconciliation. A native service timer expires suspended waits without delivery or inspection. Diagnostics report checkpoint ownership/eligibility and remain read-only. This is local single-owner recovery, not a distributed scheduler or LangSmith deployment. |
+| [Vercel Workflows](../../server/src/platforms/vercel-workflows/docs/semantics.md) | Native Workflow steps, hooks and sleep own the loop, model/context calls and approval waits; durable local admission and progress projections retain identity. | Native timers and clock steps retain the absolute deadline through service replacement. Host receipt reservations stop unknown external outcomes from blind dispatch. The local baseline does not establish recovery across arbitrary code changes or every unacknowledged model request. |
+
+Within-run compaction runs at each platform's native model boundary. It can
+replace complete paired assistant/tool groups while preserving immutable
+instructions, loaded skills, the current user task and incomplete calls. Recorded
+summaries and provenance are private execution evidence; canonical chat history
+remains intact. Replay behavior follows the native boundary in the table.
+Compaction may add model requests and reported tokens within a round.
+
+The common server persists review decisions before native delivery. Delivery state
+records pending attempts/backoff and native acceptance, allowing a retained
+control decision to be retried with its original identity after host restart.
+Acceptance acknowledges control delivery; inspect the native run and provider
+receipt to establish the effect. Cancellation requests native stop and preserves
+uncertain outcomes; it cannot undo an external dispatch. Deadline codes are native
+(`RUN_DEADLINE_EXCEEDED` or LangGraph's `EXECUTION_DEADLINE_EXCEEDED`) and retain a
+timeout classification. An uncertain operation takes precedence over a simple
+timeout where the effect cannot be established.
+
+A server observer runs every two seconds, rotating through at most 16 active runs
+per pass and avoiding overlapping passes. It delivers retained controls and
+projects native state so that closed Chat windows do not strand a finished context
+turn. It never starts a replacement reasoning loop. Rejected operations are
+isolated, but there is no common watchdog for a never-settling adapter request: a
+hung inspection or delivery can stall subsequent passes. Native timers remain
+independent where implemented; diagnose the owned service and transport rather
+than issuing a competing run.
+
+Native execution requires the relevant worker/service and retained storage from
+its platform setup guide. For local connected tools, the control plane and workers
+must share the admitted absolute run/context roots, capability-host endpoint and
+host-key configuration. A loopback address refers to the worker's own host; it
+requires colocated services or an explicit reachable host configuration. The Lab
+exposes shared tools and skills, not a native agent filesystem. Preserve existing
+user services and restart only processes owned by the experiment.
+
+The [sustained connected review scenario](../../lab/scenarios/sustained-connected-review/README.md)
+measures one six-record task, two connected sources, an enabled skill, multiple
+approval/denial decisions and an explicit owned restart during a retained wait.
+Deterministic mechanism tests and real-model task acceptance are separate evidence.
+This coverage table describes implementation contracts; it does not claim a
+five-platform real-model verdict or exactly-once external effects.
+
 If an external document provider is enabled, its tools are also included in normal
 platform Chat. File operations execute in that provider; the Lab does not expose a
 native agent filesystem. Reports and follow-up corrections stay in provider-owned
