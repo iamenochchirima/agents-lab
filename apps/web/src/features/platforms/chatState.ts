@@ -186,3 +186,28 @@ function assistantContent(run: RunView): string {
   if (run.result?.error) return run.result.error.message;
   return "";
 }
+
+/** Place reviews at the original tool-call event, retaining every separate call and recorded order. */
+export function projectTurnActivity(run: RunView, actions: readonly import("./platformApi").InvocationReviewView[]): readonly ({ kind: "review"; action: import("./platformApi").InvocationReviewView } | { kind: "event"; event: RunEvent })[] {
+  const remaining = new Map(actions.filter(action => action.runId === run.runId).map(action => [action.call.toolCallId, action]));
+  const items: ({ kind: "review"; action: import("./platformApi").InvocationReviewView } | { kind: "event"; event: RunEvent })[] = [];
+  for (const event of [...run.events].sort((left, right) => left.recordedSequence - right.recordedSequence)) {
+    const callId = typeof event.payload.toolCallId === "string" ? event.payload.toolCallId : "";
+    const action = remaining.get(callId);
+    if (action) { items.push({ kind: "review", action }); remaining.delete(callId); }
+    if (event.kind.startsWith("Tool")) items.push({ kind: "event", event });
+  }
+  for (const action of [...remaining.values()].sort((left, right) => left.call.round - right.call.round || left.createdAt.localeCompare(right.createdAt))) items.push({ kind: "review", action });
+  return items;
+}
+
+/** Merge durable history without replacing live message IDs, including admission racing with history lookup. */
+export function mergeSessionHistory(current: readonly ChatMessage[], runs: readonly RunView[]): ChatMessage[] {
+  let merged = [...current];
+  for (const run of runs) {
+    const placeholder = merged.find(message => message.role === "assistant" && message.runId === undefined && message.clientTurnId && message.clientTurnId === run.manifest.context?.clientTurnId);
+    merged = upsertRunMessages(merged, run, placeholder?.id);
+  }
+  const positions = new Map(runs.map((run, index) => [run.runId, index]));
+  return merged.sort((left, right) => (positions.get(left.runId ?? "") ?? runs.length) - (positions.get(right.runId ?? "") ?? runs.length));
+}

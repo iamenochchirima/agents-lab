@@ -7,8 +7,9 @@ import { Link, useOutletContext, useSearchParams } from "react-router";
 import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
 import { ConnectedCapabilitiesSummary } from "./ConnectedCapabilitiesSummary";
+import { useInvocationReviews } from "./useInvocationReviews";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
-import { defaultCapabilityProfile, requiresUpfrontApproval, toolActivityState, toolOutcomeView } from "./connectedToolState";
+import { defaultCapabilityProfile, requiresUpfrontApproval, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -19,6 +20,7 @@ import {
   DEFAULT_PLATFORM_CAPABILITIES,
   getPlatformConnectivity,
   getRun,
+  getSessionRuns,
   getRunEvents,
   getRunEvidenceUrl,
   getRunToolReceiptUrl,
@@ -35,7 +37,7 @@ import {
   type RunView,
 } from "./platformApi";
 import { ContextBudgetMeter } from "./RunStatusPanel";
-import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, isRunRetrying, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "./chatState";
+import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, isRunRetrying, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, projectTurnActivity, mergeSessionHistory, type ChatMessage } from "./chatState";
 
 const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled", "reconciliation_required"]);
 const pendingTurnStoragePrefix = "agentlab.platform-chat.pending-turn.";
@@ -65,6 +67,9 @@ export function PlatformChatPage() {
   const [experimentId, setExperimentId] = useState("none");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(() => searchParams.get("run"));
+  const [runs, setRuns] = useState<Record<string, RunView>>({});
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [grantAssistantId, setGrantAssistantId] = useState<string | null>(null);
   const [latestRun, setLatestRun] = useState<RunView | null>(null);
   const [latestEvents, setLatestEvents] = useState<RunEvent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,12 +86,47 @@ export function PlatformChatPage() {
   const ignoredUrlRunId = useRef<string | null>(null);
   searchParamsRef.current = searchParams;
 
-  const preservesSession = ["temporal", "restate", "langgraph", "mastra"].includes(platform.id);
+  const preservesSession = ["temporal", "restate", "langgraph", "mastra", "vercel-workflows"].includes(platform.id);
   const hasRunnableVariant = isRunnableVariant(platform, variantId);
   const isReady = hasRunnableVariant && connectivity?.reachable === true;
   const hasActiveRun = activeRunId !== null;
   const modelPickerDisabled = isModelPickerDisabled({ hasActiveRun, preservesSession, sessionId });
-  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null;
+  const canSubmit = isReady && Boolean(selectedModel) && prompt.trim().length > 0 && !isSubmitting && !hasActiveRun && retryTurn === null && !grantReviewOpen;
+
+  function acceptRun(run: RunView) {
+    setRuns(current => ({ ...current, [run.runId]: reuseRunView(current[run.runId] ?? null, run) }));
+    setMessages(current => upsertRunMessages(current, run));
+    if (run.runId === latestRun?.runId) {
+      setLatestRun(run); setLatestEvents(current => mergeEvents(current, run.events));
+      setActiveRunId(terminalStatuses.has(run.status) ? null : run.runId);
+    }
+  }
+  const reviews = useInvocationReviews(runs, `${platform.id}:${sessionId ?? "new"}:${conversationVersion.current}`, acceptRun);
+  useEffect(() => {
+    if (latestRun) setRuns(current => ({ ...current, [latestRun.runId]: reuseRunView(current[latestRun.runId] ?? null, latestRun) }));
+  }, [latestRun]);
+  useEffect(() => {
+    if (!sessionId) return;
+    const controller = new AbortController();
+    void getSessionRuns(sessionId, undefined, controller.signal).then(page => {
+      if (controller.signal.aborted) return;
+      setHistoryCursor(page.nextBeforeTurnId);
+      setRuns(current => ({ ...Object.fromEntries(page.runs.map(run => [run.runId, run])), ...current }));
+      setMessages(current => mergeSessionHistory(current, page.runs));
+    }).catch(cause => { if (!controller.signal.aborted) setError(toUserMessage(cause)); });
+    return () => controller.abort();
+  }, [sessionId]);
+  async function loadEarlierTurns() {
+    if (!sessionId || !historyCursor) return;
+    const version = conversationVersion.current;
+    try {
+      const page = await getSessionRuns(sessionId, historyCursor);
+      if (version !== conversationVersion.current) return;
+      setHistoryCursor(page.nextBeforeTurnId);
+      setRuns(current => ({ ...Object.fromEntries(page.runs.map(run => [run.runId, run])), ...current }));
+      setMessages(current => mergeSessionHistory(current, page.runs));
+    } catch (cause) { if (version === conversationVersion.current) setError(toUserMessage(cause)); }
+  }
 
   useEffect(() => {
     // A reopened run must show its admitted profile, not the new-chat default.
@@ -159,6 +199,7 @@ export function PlatformChatPage() {
     setSessionId(null);
     setActiveRunId(null);
     setLatestRun(null);
+    setRuns({}); setHistoryCursor(null); setGrantAssistantId(null);
     setLatestEvents([]);
     setError(null);
     setRetryTurn(null);
@@ -299,6 +340,9 @@ export function PlatformChatPage() {
       : [];
     const missingApproval = requiredGrants.some(capability => !hasCurrentApproval(capabilityApprovals, capability.id, capability.version));
     if (missingApproval) {
+      const assistantId = createId("grant-assistant");
+      setGrantAssistantId(assistantId);
+      setMessages(current => [...current, { id: createId("grant-user"), role: "user", content: text, status: "completed" }, { id: assistantId, role: "assistant", content: "", status: "suspended" }]);
       setPendingGrantPrompt(text);
       setGrantReviewOpen(true);
       return;
@@ -306,13 +350,13 @@ export function PlatformChatPage() {
     void startPrompt(text, capabilityApprovals);
   }
 
-  async function startPrompt(text: string, approvals: readonly CapabilityApproval[]): Promise<void> {
+  async function startPrompt(text: string, approvals: readonly CapabilityApproval[], existingAssistantId?: string): Promise<void> {
     if (!selectedModel) return;
     const currentConversationVersion = conversationVersion.current;
     const clientTurnId = preservesSession ? createClientTurnId() : undefined;
     const requestSessionId = preservesSession ? sessionId ?? createId("session") : undefined;
     const userMessageId = createId("user");
-    const assistantMessageId = createId("assistant");
+    const assistantMessageId = existingAssistantId ?? createId("assistant");
     const request: PlatformRunRequest = {
       platform: platform.id,
       variant: variantId,
@@ -330,7 +374,7 @@ export function PlatformChatPage() {
     };
     const pendingTurn: PendingTurn = { request, assistantMessageId, conversationVersion: currentConversationVersion };
     persistPendingTurn(platform.id, request);
-    setMessages((current) => [
+    setMessages((current) => existingAssistantId ? current : [
       ...current,
       {
         id: userMessageId,
@@ -371,7 +415,7 @@ export function PlatformChatPage() {
     setGrantReviewOpen(false);
     const approvedPrompt = pendingGrantPrompt;
     setPendingGrantPrompt(null);
-    if (approvedPrompt) void startPrompt(approvedPrompt, approvals);
+    if (approvedPrompt) void startPrompt(approvedPrompt, approvals, grantAssistantId ?? undefined);
   }
 
   async function dispatchTurn(pendingTurn: PendingTurn): Promise<void> {
@@ -434,11 +478,11 @@ export function PlatformChatPage() {
     }
   }
 
-  async function resumeActiveRun() {
-    if (!latestRun || latestRun.status !== "suspended" || isResuming) return;
+  async function resumeWorkflow(run: RunView, approved = true) {
+    if (run.status !== "suspended" || isResuming) return;
     setIsResuming(true);
     try {
-      const resumed = await resumeRun(latestRun.runId, true);
+      const resumed = await resumeRun(run.runId, approved);
       setLatestRun(resumed);
       setLatestEvents(mergeEvents([], resumed.events));
       setMessages((current) => upsertRunMessages(current, resumed));
@@ -458,6 +502,7 @@ export function PlatformChatPage() {
     setSessionId(null);
     setActiveRunId(null);
     setLatestRun(null);
+    setRuns({}); setHistoryCursor(null); setGrantAssistantId(null);
     setLatestEvents([]);
     setError(null);
     setRetryTurn(null);
@@ -491,20 +536,32 @@ export function PlatformChatPage() {
       <main className="chat-layout">
         <section className="chat-main" aria-label={`${platform.name} conversation`}>
           <div aria-live="polite" className="chat-thread">
+            {historyCursor && <button className="quiet-button" type="button" onClick={() => void loadEarlierTurns()}>Load earlier turns</button>}
             {messages.length === 0 ? (
               <div className="chat-empty-state">
                 <MessageSquare aria-hidden="true" size={20} />
                 <h2>Start a conversation</h2>
                 <p>Ask the selected agent anything.</p>
               </div>
-            ) : visibleMessages.map((message) => <ChatMessageBubble key={message.id} message={message} onRetry={retryTurn?.assistantMessageId === message.id ? () => retryFailedTurn(message.id) : undefined} />)}
-            <ChatToolActivity events={latestEvents} runStatus={latestRun?.status} />
+            ) : visibleMessages.map((message) => {
+              const run = message.runId ? runs[message.runId] : undefined;
+              return <ChatMessageBubble key={message.id} message={message} onRetry={retryTurn?.assistantMessageId === message.id ? () => retryFailedTurn(message.id) : undefined}>
+                {message.role === "assistant" && run && <>
+                  {run.manifest.capabilities?.approvals?.length ? <details className="invocation-review"><summary>Broader tool access recorded</summary><ul>{run.manifest.capabilities.approvals.map(approval => <li key={approval.decisionId}>{approval.capabilityId} · {approval.decision}</li>)}</ul></details> : null}
+                  {projectTurnActivity(run, reviews.actions[run.runId] ?? []).map(item => item.kind === "review" ? <InvocationReviewPanel key={`${run.runId}:${item.action.requestId}:${item.action.revision}`} run={run} action={item.action} now={reviews.now} busy={reviews.busy !== null} uncertain={reviews.uncertain[`${run.runId}:${item.action.requestId}:${item.action.revision}`]} onSubmit={(choice, renewal) => void reviews.submit(item.action, choice, renewal)} /> : <div className="chat-tool-activity" key={item.event.eventId}><ToolOutcomeDetails event={item.event} runId={run.runId} /></div>)}
+                  {reviews.errors[run.runId] && <p role="alert">{reviews.errors[run.runId]}</p>}
+                  {run.status === "suspended" && reviews.actions[run.runId]?.length === 0 && run.manifest.platform === "mastra" && run.manifest.variant === "workflow" && <section className="invocation-review" aria-label="Workflow approval"><p>This workflow is paused. This decision resumes the workflow, without approving exact tool arguments.</p><button className="quiet-button" disabled={isResuming} onClick={() => void resumeWorkflow(run, false)} type="button">Deny workflow</button><button className="button button-primary" disabled={isResuming} onClick={() => void resumeWorkflow(run)} type="button">Approve and resume workflow</button></section>}
+                </>}
+                {message.id === grantAssistantId && grantReviewOpen && <section className="invocation-review" aria-label="Broader tool access"><strong>Allow broader tool access for this run?</strong><p>This grants access to tools. Individual actions can still require exact review.</p><ul>{connectedProfile?.capabilities.filter(requiresUpfrontApproval).map(capability => <li key={capability.id}>{capability.displayName} · {capability.operations.join(", ")}</li>)}</ul><button className="quiet-button" onClick={() => decideToolGrant("denied")} type="button">Deny tool access</button><button className="button button-primary" onClick={() => decideToolGrant("approved")} type="button">Approve tool access</button></section>}
+              </ChatMessageBubble>;
+            })}
+
           </div>
 
           <form className="chat-composer" onSubmit={(event) => void submit(event)}>
             <textarea
               aria-label="Message"
-              disabled={!isReady || hasActiveRun}
+              disabled={!isReady}
               onChange={(event) => setPrompt(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -517,8 +574,9 @@ export function PlatformChatPage() {
               value={prompt}
             />
             <div className="chat-composer-footer">
-              <span>{chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, selectedModel, preservesSession })}</span>
+              <span>{latestRun?.status === "suspended" || grantReviewOpen ? "Waiting for approval" : chatAvailabilityLabel({ connectivity, connectivityError, hasRunnableVariant, isReady, selectedModel, preservesSession })}</span>
               <div className="chat-composer-actions">
+                {grantReviewOpen && <button className="quiet-button" type="button" onClick={() => { setGrantReviewOpen(false); setPendingGrantPrompt(null); setMessages(current => current.map(message => message.id === grantAssistantId ? { ...message, content: "Tool access request cancelled before starting the run.", status: "cancelled" } : message)); }}>Stop</button>}
                 {hasActiveRun && <button className="quiet-button" disabled={isCancelling} onClick={() => void stopActiveRun()} type="button"><Ban aria-hidden="true" size={14} /> {isCancelling ? "Cancelling" : "Stop"}</button>}
                 <button className="button button-primary" disabled={!canSubmit} type="submit">
                   {isSubmitting ? <LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> : <Send aria-hidden="true" size={14} />}
@@ -538,11 +596,7 @@ export function PlatformChatPage() {
             <ModelPicker disabled={modelPickerDisabled} onChange={setSelectedModel} value={selectedModel} />
             <ConnectedCapabilitiesSummary
               run={latestRun}
-              approvals={capabilityApprovals}
-              reviewOpen={grantReviewOpen}
               onProfileLoaded={setConnectedProfile}
-              onReviewCancel={() => { setGrantReviewOpen(false); setPendingGrantPrompt(null); }}
-              onApprovalDecision={decideToolGrant}
             />
             {latestRun?.manifest.capabilities?.inventory && <details className="chat-session-note capability-inventory">
               <summary>Capabilities given to the agent</summary>
@@ -585,14 +639,14 @@ export function PlatformChatPage() {
           {error && !latestRun && <p className="chat-availability-error" role="status">{error}</p>}
           {(latestRun?.context?.activeSkills?.length ?? 0) > 0 && <details className="chat-session-note"><summary>Loaded skills and references</summary><ul>{latestRun!.context!.activeSkills!.map(skill => <li key={skill.id}>{skill.id} · {skill.version}</li>)}</ul></details>}
           {latestRun?.context && <ContextBudgetMeter context={latestRun.context} />}
-          {latestRun && <ChatRunDetails error={error} events={latestEvents} isResuming={isResuming} onNewChat={newConversation} onResume={() => void resumeActiveRun()} onRun={run => { setLatestRun(run); setLatestEvents(current => mergeEvents(current, run.events)); setMessages(current => upsertRunMessages(current, run)); if (!terminalStatuses.has(run.status)) setActiveRunId(run.runId); }} run={latestRun} />}
+          {latestRun && <ChatRunDetails error={error} events={latestEvents} onNewChat={newConversation} run={latestRun} />}
         </aside>
       </main>
     </div>
   );
 }
 
-function ChatMessageBubble({ message, onRetry }: { message: ChatMessage; onRetry?: () => void }) {
+function ChatMessageBubble({ message, onRetry, children }: { message: ChatMessage; onRetry?: () => void; children?: ReactNode }) {
   const isAssistant = message.role === "assistant";
   const StatusIcon = message.status === "completed" ? CheckCircle2 : message.status === "failed" ? XCircle : message.status === "suspended" ? CircleAlert : LoaderCircle;
   const statusLabel = chatMessageStatusLabel(message.status);
@@ -600,6 +654,7 @@ function ChatMessageBubble({ message, onRetry }: { message: ChatMessage; onRetry
     <article aria-label={`${isAssistant ? "Agent" : "You"} message, ${statusLabel}`} className={`chat-message chat-message-${message.role} chat-message-status-${message.status}`}>
       <div className="chat-message-label">{isAssistant ? "Agent" : "You"}</div>
       <div className="chat-message-content">
+        {children}
         {message.content ? isAssistant ? <ChatMarkdown content={message.content} /> : <p>{message.content}</p> : <span className="chat-message-pending"><StatusIcon aria-hidden="true" className={message.status === "running" || message.status === "pending" ? "is-spinning" : undefined} size={14} /> {statusLabel}</span>}
         {message.status === "failed" && onRetry && <button className="chat-retry-button" disabled={!onRetry} onClick={onRetry} type="button">Retry</button>}
       </div>
@@ -618,21 +673,7 @@ function chatMessageStatusLabel(status: ChatMessage["status"]): string {
   }
 }
 
-function ChatToolActivity({ events, runStatus }: { events: readonly RunEvent[]; runStatus?: RunStatus }) {
-  const event = [...events].reverse().find((candidate) => candidate.kind.startsWith("Tool"));
-  if (!event) return null;
-  const mcp = readMcpEvidence(event);
-  const toolName = mcp?.toolName ?? (typeof event.payload.toolName === "string" && event.payload.toolName.trim()
-    ? event.payload.toolName
-    : "Tool");
-  const state = toolActivityState(event.kind, runStatus);
-  const outcome = toolOutcomeView(event.payload, event.kind);
-  const label = outcome.label ? `${toolName} · ${outcome.label}` : state === "completed" ? `${toolName} · Completed` : state === "unknown" ? `${toolName} · Needs reconciliation` : state === "failed" ? `${toolName} · Stopped` : `${toolName} · Running`;
-  return <div aria-live="polite" className={`chat-tool-activity chat-tool-${state}`} role="status"><Wrench aria-hidden="true" size={13} /> {label}</div>;
-}
-
-function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun, run }: { error: string | null; events: readonly RunEvent[]; isResuming: boolean; onNewChat: () => void; onResume: () => void; onRun: (run: RunView) => void; run: RunView }) {
-  const [hasInvocationActions, setHasInvocationActions] = useState(false);
+function ChatRunDetails({ error, events, onNewChat, run }: { error: string | null; events: readonly RunEvent[]; onNewChat: () => void; run: RunView }) {
   const toolEvents = events.filter((event) => /tool|skill|mcp/i.test(event.kind));
   const evidenceFiles = availableEvidenceFiles(run);
   const nativePlatform = run.executionReference?.platform;
@@ -641,7 +682,7 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun,
     : null;
   const retrying = isRunRetrying(run, events);
   return (
-    <details className="chat-run-details" open={hasInvocationActions || run.status === "running" || run.status === "queued" || run.status === "suspended" || run.status === "reconciliation_required"}>
+    <details className="chat-run-details" open={run.status === "running" || run.status === "queued" || run.status === "suspended" || run.status === "reconciliation_required"}>
       <summary><span>Run details</span><small>{retrying ? "retrying" : run.status.replaceAll("_", " ")}</small></summary>
       <div className="chat-run-details-body">
         {retrying && <p className="chat-run-retrying" role="status"><LoaderCircle aria-hidden="true" className="is-spinning" size={14} /> Retrying model request…</p>}
@@ -651,14 +692,6 @@ function ChatRunDetails({ error, events, isResuming, onNewChat, onResume, onRun,
             <CircleAlert aria-hidden="true" size={14} />
             <span>Run outcome needs recovery. Start a new chat before sending another turn.</span>
             <button className="chat-retry-button" onClick={onNewChat} type="button">New chat</button>
-          </div>
-        )}
-        <InvocationReviewPanel run={run} onRun={onRun} onLoaded={setHasInvocationActions} />
-        {run.status === "suspended" && !hasInvocationActions && run.manifest.platform === "mastra" && run.manifest.variant === "workflow" && (
-          <div className="chat-availability-error" role="status">
-            <CircleAlert aria-hidden="true" size={14} />
-            <span>This workflow is waiting for approval.</span>
-            <button className="chat-retry-button" disabled={isResuming} onClick={onResume} type="button">{isResuming ? "Resuming…" : "Approve and resume"}</button>
           </div>
         )}
         <dl className="chat-run-meta">
@@ -694,7 +727,7 @@ function ToolOutcomeDetails({ event, runId }: { event: RunEvent; runId: string }
   const connection = isRecord(event.payload.connection) ? event.payload.connection : null;
   const callId = typeof event.payload.toolCallId === "string" ? event.payload.toolCallId : null;
   const name = typeof event.payload.toolName === "string" ? event.payload.toolName : formatEventKind(event.kind);
-  if (!outcome.label && !outcome.presentation && !connection) return <><strong>{formatEventKind(event.kind)}</strong><small>{event.source}</small></>;
+  if (!outcome.label && !outcome.presentation && !connection) return <><strong>{name} · {event.kind === "ToolExecutionCompleted" ? "Completed" : event.kind === "ToolExecutionStarted" ? "Running" : formatEventKind(event.kind)}</strong><small>{event.source}</small></>;
   return <details className="tool-outcome-details">
     <summary><strong>{name}</strong><span>{outcome.label ?? formatEventKind(event.kind)}</span></summary>
     <dl>

@@ -37,7 +37,7 @@ test("Platform Chat completes a turn, exposes safe evidence, and preserves platf
     const completed = await browser.cdp.evaluate(`JSON.stringify({
       userMessages: document.querySelectorAll(".chat-message-user").length,
       assistantMessages: document.querySelectorAll(".chat-message-assistant").length,
-      toolActivity: document.querySelector(".chat-tool-activity")?.textContent?.trim() ?? null,
+      toolActivity: [...document.querySelectorAll(".chat-tool-activity")].map(node => node.textContent?.trim()).join(" "),
       context: document.querySelector('[aria-label="Context window"]')?.textContent?.replace(/\\s+/g, " ").trim() ?? null,
       modelDisabled: document.querySelector(".model-picker-trigger")?.hasAttribute("disabled") ?? false,
       noDuplicateVisibleIds: (() => {
@@ -202,9 +202,9 @@ test("Chat requests run-level approval only when connected tools require it", as
     await chooseModel(browser.cdp);
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Review the delete permission.");
     await clickButton(browser.cdp, "Send");
-    await waitForText(browser.cdp, "Allow connected actions?");
+    await waitForText(browser.cdp, "Allow broader tool access for this run?");
     assert.equal(fixture.state.createRequests, 0, "the run must wait for the required permission decision");
-    await clickButton(browser.cdp, "Deny");
+    await clickButton(browser.cdp, "Deny tool access");
     await waitForText(browser.cdp, "The calculator result is 42.");
     assert.equal(fixture.state.requests[0]?.capabilities?.approvals?.[0]?.capabilityId, "records_delete");
     assert.equal(fixture.state.requests[0]?.capabilities?.approvals?.[0]?.decision, "denied");
@@ -212,8 +212,8 @@ test("Chat requests run-level approval only when connected tools require it", as
     await clickButton(browser.cdp, "New chat");
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "Review the permission again.");
     await clickButton(browser.cdp, "Send");
-    await waitForText(browser.cdp, "Allow connected actions?");
-    await clickButton(browser.cdp, "Approve for this run");
+    await waitForText(browser.cdp, "Allow broader tool access for this run?");
+    await clickButton(browser.cdp, "Approve tool access");
     await waitForText(browser.cdp, "The calculator result is 42.");
     const request = fixture.state.requests[1];
     assert.equal(request?.capabilities?.profileId, "connected-agent");
@@ -235,14 +235,33 @@ test("Platform Chat keeps invocation-level review for connected tools", async ()
     await chooseModel(browser.cdp);
     await setInput(browser.cdp, 'textarea[aria-label="Message"]', "[action] Update the connected note.");
     await clickButton(browser.cdp, "Send");
-    await waitForElement(browser.cdp, ".invocation-review-panel");
+    await waitForElement(browser.cdp, ".invocation-review");
     await waitForText(browser.cdp, "Approve action");
     assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "connected-agent");
-    const reviewPanel = await browser.cdp.evaluate('JSON.stringify({ label: document.querySelector(".invocation-review-panel")?.getAttribute("aria-label"), markup: document.querySelector(".invocation-review-panel")?.outerHTML })').then(JSON.parse);
-    assert.equal(reviewPanel.label, "Action review", JSON.stringify(reviewPanel));
+    const reviewPanel = await browser.cdp.evaluate('JSON.stringify({ label: document.querySelector(".invocation-review")?.getAttribute("aria-label"), markup: document.querySelector(".invocation-review")?.outerHTML })').then(JSON.parse);
+    assert.equal(reviewPanel.label, "Action review: memo_update", JSON.stringify(reviewPanel));
+    assert.equal(await browser.cdp.evaluate('Boolean(document.querySelector(".chat-message-assistant .invocation-review"))'), true);
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-sidebar .invocation-review").length'), 0);
+    await navigate(browser.cdp, `/platforms/temporal/chat?run=${fixture.state.runIds[0]}`);
+    await waitForText(browser.cdp, "Approve action");
+    fixture.loseNextDecisionResponse();
     await clickButton(browser.cdp, "Approve action");
+    await waitForText(browser.cdp, "Approved · waiting to resume");
+    await clickButton(browser.cdp, "Continue reviewed action");
+    await waitForFixture(() => fixture.state.decisionRequests.length === 2);
+    assert.deepEqual(fixture.state.decisionRequests[0], fixture.state.decisionRequests[1], "continuation retries the exact retained decision");
     await waitForFixture(() => fixture.state.actionDecisions.get(fixture.state.runIds[0])?.decision === "approved");
     assert.equal(fixture.state.actionDecisions.get(fixture.state.runIds[0])?.decision, "approved");
+    await waitForText(browser.cdp, "The calculator result is 42.");
+    await setInput(browser.cdp, 'textarea[aria-label="Message"]', "[action] Propose another connected change.");
+    await clickButton(browser.cdp, "Send");
+    await waitForText(browser.cdp, "Approve action");
+    await clickButton(browser.cdp, "Deny");
+    await waitForFixture(() => fixture.state.actionDecisions.get(fixture.state.runIds[1])?.decision === "denied");
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".chat-message-assistant").length === 2');
+    await navigate(browser.cdp, `/platforms/temporal/chat?run=${fixture.state.runIds[1]}`);
+    await waitForExpression(browser.cdp, 'document.querySelectorAll(".chat-message-assistant .invocation-review").length === 2');
+    assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-sidebar .invocation-review").length'), 0);
     assert.equal(browser.dialogs.length, 0, "invocation approval must use application UI, not a browser dialog");
     assert.equal(browser.errors.length, 0, `browser console errors: ${browser.errors.join(" | ")}`);
   } finally {
@@ -376,7 +395,8 @@ test("Mastra workflow Chat resumes an approval without creating a second run", a
     assert.ok(suspendedRunId);
     assert.equal(fixture.state.createRequests, 1);
 
-    await clickButton(browser.cdp, "Approve and resume");
+    await waitForText(browser.cdp, "Approve and resume workflow");
+    await clickButton(browser.cdp, "Approve and resume workflow");
     await waitForText(browser.cdp, "Mastra fixture completed.");
     const resumedRunId = await browser.cdp.evaluate('document.querySelector(".chat-run-meta dd")?.textContent?.trim()');
     assert.equal(resumedRunId, suspendedRunId);
@@ -1055,6 +1075,9 @@ async function installFixture(cdp) {
     requests: [],
     runInventories: new Map(),
     actionDecisions: new Map(),
+    decisionRequests: [],
+    loseDecisionResponse: false,
+    actionNeedsResume: new Set(),
     profileCatalog: capabilityProfiles(),
     clientTurnIds: [],
     runRequests: new Map(),
@@ -1097,6 +1120,18 @@ async function installFixture(cdp) {
     if (url.pathname === "/api/capabilities" && event.request.method === "GET") {
       state.capabilityRequests += 1;
       await fulfill(cdp, event.requestId, { status: 200, body: { profiles: state.profileCatalog } });
+      return;
+    }
+
+    const historyMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/runs$/);
+    if (historyMatch) {
+      const sessionId = decodeURIComponent(historyMatch[1]);
+      const runs = state.runIds.filter(id => state.runRequests.get(id)?.sessionId === sessionId).map(id => {
+        const request = state.runRequests.get(id);
+        const status = request.task?.prompt?.startsWith("[action]") && !state.actionDecisions.has(id) ? "suspended" : fixtureStatus(request, state.mode, state.runReadsById.get(id) ?? 0, state.cancelled, state.failedPlatforms, state.resumedRunIds, id);
+        return makeRun(request, status, id, state.mode, new Set(), state.runInventories.get(id));
+      });
+      await fulfill(cdp, event.requestId, { status: 200, body: { runs, hasMore: false, nextBeforeTurnId: null } });
       return;
     }
 
@@ -1147,8 +1182,8 @@ async function installFixture(cdp) {
       state.runReads += 1;
       const runReads = (state.runReadsById.get(runId) ?? 0) + 1;
       state.runReadsById.set(runId, runReads);
-      const awaitingToolApproval = request.task?.prompt?.startsWith("[action]") && !state.actionDecisions.has(runId);
-      const status = awaitingToolApproval ? "running" : fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms, state.resumedRunIds, runId);
+      const awaitingToolApproval = request.task?.prompt?.startsWith("[action]") && (!state.actionDecisions.has(runId) || state.actionNeedsResume.has(runId));
+      const status = awaitingToolApproval ? "suspended" : fixtureStatus(request, state.mode, runReads, state.cancelled, state.failedPlatforms, state.resumedRunIds, runId);
       await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, status, runId, state.mode, new Set(), state.runInventories.get(runId)) });
       return;
     }
@@ -1165,7 +1200,16 @@ async function installFixture(cdp) {
     const actionDecisionMatch = url.pathname.match(/^\/api\/runs\/(run-(?:chat|temporal|restate|langgraph|mastra)-\d+)\/actions\/([^/]+)\/decision$/);
     if (actionDecisionMatch && event.request.method === "POST") {
       const runId = actionDecisionMatch[1];
-      state.actionDecisions.set(runId, JSON.parse(event.request.postData ?? "{}"));
+      const decision = JSON.parse(event.request.postData ?? "{}");
+      state.decisionRequests.push(decision);
+      state.actionDecisions.set(runId, decision);
+      if (state.loseDecisionResponse) {
+        state.loseDecisionResponse = false;
+        state.actionNeedsResume.add(runId);
+        await fulfill(cdp, event.requestId, { status: 503, body: { error: { code: "RESUME_UNAVAILABLE", message: "Decision retained; native continuation temporarily unavailable." } } });
+        return;
+      }
+      state.actionNeedsResume.delete(runId);
       const request = state.runRequests.get(runId);
       await fulfill(cdp, event.requestId, { status: 200, body: makeRun(request, "completed", runId, state.mode, new Set(), state.runInventories.get(runId)) });
       return;
@@ -1213,6 +1257,7 @@ async function installFixture(cdp) {
 
   return {
     state,
+    loseNextDecisionResponse: () => { state.loseDecisionResponse = true; },
     setMode: (mode) => { state.mode = mode; state.apiErrorOncePending = mode === "api-error-once"; },
     setRestateAvailable: (available) => { state.restateAvailable = available; },
     setLangGraphAvailable: (available) => { state.langGraphAvailable = available; },

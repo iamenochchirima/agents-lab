@@ -27,3 +27,13 @@
 .tool-outcome-details dd { margin: 0; overflow-wrap: anywhere; }
 .tool-outcome-details p, .tool-outcome-details a { font-size: .8rem; }
 .tool-outcome-details pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 18rem; overflow: auto; }
+
+.chat-message-content .invocation-review { min-width: 0; max-width: 100%; }
+.invocation-review > small { display: block; margin-top: .4rem; overflow-wrap: anywhere; color: var(--muted-foreground); }
+.invocation-review > a { display: inline-block; font-size: .8rem; margin-bottom: .5rem; }
+.invocation-review header { flex-wrap: wrap; }
+.invocation-arguments dd { max-height: 16rem; overflow: auto; }
+@media (max-width: 600px) {
+  .invocation-arguments > div { grid-template-columns: 1fr; gap: .25rem; }
+  .invocation-review-actions button { flex: 1; }
+}

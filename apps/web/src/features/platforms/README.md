@@ -54,3 +54,45 @@ modal generation changes. Native details remain in each run's progressive disclo
 The browser never fabricates output, token counts, health, or terminal success. When
 token information is unavailable, the context projection says that its quality is
 unknown rather than displaying a false percentage.
+
+## Chat approvals
+
+Chat retains each run separately and attaches server-owned action reviews to that
+run's assistant message. Tool events order the cards by their original call ID;
+results appear after the corresponding review, before the final assistant reply.
+The model's Markdown cannot create actionable controls.
+
+The conversation controller reads exact reviews through `/api/runs/:runId/actions`.
+It uses one polling timer for the conversation and stops requests when the user
+changes platform or starts a new chat. Completed runs receive a final review read.
+A reopened session loads its retained turns through
+`/api/sessions/:sessionId/runs?limit=100`; Load earlier turns requests the bounded
+history cursor. History is authoritative on the server, rather than a second copy
+of approval records embedded in chat messages or browser storage.
+
+Approve and Deny submit a stable decision ID bound to the recorded request,
+revision and argument digest. During submission, all conflicting buttons are
+blocked. If a response fails, the controller refetches persisted reviews. If the
+outcome remains unconfirmed, Retry retained decision submits the same identity.
+An approved suspended action offers Continue reviewed action. Expired reviews
+require Request fresh review; the returned revision supplies a new card identity.
+Terminal runs disable decisions, and uncertain effects link to evidence without
+an automatic mutation retry. Approval records establish permission; tool events
+and receipts establish observed results.
+
+Older tool-grant policy appears as broader tool access in the assistant turn,
+before admission. Its decision remains in the admitted run manifest. These grants
+allow tool access and do not approve exact arguments. The Mastra workflow pause
+also has a separate inline workflow control. The configuration sidebar provides
+inspection and model selection without approval controls.
+
+While a run waits, Chat displays Waiting for approval, allows Stop, and keeps the
+composer draft editable. Send remains disabled until the active run finishes.
+Cards use bounded server-redacted arguments and native keyboard buttons. Refresh
+and polling update state without moving focus or forcing the scroll position.
+
+Focused checks are `chatState.test.ts`, `connectedToolState.test.ts` and
+`inlineApprovals.test.ts`. The existing browser fixture in
+`tests/browser/platform-chat.browser.test.mjs` covers inline grants, workflow
+continuation, exact approval and denial, refresh, and retained history. Fixture
+results do not establish provider effects or native recovery guarantees.

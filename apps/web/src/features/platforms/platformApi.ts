@@ -367,8 +367,8 @@ export async function getInvocationReviews(runId: string, signal?: AbortSignal):
   const body = await requestJson<{ readonly actions: readonly InvocationReviewView[] }>(`/api/runs/${encodeURIComponent(runId)}/actions`, { signal });
   return body.actions;
 }
-export async function renewInvocation(runId: string, requestId: string): Promise<RunView> {
-  return requestJson(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(requestId)}/renew`, { method: "POST", body: "{}" });
+export async function renewInvocation(runId: string, requestId: string, signal?: AbortSignal): Promise<RunView> {
+  return requestJson(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(requestId)}/renew`, { method: "POST", body: "{}", signal });
 }
 export async function decideInvocation(runId: string, decision: InvocationDecision, signal?: AbortSignal): Promise<RunView> {
   return requestJson(`/api/runs/${encodeURIComponent(runId)}/actions/${encodeURIComponent(decision.requestId)}/decision`, { method: "POST", body: JSON.stringify(decision), signal });
@@ -384,6 +384,12 @@ export async function createRun(request: PlatformRunRequest, signal?: AbortSigna
 
 export async function getRun(runId: string, signal?: AbortSignal): Promise<RunView> {
   return requestJson<RunView>(`/api/runs/${encodeURIComponent(runId)}`, { signal });
+}
+
+/** Bounded session history projected by the control plane in recorded turn order. */
+export async function getSessionRuns(sessionId: string, beforeTurnId?: string, signal?: AbortSignal): Promise<{ readonly runs: readonly RunView[]; readonly hasMore: boolean; readonly nextBeforeTurnId: string | null }> {
+  const params = new URLSearchParams({ limit: "100", ...(beforeTurnId ? { beforeTurnId } : {}) });
+  return requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/runs?${params}`, { signal });
 }
 
 export async function getRunEvents(runId: string, after: number, signal?: AbortSignal): Promise<RunEventsPage> {
