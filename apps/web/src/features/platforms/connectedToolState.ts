@@ -1,4 +1,14 @@
-import type { CapabilityProfile, InvocationDecision, InvocationReviewView } from "./platformApi";
+import type { CapabilityProfile, InvocationDecision, InvocationReviewView, RunStatus } from "./platformApi";
+
+/** A terminal run stops unfinished activity without inventing a tool outcome or side-effect guarantee. */
+export function toolActivityState(eventKind: string, runStatus?: RunStatus): "completed" | "unknown" | "failed" | "active" {
+  if (eventKind === "ToolExecutionCompleted") return "completed";
+  if (eventKind === "ToolExecutionUnknown") return "unknown";
+  if (["ToolExecutionFailed", "ToolExecutionCancelled", "ToolPolicyDenied", "ToolCallRejected"].includes(eventKind)) return "failed";
+  if (runStatus === "reconciliation_required") return "unknown";
+  if (runStatus === "failed" || runStatus === "cancelled" || runStatus === "completed") return "failed";
+  return "active";
+}
 
 export function requiresUpfrontApproval(capability: CapabilityProfile["capabilities"][number]): boolean {
   return (capability.risk === "write" || capability.risk === "external") && (capability.approvalMode === undefined || capability.approvalMode === "tool_grant");

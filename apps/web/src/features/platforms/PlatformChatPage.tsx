@@ -8,7 +8,7 @@ import { experimentCatalog } from "../experiments/experimentCatalog";
 import { ModelPicker } from "../models/ModelPicker";
 import { ConnectedCapabilitiesSummary } from "./ConnectedCapabilitiesSummary";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
-import { defaultCapabilityProfile, requiresUpfrontApproval, toolOutcomeView } from "./connectedToolState";
+import { defaultCapabilityProfile, requiresUpfrontApproval, toolActivityState, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -498,7 +498,7 @@ export function PlatformChatPage() {
                 <p>Ask the selected agent anything.</p>
               </div>
             ) : visibleMessages.map((message) => <ChatMessageBubble key={message.id} message={message} onRetry={retryTurn?.assistantMessageId === message.id ? () => retryFailedTurn(message.id) : undefined} />)}
-            <ChatToolActivity events={latestEvents} />
+            <ChatToolActivity events={latestEvents} runStatus={latestRun?.status} />
           </div>
 
           <form className="chat-composer" onSubmit={(event) => void submit(event)}>
@@ -618,19 +618,14 @@ function chatMessageStatusLabel(status: ChatMessage["status"]): string {
   }
 }
 
-function ChatToolActivity({ events }: { events: readonly RunEvent[] }) {
+function ChatToolActivity({ events, runStatus }: { events: readonly RunEvent[]; runStatus?: RunStatus }) {
   const event = [...events].reverse().find((candidate) => candidate.kind.startsWith("Tool"));
   if (!event) return null;
   const mcp = readMcpEvidence(event);
   const toolName = mcp?.toolName ?? (typeof event.payload.toolName === "string" && event.payload.toolName.trim()
     ? event.payload.toolName
     : "Tool");
-  const state = event.kind === "ToolExecutionCompleted"
-    ? "completed"
-    : event.kind === "ToolExecutionUnknown" ? "unknown"
-    : event.kind === "ToolExecutionFailed" || event.kind === "ToolExecutionCancelled" || event.kind === "ToolPolicyDenied" || event.kind === "ToolCallRejected"
-      ? "failed"
-      : "active";
+  const state = toolActivityState(event.kind, runStatus);
   const outcome = toolOutcomeView(event.payload, event.kind);
   const label = outcome.label ? `${toolName} · ${outcome.label}` : state === "completed" ? `${toolName} · Completed` : state === "unknown" ? `${toolName} · Needs reconciliation` : state === "failed" ? `${toolName} · Stopped` : `${toolName} · Running`;
   return <div aria-live="polite" className={`chat-tool-activity chat-tool-${state}`} role="status"><Wrench aria-hidden="true" size={13} /> {label}</div>;

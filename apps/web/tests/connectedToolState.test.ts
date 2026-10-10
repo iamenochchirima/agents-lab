@@ -1,10 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReviewAction, defaultCapabilityProfile, invocationDecision, requiresUpfrontApproval, toolOutcomeView } from "../src/features/platforms/connectedToolState";
+import { canReviewAction, defaultCapabilityProfile, invocationDecision, requiresUpfrontApproval, toolActivityState, toolOutcomeView } from "../src/features/platforms/connectedToolState";
 import type { CapabilityProfile, InvocationReviewView } from "../src/features/platforms/platformApi";
 
 const capability: CapabilityProfile["capabilities"][number] = { id: "assign", version: "1.0.0", kind: "tool", displayName: "Assign", description: "Assign a record", risk: "write", operations: ["execute"] };
 const action: InvocationReviewView = { requestId: "action-one", revision: 3, runId: "run-one", turnId: "turn-one", call: { toolCallId: "call-one", name: "assign", round: 1 }, argumentDigest: "current-arguments", sourceDigest: "source", connectionIdentity: "account", displayArguments: { owner: "Morgan" }, createdAt: "2026-10-08T00:00:00Z", expiresAt: "2026-10-08T00:15:00Z", status: "pending" };
+
+test("unfinished tool activity stops when its run ends without a tool outcome", () => {
+  for (const kind of ["ToolCallRequested", "ToolExecutionStarted"]) {
+    assert.equal(toolActivityState(kind, "running"), "active");
+    for (const status of ["failed", "cancelled", "completed"] as const) {
+      assert.equal(toolActivityState(kind, status), "failed");
+    }
+    assert.equal(toolActivityState(kind, "reconciliation_required"), "unknown");
+  }
+});
+
+test("run failure preserves recorded tool completion and uncertain effects", () => {
+  assert.equal(toolActivityState("ToolExecutionCompleted", "failed"), "completed");
+  assert.equal(toolActivityState("ToolExecutionUnknown", "failed"), "unknown");
+  assert.equal(toolActivityState("ToolExecutionFailed", "running"), "failed");
+});
 
 test("invocation policy skips blanket approval and exact action review retains revision and argument identity", () => {
   assert.equal(requiresUpfrontApproval(capability), true);
