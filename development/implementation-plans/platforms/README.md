@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Native long-running agents](active/native-long-running-agents.md): proposed next
+  phase across the five priority baselines, covering native recovery, reliable
+  approval delivery, sustained context, task budgets, chat continuity and focused
+  acceptance with commit checkpoints.
+
 - [Agent capability awareness and discovery](active/agent-capability-awareness.md):
   proposed milestone for generated model inventories, enabled skill metadata,
   authorized tool discovery, native schema activation and frontend parity.
