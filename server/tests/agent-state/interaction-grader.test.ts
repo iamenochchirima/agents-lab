@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { argumentDigest } from "../../src/capabilities/reviews/store.js";
 import { FREE_PROVIDER_ROUTING, SUSTAINED_FREE_MODEL } from "../../src/models/openrouter/free-model-policy.js";
-import { identityInteractionCriteria, type IdentityInteractionEvidence } from "../../src/evals/identity-memory-interaction.js";
+import { identityInteractionCriteria, seedMemoryConsent, type IdentityInteractionEvidence } from "../../src/evals/identity-memory-interaction.js";
 
 function fixture(): IdentityInteractionEvidence {
   const namespace = "cap-test", memoryNamespace = "experiment-isolated", value = "AX-random";
@@ -40,4 +40,13 @@ test("foreign receipt fingerprint and paid routing fail despite completed native
   (evidence.task.events.at(-1)!.payload.observation as any).providerRequest.provider = { ...FREE_PROVIDER_ROUTING, allow_fallbacks: true };
   const criteria = identityInteractionCriteria(evidence);
   assert.equal(criteria.verificationReceipt, false); assert.equal(criteria.freeRoutingRetained, false);
+});
+
+test("seed consent reconfirms only the original exact fictional preference and grants no connected action", () => {
+  const question = 'Do you approve saving the preference Cedar reporting marker-123, using the status prefix AX-marker?';
+  const answer = seedMemoryConsent(question, "marker-123", "AX-marker", "Use concise checklists and prefix status with AX-marker.");
+  assert.match(answer, /explicitly authorize saving exactly/);
+  assert.match(answer, /Do not change connected records or any other memory/);
+  assert.throws(() => seedMemoryConsent('Approve changing Cedar to AX-marker for marker-123?', "marker-123", "AX-marker", "Preference"), /Unexpected seed clarification/);
+  assert.throws(() => seedMemoryConsent('Approve saving a preference from another trial?', "marker-123", "AX-marker", "Preference"), /Unexpected seed clarification/);
 });

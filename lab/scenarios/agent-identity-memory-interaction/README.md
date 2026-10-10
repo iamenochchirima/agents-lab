@@ -13,11 +13,17 @@ for at least five seconds, it sends a correction to Casey without approving the
 old proposal. Only a fresh exact Cedar/Casey action is approved. The agent must
 verify the saved state. The observer independently reads the entire collection.
 
-Prompts are recorded in the report before the first call. They ask for outcomes,
+Prompts are recorded in the report before the first call. If the seed model asks to confirm the exact fictional
+preference, the observer reconfirms that original request once and retains the
+question, matched reply identity, content and consumption evidence. Unrelated or
+repeated seed questions fail rather than receiving arbitrary scripted answers.
+This reply grants no tool capability or connected action permission.
+
+They ask for outcomes,
 clarification and an explicit memory save. They do not prescribe a complete tool
 call sequence or fabricate model decisions. No automated action is authorized
 outside the credential-free loopback fictional provider and exact disposable
-namespace. Unexpected questions or proposals stop the observation with retained
+namespace. Unexpected task questions or proposals stop the observation with retained
 failure and cancellation evidence.
 
 Run from the repository root after starting an owned isolated stack configured
