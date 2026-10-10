@@ -22,13 +22,49 @@ and call limits. Duplicate or missing call IDs reject the entire batch before an
 effect. A denial becomes tool feedback, allowing a subsequent model response.
 
 Network access, credentials, context storage, clock reads and progress writes stay
-inside Workflow steps. The provider model step retains the SDK retry behavior for
-retryable model failures. This can repeat model requests. Tool dispatch and review
-preparation set `maxRetries = 0`; a failed dispatch must not cause the SDK to blindly
-repeat a mutation. The capability host also reserves the original run/turn/call
+inside Workflow steps. Model, context-summary, tool dispatch and review preparation steps set
+`maxRetries = 0`. Provider failures remain classified results, including rate
+limits; an unconfirmed model transport stops with reconciliation required. Native
+recovery can reuse a completed step result, but it cannot assume an interrupted
+unacknowledged provider request was never sent. A failed dispatch must not cause
+the SDK to blindly repeat a mutation. The capability host also reserves the original run/turn/call
 receipt before dispatch. On restart, a pending receipt remains unknown. An unknown
 status or unknown effect stops further model/tool rounds with
 `reconciliation_required`. An approved decision alone does not establish an effect.
+
+## Sustained task policy and context
+
+An optional admitted `execution` policy retains one absolute `deadlineAt` and a
+separate per-model timeout. Legacy runs without that policy keep their prior
+limits. Native clock steps guard each model/tool boundary; model, review-host and
+tool-host abort timers are clipped to the remaining task duration. Review waits
+race the registered hook against native `sleep` using the same retained deadline.
+Renewal and service replacement cannot reset that deadline. A deadline ends the
+agent task without retracting an effect already dispatched. Unknown receipts
+still stop with reconciliation required. `ExecutionProgress` retains actual model
+and tool counters alongside the deadline; review activity remains separately
+identified by its call/revision. No shared scheduler owns the native loop.
+
+Before every model round, a native context step evaluates the retained session
+policy with the common estimator. It counts message text, assistant call payloads
+and declared tool schemas. Loaded skill context stays untrusted and protected,
+with its admitted digest. A summary can replace only complete assistant/tool
+groups: every declared call ID must have exactly one paired result. The current
+user task and immutable instructions remain. This uses the same common compaction
+policy as conversation preflight, including its recent-group tail and safe-budget
+check. If no safe group can be summarized or the result remains too large, the
+next model request does not dispatch.
+
+The summarizer runs inside that native step under the same selected model and
+free-evaluation policy. Its usage counts as a model call; summary quality remains
+a model behavior. Native history retains the returned projection for replay.
+Private files `<world-data>/agentlab-progress/<hashed-run-id>.context-round-N.json`
+retain request messages, budget, compaction source messages/IDs and skill digests.
+They are inspection evidence, not executable state or a replacement transcript.
+Character-based counts remain estimates. Large immutable schemas or skill bodies
+can exhaust the window; this phase adds no tool-search or automatic schema pruning.
+Local single-owner recovery is tested, not hosted multi-replica execution or replay
+after arbitrary source changes.
 
 ## Free evaluation routing
 
@@ -96,8 +132,9 @@ World behavior require a separate hosted profile and are not established here.
 `connected-native.test.ts` uses the actual local World, authenticated capability
 host and deterministic model with an unfamiliar schema. It checks pending review
 restart, renewal, original-call approval, denial feedback, stale delivery rejection,
-an unreachable host before dispatch and the existing external effect fixture's
-lost acknowledgement. It makes no paid model call or account
+an unreachable host before dispatch, compaction before a second pending review
+and service replacement, an absolute review-wait deadline, and the existing
+external effect fixture's lost acknowledgement. It makes no paid model call or account
 mutation. These checks establish native fixture behavior, not real-model task
 selection or Vercel-hosted guarantees. A Workflow can finish normally by returning
 a failed agent result: the runner keeps the native completed status while exposing

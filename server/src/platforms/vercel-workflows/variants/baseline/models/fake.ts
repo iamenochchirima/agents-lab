@@ -5,6 +5,7 @@ import type {
 
 /** A deterministic provider used to exercise the workflow without network cost. */
 export function completeFakeModel(input: VercelWorkflowModelRequest): VercelWorkflowModelResult {
+  if (input.model.model === "fake-summary") return { kind: "success", output: "Deterministic fixture summary of completed tool groups.", providerRequestId: "fake-summary", usage: { inputTokens: null, outputTokens: null, totalTokens: null } };
   if (input.model.model === "fake-failure") {
     return {
       kind: "failure",
@@ -18,6 +19,11 @@ export function completeFakeModel(input: VercelWorkflowModelRequest): VercelWork
     };
   }
 
+  if (input.model.model === "fake-long-tools" && (input.round ?? 1) <= 2) {
+    const requested = JSON.parse(input.prompt) as { name: string; arguments: unknown }[];
+    const call = requested[(input.round ?? 1) - 1]!;
+    return { kind: "success", output: null, toolCalls: [{ ...call, toolCallId: `${input.runId}:call:${input.round}`, round: input.round! }], providerRequestId: "fake-long-tools", usage: { inputTokens: null, outputTokens: null, totalTokens: null } };
+  }
   if (input.model.model === "fake-tools" && (input.round ?? 1) === 1) {
     const requested = JSON.parse(input.prompt) as { name: string; arguments: unknown }[];
     return { kind: "success", output: null, toolCalls: requested.map((call, index) => ({

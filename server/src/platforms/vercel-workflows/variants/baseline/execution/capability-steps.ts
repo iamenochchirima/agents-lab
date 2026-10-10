@@ -1,7 +1,8 @@
+import { remainingExecutionMs } from "../../../../../capabilities/execution/policy.js";
 import { FatalError } from "workflow";
 import { createRuntimeToolRegistry, prepareToolInvocation } from "../../../../../capabilities/extensions/runtime.js";
 import { ContextService, ContextSessionStore, CharacterTokenEstimator } from "../../../../../capabilities/context/index.js";
-import type { ToolCall } from "../../../../../capabilities/tools/contracts.js";
+import type { ToolCall, ToolExecutionResult } from "../../../../../capabilities/tools/contracts.js";
 import type { VercelWorkflowInput, VercelWorkflowProgress, VercelModelMessage } from "../contracts.js";
 import { capabilityInventoryContext } from "../../../../../capabilities/inventory.js";
 import { ProgressStore } from "../state/progress-store.js";
@@ -19,9 +20,11 @@ export async function initializeCapabilityStep(input: VercelWorkflowInput) {
     const context = new ContextService(new ContextSessionStore(input.context.rootDirectory), new CharacterTokenEstimator());
     const prepared = await context.prepareTurn(input.context.sessionId, input.context.turnId, {
       async summarize(request) {
+        const remaining = remainingExecutionMs(input.execution, Date.now());
+        if (remaining === 0) throw new FatalError("Task deadline reached before initial context summary dispatch.");
         const config = loadVercelWorkflowsConfig();
         const modelRequest = { ...input, prompt: request.messages.map(message => `[${message.role}]\n${message.content}`).join("\n\n"),
-          systemInstruction: "Summarize the conversation. Preserve facts, decisions, open requests and tool results.", attempt: 1 };
+          systemInstruction: "Summarize the conversation. Preserve facts, decisions, open requests and tool results.", attempt: 1, modelTimeoutMs: Math.max(1, Math.min(input.modelTimeoutMs, remaining)) };
         const result = input.model.provider === "fake" ? completeFakeModel(modelRequest) : await completeOpenRouterModel(modelRequest, { apiKey: config.openRouterApiKey, baseUrl: config.openRouterBaseUrl });
         if (result.kind !== "success" || !result.output) throw new FatalError("Context summary failed.");
         return result.output;
@@ -38,6 +41,8 @@ export async function initializeCapabilityStep(input: VercelWorkflowInput) {
 
 export async function prepareCapabilityStep(input: VercelWorkflowInput, call: ToolCall) {
   "use step";
+  if (remainingExecutionMs(input.execution, Date.now()) === 0) return { kind: "failure" as const,
+    error: { code: "TASK_DEADLINE_EXCEEDED", message: "Task deadline reached before action review preparation.", failureKind: "timeout" as const, retryable: false } };
   const registry = createRuntimeToolRegistry(input.tools ?? { enabledNames: [] }, input.toolCatalog);
   const validation = registry.validateCall(call);
   if (!validation.accepted) return { kind: "rejected" as const, code: validation.code, message: validation.message };
@@ -46,7 +51,7 @@ export async function prepareCapabilityStep(input: VercelWorkflowInput, call: To
   let review;
   try {
     review = input.toolCatalog ? await prepareToolInvocation(input.toolCatalog, validation.call, {
-      runId: input.runId, turnId: input.turnId ?? `${input.runId}:turn:1`, signal: AbortSignal.timeout(30_000),
+      runId: input.runId, turnId: input.turnId ?? `${input.runId}:turn:1`, signal: AbortSignal.timeout(Math.max(1, Math.min(30_000, remainingExecutionMs(input.execution, Date.now())))),
     }) : null;
   } catch {
     return { kind: "failure" as const, error: { code: "ACTION_REVIEW_PREPARATION_FAILED",
@@ -56,13 +61,17 @@ export async function prepareCapabilityStep(input: VercelWorkflowInput, call: To
   return { kind: "prepared" as const, call: validation.call, definition: validation.definition, review };
 }
 
-export async function executeCapabilityStep(input: VercelWorkflowInput, call: ToolCall) {
+export async function executeCapabilityStep(input: VercelWorkflowInput, call: ToolCall): Promise<ToolExecutionResult> {
   "use step";
+  const remaining = remainingExecutionMs(input.execution, Date.now());
+  if (remaining === 0) return { status: "timed_out", content: "", durationMs: 0, attemptCount: 0,
+    error: { code: "TOOL_TIMEOUT", message: "Task deadline reached before tool dispatch." },
+    effect: { state: "not_dispatched", evidence: "The native step checked the retained deadline before contacting the source." } };
   const registry = createRuntimeToolRegistry(input.tools ?? { enabledNames: [] }, input.toolCatalog);
   const validated = registry.validateCall(call);
   if (!validated.accepted) throw new FatalError("The admitted tool call changed before dispatch.");
   return registry.execute(validated, { runId: input.runId, turnId: input.turnId ?? `${input.runId}:turn:1`,
-    toolCallId: call.toolCallId, connectionBindings: input.connections, signal: AbortSignal.timeout(validated.definition.limits.timeoutMs) });
+    toolCallId: call.toolCallId, connectionBindings: input.connections, signal: AbortSignal.timeout(Math.max(1, Math.min(validated.definition.limits.timeoutMs, remaining))) });
 }
 // SDK retry defaults otherwise repeat steps. Host receipts retain the call
 // identity across process recovery; unknown effects stop the native loop.
@@ -73,5 +82,11 @@ initializeCapabilityStep.maxRetries = 0;
 export async function publishProgressStep(input: VercelWorkflowInput, progress: VercelWorkflowProgress): Promise<string> {
   "use step";
   if (input.progressDirectory) await new ProgressStore(input.progressDirectory).write(input.runId, progress);
+  return new Date().toISOString();
+}
+
+/** Clock access stays in a native step; replay retains the original boundary observation. */
+export async function executionClockStep(): Promise<string> {
+  "use step";
   return new Date().toISOString();
 }

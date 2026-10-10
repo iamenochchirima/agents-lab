@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -41,7 +41,7 @@ test("native connected Workflow gates effects, restores pending review, renews a
       try { await provider.create(context.runId, "disposable", context.signal); }
       catch { const error = new Error("Committed effect lost acknowledgement"); error.name = "API_OUTCOME_UNKNOWN"; throw error; }
     }
-    return JSON.stringify({ saved: args.value });
+    return JSON.stringify({ saved: args.value, ...(args.value === "compact" ? { largeResult: "completed observation ".repeat(3000) } : {}) });
   }, "a".repeat(64));
   const definition = { ...original.descriptor.definition, approvalMode: "invocation" as const };
   const tool = { ...original, descriptor: { ...original.descriptor, definition }, implementation: { ...original.implementation, definition } };
@@ -108,6 +108,49 @@ test("native connected Workflow gates effects, restores pending review, renews a
         assert.equal(completed.result?.status, "completed", JSON.stringify(completed.result));
         assert.match(completed.result?.output ?? "", choice === "deny" ? /TOOL_APPROVAL_DENIED/ : /approve/);
       }
+    });
+    await t.test("compaction survives pending review replacement without duplicating completed work", async () => {
+      const before = effects;
+      const created = await service.createRun({ platform: "vercel-workflows", variant: "baseline", execution: { mode: "sustained", maxDurationMs: 60_000 },
+        task: { kind: "prompt", prompt: JSON.stringify([{ name: definition.name, arguments: { value: "compact" } }, { name: definition.name, arguments: { value: "after-compact" } }]) },
+        model: { provider: "fake", model: "fake-long-tools", contextWindowTokens: 16384 }, capabilities: { profileId: profile.id, tools: { enabledNames: [definition.name], maxRounds: 4, maxCalls: 3 } } });
+      await waitFor(service, created.runId, view => view.status === "suspended");
+      let pending = (await service.actions(created.runId))[0]!;
+      await service.decideAction(created.runId, pending.requestId, { requestId: pending.requestId, revision: pending.revision, argumentDigest: pending.argumentDigest, decisionId: randomUUID(), decision: "approved" });
+      const compacted = await waitFor(service, created.runId, view => view.status === "suspended" && view.events.some(event => event.kind === "ContextCompacted"));
+      assert.equal(effects, before + 1);
+      pending = (await service.actions(created.runId)).find(action => action.status === "pending")!;
+      const snapshots = await Promise.all((await readdir(join(config.dataDir, "agentlab-progress"))).filter(name => name.includes(".context-round-")).map(async name => JSON.parse(await readFile(join(config.dataDir, "agentlab-progress", name), "utf8"))));
+      const snapshot = snapshots.find(snapshot => snapshot.runId === created.runId && snapshot.compaction);
+      assert.ok(snapshot);
+      assert.ok(snapshot.messages.some((message: { content: string }) => message.content === created.manifest.task.prompt));
+      assert.ok(snapshot.sourceMessages.some((message: { role: string; content: string }) => message.role === "tool" && message.content.includes("completed observation")));
+      assert.equal(snapshot.budget.quality, "estimated");
+      assert.ok(snapshot.budget.remainingTokens > 0);
+      const deadline = compacted.manifest.execution!.deadlineAt;
+      await native.stop(); native = new VercelWorkflowsPlatformService({ config }); await native.start();
+      const restored = await waitFor(service, created.runId, view => view.status === "suspended");
+      assert.equal(restored.manifest.execution!.deadlineAt, deadline);
+      assert.equal(restored.events.filter(event => event.kind === "ContextCompacted").length, 1);
+      assert.equal(effects, before + 1);
+      await service.decideAction(created.runId, pending.requestId, { requestId: pending.requestId, revision: pending.revision, argumentDigest: pending.argumentDigest, decisionId: randomUUID(), decision: "approved" });
+      const completed = await waitFor(service, created.runId, view => !!view.result);
+      assert.equal(completed.result?.status, "completed", JSON.stringify(completed.result));
+      assert.equal(effects, before + 2);
+      assert.equal(completed.events.filter(event => event.kind === "ToolExecutionCompleted").length, 2);
+      assert.equal(completed.metrics?.modelCallCount, 4, "three reasoning rounds plus one summary");
+    });
+    await t.test("absolute task deadline releases a native review wait without an effect", async () => {
+      const before = effects;
+      const created = await service.createRun({ platform: "vercel-workflows", variant: "baseline", execution: { mode: "sustained", maxDurationMs: 2_000 },
+        task: { kind: "prompt", prompt: JSON.stringify([{ name: definition.name, arguments: { value: "too-late" } }]) },
+        model: { provider: "fake", model: "fake-tools", contextWindowTokens: 16384 }, capabilities: { profileId: profile.id, tools: { enabledNames: [definition.name], maxRounds: 3, maxCalls: 2 } } });
+      await waitFor(service, created.runId, view => view.status === "suspended");
+      const completed = await waitFor(service, created.runId, view => !!view.result);
+      assert.equal(completed.result?.error?.code, "TASK_DEADLINE_EXCEEDED");
+      assert.equal(effects, before);
+      assert.ok(!completed.events.some(event => event.kind === "ToolExecutionStarted"));
+      assert.equal(completed.executionReference?.native.pendingReview, null);
     });
     await t.test("unreachable host fails before dispatch with a safe cause", async () => {
       await app.close();

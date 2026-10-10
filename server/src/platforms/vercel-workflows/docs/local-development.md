@@ -72,3 +72,20 @@ the Lab manifest or native reference.
 `pnpm run build:workflow` shows the standalone compilation independently. It writes
 ignored generated files under `.workflow-build/` and the Workflow manifest under
 `variants/baseline/execution/.well-known/`.
+
+## Sustained tasks and context inspection
+
+The shared API accepts optional execution settings such as
+`{"mode":"sustained","maxDurationMs":3600000,"modelTimeoutMs":60000}`.
+Admission retains the absolute deadline in the run manifest; the platform service
+receives that frozen policy. It is not an observer timeout, and neither approval
+renewal nor restarting this service gives the task another hour. Keep the same
+World data directory while replacing the service.
+
+Private per-round context projections are stored under
+`<AGENTLAB_VERCEL_WORKFLOWS_DATA_DIR>/agentlab-progress/` with a hashed run ID
+and `.context-round-N.json` suffix. Compacted snapshots include their source
+messages and IDs, estimated before/after budgets and skill digests. These files
+can contain task and source content; treat them like protected run evidence and
+keep them out of Git. World history owns replay; editing a projection cannot
+change a retained model decision or authorize an action.

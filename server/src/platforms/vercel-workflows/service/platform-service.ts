@@ -363,6 +363,7 @@ function parseInput(value: unknown): VercelWorkflowInput {
     systemInstruction: record.systemInstruction,
     model: { provider: model.provider, model: model.model },
     modelTimeoutMs: record.modelTimeoutMs,
+    ...(record.execution ? { execution: record.execution as VercelWorkflowInput["execution"] } : {}),
     ...(record.liveEval === true ? { liveEval: true, liveEvalExperiment: record.liveEvalExperiment as VercelWorkflowInput["liveEvalExperiment"] } : {}),
     ...(typeof record.turnId === "string" ? { turnId: record.turnId } : {}),
     ...(record.tools ? { tools: record.tools as VercelWorkflowInput["tools"] } : {}),

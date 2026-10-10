@@ -1,3 +1,4 @@
+import { remainingExecutionMs } from "../../../../../capabilities/execution/policy.js";
 import { getStepMetadata } from "workflow";
 
 import { loadVercelWorkflowsConfig } from "../../../config.js";
@@ -18,7 +19,9 @@ export async function executeModelStep(input: Omit<VercelWorkflowModelRequest, "
 
   const metadata = getStepMetadata();
   const startedAt = metadata.stepStartedAt.toISOString();
-  const request: VercelWorkflowModelRequest = { ...input, attempt: metadata.attempt };
+  const remaining = remainingExecutionMs(input.execution, Date.now());
+  const request: VercelWorkflowModelRequest = { ...input, attempt: metadata.attempt, modelTimeoutMs: Math.max(1, Math.min(input.modelTimeoutMs, remaining)) };
+  if (remaining === 0) return { kind: "failure", requestSent: false, error: { code: "TASK_DEADLINE_EXCEEDED", message: "The retained task deadline was reached before model dispatch.", failureKind: "timeout", retryable: false }, attempt: metadata.attempt, stepId: metadata.stepId, stepName: metadata.stepName, startedAt, finishedAt: new Date().toISOString() };
   const result = input.model.provider === "fake"
     ? completeFakeModel(request)
     : await completeOpenRouterModel(request, (() => {

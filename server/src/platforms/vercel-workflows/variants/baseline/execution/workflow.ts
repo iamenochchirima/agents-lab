@@ -1,3 +1,5 @@
+import { prepareRoundContextStep } from "./context-step.js";
+import { executionDeadlineReached, remainingExecutionMs } from "../../../../../capabilities/execution/policy.js";
 import { createHook, sleep } from "workflow";
 import type { RunError, RunEventIntent, RunUsage } from "../../../../../control-plane/domain/types.js";
 import type { InvocationResumeInput, InvocationReviewView } from "../../../../../capabilities/reviews/contracts.js";
@@ -6,7 +8,7 @@ import { VERCEL_WORKFLOW_NAME } from "../../../config.js";
 import type { VercelWorkflowInput, VercelWorkflowResult, VercelModelMessage } from "../contracts.js";
 import { VERCEL_WORKFLOW_SOURCE } from "../contracts.js";
 import { executeModelStep } from "./model-step.js";
-import { initializeCapabilityStep, prepareCapabilityStep, executeCapabilityStep, publishProgressStep } from "./capability-steps.js";
+import { initializeCapabilityStep, prepareCapabilityStep, executeCapabilityStep, publishProgressStep, executionClockStep } from "./capability-steps.js";
 
 /** Native Workflow orchestration. All provider, host, context and file I/O is in steps. */
 export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promise<VercelWorkflowResult> {
@@ -40,8 +42,23 @@ export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promis
       native: { workflowName: VERCEL_WORKFLOW_NAME, stepNames } };
   };
   await record("ContextPrepared", { snapshotId: initialized.snapshotId, toolNames: initialized.definitions.map(tool => tool.name), contextStrategy: input.context ? "session_snapshot" : "prompt" });
+  const deadlineError = { code: "TASK_DEADLINE_EXCEEDED", message: "The retained task deadline was reached. No further action will be dispatched.", failureKind: "timeout" as const, retryable: false };
+  const deadlineReached = async () => executionDeadlineReached(input.execution, Date.parse(await executionClockStep()));
   const seenIds = new Set<string>();
   for (let round = 1; round <= (input.tools?.maxRounds ?? 6); round++) {
+    if (await deadlineReached()) return finish("failed", null, deadlineError);
+    const context = await prepareRoundContextStep(input, messages, round);
+    if (context.summaryAttempted) { modelCallCount++; attemptCount++; }
+    if (context.failure) { await record("ContextPreparationFailed", { round, code: context.failure.code, failureKind: context.failure.failureKind, summaryAttempted: context.summaryAttempted }); return finish(context.failure.failureKind === "outcome_unknown" ? "reconciliation_required" : "failed", null, context.failure); }
+    messages = context.messages;
+    if (context.compaction) {
+      usage = { inputTokens: add(usage.inputTokens, context.summaryUsage?.inputTokens ?? null), outputTokens: add(usage.outputTokens, context.summaryUsage?.outputTokens ?? null), totalTokens: add(usage.totalTokens, context.summaryUsage?.totalTokens ?? null) };
+      await record("ContextCompacted", { round, compactionId: context.compaction.compactionId, sourceMessageIds: context.compaction.sourceMessageIds, summaryRequestId: context.summaryRequestId,
+        inputTokensBefore: context.compaction.before.inputTokens, inputTokensAfter: context.compaction.after.inputTokens });
+    }
+    if (context.budget) await record("ContextBudgetPrepared", { round, inputTokens: context.budget.inputTokens, remainingTokens: context.budget.remainingTokens, quality: context.budget.quality });
+    if (await deadlineReached()) return finish("failed", null, deadlineError);
+    if (input.execution) await record("ExecutionProgress", { deadlineAt: input.execution.deadlineAt, modelCallCount, toolCallCount, toolAttemptCount, waitReason: "model" });
     await record("ModelRequested", { provider: input.model.provider, model: input.model.model, round, attempt: 1 });
     const model = await executeModelStep({ ...input, round, messages, toolDefinitions: initialized.definitions });
     phases.push({ name: round === 1 ? "model" : `model_${round}`, startedAt: model.startedAt, finishedAt: model.finishedAt });
@@ -68,6 +85,7 @@ export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promis
       const feedback = (code: string, message: string) => { messages = [...messages, { role: "tool", toolCallId: call.toolCallId, name: call.name, content: JSON.stringify({ error: { code, message } }) }]; };
       await record("ToolCallRequested", payload);
       if (toolAttemptCount >= (input.tools?.maxCalls ?? 8)) return finish("failed", null, { code: "TOOL_CALL_LIMIT_EXCEEDED", message: "The tool call limit was reached.", failureKind: "validation", retryable: false });
+      if (await deadlineReached()) return finish("failed", null, deadlineError);
       const prepared = await prepareCapabilityStep(input, { ...call, round });
       if (prepared.kind === "failure") return finish("failed", null, prepared.error);
       if (prepared.kind === "rejected") {
@@ -78,6 +96,7 @@ export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promis
       let review = prepared.review;
       let decision = review?.decision?.decision;
       while (review && (review.status === "pending" || review.status === "expired")) {
+        if (await deadlineReached()) return finish("failed", null, deadlineError);
         const hook = createHook<InvocationResumeInput>({ token: `agentlab-review:${input.runId}:${review.requestId}:${review.revision}` });
         // createHook alone is deferred. Commit registration before making the
         // pending review deliverable to HTTP inspection and the browser.
@@ -100,7 +119,12 @@ export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promis
           await record("WorkflowResumed", { ...payload, requestId: review.requestId, revision: review.revision, decision });
           break;
         }
-        const resumed = await hook;
+        const waitMs = remainingExecutionMs(input.execution, Date.parse(await executionClockStep()));
+        const delivered = input.execution
+          ? await Promise.race([hook.then(value => ({ kind: "decision" as const, value })), sleep(waitMs).then(() => ({ kind: "deadline" as const }))])
+          : { kind: "decision" as const, value: await hook };
+        if (delivered.kind === "deadline") { hook.dispose(); return finish("failed", null, deadlineError); }
+        const resumed = delivered.value;
         hook.dispose();
         if (resumed.requestId !== review.requestId || resumed.toolCallId !== call.toolCallId ||
             resumed.revision !== review.revision + (resumed.decision === "renewed" ? 1 : 0)) throw new Error("Review delivery identity does not match the suspended call.");
@@ -121,6 +145,7 @@ export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promis
         feedback("TOOL_APPROVAL_DENIED", "The proposed action was declined."); continue;
       }
       if (review?.status === "cancelled") return finish("cancelled", null, { code: "TOOL_CANCELLED", message: "The review was cancelled.", failureKind: "cancelled", retryable: false });
+      if (await deadlineReached()) return finish("failed", null, deadlineError);
       toolAttemptCount++;
       await record("ToolExecutionStarted", payload);
       const result = await executeCapabilityStep(input, prepared.call);

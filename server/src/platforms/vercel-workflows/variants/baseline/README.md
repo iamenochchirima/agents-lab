@@ -19,12 +19,20 @@ Code map:
 
 - `execution/workflow.ts` — deterministic orchestration and normalized result.
 - `execution/model-step.ts` — the side-effecting model step and retry boundary.
-- `execution/capability-steps.ts` — common context, host and progress I/O.
+- `execution/capability-steps.ts` — initial context, host, native clock and progress I/O.
+- `execution/context-step.ts` — request-local budget and complete-group compaction before every model round.
 - `state/progress-store.ts` — durable in-progress inspection projection.
 - `execution/bundle-builder.ts` — official standalone bundle and manifest build.
 - `models/` — fake and OpenRouter model calls.
 - `state/admission-store.ts` — durable Lab-side admission acknowledgement.
 - `../../runner-adapter/` — shared Lab runner port adapter.
+
+Sustained runs retain their absolute deadline in admitted execution policy. Native
+timers end review waits, and remaining-time checks guard model/tool dispatch.
+Context summaries preserve the task, loaded skill provenance and complete paired
+results; private round snapshots remain inspection evidence. This local baseline
+does not establish recovery after arbitrary code changes or every unacknowledged
+model request.
 
 See [execution semantics](../../docs/semantics.md) for review delivery, retry,
 unknown-effect and recovery boundaries.
