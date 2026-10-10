@@ -12,6 +12,9 @@ export function capabilityInventoryContext(inventory: CapabilityInventorySnapsho
     const tools = source.tools.map(tool => `${JSON.stringify(tool.name)} (${tool.risk}; ${approvalDescription(tool.approvalMode)})`).join(", ");
     lines.push(`- ${JSON.stringify(source.id)}@${source.version}: ${tools}`);
   }
+  if (inventory.sources.some(source => source.tools.some(tool => tool.approvalMode === "invocation"))) {
+    lines.push("For tools marked review required, submitting a tool call proposes its exact arguments. The platform prepares an action review and waits for the user's decision before dispatching that call. Gather required values first, then submit the proposed tool call when asked to propose an action. A plain-text confirmation request does not create an actionable review. Approval is not execution success; report the observed tool result. Denial prevents that call and is returned as tool feedback.");
+  }
   lines.push("Procedural skills. Preloaded skill instructions are already in context. Available skills below contain metadata only; use a declared skill loader to obtain their instructions before following or claiming to use them:");
   if (inventory.skills.length === 0) lines.push("- No procedural skills are available in this run.");
   for (const skill of inventory.skills) {

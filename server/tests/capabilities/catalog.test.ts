@@ -132,3 +132,16 @@ test("catalog rejects colliding declarations and unresolved remote schemas at re
   assert.throws(() => new CapabilityCatalog([], [], undefined, undefined, { toolDescriptors: [descriptor, descriptor] }), /Duplicate catalog tool/);
   assert.throws(() => new CapabilityCatalog([], [], undefined, undefined, { toolDescriptors: [{...descriptor, definition: {...descriptor.definition, inputSchema: { $ref: "https://invalid.example/schema" }}}] }), /resolve reference/);
 });
+
+test("inventory explains exact review submission only when an admitted tool requires it", () => {
+  const catalog = new CapabilityCatalog(DEFAULT_CAPABILITY_MANIFESTS, DEFAULT_CAPABILITY_PROFILES, undefined, undefined, { toolDescriptors: builtinToolDescriptors() });
+  const resolved = catalog.resolve("local-safe");
+  const snapshot = catalog.toolSnapshot(["calculator"], resolved.resolution);
+  const inventory = catalog.inventory(resolved.profile, snapshot, []);
+  assert.doesNotMatch(capabilityInventoryContext(inventory), /plain-text confirmation/);
+  const reviewed = { ...inventory, sources: inventory.sources.map(source => ({ ...source, tools: source.tools.map(tool => ({ ...tool, approvalMode: "invocation" as const })) })) };
+  const context = capabilityInventoryContext(reviewed);
+  assert.match(context, /before dispatching that call/);
+  assert.match(context, /plain-text confirmation request does not create/);
+  assert.match(context, /Denial prevents that call/);
+});

@@ -223,3 +223,10 @@ Package-backed capability profiles are admitted by Temporal, Restate, LangGraph,
 Mastra baseline and Vercel Workflows baseline. Each uses its own native execution
 and review mechanism; this declaration permits admission and does not establish
 identical recovery guarantees or real-provider acceptance.
+
+When the admitted catalog includes invocation reviews, the model inventory also
+explains the native proposal contract: a tool call prepares an exact review,
+the platform waits before dispatch, denial returns tool feedback, and plaintext
+confirmation cannot create an approval card. This is shared lifecycle guidance,
+not tool-specific prompts or permission to bypass review. The agent still must
+obtain missing required inputs and wait for the observed execution result.
