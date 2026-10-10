@@ -10,14 +10,28 @@ export function InvocationReviewPanel({ run, action, busy, uncertain, now, evide
   const terminal = ["completed", "failed", "cancelled", "reconciliation_required"].includes(run.status);
   const expired = action.status === "expired" || action.status === "pending" && !canReviewAction(action, now);
   const outcome = run.events.findLast(event => event.payload.toolCallId === action.call.toolCallId && ["ToolExecutionCompleted", "ToolExecutionUnknown", "ToolExecutionFailed", "ToolExecutionCancelled", "ToolPolicyDenied"].includes(event.kind));
-  const unknown = outcome?.kind === "ToolExecutionUnknown" || run.status === "reconciliation_required";
-  const label = unknown ? "Outcome unknown" : action.status === "approved" && run.status === "suspended" ? "Approved · waiting to resume" : action.status === "dispatching" ? "Running" : expired ? "Review expired" : action.status === "pending" && terminal ? "Review stopped" : action.status.replaceAll("_", " ");
+  const effect = outcome?.payload.effect;
+  const specificUnknown = outcome?.kind === "ToolExecutionUnknown" || effect !== null && typeof effect === "object" && "state" in effect && effect.state === "unknown";
+  const conclusive = !specificUnknown && (outcome !== undefined || ["completed", "denied", "cancelled"].includes(action.status));
+  const dispatchObserved = action.status === "dispatching" || run.events.some(event => event.payload.toolCallId === action.call.toolCallId && event.kind === "ToolExecutionStarted");
+  // Another call can put the run into reconciliation. Retain this call's own known result.
+  const unknown = specificUnknown || run.status === "reconciliation_required" && !conclusive && dispatchObserved;
+  const stopped = terminal && !conclusive || outcome?.kind === "ToolExecutionFailed" || outcome?.kind === "ToolExecutionCancelled";
+  const label = unknown ? "Outcome unknown"
+    : outcome?.kind === "ToolExecutionCompleted" ? "Completed"
+    : action.status === "denied" || outcome?.kind === "ToolPolicyDenied" ? "Denied"
+    : stopped || action.status === "cancelled" ? "Stopped"
+    : action.status === "completed" ? "Finished · inspect evidence"
+    : action.status === "approved" && run.status === "suspended" ? "Approved · waiting to resume"
+    : action.status === "dispatching" ? "Running"
+    : expired ? "Review expired" : action.status.replaceAll("_", " ");
   return <section className="invocation-review" aria-label={`Action review: ${action.call.name}`}>
     <header><strong>{action.presentation?.displayName ?? action.call.name}</strong><span role="status">{label}</span></header>
     {action.presentation && <p>{action.presentation.description}</p>}
     <small>Exact action{action.presentation ? ` · ${action.presentation.risk} action` : ""}</small>
     <dl className="invocation-arguments">{Object.entries(action.displayArguments).map(([name, value]) => <div key={name}><dt>{action.presentation?.argumentLabels[name] ?? name}</dt><dd>{boundedArgument(value)}</dd></div>)}</dl>
     {action.status === "denied" && <p>This action was denied. Approval did not authorize dispatch.</p>}
+    {stopped && !unknown && <p>The run stopped. This does not establish whether a dispatched action changed provider state. Inspect the recorded evidence before repeating it.</p>}
     {unknown && <p>Inspect provider state and the recorded receipt before repeating this action. Cancellation does not roll back a dispatched call.</p>}
     <details className="chat-activity"><summary>Details</summary>
       <small>Revision {action.revision} · call {action.call.toolCallId}</small>
