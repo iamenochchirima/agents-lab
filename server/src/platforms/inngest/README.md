@@ -44,7 +44,7 @@ pnpm --filter @agent-harness-lab/lab-server run dev:inngest
 In another terminal, start the official Dev Server:
 
 ```bash
-pnpm dlx --yes inngest-cli@1.44.0 dev \
+pnpm dlx inngest-cli@1.44.0 dev \
   --no-discovery \
   -u http://127.0.0.1:9091/api/inngest
 ```

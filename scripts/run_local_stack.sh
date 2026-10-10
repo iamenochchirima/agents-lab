@@ -617,7 +617,7 @@ run_inngest_dev() {
 
   local service_url="${AGENTLAB_INNGEST_SERVICE_URL:-http://${API_HOST}:9091}"
   echo "Starting Inngest Dev Server for $service_url/api/inngest."
-  exec pnpm dlx --yes inngest-cli@1.44.0 dev --no-discovery -u "$service_url/api/inngest"
+  exec pnpm dlx inngest-cli@1.44.0 dev --no-discovery -u "$service_url/api/inngest"
 }
 
 run_trigger_dev() {
