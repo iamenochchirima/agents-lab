@@ -126,7 +126,17 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   app.get("/api/capability-packages", async (_request, reply) => reply.send({ packages: management.loaded.packages }));
   const adminSessions = await CapabilityAdminSessions.create(trustedFrontendOrigins(config.api.origin));
   registerCapabilityManagement(app, management, adminSessions);
-  app.addHook("onClose", async () => { await management.close(); });
+  // Inspection and retained decision delivery continue when no browser is open.
+  // Never overlap passes; native runtimes still own every model/tool step.
+  let observing: Promise<void> | null = null;
+  const observe = () => {
+    if (observing) return;
+    observing = service.observeActiveRuns().catch(() => undefined).finally(() => { observing = null; });
+  };
+  const observationTimer = setInterval(observe, 2_000);
+  observationTimer.unref();
+  app.addHook("onReady", async () => { observe(); });
+  app.addHook("onClose", async () => { clearInterval(observationTimer); await observing; await management.close(); });
   const studio = createStudioModule(config.studioRunsRoot, { memoryLimits: config.studioMemory });
   studio.register(app);
 

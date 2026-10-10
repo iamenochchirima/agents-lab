@@ -1,3 +1,4 @@
+import { executionDeadlineReached } from "../../capabilities/execution/policy.js";
 import { randomUUID } from "node:crypto";
 
 import { buildRunManifest, DEFAULT_SYSTEM_INSTRUCTION, InvalidRunRequestError, validateRunRequest } from "../domain/manifest.js";
@@ -103,6 +104,8 @@ export interface RunServiceDependencies {
  * owns the durable Lab projection and its recovery rules.
  */
 export class RunService {
+  private readonly deliveryInFlight = new Map<string, Promise<void>>();
+  private observationCursor = 0;
   private readonly contextRecoveryInFlight = new Map<string, Promise<PlatformExecutionReference | null>>();
 
   constructor(private readonly dependencies: RunServiceDependencies) {}
@@ -369,9 +372,13 @@ export class RunService {
     // Inspect only the retained execution identity; never redispatch the task.
     const provisionalReconciliation = snapshot.result?.status === "reconciliation_required";
     if (snapshot.result && !provisionalReconciliation) {
+      await this.settleContextTurn(snapshot.manifest, snapshot.result);
+      await this.dependencies.evidence.markRunInactive(runId);
       return toRunView(snapshot, snapshot.result.status, await this.contextProjection(snapshot.manifest));
     }
 
+    // An inspected legacy run joins the observation index without scanning old history.
+    if (snapshot.executionReference) await this.dependencies.evidence.markRunActive(runId);
     const runner = this.dependencies.registry.runnable(snapshot.manifest);
     if (!runner) {
       return toRunView(snapshot, deriveStatus(snapshot.events, snapshot.result), await this.contextProjection(snapshot.manifest));
@@ -501,9 +508,8 @@ export class RunService {
       return reviews.decide(runId, input as InvocationDecision);
     });
     await this.appendControlEvent(runId, "InvocationReviewDecided", { requestId, revision: review.revision, decisionId: input.decisionId, decision: input.decision, toolCallId: review.call.toolCallId });
-    const resume: InvocationResumeInput = { kind: "invocation_review", requestId, revision: review.revision, decisionId: input.decisionId,
-      toolCallId: review.call.toolCallId, decision: input.decision, ...(input.reason ? { reason: input.reason } : {}) };
-    return this.resumeRun(runId, resume);
+    await this.deliverReview(runId, requestId);
+    return this.getRun(runId);
   }
 
   /** Renew only the retained immutable action, never browser-supplied arguments. */
@@ -518,8 +524,77 @@ export class RunService {
     const review = await this.dependencies.renewReview(runId, requestId);
     if (!review.renewalId) throw new InvocationReviewError("No fresh review identity was retained.");
     await this.appendControlEvent(runId, "InvocationReviewRenewed", { requestId, revision: review.revision, renewalId: review.renewalId, toolCallId: review.call.toolCallId });
-    return this.resumeRun(runId, { kind: "invocation_review", requestId, revision: review.revision,
-      decisionId: review.renewalId, toolCallId: review.call.toolCallId, decision: "renewed" } satisfies InvocationResumeInput);
+    await this.deliverReview(runId, requestId);
+    return this.getRun(runId);
+  }
+
+  /** Retry only persisted native control delivery. Never restart agent reasoning here. */
+  async observeActiveRuns(limit = 16): Promise<void> {
+    const ids = await this.dependencies.evidence.activeRunIds();
+    if (!ids.length) return;
+    const selected = Array.from({ length: Math.min(limit, ids.length) }, (_, offset) => ids[(this.observationCursor + offset) % ids.length]!);
+    this.observationCursor = (this.observationCursor + selected.length) % ids.length;
+    await Promise.allSettled(selected.map(async runId => {
+      const snapshot = await this.dependencies.evidence.readSnapshot(runId);
+      // Admission may not yet have returned a native identity. Observation must
+      // not classify that transient window as a lost submission or redispatch it.
+      if (!snapshot.executionReference && !snapshot.result) return;
+      for (const review of await this.dependencies.reviews?.list(runId) ?? []) {
+        if ((review.decision || review.renewalId) && (!review.delivery || review.delivery.status === "pending")
+          && (!review.delivery?.nextAttemptAt || Date.parse(review.delivery.nextAttemptAt) <= Date.now())) {
+          await this.deliverReview(runId, review.requestId);
+        }
+      }
+      await this.getRun(runId);
+    }));
+  }
+
+  private async deliverReview(runId: string, requestId: string): Promise<void> {
+    const key = `${runId}:${requestId}`;
+    const existing = this.deliveryInFlight.get(key);
+    if (existing) return existing;
+    const operation = this.deliverReviewOnce(runId, requestId);
+    this.deliveryInFlight.set(key, operation);
+    try { await operation; } finally { this.deliveryInFlight.delete(key); }
+  }
+
+  private async deliverReviewOnce(runId: string, requestId: string): Promise<void> {
+    const reviews = this.dependencies.reviews;
+    if (!reviews) return;
+    const review = await reviews.get(runId, requestId);
+    if (review.delivery?.status === "accepted") return;
+    const snapshot = await this.dependencies.evidence.readSnapshot(runId);
+    if (snapshot.result || snapshot.events.some(event => event.kind === "RunCancellationRequested")
+      || ["cancelled", "expired"].includes(review.status) || executionDeadlineReached(snapshot.manifest.execution, Date.now())) {
+      await reviews.recordDelivery(runId, requestId, review.revision, "stopped", "RUN_NOT_RESUMABLE");
+      return;
+    }
+    const decision = review.decision;
+    if (!decision && !review.renewalId) return;
+    const input: InvocationResumeInput = { kind: "invocation_review", requestId, revision: review.revision,
+      decisionId: decision?.decisionId ?? review.renewalId!, toolCallId: review.call.toolCallId,
+      decision: decision?.decision ?? "renewed", ...(decision?.reason ? { reason: decision.reason } : {}) };
+    try {
+      if (!snapshot.executionReference) throw new Error("Native reference is not retained.");
+      const runner = this.dependencies.registry.runnable(snapshot.manifest);
+      if (!runner?.resume) throw new Error("Native resume is unavailable.");
+      const accepted = await runner.resume(snapshot.executionReference, input);
+      if (accepted.accepted) {
+        await reviews.recordDelivery(runId, requestId, review.revision, "accepted");
+        await this.appendControlEvent(runId, "InvocationReviewDelivered", { requestId, revision: review.revision,
+          decisionId: input.decisionId, toolCallId: input.toolCallId });
+        return;
+      }
+      // A lost native acknowledgement can leave an already-consumed call.
+      // Exact call evidence closes that window without inventing another call.
+      const inspection = await runner.inspect(snapshot.executionReference);
+      const consumed = inspection.eventIntents.some(event => event.payload.toolCallId === input.toolCallId
+        && ["ToolExecutionStarted", "ToolExecutionCompleted", "ToolPolicyDenied"].includes(event.kind));
+      await reviews.recordDelivery(runId, requestId, review.revision, consumed ? "accepted" : accepted.alreadyTerminal ? "stopped" : "pending",
+        consumed ? undefined : "NATIVE_DELIVERY_UNCONFIRMED");
+    } catch {
+      await reviews.recordDelivery(runId, requestId, review.revision, "pending", "NATIVE_DELIVERY_UNCONFIRMED");
+    }
   }
 
   private async reconcile(
@@ -562,6 +637,7 @@ export class RunService {
         }
         await this.dependencies.evidence.writeMetrics(withCapabilityMetrics(inspection.metrics ?? calculateMetrics(inspection.result, persistedEvents), persistedEvents));
         await this.settleContextTurn(await this.dependencies.evidence.readManifest(runId), inspection.result);
+        await this.dependencies.evidence.markRunInactive(runId);
       }
     }
 
@@ -751,6 +827,7 @@ export class RunService {
     await this.dependencies.evidence.writeTrajectory({ schemaVersion: 1, runId: manifest.runId, phases: [] });
     await this.dependencies.evidence.writeMetrics(calculateMetrics(result, []));
     await this.settleContextTurn(manifest, result);
+    await this.dependencies.evidence.markRunInactive(manifest.runId);
   }
 
   private async recordReconciliationRequired(manifest: RunManifest, message: string): Promise<void> {

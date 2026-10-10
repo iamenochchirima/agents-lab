@@ -32,3 +32,17 @@ remains unknown and cannot be re-executed merely by approving again.
 
 The store is not a distributed lock service. API restart and native waiting restart
 are separate acceptance requirements. See the [decision record](../../../../docs/adr/0006-connected-business-agent-boundary.md).
+
+## Retained native delivery
+
+The decision and its pending delivery state are saved in the same review record.
+Renewal also retains delivery intent. The control plane delivers the same request,
+revision, call and decision identity; it never regenerates tool arguments. Transient
+native delivery errors retain a safe code and bounded backoff. Acceptance means
+native control delivery, not confirmed tool completion.
+
+A background observer inspects indexed active native runs and retries undelivered
+controls even when no browser is open. Completed native outcomes settle the original
+conversation turn. The index is an observation projection, not an agent scheduler.
+New runs and inspected legacy runs are indexed; uninspected historical runs are not
+scanned on every startup. Cancelled/stale/expired decisions are not redispatched.

@@ -1,3 +1,4 @@
+export type { RunExecutionPolicy, RunExecutionRequest } from "../../capabilities/execution/policy.js";
 import type { RunExecutionPolicy, RunExecutionRequest } from "../../capabilities/execution/policy.js";
 import type { ToolCatalogSnapshot } from "../../capabilities/extensions/contracts.js";
 export const RUN_STATUSES = [

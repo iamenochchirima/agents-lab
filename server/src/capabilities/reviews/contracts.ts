@@ -19,6 +19,9 @@ export interface InvocationReview {
   readonly decision: InvocationDecision | null;
   /** Server-issued identity for resuming a waiter onto a renewed review. */
   readonly renewalId?: string;
+  /** Stored atomically with a decision/renewal; acceptance is not tool completion. */
+  readonly delivery?: { readonly status: "pending" | "accepted" | "stopped"; readonly attemptCount: number;
+    readonly lastAttemptAt?: string; readonly nextAttemptAt?: string; readonly errorCode?: string };
 }
 
 export interface InvocationDecision {

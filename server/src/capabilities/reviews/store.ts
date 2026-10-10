@@ -39,7 +39,7 @@ export class InvocationReviewStore {
       const createdAt = new Date(this.now()).toISOString();
       const value: InvocationReview = { ...input, schemaVersion: 1, requestId: previous?.requestId ?? randomUUID(),
         revision: (previous?.revision ?? 0) + 1, status: "pending", decision: null, createdAt,
-        ...(previous ? { renewalId: randomUUID() } : {}),
+        ...(previous ? { renewalId: randomUUID(), delivery: { status: "pending" as const, attemptCount: 0 } } : {}),
         expiresAt: new Date(this.now() + 24 * 60 * 60 * 1000).toISOString() };
       await this.write(value);
       return value;
@@ -78,9 +78,24 @@ export class InvocationReviewStore {
     }
     if (value.status !== "pending") throw new InvocationReviewError(`Invocation review is ${value.status}.`);
     const decided: InvocationReview = { ...value, status: input.decision, decision: input,
+      delivery: { status: "pending", attemptCount: 0 },
       expiresAt: new Date(this.now() + 15 * 60 * 1000).toISOString() };
     await this.write(decided);
     return decided;
+  }
+
+  /** Update only the same revision under the review lock; native I/O occurs outside it. */
+  async recordDelivery(runId: string, requestId: string, revision: number,
+    status: "pending" | "accepted" | "stopped", errorCode?: string): Promise<void> {
+    await this.locked(runId, async () => {
+      const value = await this.get(runId, requestId);
+      if (value.revision !== revision || value.delivery?.status === "accepted") return;
+      const attemptCount = (value.delivery?.attemptCount ?? 0) + 1;
+      await this.write({ ...value, delivery: { status, attemptCount,
+        lastAttemptAt: new Date(this.now()).toISOString(),
+        ...(status === "pending" ? { nextAttemptAt: new Date(this.now() + Math.min(30_000, 1_000 * 2 ** Math.min(attemptCount, 5))).toISOString() } : {}),
+        ...(errorCode ? { errorCode } : {}) } });
+    });
   }
 
   /** Caller holds the same lock as cancellation. Reserve permission before I/O. */

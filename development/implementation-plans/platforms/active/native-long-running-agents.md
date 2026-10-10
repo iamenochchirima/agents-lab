@@ -250,3 +250,5 @@ Open implementation checks, not blockers to planning: exact pinned Mastra durabl
 ## Execution evidence ledger
 
 - Shared policy admission: focused contract check passed; server typecheck passed. Sustained requests retain an absolute deadline and model timeout; legacy manifests have no new execution policy. Native enforcement is being integrated independently.
+
+- Retained continuation: 26 focused existing/new checks passed, including replacement control-plane delivery with the same call/decision, cancelled delivery refusal and unattended conversation settlement. Server typecheck passed. Native adapter restart acceptance remains separate work.

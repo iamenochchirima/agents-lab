@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, lstat, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdir, open, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -156,6 +156,28 @@ export class RunEvidenceStore {
     const capabilitiesPath = join(runDirectory, "capabilities.json");
     assertEvidenceSize(capabilities, capabilitiesPath, MAX_CAPABILITIES_BYTES);
     await this.writeIdempotent(capabilitiesPath, capabilities);
+    await this.markRunActive(manifest.runId);
+  }
+
+  /** A retained observation index, not a second native execution queue. */
+  async markRunActive(runId: string): Promise<void> {
+    assertSafeRunId(runId);
+    const directory = join(this.rootDirectory, ".active-runs");
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await atomicWriteJson(join(directory, `${runId}.json`), { runId });
+  }
+  async markRunInactive(runId: string): Promise<void> {
+    assertSafeRunId(runId);
+    await unlink(join(this.rootDirectory, ".active-runs", `${runId}.json`)).catch(error => {
+      if (!isNodeError(error, "ENOENT")) throw error;
+    });
+  }
+  async activeRunIds(): Promise<readonly string[]> {
+    let names: string[];
+    try { names = await readdir(join(this.rootDirectory, ".active-runs")); }
+    catch (error) { if (isNodeError(error, "ENOENT")) return []; throw error; }
+    return names.filter(name => name.endsWith(".json") && RUN_ID_PATTERN.test(name.slice(0, -5)))
+      .map(name => name.slice(0, -5)).sort();
   }
 
   async appendEvent<TPayload extends Record<string, unknown>>(
