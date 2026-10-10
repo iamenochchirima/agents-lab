@@ -32,7 +32,7 @@ import type { CapabilityManifest } from "../src/capabilities/contracts.js";
  * and Restate servers; starts its own workers/services and authenticated host.
  * Durable run evidence is retained separately from real-model acceptance. */
 test("native invocation review pauses before effects and resumes the original call", {
-  skip: process.env.AGENTLAB_RUN_NATIVE_INVOCATION_REVIEW !== "1", timeout: 180_000,
+  skip: process.env.AGENTLAB_RUN_NATIVE_INVOCATION_REVIEW !== "1", timeout: 300_000,
 }, async t => {
   const startedAt = new Date().toISOString();
   const metadata = { revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), dirty: !!execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim(), versions: await installedRuntimeVersions(), startedAt, model: { provider: "fake", model: "fake-eval-behaviour" }, controls: { maxCalls: 3, maxRounds: 4, reviewRenewals: 2, recovery: "explicit-provider-key-reconciliation", fixtureVersion: "effect-recovery-v1" } };
@@ -142,10 +142,15 @@ test("native invocation review pauses before effects and resumes the original ca
       const before = effects;
       const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "Avery" } })).toString("base64url")}]`;
       const created = await service.createRun({ platform: runner.platform, variant: "baseline", task: { kind: "prompt", prompt },
+        ...(process.env.AGENTLAB_NATIVE_SUSTAINED === "1" ? { execution: { mode: "sustained" as const, maxDurationMs: 180_000 } } : {}),
         model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16_384 },
         capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
       const waiting = await waitFor(service, created.runId, view => view.status === "suspended");
       const initialModelRequests = waiting.events.filter(event => event.kind === "ModelRequested").length;
+      if (process.env.AGENTLAB_NATIVE_SUSTAINED === "1") {
+        assert.ok(waiting.manifest.execution?.deadlineAt);
+        if (runner.platform === "temporal") await new Promise(resolve => setTimeout(resolve, Number(process.env.AGENTLAB_NATIVE_REVIEW_WAIT_MS ?? "60000")));
+      }
       assert.equal(effects, before, "Suspension must precede provider dispatch");
       assert.equal(waiting.result, null);
       // Restart the actual policy endpoint and its durable projections while
@@ -218,6 +223,10 @@ test("native invocation review pauses before effects and resumes the original ca
         argumentDigest: pending.argumentDigest, decisionId: randomUUID(), decision: "approved" });
       const completed = await waitFor(service, created.runId, view => !!view.result);
       assert.equal(completed.status, "completed", JSON.stringify(completed.result));
+      if (process.env.AGENTLAB_NATIVE_SUSTAINED === "1") {
+        assert.equal(completed.manifest.execution?.deadlineAt, waiting.manifest.execution?.deadlineAt);
+        assert.ok(completed.events.some(event => event.kind === "ContextRoundPrepared"));
+      }
       assert.equal(effects, before + 1);
       assert.match(completed.result?.output ?? "", /Avery/);
       assert.equal(completed.manifest.context.turnId, waiting.manifest.context.turnId);
@@ -228,6 +237,19 @@ test("native invocation review pauses before effects and resumes the original ca
       observe(runner.platform, ["noEffectBeforeApproval", "exactArgumentsRetained", "nativeWaitingRecovery", "hostWaitingRecovery", "sameNativeIdentity", "expiryNoEffect", "renewalNoRedispatch", "approvedSingleEffect"], created.runId);
       reports.push({ platform: runner.platform, runId: created.runId, status: completed.status, effects: effects - before, waitingRestart: !!worker || runner.platform === "mastra", apiHostRestart: true, reviewRenewals: 2 });
     });
+    if (process.env.AGENTLAB_NATIVE_SUSTAINED === "1") for (const runner of runners.filter(runner => ["temporal", "restate"].includes(runner.platform))) {
+      await t.test(`${runner.platform}-retained-wait-deadline`, async () => {
+        const before = effects;
+        const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "Deadline" } })).toString("base64url")}]`;
+        const created = await service.createRun({ platform: runner.platform, variant: "baseline", execution: { mode: "sustained", maxDurationMs: 3000 },
+          task: { kind: "prompt", prompt }, model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16384 },
+          capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
+        await waitFor(service, created.runId, view => view.status === "suspended");
+        const terminal = await waitFor(service, created.runId, view => !!view.result);
+        assert.equal(terminal.result?.error?.code, "RUN_DEADLINE_EXCEEDED", JSON.stringify(terminal.result));
+        assert.equal(effects, before, "An expired task must not dispatch its retained action.");
+      });
+    }
     const mastra = runners.find(value => value.platform === "mastra");
     if (mastra) await t.test("mixed native batch gates each write independently", async () => {
       const before = effects, beforeReads = reads;

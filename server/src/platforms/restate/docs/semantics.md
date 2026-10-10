@@ -65,3 +65,37 @@ Restate action. MCP discovery and invocation are inside that durable action, and
 normalized event retains the Restate request identity plus bounded MCP identity. A
 lost MCP tool-call acknowledgement is `unknown`; Restate journal replay must not turn
 that state into a fabricated success.
+
+## Sustained native task policy
+
+An admitted sustained run retains its absolute task deadline and independent model
+timeout. Journaled `ctx.date.now()` controls branching. Every new model/tool
+dispatch checks the remaining duration; provider I/O inside `ctx.run` uses an
+abort signal clipped to the operation cap and remaining task duration. Native
+review waits use `ctx.promise(...).get().orTimeout(...)`, so restarting the handler
+does not reset the wait or deadline. Review renewal keeps the same action and
+original task duration. Deadline expiry before dispatch returns
+`RUN_DEADLINE_EXCEEDED`; an already ambiguous external operation remains uncertain.
+
+Before every sustained model round, named `context.round.<round>` actions prepare
+a request-local context through the common message projection. Tool schemas count
+toward its estimated budget. A summary uses the selected model inside that action
+and keeps immutable instructions, loaded skill bodies, the exact current task and
+incomplete tool groups. Only complete assistant/tool groups are candidates for
+compaction. Source observations remain in private native-round records alongside
+summary provenance, while canonical chat history remains intact. Replaying a
+completed round action restores its prior projection instead of generating another
+summary. Summary attempts and reported usage count in normalized model metrics.
+
+`TaskProgress` records the actual round and observed completed-tool count. Native
+progress retains the review request/revision/call identity during a wait. The
+common observer only delivers saved control decisions and projects native results;
+it never schedules a replacement reasoning loop. Missing execution policy retains
+the earlier interactive behavior. The sustained path uses proactive compaction and
+reports provider overflow without resetting its active tool observations.
+
+The opt-in `native-invocation-review` fixture with
+`AGENTLAB_NATIVE_SUSTAINED=1` replaces the owned handler and API host while an
+action waits, then checks the same approved call produces one fixture effect.
+A separate three-second native wait reaches the task deadline with zero effects.
+These deterministic mechanism checks do not establish real-model task quality.

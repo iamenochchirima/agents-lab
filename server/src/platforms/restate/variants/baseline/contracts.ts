@@ -1,3 +1,4 @@
+import type { RunExecutionPolicy } from "../../../../capabilities/execution/policy.js";
 import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import { getFreeEvalSettings } from "../../../../models/openrouter/free-model-policy.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
@@ -20,6 +21,7 @@ export const RESTATE_WORKFLOW_NAME = "AgentLabRestateBaseline";
 export const RESTATE_WORKFLOW_SOURCE = "restate-workflow";
 
 export interface RestateWorkflowInput {
+  readonly execution?: RunExecutionPolicy;
   /** Synthetic live evals alone may retain mapped provider requests. */
   readonly liveEval?: boolean;
   readonly liveEvalExperiment?: FreeEvalExperiment;
@@ -145,6 +147,7 @@ export function workflowInputFromManifest(manifest: RunManifest): RestateWorkflo
     : process.env.AGENTLAB_CONTEXT_ROOT?.trim() || "lab/sessions";
   return {
     runId: manifest.runId,
+    ...(manifest.execution ? { execution: manifest.execution } : {}),
     ...(getFreeEvalSettings(manifest.selection?.experimentId) ? { liveEval: true, liveEvalExperiment: getFreeEvalSettings(manifest.selection?.experimentId)!.experimentId } : {}),
     turnId: manifest.context.turnId,
     prompt: manifest.task.prompt,

@@ -1,3 +1,5 @@
+import { prepareRoundContext } from "../../../../capabilities/context/round-context.js";
+import { executionDeadlineReached, remainingExecutionMs } from "../../../../capabilities/execution/policy.js";
 import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
 import type { InvocationResumeInput, InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import { prepareToolInvocation } from "../../../../capabilities/extensions/runtime.js";
@@ -121,12 +123,16 @@ export const baselineWorkflow = restate.workflow({
         phase.finishedAt = await ctx.date.toJSON();
       };
 
+      const assertDeadline = async () => {
+        if (input.execution && executionDeadlineReached(input.execution, await ctx.date.now())) throw new restate.TerminalError("RUN_DEADLINE_EXCEEDED");
+      };
       const executionPhase = { name: "agent_execution", startedAt, finishedAt: null as string | null };
       phases.push(executionPhase);
       await record("AgentStarted", { workflowKey: ctx.key, invocationId: String(ctx.request().id) });
       ctx.set("status", { status: "running", runId: input.runId });
 
       try {
+        await assertDeadline();
         if (input.context) {
           const contextPhase = { name: "context_preparation", startedAt: await ctx.date.toJSON(), finishedAt: null as string | null };
           phases.push(contextPhase);
@@ -153,6 +159,57 @@ export const baselineWorkflow = restate.workflow({
         }
 
         for (let round = 1; round <= toolConfiguration.maxRounds; round += 1) {
+          await assertDeadline();
+          if (input.execution) await record("TaskProgress", { round, completedToolCount: events.filter(event => event.kind === "ToolExecutionCompleted").length, phase: "model" });
+          if (input.execution && input.context) {
+            const prepared = await ctx.run(`context.round.${round}`, async () => {
+              let summary: ModelCallResult | null = null;
+              let summaryAttempted = false;
+              try {
+                const projection = await prepareRoundContext({ ...input.context!, runId: input.runId, round,
+                  task: input.prompt, messages, toolSchemas: toolDefinitions }, {
+                  async summarize(request) {
+                    if (executionDeadlineReached(input.execution, Date.now())) throw new Error("RUN_DEADLINE_EXCEEDED");
+                    const prompt = request.messages.map(message => `[${message.role}] ${message.content}`).join("\n");
+                    const instruction = "Summarize completed tool observations for continuation. Preserve facts, call identities, known effects, constraints and unresolved issues. Do not claim unobserved work.";
+                    summaryAttempted = true;
+                    const adapter = createRestateModel(input.model.provider, input.model.provider === "fake" ? "fake-summary" : input.model.model, {
+                      openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || null,
+                      openRouterBaseUrl: process.env.AGENTLAB_OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
+                    });
+                    summary = await adapter.complete({ runId: input.runId, liveEval: input.liveEval, liveEvalExperiment: input.liveEvalExperiment,
+                      provider: input.model.provider, model: input.model.provider === "fake" ? "fake-summary" : input.model.model,
+                      round, attempt: 1, prompt, systemInstruction: instruction,
+                      messages: [{ role: "system", content: instruction }, { role: "user", content: prompt }], tools: [] },
+                      boundedSignal(input, ctx.request().attemptCompletedSignal, input.execution!.modelTimeoutMs));
+                    if (summary.kind !== "success" || !summary.output) throw new Error("The context summarizer returned no text.");
+                    return summary.output;
+                  },
+                });
+                return { ...projection, summary: summary as ModelCallResult | null, summaryAttempted, failure: null };
+              } catch (cause) {
+                return { messages: [], budget: null, compaction: null, contextRecordId: null,
+                  summary: summary as ModelCallResult | null, summaryAttempted, failure: {
+                    code: "CONTEXT_PREPARATION_FAILED", message: "The next model request could not fit the retained context budget. Inspect its context records before continuing.",
+                    failureKind: "pre_dispatch" as const, retryable: false } };
+              }
+            }, { maxRetryAttempts: 1 });
+            if (prepared.summaryAttempted) {
+              modelCallCount += 1; modelAttemptCount += 1;
+              await assertDeadline();
+            await record("ModelRequested", { purpose: "summary", round, attempt: 1 });
+              if (prepared.summary?.kind === "success") {
+                usage = usageObserved ? addUsage(usage, prepared.summary.usage) : prepared.summary.usage; usageObserved = true;
+                await record("ModelCompleted", { purpose: "summary", round, usage: prepared.summary.usage, providerRequestId: prepared.summary.providerRequestId });
+              } else await record("ModelFailed", { purpose: "summary", round, code: prepared.summary?.kind === "failure" ? prepared.summary.code : "CONTEXT_SUMMARY_UNCONFIRMED" });
+              if (prepared.summary?.evalObservation) await record("EvalModelObserved", { purpose: "summary", round, observation: prepared.summary.evalObservation });
+            }
+            await assertDeadline();
+            if (prepared.failure) throw new restate.TerminalError(prepared.failure.message, { metadata: { agentlabFailureKind: "pre_dispatch", agentlabCode: prepared.failure.code } });
+            await record("ContextRoundPrepared", { round, contextRecordId: prepared.contextRecordId, budget: prepared.budget, compaction: prepared.compaction });
+            if (prepared.compaction) await record("ContextCompacted", { round, compaction: prepared.compaction });
+            messages = [...prepared.messages];
+          }
           const modelPhase = { name: `model_request_${round}`, startedAt: await ctx.date.toJSON(), finishedAt: null as string | null };
           phases.push(modelPhase);
           modelCallCount += 1;
@@ -183,7 +240,7 @@ export const baselineWorkflow = restate.workflow({
               await record("EvalModelObserved", { round, attempt, observation: modelResult.evalObservation });
             }
 
-            if (!input.liveEval && modelResult.kind === "failure" && isContextOverflow(modelResult) && input.context && !contextRecoveryUsed) {
+            if (!input.execution && !input.liveEval && modelResult.kind === "failure" && isContextOverflow(modelResult) && input.context && !contextRecoveryUsed) {
               contextRecoveryUsed = true;
               await record("ContextOverflowDetected", {
                 code: modelResult.code,
@@ -349,6 +406,7 @@ export const baselineWorkflow = restate.workflow({
           // of a batch. If pairing is unsafe, no side effect is allowed to
           // occur merely because an earlier call happened to be valid.
           for (let index = 0; index < calls.length; index += 1) {
+            await assertDeadline();
             const call = calls[index];
             toolCallCount += 1;
             await recordTool("ToolCallRequested", call, { attempt: 1, round });
@@ -435,7 +493,7 @@ export const baselineWorkflow = restate.workflow({
             if (validation.definition.approvalMode === "invocation" && input.toolCatalog) {
               const initialReview = await ctx.run(`tool.prepare.${round}.${index + 1}.${stableStepId(call.toolCallId)}`,
                 () => prepareToolInvocation(input.toolCatalog!, validation.call, {
-                  runId: input.runId, turnId, signal: ctx.request().attemptCompletedSignal,
+                  runId: input.runId, turnId, signal: boundedSignal(input, ctx.request().attemptCompletedSignal, validation.definition.limits.timeoutMs),
                 }), { maxRetryAttempts: 1 });
               if (initialReview) {
                 let review: InvocationReviewView = initialReview;
@@ -444,12 +502,19 @@ export const baselineWorkflow = restate.workflow({
                   ctx.set("pendingReview", review);
                   await record("WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
                     revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
-                  const resumed: InvocationResumeInput = await ctx.promise<InvocationResumeInput>(`approval:${review.requestId}:${review.revision}`);
+                  let resumed: InvocationResumeInput;
+                  const waiter = ctx.promise<InvocationResumeInput>(`approval:${review.requestId}:${review.revision}`);
+                  if (input.execution) {
+                    await assertDeadline();
+                    try { resumed = await waiter.get().orTimeout(Math.max(1, remainingExecutionMs(input.execution, await ctx.date.now()))); }
+                    catch (error) { await assertDeadline(); throw error; }
+                  } else resumed = await waiter;
+                  await assertDeadline();
                   decision = resumed.decision;
                   if (decision === "renewed") {
                     const renewed: InvocationReviewView | null = await ctx.run(`tool.renew.${round}.${index + 1}.${stableStepId(call.toolCallId)}.${resumed.revision}`,
                       () => prepareToolInvocation(input.toolCatalog!, validation.call, {runId: input.runId, turnId,
-                        signal: ctx.request().attemptCompletedSignal}), {maxRetryAttempts: 1});
+                        signal: boundedSignal(input, ctx.request().attemptCompletedSignal, validation.definition.limits.timeoutMs)}), {maxRetryAttempts: 1});
                     if (!renewed || renewed.requestId !== review.requestId || renewed.revision !== resumed.revision || renewed.status !== "pending") throw new restate.TerminalError("The renewed proposal does not match this waiting action.");
                     await record("InvocationReviewRenewed", {requestId: review.requestId, revision: renewed.revision, toolCallId: call.toolCallId});
                     review = renewed;
@@ -471,6 +536,7 @@ export const baselineWorkflow = restate.workflow({
             }
 
             toolAttemptCount += 1;
+            await assertDeadline();
             const toolPhase = { name: `tool_execution_${round}_${index + 1}`, startedAt: await ctx.date.toJSON(), finishedAt: null as string | null };
             phases.push(toolPhase);
             await recordTool("ToolExecutionStarted", call, { attempt: 1, round });
@@ -481,7 +547,7 @@ export const baselineWorkflow = restate.workflow({
                 turnId,
                 toolCallId: call.toolCallId,
                 connectionBindings: input.connections,
-                signal: ctx.request().attemptCompletedSignal,
+                signal: boundedSignal(input, ctx.request().attemptCompletedSignal, validation.definition.limits.timeoutMs),
               }),
               { maxRetryAttempts: 1 },
             );
@@ -545,7 +611,9 @@ export const baselineWorkflow = restate.workflow({
         // action own that retry rather than converting it into a fake result.
         if (error instanceof restate.RetryableError) throw error;
         await completePhase(executionPhase);
-        const failure = classifyWorkflowError(error);
+        const failure: RunError = error instanceof Error && error.message === "RUN_DEADLINE_EXCEEDED"
+          ? { code: "RUN_DEADLINE_EXCEEDED", message: "The retained task deadline was reached.", failureKind: "timeout", retryable: false }
+          : classifyWorkflowError(error);
         const eventKind = failure.failureKind === "cancelled" ? "AgentCancelled" : "AgentFailed";
         await record(eventKind, { code: failure.code, failureKind: failure.failureKind });
         await record(failure.failureKind === "cancelled" ? "RunCancelled" : "RunFailed", {
@@ -610,7 +678,7 @@ async function requestModel(
           messages,
           tools,
         },
-        ctx.request().attemptCompletedSignal,
+        boundedSignal(input, ctx.request().attemptCompletedSignal, input.execution?.modelTimeoutMs),
       );
       return result;
     },
@@ -659,7 +727,7 @@ async function prepareContextSnapshot(
             // summary instruction and continue the old task instead.
             messages: [{ role: "system", content: summaryInstruction }, { role: "user", content: summaryPrompt }],
             tools: [],
-          }, ctx.request().attemptCompletedSignal);
+          }, boundedSignal(input, ctx.request().attemptCompletedSignal, input.execution?.modelTimeoutMs));
           if (result.kind !== "success" || !result.output) throw new Error(result.kind === "failure" ? result.message : "The context summarizer returned no text.");
           return result.output;
         },
@@ -903,4 +971,10 @@ function addUsage(left: RunUsage, right: RunUsage): RunUsage {
 
 function addNullable(left: number | null, right: number | null): number | null {
   return left === null || right === null ? null : left + right;
+}
+
+/** Wall time is read only inside journaled I/O, never for workflow branching. */
+function boundedSignal(input: RestateWorkflowInput, signal: AbortSignal, operationTimeoutMs?: number): AbortSignal {
+  if (!input.execution) return signal;
+  return AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, Math.min(operationTimeoutMs ?? input.execution.modelTimeoutMs, remainingExecutionMs(input.execution, Date.now()))))]);
 }
