@@ -139,3 +139,11 @@ mutation. These checks establish native fixture behavior, not real-model task
 selection or Vercel-hosted guarantees. A Workflow can finish normally by returning
 a failed agent result: the runner keeps the native completed status while exposing
 the agent failure, cancellation or need for reconciliation in the Lab result.
+
+For an admitted free live evaluation, the OpenRouter adapter returns an observation
+of the actual serialized provider request body and response identity. The native
+workflow retains it as `EvalModelObserved`, including paired tool-result messages,
+so task retention and skill delivery can be checked against a subsequent model
+request. Headers and credentials are excluded. Interactive runs do not retain
+this evaluation-only request body. Missing observations in older runs remain an
+evidence gap; completed effects cannot substitute for model-request evidence.

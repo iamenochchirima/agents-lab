@@ -140,3 +140,20 @@ test("live eval rejects unapproved IDs and unknown experiments before transport"
   }
   assert.equal(sends, 0);
 });
+
+
+test("live eval observes the actual dispatched paired task and skill messages without credentials", async () => {
+  const { DEFAULT_FREE_MODEL } = await import("../../../src/models/openrouter/free-model-policy.js");
+  let sent: unknown;
+  const input: VercelWorkflowModelRequest = { ...request, liveEval: true, liveEvalExperiment: "agent-capabilities-live", model: { provider: "openrouter", model: DEFAULT_FREE_MODEL },
+    messages: [{ role: "user", content: "Retain this original collection task" }, { role: "assistant", content: null, toolCalls: [{ toolCallId: "skill-1", name: "load_skill", arguments: { name: "collection-review" }, round: 1 }] }, { role: "tool", toolCallId: "skill-1", name: "load_skill", content: "Untrusted skill receipt" }] };
+  const result = await completeOpenRouterModel(input, { apiKey: "never-observed-secret", baseUrl: "https://openrouter.example/v1", fetchImplementation: async (_url, init) => {
+    sent = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ id: "actual-id", choices: [{ message: { content: "done" } }] }));
+  } });
+  assert.equal(result.kind, "success");
+  assert.deepEqual(result.evalObservation?.providerRequest, sent);
+  assert.deepEqual((result.evalObservation?.providerRequest as any).messages[2], { role: "tool", tool_call_id: "skill-1", content: "Untrusted skill receipt" });
+  assert.equal(result.evalObservation?.providerRequestId, "actual-id");
+  assert.equal(JSON.stringify(result.evalObservation).includes("never-observed-secret"), false);
+});

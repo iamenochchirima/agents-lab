@@ -58,6 +58,17 @@ export async function completeOpenRouterModel(
     }
   }
 
+  const observe = (result: VercelWorkflowModelResult): VercelWorkflowModelResult => input.liveEval ? {
+    ...result, evalObservation: {
+      systemInstruction: input.systemInstruction, messages: input.messages ?? [],
+      tools: input.toolDefinitions ?? [], providerRequest: requestBody,
+      toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
+      providerRequestId: result.kind === "success" ? result.providerRequestId : null,
+      output: result.kind === "success" ? result.output : null,
+      ...(result.kind === "failure" ? { errorCode: result.error.code, requestSent: result.requestSent } : {}),
+    },
+  } : result;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.modelTimeoutMs);
   try {
@@ -74,19 +85,19 @@ export async function completeOpenRouterModel(
 
     if (!response.ok) {
       await cancelResponseBody(response);
-      return {
+      return observe({
         kind: "failure", requestSent: true,
         error: {
           code: response.status === 429 ? "OPENROUTER_RATE_LIMITED" : "OPENROUTER_REQUEST_FAILED",
           message: response.status === 429 ? "OpenRouter returned HTTP 429. Wait for provider capacity before starting a new run." : `OpenRouter returned HTTP ${response.status}.`,
           failureKind: "provider", retryable: false,
         },
-      };
+      });
     }
     const bodyResult = await readJson(response);
     if (bodyResult.kind === "too_large") {
-      return { kind: "failure", requestSent: true,
-        error: { code: "OPENROUTER_RESPONSE_TOO_LARGE", message: "OpenRouter response exceeded the configured response limit.", failureKind: "provider", retryable: false } };
+      return observe({ kind: "failure", requestSent: true,
+        error: { code: "OPENROUTER_RESPONSE_TOO_LARGE", message: "OpenRouter response exceeded the configured response limit.", failureKind: "provider", retryable: false } });
     }
 
     const record = asRecord(bodyResult.kind === "parsed" ? bodyResult.value : null);
@@ -101,7 +112,7 @@ export async function completeOpenRouterModel(
       return { toolCallId: typeof call.id === "string" ? call.id : "", name: typeof fn.name === "string" ? fn.name : "", arguments: args, round: input.round ?? 1 };
     }) : [];
     if (!output && !toolCalls.length) {
-      return {
+      return observe({
         kind: "failure",
         requestSent: true,
         error: {
@@ -110,11 +121,11 @@ export async function completeOpenRouterModel(
           failureKind: "provider",
           retryable: false,
         },
-      };
+      });
     }
 
     const usage = asRecord(record.usage);
-    return {
+    return observe({
       kind: "success",
       output,
       ...(toolCalls.length ? { toolCalls } : {}),
@@ -124,10 +135,10 @@ export async function completeOpenRouterModel(
         outputTokens: numberOrNull(usage.completion_tokens),
         totalTokens: numberOrNull(usage.total_tokens),
       },
-    };
+    });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "AbortError";
-    return {
+    return observe({
       kind: "failure",
       requestSent: true,
       error: {
@@ -136,7 +147,7 @@ export async function completeOpenRouterModel(
         failureKind: "outcome_unknown",
         retryable: false,
       },
-    };
+    });
   } finally {
     clearTimeout(timer);
   }

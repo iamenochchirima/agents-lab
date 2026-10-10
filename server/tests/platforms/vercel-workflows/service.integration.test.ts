@@ -117,6 +117,10 @@ test("local Workflow World executes the selected OpenRouter model through its du
     assert.deepEqual(record.result.usage, { inputTokens: 13, outputTokens: 4, totalTokens: 17 });
     assert.equal(record.result.metrics.modelCallCount, 1);
     assert.equal(record.result.metrics.modelAttemptCount, 1);
+    const observation = record.result.eventIntents.find((event: { readonly kind: string }) => event.kind === "EvalModelObserved");
+    assert.deepEqual(observation?.payload.observation.providerRequest, requestBody);
+    assert.equal(observation?.payload.observation.providerRequestId, "vercel-openrouter-provider-id");
+    assert.equal(JSON.stringify(observation).includes("test-secret"), false);
     const completedEvent = record.result.eventIntents.find((event: { readonly kind: string }) => event.kind === "model_call_completed");
     assert.equal(completedEvent?.payload.provider, "openrouter");
     assert.equal(completedEvent?.payload.model, "cohere/north-mini-code:free");

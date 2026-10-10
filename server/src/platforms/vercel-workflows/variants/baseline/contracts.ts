@@ -73,7 +73,10 @@ export interface VercelWorkflowModelFailure {
   readonly requestSent: boolean;
 }
 
-export type VercelWorkflowModelResult = VercelWorkflowModelSuccess | VercelWorkflowModelFailure;
+export type VercelWorkflowModelResult = (VercelWorkflowModelSuccess | VercelWorkflowModelFailure) & {
+  /** Evaluation-only observation of the actual dispatched provider body, never headers. */
+  readonly evalObservation?: Readonly<Record<string, unknown>>;
+};
 
 export interface VercelWorkflowResult extends RunResult {
   readonly eventIntents: readonly RunEventIntent[];
