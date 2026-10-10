@@ -905,7 +905,7 @@ start_all() {
     if [[ "$(curl --silent --show-error --max-time 2 --output /dev/null --write-out '%{http_code}' \
       --request POST "$RESTATE_ADMIN_URL/deployments" \
       --header 'content-type: application/json' \
-      --data "{\"uri\":\"$RESTATE_SERVICE_URL\"}" 2>/dev/null || true)" =~ ^2 ]]; then
+      --data "{\"uri\":\"$RESTATE_SERVICE_URL\",\"force\":true}" 2>/dev/null || true)" =~ ^2 ]]; then
       echo "Restate service registered at $RESTATE_SERVICE_URL"
       break
     fi

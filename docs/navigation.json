@@ -59,7 +59,8 @@
     {
       "title": "Platforms",
       "documents": [
-        "docs/platforms.md"
+        "docs/platforms.md",
+        "docs/guides/agent-identity-memory.md"
       ]
     },
     {

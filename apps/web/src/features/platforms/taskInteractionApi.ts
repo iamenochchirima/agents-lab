@@ -1,12 +1,12 @@
 import { getPlatformApiBaseUrl } from "./platformApi";
 
 export interface TaskInput {
-  inputId: string; sequence: number; kind: "steering" | "clarification_reply";
+  inputId: string; acceptedAt: string; sequence: number; kind: "steering" | "clarification_reply";
   content: string; status: "accepted" | "delivered" | "consumed" | "rejected";
   questionId?: string;
 }
 export interface TaskQuestion {
-  questionId: string; question: string; status: "pending" | "answered" | "cancelled";
+  questionId: string; createdAt: string; question: string; status: "pending" | "answered" | "cancelled";
   answerInputId?: string;
 }
 export interface TaskInteraction { inputs: TaskInput[]; questions: TaskQuestion[] }

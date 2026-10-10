@@ -22,8 +22,11 @@ export function TaskInteractionPanel({ runId, active }: { runId: string; active:
     return () => { disposed = true; controller.abort(); clearInterval(timer); };
   }, [runId, active]);
   return <>
-    {snapshot.questions.map(question => <QuestionCard key={question.questionId} runId={runId} question={question} answer={snapshot.inputs.find(input => input.inputId === question.answerInputId)?.content} onRefresh={async () => setSnapshot(await getTaskInteraction(runId))} />)}
-    {snapshot.inputs.filter(input => input.kind === "steering").map(input => <section className="invocation-review" key={input.inputId} aria-label="Task instruction"><span className="eyebrow">Your instruction · {input.status === "consumed" ? "Received by agent" : input.status === "rejected" ? "Task ended before delivery" : "Saved, awaiting agent"}</span><ChatMarkdown content={input.content} /></section>)}
+    {[...snapshot.questions.map(question => ({ kind: "question" as const, at: question.createdAt, question })),
+      ...snapshot.inputs.filter(input => input.kind === "steering").map(input => ({ kind: "instruction" as const, at: input.acceptedAt, input }))]
+      .sort((a, b) => a.at.localeCompare(b.at)).map(item => item.kind === "question"
+        ? <QuestionCard key={item.question.questionId} runId={runId} question={item.question} answer={snapshot.inputs.find(input => input.inputId === item.question.answerInputId)?.content} onRefresh={async () => setSnapshot(await getTaskInteraction(runId))} />
+        : <section className="invocation-review" key={item.input.inputId} aria-label="Task instruction"><span className="eyebrow">Your instruction · {item.input.status === "consumed" ? "Received by agent" : item.input.status === "rejected" ? "Task ended before delivery" : "Saved, awaiting agent"}</span><ChatMarkdown content={item.input.content} /></section>)}
     {error && active && <p role="alert">{error}</p>}
   </>;
 }

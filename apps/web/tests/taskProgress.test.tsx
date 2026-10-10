@@ -45,3 +45,10 @@ test("a retained approval wait survives running fallback inspection until a reco
   }
   assert.equal(taskProgress({ ...waiting, status: "failed" }).phase, "failed", "terminal evidence supersedes an earlier wait");
 });
+
+
+test("clarification wait is distinct from invocation approval", () => {
+  const waiting = { ...run, status: "suspended" as const, events: [event("WorkflowSuspended", { reason: "clarification", questionId: "q" })] };
+  assert.equal(taskProgress(waiting).phase, "Waiting for your input");
+  assert.equal(taskProgress({ ...waiting, events: [...waiting.events, event("WorkflowSuspended", { reason: "invocation_review" }, 2)] }).phase, "Waiting for approval");
+});
