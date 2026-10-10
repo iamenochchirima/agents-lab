@@ -155,8 +155,13 @@ The [sustained connected review scenario](../../lab/scenarios/sustained-connecte
 measures one six-record task, two connected sources, an enabled skill, multiple
 approval/denial decisions and an explicit owned restart during a retained wait.
 Deterministic mechanism tests and real-model task acceptance are separate evidence.
-This coverage table describes implementation contracts; it does not claim a
-five-platform real-model verdict or exactly-once external effects.
+The implementation contracts above remain distinct from measured workload results.
+All five have a passing controlled six-record task observation with the same real
+free model and a retained wait/restart. Original failures and Mastra's separately
+versioned grading correction remain visible in the
+[research coverage audit](../research/native-long-running-agents.md#final-five-platform-task-coverage).
+This does not establish exactly-once external effects, a success rate, or hosted
+durability.
 
 If an external document provider is enabled, its tools are also included in normal
 platform Chat. File operations execute in that provider; the Lab does not expose a

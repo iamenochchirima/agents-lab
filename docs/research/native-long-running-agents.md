@@ -276,7 +276,7 @@ separate future adapter decision, not a prerequisite for platform-native agent w
 [MCP cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation),
 [MCP progress](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress)
 
-Implementation checklist: [native long-running agents plan](../../development/implementation-plans/platforms/active/native-long-running-agents.md).
+Implementation checklist: [native long-running agents plan](../../development/implementation-plans/platforms/completed/native-long-running-agents.md).
 
 
 ## Implementation observations — 2026-10-10
@@ -442,3 +442,54 @@ normal chat width.
 [Browser result](../../lab/runs/.connected-proof/browser-sustained-20261010/restate-completed-report.json).
 The fixture observer issued these decisions; actual browser approval and denial
 clicks remain covered by the separate Temporal proof above.
+
+
+### Final five-platform task coverage
+
+The final Vercel trial completed all six records, retained the original approval
+for 65,112 ms across service replacement, saved three approved corrections and
+honored the denied correction.
+[Vercel task result](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-1aa580c2-9f23-4402-aad2-7342372a3ccf/summary.json).
+
+Its preceding native failure was the local queue's delivery timeout while several
+inline steps ran. The supported local World header timeout now covers the maximum
+admitted task plus one minute. Actual model and task deadlines, effect receipts
+and zero step retries are unchanged. A focused native regression proves a slow
+provider response completes with one dispatch. The subsequent first-response
+empty-output trial is separately retained as a provider failure with zero effects.
+No output-budget exhaustion explanation is established by that original response.
+
+Grader revision 2 accepts an exact complete collection reread as post-action
+verification. It still requires unique full membership, correct fields/revisions,
+exact receipt fingerprint and scope, and sequence after the action or denial.
+Stale, incomplete, duplicated, failed or cross-run evidence is rejected. The
+original Mastra failure remains unchanged. Separately versioned assessments hash
+every consumed evidence file and the grader code, preserving original remaining
+criteria as explicit gates.
+[Corrected four-platform assessment](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-156632fb-29dd-423b-ae42-bcb24f1d8a6d/assessment-grader-v2-94054a0fb144.json),
+[Restate assessment](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-646683b2-6252-4029-aedf-babbccf892e4/assessment-grader-v2-94054a0fb144.json).
+
+| Platform | Full task | Retained wait and owned replacement | Expected effects |
+| --- | --- | --- | --- |
+| Temporal | Pass | 65,142 ms | Three approved, denied record unchanged |
+| Restate | Pass | 65,516 ms | Three approved, denied record unchanged |
+| LangGraph | Pass | 65,133 ms | Three approved, denied record unchanged |
+| Mastra | Pass under revision 2 | 65,123 ms | Three approved, denied record unchanged |
+| Vercel Workflows | Pass under revision 2 | 65,112 ms | Three approved, denied record unchanged |
+
+All use the same task and free model, 2,048-token output allowance, 120-second
+model timeout and 15-minute task deadline. An independent final audit reread each
+collection and matched the retained state.
+[Coverage audit](../../lab/runs/.sustained-proof/runs/.connected-proof/five-platform-acceptance-audit-20261010.json).
+These passing observations come from separately recorded trials and implementation
+revisions. They establish workload coverage, not a platform ranking or an estimated
+success rate. Earlier failed model/provider trials remain valuable evidence.
+
+Direct browser inspection of completed Vercel chat confirms all four decision
+cards remain inside the assistant message, the Markdown report renders and the
+Stop control disappears after completion.
+[Browser result](../../lab/runs/.connected-proof/browser-sustained-20261010/vercel-completed-report.json).
+The observer issued this task's decisions; the separate Temporal browser proof
+covers clicking approval/denial. Hosted durability and hour/day retention remain
+unmeasured. The implementation checklist is now
+[completed](../../development/implementation-plans/platforms/completed/native-long-running-agents.md).

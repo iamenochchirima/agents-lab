@@ -1,7 +1,7 @@
 # Native long-running agents across the five priority platforms
 
-Status: implementing; execution authorized and goal started 2026-10-10.
-Validation: native restart/review/deadline and direct browser checks passed. The latest free-model trials passed the full six-record task on Temporal, Restate and LangGraph. Mastra completed the task but needs a separately versioned correction of its tool-specific verification grade. Vercel failed inside its native workflow and remains under investigation.
+Status: completed 2026-10-10; execution authorized and goal started 2026-10-10.
+Validation: all five priority baselines completed the controlled six-record task with a real free model. Native recovery/context/deadline checks and direct browser checks passed. Original failed trials and a separately versioned grading correction remain inspectable.
 Prepared: 2026-10-10. Baseline commit: `116b670`.
 
 ## Goal and expected outcome
@@ -195,7 +195,7 @@ Commit: `feat(platforms): retain context through sustained native execution`.
 - [x] Run the same real-model task on all five baselines, retaining original failures and separate corrective attempts.
 - [x] Publish a compact coverage matrix with native mechanism, recovery observation, model task result and limitations.
 - [x] Update stable platform/context/recovery guides and relevant README files.
-- [ ] Establish the full six-record real-model acceptance gate before moving this plan to completed.
+- [x] Establish the full six-record real-model acceptance gate before moving this plan to completed.
 
 Acceptance: a user can leave, return, approve and continue one task; final claims match tool receipts and independently checked state.
 Validation: one direct browser path covering leave/return, inline approval and continued task, plus narrow rendering regressions for changed status/cancellation behavior. One free-model task per platform, no model sweep.
@@ -230,7 +230,7 @@ Personal-account writes require an explicitly agreed disposable target and the e
 
 ## Definition of done
 
-- [ ] All five baselines execute the multi-step scenario using native execution and the shared capabilities without frontend profile selection.
+- [x] All five baselines execute the multi-step scenario using native execution and the shared capabilities without frontend profile selection.
 - [x] Completed work and active review identity persist through the tested native replacement; unsafe outcomes are visibly unresolved.
 - [x] A retained decision survives API delivery interruption and duplicate delivery without a second external mutation.
 - [x] Browser absence does not own execution or prevent eventual context-turn settlement.
@@ -242,7 +242,7 @@ Personal-account writes require an explicitly agreed disposable target and the e
 
 ## Current position and open questions
 
-Current position: native implementation milestones 1–6 and the shared browser path are complete. Latest genuine free Nemotron Ultra trials passed Temporal, Restate and LangGraph. Independent receipt audit confirms Mastra completed and reread all six records; the original grader incorrectly accepted only individual reads after actions. Correct that restriction with scope/freshness regressions and publish a separate assessment. Vercel failed before its first retained review in this cohort and needs a native failure diagnosis. Both acceptance boxes remain open until five actual tasks satisfy the same declared controls. Earlier failures remain retained.
+Current position: all implementation milestones and the definition of done are verified. Temporal, Restate, LangGraph, Mastra and Vercel each have a passing real-model task observation under the same declared task, tool, wait, restart and budget controls. Mastra uses the separately versioned corrected assessment; its original failed verdict remains unchanged. The final Vercel trial passed after the local queue delivery fix. These are coverage observations across separate trials, not a comparative benchmark.
 
 Native checks are recorded below. Free-model trials use isolated connected records, reference data and an imported skill with retained wait/restart controls.
 
@@ -250,9 +250,9 @@ Measured limits: LangGraph recovery is locally single-owned and refuses uncertai
 
 ## Execution evidence ledger
 
-- Shared policy admission: focused contract check passed; server typecheck passed. Sustained requests retain an absolute deadline and model timeout; legacy manifests have no new execution policy. Native enforcement is being integrated independently.
+- Shared policy admission: focused contract check passed; server typecheck passed. Sustained requests retain an absolute deadline and model timeout; legacy manifests have no new execution policy. Native enforcement is verified per platform below.
 
-- Retained continuation: 26 focused existing/new checks passed, including replacement control-plane delivery with the same call/decision, cancelled delivery refusal and unattended conversation settlement. Server typecheck passed. Native adapter restart acceptance remains separate work.
+- Retained continuation: 26 focused existing/new checks passed, including replacement control-plane delivery with the same call/decision, cancelled delivery refusal and unattended conversation settlement. Server typecheck passed. Native adapter restart acceptance is recorded separately below.
 
 ### Implemented native mapping
 
@@ -300,7 +300,7 @@ Browser proof: `lab/runs/.connected-proof/browser-sustained-20261010/summary.jso
 - Final Mastra Cohere cohort `connected-cc1df00e-62d8-460e-b8e2-568ada552ab8`: actual provider requests, skill/source loading, original 65-second wait and process replacement; approved Cedar saved once. An unnecessary Birch proposal was refused and the run canceled. This is a failed task, not a transport failure or a benchmark pass.
 - Gemma alternative `connected-4410b670-3ab3-4420-9bd0-3d3c731dfb71`: genuine HTTP 429 on all five, zero effects; no paid fallback.
 - `lab/runs/.sustained-proof/runs/.connected-proof/terminal-followup-20261010.json`: separate read-only terminal state/effect observations supplement early-aborted reports without changing their verdicts.
-- [Measured coverage and interpretation](../../../../docs/research/native-long-running-agents.md#implementation-observations--2026-10-10): native checks passed, full task verdicts 0/5. Direct browser approval/denial/reload passed on Temporal. Hosted durability and hour/day retention were not measured.
+- [Measured coverage and interpretation](../../../../docs/research/native-long-running-agents.md#implementation-observations--2026-10-10): native checks passed; the earlier cohorts had full-task verdicts 0/5. The final coverage audit below records five later passing observations. Direct browser approval/denial/reload passed on Temporal. Hosted durability and hour/day retention were not measured.
 
 Remaining acceptance work: investigate model task comprehension and capability descriptions under fixed controls, retain any changed prompt/catalog identity, then run a bounded free cohort when capacity permits. Do not force a fixed correction loop, authorize undeclared actions, weaken verification criteria or erase prior failures. All implementation work is in focused commits; the plan remains active for this unresolved acceptance gate.
 
@@ -355,3 +355,76 @@ horizontal scrolling. The screenshot and read-only browser assessment are in
 `lab/runs/.connected-proof/browser-sustained-20261010/restate-readable-final-table.png`
 and `restate-completed-report.json`. Fixture decisions in this task were issued by
 the observer; the separate Temporal browser proof covers actual Approve/Deny clicks.
+
+
+## Final acceptance and completion audit
+
+All five baselines completed the same controlled task using
+`nvidia/nemotron-3-ultra-550b-a55b:free`, with the unchanged 2,048-token output
+allowance, 120-second model timeout and 15-minute task deadline. Each retained
+the original review across at least 65 seconds and owned process replacement,
+recorded three approved writes and one denied action, verified saved state and
+reported all six records. Independent provider reads still match each saved
+final-state observation. No paid fallback or forced model tool sequence was added.
+
+| Platform | Passing task run | Retained wait | Assessment |
+| --- | --- | --- | --- |
+| Temporal | `9b1c534c-e9f3-431a-a6d8-ceada99bf0dd` | 65,142 ms | Original pass; revision 2 pass |
+| Restate | `cb90d8d9-7e1a-4420-96ef-f22a58fae4d3` | 65,516 ms | Original pass; revision 2 pass |
+| LangGraph | `21e832c1-40a4-48e1-9f1b-db50184587c0` | 65,133 ms | Original pass; revision 2 pass |
+| Mastra | `1911bbb9-bcea-4da2-8463-ae6ba1e5d0a4` | 65,123 ms | Original verification restriction failed; revision 2 pass |
+| Vercel Workflows | `1dec84ea-874c-4197-abf4-48ee15c23e53` | 65,112 ms | Original revision 2 pass |
+
+Evidence index:
+`lab/runs/.sustained-proof/runs/.connected-proof/five-platform-acceptance-audit-20261010.json`.
+It hashes input reports and snapshots, compares scenario controls, verifies actual
+zero-price request routing and independently rereads every final collection.
+Recorded native model observations can include replayed projections; the audit
+separates observation counts from distinct provider response identities.
+
+Final corrective chunks:
+
+- `0374491`: Vercel's local World delivery could time out while several legitimate
+  inline steps ran. Its public bounded header timeout now covers the maximum
+  admitted task plus one minute. Per-model/task deadlines and zero retries remain
+  unchanged. Build, three config checks and one actual local World regression
+  passed; the slow model response produced one provider dispatch.
+- `e006ebe`: Vercel records safe parsed finish reason, response identity and token
+  counts on success and failure. Seven focused model checks and build passed.
+  The preceding empty-response trial remains failed with zero effects; the later
+  successful reproduction does not establish that failure's cause.
+- `94054a0`: grader revision 2 accepts a complete unique collection receipt as
+  post-action verification. Exact call/catalog/turn/namespace, freshness, all
+  record fields and denied-state checks remain required. Eight focused checks
+  and build passed. New hash-bound assessments preserve original verdicts and
+  retain other original criteria as explicit gates. No agent was rerun to regrade.
+
+The completed Vercel conversation was inspected directly. Four original decision
+cards remain inside the completed assistant article, four Markdown tables render,
+all final rows are readable and Stop is absent after completion. Evidence:
+`lab/runs/.connected-proof/browser-sustained-20261010/vercel-completed-report.json`
+and `vercel-completed-task.png`. These decisions were issued by the fixture
+observer; the earlier Temporal browser proof covers actual approval/denial clicks.
+
+The execution-session handoff stopped local service processes. Retained Lab,
+Restate, LangGraph, Mastra and local World files were preserved. The previous
+Temporal development server had no persisted database, so its server history
+was not resurrected; the observed worker-replacement proofs remain historical
+evidence. The current development backend uses
+`lab/runs/.service-state/temporal.db`. All five normal platform health endpoints
+were checked reachable after restoration. This is not a whole-host recovery claim.
+
+- [x] Re-read original scope and every definition-of-done item.
+- [x] Inspect native evidence, receipts, independent provider state and browser
+  output, preserving framework-specific recovery limits.
+- [x] Confirm each implementation milestone has focused verification evidence.
+- [x] Complete affected native/contract checks, server build, frontend typecheck
+  and direct browser acceptance. Regenerate the documentation catalog after the
+  final document move; no additional model calls are required.
+- [x] Preserve original failures, document the grading correction and exclude
+  secrets, generated evidence and unrelated Lina changes from commits.
+
+The remaining limits are intentional scope boundaries: local single ownership
+where documented, uncertain-effect reconciliation, the pinned Mastra compatibility
+workaround, no hosted/multi-replica or hour/day retention claim, and deferred
+production supervision. No required item from this phase remains open.
