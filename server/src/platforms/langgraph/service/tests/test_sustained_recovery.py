@@ -77,6 +77,12 @@ def test_uncheckpointed_effect_or_summary_requires_reconciliation(tmp_path: Path
         assert inspection["status"] == "unknown"
         assert inspection["result"]["error"]["code"] == "LANGGRAPH_RECOVERY_RECONCILIATION_REQUIRED"
         assert not any(event["kind"] in {"ModelRequested", "ToolExecutionStarted", "RunRecovered"} for event in inspection["events"])
+        diagnostics = client.get("/v1/recovery/diagnostics").json()
+        assert diagnostics["status"] == "attention"
+        owned = next(run for run in diagnostics["ownedRuns"] if run["runId"] == request.run_id)
+        assert owned["eligible"] is False
+        assert owned["reason"] == "reconciliation_required"
+        assert owned["checkpointId"] is not None
 
 
 @pytest.mark.parametrize("cancelled,expired,expected", [(True, False, "cancelled"), (False, True, "failed")])

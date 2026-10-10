@@ -38,3 +38,11 @@ checkpoints at controlled boundaries and tests safe continuation, unresolved
 model/tool/summary outcomes, retained cancellation, expiry and exclusive ownership.
 These fixtures are deterministic restart classification tests, not evidence of
 distributed durability or successful provider side effects.
+
+The bounded recovery diagnostics endpoint also returns `ownedRuns`, including
+checkpoint identity, eligibility and reason. It can show a safe checkpoint,
+waiting review, legacy policy, cancellation, expiry or required reconciliation.
+This is a read-only snapshot of recovery safety; it cannot start a second worker
+for an already active execution. Running state and checkpoints can advance while
+an operator reads it. `unknown` owners keep the attention status even when they
+have checkpoint rows, because storage alone cannot resolve their external outcome.

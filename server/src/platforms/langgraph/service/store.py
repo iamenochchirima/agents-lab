@@ -289,6 +289,14 @@ class SQLiteRunStore:
                 (canonical_json(operation) if operation else None, execution_id),
             )
 
+    def recovery_runs(self, limit: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT * FROM service_runs WHERE status IN ('queued', 'running', 'suspended', 'unknown') ORDER BY created_at LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [self._row_to_run(row) for row in rows]
+
     def request_cancel(self, execution_id: str, reason: str) -> tuple[dict[str, Any], bool]:
         with self._lock, self._connection:
             record = self.get(execution_id)

@@ -69,6 +69,17 @@ test("LangGraph recovery diagnostics parsing preserves bounded orphan state", ()
   assert.equal(diagnostics.uncheckpointedRuns[0]?.status, "unknown");
 });
 
+test("LangGraph recovery diagnostics preserves and validates owned checkpoint safety", () => {
+  const body = { protocolVersion: 1, status: "attention", limit: 1,
+    orphanCheckpointThreads: [], orphanWriteCount: 0, uncheckpointedRuns: [], truncated: false, message: "Retained unknown outcome",
+    ownedRuns: [{ executionId: "langgraph:owned", runId: "owned", threadId: "original-thread", checkpointId: "original-checkpoint", eligible: false, reason: "reconciliation_required" }] };
+  const parsed = parseRecoveryDiagnostics(body);
+  assert.equal(parsed.ownedRuns?.[0]?.checkpointId, "original-checkpoint");
+  assert.equal(parsed.ownedRuns?.[0]?.reason, "reconciliation_required");
+  assert.throws(() => parseRecoveryDiagnostics({ ...body, ownedRuns: [{ ...body.ownedRuns[0], eligible: true }] }), /eligibility/);
+  assert.throws(() => parseRecoveryDiagnostics({ ...body, ownedRuns: [body.ownedRuns[0], body.ownedRuns[0]] }), /bound/);
+});
+
 test("LangGraph recovery diagnostics rejects an unbounded operator query", () => {
   assert.throws(
     () => parseRecoveryDiagnostics({

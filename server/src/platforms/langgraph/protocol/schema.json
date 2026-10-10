@@ -775,6 +775,23 @@
             "$ref": "#/$defs/uncheckpointedRun"
           }
         },
+        "ownedRuns": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["executionId", "runId", "threadId", "checkpointId", "eligible", "reason"],
+            "properties": {
+              "executionId": { "$ref": "#/$defs/identity" },
+              "runId": { "$ref": "#/$defs/identity" },
+              "threadId": { "$ref": "#/$defs/identity" },
+              "checkpointId": { "type": ["string", "null"], "maxLength": 255 },
+              "eligible": { "type": "boolean" },
+              "reason": { "enum": ["safe_checkpoint", "waiting_review", "legacy_policy", "cancelled", "deadline_reached", "reconciliation_required"] }
+            }
+          }
+        },
         "truncated": {
           "type": "boolean"
         },

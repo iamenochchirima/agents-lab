@@ -403,6 +403,34 @@ class LangGraphService:
                 {"node": str(data.get("name", "unknown")), "errorType": type(error).__name__},
             )
 
+    def recovery_eligibility(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Read-only safety snapshot. It never adopts or schedules graph state."""
+        view = {"executionId": record["execution_id"], "runId": record["run_id"], "threadId": record["thread_id"],
+                "checkpointId": record["checkpoint_id"], "eligible": False, "reason": "reconciliation_required"}
+        try:
+            request = StartRunRequest.model_validate(json.loads(record["request_json"]))
+            if request.execution is None:
+                return {**view, "reason": "legacy_policy"}
+            with SqliteSaver.from_conn_string(str(self.config.database_path)) as saver:
+                native = saver.get_tuple({"configurable": {"thread_id": request.thread_id}})
+            if native:
+                view["checkpointId"] = native.config["configurable"]["checkpoint_id"]
+            if record["status"] == "unknown":
+                return view
+            values = native.checkpoint.get("channel_values", {}) if native else {}
+            operation = json.loads(record["pending_operation_json"]) if record.get("pending_operation_json") else None
+            if values.get("execution_run_id") != request.run_id or not checkpoint_contains_operation(values, operation):
+                return view
+            if record["cancel_requested"]:
+                return {**view, "reason": "cancelled"}
+            if execution_remaining_ms(request) <= 0:
+                return {**view, "reason": "deadline_reached"}
+            if record["status"] == "suspended":
+                return {**view, "reason": "waiting_review"}
+            return {**view, "eligible": True, "reason": "safe_checkpoint"}
+        except (TypeError, ValueError, KeyError):
+            return view
+
     def inspection(self, execution_id: str) -> RunInspection:
         record = self.store.get(execution_id)
         events = self.store.events(execution_id)
@@ -500,14 +528,19 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         limit: int = Query(default=100, ge=1, le=100),
     ) -> RecoveryDiagnosticsResponse:
         diagnostics = request.app.state.service.store.recovery_diagnostics(limit)
+        records = request.app.state.service.store.recovery_runs(limit + 1)
+        owned_runs = [request.app.state.service.recovery_eligibility(record) for record in records[:limit]]
+        diagnostics["truncated"] = diagnostics["truncated"] or len(records) > limit
         has_attention = bool(
             diagnostics["orphanCheckpointThreads"]
             or diagnostics["orphanWriteCount"]
             or diagnostics["uncheckpointedRuns"]
+            or any(record["status"] == "unknown" for record in records[:limit])
         )
         return RecoveryDiagnosticsResponse(
             status="attention" if has_attention else "clean",
             limit=limit,
+            owned_runs=owned_runs,
             message=(
                 "Recovery diagnostics found state without a complete ownership chain."
                 if has_attention

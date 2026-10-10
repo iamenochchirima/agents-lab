@@ -199,6 +199,15 @@ class UncheckpointedRun(ProtocolModel):
     message: str = Field(min_length=1, max_length=500)
 
 
+class OwnedRunRecovery(ProtocolModel):
+    execution_id: str = Field(min_length=1, max_length=255)
+    run_id: str = Field(min_length=1, max_length=128)
+    thread_id: str = Field(min_length=1, max_length=255)
+    checkpoint_id: str | None = Field(default=None, max_length=255)
+    eligible: bool
+    reason: Literal["safe_checkpoint", "waiting_review", "legacy_policy", "cancelled", "deadline_reached", "reconciliation_required"]
+
+
 class RecoveryDiagnosticsResponse(ProtocolModel):
     protocol_version: Literal[PROTOCOL_VERSION] = PROTOCOL_VERSION
     status: Literal["clean", "attention"]
@@ -206,6 +215,7 @@ class RecoveryDiagnosticsResponse(ProtocolModel):
     orphan_checkpoint_threads: list[OrphanCheckpointThread]
     orphan_write_count: int = Field(ge=0)
     uncheckpointed_runs: list[UncheckpointedRun]
+    owned_runs: list[OwnedRunRecovery] = Field(default_factory=list, max_length=100)
     truncated: bool
     message: str = Field(min_length=1, max_length=500)
 

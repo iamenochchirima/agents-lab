@@ -76,6 +76,14 @@ export interface LangGraphHealthResponse {
 }
 
 export interface LangGraphRecoveryDiagnostics {
+  readonly ownedRuns?: readonly {
+    readonly executionId: string;
+    readonly runId: string;
+    readonly threadId: string;
+    readonly checkpointId: string | null;
+    readonly eligible: boolean;
+    readonly reason: "safe_checkpoint" | "waiting_review" | "legacy_policy" | "cancelled" | "deadline_reached" | "reconciliation_required";
+  }[];
   readonly protocolVersion: typeof LANGGRAPH_PROTOCOL_VERSION;
   readonly status: "clean" | "attention";
   readonly limit: number;
@@ -185,7 +193,7 @@ export function parseHealthResponse(value: unknown): LangGraphHealthResponse {
 
 export function parseRecoveryDiagnostics(value: unknown): LangGraphRecoveryDiagnostics {
   const object = requireObject(value, "LangGraph recovery diagnostics");
-  requireOnly(object, ["protocolVersion", "status", "limit", "orphanCheckpointThreads", "orphanWriteCount", "uncheckpointedRuns", "truncated", "message"], "LangGraph recovery diagnostics");
+  requireOnly(object, ["protocolVersion", "status", "limit", "orphanCheckpointThreads", "orphanWriteCount", "uncheckpointedRuns", "ownedRuns", "truncated", "message"], "LangGraph recovery diagnostics");
   requireProtocol(object);
   if (object.status !== "clean" && object.status !== "attention") throw new Error("LangGraph recovery diagnostics has an invalid status.");
   requirePositiveInteger(object, "limit");
@@ -195,6 +203,17 @@ export function parseRecoveryDiagnostics(value: unknown): LangGraphRecoveryDiagn
   requireNonNegativeInteger(object, "orphanWriteCount");
   if (!Array.isArray(object.uncheckpointedRuns)) throw new Error("LangGraph uncheckpointed runs must be an array.");
   object.uncheckpointedRuns.forEach(validateUncheckpointedRun);
+  if (object.ownedRuns !== undefined) {
+    if (!Array.isArray(object.ownedRuns) || object.ownedRuns.length > object.limit) throw new Error("LangGraph owned run recovery exceeds the diagnostics bound.");
+    for (const value of object.ownedRuns) {
+      const run = requireObject(value, "LangGraph owned recovery run");
+      requireOnly(run, ["executionId", "runId", "threadId", "checkpointId", "eligible", "reason"], "LangGraph owned recovery run");
+      for (const key of ["executionId", "runId", "threadId"] as const) requireString(run, key);
+      if (run.checkpointId !== null) requireString(run, "checkpointId");
+      requireBoolean(run, "eligible");
+      if (!["safe_checkpoint", "waiting_review", "legacy_policy", "cancelled", "deadline_reached", "reconciliation_required"].includes(String(run.reason)) || run.eligible !== (run.reason === "safe_checkpoint")) throw new Error("LangGraph owned recovery eligibility has an invalid reason.");
+    }
+  }
   requireBoolean(object, "truncated");
   requireString(object, "message");
   return object as unknown as LangGraphRecoveryDiagnostics;
