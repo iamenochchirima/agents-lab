@@ -67,10 +67,7 @@ function validDocument(value: unknown): value is LinaDocument {
     && value.edges.every(edge => nodes.has(edge.source) && nodes.has(edge.target));
 }
 
-/** One workspace architecture draft, separate from agent execution and run evidence.
- * A revision check and replacement share the same transaction. A lost PUT receipt
- * requires a GET before retrying: blindly resending the old revision conflicts.
- */
+/** Preserved migration snapshot. Editing now belongs to standalone Lina. */
 class LinaStore {
   private readonly database: DatabaseSync;
 
@@ -105,29 +102,10 @@ class LinaStore {
     return { revision: row.revision, document };
   }
 
-  put(revision: number, document: LinaDocument): { conflict: boolean; snapshot: LinaSnapshot } {
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const current = this.get();
-      if (current.revision !== revision) {
-        this.database.exec("ROLLBACK");
-        return { conflict: true, snapshot: current };
-      }
-      const next = revision + 1;
-      this.database.prepare("UPDATE lina_architecture SET revision = ?, document = ?, updated_at = ? WHERE singleton = 1")
-        .run(next, JSON.stringify(document), new Date().toISOString());
-      this.database.exec("COMMIT");
-      return { conflict: false, snapshot: { revision: next, document } };
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
   close(): void { this.database.close(); }
 }
 
-/** Local-only architecture authoring endpoints. No runtime agent is created. */
+/** Read-only migration access; retired writes never change the preserved snapshot. */
 export function registerStudioLinaRoutes(app: FastifyInstance, databasePath: string): void {
   const store = new LinaStore(databasePath);
   app.addHook("onClose", async () => store.close());
@@ -136,22 +114,15 @@ export function registerStudioLinaRoutes(app: FastifyInstance, databasePath: str
     try { return operation(); }
     catch (error) {
       app.log.error({ err: error }, "Lina database operation failed");
-      return reply.code(503).send({ error: "LINA_STORAGE_FAILED", message: "The Lina database could not complete this operation. Your changes have not been confirmed saved." });
+      return reply.code(503).send({ error: "LINA_STORAGE_FAILED", message: "The preserved Lina architecture snapshot could not be read." });
     }
   }
 
   app.get("/lina", async (_request, reply) => operate(reply, () => store.get()));
-  app.put<{ Body: unknown }>("/lina", { bodyLimit: 2 * 1024 * 1024 }, async (request, reply) => {
-    const body = request.body;
-    if (!record(body) || !fields(body, ["revision", "document"])
-      || typeof body.revision !== "number" || !Number.isSafeInteger(body.revision)
-      || body.revision < 0 || body.revision >= Number.MAX_SAFE_INTEGER || !validDocument(body.document)) {
-      return reply.code(400).send({ error: "INVALID_LINA_DOCUMENT", message: "Provide a nonnegative revision and a version 1 document with valid nodes and edges. Node and edge IDs must be unique and edge endpoints must exist." });
-    }
-    return operate(reply, () => {
-      const result = store.put(body.revision as number, body.document as LinaDocument);
-      if (result.conflict) return reply.code(409).send({ error: "LINA_REVISION_CONFLICT", message: "Lina was changed elsewhere. Reload the saved architecture before deciding how to apply your draft.", ...result.snapshot });
-      return result.snapshot;
-    });
-  });
+  app.put("/lina", { bodyLimit: 2 * 1024 * 1024 }, async (_request, reply) =>
+    reply.code(410).send({
+      error: "LINA_ARCHITECTURE_MOVED",
+      message: "Architecture editing has moved to standalone Lina. GET /lina retains the migration snapshot.",
+      inspectionUrl: "http://127.0.0.1:4318/#architecture",
+    }));
 }

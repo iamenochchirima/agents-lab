@@ -25,7 +25,14 @@ export default defineConfig(({ mode }) => {
     // Keep every browser API call same-origin. This preserves management cookies
     // and lets the in-app browser reach the control plane without opening a
     // second loopback port to the browser.
-    proxy: { "/api": { target: apiTarget, changeOrigin: false } },
+    proxy: {
+      "/api": { target: apiTarget, changeOrigin: false },
+      "/studio-api": {
+        target: process.env.VITE_AGENTLAB_STUDIO_API_URL || environment.VITE_AGENTLAB_STUDIO_API_URL || "http://127.0.0.1:4320",
+        changeOrigin: false,
+        rewrite: requestPath => requestPath.replace(/^\/studio-api/, ""),
+      },
+    },
     fs: {
       allow: [path.resolve(webRoot, "../..")],
     },

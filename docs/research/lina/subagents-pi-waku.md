@@ -1,63 +1,7 @@
-# Subagents in Pi and Waku
+# Lina document moved
 
-Reviewed 2026-10-08 against official repositories, documentation and source. Remote HEADs were rechecked with `git ls-remote` and match the locally inspected checkouts. Pi is pinned to `6fb2e7815167e6b19006fc526d1a5d0f5f998787`; Waku is pinned to `763d3e79f34a2deca805e815b3b230188579e16b`. This is a source study. No models, child processes, restart experiments or performance benchmarks were run.
+This document is maintained in the standalone
+[Lina repository](https://github.com/iamenochchirima/lina).
 
-## What each project actually supplies
-
-| Facility | Location and status | Parent interaction | Persistence |
-| --- | --- | --- | --- |
-| Pi CLI subagent extension | Official example, explicitly installed | Model calls `subagent` in single, parallel or chain mode | Child launches with `--no-session` |
-| Pi coding-agent durable Subagent | Experimental source module | Foreground task delegation, await child answer | Child conversation owned by tool task |
-| Pi durable foreground example | Example built on separate `pi-durable` package | Await child answer; expose child ID to UI | Replay-safe child creation and submission |
-| Pi durable background example | Example built on separate `pi-durable` package | `spawn`, `send`, `stop`, `status`; asynchronous answer reports | SQLite conversations, reporter tasks and delivery state |
-| Waku delegation | Experimental tool, opt-in | Model calls synchronous `delegate_task` to local Pi | Logs/artifacts retained; no resumable child registry in this tool |
-
-Pi's official subprocess example documents installation, isolated contexts, progress, usage and the three modes. It is not evidence that every default Pi installation exposes a built-in subagent tool. [CLI example](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/examples/extensions/subagent/README.md#L1-L113).
-
-The experimental coding-agent implementation is a different path. Its package manifest excludes experimental distribution directories, so source availability must not be presented as a default released CLI capability. The separate durable package documents its own API and storage. [Experimental packaging](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/package.json#L14-L38), [Durable package](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/durable/README.md#L1-L85).
-
-## Pi CLI example
-
-Agent files define name, description, tools, model and system prompt. Discovery distinguishes user and project definitions; project definitions replace same-named user definitions when both are enabled. Defaults select user definitions. Project-agent trust is a separate decision from tool access. [Agent discovery](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/examples/extensions/subagent/agents.ts#L9-L146), [Project trust](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/examples/extensions/subagent/README.md#L49-L64).
-
-The tool launches a separate Pi process with a self-contained task, working directory and optional appended prompt. Unless the agent specifies a model, it uses the parent's active model and thinking level. A configured tool list becomes a CLI flag. It does not copy the parent's conversation. Chain mode inserts the previous final answer into the next task and stops on failure. Parallel mode allows eight tasks with four running at once, returns individual successes/failures and caps each returned answer at 50 KB. Streaming retains child messages, errors and usage. Cancellation sends SIGTERM and schedules an attempted SIGKILL fallback. There is no spawn handle, later message API, child depth counter or replay registry in this example. The kill fallback checks `proc.killed`, which means a signal was sent, rather than proving process exit. OS isolation must therefore be assessed separately. [Subprocess and cancellation](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/examples/extensions/subagent/index.ts#L278-L434), [Chain and bounded parallelism](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/examples/extensions/subagent/index.ts#L550-L685).
-
-Independent transcripts do not establish independent filesystem, credential or long-term memory permissions. The subprocess inherits its environment and installed resources unless the host constrains them. `--no-session` prevents this child's normal session persistence; it does not revoke access to external files or extensions. This is a boundary inference from process construction.
-
-## Pi durable designs
-
-The experimental coding-agent tool creates or reuses a child owned by the current tool task, removes its own Subagent extension, submits a stable request ID and awaits an answer. The child starts with inherited agent configuration but no parent conversation. Removing delegation prevents further child spawning through that extension. The implementation describes the child as surviving the call so the user can return to it. [Experimental foreground tool](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/coding-agent/src/experimental/durable/subagent.ts#L25-L69).
-
-The standalone foreground example explicitly inherits model, thinking, cwd, extensions and tools, removes delegation, records the child ID in running tool details and uses `subagent:<taskId>` for deduplication. Task ownership ties cancellation to the child. This gives a concrete design for retrying orchestration without starting the same child twice; it does not establish that arbitrary child side effects are safe to replay. [Foreground example](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/durable/test/examples/22-subagent-foreground.ts#L31-L77).
-
-The background example stores named child conversation IDs and reported answer IDs. An anchor task owns each child beyond the main turn. Reporter tasks deliver messages, wait for answers, commit report decisions and enqueue reports to the parent with stable request IDs. `send` can steer active work or queue follow-up work; `stop` aborts current work and queued messages while preserving the child for later use. Removing the SubagentTools extension blocks recursive delegation. Background ownership makes ordinary parent aborts and idle waits stop at that boundary; a host-wide background abort can cross it. The management tool is deliberately replay-unsafe because replaying a stop could abort newer work. Its reporters resume from committed phases after restart. This example does not implement a numerical concurrency, depth or cost admission policy. [Background example](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/durable/test/examples/23-subagent-background.ts#L37-L234).
-
-The durable API distinguishes steering after the current tool round from follow-ups after the answer. It preserves stored entries through reset and compaction, which changes model-visible context. Safe tool replay is opt-in; unsafe interrupted calls return an interruption result. SQLite's documented process-crash guarantee is weaker than power-loss durability, and the package permits one process per storage. These limits matter when describing recovery. [Submission and context lifecycle](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/durable/README.md#L296-L355), [Tool replay](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/durable/README.md#L151-L168), [Storage limits](https://github.com/earendil-works/pi/blob/6fb2e7815167e6b19006fc526d1a5d0f5f998787/packages/durable/README.md#L533-L545).
-
-Neither example defines Lina-style durable knowledge namespaces, permission intersection or parent-reviewed memory publication. Persistent child transcript state is not itself a long-term knowledge-sharing policy.
-
-## Waku delegation
-
-Waku registers experimental tools only when `settings.experimental` is enabled. The environment variable supplies the default; an explicit disabled setting wins. The parent model chooses `delegate_task` through normal tool calling. Waku's main loop executes requested tools serially and returns matching tool-result IDs, so this is synchronous specialization rather than a general parallel subagent manager. [Registration](https://github.com/ShenSeanChen/waku-agent/blob/763d3e79f34a2deca805e815b3b230188579e16b/waku/tools/__init__.py#L42-L56), [Loop execution](https://github.com/ShenSeanChen/waku-agent/blob/763d3e79f34a2deca805e815b3b230188579e16b/waku/loop/agent.py#L152-L175).
-
-Its API accepts `task`, optional `cwd` and `timeout_seconds`. It invokes local Pi headlessly with `--no-session`, maps the parent's provider/model where supported and passes project extensions and skills. An omitted cwd creates a retained workspace; scratch work can be auto-run afterward. The default deadline is 300 seconds. JSON mode forwards progress and records token usage; plain text is a compatibility fallback. Successful/nonzero completions save transcripts and raw events; timeout paths return before that artifact write. There is no later child messaging, join API, durable child ID, restart continuation or recursive-depth admission here. The command includes an API-key argument and the transcript writes a command prefix, so the source has a credential exposure risk. Lina should store credential references, redact execution metadata and resolve secrets only at dispatch. [Delegate implementation](https://github.com/ShenSeanChen/waku-agent/blob/763d3e79f34a2deca805e815b3b230188579e16b/waku/tools/experimental.py#L186-L317).
-
-Environment handling copies the parent's environment and removes keys named by an optional denylist. This is a host control, not a complete sandbox or default credential allowlist. The denial policy propagates to nested Waku calls. [Environment policy](https://github.com/ShenSeanChen/waku-agent/blob/763d3e79f34a2deca805e815b3b230188579e16b/waku/tools/_env.py#L1-L47).
-
-Waku tests cover self-contained delegation, calling-model selection, missing Pi, invalid cwd, timeouts, failed exits and event-stream accounting using fakes. They support the intended interface, not proof of crash-safe delegation or model quality. [Deterministic delegation tests](https://github.com/ShenSeanChen/waku-agent/blob/763d3e79f34a2deca805e815b3b230188579e16b/evals/deterministic/test_delegate.py#L1-L147).
-
-## Proposal implications for Lina
-
-These are recommendations inferred from the inspected designs, not claims that either project implements the whole proposal.
-
-1. Keep delegation model-callable through Tools. The main agent chooses to request help; harness admission decides whether the request can start. A workflow can also submit the same request deterministically later.
-2. Give every child a stable ID, parent ID, operation ID and own loop state. Reuse Turn Execution, Context, Model, Tools, Safety, State and Memory rather than duplicate their internals in Subagents.
-3. Separate the task from selected context, tool permissions, model configuration, workspace and resource limits. A child transcript should begin independently unless a recorded policy explicitly copies parent material.
-4. Intersect child capabilities with parent and host policy. Treat transcript isolation, process isolation and memory isolation as different properties. Resolve credential references through existing Tools connectors.
-5. Support foreground await and background completion delivery as explicit lifetime policies. Do not silently change whether stopping the parent also stops children.
-6. Add bounded admission, queueing and depth enforcement. Pi's CLI cap provides one concrete example, while its background example makes clear that persistent children need a separate management policy.
-7. Model messaging, status, wait/join, cancellation, terminal result collection and deduplicated parent delivery. Preserve child trace and artifact references while bounding what enters parent Context.
-8. Persist spawn intent before launching, inspect an existing operation after lost acknowledgment and reconnect/reconcile after restart. Stable submission IDs help orchestration; child external effects still follow each tool's replay policy.
-9. Keep child memory writes private by default, using Lina's existing parent review before shared publication. None of these inspected examples supplies that ownership policy automatically.
-
-For a first Studio simulation, show one foreground child, parallel children with partial failure, parent continuing during background work, a queued child under concurrency limits, messages to a running child, child cancellation, parent-stop lifetime differences and recovery without duplicate spawning. Record these as design fixtures until a real runtime exists. Research does not justify a speedup claim without a controlled experiment.
+Its location there is `docs/research/lina/subagents-pi-waku.md`. The migration manifest and raw
+backup are recorded in Lina under `docs/design/migration/`.

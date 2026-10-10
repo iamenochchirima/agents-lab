@@ -119,40 +119,25 @@ experimental SQLite warning on supported releases. This change uses focused
 TypeScript compilation and source inspection; it does not establish crash or
 concurrency guarantees through fault injection.
 
-## Lina architecture draft
+## Preserved Lina architecture snapshot
 
-Lina's authoring page saves a single workspace architecture document in the
-`lina_architecture` table, in the same SQLite file configured by
-`STUDIO_DATABASE_PATH`. It has its own connection with WAL journaling, FULL
-synchronous commits and a five-second busy timeout; the connection closes with
-the API. This is local disk persistence, not hosted storage or a cloud backup.
-The document is a user-authored design, not an executable agent or run evidence.
-The database starts with revision 0 and a null document; no architecture is seeded.
+Architecture editing now belongs to the standalone Lina inspection application.
+Lab retains the `lina_architecture` table in `STUDIO_DATABASE_PATH` for migration
+and recovery. It does not accept new edits.
 
-- `GET /lina` returns `{ revision, document }`.
-- `PUT /lina` accepts exactly `{ revision, document }` and returns the committed
-  `{ revision, document }` with revision incremented by one.
-- Documents contain exactly `{ version: 1, nodes: [...], edges: [...] }`.
-  Nodes contain `id`, `title`, `area`, `status`, `x`, `y`, `purpose`, `inputs`,
-  `outputs`, `decisions`, `references`, and `experiments`. All are strings except
-  finite numeric coordinates. Status is `proposed`, `studying`, or `decided`.
-  Edges contain string `id`, `source`, `target`, and `label` fields.
+- `GET /lina` returns the preserved `{ revision, document }` snapshot. An empty
+  workspace has revision 0 and a null document.
+- `PUT /lina` returns 410 with `LINA_ARCHITECTURE_MOVED` and the default local
+  inspection URL. It never changes the snapshot.
+- Start standalone Lina's inspection server and open its Architecture screen to
+  import and save the exported document. Browser drafts remain separate from this
+  SQLite snapshot; Lab's migration page exports them without clearing storage.
 
-The PUT revision must match the current database revision. The check and document
-replacement happen in one transaction. A stale revision receives 409 with
-`error`, `message`, and the current `revision` and `document`; it never overwrites
-the newer architecture. A lost acknowledgement requires GET reconciliation
-before retrying: repeating a PUT with an old revision conflicts, even when the
-previous write succeeded. This API does not merge concurrent drafts.
-
-The body limit is 2 MiB, with at most 500 nodes and 2,000 edges. IDs are 1–200
-characters without control characters and must be unique within their respective
-collections; edge endpoints must identify existing nodes. Titles are nonblank
-and limited to 200 characters, areas to 100, detail fields to 20,000 each, and
-edge labels to 500. Coordinates must fall within ±1,000,000. Invalid documents
-receive 400 and oversized requests receive 413. Storage failures receive safe
-503 errors; logs retain diagnostics and no successful save is claimed. Like the
-comparison API, this workspace document has no authentication or user separation.
+Stored version 1 documents retain their original node IDs, edge endpoints, layout
+and annotations. Invalid stored data or storage failures return a safe 503 rather
+than resetting the snapshot. The connection closes with the API. This is local
+persistence, not hosted storage or a cloud backup; the design document is separate
+from runtime evidence. The legacy request body limit remains 2 MiB.
 
 ## Context retention experiment
 

@@ -132,3 +132,11 @@ comparison. Other components and Context alternatives remain planned.
 - [Lina Planning and task management](completed/lina-planning-block.md)
 
 - [Lina Output and delivery](completed/lina-output-delivery.md)
+
+## Standalone Lina handoff
+
+The [full-screen TUI implementation handoff](active/lina-tui-upgrade.md) is stored
+here with its Lab design references. It targets the separate Lina repository,
+not Studio runtime code. Its checklist covers the approved five-screen design,
+real application integration and terminal verification. Transfer the plan into
+Lina when its implementation session starts.

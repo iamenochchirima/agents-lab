@@ -1,8 +1,14 @@
 # Lina architecture workspace
 
+In local development, Lina reads and saves through `/studio-api/lina` on the
+frontend origin. Vite forwards this to the Studio API, default port 4320. This
+avoids requiring the browser to reach another loopback port. The original API
+identity still keys browser drafts, preserving existing edits. Production keeps
+the configured Studio API URL.
+
 Open `/studio/lina` from **Lina architecture** in Studio. Lina is the user's agent
 design, separate from the source explorers and the laboratory's executable reference
-assembly. The page loads the maintained Input, Turn Execution, Context, Tools, Model Interface, Safety, State, Memory, Subagents, Planning and Execution Environment design. Agreed decisions and open
+assembly. The page loads the maintained Input, Turn Execution, Context, Tools, Model Interface, Safety, State, Memory, Subagents, Planning, Execution Environment, Output, Observability and Evaluation design. Agreed decisions and open
 proposals are labelled separately.
 
 Architecture components and connections are maintained through our design work.
@@ -42,11 +48,10 @@ positions. Turn Execution positions are unchanged by Reset input layout. Reset a
 components when the design reloads.
 The preset is design data and does not execute Lina or the source agents.
 
-Empty regions reserve Computer Use, Output and delivery,
-and Observability. Use **Planned blocks** in the
-sidebar to center one. These regions contain no nodes or connections and are
-not simulated. Computer Use is deferred. Their placement is computed beside the current graph; they are
-canvas guides rather than saved or draggable components.
+The remaining empty region reserves Computer Use. Use **Planned blocks** in the
+sidebar to center it. It contains no nodes or connections and is not simulated.
+Computer Use is deferred. Its placement is computed beside the current graph; it
+is a canvas guide rather than a saved or draggable component.
 
 The **Components** and **Inspector** controls independently collapse or restore
 the sidebars. Selecting a node automatically opens its inspector with its notes.
@@ -644,3 +649,97 @@ upload intent and uncertain-upload recovery kept separate from message delivery.
 
 See the [research and comparison](../../../../../docs/research/lina/output-research.md)
 and the [implementation checklist](../../../../../development/implementation-plans/studio/completed/lina-output-delivery.md).
+
+
+## Observability block
+
+Sixteen nodes and fifty-six connections describe configuration, collection,
+evidence/views, analysis and operations. The maintained Lina graph contains
+187 nodes and 841 connections after adding Evaluation. Observability sits beside its execution/evidence
+owners rather than extending every tool call through sixteen serial steps.
+Existing drafts gain the block through reviewed-document refresh without
+resetting positions, annotations or custom connections.
+
+Every maintained executable node has an **Observation contract** disclosure in
+its Contract tab. This shows the declared operation/context owner, mapping
+revision, applicable lifecycle phases, typed input/output references, possible
+branches, correlation, privacy and measurement availability. Examples use the
+shared observation envelope. Declaration, reference fixture and installed
+runtime instrumentation are separate: an illustrative contract is not evidence
+that a live hook exists. Observer nodes use independent health reporting to avoid
+recursive tracing. Computer Use's empty region has no fictional events.
+
+Expand **Observability settings** in the Run modal to choose a controlled case,
+capture profile, signal/detail/export settings and selected-node interest.
+Twenty-five cases cover ordinary and parallel/child/wait activity, off/selective
+capture, duplicates/late facts, missing mapping, overflow, observer/store/export
+failures, reconnect/cursor expiry, privacy/retention, eval evidence and detach/drain.
+Auto and Next use the same fixture reducer; graph following remains independent
+of playback. The activity snapshot separates current owner status from optional
+trace evidence, with missing information explicit.
+
+TUI, browser and future desktop consumers share projection and snapshot/delta/
+cursor semantics. `activityText` is a terminal presentation reference, not a
+running TUI application. The browser is the current interactive fixture viewer;
+no network live-feed transport or desktop client is implemented here.
+
+Optional capture off/failure does not change fixture task results, required State
+records or Output custody. Lazy detail builders are gated by capture interest and
+permission. Bounded collection, copied observations, loss markers and receipts
+illustrate the intended boundary without claiming production durability or
+measured overhead. Timing, token, cost and overhead fields remain unavailable.
+
+The evaluation evidence manifest links fixture configuration/scenario, results,
+artifacts, owner records, traces, architecture and capture policy. Missing required
+evidence reports insufficient evidence. It does not score the run; Evaluation
+remains a separate consumer. Feedback, health/alert proposals, protected content,
+export and retention are design contracts or controlled fixtures, not real sends,
+storage deletion or telemetry backend integration.
+
+See the [research and architecture](../../../../../docs/research/lina/observability-research.md),
+[live activity comparison](../../../../../docs/research/lina/live-activity-research.md)
+and [implementation checklist](../../../../../development/implementation-plans/studio/completed/lina-observability.md).
+
+## Evaluation
+
+Evaluation is a Lab responsibility outside the target's turn loop. Its eighteen
+nodes specify suites/tasks/oracles, grader selection, frozen controls, repeated
+trials, isolated environment setup, scheduling, normal harness invocation,
+outcome verification, evidence eligibility, objective/model/human grading,
+immutable assessment retention, aggregation, comparison, report publication and
+suite/grader health. It sits beside Observability on the relationship layout.
+
+Use **Run → Evaluation settings** to select an illustrative case. Existing
+Auto, Pause, Next, Reset and graph-follow controls also apply to the evaluation
+path. The assessment JSON appears progressively as controller events are visited.
+With evaluation disabled, the ordinary simulation remains unchanged. Retained-run
+assessment and regrading bypass target/environment execution. Regrading retains
+its original assessment reference and does not overwrite it.
+
+Actual task success comes from the task's outcome oracle, not a complete trace or
+an agent saying it finished. Eligibility belongs to each grader. An outcome
+assertion can be evaluated with trace capture disabled; a tool-order assertion
+cannot. Missing mandatory evidence, verifier errors, pending human review and
+judge failures remain distinct from confirmed task failure. A high optional
+quality score cannot override a failed mandatory assertion.
+
+`evaluationBlock.ts` owns maintained graph declarations;
+`contracts/evaluationContracts.ts` and `contracts/evaluationRecords.ts` own typed
+variants and examples; `evaluationFixtures.ts` owns deterministic design fixtures.
+Lina State supplies target evidence. Lab evaluation storage owns scheduling and
+assessments. Independent judge requests reuse the Model interface with separate
+configuration and budgets. Reports use authorized read/export boundaries and do
+not automatically contact users or change Memory.
+
+Repeated-trial fixtures animate one representative target traversal and use
+explicit retained illustrative receipts for the other attempts. They demonstrate
+aggregation rules, not repeated real model executions. All example scores are
+fixtures. Physical latency, cost and confidence intervals remain unavailable;
+animation duration is not a performance measurement.
+
+Research: [Evaluation proposal](../../../../../docs/research/lina/evaluation-research.md).
+Implementation checklist: [Evaluation plan](../../../../../development/implementation-plans/studio/completed/lina-evaluation.md).
+Real verifier processes, benchmark adapters, persistent scheduling, calibrated paid
+judges and verified reviewer identities are later runtime work. The current Lab's
+existing report/review schemas keep their own limitations and are not silently
+migrated by this design block.
