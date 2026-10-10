@@ -109,6 +109,7 @@ export interface ModelEvalObservation extends Partial<OpenRouterResponseMetadata
   readonly providerName?: string | null;
   readonly output?: string | null;
   readonly errorCode?: string;
+  readonly transportError?: ModelTransportError;
 }
 
 export interface ModelSuccess {
@@ -120,7 +121,15 @@ export interface ModelSuccess {
   readonly usage: RunUsage;
 }
 
+/** Allowlisted network diagnostics exclude error messages, endpoints and credentials. */
+export interface ModelTransportError {
+  readonly name: string;
+  readonly code?: string;
+  readonly causeCode?: string;
+}
+
 export interface ModelFailure {
+  readonly transportError?: ModelTransportError;
   readonly evalObservation?: ModelEvalObservation;
   readonly kind: "failure";
   readonly code: string;

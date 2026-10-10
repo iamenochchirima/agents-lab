@@ -68,3 +68,23 @@ test("live restate retains safe diagnostics for reasoning-only and successful re
     assert.ok(!JSON.stringify(result.evalObservation).includes("PRIVATE"));
   }
 });
+
+
+test("live restate reports allowlisted fetch failure categories without private error details", async () => {
+  const failure = Object.assign(new TypeError("fetch failed https://private.example?secret=test-secret"), {
+    cause: Object.assign(new Error("Authorization: Bearer test-secret"), { code: "ECONNRESET" }),
+  });
+  const model = new OpenRouterRestateModel({ apiKey: "test-secret", baseUrl: "https://private.example", fetchImpl: async () => { throw failure; } });
+  const result = await model.complete(input, new AbortController().signal);
+  assert.equal(result.kind, "failure");
+  if (result.kind !== "failure") throw new Error("Expected transport failure");
+  assert.equal(result.code, "OPENROUTER_OUTCOME_UNKNOWN");
+  assert.equal(result.retryable, false);
+  assert.deepEqual(result.transportError, { name: "TypeError", causeCode: "ECONNRESET" });
+  assert.deepEqual(result.evalObservation?.transportError, result.transportError);
+  assert.ok(!JSON.stringify(result).includes("private.example"));
+  assert.ok(!JSON.stringify(result).includes("test-secret"));
+  const untrusted = new OpenRouterRestateModel({ apiKey: "test-secret", baseUrl: "https://private.example", fetchImpl: async () => { throw { name: "SECRET", code: "SECRET", cause: { code: "SECRET" } }; } });
+  const redacted = await untrusted.complete(input, new AbortController().signal);
+  assert.deepEqual(redacted.evalObservation?.transportError, { name: "OtherError" });
+});

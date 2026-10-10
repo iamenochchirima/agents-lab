@@ -12,7 +12,12 @@ does not create a tool round.
 The adapter classifies a transport failure after dispatch as `outcome_unknown`;
 it does not retry that request as if it had never reached the provider. Only a
 pre-dispatch failure is eligible for the bounded, numbered model-attempt policy;
-each safe retry is a separate durable action.
+each safe retry is a separate durable action. Transport failures retain only
+allowlisted JavaScript error names and Node/Undici error codes in
+`transportError`; live eval observations also capture these categories. Error
+messages, stack traces, request URLs, authentication headers and arbitrary
+provider codes are excluded. This distinguishes DNS, TLS and socket failures
+without claiming whether an unacknowledged model request ran.
 API keys stay in the service process and never enter model request bodies,
 workflow input, normalized events, or results.
 

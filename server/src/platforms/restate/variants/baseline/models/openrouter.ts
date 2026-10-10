@@ -1,6 +1,6 @@
 import { openRouterResponseMetadata, type OpenRouterResponseMetadata } from "../../../../../models/openrouter/response-metadata.js";
 import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
-import type { ModelAdapter, ModelCallResult, ModelMessage, ModelRequest, ModelToolCall } from "../contracts.js";
+import type { ModelAdapter, ModelCallResult, ModelMessage, ModelRequest, ModelToolCall, ModelTransportError } from "../contracts.js";
 
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_ASSISTANT_TEXT_BYTES = 128 * 1024;
@@ -67,7 +67,7 @@ export class OpenRouterRestateModel implements ModelAdapter {
       toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
       providerRequestId: responseMetadata.providerRequestId ?? (result.kind === "success" ? result.providerRequestId : null),
       output: result.kind === "success" ? result.output : null,
-      ...(result.kind === "failure" ? { errorCode: result.code } : {}),
+      ...(result.kind === "failure" ? { errorCode: result.code, ...(result.transportError ? { transportError: result.transportError } : {}) } : {}),
     } };
   }
 
@@ -99,6 +99,7 @@ export class OpenRouterRestateModel implements ModelAdapter {
       return {
         kind: "failure",
         code: "OPENROUTER_OUTCOME_UNKNOWN",
+        transportError: safeTransportError(error),
         message: "OpenRouter did not confirm whether the model request completed.",
         failureKind: "outcome_unknown",
         retryable: false,
@@ -302,4 +303,24 @@ function isContextOverflowResponse(value: string): boolean {
 function numberValue(value: unknown, key: string): number | null {
   const result = objectValue(value, key);
   return typeof result === "number" && Number.isFinite(result) && result >= 0 ? result : null;
+}
+
+// Network libraries can put URLs, headers or server text in error messages.
+// Publish only known error categories and Node/Undici transport codes.
+const TRANSPORT_NAMES = new Set(["Error", "TypeError", "FetchError", "SystemError", "AggregateError", "AbortError", "TimeoutError"]);
+const TRANSPORT_CODES = new Set([
+  "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "EPIPE",
+  "ERR_INVALID_URL", "ERR_INVALID_ARG_TYPE", "ERR_TLS_CERT_ALTNAME_INVALID", "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_VERIFY_LEAF_SIGNATURE", "CERT_HAS_EXPIRED", "CERT_NOT_YET_VALID",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
+  "UND_ERR_SOCKET", "UND_ERR_ABORTED", "UND_ERR_INVALID_ARG", "UND_ERR_REQ_CONTENT_LENGTH_MISMATCH",
+]);
+function safeTransportError(error: unknown): ModelTransportError {
+  const value = error && typeof error === "object" ? error as { name?: unknown; code?: unknown; cause?: unknown } : {};
+  const cause = value.cause && typeof value.cause === "object" ? value.cause as { code?: unknown } : {};
+  return {
+    name: typeof value.name === "string" && TRANSPORT_NAMES.has(value.name) ? value.name : "OtherError",
+    ...(typeof value.code === "string" && TRANSPORT_CODES.has(value.code) ? { code: value.code } : {}),
+    ...(typeof cause.code === "string" && TRANSPORT_CODES.has(cause.code) ? { causeCode: cause.code } : {}),
+  };
 }
