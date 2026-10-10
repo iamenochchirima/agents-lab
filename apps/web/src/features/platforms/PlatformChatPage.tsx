@@ -10,6 +10,7 @@ import { ModelPicker } from "../models/ModelPicker";
 import { ConnectedCapabilitiesSummary } from "./ConnectedCapabilitiesSummary";
 import { useInvocationReviews } from "./useInvocationReviews";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
+import { RunFailureDetails } from "./RunFailureDetails";
 import { defaultCapabilityProfile, requiresUpfrontApproval, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
@@ -552,6 +553,7 @@ export function PlatformChatPage() {
                   {/* Preserve the card across renewal; submissions below still bind the current revision. */}
                   {projectTurnActivity(run, reviews.actions[run.runId] ?? []).map(item => item.kind === "review" ? <InvocationReviewPanel key={`${run.runId}:${item.action.requestId}`} run={run} action={item.action} evidenceUrl={getRunToolReceiptUrl(run.runId, item.action.call.toolCallId)} now={reviews.now} busy={reviews.busy !== null} uncertain={reviews.uncertain[`${run.runId}:${item.action.requestId}:${item.action.revision}`]} onSubmit={(choice, renewal) => void reviews.submit(item.action, choice, renewal)} /> : <div className="chat-tool-activity" key={item.event.eventId}><ToolOutcomeDetails event={item.event} runId={run.runId} /></div>)}
                   {reviews.errors[run.runId] && <p role="alert">{reviews.errors[run.runId]}</p>}
+                  <RunFailureDetails run={run} />
                   {run.status === "suspended" && reviews.actions[run.runId]?.length === 0 && run.manifest.platform === "mastra" && run.manifest.variant === "workflow" && <section className="invocation-review" aria-label="Workflow approval"><p>This workflow is paused. This decision resumes the workflow, without approving exact tool arguments.</p><button className="quiet-button" disabled={isResuming} onClick={() => void resumeWorkflow(run, false)} type="button">Deny workflow</button><button className="button button-primary" disabled={isResuming} onClick={() => void resumeWorkflow(run)} type="button">Approve and resume workflow</button></section>}
                 </>}
                 {message.id === grantAssistantId && grantReviewOpen && <section className="invocation-review" aria-label="Broader tool access"><strong>Allow broader tool access for this run?</strong><p>This grants access to tools. Individual actions can still require exact review.</p><ul>{connectedProfile?.capabilities.filter(requiresUpfrontApproval).map(capability => <li key={capability.id}>{capability.displayName} · {capability.operations.join(", ")}</li>)}</ul><button className="quiet-button" onClick={() => decideToolGrant("denied")} type="button">Deny tool access</button><button className="button button-primary" onClick={() => decideToolGrant("approved")} type="button">Approve tool access</button></section>}

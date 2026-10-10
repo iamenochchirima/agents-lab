@@ -69,8 +69,11 @@ removed by an update, focus moves to its card without requesting a scroll. Polli
 does not take focus from another control or an inactive page. Actual focus/scroll
 behavior still needs the frontend observation listed in the readiness checkpoint.
 If delivery of an already-retained decision fails, use **Retry retained decision**
-or **Continue reviewed action** with the same decision identity. **Request fresh
-review** renews an expired proposal without another model choice or effect. A
+or **Continue reviewed action** with the same decision identity. Failed turns show
+safe guidance with a bounded recorded phase/code chain under **Failure details**.
+Unknown adapter failures keep a generic explanation; private exception bodies are
+not copied into chat. A failed final model response does not undo confirmed tool effects.
+**Request fresh review** renews an expired proposal without another model choice or effect. A
 cancelled or terminal run cannot authorize another dispatch from its old card.
 
 Reopening a saved Chat run restores the conversation's retained turns and review
