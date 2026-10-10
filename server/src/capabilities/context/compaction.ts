@@ -34,14 +34,14 @@ export async function compactContext(
   validateMessages(messages, options);
   const now = options.now ?? (() => new Date().toISOString());
   const before = calculateContextBudget(contextWindowTokens, counter.count(messages), policy);
-  const candidates = compactableCandidates(messages, options.currentMessageId, policy.recentMessageGroups);
+  const candidates = compactableCandidates(messages, options, policy.recentMessageGroups);
   // If the context is already unsafe and the configured recent tail contains
   // every historical group, there is no older group to compact. Fall back to
   // the complete pre-turn history rather than failing while a safe summary is
   // still possible; the active turn remains protected in either case.
   const effectiveCandidates = candidates.length > 0
     ? candidates
-    : compactableCandidates(messages, options.currentMessageId, 0);
+    : compactableCandidates(messages, options, 0);
   if (effectiveCandidates.length === 0) {
     throw new ContextCompactionError("The context has no safe history to compact while preserving the active turn.");
   }
@@ -95,20 +95,25 @@ export async function compactContext(
   return { messages: compactedMessages, record };
 }
 
-function compactableCandidates(messages: readonly ContextMessage[], currentMessageId: string, recentMessageGroups = 0): ContextMessage[] {
-  const currentIndex = messages.findIndex((message) => message.messageId === currentMessageId);
+function compactableCandidates(messages: readonly ContextMessage[], options: ContextCompactionOptions, recentMessageGroups = 0): ContextMessage[] {
+  const currentIndex = messages.findIndex((message) => message.messageId === options.currentMessageId);
   if (currentIndex < 0) throw new ContextCompactionError("The active message is not present in the context.");
 
   const groups = new Map<string, ContextMessage[]>();
-  for (const message of messages.slice(0, currentIndex)) {
+  const selected = options.completedGroupIds ? new Set(options.completedGroupIds) : null;
+  const protectedIds = new Set([options.currentMessageId, ...(options.protectedMessageIds ?? [])]);
+  const protectedGroups = new Set(messages.filter(message => protectedIds.has(message.messageId)).map(message => message.groupId ?? message.messageId));
+  for (const message of selected ? messages : messages.slice(0, currentIndex)) {
     if (message.role === "system" || message.role === "developer" || message.source === "skills" || message.source === "compaction-summary") continue;
     const groupId = message.groupId ?? message.messageId;
+    if (protectedGroups.has(groupId) || selected && !selected.has(groupId)) continue;
     const group = groups.get(groupId) ?? [];
     group.push(message);
     groups.set(groupId, group);
   }
 
   const grouped = [...groups.values()];
+  if (selected) for (const group of grouped) validateCompleteToolGroup(group);
   const recentGroupCount = recentMessageGroups;
   const compactedGroups = recentGroupCount === 0 ? grouped : grouped.slice(0, Math.max(0, grouped.length - recentGroupCount));
   const all = compactedGroups.flat();
@@ -117,6 +122,20 @@ function compactableCandidates(messages: readonly ContextMessage[], currentMessa
   // arbitrary newest group would be unsafe because tool groups and dialogue
   // groups have different IDs and do not necessarily align by position.
   return all;
+}
+
+/** Reject incomplete or ambiguous pairing before asking a model to summarize it. */
+function validateCompleteToolGroup(group: readonly ContextMessage[]): void {
+  const assistants = group.filter(message => message.role === "assistant");
+  const results = group.filter(message => message.role === "tool");
+  if (assistants.length !== 1 || assistants.length + results.length !== group.length) throw new ContextCompactionError("Within-run compaction requires complete assistant/tool groups.");
+  let ids: unknown;
+  try { ids = JSON.parse(assistants[0]!.metadata?.toolCallIds ?? "null"); } catch { ids = null; }
+  const resultIds = results.map(message => message.metadata?.toolCallId);
+  if (!Array.isArray(ids) || !ids.length || !ids.every(id => typeof id === "string" && id) || new Set(ids).size !== ids.length ||
+      resultIds.length !== ids.length || new Set(resultIds).size !== resultIds.length || !resultIds.every(id => ids.includes(id))) {
+    throw new ContextCompactionError("Within-run compaction cannot separate a tool call from its result.");
+  }
 }
 
 function insertSummary(messages: readonly ContextMessage[], summary: ContextMessage): readonly ContextMessage[] {

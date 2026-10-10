@@ -118,6 +118,11 @@ export interface ContextCompactionOptions {
   readonly sessionRevision: number;
   readonly sourceRevision: number;
   readonly currentMessageId: string;
+  /** Within-run compaction may select complete tool groups after the active user.
+   * Assistant metadata.toolCallIds is JSON IDs; tool metadata.toolCallId pairs each result. */
+  readonly completedGroupIds?: readonly string[];
+  /** Protect complete groups containing these messages, rather than splitting pairs. */
+  readonly protectedMessageIds?: readonly string[];
   readonly trigger: ContextCompactionRecord["trigger"];
   readonly policyVersion?: string;
   readonly now?: () => string;
