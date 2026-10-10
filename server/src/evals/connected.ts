@@ -89,6 +89,11 @@ async function main() {
         const failuresObserved = (stage.requiredFailureTools ?? []).every(name => run.events.some(event => event.kind === 'ToolExecutionFailed' && event.payload.toolName === name));
         const deniedEvent = run.events.find(event => event.kind === 'InvocationReviewDecided' && event.payload.decision === 'denied');
         const denialVerified = stage.decision !== 'denied' || (!!deniedEvent && run.events.some(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === stage.verificationTool && event.recordedSequence > deniedEvent.recordedSequence));
+        // Two reads could both precede the mutation. Verification must observe
+        // saved state after the final successful mutation in this stage.
+        const completedMutations = run.events.filter(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === scenario.mutationTool);
+        const lastMutationSequence = Math.max(-1, ...completedMutations.map(event => event.recordedSequence));
+        const approvalVerified = stage.decision !== 'approved' || (lastMutationSequence >= 0 && !!stage.verificationTool && run.events.some(event => event.kind === 'ToolExecutionCompleted' && event.payload.toolName === stage.verificationTool && event.recordedSequence > lastMutationSequence));
         let errorObserved = !stage.requiredErrorCode;
         if (stage.requiredErrorCode) {
           const receiptRoot = resolve(process.env.AGENTLAB_RUN_ROOT ?? '../lab/runs', run.runId, 'artifacts/capability-calls');
@@ -97,8 +102,8 @@ async function main() {
             if (receipt.status === 'complete' && receipt.result?.status === 'failed' && JSON.stringify(receipt.result).includes(stage.requiredErrorCode)) errorObserved = true;
           }
         }
-        record.toolCriteria = { toolCounts, failuresObserved, denialVerified, errorObserved };
-        record.verdict = run.status === 'completed' && expected && reviewObserved && toolCounts && failuresObserved && denialVerified && errorObserved ? 'pass' : 'fail';
+        record.toolCriteria = { toolCounts, failuresObserved, denialVerified, approvalVerified, errorObserved };
+        record.verdict = run.status === 'completed' && expected && reviewObserved && toolCounts && failuresObserved && denialVerified && approvalVerified && errorObserved ? 'pass' : 'fail';
         await save();
         if (record.verdict !== 'pass') throw new Error(`Stage ${stage.id} did not establish its native/result/state/review criteria`);
         if (run.events.some(event => event.kind === 'ToolExecutionUnknown')) throw new Error('Unknown effects require reconciliation before a fresh mutation');

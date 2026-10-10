@@ -37,7 +37,8 @@
       "requiredTools": {
         "dispatch_assign": 1,
         "dispatch_inspect": 2
-      }
+      },
+      "verificationTool": "dispatch_inspect"
     },
     {
       "id": "correct",
@@ -55,7 +56,8 @@
       "requiredTools": {
         "dispatch_assign": 1,
         "dispatch_inspect": 2
-      }
+      },
+      "verificationTool": "dispatch_inspect"
     },
     {
       "id": "deny",

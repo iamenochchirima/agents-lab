@@ -10,7 +10,9 @@ The real-model driver checks retrieval, an approved owner assignment, a correcte
 assignment, denial without effects, and an observed missing-record error. Retrieval
 must include skill activation and both sources. Approved changes require two
 successful record reads and one actual mutation, plus independently inspected
-provider state. Denial requires a subsequent successful read after the persisted
+provider state. At least one verification read must complete after the final
+successful mutation; two pre-reads cannot establish verification.
+Denial requires a subsequent successful read after the persisted
 review decision. An error requires a failed tool event and its provider code in a
 retained receipt. Native completion or an unchanged fixture alone cannot pass.
 
