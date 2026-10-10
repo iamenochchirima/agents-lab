@@ -30,6 +30,11 @@ Start an isolated control plane with `AGENTLAB_API_PORT=4322`,
 workers the same absolute run/context roots and host endpoint. Follow each
 platform's setup guide for its native service; enable the Vercel baseline only
 after its connected capability path is ready. Preserve existing user services.
+The execution deadline does not override every adapter's model-call timeout.
+For example, Vercel defaults to a 30-second model-call timeout; set
+`AGENTLAB_VERCEL_WORKFLOWS_MODEL_TIMEOUT_MS` explicitly when a comparison needs a
+different allowance. Retain each admitted run's `platformConfig` rather than
+assuming all native timeout and retry controls are identical.
 
 Then, from `server/`:
 
@@ -59,3 +64,20 @@ management API and verify its schema on a later run while an earlier retained
 snapshot remains unchanged. Run that shared check once rather than multiplying
 it by every platform. The management/source lifecycle tests provide independent
 contract coverage; list their actual command and result in milestone evidence.
+
+The actual management rediscovery check uses a live local MCP source whose schema
+changes. It checks that the managed profile publishes the changed schema on a
+later catalog admission, preserves the earlier snapshot, and performs no provider
+operation during discovery:
+
+```sh
+pnpm exec tsx --test --test-name-pattern='saved PAT discovers' \
+  tests/management/service.test.ts
+```
+
+Use `--model` for an explicitly separate approved free-model comparison. Keep
+the original report when a model fails to submit a proposal, invents a successful
+verification, or receives a rate limit. A provider rejection does not measure
+task decisions, and a model's completion text does not establish tool execution.
+Do not combine successful stages from different models into a claimed single
+end-to-end pass.
