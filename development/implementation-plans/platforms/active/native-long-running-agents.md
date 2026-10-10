@@ -1,7 +1,7 @@
 # Native long-running agents across the five priority platforms
 
 Status: implementing; execution authorized and goal started 2026-10-10.
-Validation: native restart/review/deadline and direct browser checks passed. Real-model cohorts were executed; the full six-record task gate remains unmet (model omissions/unnecessary writes and provider rate limits).
+Validation: native restart/review/deadline and direct browser checks passed. The latest free-model trials passed the full six-record task on Temporal, Restate and LangGraph. Mastra completed the task but needs a separately versioned correction of its tool-specific verification grade. Vercel failed inside its native workflow and remains under investigation.
 Prepared: 2026-10-10. Baseline commit: `116b670`.
 
 ## Goal and expected outcome
@@ -242,7 +242,7 @@ Personal-account writes require an explicitly agreed disposable target and the e
 
 ## Current position and open questions
 
-Current position: native implementation milestones 1–6 and the shared browser path are complete. The same free-model task was attempted on all five, with failures and corrective trials retained. The full task acceptance gate remains unmet; this plan stays active rather than implying that all evals passed. The measured coverage matrix is in the research document.
+Current position: native implementation milestones 1–6 and the shared browser path are complete. Latest genuine free Nemotron Ultra trials passed Temporal, Restate and LangGraph. Independent receipt audit confirms Mastra completed and reread all six records; the original grader incorrectly accepted only individual reads after actions. Correct that restriction with scope/freshness regressions and publish a separate assessment. Vercel failed before its first retained review in this cohort and needs a native failure diagnosis. Both acceptance boxes remain open until five actual tasks satisfy the same declared controls. Earlier failures remain retained.
 
 Native checks are recorded below. Free-model trials use isolated connected records, reference data and an imported skill with retained wait/restart controls.
 
@@ -327,3 +327,31 @@ The goal continuation audited actual model requests rather than assuming every f
 - Cohere `connected-16d52dc2` finished with zero full-task passes. Temporal omitted Willow; LangGraph omitted the Pine proposal despite verifying its three writes; Restate/Mastra unnecessary Birch proposals were refused and canceled. Vercel omitted Pine and exposed the projection bug above. The owned stack was restarted after native completion, ending its stale observer with a retained `fetch failed` and a separate maintenance-interruption record.
 - Single-platform Ultra `connected-309b8f77` loaded the skill then returned no usable assistant output. Zero effects. Missing finish/usage metadata prevents attributing that original failure to reasoning exhaustion.
 - `0829bcb`: bounded Temporal/Restate live-response metadata retains finish reason, response ID/model/provider and numeric usage/reasoning counts even for parsed errors. Private reasoning content is excluded; six focused checks and server build passed. Controls remain unchanged for the separate diagnostic reproduction.
+
+
+### Latest full-task checkpoint
+
+The unchanged 2,048-token output allowance, 120-second model timeout, 15-minute task
+deadline and zero-price routing produced an actual complete Restate task in
+`connected-646683b2-6252-4029-aedf-babbccf892e4`. All ten sustained criteria passed,
+with three approved effects, one denied effect, six final records, a retained
+65-second approval wait and owned process replacement. The earlier empty response
+therefore does not establish output-budget exhaustion.
+
+The subsequent remaining-platform cohort
+`connected-156632fb-29dd-423b-ae42-bcb24f1d8a6d` passed Temporal and LangGraph.
+Mastra completed with all expected effects and decisions but failed only
+`mutationsVerified`. Its completed collection receipt at sequence 114 matches the
+independent six-record final state, follows all actions and is present in the next
+actual model request. The task and skill permit collection rereads. Correcting the
+grader must preserve exact call/catalog/turn/namespace fingerprints, phase ordering
+and complete state comparison; retain the original failure and record revision 2
+separately. Vercel's failure is native and is not covered by that grading change.
+
+The completed Restate conversation was also inspected in the browser. It retains
+four inline decision cards and the full six-record Markdown result. Commit
+`fdde836` corrects narrow table cells splitting names into letters while preserving
+horizontal scrolling. The screenshot and read-only browser assessment are in
+`lab/runs/.connected-proof/browser-sustained-20261010/restate-readable-final-table.png`
+and `restate-completed-report.json`. Fixture decisions in this task were issued by
+the observer; the separate Temporal browser proof covers actual Approve/Deny clicks.

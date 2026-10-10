@@ -416,3 +416,29 @@ and visible output generally share `max_tokens`:
 [reasoning token budgets](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 A separate native diagnostic trial is required before claiming this was budget
 exhaustion.
+
+
+### Latest free-model task results
+
+A subsequent diagnostic Restate trial completed the whole task with
+`nvidia/nemotron-3-ultra-550b-a55b:free` under the same output/time controls. It
+retained the original review across a 65-second wait and process replacement,
+executed three approved writes, honored the denial and verified all six records.
+[Restate result](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-646683b2-6252-4029-aedf-babbccf892e4/summary.json).
+This reproduction does not identify the cause of the earlier empty response.
+
+The subsequent four-platform trial passed Temporal and LangGraph. Mastra completed
+the task but the original grader rejected its complete final collection reread.
+The task and skill do not require the individual-record tool. An independent audit
+confirmed exact receipt scope, fingerprint, full final state, phase ordering and
+delivery to the next model request. A separately versioned grading correction is
+required; original verdicts remain unchanged. Vercel failed inside its native
+workflow and remains under investigation.
+[Original four-platform result](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-156632fb-29dd-423b-ae42-bcb24f1d8a6d/summary.json).
+
+The completed Restate chat retained its four inline decision cards and all six
+final-state rows. A small table-layout correction keeps names readable on the
+normal chat width.
+[Browser result](../../lab/runs/.connected-proof/browser-sustained-20261010/restate-completed-report.json).
+The fixture observer issued these decisions; actual browser approval and denial
+clicks remain covered by the separate Temporal proof above.
