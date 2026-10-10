@@ -5,7 +5,7 @@ import { remainingExecutionMs } from "../../../../../capabilities/execution/poli
 
 interface ModelInput { prompt?: unknown; tools?: unknown; abortSignal?: AbortSignal }
 /** Keep request deadlines on rebuilt native models, including recovery segments. */
-export function sustainedModel(config: MastraModelConfig, manifest: RunManifest, beforeRequest?: (input: ModelInput) => Promise<unknown>, onTimeout?: () => void) {
+export function sustainedModel(config: MastraModelConfig, manifest: RunManifest, beforeRequest?: (input: ModelInput) => Promise<unknown>, onTimeout?: () => void, onError?: (error: unknown) => Promise<void>) {
   const resolver = new Agent({ id: "mastra-model-resolver", name: "Model resolver", instructions: "", model: config });
   return async (): Promise<MastraModelConfig> => {
     const model = await resolver.getModel();
@@ -32,13 +32,17 @@ export function sustainedModel(config: MastraModelConfig, manifest: RunManifest,
             // Clear it on completion so an old round cannot abort later work.
             const stream = new ReadableStream<unknown>({
               async pull(controller) {
-                try { const next = await reader.read(); if (next.done) { clearTimeout(timer); controller.close(); } else controller.enqueue(next.value); }
-                catch (error) { clearTimeout(timer); controller.error(error); }
+                try { const next = await reader.read(); if (next.done) { clearTimeout(timer); controller.close(); } else {
+                  const chunk = next.value as { type?: string; error?: unknown };
+                  if (chunk?.type === "error") await onError?.(chunk.error);
+                  controller.enqueue(next.value);
+                } }
+                catch (error) { clearTimeout(timer); await onError?.(error); controller.error(error); }
               },
               async cancel(reason) { clearTimeout(timer); await reader.cancel(reason); },
             });
             return { ...streamed, stream };
-          } catch (error) { clearTimeout(timer); throw error; }
+          } catch (error) { clearTimeout(timer); await onError?.(error); throw error; }
         };
       },
     }) as MastraModelConfig;

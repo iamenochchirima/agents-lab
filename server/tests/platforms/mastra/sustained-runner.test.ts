@@ -113,3 +113,43 @@ test("summary dispatch and reported usage contribute to total model metrics", as
     await runner.close();
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test("native streaming provider rejection retains HTTP classification and safe diagnostics", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mastra-native-provider-failure-"));
+  const error = Object.assign(new Error("Controlled provider rejection: Bearer pretend-secret"), { name: "AI_APICallError", statusCode: 429 });
+  const runner = new MastraBaselineRunner({ contextRoot: root, modelFactory: () => Object.assign(createDeterministicFakeModel({ modelId: "fake-success" }), { doStream: async () => { throw error; } }) });
+  try {
+    const base = buildRunManifest({ platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "Answer" },
+      model: { provider: "fake", model: "fake-success" } }, { runId: "native-provider-rejection", platformConfig: runner.manifestConfiguration() });
+    const inspected = await result(runner, await runner.start({ ...base,
+      execution: { schemaVersion: 1, mode: "sustained", deadlineAt: new Date(Date.now() + 30_000).toISOString(), modelTimeoutMs: 10_000 } }));
+    assert.equal(inspected.result?.error?.code, "OPENROUTER_HTTP_429");
+    assert.equal(inspected.result?.error?.failureKind, "provider");
+    const diagnostic = inspected.eventIntents.find(event => event.kind === "ModelTransportFailed");
+    assert.equal(diagnostic?.payload.providerStatus, 429);
+    assert.match(String(diagnostic?.payload.message), /redacted/);
+    assert.doesNotMatch(JSON.stringify(diagnostic), /pretend-secret/);
+    assert.equal(inspected.metrics?.modelCallCount, 1);
+    await runner.close();
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+
+test("default OpenRouter native durable route classifies a mocked provider rejection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mastra-router-error-"));
+  const originalFetch = globalThis.fetch, originalKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "fake-router-key";
+  let requests = 0;
+  globalThis.fetch = async () => { requests++; return new Response(JSON.stringify({ error: { message: "Controlled quota rejection", code: 429 } }), { status: 429, headers: { "content-type": "application/json" } }); };
+  const runner = new MastraBaselineRunner({ contextRoot: root, environment: { OPENROUTER_API_KEY: "fake-router-key" } });
+  try {
+    const base = buildRunManifest({ platform: "mastra", variant: "baseline", task: { kind: "prompt", prompt: "Answer" },
+      model: { provider: "openrouter", model: "cohere/north-mini-code:free" } }, { runId: "default-router-rejection", platformConfig: runner.manifestConfiguration() });
+    const inspected = await result(runner, await runner.start({ ...base,
+      execution: { schemaVersion: 1, mode: "sustained", deadlineAt: new Date(Date.now() + 30_000).toISOString(), modelTimeoutMs: 10_000 } }));
+    assert.equal(requests, 1);
+    assert.equal(inspected.result?.error?.code, "OPENROUTER_HTTP_429", JSON.stringify(inspected.eventIntents));
+    await runner.close();
+  } finally { globalThis.fetch = originalFetch; if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = originalKey; await rm(root, { recursive: true, force: true }); }
+});

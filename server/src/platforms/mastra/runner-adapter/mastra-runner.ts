@@ -321,6 +321,11 @@ export class MastraBaselineRunner implements PlatformRunner {
       const runtime = createBaselineAgentRuntime(record.manifest, modelFactory, {
         storage,
         sustained,
+        onModelError: sustained ? async error => {
+          const diagnostic = nativeModelDiagnostic(error);
+          this.addEvent(record, "ModelTransportFailed", diagnostic);
+          await this.persist(record);
+        } : undefined,
         onModelTimeout: sustained ? () => { record.timeoutRequested = true; record.controller.abort("Mastra model request timed out."); } : undefined,
         beforeModelRequest: sustained ? async input => {
           const summary = createMastraContextSummaryGenerator({ ...this.summaryObservationOptions(record), manifest: record.manifest, modelFactory: modelFactory ?? defaultMastraModelFactory,
@@ -371,6 +376,10 @@ export class MastraBaselineRunner implements PlatformRunner {
       });
       durable = runtime.agent instanceof DurableAgent ? runtime.agent : null;
       const generationOptions = {
+        onError: async ({ error }: { error: unknown }) => {
+          this.addEvent(record, "NativeAgentFailed", nativeModelDiagnostic(error));
+          await this.persist(record);
+        },
         runId: record.manifest.runId,
         abortSignal: record.controller.signal,
         ...(context ? {
@@ -418,7 +427,7 @@ export class MastraBaselineRunner implements PlatformRunner {
       });
       const recovered = recover && runtime.agent instanceof DurableAgent
         ? await runtime.agent.recover(record.manifest.runId, { abortSignal: record.controller.signal,
-          onStepFinish: generationOptions.onStepFinish, onSuspended: observeSuspension }) : null;
+          onStepFinish: generationOptions.onStepFinish, onError: generationOptions.onError, onSuspended: observeSuspension }) : null;
       // The public recover stream intentionally stays open at suspension. Observe
       // its native suspension callback so waiting releases the local owner/timer.
       const output = recovered
@@ -482,6 +491,7 @@ export class MastraBaselineRunner implements PlatformRunner {
       record.trajectory = trajectoryFor(record);
       record.metrics = metricsFor(record, usage);
     } catch (error) {
+      if (!record.events.some(event => event.kind === "NativeAgentFailed")) this.addEvent(record, "NativeAgentFailed", nativeModelDiagnostic(error));
       const failure = failureFor(record, error);
       if (failure.failureKind === "cancelled") {
         this.addEvent(record, "AgentCancelled", { reason: record.cancellationReason ?? "Cancellation requested." });
@@ -763,6 +773,18 @@ function metricsFor(record: MastraExecutionRecord, usage: RunUsage): RunMetrics 
   };
 }
 
+/** Retain diagnostic identity/status without provider headers, body or credentials. */
+function nativeModelDiagnostic(error: unknown): Record<string, unknown> {
+  const value = error && typeof error === "object" ? error as { name?: unknown; message?: unknown; statusCode?: unknown } : {};
+  const name = typeof value.name === "string" ? value.name.slice(0, 80) : "UnknownError";
+  let message = typeof value.message === "string" ? value.message : "The native model transport failed.";
+  const secret = process.env.OPENROUTER_API_KEY;
+  if (secret) message = message.split(secret).join("[redacted]");
+  message = message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]");
+  return { name, message: message.slice(0, 512),
+    ...(typeof value.statusCode === "number" && value.statusCode >= 100 && value.statusCode <= 599 ? { providerStatus: value.statusCode } : {}) };
+}
+
 function failureFor(record: MastraExecutionRecord, error: unknown): NonNullable<RunResult["error"]> {
   if (record.cancellationReason && !record.timeoutRequested) {
     return {
@@ -780,6 +802,14 @@ function failureFor(record: MastraExecutionRecord, error: unknown): NonNullable<
       failureKind: "outcome_unknown",
       retryable: false,
     };
+  }
+
+  const transport = record.events.find(event => event.kind === "ModelTransportFailed");
+  if (transport && (typeof transport.payload.providerStatus === "number" || transport.payload.name === "AI_APICallError")) {
+    const status = transport.payload.providerStatus;
+    return { code: typeof status === "number" ? `OPENROUTER_HTTP_${status}` : "MASTRA_OUTCOME_UNKNOWN",
+      message: typeof status === "number" ? "The model provider rejected the native request." : "The native model transport failed without a confirmed provider response.",
+      failureKind: typeof status === "number" ? "provider" : "outcome_unknown", retryable: false };
   }
 
   const liveFailure = record.events.find(event => event.kind === "EvalModelObserved"

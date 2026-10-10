@@ -201,3 +201,14 @@ semantics, not model quality.
 
 See [native durable agents](https://mastra.ai/docs/harness/durable-agents) and
 [native approval](https://mastra.ai/docs/agents/human-in-the-loop) for SDK APIs.
+
+Native streaming transport errors emit bounded `ModelTransportFailed` diagnostics
+before SDK stream conversion or terminal snapshot cleanup. `NativeAgentFailed`
+also retains the native lifecycle error, including failures after transport. Only error identity,
+redacted message and observed HTTP status are retained; response bodies, headers
+and credentials are excluded. A confirmed HTTP rejection is a provider failure,
+while an API transport failure without a confirmed status remains `outcome_unknown`.
+No retry is introduced. Earlier runs without this diagnostic may retain only a
+native `finishReason: "error"`; their missing provider status must not be inferred.
+The default OpenRouter route is tested against a mocked HTTP rejection, with no
+external provider request.

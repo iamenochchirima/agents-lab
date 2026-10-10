@@ -21,6 +21,7 @@ export interface BaselineAgentOptions {
   readonly storage?: LibSQLStore;
   readonly sustained?: boolean;
   readonly onModelTimeout?: () => void;
+  readonly onModelError?: (error: unknown) => Promise<void>;
   readonly beforeModelRequest?: (input: { prompt?: unknown; tools?: unknown; abortSignal?: AbortSignal }) => Promise<unknown>;
   /** Persist the dispatch boundary before the SDK allows a tool to escape. */
   readonly beforeToolDispatch?: (call: ToolCall) => Promise<void>;
@@ -87,7 +88,7 @@ export function createBaselineAgent(
     id: MASTRA_AGENT_ID,
     name: "Mastra baseline agent",
     instructions: manifest.context.systemInstruction,
-    model: options?.sustained ? sustainedModel(modelFactory(manifest), manifest, options.beforeModelRequest, options.onModelTimeout) : modelFactory(manifest),
+    model: options?.sustained ? sustainedModel(modelFactory(manifest), manifest, options.beforeModelRequest, options.onModelTimeout, options.onModelError) : modelFactory(manifest),
     ...(manifest.selection?.experimentId === "agent-harness-live" ? { maxRetries: 0 } : {}),
     ...(options ? {
       tools: Object.fromEntries(registry.definitions().map((definition) => [definition.name, catalogAgentTool(registry, registry.resolve(definition.name)!, options, nextToolCall)])),
