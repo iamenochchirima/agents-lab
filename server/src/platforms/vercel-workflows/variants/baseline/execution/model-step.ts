@@ -1,4 +1,4 @@
-import { FatalError, getStepMetadata } from "workflow";
+import { getStepMetadata } from "workflow";
 
 import { loadVercelWorkflowsConfig } from "../../../config.js";
 import type {
@@ -10,8 +10,8 @@ import { completeOpenRouterModel } from "../models/openrouter.js";
 
 /**
  * The only step that crosses the model/provider boundary. Keeping network I/O
- * here lets the workflow remain deterministic and makes retry duplication
- * visible in the native Workflow event history.
+ * here lets the workflow remain deterministic. Classified failures are retained
+ * as step results so the workflow preserves their code and dispatch uncertainty.
  */
 export async function executeModelStep(input: Omit<VercelWorkflowModelRequest, "attempt">): Promise<VercelWorkflowStepResult> {
   "use step";
@@ -26,10 +26,6 @@ export async function executeModelStep(input: Omit<VercelWorkflowModelRequest, "
         return { apiKey: config.openRouterApiKey, baseUrl: config.openRouterBaseUrl };
       })());
 
-  if (result.kind === "failure" && !result.error.retryable) {
-    throw new FatalError(result.error.message);
-  }
-  if (result.kind === "failure") throw new Error(result.error.message);
   return {
     ...result,
     attempt: metadata.attempt,
@@ -39,3 +35,7 @@ export async function executeModelStep(input: Omit<VercelWorkflowModelRequest, "
     finishedAt: new Date().toISOString(),
   };
 }
+
+// Workflow's default retries repeat model dispatch. Recovery reuses the retained
+// step result; failed or uncertain provider requests require an explicit new run.
+executeModelStep.maxRetries = 0;

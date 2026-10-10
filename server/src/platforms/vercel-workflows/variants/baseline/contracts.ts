@@ -83,7 +83,7 @@ export interface VercelWorkflowResult extends RunResult {
   };
 }
 
-export interface VercelWorkflowStepResult extends VercelWorkflowModelSuccess {
+export type VercelWorkflowStepResult = VercelWorkflowModelResult & {
   readonly attempt: number;
   readonly stepId: string;
   readonly stepName: string;

@@ -46,6 +46,11 @@ export async function agentLabPromptWorkflow(input: VercelWorkflowInput): Promis
     const model = await executeModelStep({ ...input, round, messages, toolDefinitions: initialized.definitions });
     phases.push({ name: round === 1 ? "model" : `model_${round}`, startedAt: model.startedAt, finishedAt: model.finishedAt });
     at = model.finishedAt; modelCallCount++; attemptCount += model.attempt; stepNames.push(model.stepName);
+    if (model.kind === "failure") {
+      await record("ModelFailed", { code: model.error.code, failureKind: model.error.failureKind,
+        requestSent: model.requestSent, attempt: model.attempt, stepId: model.stepId });
+      return finish(model.error.failureKind === "outcome_unknown" ? "reconciliation_required" : "failed", null, model.error);
+    }
     usage = { inputTokens: add(usage.inputTokens, model.usage.inputTokens), outputTokens: add(usage.outputTokens, model.usage.outputTokens), totalTokens: add(usage.totalTokens, model.usage.totalTokens) };
     await record("model_call_completed", { provider: input.model.provider, model: input.model.model, round, attempt: model.attempt, stepId: model.stepId, requestId: model.providerRequestId });
     const calls = model.toolCalls ?? [];

@@ -152,9 +152,12 @@ test("local Workflow projects a model failure without fabricating a successful r
     const admitted = await admission.json() as { readonly workflowRunId: string };
     const record = await waitForTerminal(service.address, admitted.workflowRunId);
 
-    assert.equal(record.status, "failed");
+    assert.equal(record.status, "completed", "native orchestration completed with a retained classified failure");
+    assert.equal(record.result.status, "failed");
     assert.equal(record.result.output, null);
-    assert.equal(record.result.error.code, "WORKFLOW_RUN_FAILED");
+    assert.equal(record.result.error.code, "FAKE_MODEL_FAILURE");
+    assert.equal(record.result.error.failureKind, "provider");
+    assert.equal(record.result.metrics.modelAttemptCount, 1);
   } finally {
     await service.stop();
     await rm(dataDir, { recursive: true, force: true });
@@ -327,3 +330,44 @@ function canResolveWorkflowPackage(): boolean {
   }
   return false;
 }
+
+test("native model failures retain safe categories with one provider dispatch", { skip: !hasPlatformDependencies }, async () => {
+  const { VercelWorkflowsPlatformService } = await import("../../../src/platforms/vercel-workflows/service/platform-service.js");
+  const dataDir = await mkdtemp(join(tmpdir(), "agentlab-vercel-classified-model-"));
+  const port = await freePort();
+  const service = new VercelWorkflowsPlatformService({ config: { ...loadVercelWorkflowsConfig({}), host: "127.0.0.1", port, serviceUrl: `http://127.0.0.1:${port}`, dataDir } });
+  const previousKey = process.env.OPENROUTER_API_KEY, previousBaseUrl = process.env.AGENTLAB_OPENROUTER_BASE_URL, previousFetch = globalThis.fetch;
+  process.env.OPENROUTER_API_KEY = "fictional-secret";
+  process.env.AGENTLAB_OPENROUTER_BASE_URL = "https://openrouter.example/v1";
+  let mode = "rate-limit", sends = 0;
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === "https://openrouter.example/v1/chat/completions") {
+      sends++;
+      if (mode === "transport") throw new Error("private provider body fictional-secret /private/credentials");
+      return new Response(JSON.stringify({ error: { message: "private provider body fictional-secret" } }), { status: 429 });
+    }
+    return previousFetch(input, init);
+  }) as typeof fetch;
+  try {
+    await service.start();
+    for (const fixture of [{ mode: "rate-limit", code: "OPENROUTER_RATE_LIMITED", kind: "provider", status: "failed" }, { mode: "transport", code: "OPENROUTER_TRANSPORT_ERROR", kind: "outcome_unknown", status: "reconciliation_required" }]) {
+      mode = fixture.mode; sends = 0;
+      const admitted = await (await admit(service.address, openRouterWorkflowInput(`classified-model-${mode}`))).json() as { workflowRunId: string };
+      const record = await waitForTerminal(service.address, admitted.workflowRunId);
+      assert.equal(record.status, "completed", "native completion is separate from the agent's model outcome");
+      assert.equal(record.result.status, fixture.status);
+      assert.equal(record.result.error.code, fixture.code);
+      assert.equal(record.result.error.failureKind, fixture.kind);
+      assert.equal(record.result.error.retryable, false);
+      assert.equal(record.result.metrics.modelAttemptCount, 1);
+      assert.equal(sends, 1, "Workflow must not repeat a dispatched model request");
+      assert.equal(record.result.eventIntents.find((event: { kind: string }) => event.kind === "ModelFailed").payload.requestSent, true);
+      assert.doesNotMatch(JSON.stringify(record), /fictional-secret|private provider body|private\/credentials/);
+    }
+  } finally {
+    await service.stop(); globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousBaseUrl === undefined) delete process.env.AGENTLAB_OPENROUTER_BASE_URL; else process.env.AGENTLAB_OPENROUTER_BASE_URL = previousBaseUrl;
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});

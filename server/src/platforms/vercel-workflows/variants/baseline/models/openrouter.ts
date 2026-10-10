@@ -72,30 +72,21 @@ export async function completeOpenRouterModel(
       signal: controller.signal,
     });
 
-    const bodyResult = await readJson(response);
-    if (bodyResult.kind === "too_large") {
+    if (!response.ok) {
+      await cancelResponseBody(response);
       return {
-        kind: "failure",
-        requestSent: true,
+        kind: "failure", requestSent: true,
         error: {
-          code: "OPENROUTER_RESPONSE_TOO_LARGE",
-          message: "OpenRouter response exceeded the configured response limit.",
-          failureKind: "provider",
-          retryable: false,
+          code: response.status === 429 ? "OPENROUTER_RATE_LIMITED" : "OPENROUTER_REQUEST_FAILED",
+          message: response.status === 429 ? "OpenRouter returned HTTP 429. Wait for provider capacity before starting a new run." : `OpenRouter returned HTTP ${response.status}.`,
+          failureKind: "provider", retryable: false,
         },
       };
     }
-    if (!response.ok) {
-      return {
-        kind: "failure",
-        requestSent: true,
-        error: {
-          code: response.status === 429 ? "OPENROUTER_RATE_LIMITED" : "OPENROUTER_REQUEST_FAILED",
-          message: `OpenRouter returned HTTP ${response.status}.`,
-          failureKind: response.status === 429 || response.status >= 500 ? "provider" : "provider",
-          retryable: response.status === 429 || response.status >= 500,
-        },
-      };
+    const bodyResult = await readJson(response);
+    if (bodyResult.kind === "too_large") {
+      return { kind: "failure", requestSent: true,
+        error: { code: "OPENROUTER_RESPONSE_TOO_LARGE", message: "OpenRouter response exceeded the configured response limit.", failureKind: "provider", retryable: false } };
     }
 
     const record = asRecord(bodyResult.kind === "parsed" ? bodyResult.value : null);
@@ -141,9 +132,9 @@ export async function completeOpenRouterModel(
       requestSent: true,
       error: {
         code: timedOut ? "OPENROUTER_TIMEOUT" : "OPENROUTER_TRANSPORT_ERROR",
-        message: timedOut ? "OpenRouter request timed out." : "OpenRouter request failed before a response was received.",
-        failureKind: timedOut ? "timeout" : "provider",
-        retryable: true,
+        message: timedOut ? "OpenRouter request timed out after dispatch; its outcome is unconfirmed. No automatic retry was made." : "OpenRouter request did not return a response; its dispatch outcome is unconfirmed. No automatic retry was made.",
+        failureKind: "outcome_unknown",
+        retryable: false,
       },
     };
   } finally {
