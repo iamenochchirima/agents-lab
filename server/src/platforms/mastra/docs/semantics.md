@@ -142,8 +142,22 @@ Approval waiting releases the active timer and owner; resumption retains the ori
 absolute deadline. Inspection after a waiting deadline acquires the local lease,
 cancels the persisted native workflow through its public `cancel()` API, confirms
 `canceled` storage status, and reports `RUN_DEADLINE_EXCEEDED` without dispatching
-the proposed action. The common observer can then settle the shared context turn.
-Cancellation aborts native work and preserves uncertain outcomes.
+the proposed action. This requires the local API's background observer or another
+adapter inspection: Mastra has no native deadline timer advancing this suspended
+wait while the host process is absent. The persisted absolute deadline prevents
+resumption from resetting the time allowance; late approval cannot dispatch after
+expiry. Once inspection confirms native cancellation, the common observer can
+settle the shared context turn.
+
+Stop during a sustained approval wait uses the same leased native cancellation
+boundary and clears the retained call only after storage confirms the outer
+`durable-agentic-loop` is `canceled`. The shared review is invalidated before
+cancellation, so a late approval cannot dispatch the proposed action. Cancellation
+errors or a busy owner remain unconfirmed rather than producing a fabricated
+terminal result. Nested workflow snapshots may remain as historical suspended
+records; confirmation refers to the cancelled outer workflow. Stop preserves
+completed effects and aborts active native work cooperatively, retaining uncertain
+external outcomes.
 Native retries remain disabled. Recovery can repeat interrupted model inference,
 so provider requests are not exactly-once.
 

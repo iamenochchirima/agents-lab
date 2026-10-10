@@ -202,10 +202,18 @@ export class MastraBaselineRunner implements PlatformRunner {
     record.cancellationReason = reason.trim() || "Cancellation requested.";
     record.controller.abort(record.cancellationReason);
     if (record.status === "suspended") {
+      if (record.manifest.execution) {
+        // Suspension is published before the execution finally releases its lease.
+        // Wait for that local settlement before cancelling the persisted workflow.
+        await this.operations.get(record.manifest.runId);
+        if (!await this.cancelPersistedWait(record)) throw new Error("The Mastra native wait still has an owner; cancellation is unconfirmed.");
+        this.addEvent(record, "WorkflowCanceled", { reason: "user_stop", nativeStatus: "canceled" });
+      }
       this.addEvent(record, "AgentCancelled", { reason: record.cancellationReason });
       this.addEvent(record, "RunCancelled", {});
       record.status = "cancelled";
       record.pendingReview = null;
+      record.pendingCall = null;
       record.result = resultFor(record, "cancelled", null, failureFor(record, abortError()), emptyUsage());
       record.trajectory = trajectoryFor(record);
       record.metrics = metricsFor(record, emptyUsage());
@@ -591,12 +599,14 @@ export class MastraBaselineRunner implements PlatformRunner {
     await rename(temporary, join(directory, "state.json"));
   }
 
-  /** Cancel the persisted native wait without approving or dispatching its tool. */
-  private async expireSuspended(record: MastraExecutionRecord): Promise<void> {
+  /** Claim and cancel the outer native workflow; no approval or tool dispatch occurs.
+   * A busy owner returns false. Storage errors or an unconfirmed SDK status throw,
+   * leaving the retained Lab wait nonterminal for diagnosis and another Stop. */
+  private async cancelPersistedWait(record: MastraExecutionRecord): Promise<boolean> {
     const directory = this.recordDirectory(record.manifest.runId);
     const owner = await acquireLocalOwner(directory);
-    if (!owner) return;
-    const storage = new LibSQLStore({ id: `agentlab-mastra-expiry-${record.manifest.runId}`, url: `file:${join(directory, "snapshots.db")}` });
+    if (!owner) return false;
+    const storage = new LibSQLStore({ id: `agentlab-mastra-cancel-${record.manifest.runId}`, url: `file:${join(directory, "snapshots.db")}` });
     try {
       await storage.init();
       const runtime = createBaselineAgentRuntime(record.manifest, this.modelFactory, { storage, sustained: true,
@@ -607,17 +617,22 @@ export class MastraBaselineRunner implements PlatformRunner {
       await nativeRun.cancel();
       const observed = await workflow.getWorkflowRunById(record.manifest.runId);
       if (observed?.status !== "canceled") throw new Error("The Mastra persisted wait cancellation was not confirmed.");
-      record.status = "failed";
-      record.pendingReview = null;
-      record.pendingCall = null;
-      this.addEvent(record, "WorkflowCanceled", { reason: "task_deadline", nativeStatus: observed.status });
-      this.addEvent(record, "RunFailed", { code: "RUN_DEADLINE_EXCEEDED", failureKind: "timeout" });
-      record.result = resultFor(record, "failed", null, { code: "RUN_DEADLINE_EXCEEDED",
-        message: "The admitted task deadline expired while waiting for approval.", failureKind: "timeout", retryable: false }, emptyUsage());
-      record.trajectory = trajectoryFor(record);
-      record.metrics = metricsFor(record, emptyUsage());
-      await this.persist(record);
+      return true;
     } finally { await storage.close(); await owner(); }
+  }
+
+  private async expireSuspended(record: MastraExecutionRecord): Promise<void> {
+    if (!await this.cancelPersistedWait(record)) return;
+    record.status = "failed";
+    record.pendingReview = null;
+    record.pendingCall = null;
+    this.addEvent(record, "WorkflowCanceled", { reason: "task_deadline", nativeStatus: "canceled" });
+    this.addEvent(record, "RunFailed", { code: "RUN_DEADLINE_EXCEEDED", failureKind: "timeout" });
+    record.result = resultFor(record, "failed", null, { code: "RUN_DEADLINE_EXCEEDED",
+      message: "The admitted task deadline expired while waiting for approval.", failureKind: "timeout", retryable: false }, emptyUsage());
+    record.trajectory = trajectoryFor(record);
+    record.metrics = metricsFor(record, emptyUsage());
+    await this.persist(record);
   }
 
   private summaryObservationOptions(record: MastraExecutionRecord) {

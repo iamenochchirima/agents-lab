@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import Fastify from "fastify";
 import { Connection } from "@temporalio/client";
+import { LibSQLStore } from "@mastra/libsql";
 import { CapabilityCatalog, type CapabilityProfile } from "../src/capabilities/catalog.js";
 import { contribution, objectSchema } from "../src/capabilities/extensions/package-utils.js";
 import { CapabilityHost } from "../src/capabilities/extensions/host.js";
@@ -22,6 +23,7 @@ import { loadServerConfig } from "../src/control-plane/bootstrap/config.js";
 import { TemporalBaselineRunner } from "../src/platforms/temporal/runner-adapter/temporal-runner.js";
 import { RestateBaselineRunner } from "../src/platforms/restate/runner-adapter/restate-runner.js";
 import { LangGraphBaselineRunner } from "../src/platforms/langgraph/runner-adapter/langgraph-runner.js";
+import { acquireLocalOwner } from "../src/platforms/mastra/runner-adapter/local-owner.js";
 import { MastraBaselineRunner } from "../src/platforms/mastra/runner-adapter/mastra-runner.js";
 import { loadRestateConfig } from "../src/platforms/restate/config.js";
 import { normalizeMastraPrompt, scriptedMastraModel, type CapturedRequest } from "../src/evals/mastra-scripted-model.js";
@@ -332,11 +334,39 @@ test("native invocation review pauses before effects and resumes the original ca
     for (const reviewRunner of runners) for (const outcome of ["deny", "cancel"] as const) await t.test(`${reviewRunner.platform} ${outcome}`, async () => {
       const before = effects;
       const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "Declined" } })).toString("base64url")}]`;
+      const sustainedStop = reviewRunner.platform === "mastra" && outcome === "cancel" && process.env.AGENTLAB_NATIVE_SUSTAINED === "1";
       const created = await service.createRun({ platform: reviewRunner.platform, variant: "baseline", task: { kind: "prompt", prompt },
+        ...(sustainedStop ? { execution: { mode: "sustained" as const, maxDurationMs: 180_000 } } : {}),
         model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16_384 },
         capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
       await waitFor(service, created.runId, view => view.status === "suspended");
       const pending = (await service.actions(created.runId))[0]!;
+      let nativeBefore: string | undefined;
+      const nativeStatus = async () => {
+        const storage = new LibSQLStore({ id: "stop-proof", url: `file:${join(contextRoot, ".mastra-baseline", created.runId, "snapshots.db")}` });
+        try {
+          await storage.init();
+          const workflows = await storage.getStore("workflows");
+          const snapshot = await workflows!.loadWorkflowSnapshot({ workflowName: "durable-agentic-loop", runId: created.runId });
+          return snapshot?.status;
+        } finally { await storage.close(); }
+      };
+      if (sustainedStop) {
+        await reviewRunner.close?.();
+        nativeBefore = await nativeStatus();
+        assert.equal(nativeBefore, "suspended");
+        const release = await acquireLocalOwner(join(contextRoot, ".mastra-baseline", created.runId));
+        assert.ok(release);
+        try {
+          await assert.rejects(service.cancelRun(created.runId, "Stop with native owner still active"), /unconfirmed/i);
+          const unconfirmed = await service.getRun(created.runId);
+          assert.equal(unconfirmed.status, "suspended");
+          assert.equal(unconfirmed.result, null);
+          assert.equal(await nativeStatus(), "suspended");
+          assert.equal((await service.actions(created.runId))[0]!.status, "cancelled");
+          assert.equal(effects, before);
+        } finally { await release(); }
+      }
       if (outcome === "deny") await service.decideAction(created.runId, pending.requestId, {
         requestId: pending.requestId, revision: pending.revision, argumentDigest: pending.argumentDigest,
         decisionId: randomUUID(), decision: "denied", reason: "Controlled rejection" });
@@ -344,6 +374,22 @@ test("native invocation review pauses before effects and resumes the original ca
       const settled = await waitFor(service, created.runId, view => !!view.result);
       assert.equal(effects, before);
       assert.equal(settled.status, outcome === "deny" ? "completed" : "cancelled", JSON.stringify(settled.result));
+      if (sustainedStop) {
+        const nativeAfter = await nativeStatus();
+        assert.equal(nativeAfter, "canceled");
+        assert.equal((await service.actions(created.runId)).find(value => value.requestId === pending.requestId)?.status, "cancelled");
+        await assert.rejects(service.decideAction(created.runId, pending.requestId, {
+          requestId: pending.requestId, revision: pending.revision, argumentDigest: pending.argumentDigest,
+          decisionId: randomUUID(), decision: "approved", reason: "Stale approval after Stop" }), /no longer accept/);
+        assert.equal(effects, before);
+        const proof = { schemaVersion: 1, runId: created.runId, nativeEngine: "durable-agentic-loop",
+          before: { nativeStatus: nativeBefore, executionStatus: "suspended" },
+          after: { nativeStatus: nativeAfter, executionStatus: settled.status }, effects: 0, retainedReviewStatus: "cancelled" };
+        const artifacts = join(root, created.runId, "artifacts");
+        await mkdir(artifacts, { recursive: true });
+        await writeFile(join(artifacts, "native-stop-proof.json"), JSON.stringify(proof, null, 2));
+        console.info(`Native Stop proof: ${JSON.stringify(proof)}`);
+      }
       if (outcome === "deny") assert.match(settled.result?.output ?? "", reviewRunner.platform === "langgraph" ? /INVOCATION_DENIED/ : /TOOL_APPROVAL_DENIED/);
       observe(reviewRunner.platform, outcome === "deny" ? ["deniedNoEffect", "denialFeedback"] : ["cancelledNoEffect"], created.runId);
       reports.push({ platform: reviewRunner.platform, outcome, runId: created.runId, effects: 0, status: settled.status });
