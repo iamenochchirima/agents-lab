@@ -59,7 +59,7 @@ async function main() {
       let startIndex = 0;
       if (item) {
         const observed = await json(`${scenario.provider}/state/${namespace}`);
-        const validated = validateConnectedContinuation(scenario, source, platform, item.startStage, observed);
+        const validated = validateConnectedContinuation(scenario, source, platform, item.startStage, observed, model);
         startIndex = validated.startIndex;
         outcome.provenance = { sourceReport: item.sourceReport, sourceRevision: source.sourceRevision, sourceModel: source.controls.model, ...validated, observedBeforeContinuation: observed, feedback: item.feedback ?? null };
         for (const runId of validated.sourceRunIds) {

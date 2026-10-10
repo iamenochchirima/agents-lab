@@ -3,11 +3,12 @@
  * retrieval and review-denial stages still need their original passing evidence. */
 export function validateConnectedContinuation(
   scenario: { id: string; provider: string; profileId: string; stages: readonly { id: string; decision: string | null; expected: Record<string, unknown> }[] },
-  source: any, platform: string, startStage: string, observed: Record<string, unknown>,
+  source: any, platform: string, startStage: string, observed: Record<string, unknown>, selectedModel: string,
 ): { namespace: string; sourceRunIds: string[]; confirmedEffects: string[]; startIndex: number } {
   if (source?.mode !== 'real-model-controlled-connected' || source.scenario?.fixtureOnly !== true ||
       source.scenario.id !== scenario.id || source.scenario.provider !== scenario.provider || source.scenario.profileId !== scenario.profileId)
     throw new Error('Continuation source must reference this controlled scenario/profile/provider');
+  if (source.controls?.model?.id !== selectedModel) throw new Error('Retained sessions bind their original model; select that exact model for continuation');
   const outcome = source.outcomes?.find((value: any) => value.platform === platform);
   if (!outcome || !/^cap-[a-z0-9-]{1,100}$/.test(outcome.namespace) || outcome.namespace.startsWith('cap-chat-manual-'))
     throw new Error('Continuation requires a retained automated fixture namespace');

@@ -104,6 +104,7 @@ state against the earlier observation, rejects pending reviews, and refuses to
 replay an applied mutation. It does not skip a missing retrieval or denial pass.
 A confirmed approved effect may be preserved despite a later model-response
 failure; that exception is recorded separately from task success. Continuation
-uses a new turn identity and records corrective feedback and prior model/run
+requires the session’s exact original model, uses a new turn identity, and records
+corrective feedback and prior model/run
 references. Its verdict covers only the selected remaining stages. A provider
 429 stops the continuation without another trial or fallback.
