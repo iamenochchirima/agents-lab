@@ -249,6 +249,12 @@ export interface InvocationReviewView {
   readonly displayArguments: Readonly<Record<string, unknown>>; readonly createdAt: string; readonly expiresAt: string;
   readonly status: "pending" | "approved" | "denied" | "expired" | "cancelled" | "dispatching" | "completed";
   readonly decision?: InvocationDecision | null;
+  readonly presentation?: {
+    readonly displayName: string; readonly description: string;
+    readonly source: { readonly id: string; readonly version: string };
+    readonly risk: "pure" | "read" | "write" | "external";
+    readonly argumentLabels: Readonly<Record<string, string>>;
+  };
 }
 export interface InvocationDecision {
   readonly requestId: string; readonly revision: number; readonly argumentDigest: string;

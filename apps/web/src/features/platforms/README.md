@@ -96,3 +96,13 @@ Focused checks are `chatState.test.ts`, `connectedToolState.test.ts` and
 `tests/browser/platform-chat.browser.test.mjs` covers inline grants, workflow
 continuation, exact approval and denial, refresh, and retained history. Fixture
 results do not establish provider effects or native recovery guarantees.
+
+Exact review cards optionally show the admitted tool's display name, short
+plain-text description and configured risk. Details holds source ID/version,
+review revision, call ID, and the evidence link. The control
+plane resolves these fields only from the run's retained catalog and matching
+source digest. It never reads live discovery or connection settings to decorate
+an existing request. Explicit top-level schema titles label arguments; fields
+without titles retain their recorded names. Older snapshots keep the generic
+name/argument fallback. Presentation fields do not participate in a decision's
+authorization identity and do not establish whether an effect succeeded.

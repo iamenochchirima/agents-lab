@@ -43,4 +43,11 @@ export interface InvocationResumeInput {
 
 export interface InvocationReviewView extends Omit<InvocationReview, "call"> {
   readonly call: { readonly toolCallId: string; readonly name: string; readonly round: number };
+  /** Optional safe display projection; never part of the authorization identity. */
+  readonly presentation?: {
+    readonly displayName: string; readonly description: string;
+    readonly source: { readonly id: string; readonly version: string };
+    readonly risk: "pure" | "read" | "write" | "external";
+    readonly argumentLabels: Readonly<Record<string, string>>;
+  };
 }

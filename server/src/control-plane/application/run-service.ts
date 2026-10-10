@@ -19,6 +19,7 @@ import type { PlatformRunner, RunnerInspection } from "../ports/runner.js";
 import type { ModelMetadataResolver } from "../ports/model-metadata.js";
 import type { ServerConfig } from "../bootstrap/config.js";
 import type { ContextProjection } from "../../capabilities/context/contracts.js";
+import { presentInvocationReview } from "../../capabilities/reviews/presentation.js";
 import { InvocationReviewStore, InvocationReviewError, validateDecision } from "../../capabilities/reviews/store.js";
 import type { InvocationDecision, InvocationResumeInput, InvocationReviewView } from "../../capabilities/reviews/contracts.js";
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
@@ -484,8 +485,8 @@ export class RunService {
   }
 
   async actions(runId: string): Promise<readonly InvocationReviewView[]> {
-    await this.readSnapshotOrThrow(runId);
-    return (await this.dependencies.reviews?.list(runId) ?? []).map(value => this.dependencies.reviews!.view(value));
+    const snapshot = await this.readSnapshotOrThrow(runId);
+    return (await this.dependencies.reviews?.list(runId) ?? []).map(value => presentInvocationReview(this.dependencies.reviews!.view(value), snapshot.manifest));
   }
 
   async decideAction(runId: string, requestId: string, input: unknown): Promise<RunView> {

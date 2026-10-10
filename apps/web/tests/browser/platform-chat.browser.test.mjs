@@ -240,6 +240,10 @@ test("Platform Chat keeps invocation-level review for connected tools", async ()
     assert.equal(fixture.state.requests[0]?.capabilities?.profileId, "connected-agent");
     const reviewPanel = await browser.cdp.evaluate('JSON.stringify({ label: document.querySelector(".invocation-review")?.getAttribute("aria-label"), markup: document.querySelector(".invocation-review")?.outerHTML })').then(JSON.parse);
     assert.equal(reviewPanel.label, "Action review: memo_update", JSON.stringify(reviewPanel));
+    assert.match(reviewPanel.markup, /Adjust note/);
+    assert.match(reviewPanel.markup, /fixture:notes/);
+    assert.match(reviewPanel.markup, /write action/);
+    assert.match(reviewPanel.markup, /<dt>Note content<\/dt>/);
     assert.equal(await browser.cdp.evaluate('Boolean(document.querySelector(".chat-message-assistant .invocation-review"))'), true);
     assert.equal(await browser.cdp.evaluate('document.querySelectorAll(".chat-sidebar .invocation-review").length'), 0);
     await navigate(browser.cdp, `/platforms/temporal/chat?run=${fixture.state.runIds[0]}`);
@@ -1558,6 +1562,7 @@ function invocationAction(runId, decision) {
     sourceDigest: "d".repeat(64),
     connectionIdentity: "memos-local",
     displayArguments: { note: "Disposable test note" },
+    presentation: { displayName: "Adjust note", description: "Update the selected disposable note.", source: { id: "fixture:notes", version: "2.0" }, risk: "write", argumentLabels: { note: "Note content" } },
     createdAt: new Date(Date.now() - 60_000).toISOString(),
     expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
     status: decision?.decision === "approved" ? "approved" : decision?.decision === "denied" ? "denied" : "pending",
