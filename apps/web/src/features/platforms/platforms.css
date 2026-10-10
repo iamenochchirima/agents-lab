@@ -2496,7 +2496,8 @@
 .chat-markdown pre code { padding: 0; background: transparent; white-space: pre; }
 .chat-markdown blockquote { margin: .8em 0; padding: 0 0 0 12px; border-left: 3px solid var(--border); color: var(--text-2); }
 .chat-markdown-table { overflow-x: auto; margin: .8em 0; }
-.chat-markdown table { border-collapse: collapse; font-size: inherit; }
+/* Tables can scroll; preserve words instead of shrinking every column to letters. */
+.chat-markdown table { border-collapse: collapse; font-size: inherit; overflow-wrap: normal; white-space: normal; }
 .chat-markdown th, .chat-markdown td { padding: 6px 10px; border: 1px solid var(--border); text-align: left; }
 .chat-markdown th { font-weight: 650; background: var(--surface); }
 .chat-markdown img { max-width: 100%; height: auto; border-radius: 6px; }
