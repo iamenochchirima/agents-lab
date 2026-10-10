@@ -1,6 +1,6 @@
 # Connected tool execution and approvals in chat
 
-Status: planned, implementation not started. Prepared 2026-10-10.
+Status: implementing. Prepared 2026-10-10; execution authorized and goal started 2026-10-10.
 
 ## Goal
 
@@ -20,7 +20,7 @@ Research: [connected tool approvals](../../../../docs/research/platform-connecte
 - Use free real models for automated development acceptance. No paid fallback. Keep scripted native checks separate from model-driven observations.
 - Keep tests focused on changed behavior. Reuse existing review, host and native recovery coverage. Broad stress testing, comprehensive failure permutations and production hardening remain later work.
 - Commit coherent, verified chunks. Preserve unrelated Lina changes; do not commit local credentials, provider data, state directories or generated run artifacts.
-- This request authorizes a plan. Checklist items below are proposed implementation work, not claims of completion or authorization to perform arbitrary account mutations.
+- The user has authorized implementation and checkpoint commits. Account mutations remain limited to agreed disposable targets and their exact action approvals.
 
 ## Current implementation and evidence
 
@@ -166,12 +166,12 @@ Each milestone is one coherent implementation unit, with small commits within it
 
 Implementation checklist:
 
-- [ ] Audit API, frontend, worker and platform-service endpoint resolution for default and custom ports. Extend the recent launcher fix where required; do not duplicate it.
-- [ ] Start control-plane HTTP without awaiting optional Hatchet initialization. Represent initializing/unavailable runners explicitly and retain startup errors per platform. Choose a lazy runner boundary or lifecycle method only after inspecting two real startup paths.
-- [ ] Keep `/ready` about core API/catalog/host readiness; report individual native runtime readiness separately. A healthy Temporal server alone is insufficient if its worker cannot reach the capability host.
+- [x] Audit API, frontend, worker and platform-service endpoint resolution for default and custom ports. Extend the recent launcher fix where required; do not duplicate it.
+- [x] Start control-plane HTTP without awaiting optional Hatchet initialization. Represent initializing/unavailable runners explicitly and retain startup errors per platform. Choose a lazy runner boundary or lifecycle method only after inspecting two real startup paths.
+- [x] Keep `/ready` about core API/catalog/host readiness; report individual native runtime readiness separately. A healthy Temporal server alone is insufficient if its worker cannot reach the capability host.
 - [ ] Ensure startup failure of a selected required service stops only the launcher-owned process group and names its log. Optional services must not disable unrelated chat routes.
 - [ ] Prevent duplicate owned workers and restore them with the correct endpoint. Leave unrelated processes and database files untouched.
-- [ ] Document process lifetime and restart behavior. Do not claim the dev launcher survives app shutdown or machine reboot. No new system daemon or process-manager dependency unless demonstrated necessary.
+- [x] Document process lifetime and restart behavior. Do not claim the dev launcher survives app shutdown or machine reboot. No new system daemon or process-manager dependency unless demonstrated necessary.
 
 Acceptance and minimal checks:
 
@@ -185,20 +185,20 @@ Commit checkpoint: `fix(platforms): isolate optional startup and align native to
 
 Implementation checklist:
 
-- [ ] Extract review polling and decision state from sidebar presentation. Use existing review APIs and a run-keyed controller with cancellation on conversation changes.
-- [ ] Project assistant text, tool activities, approval cards and results in recorded turn order. Do not persist a second copy of authoritative approvals inside message text.
-- [ ] Audit persisted session history and run lookup. Restore the relevant run IDs on refresh; if missing, add a bounded read-only session/run listing using existing indexes and safe projections.
+- [x] Extract review polling and decision state from sidebar presentation. Use existing review APIs and a run-keyed controller with cancellation on conversation changes.
+- [x] Project assistant text, tool activities, approval cards and results in recorded turn order. Do not persist a second copy of authoritative approvals inside message text.
+- [x] Audit persisted session history and run lookup. Restore the relevant run IDs on refresh; if missing, add a bounded read-only session/run listing using existing indexes and safe projections.
 - [ ] Render the approval UX above, including multiple calls, retained decisions, expiry, renewal, cancellation and unknown outcomes.
-- [ ] Move exact reviews, legacy grant prompts and applicable workflow pause controls out of the sidebar. Keep sidebar inspection read-only.
-- [ ] Keep composer state legible while a run waits: show `Waiting for approval`, allow Stop, and preserve draft text. Do not launch another conflicting session turn.
-- [ ] Refetch persisted review state after uncertain submission and reuse existing decision IDs. Avoid independent polling loops for every card.
+- [x] Move exact reviews, legacy grant prompts and applicable workflow pause controls out of the sidebar. Keep sidebar inspection read-only.
+- [x] Keep composer state legible while a run waits: show `Waiting for approval`, allow Stop, and preserve draft text. Do not launch another conflicting session turn.
+- [x] Refetch persisted review state after uncertain submission and reuse existing decision IDs. Avoid independent polling loops for every card.
 - [ ] Preserve stable scroll and focus when cards change, with responsive layout and safe argument rendering.
 
 Acceptance and minimal checks:
 
-- [ ] One browser walkthrough approves and denies actions in the transcript, refreshes during a pending review, and confirms the historical decision survives the next turn.
-- [ ] Focused projection tests cover ordering across two runs, stale revisions, terminal outcomes and duplicate decision submission.
-- [ ] Existing chat state and connected-tool tests pass; web typecheck passes. No new UI framework or broad screenshot suite.
+- [x] One browser walkthrough approves and denies actions in the transcript, refreshes during a pending review, and confirms the historical decision survives the next turn.
+- [x] Focused projection tests cover ordering across two runs, stale revisions, terminal outcomes and duplicate decision submission.
+- [x] Existing chat state and connected-tool tests pass; web typecheck passes. No new UI framework or broad screenshot suite.
 
 Commit checkpoint: `feat(chat): render durable action approvals in conversation` with focused tests and usage documentation.
 
@@ -206,22 +206,22 @@ Commit checkpoint: `feat(chat): render durable action approvals in conversation`
 
 Implementation checklist:
 
-- [ ] Inspect installed Workflow SDK contracts and local World hook persistence, then record the chosen review-delivery mechanism and replay semantics in platform docs.
-- [ ] Extend workflow/model contracts with admitted tool declarations, context projection and inventory using existing common capability types.
-- [ ] Implement bounded native model/tool rounds with paired results and the recorded model settings. Keep network, credentials, host calls and time-dependent work in durable steps.
-- [ ] Implement prepare/suspend/approve/deny/renew/execute continuation using a stable native waiter identity. Browser polling must not replace a native suspension mechanism.
-- [ ] Establish waiter registration before publishing a deliverable pending review, or retain early decisions for delivery after registration. A failed wake may already have persisted the resume payload; deduplicate by retained decision/revision rather than assuming retry is a new event.
-- [ ] Add service and runner resume delivery; reject mismatched or stale decisions. Preserve original native run/call IDs across delivery retries.
-- [ ] Add durable in-progress inspection of pending review identity, suspended status and incremental tool/review events. The current service and runner derive execution evidence from terminal results; a waiting hook alone will not make chat see the review. Reconstruct this projection after service restart and verify it in the pending-review restart scenario.
-- [ ] Preserve call receipts, cancellation and outcome-unknown behavior. Audit SDK step retry policy so it cannot blindly repeat a non-idempotent provider mutation.
-- [ ] Add normalized tool/review events alongside native Workflow telemetry and actual usage. Restore stored pending/accepted admission behavior after service restart.
-- [ ] Enable connected context/capability admission for this variant only when implemented. Preserve fake-model controls for deterministic checks without advertising them as real-model proof.
+- [x] Inspect installed Workflow SDK contracts and local World hook persistence, then record the chosen review-delivery mechanism and replay semantics in platform docs.
+- [x] Extend workflow/model contracts with admitted tool declarations, context projection and inventory using existing common capability types.
+- [x] Implement bounded native model/tool rounds with paired results and the recorded model settings. Keep network, credentials, host calls and time-dependent work in durable steps.
+- [x] Implement prepare/suspend/approve/deny/renew/execute continuation using a stable native waiter identity. Browser polling must not replace a native suspension mechanism.
+- [x] Establish waiter registration before publishing a deliverable pending review, or retain early decisions for delivery after registration. A failed wake may already have persisted the resume payload; deduplicate by retained decision/revision rather than assuming retry is a new event.
+- [x] Add service and runner resume delivery; reject mismatched or stale decisions. Preserve original native run/call IDs across delivery retries.
+- [x] Add durable in-progress inspection of pending review identity, suspended status and incremental tool/review events. The current service and runner derive execution evidence from terminal results; a waiting hook alone will not make chat see the review. Reconstruct this projection after service restart and verify it in the pending-review restart scenario.
+- [x] Preserve call receipts, cancellation and outcome-unknown behavior. Audit SDK step retry policy so it cannot blindly repeat a non-idempotent provider mutation.
+- [x] Add normalized tool/review events alongside native Workflow telemetry and actual usage. Restore stored pending/accepted admission behavior after service restart.
+- [x] Enable connected context/capability admission for this variant only when implemented. Preserve fake-model controls for deterministic checks without advertising them as real-model proof.
 
 Acceptance and minimal checks:
 
-- [ ] One native scenario proves prepare-before-effect, deny-without-effect, approved original-call continuation and one pending-review restart.
-- [ ] One controlled lost-acknowledgement fixture proves no automatic repeated mutation. Reuse the existing effect fixture.
-- [ ] Existing Vercel admission, cancellation and unknown-submission checks pass if affected. Record skipped checks when dependencies are absent.
+- [x] One native scenario proves prepare-before-effect, deny-without-effect, approved original-call continuation and one pending-review restart.
+- [x] One controlled lost-acknowledgement fixture proves no automatic repeated mutation. Reuse the existing effect fixture.
+- [x] Existing Vercel admission, cancellation and unknown-submission checks pass if affected. Record skipped checks when dependencies are absent.
 
 Commit checkpoints: native model/tool loop, then durable review/resume support. Both include relevant tests and platform documentation.
 
@@ -350,6 +350,25 @@ Add only focused tests for new startup behavior, transcript projection and the n
 
 ## Current position
 
-Planning only. Research and repository inspection completed; no implementation milestone is checked off. Implement milestone 1 first, then inline transcript approvals. Vercel runtime work follows the established review UI contract, with acceptance across the five variants afterward.
+Milestones 1 and 2 have verified implementation checkpoints. Native end-to-end startup/recovery and real-model acceptance still require the checks left open above. Milestone 3 is committed and verified through actual native fixture execution. Milestones 4 and 5 are in progress. The goal remains active.
+
+### Evidence ledger
+
+- `82774e3`: optional native initialization isolated from core HTTP startup. Server build and 16 focused lifecycle/bootstrap/Hatchet/launcher tests passed. Default/custom port and wildcard-host derivation covered. Initialization retries require a process restart; an unreturned SDK connection cannot be cancelled by the wrapper.
+- `3765b87`: all three approval control types moved into assistant turns. Web typecheck, 20 focused state/projection tests and four browser fixture cases passed. Browser cases cover ordinary chat, upfront grant, exact approval/denial, pending refresh, next-turn retained history, stable decision retry and Mastra workflow resume. Existing browser harness flags were unchanged. Fixture browser evidence does not establish real-model/provider behavior. Pre-admission grants remain ephemeral until a run exists.
+- `c88b7d1`: bounded read-only session/run history indexed by the session ledger. Two focused backend history checks passed; server build passed. Pages preserve chronological admission order and reject invalid limits/cursors. Vercel context admission is enabled for the implemented native path, whose acceptance remains pending its own checkpoint.
+
+- `209a7ef`: native Vercel model/tool loop, frozen context/tool declarations, revision-specific durable review hooks, incremental inspection and retained delivery. Server build and 20 focused Vercel checks passed, including native service checks. Expanded actual World/host fixture passed five checks for pending restart/renewal, approval, denial feedback, stale revision rejection and stopped-host failure; lost acknowledgement retained one effect and one provider attempt. Native completed status remains recorded even when the returned agent result is failed. These are scripted model decisions, not real-model evidence. Hosted deployment is outside this phase.
+
+The initial architecture table above records the baseline before implementation, not current readiness. Remaining checks and the final acceptance matrix are authoritative for completion.
 
 Credentials and selected test-team identity are live-run prerequisites, not blockers to planning or fixture/native implementation. Obtain reviewer decisions through the chat cards during real trials. Keep the plan updated with the commit and observed evidence for each completed milestone.
+
+### Open verification limitation
+
+The computer-use tool currently rejects access to the local Lab tab under its URL
+security policy, including a prohibition on alternate browser/CDP workarounds.
+The earlier successful browser fixture evidence remains valid for its scope.
+The actual free-model connected-task frontend walkthrough still requires a user
+reviewer once the isolated acceptance services are ready. API/native verification
+can continue independently and must not be called a human frontend walkthrough.
