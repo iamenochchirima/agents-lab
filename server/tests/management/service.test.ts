@@ -123,11 +123,12 @@ test("saved PAT discovers live MCP tools, updates profile and rejects stale auth
   const root = await mkdtemp(join(tmpdir(), "lab-managed-service-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   let expected = "Bearer service-fixture-secret", calls = 0;
+  let inputSchema: Record<string, unknown> = { type: "object", properties: {}, additionalProperties: false };
   const server = createServer(async (request, response) => {
     if (request.headers.authorization !== expected) { response.writeHead(401); response.end(); return; }
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const input = JSON.parse(Buffer.concat(chunks).toString());
-    const result = input.method === "tools/list" ? { tools: [{ name: "list_notes", description: "List private test notes", inputSchema: { type: "object", properties: {}, additionalProperties: false } }] }
+    const result = input.method === "tools/list" ? { tools: [{ name: "list_notes", description: "List private test notes", inputSchema }] }
       : { content: [{ type: "text", text: "Test note list" }], isError: false };
     if (input.method === "tools/call") calls++;
     response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify({ jsonrpc: "2.0", id: input.id, result }));
@@ -168,6 +169,16 @@ test("saved PAT discovers live MCP tools, updates profile and rejects stale auth
     const oldTool = service.loaded.tools.find(value => value.descriptor.definition.name === tool.descriptor.definition.name)!;
     assert.equal((await invoke(oldTool)).status, "completed");
     assert.equal(calls, 1);
+    const previousCatalog = createPackageCapabilityCatalog(service.loaded);
+    const frozen = previousCatalog.toolSnapshot([tool.descriptor.definition.name], previousCatalog.resolve("connected-agent").resolution);
+    inputSchema = { type: "object", properties: { topic: { type: "string", enum: ["release", "support"] } }, additionalProperties: false };
+    await service.connectionAction(record.ref, "discover");
+    const updatedCatalog = createPackageCapabilityCatalog(service.loaded);
+    const refreshed = updatedCatalog.toolSnapshot([tool.descriptor.definition.name], updatedCatalog.resolve("connected-agent").resolution);
+    assert.notEqual(refreshed.revision, frozen.revision);
+    assert.deepEqual(frozen.tools[0].definition.inputSchema, { type: "object", properties: {}, additionalProperties: false });
+    assert.deepEqual(refreshed.tools[0].definition.inputSchema, inputSchema, "Managed rediscovery publishes changed schemas for later admissions without changing a native loop");
+    assert.equal(calls, 1, "Discovery and snapshot refresh perform no provider operation");
     expected = "Bearer replacement-fixture-secret";
     await service.saveConnection(service.repository.read().revision, record, { kind: "personal-access-token", token: "replacement-fixture-secret" });
     assert.equal(await service.credentials!.get(originalCredentialId, service.credentialBinding(record)), null);
