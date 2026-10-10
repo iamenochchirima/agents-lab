@@ -27,3 +27,14 @@ context window disables the pressure check; an exhausted context with no complet
 group, or a summary that leaves the budget exhausted, fails before further agent
 inference. The Python policy exists at the language boundary and should remain
 aligned with the shared TypeScript policy.
+
+
+A successful admitted packaged `load_skill` result is also retained in native
+`loaded_skill_contexts` state. Recognition binds the frozen source package/version,
+standard loader execution identity (including managed profile aliases), selected
+schema name, digest, and `trust: untrusted`/`authority: none` metadata. Arbitrary
+source JSON claiming to be a skill is not sufficient. Before each model request,
+missing retained skill bodies become protected user context, granting no authority.
+A completed loader call/result group can therefore be compacted without removing
+the procedure. The body and provenance survive native checkpoint reconstruction;
+no skill is reloaded or summary regenerated merely to recover that checkpoint.

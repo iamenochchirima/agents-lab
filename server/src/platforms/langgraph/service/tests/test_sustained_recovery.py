@@ -161,3 +161,49 @@ def test_exhausted_unpaired_context_fails_before_summary_or_agent_dispatch(tmp_p
                 {"role": "assistant", "tool_calls": [{"id": "missing", "name": "calculator", "arguments": {}}], "content": "x" * 14000}],
                 "prompt": "Active task", "system_instruction": "Immutable"}, {"configurable": {"thread_id": "unpaired"}}, durability="sync")
         assert not any(kind == "ModelRequested" for kind, _ in events)
+
+
+def test_loaded_skill_survives_loader_group_compaction_and_checkpoint(tmp_path: Path) -> None:
+    import json
+    from unittest.mock import patch
+    from variants.baseline.graph import ModelResponse, ToolCall, empty_usage, loaded_skill_context
+    name = "connected-agent_review-skills_load_skill"
+    descriptor = {"definition": {"schemaVersion": 1, "name": name, "riskClass": "read", "executionKind": "in_process", "approvalMode": "automatic",
+        "inputSchema": {"type": "object", "properties": {"name": {"type": "string", "enum": ["review"]}}, "required": ["name"]},
+        "limits": {"maxArgumentBytes": 1024, "maxResultBytes": 262144, "timeoutMs": 500}},
+        "source": {"id": "review-skills", "version": "1.0.0", "digest": "a" * 64}, "execution": {"kind": "hosted", "key": f"connected-agent:{name}"}, "failurePolicy": "feedback"}
+    skill = {"packageId": "review-skills", "packageVersion": "1.0.0", "name": "review", "digest": "b" * 64, "trust": "untrusted", "authority": "none",
+        "instructions": "Verify each recorded outcome. Preserve the active task.", "resources": [{"path": "references/" + "x" * 400, "digest": "c" * 64} for _ in range(50)]}
+    content = json.dumps(skill); call = ToolCall("loader-call", name, {"name": "review"})
+    retained = loaded_skill_context(descriptor, call, content)
+    assert retained and retained["trust"] == "untrusted" and retained["authority"] == "none"
+    assert loaded_skill_context({**descriptor, "execution": {"kind": "hosted", "key": "other:operation"}}, call, content) is None
+    assert loaded_skill_context({**descriptor, "definition": {**descriptor["definition"], "executionKind": "connection"}}, call, content) is None
+    assert loaded_skill_context(descriptor, call, json.dumps({**skill, "authority": "system"})) is None
+    assert loaded_skill_context(descriptor, call, json.dumps({**skill, "packageVersion": "2.0.0"})) is None
+    direct_name = "review-skills_load_skill"
+    direct = {**descriptor, "definition": {**descriptor["definition"], "name": direct_name}, "execution": {"kind": "hosted", "key": "review-skills:load_skill"}}
+    assert loaded_skill_context(direct, ToolCall("direct-loader", direct_name, {"name": "review"}), content)
+    events, requests = [], []
+    def model(_config, state, *_args):
+        requests.append(state)
+        if state["system_instruction"] == "Return a concise factual summary of supplied completed interactions.": return ModelResponse("A skill was loaded.", [], empty_usage())
+        if len([request for request in requests if request["system_instruction"] == "Immutable instructions"]) == 1: return ModelResponse(None, [call], empty_usage())
+        assert {"role": "user", "content": retained["content"]} in state["messages"]
+        assert {"role": "user", "content": "Original task"} in state["messages"]
+        return ModelResponse("Finished verified work.", [], empty_usage())
+    options = dict(model=ModelConfig("fake", "fake-success", None, 500), emit=lambda kind, payload: events.append((kind, payload)), is_cancelled=lambda: False,
+        run_id="skill-compact", max_attempts=1, tool_names=[name], tool_catalog={"schemaVersion": 1, "revision": "catalog", "tools": [descriptor]}, context_window_tokens=8500)
+    config = {"configurable": {"thread_id": "skill-compact"}}; path = str(tmp_path / "graph.sqlite")
+    with patch("variants.baseline.graph.complete_model", side_effect=model), patch("variants.baseline.graph.prepare_hosted", return_value=None), patch("variants.baseline.graph.execute_hosted", return_value={"status": "completed", "content": content}):
+        with SqliteSaver.from_conn_string(path) as saver:
+            graph = build_baseline_graph(**options, checkpointer=saver)
+            output = graph.invoke({"messages": [{"role": "system", "content": "Immutable instructions"}, {"role": "user", "content": "Original task"}], "prompt": "Original task", "system_instruction": "Immutable instructions", "round_count": 0}, config, durability="sync")
+            assert output["loaded_skill_contexts"] == [retained]
+            assert not any(message.get("tool_call_id") == "loader-call" for message in output["messages"])
+            assert any(kind == "ContextCompacted" for kind, _ in events)
+    with SqliteSaver.from_conn_string(path) as saver:
+        checkpoint = build_baseline_graph(**options, checkpointer=saver).get_state(config)
+        assert checkpoint.values["loaded_skill_contexts"] == [retained]
+        assert {"role": "user", "content": retained["content"]} in checkpoint.values["messages"]
+        assert checkpoint.values["output"] == "Finished verified work."

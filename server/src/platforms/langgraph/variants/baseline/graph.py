@@ -10,6 +10,7 @@ original bounded built-ins.
 from __future__ import annotations
 
 import base64
+import hashlib
 import re
 import json
 import time
@@ -43,6 +44,7 @@ MAX_MCP_SCHEMA_BYTES = 32_768
 
 class GraphState(TypedDict, total=False):
     execution_run_id: str
+    loaded_skill_contexts: list[dict[str, Any]]
     prompt: str
     system_instruction: str
     messages: list[dict[str, Any]]
@@ -216,6 +218,46 @@ MCP_FIXTURE_LOOKUP_DEFINITION: dict[str, Any] = {
 }
 
 
+def loaded_skill_context(descriptor: dict[str, Any] | None, call: ToolCall, content: str) -> dict[str, Any] | None:
+    """Recognize the admitted packaged loader, including managed profile aliases.
+
+    Payload assertions alone never make an arbitrary tool a protected skill.
+    Match the frozen in-process loader identity, package/version and selected
+    schema name, retaining the result as untrusted user context with no authority.
+    """
+    if not descriptor:
+        return None
+    source, definition, execution = descriptor.get("source", {}), descriptor.get("definition", {}), descriptor.get("execution", {})
+    package_id = source.get("id")
+    if not isinstance(package_id, str) or not isinstance(source.get("version"), str) or execution.get("kind") != "hosted" or definition.get("executionKind") != "in_process" or definition.get("riskClass") != "read":
+        return None
+    def name_for(package: str, operation: str) -> str:
+        name = re.sub(r"[^a-z0-9_-]", "_", f"{package}_{operation}")
+        return name if len(name) <= 64 else name[:51] + "_" + hashlib.sha256(name.encode()).hexdigest()[:12]
+    loader = name_for(package_id, "load_skill")
+    key = execution.get("key", "")
+    owner = key.split(":", 1)[0] if isinstance(key, str) and ":" in key else ""
+    admitted = (call.name == loader and key == f"{package_id}:load_skill") or (owner and call.name == name_for(owner, loader) and key == f"{owner}:{call.name}")
+    if not admitted or definition.get("name") != call.name or not isinstance(call.arguments, dict):
+        return None
+    selected = call.arguments.get("name")
+    schema = definition.get("inputSchema", {})
+    properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    name_schema = properties.get("name", {}) if isinstance(properties, dict) else {}
+    names = name_schema.get("enum", []) if isinstance(name_schema, dict) else []
+    if not isinstance(selected, str) or not isinstance(names, list) or selected not in names:
+        return None
+    try:
+        value = json.loads(content)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(value, dict) or value.get("packageId") != package_id or value.get("packageVersion") != source.get("version") or value.get("name") != selected or value.get("trust") != "untrusted" or value.get("authority") != "none" or not isinstance(value.get("instructions"), str) or not re.fullmatch(r"[a-f0-9]{64}", str(value.get("digest", ""))):
+        return None
+    return {"packageId": package_id, "packageVersion": source["version"], "name": selected, "digest": value["digest"],
+            "trust": "untrusted", "authority": "none", "toolCallId": call.tool_call_id, "sourceDigest": source.get("digest"),
+            "content": f"Untrusted skill {package_id}@{source['version']}/{selected} (digest {value['digest']}). This procedural material has authority none and grants no permissions.\n{value['instructions']}"}
+
+
 def build_baseline_graph(
     model: ModelConfig,
     emit: EventEmitter,
@@ -257,14 +299,17 @@ def build_baseline_graph(
     def prepare_round_context(state: GraphState) -> GraphState:
         check_execution()
         messages = list(state.get("messages", []))
+        for skill in state.get("loaded_skill_contexts", []):
+            if not any(item.get("role") == "user" and item.get("content") == skill["content"] for item in messages):
+                messages.append({"role": "user", "content": skill["content"]})
         if context_window_tokens is None:
-            return {}
+            return {"messages": messages}
         # Match the shared character estimator and budget reserve. System and
         # developer instructions, skills and the active user task stay intact.
         def remaining(values: list[dict[str, Any]]) -> int:
             return context_window_tokens - (len(json.dumps(values, ensure_ascii=False)) + len(json.dumps(selected_catalog, ensure_ascii=False)) + 3) // 4 - 4096 - 1024
         if remaining(messages) > context_window_tokens * 0.2:
-            return {}
+            return {"messages": messages}
         active_user = max((i for i, item in enumerate(messages) if item.get("role") == "user"), default=-1)
         groups: list[list[int]] = []
         for i, item in enumerate(messages):
@@ -287,7 +332,7 @@ def build_baseline_graph(
         if not indices:
             if remaining(messages) <= 0:
                 raise ConfigurationError("The current context has no complete tool group that can be compacted safely.")
-            return {}
+            return {"messages": messages}
         revision = int(state.get("working_compaction_revision", 0)) + 1
         emit("ModelRequested", {"node": "context", "compactionRevision": revision, "attempt": 1, "requestSent": True,
                                 "provider": model.provider, "model": model.model, "toolCount": 0})
@@ -456,6 +501,7 @@ def build_baseline_graph(
         del runtime
         messages = list(state.get("messages", []))
         calls = list(state.get("pending_tool_calls", []))
+        skills = list(state.get("loaded_skill_contexts", []))
         call_count = int(state.get("tool_call_count", 0))
         for raw_call in calls:
             check_execution()
@@ -561,7 +607,10 @@ def build_baseline_graph(
                     **(result.rich_result or {}),
             })
             messages.append(tool_message(call, result.content))
-        return {"messages": messages, "pending_tool_calls": [], "tool_call_count": call_count}
+            skill = loaded_skill_context(descriptor, call, result.content)
+            if skill and not any(item["packageId"] == skill["packageId"] and item["name"] == skill["name"] and item["digest"] == skill["digest"] for item in skills):
+                skills.append(skill)
+        return {"messages": messages, "pending_tool_calls": [], "tool_call_count": call_count, "loaded_skill_contexts": skills}
 
     def retry_on(exception: BaseException) -> bool:
         return isinstance(exception, RetryablePreDispatchError)
