@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import Fastify from "fastify";
+import { Connection } from "@temporalio/client";
 import { CapabilityCatalog, type CapabilityProfile } from "../src/capabilities/catalog.js";
 import { contribution, objectSchema } from "../src/capabilities/extensions/package-utils.js";
 import { CapabilityHost } from "../src/capabilities/extensions/host.js";
@@ -116,6 +117,7 @@ test("native invocation review pauses before effects and resumes the original ca
     if (selected.has("temporal")) {
       const worker = start(process.execPath, [resolve("dist/src/platforms/temporal/runner-adapter/worker-entry.js")], environment);
       children.push(worker); nativeProcesses.set("temporal", worker);
+      await temporalPollerReady(config.temporal.endpoint, config.temporal.namespace, id);
       runners.push(await TemporalBaselineRunner.connect(config));
     }
     if (selected.has("langgraph")) {
@@ -309,6 +311,31 @@ test("native invocation review pauses before effects and resumes the original ca
       observe(reviewRunner.platform, outcome === "deny" ? ["deniedNoEffect", "denialFeedback"] : ["cancelledNoEffect"], created.runId);
       reports.push({ platform: reviewRunner.platform, outcome, runId: created.runId, effects: 0, status: settled.status });
     });
+    const temporal = runners.find(value => value.platform === "temporal");
+    if (temporal) await t.test("Temporal unavailable review host is safe pre-dispatch feedback", async () => {
+      const before = effects;
+      await app.close();
+      try {
+        const prompt = `[eval-behaviour:${Buffer.from(JSON.stringify({ action: "tool", toolName: definition.name, input: { owner: "Never dispatched" } })).toString("base64url")}]`;
+        const created = await service.createRun({ platform: "temporal", variant: "baseline", task: { kind: "prompt", prompt },
+          model: { provider: "fake", model: "fake-eval-behaviour", contextWindowTokens: 16_384 },
+          capabilities: { profileId: profile.id, tools: { enabledNames: [], maxCalls: 3, maxRounds: 4 } } });
+        const failed = await waitFor(service, created.runId, view => !!view.result);
+        assert.equal(failed.status, "failed");
+        assert.equal(failed.result?.error?.code, "ACTION_REVIEW_PREPARATION_FAILED");
+        assert.equal(failed.result?.error?.failureKind, "pre_dispatch");
+        assert.match(failed.result?.error?.message ?? "", /not dispatched.*capability host/i);
+        assert.equal((failed.result?.error?.message ?? "").includes("Activity task failed"), false);
+        assert.equal(effects, before);
+        assert.equal(failed.events.some(event => event.kind === "ToolExecutionStarted"), false);
+        assert.equal((await service.actions(created.runId)).length, 0);
+        reports.push({ platform: "temporal", outcome: "review-host-unavailable", runId: created.runId, effects: 0,
+          status: failed.status, code: failed.result?.error?.code, failureKind: failed.result?.error?.failureKind });
+      } finally {
+        app = Fastify(); host = new CapabilityHost(evidence, [tool, read], key, sessions, reviews); host.register(app);
+        await app.listen({ host: "127.0.0.1", port: address.port });
+      }
+    });
   } finally {
     const extensionInputs: ExtensionInput[] = [...selected].flatMap(platform => baselineExtensions(platform as ExtensionPlatform, "isolated-native-review").map(report => ({ ...report, observations: report.caseId === "X04" ? extensionObservations.get(platform) ?? [] : report.caseId === "X02" ? effectObservations.get(platform) ?? [] : [] })));
     await writeFile(join(root, "extension-observations.json"), JSON.stringify(extensionInputs, null, 2));
@@ -337,6 +364,17 @@ async function stop(child: ChildProcess) {
 async function ready(url: string) {
   for (let i = 0; i < 100; i++) { try { if ((await fetch(url)).ok) return; } catch {} await new Promise(resolve => setTimeout(resolve, 100)); }
   throw new Error(`Service unavailable: ${url}`);
+}
+async function temporalPollerReady(address: string, namespace: string, name: string) {
+  const connection = await Connection.connect({ address });
+  try {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const response = await connection.workflowService.describeTaskQueue({ namespace, taskQueue: { name }, taskQueueType: 1 });
+      if (response.pollers?.length) return;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error("The isolated Temporal worker did not begin polling its task queue.");
+  } finally { await connection.close(); }
 }
 async function waitFor(service: RunService, runId: string, predicate: (run: RunView) => boolean): Promise<RunView> {
   for (let i = 0; i < 400; i++) {

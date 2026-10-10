@@ -2,10 +2,10 @@
 
 Status: first local baseline is runnable and covered by unit and local integration tests.
 
-The baseline is the first narrow, comparable agent workload built on Temporal.
-It is not intended to represent the complete professional agent planned for the
-Lab. Its purpose is to make the server/worker/workflow boundary concrete
-before skills, integrations, or multi-agent behaviour are introduced.
+The baseline runs a bounded agent loop using Temporal Activities for model and
+tool I/O. Shared capability discovery, skills and canonical session context are
+admitted by the control plane; Temporal owns native execution and review waits.
+It does not include native agent filesystem access or subagent orchestration.
 
 ## Baseline scope
 
@@ -16,18 +16,20 @@ The first run is a prompt completion with a server-owned multi-turn context sess
 2. A Temporal workflow admits the run and records its durable execution phase.
 3. A context Activity loads the canonical transcript, measures the selected model
    window, and compacts older history before it becomes unsafe when necessary.
-4. The workflow requests one model response through an Activity using the immutable
-   context snapshot.
-5. The workflow returns a terminal summary and can perform one changed-input context
-   recovery after a provider-reported overflow.
+4. The workflow requests model responses through Activities using the immutable
+   context snapshot and exact admitted tool schemas. Tool calls are validated,
+   reviewed when required and executed through the shared capability host.
+5. Paired tool results feed the next model round until final text or a configured
+   limit. The workflow can perform one changed-input context recovery after a
+   provider-reported overflow.
 6. The server reconciles the workflow's ordered event intents and writes
    the normalized Lab evidence.
 
 The session context currently contains the declared instruction, text transcript, and any
-selected versioned skill as untrusted context. The shared profile can expose `calculator`,
-the local read fixture, and the approval-gated local write fixture through Temporal
-Activities. MCP and OAuth are exercised through their explicit local protocol boundaries;
-provider accounts and business integrations are not implied by the fixture.
+selected versioned skill as untrusted context. New chat turns automatically admit
+the enabled shared catalog, including connected MCP tools and skill loaders.
+Credentials stay at the host. Fixture checks prove controlled behavior; they do
+not establish successful execution against a real connected provider account.
 
 ## Ownership
 
@@ -53,8 +55,10 @@ acknowledgement after dispatch must not blindly send the same prompt again; it
 is recorded as an unknown outcome for this slice. Exactly-once model execution
 is not claimed.
 
-The baseline has no external tool side effects yet, so tool idempotency and
-approval semantics are deliberately deferred rather than implied.
+The capability host records tool receipts and exact approvals separately from
+Temporal workflow history. Unknown external effects stop the turn and require
+reconciliation; a completed Activity or approval does not prove exactly-once
+provider execution.
 
 ## Layout
 
@@ -145,7 +149,14 @@ A renewal accepts only the next revision, fetches its proposal in a fresh Activi
 and remains suspended. It cannot dispatch an operation or authorize that revision.
 Approval/denial must subsequently target the renewed proposal. Cancellation wins
 before a renewed or approved source dispatch. Temporal history retains the wait,
-renewal and continuation separately from business effects.
+renewal and continuation separately from external effects.
+
+If initial or renewed review preparation fails, the turn reports
+`ACTION_REVIEW_PREPARATION_FAILED` with `pre_dispatch` certainty for that call.
+The failed proposal cannot execute the tool. The message directs the user to the
+capability host connection and policy without exposing Activity cause text,
+credentials or local paths. Previously completed calls in the turn are unaffected
+by this classification.
 
 Tool events retain effect certainty, presentation validity and original content.
 Model tool messages use explicit text/JSON projection and identify unsupported media.

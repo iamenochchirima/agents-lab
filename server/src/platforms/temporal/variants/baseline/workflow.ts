@@ -427,6 +427,11 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               turnId: input.context?.turnId ?? `${input.runId}:turn:1`,
               enabledNames: toolConfiguration.enabledNames, approvedNames: toolConfiguration.approvedNames,
               toolCatalog: input.toolCatalog, call: validation.call }));
+          } catch {
+            if (cancellationRequested) return cancel(attemptCount);
+            const failure = classifyInvocationPreparationFailure();
+            record("ToolCallRejected", { ...toolEventPayload(validation.call, 1), code: failure.code, message: failure.message });
+            return fail(failure, attemptCount);
           } finally { currentActivityScope = null; }
           if (cancellationRequested) return cancel(attemptCount);
           if (review) {
@@ -448,6 +453,11 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
                   renewed = await currentActivityScope.run(() => prepareInvocation({runId: input.runId,
                     turnId: input.context?.turnId ?? `${input.runId}:turn:1`, enabledNames: toolConfiguration.enabledNames,
                     approvedNames: toolConfiguration.approvedNames, toolCatalog: input.toolCatalog, call: validation.call}));
+                } catch {
+                  if (cancellationRequested) return cancel(attemptCount);
+                  const failure = classifyInvocationPreparationFailure();
+                  record("ToolCallRejected", { ...toolEventPayload(validation.call, 1), code: failure.code, message: failure.message });
+                  return fail(failure, attemptCount);
                 } finally { currentActivityScope = null; }
                 if (cancellationRequested) return cancel(attemptCount);
                 if (!renewed || renewed.requestId !== review.requestId || renewed.revision !== resumed!.revision || renewed.status !== "pending") throw new Error("The renewed proposal does not match this waiting action.");
@@ -535,6 +545,15 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     record("RunFailed", { attempt: attemptCount, code: error.code });
     return terminal("failed");
   }
+}
+
+/** Preparation persists a proposal only; failure here cannot dispatch this call.
+ * Do not surface arbitrary Activity cause messages containing host paths or tokens.
+ */
+export function classifyInvocationPreparationFailure(): TemporalRunError {
+  return temporalFailure("ACTION_REVIEW_PREPARATION_FAILED",
+    "Action review could not be prepared. This tool action was not dispatched. Check the capability host connection and review policy.",
+    "pre_dispatch");
 }
 
 export function classifyActivityFailure(error: unknown): TemporalRunError {
