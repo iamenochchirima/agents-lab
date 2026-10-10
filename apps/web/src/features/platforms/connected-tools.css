@@ -11,6 +11,7 @@
 .connection-row dd { margin: 0; overflow-wrap: anywhere; }
 .invocation-review-panel { margin: 1rem 0; }
 .invocation-review { padding: 1rem; border: 1px solid var(--border); border-radius: .6rem; margin-bottom: .7rem; }
+.invocation-review:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .invocation-review header { display: flex; justify-content: space-between; gap: 1rem; }
 .invocation-review header span { color: var(--muted-foreground); font-size: .8rem; }
 .invocation-arguments > div { display: grid; grid-template-columns: minmax(5rem, 25%) 1fr; gap: .6rem; margin: .6rem 0; }

@@ -64,6 +64,10 @@ inside the assistant turn that proposed it. The card shows the tool, bounded
 redacted arguments and recorded source details when available; review controls
 are not in the configuration sidebar. Multiple proposals have separate cards. No effect occurs while review is pending.
 An expired proposal needs fresh review; old decisions cannot authorize its new revision.
+Exact-call cards keep their identity when renewed. If a focused decision button is
+removed by an update, focus moves to its card without requesting a scroll. Polling
+does not take focus from another control or an inactive page. Actual focus/scroll
+behavior still needs the frontend observation listed in the readiness checkpoint.
 If delivery of an already-retained decision fails, use **Retry retained decision**
 or **Continue reviewed action** with the same decision identity. **Request fresh
 review** renews an expired proposal without another model choice or effect. A
