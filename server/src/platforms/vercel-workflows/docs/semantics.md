@@ -118,6 +118,19 @@ file. Existing per-record storage limits still apply; no history is truncated.
 Native World history remains authoritative for replay; this is an inspection
 projection, not a second decision store.
 
+The local queue transports an entire inline workflow delivery, which can include
+several model/tool rounds before an approval hook yields. Its SDK default of 30
+seconds can interrupt a valid delivery and re-enter an unacknowledged model step.
+The service therefore sets the public `WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS` setting
+to at least the maximum admitted sustained task duration plus one minute (61
+minutes currently). This is a bounded delivery transport deadline, separate from
+the retained task deadline and each model timeout. It does not increase those
+budgets or enable model retries. A larger explicit setting is accepted; zero or
+shorter settings reject service configuration. The SDK captures the setting during
+World creation, and the environment bridge is immediately restored. The ordinary
+body-chunk timeout remains unchanged. This establishes local transport behavior,
+not hosted delivery guarantees or recovery of unacknowledged model effects.
+
 The service loads the admission ledger, builds the flow and begins listening before
 World recovery. The local World then requeues persisted active runs through the
 configured URL. Bundle imports use a content digest so repeated service restarts do

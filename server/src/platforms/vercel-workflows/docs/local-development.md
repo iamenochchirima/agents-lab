@@ -89,3 +89,12 @@ messages and IDs, estimated before/after budgets and skill digests. These files
 can contain task and source content; treat them like protected run evidence and
 keep them out of Git. World history owns replay; editing a projection cannot
 change a retained model decision or authorize an action.
+
+`WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS` controls the local queue's whole inline
+workflow delivery. The service defaults it to `3660000` (the maximum admitted
+one-hour task plus a minute for finalization), and accepts finite larger values
+up to one day. This setting is separate from the API inspection timeout and
+admitted task/model deadlines. Values below the default, including SDK's original
+30-second default and zero, reject configuration to avoid premature redelivery.
+Restart the owned Vercel service to apply a changed queue setting; existing runs
+retain their task policy. Failed runs are not silently resubmitted.

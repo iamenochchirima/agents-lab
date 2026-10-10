@@ -1,4 +1,5 @@
 import { URL } from "node:url";
+import { DEFAULT_TASK_DURATION_MS } from "../../capabilities/execution/policy.js";
 
 export const VERCEL_WORKFLOWS_PLATFORM = "vercel-workflows" as const;
 export const VERCEL_WORKFLOWS_VARIANT = "baseline" as const;
@@ -10,6 +11,9 @@ export const VERCEL_WORKFLOW_DEFAULT_HOST = "127.0.0.1" as const;
 // which uses 9093 in the shared development setup.
 export const VERCEL_WORKFLOW_DEFAULT_PORT = 9094;
 export const VERCEL_WORKFLOW_DEFAULT_REQUEST_TIMEOUT_MS = 2_000;
+// Several model rounds share one inline queue delivery before a hook yields.
+// Its transport must outlive the maximum admitted task, including finalization.
+export const VERCEL_WORKFLOW_MIN_DELIVERY_TIMEOUT_MS = DEFAULT_TASK_DURATION_MS + 60_000;
 export const VERCEL_WORKFLOW_DEFAULT_MODEL_TIMEOUT_MS = 30_000;
 export const VERCEL_WORKFLOW_DEFAULT_DATA_DIR = ".local/workflow-data";
 export const VERCEL_WORKFLOW_DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -20,6 +24,7 @@ export interface VercelWorkflowsConfig {
   readonly serviceUrl: string;
   readonly dataDir: string;
   readonly requestTimeoutMs: number;
+  readonly deliveryHeadersTimeoutMs: number;
   readonly modelTimeoutMs: number;
   readonly workflowName: string;
   readonly openRouterApiKey: string | null;
@@ -54,6 +59,7 @@ export function loadVercelWorkflowsConfig(environment: NodeJS.ProcessEnv = proce
       1,
       300_000,
     ),
+    deliveryHeadersTimeoutMs: parseInteger(environment.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS, VERCEL_WORKFLOW_MIN_DELIVERY_TIMEOUT_MS, "WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS", VERCEL_WORKFLOW_MIN_DELIVERY_TIMEOUT_MS, 86_400_000),
     modelTimeoutMs: parseInteger(
       environment.AGENTLAB_VERCEL_WORKFLOWS_MODEL_TIMEOUT_MS,
       VERCEL_WORKFLOW_DEFAULT_MODEL_TIMEOUT_MS,
@@ -80,6 +86,7 @@ export function safeManifestConfiguration(config: VercelWorkflowsConfig): Readon
     serviceUrl: config.serviceUrl,
     dataDir: config.dataDir,
     requestTimeoutMs: config.requestTimeoutMs,
+    deliveryHeadersTimeoutMs: config.deliveryHeadersTimeoutMs,
     modelTimeoutMs: config.modelTimeoutMs,
     workflowName: config.workflowName,
     sdk: "workflow",

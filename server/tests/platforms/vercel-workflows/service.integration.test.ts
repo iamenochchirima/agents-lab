@@ -80,15 +80,25 @@ test("local Workflow World executes the selected OpenRouter model through its du
     serviceUrl: `http://127.0.0.1:${port}`,
     dataDir,
   };
+  const priorDeliveryTimeout = process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS;
+  // Regression: the SDK's short ambient delivery deadline must not abort an
+  // admitted model step. The service supplies its validated independent budget.
+  process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS = "10";
   const service = new VercelWorkflowsPlatformService({ config });
+  assert.equal(process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS, "10");
+  if (priorDeliveryTimeout === undefined) delete process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS;
+  else process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS = priorDeliveryTimeout;
   const previousKey = process.env.OPENROUTER_API_KEY;
   const previousBaseUrl = process.env.AGENTLAB_OPENROUTER_BASE_URL;
   const previousFetch = globalThis.fetch;
   let requestBody: Record<string, unknown> | null = null;
+  let providerRequests = 0;
   process.env.OPENROUTER_API_KEY = "test-secret";
   process.env.AGENTLAB_OPENROUTER_BASE_URL = "https://openrouter.example/v1";
   globalThis.fetch = (async (input, init) => {
     if (String(input) === "https://openrouter.example/v1/chat/completions") {
+      providerRequests += 1;
+      await new Promise(resolve => setTimeout(resolve, 100));
       assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-secret");
       requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
       return new Response(JSON.stringify({
@@ -113,6 +123,7 @@ test("local Workflow World executes the selected OpenRouter model through its du
       require_parameters: true, allow_fallbacks: false, max_price: { prompt: 0, completion: 0, request: 0, image: 0 },
     });
     assert.equal(record.status, "completed");
+    assert.equal(providerRequests, 1, "queue delivery cannot interrupt and repeat model dispatch");
     assert.equal(record.result.output, "hello from Vercel Workflows OpenRouter");
     assert.deepEqual(record.result.usage, { inputTokens: 13, outputTokens: 4, totalTokens: 17 });
     assert.equal(record.result.metrics.modelCallCount, 1);
@@ -133,6 +144,8 @@ test("local Workflow World executes the selected OpenRouter model through its du
   } finally {
     await service.stop();
     globalThis.fetch = previousFetch;
+    if (priorDeliveryTimeout === undefined) delete process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS;
+    else process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS = priorDeliveryTimeout;
     if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
     else process.env.OPENROUTER_API_KEY = previousKey;
     if (previousBaseUrl === undefined) delete process.env.AGENTLAB_OPENROUTER_BASE_URL;

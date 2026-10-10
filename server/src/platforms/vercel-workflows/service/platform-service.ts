@@ -69,7 +69,7 @@ export class VercelWorkflowsPlatformService {
     this.config = options.config ?? loadVercelWorkflowsConfig();
     this.platformRoot = options.platformRoot ?? sourcePlatformRoot();
     const dataDir = isAbsolute(this.config.dataDir) ? this.config.dataDir : resolve(this.platformRoot, this.config.dataDir);
-    this.world = options.world ?? createWorld({
+    this.world = options.world ?? createLocalWorld(this.config.deliveryHeadersTimeoutMs, {
       dataDir,
       baseUrl: this.config.serviceUrl,
       port: this.config.port,
@@ -455,5 +455,20 @@ class RequestBodyError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
     this.name = "RequestBodyError";
+  }
+}
+
+/** world-local captures its public queue setting synchronously during creation.
+ * Scope the environment bridge to this World so injected configurations and
+ * multiple isolated services do not leave process-wide timeout changes behind.
+ */
+function createLocalWorld(timeoutMs: number, options: Parameters<typeof createWorld>[0]): LocalWorld {
+  const prior = process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS;
+  try {
+    process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS = String(timeoutMs);
+    return createWorld(options);
+  } finally {
+    if (prior === undefined) delete process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS;
+    else process.env.WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS = prior;
   }
 }

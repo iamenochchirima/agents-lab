@@ -5,6 +5,7 @@ import {
   InvalidVercelWorkflowsConfigError,
   loadVercelWorkflowsConfig,
   safeManifestConfiguration,
+  VERCEL_WORKFLOW_MIN_DELIVERY_TIMEOUT_MS,
 } from "../../../src/platforms/vercel-workflows/config.js";
 
 test("Vercel Workflows configuration has safe defaults and no secret fields", () => {
@@ -27,4 +28,10 @@ test("Vercel Workflows configuration rejects invalid ports and URLs", () => {
     () => loadVercelWorkflowsConfig({ AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL: "file:///tmp/workflows" }),
     InvalidVercelWorkflowsConfigError,
   );
+});
+
+test("local queue delivery covers the maximum admitted task without an unbounded timeout", () => {
+  assert.equal(loadVercelWorkflowsConfig({}).deliveryHeadersTimeoutMs, VERCEL_WORKFLOW_MIN_DELIVERY_TIMEOUT_MS);
+  assert.equal(loadVercelWorkflowsConfig({ WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS: "7200000" }).deliveryHeadersTimeoutMs, 7200000);
+  for (const value of ["0", "30000", "invalid"]) assert.throws(() => loadVercelWorkflowsConfig({ WORKFLOW_LOCAL_HEADERS_TIMEOUT_MS: value }), InvalidVercelWorkflowsConfigError);
 });
