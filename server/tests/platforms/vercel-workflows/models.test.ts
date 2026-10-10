@@ -157,3 +157,25 @@ test("live eval observes the actual dispatched paired task and skill messages wi
   assert.equal(result.evalObservation?.providerRequestId, "actual-id");
   assert.equal(JSON.stringify(result.evalObservation).includes("never-observed-secret"), false);
 });
+
+
+test("live eval retains bounded response diagnostics for empty, successful and HTTP failed replies", async () => {
+  const { DEFAULT_FREE_MODEL } = await import("../../../src/models/openrouter/free-model-policy.js");
+  for (const [content, status, finishReason] of [[null, 200, "length"], ["done", 200, "stop"], [null, 429, null]] as const) {
+    const result = await completeOpenRouterModel({ ...request, liveEval: true, liveEvalExperiment: "agent-capabilities-live",
+      model: { provider: "openrouter", model: DEFAULT_FREE_MODEL } },
+    { apiKey: "fixture", baseUrl: "https://fixture.example", fetchImplementation: async () => Response.json({
+      id: "response-budget-1", model: "actual-model", provider: "actual-provider",
+      choices: [{ finish_reason: finishReason, message: { content, reasoning: "PRIVATE REASONING", reasoning_details: [{ text: "PRIVATE DETAILS" }] } }],
+      usage: { prompt_tokens: 120, completion_tokens: 2048, total_tokens: 2168, completion_tokens_details: { reasoning_tokens: 2048 } },
+    }, { status }) });
+    assert.equal(result.kind, content ? "success" : "failure");
+    if (result.kind === "failure") assert.equal(result.error.code, status === 429 ? "OPENROUTER_RATE_LIMITED" : "OPENROUTER_INVALID_RESPONSE");
+    assert.equal(result.evalObservation?.finishReason, finishReason);
+    assert.equal(result.evalObservation?.providerRequestId, "response-budget-1");
+    assert.equal(result.evalObservation?.providerModel, "actual-model");
+    assert.equal(result.evalObservation?.providerName, "actual-provider");
+    assert.deepEqual(result.evalObservation?.providerUsage, { inputTokens: 120, outputTokens: 2048, totalTokens: 2168, reasoningTokens: 2048 });
+    assert.ok(!JSON.stringify(result).includes("PRIVATE"));
+  }
+});

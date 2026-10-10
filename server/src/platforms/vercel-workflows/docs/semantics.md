@@ -165,3 +165,11 @@ so task retention and skill delivery can be checked against a subsequent model
 request. Headers and credentials are excluded. Interactive runs do not retain
 this evaluation-only request body. Missing observations in older runs remain an
 evidence gap; completed effects cannot substitute for model-request evidence.
+
+Live model observations also retain bounded `finishReason`, response ID/model/provider
+and `providerUsage` token counts, including reasoning-token counts, for parsed
+successful or failed responses. Empty content remains an invalid-response failure;
+the recorded metadata allows diagnosis of combined reasoning/output budget
+exhaustion without inferring that cause or changing experiment controls. Reasoning
+text and arbitrary provider usage fields are excluded. Earlier failed runs retain
+their original evidence gaps; observations are not backfilled.

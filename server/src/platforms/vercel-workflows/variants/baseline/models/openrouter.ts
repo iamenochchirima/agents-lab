@@ -1,3 +1,4 @@
+import { openRouterResponseMetadata, type OpenRouterResponseMetadata } from "../../../../../models/openrouter/response-metadata.js";
 import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type {
   VercelWorkflowModelRequest,
@@ -58,12 +59,14 @@ export async function completeOpenRouterModel(
     }
   }
 
+  let responseMetadata: Partial<OpenRouterResponseMetadata> = {};
   const observe = (result: VercelWorkflowModelResult): VercelWorkflowModelResult => input.liveEval ? {
     ...result, evalObservation: {
+      ...responseMetadata,
       systemInstruction: input.systemInstruction, messages: input.messages ?? [],
       tools: input.toolDefinitions ?? [], providerRequest: requestBody,
       toolCalls: result.kind === "success" ? result.toolCalls ?? [] : [],
-      providerRequestId: result.kind === "success" ? result.providerRequestId : null,
+      providerRequestId: responseMetadata.providerRequestId ?? (result.kind === "success" ? result.providerRequestId : null),
       output: result.kind === "success" ? result.output : null,
       ...(result.kind === "failure" ? { errorCode: result.error.code, requestSent: result.requestSent } : {}),
     },
@@ -83,8 +86,9 @@ export async function completeOpenRouterModel(
       signal: controller.signal,
     });
 
+    const bodyResult = await readJson(response);
+    if (input.liveEval && bodyResult.kind === "parsed") responseMetadata = openRouterResponseMetadata(bodyResult.value);
     if (!response.ok) {
-      await cancelResponseBody(response);
       return observe({
         kind: "failure", requestSent: true,
         error: {
@@ -94,7 +98,6 @@ export async function completeOpenRouterModel(
         },
       });
     }
-    const bodyResult = await readJson(response);
     if (bodyResult.kind === "too_large") {
       return observe({ kind: "failure", requestSent: true,
         error: { code: "OPENROUTER_RESPONSE_TOO_LARGE", message: "OpenRouter response exceeded the configured response limit.", failureKind: "provider", retryable: false } });

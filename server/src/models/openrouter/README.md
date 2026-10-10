@@ -16,7 +16,7 @@ the returned context length in the manifest, so browser-supplied metadata cannot
 the budget used for context preparation. The selected model ID is retained in the
 existing run manifest so a run can be inspected and compared later.
 
-The Temporal and Restate raw completion adapters record bounded response metadata
+The Temporal, Restate and Vercel Workflows raw completion adapters record bounded response metadata
 in live evaluation observations on both successful and parsed failed replies:
 `finishReason`, response ID/model/provider, and input/output/total/reasoning token
 counts under `providerUsage`. They never retain reasoning text or arbitrary usage
