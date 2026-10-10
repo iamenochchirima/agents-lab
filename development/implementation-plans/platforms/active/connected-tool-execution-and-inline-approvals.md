@@ -14,8 +14,8 @@ Research: [connected tool approvals](../../../../docs/research/platform-connecte
 
 - Approvals belong in the chat transcript. No decision controls in the sidebar or Run details. The sidebar may retain model configuration and capability inspection.
 - Use the shared connected-tool catalog automatically. Do not require profile selection, role templates or a separate agent configuration workflow. Internal profile records may remain for compatibility and reproducible admission.
-- Agents are general agents running on backend platforms. Linear is a concrete acceptance workload, not the definition of the agent or a business-agent architecture.
-- Tools, MCP connections, plugins and skills remain extensible through existing adapters. No Linear-specific branches in the native agent loops. No new connector marketplace in this phase.
+- Agents are general agents running on backend platforms. Acceptance measures reusable agent behaviors; Linear is one optional example, not the target integration or the definition of the agent.
+- Tools, MCP connections, plugins and skills remain extensible through existing adapters. New tools on a supported adapter require discovery and configuration, not edits to platform loops, approval components or model instructions. A genuinely new transport or provider protocol may require an adapter, with unsupported features reported honestly. No new connector marketplace in this phase.
 - Filesystem access remains an optional connected capability. Internal checkpoints, skill packages, evidence and configuration files do not imply native agent filesystem permission.
 - Use free real models for automated development acceptance. No paid fallback. Keep scripted native checks separate from model-driven observations.
 - Keep tests focused on changed behavior. Reuse existing review, host and native recovery coverage. Broad stress testing, comprehensive failure permutations and production hardening remain later work.
@@ -90,6 +90,20 @@ Required behaviors:
 - Desktop and narrow-screen layouts share this behavior. Run details remain optional inspection with no duplicated decision controls.
 
 ## Architecture and data flow
+
+### Dynamic capability contract
+
+The runtime consumes admitted descriptors, not a fixed list of services or operation names. Discovery supplies namespaced tool IDs, descriptions, input/output schemas, source metadata and supported content. Configured policy supplies risk and approval requirements; remote annotations and name prefixes do not grant authority.
+
+- A connection or plugin publishes tools through its adapter into the shared catalog. Skills are discovered and loaded through the existing skill interfaces; adding a skill must not require platform-specific prompt text.
+- At each new turn, generate the model inventory and exact callable definitions from the admitted catalog. Do not advertise disabled, disconnected or unsupported tools. Preserve the recorded snapshot for an already admitted run and its pending actions.
+- Resolve tool calls by recorded descriptor/binding, validate against their schema and dispatch through the host. No `if Linear`, fixed CRUD tool names, provider-specific agent roles or hardcoded capability lists in runtime code.
+- Build approval cards from safe source metadata, tool descriptions and server-owned arguments. Generic schema-driven presentation must work for unfamiliar tools; optional display metadata improves labels without becoming a required per-connector UI component.
+- Project structured/text/resource results according to the existing supported-content contract. Keep unsupported result types visible as limitations rather than silently treating them as successful text.
+- Ordinary use requires no handwritten CRUD mapping. The model chooses tools from live admitted definitions. Test scenarios may supply provider-specific inputs and verification recipes outside native runtime code, because providers expose different operations and result shapes.
+- Discovery and refresh can change later turns without a runtime restart. Revocation still blocks dispatch from older snapshots; refreshing a catalog cannot silently change an already reviewed action.
+
+Acceptance does not assume every connector offers CRUD. A search service may only retrieve results; a calculator may be pure; notes may support records; another tool may launch a long-running operation. Select tasks that exercise the capabilities actually exposed and report missing operations as not applicable, not agent failures or invented tools.
 
 Reuse these owners:
 
@@ -221,7 +235,8 @@ Implementation checklist:
 - [ ] Project a safe cause chain and actionable message without leaking tokens, private response bodies or local secret paths.
 - [ ] Keep status, response validity and effect certainty independent. Existing adapters may use different terminal statuses for unknown effects; the transcript must explain them consistently without erasing native records.
 - [ ] Confirm new turns admit refreshed shared tools while existing run snapshots and pending calls remain frozen. Catalog changes must not silently substitute a schema or connection during approval.
-- [ ] Run the same workload with a second installed connected source through the same host; no runtime edits should be needed for its tool names.
+- [ ] Add or refresh a second source with different tool names and schemas, then use its actual supported operations through the same host and chat UI without native runtime edits.
+- [ ] Verify generic argument presentation, model schema exposure, dispatch and result projection with an unfamiliar tool descriptor. No connector-specific conditionals or hardcoded tool lists may be needed.
 
 Acceptance and minimal checks:
 
@@ -231,32 +246,48 @@ Acceptance and minimal checks:
 
 Commit checkpoints: focused shared outcome projection, then platform-specific fixes only when needed.
 
-### 5. Real Linear task acceptance through chat
+### 5. Dynamic connected-tool acceptance through chat
 
-Prerequisites: connected account is healthy; discovery is complete; approved test team/workspace is known; model pricing is verified free; native runtime and worker/host connectivity are ready; no unresolved write receipt from a prior attempt.
+Prerequisites: selected connections are healthy; discovery is complete; test targets and permitted effects are agreed; model pricing is verified free; native runtime and worker/host connectivity are ready; no unresolved write receipt from a prior attempt.
+
+Use a behavior-based acceptance procedure with connector-specific data supplied by the scenario. The shared runtime and approval UI must not know which connector is being tested. At least two sources with different schemas demonstrate dynamic integration; one read-only source and one record-oriented source are sufficient, with a pure tool or skill operation checked through the same admission path.
 
 Implementation checklist:
 
-- [ ] Define a reusable connected-task procedure outside native loops, with supplied provider/tool bindings and run-scoped input values. Linear provides one concrete workload, not a hardcoded universal agent test.
+- [ ] Define reusable behaviors: discover and select a relevant tool, retrieve information, perform an approved action, verify its result, deny an action without effects, handle an error and load a relevant skill when available.
+- [ ] Let the model select actual operations from admitted schemas and descriptions. Scenario inputs specify the goal, disposable target and expected observations; verification recipes remain outside native loops.
+- [ ] Demonstrate two different connected sources without changing runtime code or approval components. Linear, notes, search or another configured source can supply examples; do not require a Linear account to complete the generic implementation.
+- [ ] Add a new tool or refresh a changed schema and verify that a subsequent turn sees the new descriptor, while existing run/review snapshots remain unchanged. Use a controlled connector fixture for this check rather than installing many providers.
+- [ ] Include skill discovery/loading in one suitable task, recording the skill version and showing that its instructions do not grant new tools or permissions.
 - [ ] Record one exact free model ID, provider, parameters and current zero-price catalog observation. Use the same settings across comparable trials. If unavailable, mark the trial blocked/error; never silently substitute a paid or different model.
-- [ ] Use a unique title marker per platform/trial and a specifically chosen team. No assignment, invitations, mentions, notifications or automatic cleanup unless separately requested.
+- [ ] Use disposable targets with a unique platform/trial marker and agreed workspace or destination. No incidental assignment, invitations, mentions, notifications or automatic cleanup unless separately requested.
 - [ ] Use the actual frontend to approve proposed account mutations. Automated fixture approvals remain clearly labeled scripted checks.
 - [ ] Retain real model decisions, review identities, tool arguments in protected evidence, provider IDs, receipts and independent verification results. Public summaries contain bounded metadata without personal provider content.
 - [ ] Keep failed attempts, refusals, rate limits and runtime errors visible. Interpret model decision failures separately from harness faults.
 - [ ] Stop the trial on unknown effects and reconcile by stable provider identity/marker before any fresh create. A new generated call ID does not make a repeated write safe.
 
-Prompts, with values filled before the trial:
+Generic prompts, filled with a selected service and operations it actually supports:
+
+1. **Retrieve:** “Use `<connected service>` to find `<test target>` and report `<requested information>`. Do not change anything.”
+2. **Approved action:** “Use `<connected service>` to perform `<specific permitted action>` on `<disposable target>` with `<values>`. After approval, verify the result using an available retrieval operation.”
+3. **Follow-up:** “Use the same target's recorded identifier to perform `<supported follow-up operation>`. Request approval if required and verify the resulting state.”
+4. **Deny:** “Propose `<specific change>` on `<target>` and wait for my decision.” The reviewer denies. Follow with a supported retrieval request that confirms no effect.
+5. **Skill:** “Use an available relevant skill to help complete `<bounded task>` with your connected tools. Report the observed result.” Choose a task for which a relevant installed skill exists; do not force skill use into every task.
+
+For connectors without writes, run retrieval, tool selection and appropriate error handling. Exercise mutation approval/denial with the selected write-capable connector or controlled fixture. A read-only connector does not need artificial CRUD operations.
+
+Optional concrete example: Linear issues. These prompts are scenario material only:
 
 1. **Read:** “Use the connected Linear tools to inspect team `<team>`. Tell me its identifier and whether you can create an issue there. Do not change anything.”
 2. **Create:** “Create one disposable issue in team `<team>` titled `Agent Lab test · <platform> · <trial-id>`, with description `Connected-tool verification only.` Do not assign it or add any other changes. After approval, read the created issue and give me its identifier and URL.”
 3. **Update:** “Update only that issue's description to `Connected-tool verification passed · <trial-id>`. After approval, read the same issue by its identifier and verify the saved description.”
 4. **Deny:** “Propose changing that issue's title to `Denied change · <trial-id>`. Wait for my decision.” The reviewer denies. Follow with “Read the issue and confirm whether its title changed. Do not modify it.”
 
-If the model needs team clarification, ask instead of guessing. Approve only the card matching the agreed test issue. Do not run a real lost-acknowledgement experiment against Linear; use a fixture for that boundary.
+If the model needs team clarification, ask instead of guessing. Approve only the card matching the agreed test issue. The same pattern can use a notes record or another supported resource. Do not run real lost-acknowledgement experiments against personal services; use a fixture for that boundary.
 
 Acceptance matrix:
 
-| Variant | Read | Create + independent read | Update + independent read | Denial leaves provider unchanged | Inline review verified | Evidence |
+| Variant | Dynamic discovery and read | Approved action + verification | Supported follow-up + verification | Denial leaves provider unchanged | Inline review verified | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | Temporal baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | Restate baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -264,7 +295,9 @@ Acceptance matrix:
 | Mastra baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | Vercel Workflows baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 
-One issue per platform and one successful pass through these stages is sufficient. Repeat a stage only after a relevant fix, provider failure or incomplete observation. Do not rerun successful stages to improve scores. Keep any required read approvals visible rather than weakening connector policy for the demonstration.
+Use one disposable target per platform where mutations apply and one successful pass through these behaviors. Run the cross-source discovery/schema check once per shared implementation; do not multiply every connector by every platform. Record the chosen sources and operations in each matrix row. A missing provider operation is not applicable; do not count it as a passing test. The selected write-capable source must still establish the approval/verification/denial behaviors across the five platforms.
+
+Repeat a stage only after a relevant fix, provider failure or incomplete observation. Do not rerun successful stages to improve scores. Keep required read approvals visible rather than weakening connector policy for a demonstration. Linear is optional and replaceable without runtime changes.
 
 Commit checkpoint: reusable acceptance procedure and bounded result summaries; local account evidence stays uncommitted.
 
@@ -311,6 +344,7 @@ Add only focused tests for new startup behavior, transcript projection and the n
 - [ ] Vercel Workflows has actual tool/session/review execution, not merely normalized capability labels.
 - [ ] Optional startup failure does not prevent unrelated ready platforms from serving chat. Nondefault ports reach the correct capability host.
 - [ ] Newly connected sources can join the shared catalog without changing native loops, while existing runs retain their snapshots.
+- [ ] At least two sources with different schemas work through generic model exposure, host dispatch and approval/result presentation. The acceptance procedure and platform code contain no required Linear dependency or fixed CRUD tool names.
 - [ ] Validation distinguishes scripted harness checks, real model behavior, observed provider state and unverified recovery guarantees.
 - [ ] Relevant documentation, model controls, limitations and commits are complete. All unchecked acceptance items are reported explicitly.
 
