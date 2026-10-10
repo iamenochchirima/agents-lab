@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "id": "dispatch-board",
+      "version": "1.0.0",
+      "source": "mcp",
+      "endpoint": "http://127.0.0.1:19196/mcp",
+      "protocolVersion": "2026-07-28",
+      "tools": [
+        {
+          "remoteName": "dispatch.inspect",
+          "name": "dispatch_inspect",
+          "riskClass": "read"
+        },
+        {
+          "remoteName": "dispatch.assign",
+          "name": "dispatch_assign",
+          "riskClass": "write",
+          "approvalMode": "invocation",
+          "effectContract": {
+            "rejectionErrorCodes": [
+              "REVISION_CONFLICT",
+              "RECORD_NOT_FOUND"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "dispatch-handbook",
+      "version": "1.0.0",
+      "source": "http",
+      "baseUrl": "http://127.0.0.1:19196",
+      "operations": [
+        {
+          "name": "handbook_lookup",
+          "description": "Retrieve the current Cedar release handbook and approved date. Read only.",
+          "method": "GET",
+          "path": "/handbook",
+          "riskClass": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "dispatch-skills",
+      "version": "1.0.0",
+      "source": "skills",
+      "root": "./skills"
+    }
+  ]
+}

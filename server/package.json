@@ -47,7 +47,9 @@
     "dev:procedure-service": "tsx src/capabilities/integrations/procedure-service/service.ts",
     "dev:document-service": "tsx src/capabilities/integrations/document-service/service.ts",
     "dev:capability-service": "tsx src/capabilities/integrations/task-service/service.ts",
-    "eval:regrade-live": "tsx src/evals/regrade-live.ts"
+    "eval:regrade-live": "tsx src/evals/regrade-live.ts",
+    "eval:connected": "tsx src/evals/connected.ts",
+    "dev:connected-fixture": "tsx src/evals/connected-fixture.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

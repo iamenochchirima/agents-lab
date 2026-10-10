@@ -12,11 +12,12 @@ import { registerConnectionRoutes } from '../../src/control-plane/http/connectio
 
 test('offline source permits startup, explicit refresh discovers tools, revoke blocks frozen authority', async () => {
   const root = await mkdtemp(join(tmpdir(), 'agentlab-source-lifecycle-'));
+  let lookupSchema: Record<string, unknown> = { type: 'object' };
   const remote = createServer(async (request, response) => {
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const input = JSON.parse(Buffer.concat(chunks).toString());
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ jsonrpc: '2.0', id: input.id, result: { tools: [{ name: 'lookup', description: 'Look up business data', inputSchema: { type: 'object' } }] } }));
+    response.end(JSON.stringify({ jsonrpc: '2.0', id: input.id, result: { tools: [{ name: 'lookup', description: 'Look up business data', inputSchema: lookupSchema }] } }));
   });
   await new Promise<void>(resolve => remote.listen(0, '127.0.0.1', resolve));
   const address = remote.address(); assert.ok(address && typeof address !== 'string');
@@ -42,6 +43,12 @@ test('offline source permits startup, explicit refresh discovers tools, revoke b
     assert.equal(resolution.grants.length, 1);
     assert.equal(resolution.grants[0].grant.connectionRef, 'conn_business');
     const frozen = catalog.toolSnapshot(['business_lookup'], resolution);
+    lookupSchema = { type: 'object', properties: { topic: { type: 'string' } }, required: ['topic'], additionalProperties: false };
+    assert.equal((await app.inject({ method: 'POST', url: '/api/connections/conn_business/refresh' })).statusCode, 200);
+    const refreshed = catalog.toolSnapshot(['business_lookup'], catalog.resolve('remote').resolution);
+    assert.notEqual(refreshed.revision, frozen.revision);
+    assert.deepEqual(frozen.tools[0].definition.inputSchema, { type: 'object' }, 'Refresh must not rewrite a retained run declaration');
+    assert.deepEqual(refreshed.tools[0].definition.inputSchema, lookupSchema, 'A later admission gets the discovered schema without native loop edits');
     const binding = await manager.binding('conn_business');
     assert.deepEqual(await binding.resolveHeaders(new AbortController().signal), {});
     assert.equal((await app.inject({ method: 'POST', url: '/api/connections/conn_business/revoke' })).statusCode, 200);

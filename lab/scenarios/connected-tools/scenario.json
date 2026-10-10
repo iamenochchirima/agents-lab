@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "fixtureOnly": true,
+  "id": "connected-tool-parity",
+  "provider": "http://127.0.0.1:19196",
+  "profileId": "connected-agent",
+  "mutationTool": "dispatch_assign",
+  "stages": [
+    {
+      "id": "retrieve",
+      "goal": "Discover available skills, load dispatch-coordination with the skill loading tool, then inspect Cedar in namespace {namespace} and consult its handbook. Report the approved date, current documentation owner, revision and readiness constraint. Do not change anything.",
+      "decision": null,
+      "expected": {
+        "owner": "Unassigned",
+        "revision": 1,
+        "effectCount": 0
+      },
+      "requiredTools": {
+        "dispatch_inspect": 1,
+        "handbook_lookup": 1,
+        "connected-agent_dispatch-skills_load_skill": 1
+      }
+    },
+    {
+      "id": "assign",
+      "goal": "For Cedar in namespace {namespace}, assign Morgan as documentation owner only. Read the current revision first, propose the exact change and await review. After approval retrieve Cedar again to verify saved owner and revision. Preserve approved date, dependency and blocked status.",
+      "decision": "approved",
+      "allowedArguments": {
+        "key": "cedar",
+        "owner": "Morgan"
+      },
+      "expected": {
+        "owner": "Morgan",
+        "revision": 2,
+        "effectCount": 1
+      },
+      "requiredTools": {
+        "dispatch_assign": 1,
+        "dispatch_inspect": 2
+      }
+    },
+    {
+      "id": "correct",
+      "goal": "Correction: Cedar in namespace {namespace} must have Avery as documentation owner. Inspect the current revision, propose only that change and await review, then retrieve the saved record to verify it. Keep the release blocked.",
+      "decision": "approved",
+      "allowedArguments": {
+        "key": "cedar",
+        "owner": "Avery"
+      },
+      "expected": {
+        "owner": "Avery",
+        "revision": 3,
+        "effectCount": 2
+      },
+      "requiredTools": {
+        "dispatch_assign": 1,
+        "dispatch_inspect": 2
+      }
+    },
+    {
+      "id": "deny",
+      "goal": "Propose setting Cedar documentation owner in namespace {namespace} to Declined. Read the current revision and wait for review. If denied, retrieve the record and explain the observed unchanged owner.",
+      "decision": "denied",
+      "allowedArguments": {
+        "key": "cedar",
+        "owner": "Declined"
+      },
+      "expected": {
+        "owner": "Avery",
+        "revision": 3,
+        "effectCount": 2
+      },
+      "requiredTools": {
+        "dispatch_inspect": 2
+      },
+      "verificationTool": "dispatch_inspect"
+    },
+    {
+      "id": "error",
+      "goal": "Inspect the missing release key missing in namespace {namespace} using the available dispatch service. Report the observed error. Do not change anything or invent a record.",
+      "decision": null,
+      "expected": {
+        "owner": "Avery",
+        "revision": 3,
+        "effectCount": 2
+      },
+      "requiredFailureTools": [
+        "dispatch_inspect"
+      ],
+      "requiredErrorCode": "RECORD_NOT_FOUND"
+    }
+  ]
+}
