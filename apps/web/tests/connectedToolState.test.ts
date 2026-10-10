@@ -45,3 +45,11 @@ test("tool outcomes distinguish rejection, invalid acknowledgement and uncertain
   assert.equal(toolOutcomeView({ effect: { state: "acknowledged" }, presentation: "valid" }, "ToolExecutionCompleted").label, "Acknowledged");
   assert.equal(toolOutcomeView({ effect: { state: "confirmed" }, presentation: "invalid" }, "ToolExecutionUnknown").label, "Effect confirmed");
 });
+
+test("invalid presentation and native unknown status do not erase confirmed effects", () => {
+  const view = toolOutcomeView({ effect: { state: "confirmed", evidence: "Independent provider read" }, presentation: "invalid" }, "ToolExecutionUnknown");
+  assert.equal(view.label, "Effect confirmed");
+  assert.equal(view.presentation, "Result schema invalid");
+  assert.equal(view.uncertain, false);
+  assert.equal(toolOutcomeView({ effect: { state: "unknown" }, presentation: "valid" }, "ToolExecutionCompleted").uncertain, true);
+});

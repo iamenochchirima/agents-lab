@@ -34,6 +34,8 @@ test("a later unknown call does not relabel completed or denied actions", () => 
   const denied = render({ ...action, call: { ...action.call, toolCallId: "denied" }, status: "denied" }, recordedRun);
   assert.match(denied, /role="status">Denied<\/span>/);
   assert.doesNotMatch(denied, /Outcome unknown/);
+  const deniedWithEffect = render({ ...action, status: "denied" }, { ...recordedRun, events: [{ ...toolEvent("call", "ToolPolicyDenied", 1), payload: { toolCallId: "call", effect: { state: "not_dispatched" } } }] });
+  assert.match(deniedWithEffect, /role="status">Denied<\/span>/);
   const unknown = render({ ...action, call: { ...action.call, toolCallId: "later" }, status: "completed" }, recordedRun);
   assert.match(unknown, /role="status">Outcome unknown<\/span>/);
 });
@@ -46,4 +48,12 @@ test("terminal unfinished calls stop without implying rollback or offering decis
   }
   const uncertain = render({ ...action, status: "dispatching" }, { ...run, status: "reconciliation_required", events: [] });
   assert.match(uncertain, /role="status">Outcome unknown<\/span>/);
+});
+
+test("review separates native failure, invalid response and confirmed provider effect", () => {
+  const event = { ...toolEvent("call", "ToolExecutionUnknown", 1), payload: { toolCallId: "call", effect: { state: "confirmed", evidence: "Independent provider read" }, presentation: "invalid" } };
+  const html = render({ ...action, status: "completed" }, { ...run, status: "reconciliation_required", events: [event] });
+  assert.match(html, /role="status">Effect confirmed<\/span>/);
+  assert.match(html, /Response: Result schema invalid/);
+  assert.doesNotMatch(html, /Outcome unknown|does not roll back|Approve action/);
 });

@@ -32,7 +32,7 @@ export function toolOutcomeView(payload: Readonly<Record<string, unknown>>, even
   const effect = payload.effect && typeof payload.effect === "object" && !Array.isArray(payload.effect) ? payload.effect as Record<string, unknown> : null;
   const labels: Record<string, string> = { not_dispatched: "Not dispatched", none: "No mutation", rejected: "Rejected · No change", acknowledged: "Acknowledged", confirmed: "Effect confirmed", unknown: "Uncertain · Needs reconciliation" };
   const state = typeof effect?.state === "string" ? effect.state : null;
-  const uncertain = state === "unknown" || eventKind === "ToolExecutionUnknown";
+  const uncertain = state === "unknown" || eventKind === "ToolExecutionUnknown" && !["confirmed", "none", "rejected", "not_dispatched"].includes(state ?? "");
   const invalidAcknowledgement = state === "acknowledged" && payload.presentation === "invalid";
   return {
     label: invalidAcknowledgement ? "Acknowledged · Invalid result" : state && labels[state] ? labels[state] : uncertain ? labels.unknown! : null,
