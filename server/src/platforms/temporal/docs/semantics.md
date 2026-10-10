@@ -1,8 +1,8 @@
 # Temporal baseline semantics
 
-This page records the behaviour that the first slice promises. It is more
-specific than a generic description of Temporal so tests and future variants
-have a clear comparison point.
+This page records the bounded baseline agent loop and the optional sustained
+execution mode. Temporal owns Workflow history, native timers and approval
+signals; shared capabilities own tool policy, skills and external receipts.
 
 ## Durable state and Lab evidence
 
@@ -82,10 +82,11 @@ zero.
 
 ## Deliberate limits
 
-The baseline has one model call, no tool side effects, no streaming response,
-no user authentication, no multi-tenant isolation, and no production Temporal
-deployment. Those omissions are explicit experimental boundaries, not implied
-guarantees about later platforms.
+The baseline performs multiple model/tool rounds, including connected read and
+write actions subject to shared policy and exact-action review. It has no native
+agent filesystem, subagent orchestration, streaming response, user authentication,
+multi-tenant isolation or production Temporal deployment. These remain explicit
+experimental boundaries.
 
 The server-owned `local-mcp-safe` profile adds a read-only `mcp_fixture_lookup`
 capability. Temporal performs its discovery and invocation from the Activity boundary;
@@ -93,3 +94,36 @@ the workflow records only bounded tool and connection evidence. The selected end
 identity, MCP server, tool name/version, and protocol version are immutable run data.
 The deterministic local fixture proves the native boundary without claiming a hosted
 MCP deployment or exactly-once tool execution.
+
+## Sustained execution
+
+`execution: { mode: "sustained" }` admits an absolute task deadline. The Workflow
+checks it before each model round and tool dispatch; native approval waiting uses
+`condition` with the remaining task duration. Worker replacement and review renewal
+reuse the original deadline and call identity. A wait that reaches that deadline
+ends with `RUN_DEADLINE_EXCEEDED` before an effect. Model and summary Activities use
+the separate model timeout clipped to the remaining duration; tools retain their
+own timeout cap. Missing execution policy preserves the earlier interactive limits.
+
+`TaskProgress` contains the current round and count of observed completed tool
+executions, never a synthetic percentage. Before each sustained model request, a
+separate Activity projects the entire retained round context, including tool schemas
+and loaded skills. If its estimated budget requires compaction, the selected model
+summarizes only complete assistant/tool groups. Original instructions, current task,
+skills and incomplete groups remain. The Activity result is retained in Workflow
+history; private `sessions/<session-id>/native-rounds/` files preserve full source
+observations and summary provenance without changing canonical chat history.
+Summary dispatches and reported usage contribute to model metrics. Estimates are
+labelled as estimates; a safe budget failure prevents the next request.
+
+Sustained mode currently relies on proactive round preparation. A provider overflow
+fails honestly rather than rebuilding the original turn and losing current tool
+observations. Existing interactive overflow recovery remains unchanged. Native
+Continue-As-New is deferred: the 24-round chat cap has not demonstrated history
+pressure requiring it. No lost external acknowledgement is automatically replayed.
+
+The opt-in `native-invocation-review` fixture with `AGENTLAB_NATIVE_SUSTAINED=1`
+retains a 60-second Temporal approval wait, replaces its owned worker and API host,
+then verifies the original approved call produces one independent fixture effect.
+Its deadline case verifies zero effects after a three-second native review wait.
+These are scripted native-mechanism checks, separate from real-model task quality.

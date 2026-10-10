@@ -13,6 +13,9 @@ export class FakeModelAdapter implements ModelAdapter {
     // Opt-in synthetic provider dispatch ledger survives worker replacement.
     // Never records prompts, tool arguments or credentials.
     if (process.env.AGENTLAB_X01_MODEL_ATTEMPTS_FILE) await appendFile(process.env.AGENTLAB_X01_MODEL_ATTEMPTS_FILE, JSON.stringify({ runId: input.runId, model: input.model, observedAt: new Date().toISOString() }) + "\n");
+    if (input.model === "fake-summary") return { kind: "success", output: "Completed synthetic tool observations. Source records retain the full call identities and results.", toolCalls: [], providerRequestId: null,
+      usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } };
+
     if (input.model === "fake-eval-behaviour") {
       const match = input.prompt.match(/\[eval-behaviour:([A-Za-z0-9_-]+)\]/);
       if (!match) throw new Error("A behaviour eval requires a bounded directive.");

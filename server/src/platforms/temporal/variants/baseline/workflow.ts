@@ -1,3 +1,4 @@
+import { executionDeadlineReached, remainingExecutionMs } from "../../../../capabilities/execution/policy.js";
 import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
 import type { InvocationResumeInput, InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import { createProjectedToolRegistry } from "../../../../capabilities/extensions/projection.js";
@@ -31,7 +32,7 @@ import {
   type TemporalModelMessage,
 } from "./contracts.js";
 
-const { prepareContext, requestModel, executeTool, prepareInvocation } = proxyActivities<typeof baselineActivities>({
+const { prepareContext, prepareRoundContext, requestModel, executeTool, prepareInvocation } = proxyActivities<typeof baselineActivities>({
   startToCloseTimeout: "30s",
   heartbeatTimeout: "1s",
   retry: { maximumAttempts: 1 },
@@ -73,6 +74,8 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
   let contextSnapshotId: string | null = null;
   let contextRecoveryUsed = false;
   let continuationMessages: TemporalModelMessage[] = [];
+  let roundMessages: readonly TemporalModelMessage[] | null = null;
+  let usageObserved = false;
   const toolConfiguration = normalizeToolConfiguration(input.tools);
   const toolRegistry = createProjectedToolRegistry(toolConfiguration, input.toolCatalog);
   const toolDefinitions = toolRegistry.definitions();
@@ -140,6 +143,11 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     return terminal("failed");
   };
 
+  const taskDeadlineFailure = (): TemporalWorkflowResult => fail({ code: "RUN_DEADLINE_EXCEEDED",
+    message: "The retained task deadline was reached.", failureKind: "timeout", retryable: false }, attemptCount);
+  const modelTimeout = () => Math.max(1, Math.min(input.execution?.modelTimeoutMs ?? input.activityTimeoutMs,
+    remainingExecutionMs(input.execution, Date.now())));
+
   const cancel = (attempt: number): TemporalWorkflowResult => {
     error = {
       code: "RUN_CANCELLED",
@@ -174,7 +182,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
       return await currentActivityScope.run(() => prepareContext.executeWithOptions(
         {
           activityId,
-          startToCloseTimeout: `${input.activityTimeoutMs}ms`,
+          startToCloseTimeout: `${modelTimeout()}ms`,
           heartbeatTimeout: "1s",
           retry: { maximumAttempts: 1 },
           cancellationType: "WAIT_CANCELLATION_COMPLETED",
@@ -240,6 +248,40 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
     }
 
     for (let round = 1; round <= toolConfiguration.maxRounds; round += 1) {
+      if (executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
+      if (input.execution) record("TaskProgress", { round, completedToolCount: eventIntents.filter(event => event.kind === "ToolExecutionCompleted").length, phase: "model" });
+      if (input.execution && input.context && contextSnapshotId) {
+        const context = input.context;
+        const snapshotId = contextSnapshotId;
+        currentActivityScope = new CancellationScope();
+        try {
+          const prepared = await currentActivityScope.run(() => prepareRoundContext.executeWithOptions({
+            activityId: `${input.runId}:round-context:${round}`, startToCloseTimeout: `${modelTimeout()}ms`,
+            heartbeatTimeout: "1s", retry: { maximumAttempts: 1 }, cancellationType: "WAIT_CANCELLATION_COMPLETED",
+          }, [{ runId: input.runId, round, prompt: input.prompt, systemInstruction: input.systemInstruction,
+            provider: input.model.provider, model: input.model.model, attemptId: `${input.runId}:summary:${round}`,
+            attemptNumber: 1, tools: toolDefinitions,
+            context: { rootDirectory: context.rootDirectory, sessionId: context.sessionId, snapshotId },
+            ...(roundMessages ? { messages: roundMessages } : {}), continuationMessages }]));
+          if (prepared.summaryAttempted) {
+            attemptCount += 1;
+            record("ModelRequested", { purpose: "summary", round, attempt: attemptCount, attemptId: `${input.runId}:summary:${round}` });
+            if (prepared.summary?.kind === "success") {
+              usage = usageObserved ? addUsage(usage, prepared.summary.usage) : prepared.summary.usage; usageObserved = true;
+              record("ModelCompleted", { purpose: "summary", round, usage: prepared.summary.usage, providerRequestId: prepared.summary.providerRequestId });
+            } else record("ModelFailed", { purpose: "summary", round, code: prepared.summary?.kind === "failure" ? prepared.summary.code : "CONTEXT_SUMMARY_UNCONFIRMED" });
+            if (prepared.summary?.evalObservation) record("EvalModelObserved", { purpose: "summary", round, observation: prepared.summary.evalObservation });
+          }
+          if (prepared.failure) return fail(prepared.failure, attemptCount);
+          record("ContextRoundPrepared", { round, contextRecordId: prepared.contextRecordId, budget: prepared.budget,
+            compaction: prepared.compaction });
+          if (prepared.compaction) record("ContextCompacted", { round, compaction: prepared.compaction });
+          roundMessages = prepared.messages; continuationMessages = [];
+        } catch (cause) {
+          if (cancellationRequested || isCancellation(cause)) return cancel(attemptCount);
+          return fail(classifyActivityFailure(cause), attemptCount);
+        } finally { currentActivityScope = null; }
+      }
       let roundAttempts = 0;
       let result: ModelCallResult = {
         kind: "failure",
@@ -251,6 +293,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
 
       while (true) {
         if (cancellationRequested) return cancel(attemptCount);
+        if (executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
         roundAttempts += 1;
         attemptCount += 1;
         const attempt = attemptCount;
@@ -273,7 +316,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           result = await currentActivityScope.run(() => requestModel.executeWithOptions(
             {
               activityId: attemptId,
-              startToCloseTimeout: `${input.activityTimeoutMs}ms`,
+              startToCloseTimeout: `${modelTimeout()}ms`,
               heartbeatTimeout: "1s",
               retry: { maximumAttempts: 1 },
               cancellationType: "WAIT_CANCELLATION_COMPLETED",
@@ -289,7 +332,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               attemptId,
               attemptNumber: attempt,
               tools: toolDefinitions,
-              ...(input.context && contextSnapshotId ? {
+              ...(roundMessages ? { messages: roundMessages } : input.context && contextSnapshotId ? {
                 context: {
                   rootDirectory: input.context.rootDirectory,
                   sessionId: input.context.sessionId,
@@ -324,7 +367,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           failureKind: result.failureKind,
           requestSent: result.requestSent,
         });
-        if (!input.liveEval && isContextOverflow(result) && input.context && !contextRecoveryUsed) {
+        if (!input.execution && !input.liveEval && isContextOverflow(result) && input.context && !contextRecoveryUsed) {
           contextRecoveryUsed = true;
           record("ContextOverflowDetected", { attempt, round, attemptId, contextSnapshotId });
           const recoveryPhase = { name: "context_recovery", startedAt: timestamp(), finishedAt: null as string | null };
@@ -364,7 +407,8 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
 
       const toolCalls = result.toolCalls ?? [];
       output = result.output;
-      usage = result.usage;
+      usage = usageObserved ? addUsage(usage, result.usage) : result.usage;
+      usageObserved = true;
       continuationMessages = [...continuationMessages, {
         role: "assistant",
         content: result.output,
@@ -442,7 +486,10 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
               status = "suspended";
               record("WorkflowSuspended", { reason: "invocation_review", requestId: review.requestId,
                 revision: review.revision, toolCallId: call.toolCallId, toolName: call.name, argumentDigest: review.argumentDigest });
-              await condition(() => reviewDecision !== null || cancellationRequested);
+              const delivered = input.execution
+                ? await condition(() => reviewDecision !== null || cancellationRequested, Math.max(1, remainingExecutionMs(input.execution, Date.now())))
+                : (await condition(() => reviewDecision !== null || cancellationRequested), true);
+              if (!delivered || executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
               if (cancellationRequested) return cancel(attemptCount);
               const resumed = reviewDecision as InvocationResumeInput | null;
               decision = resumed?.decision;
@@ -481,6 +528,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           }
         }
 
+        if (executionDeadlineReached(input.execution, Date.now())) return taskDeadlineFailure();
         toolAttemptCount += 1;
         const toolPhase = { name: `tool_execution_${round}_${toolAttemptCount}`, startedAt: timestamp(), finishedAt: null as string | null };
         phases.push(toolPhase);
@@ -492,7 +540,7 @@ export async function temporalBaselineWorkflow(input: TemporalWorkflowInput): Pr
           toolResult = await currentActivityScope.run(() => executeTool.executeWithOptions(
             {
               activityId: toolActivityId,
-              startToCloseTimeout: `${input.activityTimeoutMs}ms`,
+              startToCloseTimeout: `${Math.max(1, Math.min(input.execution ? validation.definition.limits.timeoutMs : input.activityTimeoutMs, remainingExecutionMs(input.execution, Date.now())))}ms`,
               heartbeatTimeout: "1s",
               retry: { maximumAttempts: 1 },
               cancellationType: "WAIT_CANCELLATION_COMPLETED",
@@ -671,4 +719,9 @@ function workflowNow(): number {
 
 function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The workflow failed with an unknown error.";
+}
+
+function addUsage(left: TemporalUsage, right: TemporalUsage): TemporalUsage {
+  const sum = (a: number | null, b: number | null) => a === null || b === null ? null : a + b;
+  return { inputTokens: sum(left.inputTokens, right.inputTokens), outputTokens: sum(left.outputTokens, right.outputTokens), totalTokens: sum(left.totalTokens, right.totalTokens) };
 }

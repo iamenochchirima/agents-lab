@@ -75,3 +75,14 @@ The key does not claim exactly-once model execution. It prevents a safe retry fr
 creating a second canonical turn or dispatching a second run after the original run
 is already recorded. A first turn must supply its own stable `sessionId`; sending a
 `clientTurnId` without one is rejected before the server creates a session.
+
+### Context during a sustained native run
+
+`round-context.ts` projects the common model-message format used by Temporal
+Activities and Restate journaled actions. It measures tool schemas as well as
+messages, protects the exact current task and loaded skills, and selects only
+complete assistant/tool groups for summaries. It does not invoke a model or
+schedule a loop: the native caller supplies and records the summary operation.
+Private native-round records retain source observations and provenance, while
+normalized events contain IDs and budgets. Canonical chat history is unchanged.
+Unknown or exhausted budgets stop before the next provider request.

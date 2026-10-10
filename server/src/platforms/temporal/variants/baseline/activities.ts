@@ -1,3 +1,4 @@
+import { prepareRoundContext as projectRoundContext } from "../../../../capabilities/context/round-context.js";
 import { prepareToolInvocation, createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
 import { cancellationSignal, heartbeat } from "@temporalio/activity";
 
@@ -127,7 +128,44 @@ export async function prepareInvocation(input: TemporalToolExecutionInput) {
   } finally { clearInterval(timer); }
 }
 
-export const baselineActivities = { prepareContext, requestModel, executeTool, prepareInvocation };
+
+/** Native Activity owns summaries and returns the complete projected request.
+ * The workflow retains this result, so recovery never regenerates a summary.
+ */
+export async function prepareRoundContext(input: ModelRequestInput & { round: number; forceCompaction?: boolean }) {
+  const timer = setInterval(() => heartbeat({ round: input.round, phase: "context" }), 250);
+  let summary: ModelCallResult | null = null;
+  let summaryAttempted = false;
+  try {
+    heartbeat({ round: input.round, phase: "context" });
+    if (!input.context) throw new Error("Native round preparation requires a context session.");
+    const base = input.messages ?? (await loadContextMessages(input.context.rootDirectory, input.context.sessionId, input.context.snapshotId)).map(toModelMessage);
+    const prepared = await projectRoundContext({ ...input.context, runId: input.runId, round: input.round,
+      task: input.prompt, messages: [...base, ...(input.continuationMessages ?? [])],
+      toolSchemas: input.tools ?? [], forceCompaction: input.forceCompaction }, {
+      async summarize(request) {
+        const prompt = formatSummaryPrompt(request.messages);
+        const instruction = "Summarize completed tool observations for continuation. Preserve facts, call identities, known effects, constraints and unresolved issues. Do not claim unobserved work.";
+        summaryAttempted = true;
+        summary = await createModelAdapter(input.provider).complete({ ...input,
+          model: input.provider === "fake" ? "fake-summary" : input.model,
+          attemptId: `${input.runId}:summary:${input.round}`, attemptNumber: 1,
+          prompt, systemInstruction: instruction, context: undefined, continuationMessages: undefined,
+          messages: [{ role: "system", content: instruction }, { role: "user", content: prompt }], tools: [] }, cancellationSignal());
+        if (summary.kind !== "success" || !summary.output) throw new Error(summary.kind === "failure" ? summary.message : "The context summarizer returned no text.");
+        return summary.output;
+      },
+    });
+    return { ...prepared, summary: summary as ModelCallResult | null, summaryAttempted, failure: null };
+  } catch (error) {
+    return { messages: [], budget: null, compaction: null, contextRecordId: null,
+      summary: summary as ModelCallResult | null, summaryAttempted, failure: { code: "CONTEXT_PREPARATION_FAILED",
+        message: "The next model request could not fit the retained context budget. Inspect its context records before continuing.",
+        failureKind: "pre_dispatch" as const, retryable: false } };
+  } finally { clearInterval(timer); }
+}
+
+export const baselineActivities = { prepareContext, prepareRoundContext, requestModel, executeTool, prepareInvocation };
 
 async function loadContextMessages(rootDirectory: string, sessionId: string, snapshotId: string): Promise<readonly import("../../../../capabilities/context/contracts.js").ContextMessage[]> {
   const store = new ContextSessionStore(rootDirectory);

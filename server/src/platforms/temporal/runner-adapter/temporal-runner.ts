@@ -234,6 +234,7 @@ function toWorkflowInput(manifest: RunManifest): TemporalWorkflowInput {
     prompt: manifest.task.prompt,
     systemInstruction: manifest.context.systemInstruction,
     model: manifest.model,
+    ...(manifest.execution ? { execution: manifest.execution } : {}),
     activityTimeoutMs: configuration.activityTimeoutMs,
     preDispatchRetryLimit: configuration.preDispatchRetryLimit,
     preDispatchRetryBackoffMs: configuration.preDispatchRetryBackoffMs,

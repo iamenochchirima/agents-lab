@@ -1,3 +1,4 @@
+import type { RunExecutionPolicy } from "../../../../capabilities/execution/policy.js";
 import type { InvocationReviewView } from "../../../../capabilities/reviews/contracts.js";
 import type { FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
 import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
@@ -21,6 +22,7 @@ export type TemporalFailureKind =
   | "internal";
 
 export interface TemporalWorkflowInput {
+  readonly execution?: RunExecutionPolicy;
   /** Synthetic live evals alone may retain mapped provider requests. */
   readonly liveEval?: boolean;
   readonly liveEvalExperiment?: FreeEvalExperiment;
