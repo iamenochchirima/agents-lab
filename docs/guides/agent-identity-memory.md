@@ -19,8 +19,9 @@ For example: “Remember that I prefer concise checklists.” The agent has expl
 search, read, save, update and forget tools. Saving requires an explicit user
 request in the system instructions; there is no automatic extraction from chats.
 
-The editor shows the saved content, revision and provenance. Edit a record to
-correct it. Forget prevents future retrieval; earlier conversations and run
+Chat shows confirmed “Memory saved”, “Memory updated” or “Memory forgotten” tool
+notices. The editor shows the saved content, revision and provenance. Edit a record
+to correct it. Forget prevents future retrieval; earlier conversations and run
 records still contain their original context. **Use saved memory** can be turned
 off before starting a task. That run then has no recall or memory-tool access.
 
@@ -60,7 +61,8 @@ workers own execution, suspension and continuation. This does not add a native
 agent filesystem or require a shared VM.
 
 Run manifests record identity revision, memory namespace, memory enabled state and
-recalled record IDs. Context snapshots preserve the exact projected content.
+recalled record IDs. Context snapshots preserve the exact projected content,
+included revisions, omitted-record count, byte size and digest.
 Tool receipts and input boundary receipts retain execution evidence. Local JSON
 storage has a single API owner; it is not a distributed multi-user database.
 Credentials stay in the existing separate encrypted connection store.

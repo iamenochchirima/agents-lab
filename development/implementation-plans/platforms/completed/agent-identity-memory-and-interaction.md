@@ -1,6 +1,6 @@
 # Agent identity, memory and live interaction
 
-Status: proposed implementation, not implemented.
+Status: completed and verified locally, 2026-10-10.
 Baseline: `a8ca04d`. Prepared 2026-10-10.
 
 ## Goal and scope
@@ -214,13 +214,13 @@ Commit: `feat: persist clarification and steering inputs`.
 
 ### 4. Five native integrations
 
-- [ ] Temporal and Restate consume inputs and wait for clarification natively.
-- [ ] LangGraph resumes exact persisted questions and processes steering safely.
-- [ ] Mastra uses the installed durable execution APIs and preserves suspension.
-- [ ] Vercel resumes via native hooks, preserving its local/hosted limits.
-- [ ] Each integration retains identity, recall and input receipts in run evidence;
+- [x] Temporal and Restate consume inputs and wait for clarification natively.
+- [x] LangGraph resumes exact persisted questions and processes steering safely.
+- [x] Mastra uses the installed durable execution APIs and preserves suspension.
+- [x] Vercel resumes via native hooks, preserving its local/hosted limits.
+- [x] Each integration retains identity, recall and input receipts in run evidence;
   native replay never repeats a completed memory write.
-- [ ] Supersede affected pending proposals before dispatch; preserve confirmed
+- [x] Supersede affected pending proposals before dispatch; preserve confirmed
   effects and report instructions that arrived after dispatch.
 
 Acceptance: each platform performs ask → wait → answer → continue and consumes one
@@ -233,23 +233,23 @@ Vercel unit after their respective checks.
 
 ### 5. Chat interaction and real-model acceptance
 
-- [ ] Allow instructions during active tasks. Display accepted versus consumed
+- [x] Allow instructions during active tasks. Display accepted versus consumed
   status and preserve ordinary follow-up behavior after task completion.
-- [ ] Render questions inline with a reply control; retain focus, drafts, ordering
+- [x] Render questions inline with a reply control; retain focus, drafts, ordering
   and history through reload. Keep approvals inside assistant messages.
-- [ ] Add one reusable fictional scenario combining preference recall, ambiguity,
+- [x] Add one reusable fictional scenario combining preference recall, ambiguity,
   steering, an approved connected write and a denied/superseded action.
-- [ ] Run it on all five main baselines with an exact currently verified free
+- [x] Run it on all five main baselines with an exact currently verified free
   model, zero-price routing and no paid fallback. Record model omissions and
   provider failures separately from runtime failures.
-- [ ] Inspect actual requests for identity and recalled-memory content. Grade
+- [x] Inspect actual requests for identity and recalled-memory content. Grade
   state, receipts and input acknowledgements rather than exact response wording.
-- [ ] Independently read final connected state; retain prompts, config, timestamps,
+- [x] Independently read final connected state; retain prompts, config, timestamps,
   namespace, revisions, native IDs, trajectories and original failed assessments.
-- [ ] Drive the browser directly for save/edit/forget, clarification reply,
+- [x] Drive the browser directly for save/edit/forget, clarification reply,
   steering, approval/denial and reload continuity. Do not ask the user to perform
   checks available to the agent.
-- [ ] Update stable usage/architecture/platform notes, run doc generation and
+- [x] Update stable usage/architecture/platform notes, run doc generation and
   move this checklist to completed only after its acceptance audit passes.
 
 Commits: `feat: add inline task collaboration and memory controls`, then
@@ -279,36 +279,38 @@ those files or presenting them as failures of this implementation.
 
 ## Definition of done
 
-- [ ] The same shared identity and explicit memory capabilities reach all five
+- [x] The same shared identity and explicit memory capabilities reach all five
   platforms, with inspectable versioned model context.
-- [ ] Preferences survive new chats, corrections replace old recall, and forgetting
+- [x] Preferences survive new chats, corrections replace old recall, and forgetting
   prevents subsequent retrieval in a fresh conversation.
-- [ ] Running agents can ask questions and receive instructions inside chat using
+- [x] Running agents can ask questions and receive instructions inside chat using
   native platform execution; accepted inputs survive supported restarts.
-- [ ] Changed action proposals require fresh review; memory/identity never bypass
+- [x] Changed action proposals require fresh review; memory/identity never bypass
   permissions or introduce native filesystem access.
-- [ ] Focused deterministic, native and free-model observations have retained
+- [x] Focused deterministic, native and free-model observations have retained
   evidence; limitations and original failures remain visible.
-- [ ] Implementation is committed in the coherent chunks above. Only task-owned
+- [x] Implementation is committed in the coherent chunks above. Only task-owned
   files are staged; no credentials, personal memories or local runtime state enter Git.
 
 ## Current position and open decisions
 
-Implementation goal active. Shared storage, management, context admission and input delivery are committed. Temporal/Restate native recovery and browser memory/clarification checks passed. Final LangGraph/Mastra/Vercel integration checks and five-platform real-model acceptance are in progress. Semantic embeddings, automatic
-memory extraction, persona self-rewriting, background dreaming/consolidation,
-multi-user auth and hosted durability are deferred. No credential or user choice
-currently blocks planning; native API limitations must be recorded rather than
-hidden behind simulated behavior.
+Implementation complete. Shared identity, memory and live input are integrated in
+all five main native baselines. Each passed the actual free-model scenario; owned
+replacement and browser evidence are retained below. Semantic embeddings,
+automatic memory extraction, persona self-rewriting, background consolidation,
+multi-user auth and hosted durability remain explicitly outside this phase.
+The original Restate transport exceptions remain unexplained; later success is
+not a diagnosis. No failure or original assessment was discarded.
 
 ## Evidence ledger and completion audit
 
 - Baseline inspection: common manifest instruction, immutable context sessions,
   experimental Studio memory, chat active-run submission guard and package versions.
-- [ ] Record each implementation commit and the check it passed here.
-- [ ] Re-read the requested behavior and inspect all five integrations against it.
-- [ ] Reconcile every unchecked item and distinguish implementation from evidence.
-- [ ] Inspect complete staged diffs and preserved unrelated changes.
-- [ ] Document remaining limits before reporting completion.
+- [x] Record each implementation commit and the check it passed here.
+- [x] Re-read the requested behavior and inspect all five integrations against it.
+- [x] Reconcile every unchecked item and distinguish implementation from evidence.
+- [x] Inspect complete staged diffs and preserved unrelated changes.
+- [x] Document remaining limits before reporting completion.
 
 
 ### Implementation checkpoints
@@ -322,3 +324,53 @@ hidden behind simulated behavior.
 - Browser Temporal run `78e995fb-db45-48fd-8a97-ece42ae409d8`: inline question and answer, unsent draft survived refresh; native execution completed after Reply. This uses a scripted model and does not measure model choice.
 
 Persistence defaults: local single API owner, 12 KiB/12-record recall, 4 KiB preferences; existing identity sessions remain frozen. Clarification available in normal bounded native chat; no VM/filesystem added. Mastra installed SDK final-output retry behavior needs a transport boundary workaround, retained in platform documentation. All unrelated Lina work remains unstaged.
+
+- `2db84c3`: LangGraph/Mastra/Vercel native integration. Installed SDK checks passed: 53 LangGraph tests, focused Mastra durable/recovery/transport checks, Vercel World service/recovery checks. Compatibility behavior and local/hosted limits documented per platform.
+- `93bdf3b`: inline questions/instructions, persisted drafts and shared settings reach normal platform Chat; web typecheck/doc generation passed.
+
+- `21319ec`, `1231242`: native phase/order handling, all-five owned clarification recovery driver, SDK fixture projection correction. Vercel native recovery passed in `native-clarification-56155a10-ac51-45a9-a8bb-293486e8ba28`; LangGraph/Mastra original native lifecycle passed under `assessment-native-v2.json` in `native-clarification-b7371533-5515-4fe2-8e85-8765229372a8` (original failed presentation assessments retained).
+- `b6243bb`: allowlisted Restate transport error diagnostics; four adapter tests passed. One actual free diagnostic run `6be53531-aec5-446e-8637-d35364ce93f6` completed READY with one acknowledged provider request. Earlier transport exceptions remain unclassified; success does not establish their cause.
+- `816bac8`, `0a5d6dd`: Temporal/Restate deterministic fixtures retain a bounded original user directive after steering, without trusting assistant/tool content. 17 Temporal/provider checks and 15 Restate model checks passed. Browser failure `7d84eebe-acff-4d60-b2ad-25c295b86ef5` was a fixture failure, not failed native cancellation; original evidence retained.
+- `ee79ac5`: actual LangGraph automatic memory-write rejection corrected to match resolved catalog approval policy. Twenty focused host/review tests passed; tool grants and schema checks remain in force.
+- `279bd8d`: live driver answers an exact fictional memory-consent question once, retaining evidence; no tool permission is granted. Four grader/consent checks passed.
+- `0d8e367`: active steering remains available when the admitted model is absent from the refreshed picker catalog; web typecheck passed.
+- Browser denial `6191a35d-9374-401d-8847-3b046c915104` completed with denied inline card retained after refresh and independent fixture effect count zero. Prior expired denial attempt is preserved. Browser approval `457daf6e-c0bd-47cf-b9ab-633b58766af1` retained its acknowledged card after refresh and independent state confirmed one Morgan mutation.
+- Post-fix owned Temporal/LangGraph worker replacements passed `native-clarification-aba98d85-4720-4c52-9e07-46630d5c3788` without changing native IDs, question or deadline.
+- Original real-model report `identity-interaction-22eacbdc-f3ac-4c2b-a2fd-a4abb64e6962` is retained: Temporal passed all 13 criteria. Restate had an unacknowledged transport failure; LangGraph target was not admitted after its predecessor failed. Mastra target was not admitted after LangGraph seed runtime rejection and an unanswered seed consent question. Vercel target was not admitted because catalog fetch failed. These are not five target-runtime failures. A bounded follow-up on the four impacted targets is in progress after the demonstrated LangGraph and driver corrections; no paid fallback.
+
+### Final acceptance and requirement audit
+
+- `4f9cc10`: per-turn/context recall evidence includes exact record revisions,
+  omitted count, bytes and digest. Existing context test proves a correction is
+  used in the next fresh context, forgetting/disabled recall excludes it, and
+  historical projections remain unchanged. Server build and focused check passed.
+- `1c4e47d`: confirmed memory mutation notices in chat; six focused UI state
+  checks and web typecheck passed. Direct browser displayed Memory saved on actual
+  free-model seed `19122c7c-40ea-4eb4-887b-7e207d6bd919`.
+- Actual free follow-up report `identity-interaction-c875efbd-76ac-42fb-bb90-1cef3d2e710a`
+  passed all 13 unchanged grader criteria for Restate, LangGraph, Mastra and
+  Vercel Workflows. Exact task runs: `3d30b130-8e81-4980-97a5-e9a0a497a9cd`,
+  `2d27b240-d670-4675-b9f8-4b03e06844e0`,
+  `57cef889-4b75-41e4-99b0-86fd4db3530a`,
+  `d08c92c1-514d-4754-99e0-c5efcb143146`. Temporal passed original run
+  `830f8a2b-f719-40e0-81b2-d58dbef7c9dd`. Original reports remain intact.
+- Browser redirect `893bc67d-b75e-4990-85aa-26fdd99ee48c` retained its unsent
+  instruction across refresh, cancelled its original question, consumed exactly
+  one instruction and completed. Refresh retained both inline cards. Browser
+  summary/screenshots live in `lab/runs/.identity-memory-proof/browser/`.
+- Audit re-read milestones 1–5 against store/API, context admission and snapshots,
+  shared tool catalog, dispatch gate, consumed-input history, all five native
+  implementations and direct browser observations. Identity revision freezes
+  existing chats; memory corrections affect fresh recall, tombstones exclude
+  forgotten records, and experiment scopes remain isolated. No permissions or
+  filesystem access are granted by identity/memory/replies.
+- Scope limits: local JSON persistence has one API owner; facts use lexical recall;
+  supported owned process replacements establish local resumption only. Native
+  Mastra transport buffering is bounded and documented. Inputs cannot undo an
+  already dispatched provider action; absolute deadlines still apply during waits.
+- Stable guide, architecture and platform notes match delivered behavior. Final
+  build/typecheck/doc generation and task-owned diff checks passed. Normal API and
+  all five main platform health endpoints returned 200/reachable after loading
+  current code. Coherent commits stage only this phase; unrelated Lina changes,
+  provider credentials, personal memories and generated local evidence stay out
+  of Git. The checklist is moved to completed outside curated Docs.

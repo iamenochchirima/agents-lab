@@ -19,7 +19,7 @@ question, matched reply identity, content and consumption evidence. Unrelated or
 repeated seed questions fail rather than receiving arbitrary scripted answers.
 This reply grants no tool capability or connected action permission.
 
-They ask for outcomes,
+The prompts ask for outcomes,
 clarification and an explicit memory save. They do not prescribe a complete tool
 call sequence or fabricate model decisions. No automated action is authorized
 outside the credential-free loopback fictional provider and exact disposable
@@ -62,3 +62,29 @@ exactly one verified effect and unchanged unrelated records and constraints.
 This driver does not replace focused correction/forget tests, browser interaction
 checks or owned worker-replacement evidence. Those are separate required checks
 for the implementation plan. It makes no hosted or multi-hour durability claim.
+
+## Local observation, 2026-10-10
+
+The exact free Nemotron model above passed all 13 criteria on each of the five
+native baselines. Temporal passed in report
+`identity-interaction-22eacbdc-f3ac-4c2b-a2fd-a4abb64e6962`; the four impacted
+targets passed in `identity-interaction-c875efbd-76ac-42fb-bb90-1cef3d2e710a`
+after the demonstrated LangGraph approval-policy and seed-driver corrections.
+Reports are retained locally under `lab/runs/.identity-memory-proof/`, with full
+seed/task exports, actual request observations and independent collection state.
+
+The original report also retains unacknowledged Restate transport failures,
+LangGraph's automatic-memory-write rejection, unanswered seed consent and a
+catalog outage that prevented later targets from being admitted. Restate's safe
+transport diagnostics now retain allowlisted error categories, but the original
+exceptions' cause remains unknown. A later successful request does not explain
+an earlier failed one. No failure was replaced, regraded as success or automatically
+retried to improve the result.
+
+Separate owned worker replacements verified retained questions and matched replies
+on all five native implementations. Direct browser checks covered identity edit,
+memory save/correction/forget, reply and steering drafts through refresh, consumed
+instructions, and retained inline approval/denial cards. Independent fixture reads
+confirmed one approved mutation and zero denied mutations. These are bounded local
+observations, not evidence of hosted or indefinite durability or general model
+reliability. Runtime state and fictional artifacts stay out of Git.

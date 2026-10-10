@@ -9,11 +9,6 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [Agent identity, memory and live interaction](active/agent-identity-memory-and-interaction.md):
-  proposed shared identity and cross-chat memory, native clarification/steering,
-  inline chat controls, focused acceptance and separate commit checkpoints across
-  the five main platform baselines.
-
 - [Agent capability awareness and discovery](active/agent-capability-awareness.md):
   proposed milestone for generated model inventories, enabled skill metadata,
   authorized tool discovery, native schema activation and frontend parity.
@@ -43,6 +38,11 @@ was the foundation for this acceptance phase and the completed Restate slice. AW
 Functions remains parked.
 
 ## Completed plans
+
+- [Agent identity, memory and live interaction](completed/agent-identity-memory-and-interaction.md):
+  shared editable identity, explicit cross-chat memory, native clarification and
+  steering, inline chat controls, five passing free-model observations and owned
+  worker-replacement evidence. Original failures and local limits remain recorded.
 
 - [Native long-running agents](completed/native-long-running-agents.md): native
   execution, retained approvals/context, deadlines and recovery across five
