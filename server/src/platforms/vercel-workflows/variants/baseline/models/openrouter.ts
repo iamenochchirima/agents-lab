@@ -1,3 +1,4 @@
+import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } from "../../../../../models/openrouter/free-model-policy.js";
 import type {
   VercelWorkflowModelRequest,
   VercelWorkflowModelResult,
@@ -29,6 +30,34 @@ export async function completeOpenRouterModel(
     };
   }
 
+  const requestBody: Record<string, unknown> = {
+    model: input.model.model,
+    messages: (input.messages ?? [
+      { role: "system", content: input.systemInstruction },
+      { role: "user", content: input.prompt },
+    ]).map(message => message.role === "tool" ? {
+      role: "tool", tool_call_id: message.toolCallId, content: message.content,
+    } : message.role === "assistant" ? {
+      role: "assistant", content: message.content,
+      ...(message.toolCalls?.length ? { tool_calls: message.toolCalls.map(call => ({
+        id: call.toolCallId, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+      })) } : {}),
+    } : message),
+    ...(input.toolDefinitions?.length ? { tools: input.toolDefinitions.map(tool => ({
+      type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema },
+    })) } : {}),
+  };
+  if (input.liveEval) {
+    Object.assign(requestBody, { provider: FREE_PROVIDER_ROUTING,
+      max_tokens: getFreeEvalSettings(input.liveEvalExperiment ?? "agent-harness-live")?.maxOutputTokens });
+    try { assertFreeModelRequest(requestBody, input.model.model, input.liveEvalExperiment); }
+    catch {
+      return { kind: "failure", requestSent: false, error: { code: "LIVE_EVAL_FREE_MODEL_REQUIRED",
+        message: "Live evals require the exact free model and zero-price provider routing.",
+        failureKind: "configuration", retryable: false } };
+    }
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.modelTimeoutMs);
   try {
@@ -39,23 +68,7 @@ export async function completeOpenRouterModel(
         authorization: `Bearer ${options.apiKey}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        model: input.model.model,
-        messages: (input.messages ?? [
-          { role: "system", content: input.systemInstruction },
-          { role: "user", content: input.prompt },
-        ]).map(message => message.role === "tool" ? {
-          role: "tool", tool_call_id: message.toolCallId, content: message.content,
-        } : message.role === "assistant" ? {
-          role: "assistant", content: message.content,
-          ...(message.toolCalls?.length ? { tool_calls: message.toolCalls.map(call => ({
-            id: call.toolCallId, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) },
-          })) } : {}),
-        } : message),
-        ...(input.toolDefinitions?.length ? { tools: input.toolDefinitions.map(tool => ({
-          type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema },
-        })) } : {}),
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 

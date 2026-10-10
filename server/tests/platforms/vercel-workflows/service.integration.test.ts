@@ -108,6 +108,10 @@ test("local Workflow World executes the selected OpenRouter model through its du
     const record = await waitForTerminal(service.address, admitted.workflowRunId);
 
     assert.equal((requestBody as Record<string, unknown> | null)?.model, "cohere/north-mini-code:free");
+    assert.equal((requestBody as Record<string, unknown> | null)?.max_tokens, 2048);
+    assert.deepEqual((requestBody as Record<string, unknown> | null)?.provider, {
+      require_parameters: true, allow_fallbacks: false, max_price: { prompt: 0, completion: 0, request: 0, image: 0 },
+    });
     assert.equal(record.status, "completed");
     assert.equal(record.result.output, "hello from Vercel Workflows OpenRouter");
     assert.deepEqual(record.result.usage, { inputTokens: 13, outputTokens: 4, totalTokens: 17 });
@@ -276,6 +280,8 @@ function openRouterWorkflowInput(runId: string): VercelWorkflowInput {
     prompt: "Say hello from a Vercel Workflow.",
     systemInstruction: "Respond directly.",
     model: { provider: "openrouter", model: "cohere/north-mini-code:free" },
+    liveEval: true,
+    liveEvalExperiment: "agent-capabilities-live",
     modelTimeoutMs: 1_000,
   };
 }

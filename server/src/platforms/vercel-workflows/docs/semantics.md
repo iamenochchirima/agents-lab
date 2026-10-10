@@ -30,6 +30,18 @@ receipt before dispatch. On restart, a pending receipt remains unknown. An unkno
 status or unknown effect stops further model/tool rounds with
 `reconciliation_required`. An approved decision alone does not establish an effect.
 
+## Free evaluation routing
+
+Admission propagates the recorded `agent-harness-live` or `agent-capabilities-live`
+experiment through the local service to every model step, including context summaries.
+Immediately before transport, the adapter applies the common exact-model allowlist,
+zero prompt/completion/request/image price ceilings, required parameter support and
+disabled provider fallback. Output allowances are 512 and 2048 tokens respectively.
+Unapproved model IDs or unknown evaluation settings fail before sending a request.
+The evaluation driver must still validate the current raw model catalog; a request
+ceiling is not proof of catalog availability or actual model task quality. Interactive
+runs outside these experiments retain their configured model and routing behavior.
+
 ## Native review delivery
 
 The native waiter is `createHook`, with a token derived from Lab run, request ID and

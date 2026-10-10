@@ -40,6 +40,8 @@ test("Vercel Workflows OpenRouter model parses a normal bounded JSON response", 
     usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
   });
   assert.equal((requestBody as Record<string, unknown> | null)?.model, "openai/test-model");
+  assert.equal((requestBody as Record<string, unknown> | null)?.provider, undefined);
+  assert.equal((requestBody as Record<string, unknown> | null)?.max_tokens, undefined);
   assert.equal(JSON.stringify(requestBody).includes("test-secret"), false);
 });
 
@@ -94,4 +96,47 @@ test("native model projects an unfamiliar exact schema and paired results", asyn
   } });
   assert.equal(result.kind, "success");
   if (result.kind === "success") assert.deepEqual(result.toolCalls, [{ toolCallId: "follow-up", name: "novel_save", arguments: { record: { priority: "low" } }, round: 2 }]);
+});
+
+test("live eval transports retain exact free model, zero price ceilings and experiment allowance", async () => {
+  const { DEFAULT_FREE_MODEL, FREE_PROVIDER_ROUTING } = await import("../../../src/models/openrouter/free-model-policy.js");
+  const { inputFromManifest } = await import("../../../src/platforms/vercel-workflows/variants/baseline/contracts.js");
+  for (const experimentId of ["agent-harness-live", "agent-capabilities-live"] as const) {
+    const admitted = inputFromManifest({ schemaVersion: 1, runId: request.runId, createdAt: "2026-10-10T00:00:00Z", serverVersion: "test",
+      platform: "vercel-workflows", variant: "baseline", task: { kind: "prompt", prompt: request.prompt },
+      context: { systemInstruction: request.systemInstruction }, model: { provider: "openrouter", model: DEFAULT_FREE_MODEL },
+      selection: { experimentId }, platformConfig: { modelTimeoutMs: request.modelTimeoutMs } });
+    assert.equal(admitted.liveEval, true);
+    assert.equal(admitted.liveEvalExperiment, experimentId);
+    let sends = 0;
+    const result = await completeOpenRouterModel({ ...admitted, attempt: 1 }, { apiKey: "fixture", baseUrl: "https://fixture.example", fetchImplementation: async (_url, init) => {
+      sends++;
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.model, DEFAULT_FREE_MODEL);
+      assert.deepEqual(body.provider, FREE_PROVIDER_ROUTING);
+      assert.equal(body.max_tokens, experimentId === "agent-harness-live" ? 512 : 2048);
+      assert.equal(body.models, undefined);
+      assert.equal(body.route, undefined);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "observed" } }] }));
+    } });
+    assert.equal(sends, 1);
+    assert.equal(result.kind, "success");
+  }
+});
+
+test("live eval rejects unapproved IDs and unknown experiments before transport", async () => {
+  const { DEFAULT_FREE_MODEL } = await import("../../../src/models/openrouter/free-model-policy.js");
+  let sends = 0;
+  for (const [model, experiment] of [["openai/paid", "agent-capabilities-live"], ["openrouter/free", "agent-harness-live"], ["unapproved/model:free", "agent-capabilities-live"], [DEFAULT_FREE_MODEL, "unknown-eval"]]) {
+    const result = await completeOpenRouterModel({ ...request, liveEval: true,
+      liveEvalExperiment: experiment as VercelWorkflowModelRequest["liveEvalExperiment"], model: { provider: "openrouter", model } },
+    { apiKey: "fixture", baseUrl: "https://fixture.example", fetchImplementation: async () => { sends++; throw new Error("must not send"); } });
+    assert.equal(result.kind, "failure");
+    if (result.kind === "failure") {
+      assert.equal(result.requestSent, false);
+      assert.equal(result.error.code, "LIVE_EVAL_FREE_MODEL_REQUIRED");
+      assert.equal(result.error.retryable, false);
+    }
+  }
+  assert.equal(sends, 0);
 });

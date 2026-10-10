@@ -1,3 +1,4 @@
+import { getFreeEvalSettings, type FreeEvalExperiment } from "../../../../models/openrouter/free-model-policy.js";
 import type { ToolCatalogSnapshot } from "../../../../capabilities/extensions/contracts.js";
 import type { CapabilityInventorySnapshot } from "../../../../capabilities/contracts.js";
 import type { ConnectionBinding } from "../../../../capabilities/integrations/contracts.js";
@@ -37,6 +38,8 @@ export interface VercelWorkflowInput {
   readonly systemInstruction: string;
   readonly model: VercelWorkflowModel;
   readonly modelTimeoutMs: number;
+  readonly liveEval?: boolean;
+  readonly liveEvalExperiment?: FreeEvalExperiment;
   readonly turnId?: string;
   readonly tools?: { readonly enabledNames: readonly string[]; readonly approvedNames?: readonly string[]; readonly maxRounds: number; readonly maxCalls: number };
   readonly toolCatalog?: ToolCatalogSnapshot;
@@ -95,6 +98,7 @@ export function inputFromManifest(manifest: RunManifest): VercelWorkflowInput {
     systemInstruction: manifest.context.systemInstruction,
     model: manifest.model,
     modelTimeoutMs: positiveInteger(manifest.platformConfig.modelTimeoutMs, 30_000),
+    ...(getFreeEvalSettings(manifest.selection?.experimentId) ? { liveEval: true, liveEvalExperiment: getFreeEvalSettings(manifest.selection?.experimentId)!.experimentId } : {}),
     turnId: manifest.context.turnId,
     tools: manifest.capabilities?.tools ?? { enabledNames: [], maxRounds: 6, maxCalls: 8 },
     toolCatalog: manifest.capabilities?.toolCatalog,
