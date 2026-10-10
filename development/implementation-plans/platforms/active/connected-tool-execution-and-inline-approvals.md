@@ -229,20 +229,20 @@ Commit checkpoints: native model/tool loop, then durable review/resume support. 
 
 Implementation checklist:
 
-- [ ] Verify every adapter exposes the exact admitted schema and generated capabilities, calls the same host and returns observed tool results to the next model step.
-- [ ] Audit approve/deny/renew paths in Temporal, Restate, LangGraph and Mastra. Change only demonstrated gaps; retain native mechanisms.
-- [ ] Distinguish a denied call from workflow failure. Preserve accurate connection, host, model and provider failure categories instead of surfacing only `Activity task failed`.
+- [x] Verify every adapter exposes the exact admitted schema and generated capabilities, calls the same host and returns observed tool results to the next model step.
+- [x] Audit approve/deny/renew paths in Temporal, Restate, LangGraph and Mastra. Change only demonstrated gaps; retain native mechanisms.
+- [x] Distinguish a denied call from workflow failure. Preserve accurate connection, host, model and provider failure categories instead of surfacing only `Activity task failed`.
 - [ ] Project a safe cause chain and actionable message without leaking tokens, private response bodies or local secret paths.
 - [ ] Keep status, response validity and effect certainty independent. Existing adapters may use different terminal statuses for unknown effects; the transcript must explain them consistently without erasing native records.
-- [ ] Confirm new turns admit refreshed shared tools while existing run snapshots and pending calls remain frozen. Catalog changes must not silently substitute a schema or connection during approval.
+- [x] Confirm new turns admit refreshed shared tools while existing run snapshots and pending calls remain frozen. Catalog changes must not silently substitute a schema or connection during approval.
 - [ ] Add or refresh a second source with different tool names and schemas, then use its actual supported operations through the same host and chat UI without native runtime edits.
-- [ ] Verify generic argument presentation, model schema exposure, dispatch and result projection with an unfamiliar tool descriptor. No connector-specific conditionals or hardcoded tool lists may be needed.
+- [x] Verify generic argument presentation, model schema exposure, dispatch and result projection with an unfamiliar tool descriptor. No connector-specific conditionals or hardcoded tool lists may be needed.
 
 Acceptance and minimal checks:
 
-- [ ] One native fixture approval path per changed adapter; reuse existing integration tests, selecting affected platforms only.
-- [ ] One safe error-mapping check for host-unreachable behavior and one denial continuation check where changed.
-- [ ] Existing review/host contract checks run once after shared changes. No repeated full suite after documentation-only changes.
+- [x] One native fixture approval path per changed adapter; reuse existing integration tests, selecting affected platforms only.
+- [x] One safe error-mapping check for host-unreachable behavior and one denial continuation check where changed.
+- [x] Existing review/host contract checks run once after shared changes. No repeated full suite after documentation-only changes.
 
 Commit checkpoints: focused shared outcome projection, then platform-specific fixes only when needed.
 
@@ -350,7 +350,7 @@ Add only focused tests for new startup behavior, transcript projection and the n
 
 ## Current position
 
-Milestones 1 and 2 have verified implementation checkpoints. Native end-to-end startup/recovery and real-model acceptance still require the checks left open above. Milestone 3 is committed and verified through actual native fixture execution. Milestones 4 and 5 are in progress. The goal remains active.
+Milestones 1 and 2 have verified implementation checkpoints. Native end-to-end startup/recovery and real-model acceptance still require the checks left open above. Milestone 3 is committed and verified through actual native fixture execution. Milestones 4 and 5 are in progress. The five-platform real-model matrix is not yet established. The goal remains active.
 
 ### Evidence ledger
 
@@ -359,6 +359,16 @@ Milestones 1 and 2 have verified implementation checkpoints. Native end-to-end s
 - `c88b7d1`: bounded read-only session/run history indexed by the session ledger. Two focused backend history checks passed; server build passed. Pages preserve chronological admission order and reject invalid limits/cursors. Vercel context admission is enabled for the implemented native path, whose acceptance remains pending its own checkpoint.
 
 - `209a7ef`: native Vercel model/tool loop, frozen context/tool declarations, revision-specific durable review hooks, incremental inspection and retained delivery. Server build and 20 focused Vercel checks passed, including native service checks. Expanded actual World/host fixture passed five checks for pending restart/renewal, approval, denial feedback, stale revision rejection and stopped-host failure; lost acknowledgement retained one effect and one provider attempt. Native completed status remains recorded even when the returned agent result is failed. These are scripted model decisions, not real-model evidence. Hosted deployment is outside this phase.
+
+- `ad4b100`: safe review presentation resolves only the retained manifest/catalog/source digest. Display name, short description, configured risk and schema labels are optional; technical identities and evidence live under Details. Server build, web typecheck, five backend checks and 22 frontend checks passed, including static React escaping/fallback/no-submit checks. Added metadata visual rendering remains unverified under the browser restriction.
+- `400769f`: Temporal initial and renewed proposal failures report a safe actionable `ACTION_REVIEW_PREPARATION_FAILED` instead of arbitrary Activity cause text. Actual selected Temporal native integration passed six checks, including host-unreachable preparation with no dispatch or effect. Evidence: local `.review-proof/native-review-93fe27b8-e471-4a0b-96fe-c2d39a32e70a`. Test waits for a task-queue poller before admitting a run; a previous cold-start timeout remains in its original evidence directory.
+- `ba73e6b`: Vercel propagates both existing free evaluation experiments, rejects unapproved IDs/routers/unknown experiments before transport, and enforces zero-price ceilings, fixed output allowance and disabled fallback. Five adapter checks and an actual native service transport check passed, along with the server build. Interactive configuration remains unchanged.
+- Shared host/review contract checks passed once after integration: four checks cover frozen admission/authentication, call deduplication, unknown effects, catalog publication for old/new runs, decision renewal and cancelled dispatch.
+
+- `cf5f36c` and `00a1726`: model inventory now includes bounded skill descriptions and explains the proposal/wait/dispatch/result distinction for admitted review-required tools. Nine catalog checks passed; builds passed. Changes followed actual model behavior: omitted skill loading and plain-text confirmation produced incomplete trials. No provider-specific prompt or forced tool choice was added.
+- `329ffda`: package-backed profiles now admit Vercel after its native implementation proof. Connected skill/provider contract passed once and the server build passed.
+- Existing native review acceptance passed 14 checks across Mastra, LangGraph and Restate, including approval, denial, cancellation, expiry renewal, retained waits/restart, unknown effects and mixed calls. Local evidence: `.review-proof/native-review-8d5e6b26-bcaf-47ad-bb70-e2234e3e337e`. These are scripted native checks, separate from the free-model task matrix.
+- `93ce4a9`: reusable generic connected-task driver and scenario with independent MCP/HTTP sources, an imported skill, provider-state verification, strict local fixture decision scope, durable call/error/denial observations and fresh retained zero-price catalog metadata. A real MCP schema refresh check passed and proved prior descriptors remain frozen. The five-platform real-model trial is in progress; no pass is claimed yet. Manual Temporal trials demonstrated real tool reads and, on follow-up, actual skill loading, but the selected model claimed a review pause without submitting the mutation tool call. Their empty review lists and unchanged provider state establish that no actionable review or effect occurred. These remain model-behavior failures, not frontend acceptance. Earlier timeouts, omitted skill loads and a driver argument-projection defect remain recorded with a posthoc incomplete-observation audit.
 
 The initial architecture table above records the baseline before implementation, not current readiness. Remaining checks and the final acceptance matrix are authoritative for completion.
 
