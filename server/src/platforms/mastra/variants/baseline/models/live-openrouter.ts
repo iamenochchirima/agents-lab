@@ -6,9 +6,7 @@ import { FREE_PROVIDER_ROUTING, getFreeEvalSettings, assertFreeModelRequest } fr
 export function liveOpenRouterModel(manifest: RunManifest, observe: (receipt: Record<string, unknown>) => void,
   options: { apiKey?: string; baseUrl?: string; fetchImplementation?: typeof fetch } = {}): MastraModelConfig {
   let sequence = 0;
-  return {
-    specificationVersion: "v2", provider: "openrouter", modelId: manifest.model.model, supportedUrls: {},
-    doGenerate: async (input: { prompt: unknown; tools?: { type: string; name: string; description?: string; inputSchema: unknown }[]; abortSignal?: AbortSignal }) => {
+  const generate = async (input: { prompt: unknown; tools?: { type: string; name: string; description?: string; inputSchema: unknown }[]; abortSignal?: AbortSignal }) => {
       const messages = mapMessages(input.prompt);
       const body = { model: manifest.model.model, messages, max_tokens: getFreeEvalSettings(manifest.selection?.experimentId ?? "agent-harness-live")?.maxOutputTokens, provider: FREE_PROVIDER_ROUTING,
         ...(input.tools?.length ? { tools: input.tools.map(tool => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })), tool_choice: "auto" } : {}) };
@@ -48,8 +46,33 @@ export function liveOpenRouterModel(manifest: RunManifest, observe: (receipt: Re
       return { content, finishReason: toolCalls.length ? "tool-calls" : "stop", warnings: [],
         usage: { inputTokens: data.usage?.prompt_tokens, outputTokens: data.usage?.completion_tokens, totalTokens: data.usage?.total_tokens },
         response: { id: data.id, modelId: data.model, timestamp: new Date() } };
+    };
+  return {
+    specificationVersion: "v2", provider: "openrouter", modelId: manifest.model.model, supportedUrls: {},
+    doGenerate: generate,
+    // DurableAgent.generate consumes this SDK stream. Keep the controlled,
+    // bounded HTTP request unchanged and adapt its fully observed response;
+    // this does not claim provider token streaming or create another request.
+    doStream: async (input: Parameters<typeof generate>[0]) => {
+      const output = await generate(input);
+      return { stream: new ReadableStream({ start(controller) {
+        if (input.abortSignal?.aborted) { controller.error(input.abortSignal.reason); return; }
+        controller.enqueue({ type: "stream-start", warnings: output.warnings });
+        controller.enqueue({ type: "response-metadata", ...output.response });
+        for (const [index, content] of output.content.entries()) {
+          const part = content as { type: string; text?: string; toolCallId?: string; toolName?: string; input?: string };
+          if (part.type === "tool-call") controller.enqueue({ type: "tool-call", toolCallId: part.toolCallId, toolName: part.toolName, input: part.input });
+          else if (part.type === "text") {
+            const id = `text-${index}`;
+            controller.enqueue({ type: "text-start", id });
+            controller.enqueue({ type: "text-delta", id, delta: part.text });
+            controller.enqueue({ type: "text-end", id });
+          }
+        }
+        controller.enqueue({ type: "finish", finishReason: output.finishReason, usage: output.usage });
+        controller.close();
+      } }) };
     },
-    doStream: async () => { throw new Error("Live evals use generate, not streaming."); },
   } as unknown as MastraModelConfig;
 }
 

@@ -212,3 +212,15 @@ No retry is introduced. Earlier runs without this diagnostic may retain only a
 native `finishReason: "error"`; their missing provider status must not be inferred.
 The default OpenRouter route is tested against a mocked HTTP rejection, with no
 external provider request.
+
+The opt-in controlled free-model transport supplies both SDK `doGenerate` and
+`doStream`. Native DurableAgent's generate facade calls `doStream` internally.
+The adapter makes the same bounded, non-streaming OpenRouter HTTP request used
+by legacy direct execution, then emits SDK response metadata, text/tool-call
+chunks and usage from that observed response. It does not simulate provider token
+streaming or make another HTTP request. Exact model ID, experiment output allowance
+(512 or 2048 tokens), zero-price ceilings, required parameters, disabled fallback
+and zero retries remain enforced immediately before dispatch. A real pinned native
+SDK tool loop with mocked HTTP responses verifies two requests, one calculator
+effect, correlated call ID and usage. The previous explicit streaming rejection
+was a harness incompatibility, before provider dispatch, rather than model quality.

@@ -116,3 +116,8 @@ the pinned snapshot workaround, and retained evidence.
 cd server
 pnpm exec tsx --test tests/platforms/mastra/*.test.ts
 ```
+
+The controlled free transport also supports sustained native execution through a
+buffered SDK stream adapter. It preserves the existing HTTP request and free-model
+policy, then exposes observed text, tool calls and usage to DurableAgent. This is
+SDK stream compatibility; the HTTP provider response remains buffered.
