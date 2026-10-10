@@ -6,6 +6,7 @@ import { loadLocalServerEnvironment } from '../control-plane/bootstrap/local-env
 import { COMPARISON_FREE_MODEL, assertFreeModelCatalog, getFreeEvalSettings } from '../models/openrouter/free-model-policy.js';
 import { installedRuntimeVersions } from './runtime-versions.js';
 import type { RunView } from '../control-plane/application/run-service.js';
+import { validateConnectedContinuation } from './connected-continuation.js';
 import type { InvocationReviewView } from '../capabilities/reviews/contracts.js';
 
 interface Scenario {
@@ -19,7 +20,7 @@ async function main() {
   const args = process.argv.slice(2).filter(value => value !== '--');
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index += 2) {
-    if (!['--api', '--platforms', '--scenario', '--model'].includes(args[index]) || !args[index + 1]) throw new Error('Usage: eval:connected --api URL --platforms mastra,temporal,langgraph,restate,vercel-workflows --scenario JSON [--model exact-approved-id:free]');
+    if (!['--api', '--platforms', '--scenario', '--model', '--continuation'].includes(args[index]) || !args[index + 1]) throw new Error('Usage: eval:connected --api URL --platforms mastra,temporal,langgraph,restate,vercel-workflows --scenario JSON [--model exact-approved-id:free] [--continuation JSON]');
     values.set(args[index], args[index + 1]);
   }
   const api = values.get('--api') ?? 'http://127.0.0.1:4322';
@@ -31,6 +32,8 @@ async function main() {
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(provider.hostname) || provider.username || provider.password || provider.protocol !== 'http:') throw new Error('Automatic fixture decisions require a credential-free loopback provider');
   const health = await json(`${scenario.provider}/health`);
   if (health.mode !== 'controlled-fictional-provider') throw new Error('The provider does not declare the controlled fixture contract');
+  const continuation = values.has('--continuation') ? JSON.parse(await readFile(resolve(values.get('--continuation')!), 'utf8')) as { platform: string; sourceReport: string; startStage: string; feedback?: string }[] : null;
+  if (continuation && (!Array.isArray(continuation) || platforms.some(platform => continuation.filter(item => item.platform === platform).length !== 1))) throw new Error('Continuation requires one explicit source/start stage for every selected platform');
   const model = values.get('--model') ?? COMPARISON_FREE_MODEL;
   const raw = await fetch(`${process.env.AGENTLAB_OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1'}/models`, { signal: AbortSignal.timeout(15000) });
   if (!raw.ok) throw new Error(`Free catalog unavailable: ${raw.status}`);
@@ -40,21 +43,35 @@ async function main() {
   const priceObservation = { fetchedAt: new Date().toISOString(), catalogUrl: `${process.env.AGENTLAB_OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1'}/models`, id: rawSelectedEntry.id, pricing: rawSelectedEntry.pricing, supportedParameters: rawSelectedEntry.supported_parameters };
   const versions = await installedRuntimeVersions();
   const experimentId = 'agent-capabilities-live';
-  const report: Record<string, any> = { schemaVersion: 1, mode: 'real-model-controlled-connected', startedAt: new Date().toISOString(), sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(), versions, priceObservation, scenario,
+  const report: Record<string, any> = { schemaVersion: 1, mode: 'real-model-controlled-connected', startedAt: new Date().toISOString(), sourceRevision: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), dirty: !!execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim(), versions, priceObservation, scenario, ...(continuation ? { continuation, interpretation: 'Separate bounded continuation with retained session/state; not initial full-workflow acceptance' } : {}),
     controls: { model: catalogObservation, experimentId, maxOutputTokens: getFreeEvalSettings(experimentId)!.maxOutputTokens, freeOnly: true, catalogCheckedAt: new Date().toISOString(), nativeExecutionTimeoutMs: Number(process.env.AGENTLAB_NATIVE_EXECUTION_TIMEOUT_MS ?? 180000), temporalActivityTimeoutMs: Number(process.env.AGENTLAB_TEMPORAL_ACTIVITY_TIMEOUT_MS ?? 120000), reviewDecisions: 'scripted-local-fixture-only; not frontend verification', deadlineMs: 180000 }, outcomes: [] };
   const directory = resolve(process.env.AGENTLAB_RUN_ROOT ?? '../lab/runs', '.connected-proof', `connected-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
   const save = () => writeFile(join(directory, 'summary.json'), JSON.stringify(report, null, 2) + '\n');
   await save();
   for (const platform of platforms) {
-    const namespace = `cap-${platform}-${randomUUID()}`;
+    const item = continuation?.find(item => item.platform === platform);
+    const source = item ? JSON.parse(await readFile(resolve(item.sourceReport), 'utf8')) : null;
+    const namespace = item ? source.outcomes.find((outcome: any) => outcome.platform === platform)?.namespace : `cap-${platform}-${randomUUID()}`;
     const outcome: Record<string, any> = { platform, namespace, stages: [], verdict: 'incomplete' };
     report.outcomes.push(outcome); await save();
     try {
-      for (const stage of scenario.stages) {
+      let startIndex = 0;
+      if (item) {
+        const observed = await json(`${scenario.provider}/state/${namespace}`);
+        const validated = validateConnectedContinuation(scenario, source, platform, item.startStage, observed);
+        startIndex = validated.startIndex;
+        outcome.provenance = { sourceReport: item.sourceReport, sourceRevision: source.sourceRevision, sourceModel: source.controls.model, ...validated, observedBeforeContinuation: observed, feedback: item.feedback ?? null };
+        for (const runId of validated.sourceRunIds) {
+          const prior = await json(`${api}/api/runs/${runId}/actions`);
+          if (prior.actions.some((action: any) => action.status === 'pending')) throw new Error('A prior action is still pending; continuation cannot authorize a competing proposal');
+        }
+        await save();
+      }
+      for (const stage of scenario.stages.slice(startIndex)) {
         const before = await json(`${scenario.provider}/state/${namespace}`);
-        let run: RunView = await json(`${api}/api/runs`, { platform, variant: 'baseline', sessionId: namespace, clientTurnId: `connected-${stage.id}`,
-          task: { kind: 'prompt', prompt: stage.goal.replaceAll('{namespace}', namespace) }, model: { provider: 'openrouter', model },
+        let run: RunView = await json(`${api}/api/runs`, { platform, variant: 'baseline', sessionId: namespace, clientTurnId: `${item ? directory.split('/').at(-1) : 'connected'}-${stage.id}`,
+          task: { kind: 'prompt', prompt: `${item?.feedback && stage.id === item.startStage ? item.feedback + '\n\n' : ''}${stage.goal.replaceAll('{namespace}', namespace)}` }, model: { provider: 'openrouter', model },
           selection: { scenarioId: scenario.id, experimentId }, capabilities: { profileId: scenario.profileId, tools: { enabledNames: [], maxRounds: 16, maxCalls: 24 } } });
         const record: Record<string, any> = { id: stage.id, runId: run.runId, before, reviews: [], verdict: 'incomplete' };
         outcome.stages.push(record); await save();
@@ -117,6 +134,7 @@ async function main() {
       }
     }
     await save();
+    if (continuation && outcome.stages.some((stage: any) => stage.error?.code?.includes('429'))) { report.stopReason = 'Provider rate limit observed; no additional continuation trial or retry'; break; }
   }
   report.completedAt = new Date().toISOString(); await save();
   console.info(`Retained connected acceptance: ${join(directory, 'summary.json')}`);

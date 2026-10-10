@@ -83,3 +83,27 @@ verification, or receives a rate limit. A provider rejection does not measure
 task decisions, and a model's completion text does not establish tool execution.
 Do not combine successful stages from different models into a claimed single
 end-to-end pass.
+
+For an explicitly separate continuation, use `--continuation continuation.json`
+alongside `--platforms` and `--model`. The JSON is an array with one entry per
+selected platform:
+
+```json
+[
+  {
+    "platform": "restate",
+    "sourceReport": "/absolute/path/to/retained/summary.json",
+    "startStage": "deny",
+    "feedback": "The approved correction is already saved. Continue with the remaining task; do not repeat it."
+  }
+]
+```
+
+The driver retains the original namespace/session, validates independent provider
+state against the earlier observation, rejects pending reviews, and refuses to
+replay an applied mutation. It does not skip a missing retrieval or denial pass.
+A confirmed approved effect may be preserved despite a later model-response
+failure; that exception is recorded separately from task success. Continuation
+uses a new turn identity and records corrective feedback and prior model/run
+references. Its verdict covers only the selected remaining stages. A provider
+429 stops the continuation without another trial or fallback.
