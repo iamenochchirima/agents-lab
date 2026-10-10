@@ -70,7 +70,11 @@ mutation rather than accepting two reads performed before it.
 
 Four browser fixture cases exercised approvals inside assistant turns, pending
 refresh, denial, retained history and decision retries. Focused rendering checks
-cover safe metadata and call-specific outcomes. A real-model frontend walkthrough
+cover safe metadata, call-specific outcomes and focus restoration when a focused
+exact-review control disappears. Assistant messages include concise failure guidance
+and expandable phase/code/category details from allowlisted records. Arbitrary SDK
+cause messages, provider bodies and secret paths are never rendered. These checks
+do not establish visual layout, scroll behavior or responsive focus handling. A real-model frontend walkthrough
 for the current controlled proposal is still pending. The browser control tool
 rejected the local URL, so API inspection is not presented as visual evidence.
 

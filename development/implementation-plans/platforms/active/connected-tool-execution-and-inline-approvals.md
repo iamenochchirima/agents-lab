@@ -232,7 +232,7 @@ Implementation checklist:
 - [x] Verify every adapter exposes the exact admitted schema and generated capabilities, calls the same host and returns observed tool results to the next model step.
 - [x] Audit approve/deny/renew paths in Temporal, Restate, LangGraph and Mastra. Change only demonstrated gaps; retain native mechanisms.
 - [x] Distinguish a denied call from workflow failure. Preserve accurate connection, host, model and provider failure categories instead of surfacing only `Activity task failed`.
-- [ ] Project a safe cause chain and actionable message without leaking tokens, private response bodies or local secret paths.
+- [x] Project a safe cause chain and actionable message without leaking tokens, private response bodies or local secret paths. Known codes and native status are allowlisted; arbitrary SDK causes retain a generic fallback, rather than exposing their raw text.
 - [x] Keep status, response validity and effect certainty independent. Existing adapters may use different terminal statuses for unknown effects; the transcript must explain them consistently without erasing native records.
 - [x] Confirm new turns admit refreshed shared tools while existing run snapshots and pending calls remain frozen. Catalog changes must not silently substitute a schema or connection during approval.
 - [ ] Add or refresh a second source with different tool names and schemas, then use its actual supported operations through the same host and chat UI without native runtime edits.
@@ -357,7 +357,7 @@ Add only focused tests for new startup behavior, transcript projection and the n
 
 ## Current position
 
-Milestones 1 and 2 have verified implementation checkpoints, with their remaining UX/launcher observations explicitly open. Milestone 3 is committed and verified through actual native fixture execution. Milestones 4 and 5 have retained live evidence for all five platforms, but full task acceptance passes only Temporal and LangGraph. The implementation is in verification and closeout; actual human frontend observation and the remaining task stages are outstanding. The goal remains active.
+Milestones 1–4 have committed implementation and focused verification. Actual isolated launcher failure and bounded safe failure presentation are verified. Real-model continuations now exercise the remaining task stages; their verification-call targets are being audited separately from model narrative accuracy. Only Temporal and LangGraph passed an initial full task. Actual human frontend observation, responsive scroll/focus observation and ordinary routing restoration remain outstanding. The goal remains active.
 
 ### Evidence ledger
 
@@ -392,11 +392,15 @@ Milestones 1 and 2 have verified implementation checkpoints, with their remainin
 - `62c3da3`: launcher replacement follows explicit instance ownership through watcher ancestry and matches worker endpoint, namespace, queue, run/context roots and capability host. Unknown owners require explicit stopping; different queues and process-group siblings remain alive. Three isolated fixture checks and Bash syntax passed. Linux `/proc` is required for automatic ownership inspection; unreadable metadata fails closed.
 - `affb7a2`: actual isolated required-service failure exposed cleanup overwriting the exit status. Cleanup now captures it before resetting traps; readiness also stops promptly on an owned child exit. Original failure returned 0; fixed launch returned 1, named the Restate log and left all isolated ports/processes cleared. Protected normal/test APIs, Temporal and the manual-review worker remained alive, with review still pending. Evidence: `lab/runs/.connected-proof/launcher-required-failure-f9cdd382/verification.json`, including retained before/after logs. No model calls occurred. Bash syntax, three fixture checks and docs generation passed.
 
+- `908a2bf` and `5a239c0`: bounded continuation support validates source scenario, session model, independent provider state and confirmed effects before admitting another turn. It rejects manual-review namespaces and replaying already-applied changes. Two focused safety checks and server typecheck passed. Original reports and failed verdicts remain unchanged.
+- `2c01ecd`: exact-review cards preserve their identity across revision changes and restore focus after a focused decision control disappears, without stealing focus from another control or scrolling the page. Seven focused policy/rendering checks and web typecheck passed. Responsive layout and actual focus/scroll observation remain pending.
+- `90baaa1` and `ece8147`: assistant messages now include concise failure guidance and expandable safe phase/code/category details derived only from known codes and native status. Four rendering/redaction checks and web typecheck passed; secret paths, arbitrary cause messages and provider bodies are not projected. Confirmed effects remain distinct from response failure.
+
 ### Remaining completion work
 
 - Obtain the pending actual frontend observation and retained-decision/result observation. Do not automatically decide the manual request or bypass the browser tool's URL restriction.
-- Complete the still-unobserved Restate/Vercel live denial and Vercel follow-up behaviors when a free provider is available. Preserve original task failures; do not turn fixture-native proof into real-model acceptance.
-- Resolve or explicitly scope the remaining UX scroll/focus observation and full safe cause-chain presentation. Known failure phase/code/category handling is verified; arbitrary SDK causes remain a generic safe fallback.
+- Finish the verification-target audit of corrective continuations. Preserve initial failures and corrective feedback as separate observations; do not interpret continuation passes as initial full-task acceptance.
+- Observe responsive scroll/focus behavior in the actual frontend. Removed exact-review controls restore focus only when focus would otherwise be lost; focused policy checks are not visual proof. Bounded safe failure details are implemented and verified; arbitrary SDK causes retain a generic safe fallback.
 - Launcher ownership and required-service failure observations are complete. Do not repeat them merely to broaden coverage.
 - Restore ordinary frontend routing safely after the isolated human walkthrough, then perform the final definition-of-done audit. The goal has not been marked complete.
 
