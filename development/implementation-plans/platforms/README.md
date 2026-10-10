@@ -9,6 +9,11 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
+- [Connected tool execution and approvals in chat](active/connected-tool-execution-and-inline-approvals.md):
+  proposed next substantial phase covering reliable startup, transcript approvals,
+  Vercel's native connected-tool loop, five-platform real-task acceptance, focused
+  checks and coherent commit checkpoints.
+
 - [Agent capability awareness and discovery](active/agent-capability-awareness.md):
   proposed milestone for generated model inventories, enabled skill metadata,
   authorized tool discovery, native schema activation and frontend parity.
