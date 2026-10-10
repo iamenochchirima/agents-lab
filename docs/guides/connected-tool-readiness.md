@@ -128,3 +128,12 @@ validated in this phase. Personal connected-account mutations were not measured.
 The [compatibility matrix](connected-tool-compatibility.md) describes implemented
 adapter and authentication subsets. The [chat guide](connected-agent-tools.md)
 describes shared tools and inline review usage.
+
+Normal frontend routing and services were restored after the isolated checks.
+The actual New chat view shows Ready, 86 shared tools and 6 skills. All five
+priority platform health checks pass; the normal Temporal worker is running.
+Services retain ownership metadata and detached logs. The prior Temporal exit
+cause was not established; its SQLite database was reused. Optional Hatchet still
+has a Postgres lock error, isolated from core readiness. Restoration evidence:
+`.connected-proof/normal-restoration-20261010`. Final server build and frontend
+typecheck/docs generation passed; no personal tool/model call was used for restoration.

@@ -9,11 +9,6 @@ It does not contain Studio work or plans for independently owned harnesses.
 
 ## Active plans
 
-- [Connected tool execution and approvals in chat](active/connected-tool-execution-and-inline-approvals.md):
-  proposed next substantial phase covering reliable startup, transcript approvals,
-  Vercel's native connected-tool loop, five-platform real-task acceptance, focused
-  checks and coherent commit checkpoints.
-
 - [Agent capability awareness and discovery](active/agent-capability-awareness.md):
   proposed milestone for generated model inventories, enabled skill metadata,
   authorized tool discovery, native schema activation and frontend parity.
@@ -43,6 +38,11 @@ was the foundation for this acceptance phase and the completed Restate slice. AW
 Functions remains parked.
 
 ## Completed plans
+
+- [Connected tool execution and approvals in chat](completed/connected-tool-execution-and-inline-approvals.md):
+  native tools/review execution across five baselines, direct inline approval/denial
+  and refresh checks, bounded exact-target grading and normal service restoration.
+  Initial failures, corrective continuations and model narrative limits remain recorded.
 
 - [Frontend capability management](completed/frontend-capability-management.md):
   saved encrypted connections, HTTP/OAuth and managed stdio, skill/bundle imports,

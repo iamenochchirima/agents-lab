@@ -315,8 +315,8 @@ Commit checkpoint: reusable acceptance procedure and bounded result summaries; l
 - [x] Publish a readiness table separating service reachable, tools exposed, tool execution observed, review continuation observed and recovery verified.
 - [x] Preserve tool catalog/source versions, model parameters, context strategy, timestamps, native identities and evidence links for each trial.
 - [x] Record nonpriority runtimes as not validated in this phase. Inngest, DBOS, Hatchet, Trigger.dev and hosted deployment have separate dependency/credential work; do not mark them tool-ready from a green health endpoint.
-- [ ] Run final relevant typechecks/builds once after integration, regenerate docs, inspect staged changes for secrets/unrelated files, and commit the closeout.
-- [ ] Complete the audit below before declaring implementation finished.
+- [x] Run final relevant typechecks/builds once after integration, regenerate docs, inspect staged changes for secrets/unrelated files, and commit the closeout.
+- [x] Complete the audit below before declaring implementation finished.
 
 Commit checkpoint: `docs(platforms): document connected-task acceptance and remaining limits`.
 
@@ -346,19 +346,19 @@ Add only focused tests for new startup behavior, transcript projection and the n
 
 ## Definition of done and implementation audit
 
-- [ ] Each priority platform can perform the agreed real connected task through its native implementation and retain inspectable evidence.
-- [ ] All approval controls appear in chat at the correct turn; none remain in the sidebar. Refresh, next-turn history, denial and retained-decision continuation work.
-- [ ] No provider effect occurs before required approval. Approved cards do not claim success without result evidence. Unknown effects do not cause blind retries.
-- [ ] Vercel Workflows has actual tool/session/review execution, not merely normalized capability labels.
-- [ ] Optional startup failure does not prevent unrelated ready platforms from serving chat. Nondefault ports reach the correct capability host.
-- [ ] Newly connected sources can join the shared catalog without changing native loops, while existing runs retain their snapshots.
-- [ ] At least two sources with different schemas work through generic model exposure, host dispatch and approval/result presentation. The acceptance procedure and platform code contain no required Linear dependency or fixed CRUD tool names.
-- [ ] Validation distinguishes scripted harness checks, real model behavior, observed provider state and unverified recovery guarantees.
-- [ ] Relevant documentation, model controls, limitations and commits are complete. All unchecked acceptance items are reported explicitly.
+- [x] Each priority platform can perform the agreed real connected task through its native implementation and retain inspectable evidence.
+- [x] All approval controls appear in chat at the correct turn; none remain in the sidebar. Refresh, next-turn history, denial and retained-decision continuation work.
+- [x] No provider effect occurs before required approval. Approved cards do not claim success without result evidence. Unknown effects do not cause blind retries.
+- [x] Vercel Workflows has actual tool/session/review execution, not merely normalized capability labels.
+- [x] Optional startup failure does not prevent unrelated ready platforms from serving chat. Nondefault ports reach the correct capability host.
+- [x] Newly connected sources can join the shared catalog without changing native loops, while existing runs retain their snapshots.
+- [x] At least two sources with different schemas work through generic model exposure, host dispatch and approval/result presentation. The acceptance procedure and platform code contain no required Linear dependency or fixed CRUD tool names.
+- [x] Validation distinguishes scripted harness checks, real model behavior, observed provider state and unverified recovery guarantees.
+- [x] Relevant documentation, model controls, limitations and commits are complete. All unchecked acceptance items are reported explicitly.
 
 ## Current position
 
-Milestones 1–5 have committed implementation and focused verification, including exact-target receipt audits and direct browser checks. Required tool behaviors are observed across initial trials and explicit corrective continuations; only Temporal and LangGraph passed an initial full task. Model narrative inaccuracies and original failures remain recorded. Ordinary routing restoration and the final closeout audit remain outstanding. The goal remains active.
+Milestones 1–5 have committed implementation and focused verification, including exact-target receipt audits and direct browser checks. Required tool behaviors are observed across initial trials and explicit corrective continuations; only Temporal and LangGraph passed an initial full task. Model narrative inaccuracies and original failures remain recorded. Ordinary services and frontend routing are restored, and the completion audit passed within this phase's documented scope. The implementation is complete; this does not imply perfect model decisions or production hardening.
 
 ### Evidence ledger
 
@@ -389,7 +389,7 @@ Milestones 1–5 have committed implementation and focused verification, includi
 - Comparable Nemotron trial completed at `2026-10-10T12:08:25.879Z`; report `lab/runs/.connected-proof/connected-b527de87-5b0f-492e-ba68-e96285f90e87/summary.json`. Exact model `nvidia/nemotron-3.5-lightning:free`, fresh zero-price observation, no fallback, 2048 output tokens. Temporal passed retrieval, assignment, correction, denial and missing-record error. Mastra passed the first three stages but produced plaintext confirmation at denial. LangGraph produced planning text without required retrieval calls. Restate passed retrieval and assignment; correction saved the requested owner but omitted the required verification read despite claiming it. Vercel passed retrieval but produced plaintext confirmation instead of the assignment tool proposal. These failures establish incomplete model behavior, not full platform acceptance. The separate Gemma comparison retained unchanged criteria; its terminal availability result is recorded below.
 - The separate Gemma comparison is now terminal: all five platforms received provider HTTP 429 before task completion. Report `connected-94ccd090-5e0b-4756-8574-80c4d5f0ba7d` retains this availability failure; Vercel's pre-fix four SDK attempts are explicitly recorded. No Retry-After evidence was retained, so no cooldown is inferred.
 - The separate Cohere comparison is terminal in `connected-01d0222c-3e1e-498a-8b81-46ce35308765`: LangGraph passed all five stages; Mastra passed retrieval, assignment, correction and denial but queried the wrong key in the error stage. Restate performed and verified correction before an empty final provider response; Vercel performed and verified assignment before final-request rate limiting. These are partial observations with known effects, not successful complete conversations. That comparison stopped on its recorded failures; the separately scoped continuations below retain corrective feedback and source-model identity.
-- Owned Vercel service was restarted after the verified model-error fix, retaining its local World store, host port 4322 and timeout controls. Health and readiness report ready; no model request was made just to check restart. API 4322 and frontend 5173 remain the isolated fixture environment for the pending human proposal. User-owned API 4318 was left untouched; restore normal frontend routing only after that proposal is observed or explicitly abandoned.
+- Owned Vercel service was restarted after the verified model-error fix, retaining its local World store, host port 4322 and timeout controls. Health and readiness report ready; no model request was made just to check restart. At that checkpoint API 4322 and frontend 5173 served the isolated pending proposal. User-owned API 4318 was left untouched. Normal routing was later restored after the actual browser checks, as recorded in closeout.
 - `62c3da3`: launcher replacement follows explicit instance ownership through watcher ancestry and matches worker endpoint, namespace, queue, run/context roots and capability host. Unknown owners require explicit stopping; different queues and process-group siblings remain alive. Three isolated fixture checks and Bash syntax passed. Linux `/proc` is required for automatic ownership inspection; unreadable metadata fails closed.
 - `affb7a2`: actual isolated required-service failure exposed cleanup overwriting the exit status. Cleanup now captures it before resetting traps; readiness also stops promptly on an owned child exit. Original failure returned 0; fixed launch returned 1, named the Restate log and left all isolated ports/processes cleared. Protected normal/test APIs, Temporal and the manual-review worker remained alive, with review still pending. Evidence: `lab/runs/.connected-proof/launcher-required-failure-f9cdd382/verification.json`, including retained before/after logs. No model calls occurred. Bash syntax, three fixture checks and docs generation passed.
 
@@ -403,10 +403,19 @@ Milestones 1–5 have committed implementation and focused verification, includi
 - Direct browser access recovered on the same supported in-app surface. Temporal pending refresh, approval/post-read, read-only next turn, keyboard denial and retained card history passed; provider state independently confirms no denied mutation. Retained cards were inspected inside assistant turns on all five platforms, outside configuration. Evidence: `.connected-proof/browser-direct-20261010`. Historical non-Temporal decisions were scripted, not clicked in this browser check.
 - `5dfdd3a`: actual 390px browser verification exposed chat grid overflow. Bounded column sizing and message wrapping fix it; recheck found no chat/card horizontal overflow. A 1280px view was also inspected. Web typecheck passed. Focus-policy checks complement keyboard observations; native focus edge cases remain outside this minimal test scope.
 
-### Remaining completion work
+### Closeout
 
-- Restore ordinary frontend/backend routing safely after isolated acceptance, preserving unrelated processes and recorded evidence.
-- Run the final relevant build/typecheck and definition-of-done audit. Do not repeat completed native failure matrices or successful model stages.
+- Normal API 4318 reports ready; all five priority baselines report reachable. Normal Temporal worker is running. Services are detached with explicit ownership and retained logs. The manual queue, isolated API and evidence remain preserved; the missing prior Temporal process's exit cause was not established. Its original SQLite database was reused. Evidence: `.connected-proof/normal-restoration-20261010`.
+- Frontend 5173 again routes to normal API 4318. Direct browser inspection of New chat shows Ready, 86 shared tools and 6 skills. The original denied card also loads through the restored normal API. No personal tool/model call was made during restoration.
+- Final server build and web typecheck/docs generation passed after exact-target grading and presentation integration. Only task-owned files were staged. Unrelated Lina migration work was preserved. Review details now separate their revision, source and evidence link into readable lines.
+- Commit checkpoints include `4eb9841` (exact-target grading), `5dfdd3a` (responsive layout) and `d57f0a8` (direct browser evidence/readiness). The final closeout commit records this completed checklist and index move.
+
+Remaining limits: initial full-task passes are Temporal/Nemotron and LangGraph/Cohere;
+other required behaviors needed explicit continuations. Model narratives can invent
+denial reasons despite correctly enforced tool outcomes. Personal-account mutation,
+hosted deployment, nonpriority runtimes, exhaustive native focus/failure permutations
+and production hardening remain outside this phase. Optional Hatchet retains its
+existing Postgres lock error without blocking core readiness.
 
 The initial architecture table above records the baseline before implementation, not current readiness. Remaining checks and the final acceptance matrix are authoritative for completion.
 
