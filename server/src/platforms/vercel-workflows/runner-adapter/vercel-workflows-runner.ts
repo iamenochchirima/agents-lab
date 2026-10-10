@@ -192,14 +192,22 @@ export class VercelWorkflowsBaselineRunner implements PlatformRunner {
       nativeStatus: record.status,
       acknowledgement: native.submissionOutcome === "unknown" ? "unknown" : "confirmed",
     });
-    const result = record.result as RunResult | null;
+    const nativeResult = record.result as RunResult | null;
+    const extendedResult = isVercelResult(nativeResult) ? nativeResult : null;
+    // The service result also contains the full native event history. Keep each
+    // evidence lane separate: repeated provider requests can exceed result.json's
+    // bounded size even when the final agent result itself is small.
+    const result = nativeResult ? canonicalResult(nativeResult) : null;
     return {
       status: mapStatus(record.status, result),
-      reference: record.pendingReview ? { ...updated, native: { ...updated.native, pendingReview: record.pendingReview } } : { ...updated, native: { ...updated.native, pendingReview: null } },
-      eventIntents: isVercelResult(result) ? result.eventIntents : record.eventIntents ?? [],
+      reference: { ...updated, native: { ...updated.native,
+        ...(extendedResult ? { resultMetadata: asRecord(extendedResult.native) } : {}),
+        pendingReview: record.pendingReview ?? null,
+      } },
+      eventIntents: extendedResult ? extendedResult.eventIntents : record.eventIntents ?? [],
       result,
-      trajectory: isVercelResult(result) ? result.trajectory : null,
-      metrics: isVercelResult(result) ? result.metrics : null,
+      trajectory: extendedResult ? extendedResult.trajectory : null,
+      metrics: extendedResult ? extendedResult.metrics : null,
     };
   }
 
@@ -303,8 +311,14 @@ function mapStatus(status: VercelWorkflowPublicRunRecord["status"], result: RunR
   return "completed";
 }
 
-function isVercelResult(result: RunResult | null): result is RunResult & { readonly eventIntents: readonly RunEventIntent[]; readonly trajectory: RunTrajectory; readonly metrics: RunMetrics } {
+function isVercelResult(result: RunResult | null): result is RunResult & { readonly eventIntents: readonly RunEventIntent[]; readonly trajectory: RunTrajectory; readonly metrics: RunMetrics; readonly native?: unknown } {
   return !!result && "eventIntents" in result && "trajectory" in result && "metrics" in result;
+}
+
+function canonicalResult(result: RunResult): RunResult {
+  return { schemaVersion: result.schemaVersion, runId: result.runId, status: result.status,
+    startedAt: result.startedAt, finishedAt: result.finishedAt, output: result.output,
+    error: result.error, attemptCount: result.attemptCount, usage: result.usage };
 }
 
 async function readJson(response: Response): Promise<unknown> {

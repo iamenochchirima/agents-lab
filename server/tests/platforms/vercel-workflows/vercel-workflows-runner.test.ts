@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { RunEvidenceStore } from "../../../src/control-plane/application/evidence-store.js";
 
-import type { RunManifest } from "../../../src/control-plane/domain/types.js";
+import type { RunManifest, RunEventIntent } from "../../../src/control-plane/domain/types.js";
 import {
   VERCEL_WORKFLOW_NAME,
   VERCEL_WORKFLOWS_PLATFORM,
@@ -102,12 +106,13 @@ test("runner rejects an OpenRouter manifest when the service has no key", () => 
 // Native execution status must remain visible without making the Lab run green.
 test("runner preserves unsuccessful agent results from a completed native workflow", async () => {
   for (const status of ["failed", "cancelled", "reconciliation_required"] as const) {
+    const error = { code: "PROVIDER_TRANSPORT_UNKNOWN", message: "Provider response was not confirmed.", retryable: false, failureKind: "outcome_unknown" };
     const runner = new VercelWorkflowsBaselineRunner({
       config: loadVercelWorkflowsConfig({ AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL: "http://workflow.test" }),
       fetchImplementation: async url => url.toString().endsWith("/runs/admit")
         ? response({ workflowId: "workflow/native", workflowRunId: "wrun_1", submissionOutcome: "accepted", acknowledgement: "confirmed", status: "pending" }, 202)
         : response({ workflowId: "workflow/native", workflowRunId: "wrun_1", status: "completed", result: {
-          schemaVersion: 1, runId: manifest.runId, status, output: null, error: null,
+          schemaVersion: 1, runId: manifest.runId, status, output: null, error,
           startedAt: manifest.createdAt, finishedAt: manifest.createdAt, attemptCount: 1,
           usage: { inputTokens: null, outputTokens: null, totalTokens: null },
         } }),
@@ -115,6 +120,55 @@ test("runner preserves unsuccessful agent results from a completed native workfl
     const inspection = await runner.inspect(await runner.start(manifest));
     assert.equal(inspection.status, status === "cancelled" ? "cancelled" : "failed");
     assert.equal(inspection.result?.status, status);
+    assert.deepEqual(inspection.result?.error, error);
     assert.equal(inspection.reference.native.nativeStatus, "completed");
   }
+});
+
+test("completed native history exceeding the result bound persists in separate evidence lanes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vercel-result-lanes-"));
+  const eventIntents: RunEventIntent[] = Array.from({ length: 157 }, (_, index) => ({
+    runId: manifest.runId, source: "vercel-workflow", sourceSequence: index + 1,
+    occurredAt: manifest.createdAt, kind: "EvalModelObserved",
+    payload: { providerRequest: { messages: [{ content: "x".repeat(4 * 1024) }] } },
+  }));
+  const nativeResult = {
+    schemaVersion: 1, runId: manifest.runId, status: "completed",
+    startedAt: manifest.createdAt, finishedAt: manifest.createdAt,
+    output: "done", error: null, attemptCount: 4,
+    usage: { inputTokens: null, outputTokens: null, totalTokens: null }, eventIntents,
+    trajectory: { schemaVersion: 1, runId: manifest.runId, phases: [] },
+    metrics: { schemaVersion: 1, runId: manifest.runId, status: "completed", durationMs: 0,
+      modelCallCount: 4, modelAttemptCount: 4, inputTokens: null, outputTokens: null,
+      totalTokens: null, costUsd: null },
+    native: { workflowName: VERCEL_WORKFLOW_NAME, stepNames: ["executeModelStep"] },
+  };
+  assert.ok(Buffer.byteLength(JSON.stringify(nativeResult)) > 512 * 1024);
+  const runner = new VercelWorkflowsBaselineRunner({
+    config: loadVercelWorkflowsConfig({ AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL: "http://workflow.test" }),
+    fetchImplementation: async (url) => url.toString().endsWith("/runs/admit")
+      ? response({ workflowId: "workflow/native", workflowRunId: "wrun_large", submissionOutcome: "accepted", acknowledgement: "confirmed", status: "pending" }, 202)
+      : response({ workflowId: "workflow/native", workflowRunId: "wrun_large", status: "completed", result: nativeResult }),
+  });
+  try {
+    const store = new RunEvidenceStore(root);
+    await store.createRun(manifest);
+    const inspection = await runner.inspect(await runner.start(manifest));
+    assert.ok(inspection.result && inspection.trajectory && inspection.metrics);
+    assert.ok(Buffer.byteLength(JSON.stringify(inspection.result)) < 512 * 1024);
+    assert.equal(inspection.eventIntents.length, 157);
+    await store.writeExecutionReference(manifest.runId, inspection.reference);
+    for (const event of inspection.eventIntents) await store.appendEvent(event);
+    await store.writeTrajectory(inspection.trajectory);
+    await store.writeMetrics(inspection.metrics);
+    await store.writeResult(inspection.result);
+    const retained = await store.readSnapshot(manifest.runId);
+    assert.equal(retained.result?.status, "completed");
+    assert.equal(retained.result?.output, "done");
+    assert.equal("eventIntents" in retained.result!, false);
+    assert.deepEqual(retained.events.map(event => event.payload), eventIntents.map(event => event.payload));
+    assert.deepEqual(retained.trajectory, nativeResult.trajectory);
+    assert.deepEqual(retained.metrics, nativeResult.metrics);
+    assert.deepEqual(retained.executionReference?.native.resultMetadata, nativeResult.native);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

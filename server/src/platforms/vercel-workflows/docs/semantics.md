@@ -110,6 +110,11 @@ permissions and atomic replacement. Replay cannot replace a longer projection wi
 an earlier one. Inspection combines World status with that projection to expose
 `suspended`, pending identity and incremental events before terminal output exists.
 The runner preserves these events and the review in its native execution reference.
+Terminal inspection projects only the common result fields into `result.json`.
+The full event history, trajectory and metrics use their separate evidence lanes;
+native result metadata remains under `executionReference.native.resultMetadata`.
+This avoids duplicating retained provider requests inside the bounded final-result
+file. Existing per-record storage limits still apply; no history is truncated.
 Native World history remains authoritative for replay; this is an inspection
 projection, not a second decision store.
 
