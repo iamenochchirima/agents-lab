@@ -2,8 +2,9 @@
 
 Research date: 2026-10-10. Scope: Temporal, Restate, LangGraph, Mastra and
 Vercel Workflows baselines, using the shared tools and skills already in the laboratory.
-This note records source findings and a code inspection. It does not report a
-live recovery experiment or propose native filesystem access or a profiles UI.
+The source findings and baseline inspection below preceded implementation. The
+final section records subsequent local implementation observations. Neither scope
+introduces native filesystem access or a profiles UI.
 
 Version boundary: the server declares Restate SDK/client 1.17.0 and Temporal
 client/worker/workflow `^1.23.0` in
@@ -276,3 +277,70 @@ separate future adapter decision, not a prerequisite for platform-native agent w
 [MCP progress](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/progress)
 
 Implementation checklist: [native long-running agents plan](../../development/implementation-plans/platforms/active/native-long-running-agents.md).
+
+
+## Implementation observations — 2026-10-10
+
+All five baselines now admit sustained execution with shared capabilities and native
+execution ownership. Focused native checks cover retained action identity, process
+replacement, deadlines, cancellation and unknown-effect refusal. Those checks use
+scripted model responses to isolate harness behavior. They are distinct from the
+six-record task driven by real free models below.
+
+| Platform | Native implementation verified | Real Cohere task observation | Limit |
+| --- | --- | --- | --- |
+| Temporal | Workflow replay, bounded Activities, retained signal, deadline and within-round context. | Original action survived a 65-second wait/restart. Corrective run saved Cedar once, then proposed an unnecessary Birch write; observer canceled it. | Completed Activities do not establish exactly-once external effects. |
+| Restate | Journaled rounds, original durable promise, bounded I/O and context. | Corrective run retained all four decisions and three expected writes; model omitted a fresh verification read after the final Willow write. Task verdict remains failed. | A journal cannot prove whether an unacknowledged external write occurred. |
+| LangGraph | SQLite checkpoints, safe local recovery, retained interrupts and waiting deadline. | Original action survived wait/restart; Cedar saved once, then unnecessary Birch write caused observer cancellation. | Single local owner; uncertain dispatched work refuses automatic recovery. |
+| Mastra | DurableAgent, retained LibSQL state, exact review resume and native waiting cancellation. | After transport correction, actual Cohere requests loaded the skill and sources; original action survived a 65-second wait/API replacement and saved Cedar once. Subsequent unnecessary Birch write was refused; task failed. | Active recovery conservatively refuses dispatch barriers. Pinned SDK snapshot-pruning workaround is documented. |
+| Vercel Workflows | Durable steps/hooks, within-run compaction, bounded deadline and local World recovery. | Initial run produced three expected writes and a complete report but lacked required model-input observations. Corrective run retained the first action through restart, then proposed unnecessary Birch write and was canceled. Neither is a full-task pass. | Local World observations do not establish hosted-deployment retention. |
+
+The first five-platform Cohere report is
+[`connected-76f62915`](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-76f62915-72e9-4493-abfe-582e6efc79eb/summary.json).
+Original verdicts were preserved. Actual execution exposed common review-event
+identity suppression, missing Vercel eval transport observations, and a Mastra free-eval
+wrapper that rejected the streaming API internally used by DurableAgent. Focused fixes
+retain every decision identity, observe actual eval transport inputs, and adapt the same
+bounded free HTTP response to native SDK stream chunks. No provider-specific tool
+branch or forced model decision was added.
+
+The separate corrective four-platform Cohere report is
+[`connected-88e2dc95`](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-88e2dc95-18c7-40d3-b85d-0cd210520185/summary.json).
+The final Mastra Cohere report is
+[`connected-cc1df00e`](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-cc1df00e-62d8-460e-b8e2-568ada552ab8/summary.json).
+These early-aborted driver reports retain an incomplete stage under a failed outcome.
+The observer was subsequently corrected to retain abort/cancellation observations
+for future runs, including explicit failed-observation fields; it does not infer terminal
+state from a cancellation request. A separate read-only
+[terminal observation](../../lab/runs/.sustained-proof/runs/.connected-proof/terminal-followup-20261010.json)
+confirms cancellation and exactly one saved Cedar effect in each of Temporal,
+LangGraph, Mastra and Vercel; the unauthorized Birch actions had no effect. It does
+not change the original verdicts. Restate independently retained exactly three effects.
+
+One bounded Gemma alternative returned HTTP 429 on every platform before tools:
+[`connected-4410b670`](../../lab/runs/.sustained-proof/runs/.connected-proof/connected-4410b670-3ab3-4420-9bd0-3d3c731dfb71/summary.json).
+These are provider-availability failures, not measurements of agent reasoning or
+successful long-running task completion. Free pricing was checked against the live
+catalog; requests retained zero-price restrictions and no paid fallback.
+
+Direct browser acceptance used Temporal and disposable connected records. Approve
+saved Cedar/Morgan once; Deny left Pine/Devon unchanged. The model verified both;
+refresh retained the two cards inside their assistant message. Conversation reload and
+a follow-up also retained an observed calculator result without another tool call.
+[Browser report and screenshots](../../lab/runs/.connected-proof/browser-sustained-20261010/summary.json).
+This verifies the shared chat path on Temporal; it is not five separate browser proofs.
+
+**Interpretation:** native execution and focused recovery checks passed; full six-record
+real-model acceptance has zero passing platforms in these cohorts. Model omissions,
+unnecessary proposals and provider rate limits remain visible. This evidence cannot
+rank platforms or prove hour/day retention. The next acceptance work should investigate
+capability descriptions and task comprehension under fixed controls, then rerun a
+bounded cohort when free capacity is available. Do not replace model decisions with a
+scripted runtime sequence to turn this task green.
+
+Operational limits remain: a hung adapter inspection can stall the common observation
+pass; local service ownership is single-process where specified; hosted/multi-replica
+hardening is deferred. A separate broad evidence-store check also exposed an existing
+grader-error wording mismatch (17/18 passed); that unrelated assertion was not weakened.
+For usage, defaults and recovery contracts, see
+[connected agent tools](../guides/connected-agent-tools.md).

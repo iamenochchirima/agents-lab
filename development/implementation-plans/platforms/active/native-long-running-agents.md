@@ -1,7 +1,7 @@
 # Native long-running agents across the five priority platforms
 
 Status: implementing; execution authorized and goal started 2026-10-10.
-Validation: native restart/review/deadline checks passed; larger free-model and final browser acceptance are in progress.
+Validation: native restart/review/deadline and direct browser checks passed. Real-model cohorts were executed; the full six-record task gate remains unmet (model omissions/unnecessary writes and provider rate limits).
 Prepared: 2026-10-10. Baseline commit: `116b670`.
 
 ## Goal and expected outcome
@@ -188,13 +188,14 @@ Commit: `feat(platforms): retain context through sustained native execution`.
 
 ### 7. Chat continuity and useful task acceptance
 
-- [ ] Display observed task progress, wait reason, review delivery and restart recovery inside the existing conversation.
-- [ ] Keep approvals inline and preserve historical card identity, keyboard focus and scroll position.
-- [ ] Reattach after navigation/refresh and temporary API outage without creating a new run or active turn.
-- [ ] Show Stop requested versus confirmed cancellation and retained known/unknown effects.
-- [ ] Run the same real-model task on all five baselines, retaining original failures and separate corrective attempts.
-- [ ] Publish a compact coverage matrix with native mechanism, recovery observation, model task result and limitations.
-- [ ] Update stable platform/context/recovery guides and relevant README files; move this plan to completed only when acceptance is established.
+- [x] Display observed task progress, wait reason, review delivery and restart recovery inside the existing conversation.
+- [x] Keep approvals inline and preserve historical card identity, keyboard focus and scroll position.
+- [x] Reattach after navigation/refresh and temporary API outage without creating a new run or active turn.
+- [x] Show Stop requested versus confirmed cancellation and retained known/unknown effects.
+- [x] Run the same real-model task on all five baselines, retaining original failures and separate corrective attempts.
+- [x] Publish a compact coverage matrix with native mechanism, recovery observation, model task result and limitations.
+- [x] Update stable platform/context/recovery guides and relevant README files.
+- [ ] Establish the full six-record real-model acceptance gate before moving this plan to completed.
 
 Acceptance: a user can leave, return, approve and continue one task; final claims match tool receipts and independently checked state.
 Validation: one direct browser path covering leave/return, inline approval and continued task, plus narrow rendering regressions for changed status/cancellation behavior. One free-model task per platform, no model sweep.
@@ -230,18 +231,18 @@ Personal-account writes require an explicitly agreed disposable target and the e
 ## Definition of done
 
 - [ ] All five baselines execute the multi-step scenario using native execution and the shared capabilities without frontend profile selection.
-- [ ] Completed work and active review identity persist through the tested native replacement; unsafe outcomes are visibly unresolved.
-- [ ] A retained decision survives API delivery interruption and duplicate delivery without a second external mutation.
-- [ ] Browser absence does not own execution or prevent eventual context-turn settlement.
-- [ ] Context growth is bounded inside the run, preserving tool pairing and skill provenance.
-- [ ] Deadlines/counters remain stable across restart and Stop prevents later dispatch while preserving prior effects.
-- [ ] Actual native and free-model observations are inspectable; model failures remain failures rather than being hidden by scripted success.
-- [ ] Documentation describes each platform's measured recovery limits, installed API compatibility and local infrastructure requirements.
-- [ ] Focused commits are recorded, unrelated changes preserved and temporary credentials/artifacts excluded.
+- [x] Completed work and active review identity persist through the tested native replacement; unsafe outcomes are visibly unresolved.
+- [x] A retained decision survives API delivery interruption and duplicate delivery without a second external mutation.
+- [x] Browser absence does not own execution or prevent eventual context-turn settlement.
+- [x] Context growth is bounded inside the run, preserving tool pairing and skill provenance.
+- [x] Deadlines/counters remain stable across restart and Stop prevents later dispatch while preserving prior effects.
+- [x] Actual native and free-model observations are inspectable; model failures remain failures rather than being hidden by scripted success.
+- [x] Documentation describes each platform's measured recovery limits, installed API compatibility and local infrastructure requirements.
+- [x] Focused commits are recorded, unrelated changes preserved and temporary credentials/artifacts excluded.
 
 ## Current position and open questions
 
-Current position: native implementation milestones 1–6 are complete. The five-platform real-model task and direct browser acceptance remain in progress. The plan remains active until those observations are recorded.
+Current position: native implementation milestones 1–6 and the shared browser path are complete. The same free-model task was attempted on all five, with failures and corrective trials retained. The full task acceptance gate remains unmet; this plan stays active rather than implying that all evals passed. The measured coverage matrix is in the research document.
 
 Native checks are recorded below. Free-model trials use isolated connected records, reference data and an imported skill with retained wait/restart controls.
 
@@ -275,3 +276,32 @@ Measured limits: LangGraph recovery is locally single-owned and refuses uncertai
 - `24d31b6`, `b42fb53`: sustained-task chat option/progress and supported-mode admission. Focused frontend/control-plane checks passed.
 - `81d33a2`, `004ebbe`: six-record connected scenario, disposable source/reference fixtures, imported skill and owned-restart evidence contract. Seven focused checks passed.
 - Direct browser: Temporal sustained free-model run `def4816a-10c8-4f5b-b24c-060bddd6fee6` selected the calculator and observed 42 from 17 + 25; two model rounds, one completed tool and the admitted deadline. This is a UI smoke observation, not the larger task verdict.
+
+### First real-model cohort and corrective work
+
+The first complete five-platform cohort used freshly confirmed zero-price `cohere/north-mini-code:free`, the same six-record prompt, imported skill and sources, a 65-second retained approval wait, and owned process replacement. All original verdicts remain failed: `lab/runs/.sustained-proof/runs/.connected-proof/connected-76f62915-72e9-4493-abfe-582e6efc79eb/summary.json`.
+
+- Temporal: retained task/skill/review and restart; model stopped after two approved corrections and one denial, omitting Willow and post-decision reads.
+- Restate: retained task/skill/review and restart; model verified the acted-on records but omitted Willow.
+- LangGraph: original review survived restart, then the model proposed changing already-correct Birch. The observer refused that undeclared action and canceled the run; no Birch write was authorized.
+- Mastra: generation failed before review; original artifacts lacked a useful error. A separate diagnostic reproduced the eval wrapper rejecting streaming before any provider request. Commits `2e5a042` and `76e25ef` preserve bounded errors and bridge the actual free-model response into the native SDK stream. The subsequent real Cohere task reached tools, review and restart.
+- Vercel: three independent saved effects, all four decisions, correct final report and retained native wait/restart. Grading failed because actual model-input observations were absent and later shared decision events were suppressed; it is not retroactively claimed as a pass.
+
+Real execution exposed a common event-identity bug: only the first decision of each kind survived. `1b1d713` retains every action identity and repairs missing projections from authoritative review records; 27 RunService/delivery tests and the atomic ordering regression passed. `f7f25c4` adds actual transport-boundary model observations for Vercel evals; six model tests and one native transport check passed. `e623615` clarifies call-scoped denial, verification and truthful completion in shared admitted inventory context without choosing tools or forcing another model round; nine catalog checks passed. Corrective trials retain separate controls and results.
+
+Browser proof: `lab/runs/.connected-proof/browser-sustained-20261010/summary.json`. A free-model Temporal task was approved/denied through the actual inline controls; refresh retained both original cards inside the assistant message. Independent state contains exactly one effect, Cedar/Morgan and unchanged Pine/Devon, with verification reads for both. `d1c7637` keeps observed approval waits visible during native-status fallback; `5d9f753` prevents premature history requests before new-session admission. Focused rendering/state checks and web typecheck passed. Screenshots are retained alongside the browser report.
+
+
+### Final observations and remaining gate
+
+- `2e5a042`, `76e25ef`: Mastra safe model diagnostics and native SDK free-model streaming compatibility. Targeted transport/native regression checks and server build passed; zero-price restrictions and exact call identity are retained.
+- `cd041c3`: stable connected-agent guide and platform recovery limits; docs generation passed.
+- Corrective Cohere cohort `connected-88e2dc95-18c7-40d3-b85d-0cd210520185`: Restate retained all four decisions and three writes but omitted post-Willow verification. Temporal, LangGraph and Vercel proposed an unnecessary already-correct Birch write after a retained first approval; the observer refused it and canceled.
+- Final Mastra Cohere cohort `connected-cc1df00e-62d8-460e-b8e2-568ada552ab8`: actual provider requests, skill/source loading, original 65-second wait and process replacement; approved Cedar saved once. An unnecessary Birch proposal was refused and the run canceled. This is a failed task, not a transport failure or a benchmark pass.
+- Gemma alternative `connected-4410b670-3ab3-4420-9bd0-3d3c731dfb71`: genuine HTTP 429 on all five, zero effects; no paid fallback.
+- `lab/runs/.sustained-proof/runs/.connected-proof/terminal-followup-20261010.json`: separate read-only terminal state/effect observations supplement early-aborted reports without changing their verdicts.
+- [Measured coverage and interpretation](../../../../docs/research/native-long-running-agents.md#implementation-observations--2026-10-10): native checks passed, full task verdicts 0/5. Direct browser approval/denial/reload passed on Temporal. Hosted durability and hour/day retention were not measured.
+
+Remaining acceptance work: investigate model task comprehension and capability descriptions under fixed controls, retain any changed prompt/catalog identity, then run a bounded free cohort when capacity permits. Do not force a fixed correction loop, authorize undeclared actions, weaken verification criteria or erase prior failures. All implementation work is in focused commits; the plan remains active for this unresolved acceptance gate.
+
+- `d813fab`: generic observer-abort evidence now retains failed stage, observer error, cancellation response and independent native/provider observations, including a failed cancellation response. One focused regression and server build passed. Earlier reports remain unchanged.
