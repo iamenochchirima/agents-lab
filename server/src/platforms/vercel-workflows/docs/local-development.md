@@ -37,6 +37,7 @@ The service exposes the platform-local routes used by the runner:
 
 - `POST /runs/admit` — validate, reserve, and start one native Workflow run.
 - `GET /runs/:workflowRunId` — inspect native status and normalized output.
+- `POST /runs/:workflowRunId?resume=1` — deliver a retained invocation-review decision.
 - `POST /runs/:workflowRunId?cancel=1` — request cancellation.
 - `POST /.well-known/workflow/v1/flow` — generated Workflow SDK flow handler.
 
@@ -51,9 +52,17 @@ Configuration is environment-only:
 ```sh
 AGENTLAB_VERCEL_WORKFLOWS_PORT=9094
 AGENTLAB_VERCEL_WORKFLOWS_DATA_DIR=.local/workflow-data
+AGENTLAB_CAPABILITY_HOST_URL=http://127.0.0.1:4318
+AGENTLAB_CAPABILITY_HOST_KEY_FILE=lab/runs/.capability-host.key
 OPENROUTER_API_KEY=...
 AGENTLAB_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 ```
+
+Connected tools require the shared API capability host and its private runtime key.
+Set the host URL to the actual API endpoint when using a custom port. Keep the
+World data directory across service restarts to preserve native reviews. The
+resume route is a local runtime boundary; reviewer decisions enter through the
+shared API, whose host rechecks authority before dispatch.
 
 The fake provider is the default and does not make network calls. OpenRouter is
 optional and is called only from the `executeModelStep` step. Its response content

@@ -18,9 +18,15 @@ export function completeFakeModel(input: VercelWorkflowModelRequest): VercelWork
     };
   }
 
+  if (input.model.model === "fake-tools" && (input.round ?? 1) === 1) {
+    const requested = JSON.parse(input.prompt) as { name: string; arguments: unknown }[];
+    return { kind: "success", output: null, toolCalls: requested.map((call, index) => ({
+      ...call, toolCallId: `${input.runId}:call:${index + 1}`, round: 1,
+    })), providerRequestId: "fake-tools", usage: { inputTokens: null, outputTokens: null, totalTokens: null } };
+  }
   return {
     kind: "success",
-    output: `Fake response: ${input.prompt}`,
+    output: input.model.model === "fake-tools" ? (input.messages ?? []).filter(message => message.role === "tool").map(message => message.content).join("\n") : `Fake response: ${input.prompt}`,
     providerRequestId: `fake-${input.runId}-${input.attempt}`,
     usage: {
       inputTokens: null,

@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import type { InvocationResumeInput } from "../../../../../capabilities/reviews/contracts.js";
 import type { VercelWorkflowInput } from "../contracts.js";
 
 export type AdmissionState = "pending" | "accepted";
@@ -13,6 +14,7 @@ export interface AdmissionRecord {
   readonly input: VercelWorkflowInput;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly deliveries?: Readonly<Record<string, InvocationResumeInput>>;
 }
 
 export type AdmissionLookup =
@@ -85,6 +87,16 @@ export class AdmissionStore {
     this.records.set(runId, updated);
     await this.persist();
     return updated;
+  }
+
+  async retainDelivery(runId: string, token: string, decision: InvocationResumeInput): Promise<boolean> {
+    const record = this.records.get(runId);
+    if (!record) return false;
+    const prior = record.deliveries?.[token];
+    if (prior) return prior.decisionId === decision.decisionId && prior.decision === decision.decision && prior.revision === decision.revision;
+    this.records.set(runId, { ...record, deliveries: { ...record.deliveries, [token]: decision } });
+    await this.persist();
+    return true;
   }
 
   findByWorkflowRunId(workflowRunId: string): AdmissionRecord | null {

@@ -9,6 +9,7 @@ import type {
 import type {
   PlatformRunner,
   RunnerCancellationResult,
+  RunnerResumeResult,
   RunnerConnectivity,
   RunnerInspection,
   RunnerValidationResult,
@@ -166,6 +167,17 @@ export class VercelWorkflowsBaselineRunner implements PlatformRunner {
     };
   }
 
+  async resume(reference: PlatformExecutionReference, input: unknown): Promise<RunnerResumeResult> {
+    const native = nativeReference(reference);
+    if (!native.workflowRunId) return { accepted: false, alreadyTerminal: false, message: "The native admission is unresolved." };
+    const response = await this.request(`/runs/${encodeURIComponent(native.workflowRunId)}?resume=1`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input),
+    });
+    const body = asRecord(response.body);
+    return { accepted: body.accepted === true, alreadyTerminal: body.alreadyTerminal === true,
+      message: stringValue(body, "message") ?? "The native review decision was not accepted." };
+  }
+
   async inspect(reference: PlatformExecutionReference): Promise<RunnerInspection> {
     const native = nativeReference(reference);
     if (!native.workflowRunId) return unknownSubmissionInspection(reference);
@@ -182,8 +194,8 @@ export class VercelWorkflowsBaselineRunner implements PlatformRunner {
     const result = record.result as RunResult | null;
     return {
       status: mapStatus(record.status, result),
-      reference: updated,
-      eventIntents: isVercelResult(result) ? result.eventIntents : [],
+      reference: record.pendingReview ? { ...updated, native: { ...updated.native, pendingReview: record.pendingReview } } : { ...updated, native: { ...updated.native, pendingReview: null } },
+      eventIntents: isVercelResult(result) ? result.eventIntents : record.eventIntents ?? [],
       result,
       trajectory: isVercelResult(result) ? result.trajectory : null,
       metrics: isVercelResult(result) ? result.metrics : null,
@@ -279,9 +291,11 @@ function unknownSubmissionInspection(reference: PlatformExecutionReference): Run
   return { status: "failed", reference, eventIntents: [event], result, trajectory, metrics };
 }
 
-function mapStatus(status: VercelWorkflowPublicRunRecord["status"], result: RunResult | null): "queued" | "running" | "completed" | "failed" | "cancelled" {
-  if (result?.status === "reconciliation_required") return "failed";
+function mapStatus(status: VercelWorkflowPublicRunRecord["status"], result: RunResult | null): "queued" | "running" | "suspended" | "completed" | "failed" | "cancelled" {
+  if (result?.status === "reconciliation_required" || result?.status === "failed") return "failed";
+  if (result?.status === "cancelled") return "cancelled";
   if (status === "pending") return "queued";
+  if (status === "suspended") return "suspended";
   if (status === "running") return "running";
   if (status === "cancelled") return "cancelled";
   if (status === "failed") return "failed";

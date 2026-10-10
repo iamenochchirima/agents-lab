@@ -2,7 +2,6 @@ import { FatalError, getStepMetadata } from "workflow";
 
 import { loadVercelWorkflowsConfig } from "../../../config.js";
 import type {
-  VercelWorkflowInput,
   VercelWorkflowModelRequest,
   VercelWorkflowStepResult,
 } from "../contracts.js";
@@ -14,7 +13,7 @@ import { completeOpenRouterModel } from "../models/openrouter.js";
  * here lets the workflow remain deterministic and makes retry duplication
  * visible in the native Workflow event history.
  */
-export async function executeModelStep(input: VercelWorkflowInput): Promise<VercelWorkflowStepResult> {
+export async function executeModelStep(input: Omit<VercelWorkflowModelRequest, "attempt">): Promise<VercelWorkflowStepResult> {
   "use step";
 
   const metadata = getStepMetadata();

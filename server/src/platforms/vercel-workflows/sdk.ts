@@ -44,7 +44,7 @@ const workflowPackage = requirePlatformDependency<WorkflowPackage>("workflow");
 const workflowLocalWorld = requirePlatformDependency<WorkflowLocalWorld>("@workflow/world-local");
 const workflowBuilders = requirePlatformDependency<WorkflowBuilders>("@workflow/builders");
 
-export const { getRun, start } = workflowApi;
+export const { getRun, start, resumeHook, getHookByToken } = workflowApi;
 export const setWorld: WorkflowRuntime["setWorld"] = workflowRuntime.setWorld;
 export const { FatalError, getStepMetadata, sleep } = workflowPackage;
 export const { createWorld } = workflowLocalWorld;

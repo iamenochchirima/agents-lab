@@ -41,10 +41,20 @@ export async function completeOpenRouterModel(
       },
       body: JSON.stringify({
         model: input.model.model,
-        messages: [
+        messages: (input.messages ?? [
           { role: "system", content: input.systemInstruction },
           { role: "user", content: input.prompt },
-        ],
+        ]).map(message => message.role === "tool" ? {
+          role: "tool", tool_call_id: message.toolCallId, content: message.content,
+        } : message.role === "assistant" ? {
+          role: "assistant", content: message.content,
+          ...(message.toolCalls?.length ? { tool_calls: message.toolCalls.map(call => ({
+            id: call.toolCallId, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+          })) } : {}),
+        } : message),
+        ...(input.toolDefinitions?.length ? { tools: input.toolDefinitions.map(tool => ({
+          type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema },
+        })) } : {}),
       }),
       signal: controller.signal,
     });
@@ -80,7 +90,13 @@ export async function completeOpenRouterModel(
     const firstChoice = asRecord(choices[0]);
     const message = asRecord(firstChoice.message);
     const output = typeof message.content === "string" ? message.content : null;
-    if (!output) {
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls.map(value => {
+      const call = asRecord(value); const fn = asRecord(call.function);
+      let args: unknown;
+      try { args = JSON.parse(String(fn.arguments)); } catch { args = fn.arguments; }
+      return { toolCallId: typeof call.id === "string" ? call.id : "", name: typeof fn.name === "string" ? fn.name : "", arguments: args, round: input.round ?? 1 };
+    }) : [];
+    if (!output && !toolCalls.length) {
       return {
         kind: "failure",
         requestSent: true,
@@ -97,6 +113,7 @@ export async function completeOpenRouterModel(
     return {
       kind: "success",
       output,
+      ...(toolCalls.length ? { toolCalls } : {}),
       providerRequestId: typeof record.id === "string" ? record.id : null,
       usage: {
         inputTokens: numberOrNull(usage.prompt_tokens),

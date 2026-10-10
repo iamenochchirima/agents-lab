@@ -77,3 +77,21 @@ test("Vercel Workflows OpenRouter model rejects an oversized response without re
   assert.equal(JSON.stringify(result).includes(marker), false);
   assert.equal(bodyCancelled, true);
 });
+
+test("native model projects an unfamiliar exact schema and paired results", async () => {
+  const schema = { type: "object", properties: { record: { type: "object", properties: { priority: { enum: ["low", "high"] } }, required: ["priority"], additionalProperties: false } }, required: ["record"], additionalProperties: false };
+  const result = await completeOpenRouterModel({ ...request, round: 2,
+    toolDefinitions: [{ schemaVersion: 1, name: "novel_save", description: "Save fixture", inputSchema: schema, riskClass: "write", executionKind: "connection", limits: { maxArgumentBytes: 1024, maxResultBytes: 1024, timeoutMs: 1000 } }],
+    messages: [{ role: "assistant", content: null, toolCalls: [{ toolCallId: "original", name: "novel_save", arguments: { record: { priority: "high" } }, round: 1 }] },
+      { role: "tool", toolCallId: "original", name: "novel_save", content: '{"saved":true}' }],
+  }, { apiKey: "fake-key", baseUrl: "https://fixture.example", fetchImplementation: async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.deepEqual(body.tools[0].function.parameters, schema);
+    assert.equal(body.messages[0].tool_calls[0].id, "original");
+    assert.equal(body.messages[1].tool_call_id, "original");
+    assert.equal(body.messages[1].content, '{"saved":true}');
+    return new Response(JSON.stringify({ choices: [{ message: { content: null, tool_calls: [{ id: "follow-up", type: "function", function: { name: "novel_save", arguments: '{"record":{"priority":"low"}}' } }] } }] }));
+  } });
+  assert.equal(result.kind, "success");
+  if (result.kind === "success") assert.deepEqual(result.toolCalls, [{ toolCallId: "follow-up", name: "novel_save", arguments: { record: { priority: "low" } }, round: 2 }]);
+});

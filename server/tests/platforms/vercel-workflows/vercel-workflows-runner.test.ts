@@ -97,3 +97,24 @@ test("runner rejects an OpenRouter manifest when the service has no key", () => 
   const invalid = { ...manifest, model: { provider: "openrouter", model: "openai/gpt-4o-mini" } } satisfies RunManifest;
   assert.equal(runner.validate(invalid).valid, false);
 });
+
+// A native Workflow can finish normally by returning a failed agent result.
+// Native execution status must remain visible without making the Lab run green.
+test("runner preserves unsuccessful agent results from a completed native workflow", async () => {
+  for (const status of ["failed", "cancelled", "reconciliation_required"] as const) {
+    const runner = new VercelWorkflowsBaselineRunner({
+      config: loadVercelWorkflowsConfig({ AGENTLAB_VERCEL_WORKFLOWS_SERVICE_URL: "http://workflow.test" }),
+      fetchImplementation: async url => url.toString().endsWith("/runs/admit")
+        ? response({ workflowId: "workflow/native", workflowRunId: "wrun_1", submissionOutcome: "accepted", acknowledgement: "confirmed", status: "pending" }, 202)
+        : response({ workflowId: "workflow/native", workflowRunId: "wrun_1", status: "completed", result: {
+          schemaVersion: 1, runId: manifest.runId, status, output: null, error: null,
+          startedAt: manifest.createdAt, finishedAt: manifest.createdAt, attemptCount: 1,
+          usage: { inputTokens: null, outputTokens: null, totalTokens: null },
+        } }),
+    });
+    const inspection = await runner.inspect(await runner.start(manifest));
+    assert.equal(inspection.status, status === "cancelled" ? "cancelled" : "failed");
+    assert.equal(inspection.result?.status, status);
+    assert.equal(inspection.reference.native.nativeStatus, "completed");
+  }
+});

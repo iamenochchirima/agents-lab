@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import type { RunResult, RunUsage } from "../../../control-plane/domain/types.js";
+import type { RunResult, RunUsage, RunEventIntent } from "../../../control-plane/domain/types.js";
 import {
   loadVercelWorkflowsConfig,
   VERCEL_WORKFLOW_NAME,
@@ -15,7 +15,9 @@ import {
 import type { VercelWorkflowInput, VercelWorkflowResult } from "../variants/baseline/contracts.js";
 import { AdmissionStore } from "../variants/baseline/state/admission-store.js";
 import { buildVercelWorkflowBundle, type VercelWorkflowBundle } from "../variants/baseline/execution/bundle-builder.js";
-import { createWorld, getRun, setWorld, start } from "../sdk.js";
+import { createWorld, getRun, setWorld, start, resumeHook } from "../sdk.js";
+import { ProgressStore } from "../variants/baseline/state/progress-store.js";
+import type { InvocationReviewView, InvocationResumeInput } from "../../../capabilities/reviews/contracts.js";
 import type { LocalWorld } from "../sdk.js";
 
 const MAX_BODY_BYTES = 1_048_576;
@@ -32,7 +34,9 @@ export interface VercelWorkflowPublicRunRecord {
   readonly workflowId: string;
   readonly workflowRunId: string;
   readonly workflowName: string;
-  readonly status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  readonly status: "pending" | "running" | "suspended" | "completed" | "failed" | "cancelled";
+  readonly pendingReview?: InvocationReviewView | null;
+  readonly eventIntents?: readonly RunEventIntent[];
   readonly createdAt: string;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
@@ -56,6 +60,7 @@ export class VercelWorkflowsPlatformService {
   private readonly platformRoot: string;
   private readonly world: LocalWorld;
   private readonly admissionStore: AdmissionStore;
+  private readonly progressStore: ProgressStore;
   private bundle: VercelWorkflowBundle | null = null;
   private server: Server | null = null;
   private flowHandler: ((request: Request) => Promise<Response>) | null = null;
@@ -70,6 +75,7 @@ export class VercelWorkflowsPlatformService {
       port: this.config.port,
       recoverActiveRuns: true,
     });
+    this.progressStore = new ProgressStore(join(dataDir, "agentlab-progress"));
     this.admissionStore = options.admissionStore ?? new AdmissionStore(join(dataDir, "agentlab-admissions.json"));
   }
 
@@ -87,7 +93,8 @@ export class VercelWorkflowsPlatformService {
     await this.admissionStore.load();
     await mkdir(this.platformRoot, { recursive: true });
     this.bundle = await buildVercelWorkflowBundle(this.platformRoot);
-    const flowModule = await import(`${pathToFileURL(this.bundle.flowPath).href}?build=${Date.now()}`) as Record<string, unknown>;
+    const bundleDigest = createHash("sha256").update(await readFile(this.bundle.flowPath)).digest("hex");
+    const flowModule = await import(`${pathToFileURL(this.bundle.flowPath).href}?build=${bundleDigest}`) as Record<string, unknown>;
     const handler = flowModule.POST;
     if (typeof handler !== "function") throw new Error("The Vercel Workflow build did not export a POST flow handler.");
     this.flowHandler = handler as (request: Request) => Promise<Response>;
@@ -143,6 +150,10 @@ export class VercelWorkflowsPlatformService {
         await this.inspect(decodeURIComponent(runMatch[1]), response);
         return;
       }
+      if (runMatch && request.method === "POST" && url.searchParams.has("resume")) {
+        await this.resume(decodeURIComponent(runMatch[1]), request, response);
+        return;
+      }
       if (runMatch && request.method === "POST" && url.searchParams.has("cancel")) {
         await this.cancel(decodeURIComponent(runMatch[1]), request, response);
         return;
@@ -162,8 +173,9 @@ export class VercelWorkflowsPlatformService {
   }
 
   private async admit(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const input = parseInput(await readJson(request));
-    const requestHash = hashInput(input);
+    const parsed = parseInput(await readJson(request));
+    const input = { ...parsed, progressDirectory: this.progressStore.directory };
+    const requestHash = hashInput(parsed);
     const lookup = this.admissionStore.lookup(input.runId, requestHash);
     if (lookup.kind === "conflict") {
       this.writeJson(response, 409, { error: "RUN_ID_CONFLICT", message: "The run ID belongs to a different request." });
@@ -229,6 +241,7 @@ export class VercelWorkflowsPlatformService {
     const startedAt = await run.startedAt;
     const completedAt = await run.completedAt;
     const record = this.admissionStore.findByWorkflowRunId(workflowRunId);
+    const progress = record ? await this.progressStore.read(record.runId) : null;
     let result: RunResult | null = null;
     let error: { readonly code: string; readonly message: string } | null = null;
     if (status === "completed") {
@@ -244,13 +257,43 @@ export class VercelWorkflowsPlatformService {
       workflowId: this.workflowId,
       workflowRunId,
       workflowName: await run.workflowName,
-      status,
+      status: status === "running" && progress?.pendingReview ? "suspended" : status,
+      pendingReview: ["completed", "failed", "cancelled"].includes(status) ? null : progress?.pendingReview ?? null,
+      eventIntents: progress?.eventIntents ?? [],
       createdAt: createdAt.toISOString(),
       startedAt: startedAt?.toISOString() ?? null,
       completedAt: completedAt?.toISOString() ?? null,
       result,
       error,
     } satisfies VercelWorkflowPublicRunRecord);
+  }
+
+  private async resume(workflowRunId: string, request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const run = getRun(workflowRunId);
+    const record = this.admissionStore.findByWorkflowRunId(workflowRunId);
+    if (!record || !(await run.exists)) { this.writeJson(response, 404, { accepted: false }); return; }
+    const status = await run.status;
+    const decision = await readJson(request) as InvocationResumeInput;
+    const prior = Object.entries(record.deliveries ?? {}).find(([, value]) => value.decisionId === decision.decisionId &&
+      value.requestId === decision.requestId && value.revision === decision.revision && value.toolCallId === decision.toolCallId && value.decision === decision.decision);
+    if (["completed", "failed", "cancelled"].includes(status)) { this.writeJson(response, 200, { accepted: !!prior, alreadyTerminal: true }); return; }
+    const progress = await this.progressStore.read(record.runId);
+    const pending = progress?.pendingReview;
+    if (prior && (!pending || pending.requestId !== decision.requestId || pending.revision !== Number(prior[0].split(":").at(-1)))) {
+      this.writeJson(response, 200, { accepted: true, alreadyTerminal: false, message: "The recorded decision was already consumed." }); return;
+    }
+    if (!pending || decision.kind !== "invocation_review" || decision.requestId !== pending.requestId ||
+        decision.toolCallId !== pending.call.toolCallId || decision.revision !== pending.revision + (decision.decision === "renewed" ? 1 : 0) ||
+        typeof decision.decisionId !== "string" || !decision.decisionId || !["approved", "denied", "renewed"].includes(decision.decision)) {
+      this.writeJson(response, 409, { accepted: false, message: "The decision does not match the pending review." }); return;
+    }
+    const token = `agentlab-review:${record.runId}:${pending.requestId}:${pending.revision}`;
+    // Retain one payload before wake. SDK resume writes hook_received before
+    // enqueueing; a wake failure must never mint a different decision.
+    const delivery = await this.admissionStore.retainDelivery(record.runId, token, decision);
+    if (!delivery) { this.writeJson(response, 409, { accepted: false, message: "Another decision already owns this waiter." }); return; }
+    await resumeHook(token, decision);
+    this.writeJson(response, 202, { accepted: true, alreadyTerminal: false, message: "Review decision delivered to the original Workflow call." });
   }
 
   private async cancel(workflowRunId: string, request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -305,12 +348,27 @@ function parseInput(value: unknown): VercelWorkflowInput {
     typeof model.model !== "string" || !model.model.trim() ||
     typeof record.modelTimeoutMs !== "number" || !Number.isSafeInteger(record.modelTimeoutMs) || record.modelTimeoutMs < 1
   ) throw new RequestBodyError(400, "The Workflow admission body is invalid.");
+  if (record.tools !== undefined) {
+    const tools = record.tools as Partial<NonNullable<VercelWorkflowInput["tools"]>>;
+    if (!tools || typeof tools !== "object" || !Array.isArray(tools.enabledNames) || tools.enabledNames.length > 128 ||
+        !tools.enabledNames.every(name => typeof name === "string") ||
+        !Number.isSafeInteger(tools.maxRounds) || tools.maxRounds! < 1 || tools.maxRounds! > 64 ||
+        !Number.isSafeInteger(tools.maxCalls) || tools.maxCalls! < 1 || tools.maxCalls! > 128 ||
+        (tools.approvedNames !== undefined && (!Array.isArray(tools.approvedNames) || !tools.approvedNames.every(name => typeof name === "string"))))
+      throw new RequestBodyError(400, "The Workflow tool configuration is invalid.");
+  }
   return {
     runId: record.runId,
     prompt: record.prompt,
     systemInstruction: record.systemInstruction,
     model: { provider: model.provider, model: model.model },
     modelTimeoutMs: record.modelTimeoutMs,
+    ...(typeof record.turnId === "string" ? { turnId: record.turnId } : {}),
+    ...(record.tools ? { tools: record.tools as VercelWorkflowInput["tools"] } : {}),
+    ...(record.toolCatalog ? { toolCatalog: record.toolCatalog as VercelWorkflowInput["toolCatalog"] } : {}),
+    ...(record.inventory ? { inventory: record.inventory as VercelWorkflowInput["inventory"] } : {}),
+    ...(record.connections ? { connections: record.connections as VercelWorkflowInput["connections"] } : {}),
+    ...(record.context ? { context: record.context as VercelWorkflowInput["context"] } : {}),
   };
 }
 
