@@ -146,7 +146,14 @@ export class HatchetBaselineRunner implements PlatformRunner {
         // Embedded mode keeps the Hatchet engine and worker in this process so
         // the shared Lab server needs no Docker service or external token.
         const host = await createHatchetWorkerHost(config);
-        await host.start();
+        try {
+          await host.start();
+        } catch (error) {
+          // A failed readiness wait can leave the embedded engine running.
+          // Release acquired resources before publishing an unavailable runner.
+          await host.stop();
+          throw error;
+        }
         return HatchetBaselineRunner.fromClient({
           config,
           client: host.client as unknown as HatchetRunnerClientLike,

@@ -24,7 +24,23 @@ The default stack covers the runnable local comparison profiles. Inngest, DBOS, 
 Trigger.dev remain explicit commands because they require their own dev server,
 PostgreSQL, or credentials respectively. The server's aggregate `/health` endpoint can
 therefore report `degraded` while `/ready` and the priority platform health endpoints
-are ready. Services can also be selected explicitly:
+are ready.
+
+The API composes its capability catalog and host before optional native runners
+finish initializing. Temporal, Restate and Hatchet initialize independently;
+`/ready` remains available while their platform health reports unreachable with
+an initializing or unavailable message. A completed connection still requires
+its native health probe to succeed. Failed initialization is attempted once per
+server lifetime; correct the native service configuration and restart the API
+to retry. The full launcher still waits for the required services in its selected
+profile before printing its ready message.
+
+Shutdown closes connected runners. It does not wait indefinitely for an optional
+connector: a runner that arrives after shutdown is immediately closed and never
+accepts runs. Native SDKs own resources acquired before returning a runner and
+their timeout or cancellation behavior; this isolation adds no shared agent loop.
+
+Services can also be selected explicitly:
 
 ```bash
 ./scripts/run_local_stack.sh studio

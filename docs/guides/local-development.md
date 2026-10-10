@@ -78,6 +78,21 @@ endpoints or the platform status in the UI for the profiles included in the loca
 Those optional services remain available through named commands in
 [`scripts/README.md`](../../scripts/README.md).
 
+
+The API composes its capability catalog and host before optional native runners
+finish initializing. Temporal, Restate and Hatchet initialize independently;
+`/ready` remains available while their platform health reports unreachable with
+an initializing or unavailable message. A completed connection still requires
+its native health probe to succeed. Failed initialization is attempted once per
+server lifetime; correct the native service configuration and restart the API
+to retry. The full launcher still waits for the required services in its selected
+profile before printing its ready message.
+
+Shutdown closes connected runners. It does not wait indefinitely for an optional
+connector: a runner that arrives after shutdown is immediately closed and never
+accepts runs. Native SDKs own resources acquired before returning a runner and
+their timeout or cancellation behavior; this isolation adds no shared agent loop.
+
 When using a non-default web port, the launcher passes the matching browser origin to
 the server automatically. If the web app and server are started separately, set
 `AGENTLAB_API_ORIGIN` to the web app's origin.

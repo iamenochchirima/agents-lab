@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 
 import { loadServerConfig, type ServerConfig } from "./config.js";
+import { DeferredPlatformRunner } from "./deferred-runner.js";
+import { loadHatchetConfig } from "../../platforms/hatchet/config.js";
 import { loadLocalServerEnvironment } from "./local-env.js";
 import { trustedFrontendOrigins } from "./frontend-origins.js";
 import { RunEvidenceStore } from "../application/evidence-store.js";
@@ -48,14 +50,15 @@ export interface ControlPlaneRuntime {
  * never construct SDK clients or filesystem paths themselves.
  */
 export async function createControlPlaneRuntime(config = loadServerConfig()): Promise<ControlPlaneRuntime> {
-  let runner: TemporalBaselineRunner;
-  try {
-    runner = await TemporalBaselineRunner.connect(config);
-  } catch (error) {
-    runner = TemporalBaselineRunner.unavailable(config, safeMessage(error));
-  }
-
-  const restateRunner = await RestateBaselineRunner.connect(loadRestateConfig());
+  const runner = new DeferredPlatformRunner(
+    TemporalBaselineRunner.unavailable(config, "Temporal initialization failed. Check the configured endpoint and restart the server to retry."),
+    () => TemporalBaselineRunner.connect(config),
+  );
+  const restateConfig = loadRestateConfig();
+  const restateRunner = new DeferredPlatformRunner(
+    RestateBaselineRunner.unavailable(restateConfig, "Restate initialization failed. Check the configured ingress and restart the server to retry."),
+    () => RestateBaselineRunner.connect(restateConfig),
+  );
   const langgraphRunner = LangGraphBaselineRunner.fromOptions({
     serviceUrl: process.env.AGENTLAB_LANGGRAPH_SERVICE_URL ?? "http://127.0.0.1:2024",
     contextRoot: config.contextRoot,
@@ -68,7 +71,11 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const inngestRunner = new InngestBaselineRunner();
   const triggerDevRunner = TriggerDevBaselineRunner.fromEnvironment();
   const dbosRunner = new DbosBaselineRunner();
-  const hatchetRunner = await HatchetBaselineRunner.connect();
+  const hatchetConfig = loadHatchetConfig();
+  const hatchetRunner = new DeferredPlatformRunner(
+    HatchetBaselineRunner.unavailable(hatchetConfig, "Hatchet initialization failed. Check the native runtime logs and restart the server to retry."),
+    () => HatchetBaselineRunner.connect(hatchetConfig),
+  );
   const vercelWorkflowsRunner = new VercelWorkflowsBaselineRunner();
   const runners: PlatformRunner[] = [
     runner,
@@ -129,12 +136,11 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     runner,
     runners,
     async close() {
-      await app.close();
-      await Promise.all(
-        runners.map((platformRunner) =>
-          (platformRunner as PlatformRunner).close?.(),
-        ),
-      );
+      try {
+        await app.close();
+      } finally {
+        await Promise.all(runners.map((platformRunner) => platformRunner.close?.()));
+      }
     },
   };
 }
@@ -159,11 +165,4 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error("Server stopped:", error);
     process.exitCode = 1;
   });
-}
-
-function safeMessage(error: unknown): string {
-  if (!(error instanceof Error) || !error.message) {
-    return "Temporal connection could not be established.";
-  }
-  return `Temporal connection could not be established: ${error.message}`;
 }
