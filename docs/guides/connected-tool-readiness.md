@@ -78,6 +78,14 @@ The control plane remained ready and Temporal executed tools while optional Hatc
 startup was unavailable. Native calls used the isolated API on port 4322, including
 review preparation; workers did not silently use the default capability-host port.
 
+Launcher ownership checks preserve workers using other queues/configurations and
+unrelated process-group siblings. An actual isolated required-service failure
+returned a nonzero exit status, named its retained log and cleared its owned
+processes/ports while the existing APIs and pending-review worker stayed running.
+The check exposed and fixed cleanup previously overwriting the failure status.
+Automatic replacement requires readable Linux process ownership metadata;
+older or manually started watchers require explicit stopping.
+
 Inngest, DBOS, Hatchet, Trigger.dev, other variants and hosted deployments were not
 validated in this phase. Personal connected-account mutations were not measured.
 The [compatibility matrix](connected-tool-compatibility.md) describes implemented

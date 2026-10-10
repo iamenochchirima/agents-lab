@@ -169,8 +169,8 @@ Implementation checklist:
 - [x] Audit API, frontend, worker and platform-service endpoint resolution for default and custom ports. Extend the recent launcher fix where required; do not duplicate it.
 - [x] Start control-plane HTTP without awaiting optional Hatchet initialization. Represent initializing/unavailable runners explicitly and retain startup errors per platform. Choose a lazy runner boundary or lifecycle method only after inspecting two real startup paths.
 - [x] Keep `/ready` about core API/catalog/host readiness; report individual native runtime readiness separately. A healthy Temporal server alone is insufficient if its worker cannot reach the capability host.
-- [ ] Ensure startup failure of a selected required service stops only the launcher-owned process group and names its log. Optional services must not disable unrelated chat routes.
-- [ ] Prevent duplicate owned workers and restore them with the correct endpoint. Leave unrelated processes and database files untouched.
+- [x] Ensure startup failure of a selected required service stops only the launcher-owned process group and names its log. Optional services must not disable unrelated chat routes.
+- [x] Prevent duplicate owned workers and restore them with the correct endpoint. Leave unrelated processes and database files untouched.
 - [x] Document process lifetime and restart behavior. Do not claim the dev launcher survives app shutdown or machine reboot. No new system daemon or process-manager dependency unless demonstrated necessary.
 
 Acceptance and minimal checks:
@@ -389,13 +389,15 @@ Milestones 1 and 2 have verified implementation checkpoints, with their remainin
 - The separate Gemma comparison is now terminal: all five platforms received provider HTTP 429 before task completion. Report `connected-94ccd090-5e0b-4756-8574-80c4d5f0ba7d` retains this availability failure; Vercel's pre-fix four SDK attempts are explicitly recorded. No Retry-After evidence was retained, so no cooldown is inferred.
 - The separate Cohere comparison is terminal in `connected-01d0222c-3e1e-498a-8b81-46ce35308765`: LangGraph passed all five stages; Mastra passed retrieval, assignment, correction and denial but queried the wrong key in the error stage. Restate performed and verified correction before an empty final provider response; Vercel performed and verified assignment before final-request rate limiting. These are partial observations with known effects, not successful complete conversations. No further model trials were launched after availability failures.
 - Owned Vercel service was restarted after the verified model-error fix, retaining its local World store, host port 4322 and timeout controls. Health and readiness report ready; no model request was made just to check restart. API 4322 and frontend 5173 remain the isolated fixture environment for the pending human proposal. User-owned API 4318 was left untouched; restore normal frontend routing only after that proposal is observed or explicitly abandoned.
+- `62c3da3`: launcher replacement follows explicit instance ownership through watcher ancestry and matches worker endpoint, namespace, queue, run/context roots and capability host. Unknown owners require explicit stopping; different queues and process-group siblings remain alive. Three isolated fixture checks and Bash syntax passed. Linux `/proc` is required for automatic ownership inspection; unreadable metadata fails closed.
+- `affb7a2`: actual isolated required-service failure exposed cleanup overwriting the exit status. Cleanup now captures it before resetting traps; readiness also stops promptly on an owned child exit. Original failure returned 0; fixed launch returned 1, named the Restate log and left all isolated ports/processes cleared. Protected normal/test APIs, Temporal and the manual-review worker remained alive, with review still pending. Evidence: `lab/runs/.connected-proof/launcher-required-failure-f9cdd382/verification.json`, including retained before/after logs. No model calls occurred. Bash syntax, three fixture checks and docs generation passed.
 
 ### Remaining completion work
 
 - Obtain the pending actual frontend observation and retained-decision/result observation. Do not automatically decide the manual request or bypass the browser tool's URL restriction.
 - Complete the still-unobserved Restate/Vercel live denial and Vercel follow-up behaviors when a free provider is available. Preserve original task failures; do not turn fixture-native proof into real-model acceptance.
 - Resolve or explicitly scope the remaining UX scroll/focus observation and full safe cause-chain presentation. Known failure phase/code/category handling is verified; arbitrary SDK causes remain a generic safe fallback.
-- Complete launcher ownership/selected-required-service failure observation without disturbing the unrelated normal API. Existing endpoint and optional startup checks are already verified.
+- Launcher ownership and required-service failure observations are complete. Do not repeat them merely to broaden coverage.
 - Restore ordinary frontend routing safely after the isolated human walkthrough, then perform the final definition-of-done audit. The goal has not been marked complete.
 
 The initial architecture table above records the baseline before implementation, not current readiness. Remaining checks and the final acceptance matrix are authoritative for completion.
