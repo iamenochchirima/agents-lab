@@ -338,6 +338,11 @@ wait_for_http() {
   local name="$1"
   local url="$2"
   for _ in {1..60}; do
+    # Full-stack launchers track their selected children. A dead required
+    # service cannot become ready; retain its named log and fail promptly.
+    if declare -F stack_processes_alive >/dev/null; then
+      stack_processes_alive || return 1
+    fi
     if curl --silent --show-error --fail --max-time 2 "$url" >/dev/null 2>&1; then
       echo "$name is ready at $url"
       return 0
@@ -552,8 +557,9 @@ run_studio() {
   }
 
   cleanup() {
+    local exit_code=$?
     trap - EXIT INT TERM
-    local index pid exit_code=$?
+    local index pid
     local -a cleanup_pids=("${stack_pids[@]-}")
     for ((index = ${#cleanup_pids[@]} - 1; index >= 0; index--)); do
       pid="${cleanup_pids[$index]}"
@@ -847,8 +853,9 @@ start_all() {
   }
 
   cleanup() {
+    local exit_code=$?
     trap - EXIT INT TERM
-    local index pid exit_code=$?
+    local index pid
     local -a cleanup_pids=("${stack_pids[@]-}")
     for ((index = ${#cleanup_pids[@]} - 1; index >= 0; index--)); do
       pid="${cleanup_pids[$index]}"

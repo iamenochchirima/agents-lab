@@ -106,6 +106,9 @@ its native health probe to succeed. Failed initialization is attempted once per
 server lifetime; correct the native service configuration and restart the API
 to retry. The full launcher still waits for the required services in its selected
 profile before printing its ready message.
+If a required launcher-owned service exits during readiness, the launcher reports
+its name and retained log, stops its owned children, and preserves a nonzero exit
+status. Existing services reused by the launcher are left running.
 
 Shutdown closes connected runners. It does not wait indefinitely for an optional
 connector: a runner that arrives after shutdown is immediately closed and never
