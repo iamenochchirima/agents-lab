@@ -211,3 +211,10 @@ export function mergeSessionHistory(current: readonly ChatMessage[], runs: reado
   const positions = new Map(runs.map((run, index) => [run.runId, index]));
   return merged.sort((left, right) => (positions.get(left.runId ?? "") ?? runs.length) - (positions.get(right.runId ?? "") ?? runs.length));
 }
+
+
+/** Locally allocated retry IDs do not establish a retained conversation. */
+export function canLoadSessionHistory(sessionId: string | null, admittedRun: RunView | null): boolean {
+  return sessionId !== null && admittedRun !== null &&
+    (admittedRun.context?.sessionId ?? admittedRun.manifest.context?.sessionId) === sessionId;
+}

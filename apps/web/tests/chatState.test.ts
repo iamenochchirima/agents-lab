@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createClientTurnId, isModelPickerDisabled, mergeEvents, modelSelectionFromRun, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "../src/features/platforms/chatState";
+import { canLoadSessionHistory, createClientTurnId, isModelPickerDisabled, mergeEvents, modelSelectionFromRun, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, type ChatMessage } from "../src/features/platforms/chatState";
 import type { RunEvent, RunView } from "../src/features/platforms/platformApi";
 
 const event: RunEvent = {
@@ -155,4 +155,13 @@ test("client turn IDs are unique and valid for server idempotency", () => {
   assert.notEqual(first, second);
   assert.match(first, /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
   assert.match(second, /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+});
+
+
+test("history waits for admitted session identity, including an interrupted first turn", () => {
+  assert.equal(canLoadSessionHistory("allocated-retry-session", null), false);
+  const admitted = runView({ manifest: { ...runView().manifest, context: { sessionId: "retained-session" } } });
+  assert.equal(canLoadSessionHistory("retained-session", admitted), true, "accepted or restored deep-link runs can load genuine history");
+  assert.equal(canLoadSessionHistory("another-allocated-session", admitted), false);
+  assert.equal(canLoadSessionHistory(null, admitted), false);
 });

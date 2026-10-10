@@ -40,7 +40,7 @@ import {
   type RunView,
 } from "./platformApi";
 import { ContextBudgetMeter } from "./RunStatusPanel";
-import { createClientTurnId, deduplicateMessages, isModelPickerDisabled, isRunRetrying, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, projectTurnActivity, mergeSessionHistory, type ChatMessage } from "./chatState";
+import { canLoadSessionHistory, createClientTurnId, deduplicateMessages, isModelPickerDisabled, isRunRetrying, mergeEvents, reuseRunView, runBelongsToPlatform, shouldActivateUrlRun, synchronizeModelSelection, upsertRunMessages, projectTurnActivity, mergeSessionHistory, type ChatMessage } from "./chatState";
 
 const terminalStatuses = new Set<RunStatus>(["completed", "failed", "cancelled", "reconciliation_required"]);
 const pendingTurnStoragePrefix = "agentlab.platform-chat.pending-turn.";
@@ -109,8 +109,9 @@ export function PlatformChatPage() {
   useEffect(() => {
     if (latestRun) setRuns(current => ({ ...current, [latestRun.runId]: reuseRunView(current[latestRun.runId] ?? null, latestRun) }));
   }, [latestRun]);
+  const historyAdmitted = canLoadSessionHistory(sessionId, latestRun);
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !historyAdmitted) return;
     const controller = new AbortController();
     void getSessionRuns(sessionId, undefined, controller.signal).then(page => {
       if (controller.signal.aborted) return;
@@ -119,7 +120,7 @@ export function PlatformChatPage() {
       setMessages(current => mergeSessionHistory(current, page.runs));
     }).catch(cause => { if (!controller.signal.aborted) setError(toUserMessage(cause)); });
     return () => controller.abort();
-  }, [sessionId]);
+  }, [sessionId, historyAdmitted]);
   async function loadEarlierTurns() {
     if (!sessionId || !historyCursor) return;
     const version = conversationVersion.current;
