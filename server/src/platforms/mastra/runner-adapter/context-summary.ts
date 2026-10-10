@@ -31,6 +31,8 @@ export interface MastraContextSummaryOptions {
   readonly manifest: RunManifest;
   readonly modelFactory: MastraModelFactory;
   readonly signal: AbortSignal;
+  readonly onRequest?: () => Promise<void>;
+  readonly onUsage?: (usage: unknown) => Promise<void>;
 }
 
 /**
@@ -85,11 +87,13 @@ async function summarizeWithMastraAgent(
   });
 
   try {
+    await options.onRequest?.();
     const output = await agent.generate(renderSummaryInput(request.messages), {
       runId: options.manifest.runId + ":context:" + request.sourceRevision,
       abortSignal: request.signal ?? options.signal,
       maxSteps: 1,
     });
+    await options.onUsage?.(output.totalUsage ?? output.usage);
     const summary = output.text.trim();
     if (summary.length === 0) {
       throw new MastraContextSummaryError("SUMMARY_EMPTY", "The Mastra context summary agent returned no text.");

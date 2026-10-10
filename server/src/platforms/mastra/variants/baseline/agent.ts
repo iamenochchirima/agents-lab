@@ -1,5 +1,6 @@
 import type { LibSQLStore } from "@mastra/libsql";
 import { Agent } from "@mastra/core/agent";
+import { createDurableAgent, DurableAgent } from "@mastra/core/agent/durable";
 import { Mastra } from "@mastra/core/mastra";
 import { createTool } from "@mastra/core/tools";
 
@@ -11,11 +12,19 @@ import { calculatorTool } from "../../../../capabilities/tools/calculator.js";
 import { ToolRegistry } from "../../../../capabilities/tools/registry.js";
 import { projectToolResult, toolResultEvidence } from "../../../../capabilities/tools/result-projection.js";
 import { createRuntimeToolRegistry } from "../../../../capabilities/extensions/runtime.js";
+import { preserveDurableRecoveryInputs } from "./durability/recovery-snapshots.js";
+import { sustainedModel } from "./models/sustained.js";
 import { MASTRA_AGENT_ID } from "./config/configuration.js";
 import { defaultMastraModelFactory, type MastraModelFactory } from "./models/factory.js";
 
 export interface BaselineAgentOptions {
   readonly storage?: LibSQLStore;
+  readonly sustained?: boolean;
+  readonly onModelTimeout?: () => void;
+  readonly beforeModelRequest?: (input: { prompt?: unknown; tools?: unknown; abortSignal?: AbortSignal }) => Promise<unknown>;
+  /** Persist the dispatch boundary before the SDK allows a tool to escape. */
+  readonly beforeToolDispatch?: (call: ToolCall) => Promise<void>;
+  readonly afterToolDispatch?: (call: ToolCall, result: ToolExecutionResult) => Promise<void>;
   readonly runId: string;
   readonly turnId: string;
   readonly signal: AbortSignal;
@@ -39,19 +48,26 @@ export interface BaselineAgentRuntime {
  * runner keeps this object platform-local so common server code only sees the
  * PlatformRunner contract.
  */
+export function createBaselineAgentRuntime(manifest: RunManifest, modelFactory?: MastraModelFactory, options?: BaselineAgentOptions & { sustained?: false }): BaselineAgentRuntime;
+export function createBaselineAgentRuntime(manifest: RunManifest, modelFactory: MastraModelFactory | undefined, options: BaselineAgentOptions & { sustained: true }): { agent: DurableAgent; mastra: Mastra };
+export function createBaselineAgentRuntime(manifest: RunManifest, modelFactory: MastraModelFactory | undefined, options: BaselineAgentOptions): { agent: Agent | DurableAgent; mastra: Mastra };
 export function createBaselineAgentRuntime(
   manifest: RunManifest,
   modelFactory: MastraModelFactory = defaultMastraModelFactory,
   options?: BaselineAgentOptions,
-): BaselineAgentRuntime {
-  const agent = createBaselineAgent(manifest, modelFactory, options);
+): { agent: Agent | DurableAgent; mastra: Mastra } {
+  const regular = createBaselineAgent(manifest, modelFactory, options);
+  const agent = options?.sustained
+    ? createDurableAgent({ agent: regular, maxSteps: manifest.capabilities?.tools.maxRounds, cleanupTimeoutMs: 0 })
+    : regular;
+  if (agent instanceof DurableAgent) preserveDurableRecoveryInputs(agent.getWorkflow());
   const mastra = new Mastra({
     agents: { [MASTRA_AGENT_ID]: agent },
     logger: false,
     ...(options?.storage ? { storage: options.storage } : {}),
   });
 
-  return { mastra, agent: mastra.getAgent(MASTRA_AGENT_ID) };
+  return { mastra, agent };
 }
 
 export function createBaselineAgent(
@@ -71,7 +87,7 @@ export function createBaselineAgent(
     id: MASTRA_AGENT_ID,
     name: "Mastra baseline agent",
     instructions: manifest.context.systemInstruction,
-    model: modelFactory(manifest),
+    model: options?.sustained ? sustainedModel(modelFactory(manifest), manifest, options.beforeModelRequest, options.onModelTimeout) : modelFactory(manifest),
     ...(manifest.selection?.experimentId === "agent-harness-live" ? { maxRetries: 0 } : {}),
     ...(options ? {
       tools: Object.fromEntries(registry.definitions().map((definition) => [definition.name, catalogAgentTool(registry, registry.resolve(definition.name)!, options, nextToolCall)])),
@@ -113,13 +129,16 @@ function catalogAgentTool(
         return JSON.stringify({ error: policy.message, code: policy.code });
       }
       options.onToolEvent?.("ToolExecutionStarted", payload);
+      await options.beforeToolDispatch?.(validation.call);
       const result = await registry.execute(validation, {
         runId: options.runId,
         turnId: options.turnId,
+        toolCallId: call.toolCallId,
         signal: context.abortSignal ?? options.signal,
         connectionRuntime: options.connectionRuntime ?? getDefaultConnectionRuntime(),
         connectionBindings: options.connectionBindings,
       });
+      await options.afterToolDispatch?.(validation.call, result);
       options.onToolObservation?.(validation.call, result);
       options.onToolEvent?.(toolEventKind(result.status), {
         ...payload,

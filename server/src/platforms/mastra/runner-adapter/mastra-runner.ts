@@ -1,3 +1,7 @@
+import { DurableAgent, type AgentSuspendedEventData } from "@mastra/core/agent/durable";
+import { remainingExecutionMs, executionDeadlineReached } from "../../../capabilities/execution/policy.js";
+import { prepareMastraRoundContext } from "./round-context.js";
+import { acquireLocalOwner } from "./local-owner.js";
 import { LibSQLStore } from "@mastra/libsql";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
@@ -70,16 +74,19 @@ interface PreparedMastraContext {
 type MastraContextMessage = NonNullable<AgentExecutionOptionsBase<unknown>["context"]>[number];
 
 /**
- * Runs one direct Mastra Agent.generate() call in the Lab server process.
+ * Runs default direct Agent execution or opt-in native durable sustained execution.
  *
  * Native suspended snapshots and the safe execution projection persist in
  * LibSQL/state storage. Waiting runs can be reconstructed without new inference;
- * arbitrary in-flight Agent.generate() recovery remains unsupported.
+ * sustained runs can recover native checkpoints under one local owner.
  */
 export class MastraBaselineRunner implements PlatformRunner {
   readonly platform = "mastra" as const;
   readonly variant = "baseline" as const;
+  readonly supportedExecutionModes = ["sustained"] as const;
 
+  private readonly operations = new Map<string, Promise<void>>();
+  private readonly persistence = new Map<string, Promise<void>>();
   private readonly executions = new Map<string, MastraExecutionRecord>();
   private readonly environment: MastraEnvironment;
   private readonly executionTimeoutMs: number;
@@ -145,6 +152,15 @@ export class MastraBaselineRunner implements PlatformRunner {
     }
 
     const reference = referenceFor(manifest);
+    if (manifest.execution) {
+      try { await readFile(join(this.recordDirectory(manifest.runId), "state.json"), "utf8"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      const retained = await this.loadRetained(reference);
+      if (retained) {
+        if (retained.status === "running" || retained.status === "queued") this.launch(retained, undefined, true);
+        return reference;
+      }
+    }
     const record: MastraExecutionRecord = {
       reference,
       manifest,
@@ -158,9 +174,18 @@ export class MastraBaselineRunner implements PlatformRunner {
       cancellationReason: null,
       timeoutRequested: false,
     };
+    let owner: (() => Promise<void>) | undefined;
+    if (manifest.execution) {
+      await mkdir(this.recordDirectory(manifest.runId), { recursive: true, mode: 0o700 });
+      owner = await acquireLocalOwner(this.recordDirectory(manifest.runId)) ?? undefined;
+      if (!owner) throw new Error("The Mastra sustained run already has a local owner.");
+      // Recheck admission after claiming ownership, before publishing a new state.
+      const retained = await this.loadRetained(reference);
+      if (retained) { this.launch(retained, undefined, true, owner); return reference; }
+    }
     this.executions.set(manifest.runId, record);
-    await this.persist(record);
-    void this.execute(record);
+    try { await this.persist(record); } catch (error) { await owner?.(); throw error; }
+    this.launch(record, undefined, false, owner);
     return reference;
   }
 
@@ -211,13 +236,15 @@ export class MastraBaselineRunner implements PlatformRunner {
         !["approved", "denied"].includes(decision.decision)) {
       return { accepted: false, alreadyTerminal: false, message: "Mastra is not awaiting this exact action decision." };
     }
+    const owner = record.manifest.execution ? await acquireLocalOwner(this.recordDirectory(record.manifest.runId)) : undefined;
+    if (owner === null) return { accepted: false, alreadyTerminal: false, message: "The Mastra sustained run already has a local owner." };
     record.status = "running";
     if (decision.decision === "denied") this.addEvent(record, "ToolPolicyDenied", {
       toolCallId: pending.call.toolCallId, toolName: pending.call.name, code: "TOOL_APPROVAL_DENIED" });
     this.addEvent(record, "WorkflowResumed", { reason: "invocation_review", requestId: pending.requestId,
       toolCallId: pending.call.toolCallId, decision: decision.decision });
-    await this.persist(record);
-    void this.execute(record, decision);
+    try { await this.persist(record); } catch (error) { await owner?.(); throw error; }
+    this.launch(record, decision, false, owner);
     return { accepted: true, alreadyTerminal: false, message: "Continuing the existing Mastra suspended run." };
   }
 
@@ -238,11 +265,32 @@ export class MastraBaselineRunner implements PlatformRunner {
     };
   }
 
-  private async execute(record: MastraExecutionRecord, resume?: InvocationResumeInput): Promise<void> {
+  async close(): Promise<void> {
+    await Promise.all(this.operations.values());
+  }
+
+  private launch(record: MastraExecutionRecord, resume?: InvocationResumeInput, recover = false, owner?: () => Promise<void>): void {
+    const operation = this.execute(record, resume, recover, owner);
+    this.operations.set(record.manifest.runId, operation);
+    void operation.finally(() => {
+      if (this.operations.get(record.manifest.runId) === operation) this.operations.delete(record.manifest.runId);
+    }).catch(() => undefined);
+  }
+
+  private async execute(record: MastraExecutionRecord, resume?: InvocationResumeInput, recover = false, owner?: () => Promise<void>): Promise<void> {
+    const sustained = record.manifest.execution !== undefined;
+    let release: (() => Promise<void>) | null = owner ?? null;
+    let storage: LibSQLStore | null = null;
+    let durable: DurableAgent | null = null;
+    if (sustained && !release) {
+      await mkdir(this.recordDirectory(record.manifest.runId), { recursive: true, mode: 0o700 });
+      release = await acquireLocalOwner(this.recordDirectory(record.manifest.runId));
+      if (!release) return;
+    }
     const configuration = configurationFromManifest(record.manifest);
     record.status = "running";
-    if (!resume) this.addEvent(record, "AgentStarted", { agentId: configuration.agentId });
-    if (!resume) this.addEvent(record, "ModelRequested", {
+    if (!resume && !recover) this.addEvent(record, "AgentStarted", { agentId: configuration.agentId });
+    if (!resume && !recover) this.addEvent(record, "ModelRequested", {
       model: record.manifest.model.model,
       provider: record.manifest.model.provider,
     });
@@ -250,19 +298,61 @@ export class MastraBaselineRunner implements PlatformRunner {
     const timeout = setTimeout(() => {
       record.timeoutRequested = true;
       record.controller.abort("Mastra execution timed out.");
-    }, configuration.executionTimeoutMs);
+    }, sustained ? Math.max(1, remainingExecutionMs(record.manifest.execution, this.now().getTime())) : configuration.executionTimeoutMs);
 
     try {
-      const context = resume ? null : await this.prepareContext(record, configuration.contextRoot);
+      if (recover && (record.pendingDispatches?.length || record.unsafeOutcome)) {
+        this.addEvent(record, "RecoveryRefused", { reason: "external_dispatch_unresolved", toolCallIds: record.pendingDispatches ?? [] });
+        const error = new Error("An external dispatch is unresolved. Inspect its receipt before recovery.");
+        error.name = "MASTRA_RECOVERY_UNSAFE";
+        throw error;
+      }
+      await this.persist(record);
+      if (executionDeadlineReached(record.manifest.execution, this.now().getTime())) throw new Error("The sustained execution deadline has expired.");
+      const context = resume || recover ? null : await this.prepareContext(record, configuration.contextRoot);
       const directory = this.recordDirectory(record.manifest.runId);
       await mkdir(directory, { recursive: true, mode: 0o700 });
-      const storage = new LibSQLStore({ id: `agentlab-mastra-${record.manifest.runId}`, url: `file:${join(directory, "snapshots.db")}` });
+      storage = new LibSQLStore({ id: `agentlab-mastra-${record.manifest.runId}`, url: `file:${join(directory, "snapshots.db")}` });
       await storage.init();
       const liveEval = isFreeEval(record.manifest.selection?.experimentId);
       const modelFactory = liveEval ? (manifest: RunManifest) => liveOpenRouterModel(manifest,
         (observation) => this.addEvent(record, "EvalModelObserved", { observation })) : this.modelFactory;
       const runtime = createBaselineAgentRuntime(record.manifest, modelFactory, {
         storage,
+        sustained,
+        onModelTimeout: sustained ? () => { record.timeoutRequested = true; record.controller.abort("Mastra model request timed out."); } : undefined,
+        beforeModelRequest: sustained ? async input => {
+          const summary = createMastraContextSummaryGenerator({ ...this.summaryObservationOptions(record), manifest: record.manifest, modelFactory: modelFactory ?? defaultMastraModelFactory,
+            signal: AbortSignal.any([record.controller.signal, AbortSignal.timeout(Math.max(1, Math.min(record.manifest.execution!.modelTimeoutMs, remainingExecutionMs(record.manifest.execution, this.now().getTime()))))]) });
+          const prepared = await prepareMastraRoundContext(record.manifest, this.contextRoot, directory,
+            record.events.filter(event => event.kind === "DurableModelRequested").length + 1, input,
+            { summarize: async request => {
+              this.addEvent(record, "ContextCompactionStarted", { trigger: "native_round", sourceRevision: request.sourceRevision });
+              await this.persist(record);
+              const content = await summary.summarize(request);
+              this.addEvent(record, "ContextCompactionCompleted", { trigger: "native_round", sourceRevision: request.sourceRevision });
+              await this.persist(record);
+              return content;
+            } });
+          if (prepared.budget) this.addEvent(record, "RoundContextPrepared", { budget: prepared.budget, compaction: prepared.compaction });
+          this.addEvent(record, "DurableModelRequested", { purpose: "agent", operation: recover ? "recovery" : "execution" });
+          await this.persist(record);
+          return prepared.prompt;
+        } : undefined,
+        beforeToolDispatch: sustained ? async call => {
+          if (executionDeadlineReached(record.manifest.execution, this.now().getTime())) throw new Error("The sustained execution deadline has expired before tool dispatch.");
+          const isExternal = (record.manifest.capabilities?.connections ?? []).some(binding => binding.toolName === call.name)
+            || record.manifest.capabilities?.toolCatalog?.tools.some(tool => tool.definition.name === call.name && (tool.execution.kind === "hosted" || tool.definition.executionKind === "connection" || ["write", "external"].includes(tool.definition.riskClass)));
+          if (isExternal) record.pendingDispatches = [...(record.pendingDispatches ?? []), call.toolCallId];
+          await this.persist(record);
+        } : undefined,
+        afterToolDispatch: sustained ? async (_call, result) => {
+          // An acknowledged tool result can precede its native checkpoint. Keep
+          // the external barrier through the segment rather than authorize replay
+          // in that window. Terminal native settlement clears it below.
+          record.unsafeOutcome ||= result.status === "unknown" || result.effect?.state === "unknown";
+          await this.persist(record);
+        } : undefined,
         runId: record.manifest.runId,
         turnId: record.manifest.context.turnId ?? `${record.manifest.runId}:turn:1`,
         signal: record.controller.signal,
@@ -278,6 +368,7 @@ export class MastraBaselineRunner implements PlatformRunner {
           if (kind === "ToolExecutionStarted" && payload.toolCallId === record.pendingReview?.call.toolCallId) record.pendingReview = null;
         },
       });
+      durable = runtime.agent instanceof DurableAgent ? runtime.agent : null;
       const generationOptions = {
         runId: record.manifest.runId,
         abortSignal: record.controller.signal,
@@ -289,7 +380,7 @@ export class MastraBaselineRunner implements PlatformRunner {
         maxSteps: Math.max(1, configuration.maxToolRounds - record.events.filter(event => event.kind === "AgentStepCompleted").length),
         stopWhen: () => record.controller.signal.aborted || record.events.some(event => event.kind === "ToolExecutionUnknown"),
         ...(liveEval ? { modelSettings: { maxOutputTokens: getFreeEvalSettings(record.manifest.selection?.experimentId)!.maxOutputTokens } } : {}),
-        onStepFinish: (step) => {
+        onStepFinish: (step: unknown) => {
           // Mastra can reject schema-invalid or absent tools before our execute
           // callback. Normalize those observed SDK calls without inventing dispatch.
           const sdk = step as unknown as { toolCalls?: readonly { payload?: { toolCallId?: string; toolName?: string; args?: unknown } }[];
@@ -314,11 +405,32 @@ export class MastraBaselineRunner implements PlatformRunner {
           });
         },
       } satisfies AgentExecutionOptionsBase<unknown>;
-      const output = resume
+      if (recover && durable) {
+        const snapshot = await durable.getWorkflow().getWorkflowRunById(record.manifest.runId, { withNestedWorkflows: true });
+        await writeFile(join(directory, "recovery-snapshot.json"), JSON.stringify(snapshot), { mode: 0o600 });
+      }
+      let observeSuspension!: (data: AgentSuspendedEventData) => void;
+      const suspension = new Promise<{ finishReason: "suspended"; suspendPayload: AgentSuspendedEventData;
+        text: string; totalUsage: undefined; usage: undefined }>(resolve => {
+        observeSuspension = data => resolve({ finishReason: "suspended", suspendPayload: data,
+          text: "", totalUsage: undefined, usage: undefined });
+      });
+      const recovered = recover && runtime.agent instanceof DurableAgent
+        ? await runtime.agent.recover(record.manifest.runId, { abortSignal: record.controller.signal,
+          onStepFinish: generationOptions.onStepFinish, onSuspended: observeSuspension }) : null;
+      // The public recover stream intentionally stays open at suspension. Observe
+      // its native suspension callback so waiting releases the local owner/timer.
+      const output = recovered
+        ? await Promise.race([recovered.output.getFullOutput(), suspension])
+        : resume
         ? resume.decision === "approved"
           ? await runtime.agent.approveToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: resume.toolCallId })
           : await runtime.agent.declineToolCallGenerate({ ...generationOptions, runId: record.manifest.runId, toolCallId: resume.toolCallId, reason: JSON.stringify({ code: "TOOL_APPROVAL_DENIED", error: resume.reason ?? "The proposed action was declined." }) })
         : await runtime.agent.generate(record.manifest.task.prompt, generationOptions);
+      if (recovered) {
+        await waitForDurableSettlement(runtime.agent as DurableAgent, record.manifest.runId);
+        recovered.cleanup();
+      }
       if (output.finishReason === "suspended") {
         const payload = output.suspendPayload as { toolCallId?: string; toolName?: string; args?: unknown } | undefined;
         if (!payload?.toolCallId || !payload.toolName || !record.manifest.capabilities?.toolCatalog) throw new Error("Mastra suspended without an admitted tool identity.");
@@ -382,11 +494,20 @@ export class MastraBaselineRunner implements PlatformRunner {
       }
       const terminalStatus = record.status === "cancelled" ? "cancelled" : "failed";
       record.result = resultFor(record, terminalStatus, null, failure, emptyUsage());
+      if (error instanceof Error && error.name === "MASTRA_RECOVERY_UNSAFE") {
+        record.result = { ...record.result, status: "reconciliation_required", error: { code: error.name, message: error.message, failureKind: "outcome_unknown", retryable: false } };
+      }
       record.trajectory = trajectoryFor(record);
       record.metrics = metricsFor(record, emptyUsage());
     } finally {
+      // The pinned generate API emits its final output before native settlement.
+      // Keep storage and local ownership until the workflow has finished writing.
+      if (durable && record.status !== "suspended") await waitForDurableSettlement(durable, record.manifest.runId);
       clearTimeout(timeout);
+      if (record.status === "completed") record.pendingDispatches = [];
       await this.persist(record);
+      await storage?.close();
+      await release?.();
     }
   }
 
@@ -402,6 +523,7 @@ export class MastraBaselineRunner implements PlatformRunner {
     const summarizer = isFreeEval(record.manifest.selection?.experimentId)
       ? { summarize: async () => { throw new Error("Live development probes do not permit context compaction."); } }
       : createMastraContextSummaryGenerator({
+      ...this.summaryObservationOptions(record),
       manifest: record.manifest,
       modelFactory: this.modelFactory ?? defaultMastraModelFactory,
       signal: record.controller.signal,
@@ -442,13 +564,33 @@ export class MastraBaselineRunner implements PlatformRunner {
     return join(this.contextRoot, ".mastra-baseline", runId);
   }
 
-  private async persist(record: MastraExecutionRecord): Promise<void> {
+  private persist(record: MastraExecutionRecord): Promise<void> {
+    const prior = this.persistence.get(record.manifest.runId) ?? Promise.resolve();
+    const operation = prior.then(() => this.writeRecord(record));
+    this.persistence.set(record.manifest.runId, operation.catch(() => undefined));
+    return operation;
+  }
+
+  private async writeRecord(record: MastraExecutionRecord): Promise<void> {
     const directory = this.recordDirectory(record.manifest.runId);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const { controller: _controller, ...retained } = record;
     const temporary = join(directory, `state.${randomUUID()}.pending`);
     await writeFile(temporary, JSON.stringify(retained), { mode: 0o600 });
     await rename(temporary, join(directory, "state.json"));
+  }
+
+  private summaryObservationOptions(record: MastraExecutionRecord) {
+    return {
+      onRequest: async () => {
+        this.addEvent(record, "SummaryModelRequested", { purpose: "summary" });
+        await this.persist(record);
+      },
+      onUsage: async (usage: unknown) => {
+        this.addEvent(record, "SummaryModelCompleted", { purpose: "summary", usage: safeUsage(usage) });
+        await this.persist(record);
+      },
+    };
   }
 
   private async requireExecution(reference: PlatformExecutionReference): Promise<MastraExecutionRecord> {
@@ -458,16 +600,37 @@ export class MastraBaselineRunner implements PlatformRunner {
 
     const runId = reference.executionId.slice(EXECUTION_ID_PREFIX.length);
     const current = this.executions.get(runId);
-    if (current) return current;
+    if (current && (this.operations.has(runId) || !current.manifest.execution || current.status === "suspended" || isTerminal(current.status))) return current;
+    const retained = await this.loadRetained(reference);
+    if (!retained) throw new Error(`Mastra execution was not found or cannot be safely reconstructed: ${reference.executionId}.`);
+    if (retained.manifest.execution && (retained.status === "running" || retained.status === "queued")) {
+      this.launch(retained, undefined, true);
+    }
+    return retained;
+  }
+
+  private async loadRetained(reference: PlatformExecutionReference): Promise<MastraExecutionRecord | null> {
+    const runId = reference.executionId.slice(EXECUTION_ID_PREFIX.length);
     try {
       const saved = JSON.parse(await readFile(join(this.recordDirectory(runId), "state.json"), "utf8")) as Omit<MastraExecutionRecord, "controller">;
       if (saved.manifest.runId !== runId || saved.reference.executionId !== reference.executionId ||
-          (saved.status !== "suspended" && !isTerminal(saved.status))) throw new Error("Only durable waiting or terminal runs can be reconstructed.");
+          (!saved.manifest.execution && saved.status !== "suspended" && !isTerminal(saved.status))) return null;
       const record = { ...saved, controller: new AbortController() };
       this.executions.set(runId, record);
       return record;
-    } catch { throw new Error(`Mastra execution was not found or cannot be safely reconstructed: ${reference.executionId}.`); }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   }
+
+}
+
+/** Bound waiting for the SDK's trailing snapshot writes after final stream output. */
+export async function waitForDurableSettlement(agent: DurableAgent, runId: string): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const state = await agent.getWorkflow().getWorkflowRunById(runId);
+    if (!state || ["success", "failed", "canceled", "suspended", "bailed", "tripwire"].includes(state.status)) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error("The Mastra durable workflow did not settle within five seconds.");
 }
 
 function referenceFor(manifest: RunManifest): PlatformExecutionReference {
@@ -477,7 +640,8 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
     mastraVersion: MASTRA_CORE_VERSION,
     agentId: MASTRA_AGENT_ID,
     operation: MASTRA_OPERATION,
-    processScoped: true,
+    processScoped: !manifest.execution,
+    ...(manifest.execution ? { executionMode: "sustained", nativeEngine: "durable-agentic-loop", localSingleProcess: true } : {}),
     storage: MASTRA_STORAGE_MODE,
     modelProvider: manifest.model.provider,
     model: manifest.model.model,
@@ -541,10 +705,16 @@ function trajectoryFor(record: MastraExecutionRecord): RunTrajectory {
 
 function metricsFor(record: MastraExecutionRecord, usage: RunUsage): RunMetrics {
   const finishedAt = record.events.at(-1)?.occurredAt ?? record.startedAt;
-  const modelCallCount = record.events.filter((event) => event.kind === "AgentStepCompleted").length;
+  const modelCallCount = record.events.filter((event) => event.kind === (record.manifest.execution ? "DurableModelRequested" : "AgentStepCompleted")).length;
   const observedModelCallCount = modelCallCount > 0
     ? modelCallCount
-    : record.events.some((event) => event.kind === "ModelRequested") ? 1 : 0;
+    : !record.manifest.execution && record.events.some((event) => event.kind === "ModelRequested") ? 1 : 0;
+  const summaryRequests = record.events.filter(event => event.kind === "SummaryModelRequested").length;
+  const summaries = record.events.filter(event => event.kind === "SummaryModelCompleted").map(event => normalizeUsage(event.payload.usage));
+  const sumTokens = (key: keyof RunUsage): number | null => {
+    if (usage[key] === null || summaries.length !== summaryRequests || summaries.some(summary => summary[key] === null)) return null;
+    return summaries.reduce((total, summary) => total + (summary[key] ?? 0), usage[key] ?? 0);
+  };
   const toolCallCount = record.events.filter((event) => event.kind === "ToolCallRequested").length;
   const toolAttemptCount = record.events.filter((event) => event.kind === "ToolExecutionStarted").length;
   return {
@@ -552,13 +722,13 @@ function metricsFor(record: MastraExecutionRecord, usage: RunUsage): RunMetrics 
     runId: record.manifest.runId,
     status: record.status === "completed" || record.status === "cancelled" ? record.status : "failed",
     durationMs: Math.max(0, Date.parse(finishedAt) - Date.parse(record.startedAt)),
-    modelCallCount: observedModelCallCount,
-    modelAttemptCount: observedModelCallCount,
+    modelCallCount: observedModelCallCount + summaryRequests,
+    modelAttemptCount: observedModelCallCount + summaryRequests,
     toolCallCount,
     toolAttemptCount,
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    totalTokens: usage.totalTokens,
+    inputTokens: sumTokens("inputTokens"),
+    outputTokens: sumTokens("outputTokens"),
+    totalTokens: sumTokens("totalTokens"),
     costUsd: null,
   };
 }

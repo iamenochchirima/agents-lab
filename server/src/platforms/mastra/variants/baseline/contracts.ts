@@ -25,4 +25,7 @@ export interface MastraExecutionRecord {
   metrics: RunMetrics | null;
   cancellationReason: string | null;
   timeoutRequested: boolean;
+  /** Conservative recovery barrier, persisted before external tool dispatch. */
+  pendingDispatches?: string[];
+  unsafeOutcome?: boolean;
 }

@@ -20,7 +20,7 @@ export interface DeterministicFakeModelOptions {
  * model router instead.
  */
 export function createDeterministicFakeModel(options: DeterministicFakeModelOptions): MastraModelConfig {
-  return {
+  const model = {
     specificationVersion: "v2",
     provider: "agentlab.fake",
     modelId: options.modelId,
@@ -100,37 +100,28 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
         warnings: [],
       };
     },
-    doStream: async ({ abortSignal }: FakeStreamOptions = {}) => {
-      if (abortSignal?.aborted) throw abortError();
-      const text = options.responseText ?? "Deterministic Mastra response.";
+    doStream: async ({ abortSignal, prompt }: FakeGenerateOptions = {}) => {
+      const result = await model.doGenerate({ abortSignal, prompt });
       const stream = new ReadableStream<Record<string, unknown>>({
         start(controller) {
           controller.enqueue({ type: "stream-start", warnings: [] });
-          controller.enqueue({
-            type: "response-metadata",
-            id: `${options.modelId}-stream`,
-            modelId: options.modelId,
-            timestamp: new Date(0),
-          });
-          controller.enqueue({ type: "text-start", id: "mastra-text-1" });
-          controller.enqueue({ type: "text-delta", id: "mastra-text-1", delta: text });
-          controller.enqueue({ type: "text-end", id: "mastra-text-1" });
-          controller.enqueue({
-            type: "finish",
-            finishReason: "stop",
-            usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
-          });
+          controller.enqueue({ type: "response-metadata", id: `${options.modelId}-stream`, modelId: options.modelId, timestamp: new Date(0) });
+          for (const content of result.content) {
+            if (content.type === "tool-call") controller.enqueue(content);
+            else if ("text" in content) {
+              controller.enqueue({ type: "text-start", id: "mastra-text-1" });
+              controller.enqueue({ type: "text-delta", id: "mastra-text-1", delta: content.text });
+              controller.enqueue({ type: "text-end", id: "mastra-text-1" });
+            }
+          }
+          controller.enqueue({ type: "finish", finishReason: result.finishReason, usage: result.usage });
           controller.close();
         },
       });
-      return {
-        stream,
-        request: { body: "{}" },
-        response: { headers: {} },
-        rawResponse: {},
-      };
+      return { stream, request: { body: "{}" }, response: { headers: {} }, rawResponse: {} };
     },
-  } as unknown as MastraModelConfig;
+  };
+  return model as unknown as MastraModelConfig;
 }
 
 interface FakeGenerateOptions {
@@ -138,9 +129,6 @@ interface FakeGenerateOptions {
   readonly prompt?: unknown;
 }
 
-interface FakeStreamOptions {
-  readonly abortSignal?: AbortSignal;
-}
 
 function containsToolResult(prompt: unknown): boolean {
   if (!Array.isArray(prompt)) return false;

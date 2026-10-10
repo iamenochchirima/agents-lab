@@ -13,7 +13,7 @@ profile also registers the server-owned `mcp_fixture_lookup` binding as a native
 tool; discovery and invocation cross the local Streamable HTTP boundary from the tool
 execution path. Context sessions, snapshots, token budgets, and transcript continuation
 belong to the Lab. Mastra Storage persists native approval snapshots in LibSQL;
-Mastra Memory and workflows are not enabled. Waiting runs can be reconstructed
+In default short mode, Mastra Memory and durable workflows are not enabled. Waiting runs can be reconstructed
 without repeating model inference. Arbitrary in-flight generation remains
 process-local and is not recoverable after a server restart.
 
@@ -92,3 +92,27 @@ AGENTLAB_REVIEW_PLATFORMS=mastra AGENTLAB_RUN_NATIVE_INVOCATION_REVIEW=1 \
 
 This verifies harness behavior rather than real-model decision quality. Run
 evidence is retained under `lab/runs/.review-proof/`.
+
+## Opt-in sustained execution
+
+A manifest with `execution.mode: "sustained"` selects native `createDurableAgent`
+orchestration while retaining the baseline identity and tool catalog. The default
+direct-agent mode remains available for historical comparisons. The separate
+`workflow` variant rejects sustained execution until it has its own native loop.
+
+This mode persists native LibSQL checkpoints, enforces the admitted absolute
+deadline and per-request model timeout, and adopts a dead local worker through
+native `recover`. Approval resumes the exact retained native call. Shared context
+compaction runs before each request, preserving pending calls, the current task,
+and selected skills. Full SDK history and private per-round context evidence remain
+inspectable. Summary model requests and reported usage contribute to run metrics.
+
+Recovery refuses unresolved external dispatches with `reconciliation_required`;
+native replay cannot establish a remote effect's outcome. A PID/token lease allows
+one owner on one host. See [semantics](../../docs/semantics.md) for limitations,
+the pinned snapshot workaround, and retained evidence.
+
+```sh
+cd server
+pnpm exec tsx --test tests/platforms/mastra/*.test.ts
+```

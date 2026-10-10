@@ -34,8 +34,12 @@ test("Mastra fake context summarizer is deterministic and bounded", async () => 
 test("Mastra provider context summarizer uses a native Agent call", async () => {
   const manifest = manifestFor("openrouter", "openai/gpt-4o-mini");
   let selectedModel: string | null = null;
+  let requests = 0;
+  let usage: unknown;
   const generator = createMastraContextSummaryGenerator({
     manifest,
+    onRequest: async () => { requests++; },
+    onUsage: async observed => { usage = observed; },
     modelFactory: (selectedManifest) => {
       selectedModel = selectedManifest.model.model;
       return createDeterministicFakeModel({
@@ -54,6 +58,8 @@ test("Mastra provider context summarizer uses a native Agent call", async () => 
 
   assert.equal(summary, "Native Mastra summary.");
   assert.equal(selectedModel, "openai/gpt-4o-mini");
+  assert.equal(requests, 1);
+  assert.ok(usage);
 });
 
 test("Mastra context summarizer rejects an empty deterministic context", async () => {

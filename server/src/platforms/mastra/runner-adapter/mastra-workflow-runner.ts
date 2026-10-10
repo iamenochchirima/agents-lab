@@ -135,6 +135,9 @@ export class MastraWorkflowRunner implements PlatformRunner {
     if (manifest.platform !== "mastra" || manifest.variant !== "workflow") {
       return { valid: false, reason: "The Mastra workflow runner only accepts mastra/workflow manifests." };
     }
+    if (manifest.execution?.mode === "sustained") {
+      return { valid: false, reason: "Sustained Mastra execution is supported by the baseline durable agent; the workflow variant has no sustained native loop." };
+    }
     if (manifest.model.provider === "fake" && !["fake-success", "fake-slow", "fake-provider-failure", "fake-ambiguous", "fake-tool-call", "fake-mcp-connected-tool", "fake-context"].includes(manifest.model.model)) {
       return { valid: false, reason: `The Mastra fake model is unsupported: ${manifest.model.model}.` };
     }

@@ -431,3 +431,12 @@ async function waitForEvent(
   }
   throw new Error(`Mastra workflow did not emit ${expected}.`);
 }
+
+
+test("workflow variant rejects sustained execution before native dispatch", () => {
+  const runner = new MastraWorkflowRunner();
+  const base = manifestFor(runner, "Test");
+  const checked = runner.validate({ ...base, execution: { schemaVersion: 1, mode: "sustained",
+    deadlineAt: new Date(Date.now() + 60_000).toISOString(), modelTimeoutMs: 10_000 } });
+  assert.equal(checked.valid, false); assert.match(checked.reason ?? "", /baseline durable agent/);
+});
