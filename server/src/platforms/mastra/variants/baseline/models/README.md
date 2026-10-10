@@ -22,3 +22,10 @@ Usage normalization preserves missing native counts as `null`. Mastra can
 aggregate missing counts into zero, so an unmeasured zero total is not reported
 as measured usage. Explicitly measured zero counts remain zero. Step evidence
 reads the SDK's actual usage object rather than its scalar-only metadata reader.
+
+`fake-clarification` is an explicitly selected recovery fixture that requests
+`ask_user` once through the real Agent stream lifecycle. Its final text reads only
+the structured matched answer from tool results. It does not echo the system
+instruction or full retained prompt. The fixture is available only through the
+fake provider, never as a fallback for real model failures. Native process-restart
+checks use it to verify suspension and exact reply delivery without provider cost.

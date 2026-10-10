@@ -51,12 +51,15 @@ With the owned isolated stack running, execute:
 node server/src/evals/native-clarification-recovery.mjs
 ```
 
-This uses scripted fake-model choices through actual Temporal and Restate
-executions. It replaces only the worker or handler service owned by
+This uses scripted fake-model choices through actual native executions. The
+default platforms are Temporal and Restate; select the remaining platforms with
+`AGENTLAB_NATIVE_CLARIFICATION_PLATFORMS=langgraph,mastra,vercel-workflows`. It replaces only the worker or handler service owned by
 `sustained-stack.mjs`, preserves the original native invocation, question,
 tool-call identity and absolute deadline, then submits and retries one matched
 answer. It asserts completion and one consumed input without a second question.
-The explicit synthetic model context window is 32768 tokens; it is a fixture
+Each outcome records its explicitly selected fake model. Mastra uses
+`fake-clarification`, Vercel uses `fake-tools`, and the other platforms use
+`fake-eval-behaviour`. The explicit synthetic model context window is 32768 tokens; it is a fixture
 setting rather than provider metadata. This validates native execution recovery,
 not real-model reasoning. Separate real-model acceptance supplies that evidence.
 

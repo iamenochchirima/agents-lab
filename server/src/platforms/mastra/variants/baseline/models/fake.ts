@@ -6,8 +6,9 @@ export interface DeterministicFakeModelOptions {
   readonly delayMs?: number;
   readonly failure?: "provider" | "ambiguous";
   readonly toolCall?: boolean;
-  readonly toolName?: "calculator" | "fixture_lookup" | "fixture_write" | "mcp_fixture_lookup";
+  readonly toolName?: "calculator" | "fixture_lookup" | "fixture_write" | "mcp_fixture_lookup" | "ask_user";
   readonly contextAware?: boolean;
+  readonly toolArguments?: Readonly<Record<string, unknown>>;
   /** Synthetic request observer for local fixtures; never attached to real providers. */
   readonly onRequest?: (prompt: unknown) => void;
 }
@@ -46,9 +47,9 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
           return {
             content: [{
               type: "tool-call",
-              toolCallId: options.toolName === "fixture_lookup" ? "mastra-fixture-lookup-1" : options.toolName === "fixture_write" ? "mastra-fixture-write-1" : options.toolName === "mcp_fixture_lookup" ? "mastra-mcp-fixture-lookup-1" : "mastra-calculator-1",
+              toolCallId: options.toolName === "ask_user" ? "mastra-clarification-1" : options.toolName === "fixture_lookup" ? "mastra-fixture-lookup-1" : options.toolName === "fixture_write" ? "mastra-fixture-write-1" : options.toolName === "mcp_fixture_lookup" ? "mastra-mcp-fixture-lookup-1" : "mastra-calculator-1",
               toolName: options.toolName ?? "calculator",
-            input: options.toolName === "fixture_lookup" || options.toolName === "mcp_fixture_lookup"
+              input: options.toolArguments ? JSON.stringify(options.toolArguments) : options.toolName === "fixture_lookup" || options.toolName === "mcp_fixture_lookup"
                 ? JSON.stringify({ key: "alpha" })
                 : options.toolName === "fixture_write"
                   ? JSON.stringify({ key: "alpha", value: "updated" })
@@ -63,7 +64,7 @@ export function createDeterministicFakeModel(options: DeterministicFakeModelOpti
         return {
           content: [{
             type: "text",
-            text: options.toolName === "fixture_lookup" || options.toolName === "mcp_fixture_lookup"
+            text: options.toolName === "ask_user" ? `Clarification answer: ${clarificationAnswer(prompt) ?? "Matched reply received."}` : options.toolName === "fixture_lookup" || options.toolName === "mcp_fixture_lookup"
               ? "The local fixture returned {\"key\":\"alpha\",\"value\":\"local fixture alpha\"}."
               : options.toolName === "fixture_write"
                 ? "The local fixture write returned {\"key\":\"alpha\",\"written\":true}."
@@ -154,4 +155,23 @@ function abortError(): Error {
   const error = new Error("The deterministic model was aborted.");
   error.name = "AbortError";
   return error;
+}
+
+/** Read SDK tool-result text or structured answer fields without echoing the prompt. */
+function clarificationAnswer(value: unknown): string | null {
+  if (typeof value === "string") {
+    try { return clarificationAnswer(JSON.parse(value)); } catch { return null; }
+  }
+  if (Array.isArray(value)) return value.map(clarificationAnswer).find(answer => answer !== null) ?? null;
+  if (value && typeof value === "object") {
+    const part = value as {type?: string; output?: unknown};
+    if (part.type === "tool-result") {
+      if (typeof part.output === "string") return part.output;
+      const output = part.output as {type?: string; value?: unknown} | undefined;
+      if (output?.type === "text" && typeof output.value === "string") return output.value;
+    }
+    if (typeof (value as {answer?: unknown}).answer === "string") return (value as {answer: string}).answer;
+    return Object.values(value).map(clarificationAnswer).find(answer => answer !== null) ?? null;
+  }
+  return null;
 }

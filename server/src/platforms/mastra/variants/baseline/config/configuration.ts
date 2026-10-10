@@ -17,6 +17,7 @@ export const DETERMINISTIC_FAKE_MODELS = [
   "fake-mcp-connected-tool",
   "fake-connected-write",
   "fake-context",
+  "fake-clarification",
   "fake-eval-behaviour",
 ] as const;
 

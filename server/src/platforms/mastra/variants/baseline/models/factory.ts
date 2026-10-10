@@ -18,6 +18,8 @@ export const defaultMastraModelFactory: MastraModelFactory = (manifest) => {
 
 function fakeModelFromName(modelName: string): MastraModelConfig {
   switch (modelName) {
+    case "fake-clarification":
+      return createDeterministicFakeModel({modelId: modelName, toolCall: true, toolName: "ask_user", toolArguments: {question: "Which fictional notes should this recovery task review?"}});
     case "fake-success":
       return createDeterministicFakeModel({ modelId: modelName });
     case "fake-slow":
