@@ -81,3 +81,12 @@ Those optional services remain available through named commands in
 When using a non-default web port, the launcher passes the matching browser origin to
 the server automatically. If the web app and server are started separately, set
 `AGENTLAB_API_ORIGIN` to the web app's origin.
+
+When starting services separately on a non-default API port, use the same
+`AGENTLAB_API_PORT` for each launcher command, including workers and platform
+services. For example, start the API with
+`AGENTLAB_API_PORT=4319 ./scripts/run_local_stack.sh server` and the Temporal
+worker with `AGENTLAB_API_PORT=4319 ./scripts/run_local_stack.sh worker`.
+The launcher derives the browser proxy and internal capability host from that
+port. `AGENTLAB_CAPABILITY_HOST_URL` overrides the internal endpoint when workers
+reach the API at a different address. The browser origin is a separate setting.
