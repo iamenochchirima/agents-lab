@@ -144,4 +144,7 @@ test("inventory explains exact review submission only when an admitted tool requ
   assert.match(context, /before dispatching that call/);
   assert.match(context, /plain-text confirmation request does not create/);
   assert.match(context, /Denial prevents that call/);
+  assert.match(context, /not a provider validation failure or cancellation of the whole task/);
+  assert.match(context, /Do not retry or bypass it/);
+  assert.match(context, /within the admitted permissions/);
 });
