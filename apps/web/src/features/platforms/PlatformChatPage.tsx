@@ -15,7 +15,7 @@ import { ConnectedCapabilitiesSummary } from "./ConnectedCapabilitiesSummary";
 import { useInvocationReviews } from "./useInvocationReviews";
 import { InvocationReviewPanel } from "./InvocationReviewPanel";
 import { RunFailureDetails } from "./RunFailureDetails";
-import { defaultCapabilityProfile, requiresUpfrontApproval, toolOutcomeView } from "./connectedToolState";
+import { defaultCapabilityProfile, memoryMutationNotice, requiresUpfrontApproval, toolOutcomeView } from "./connectedToolState";
 import { scenarioCatalog } from "../scenarios/scenarioCatalog";
 import { appPaths } from "../../routes/paths";
 import type { PlatformOutletContext } from "./PlatformWorkspaceLayout";
@@ -789,6 +789,8 @@ function ToolOutcomeDetails({ event, runId }: { event: RunEvent; runId: string }
   const connection = isRecord(event.payload.connection) ? event.payload.connection : null;
   const callId = typeof event.payload.toolCallId === "string" ? event.payload.toolCallId : null;
   const name = typeof event.payload.toolName === "string" ? event.payload.toolName : formatEventKind(event.kind);
+  const memoryNotice = memoryMutationNotice(event.payload, event.kind);
+  if (memoryNotice) return <><strong>{memoryNotice}</strong><small>{name} · {event.source}</small></>;
   if (!outcome.label && !outcome.presentation && !connection) return <><strong>{name} · {event.kind === "ToolExecutionCompleted" ? "Completed" : event.kind === "ToolExecutionStarted" ? "Running" : formatEventKind(event.kind)}</strong><small>{event.source}</small></>;
   return <details className="tool-outcome-details">
     <summary><strong>{name}</strong><span>{outcome.label ?? formatEventKind(event.kind)}</span></summary>

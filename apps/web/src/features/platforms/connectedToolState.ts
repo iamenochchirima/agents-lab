@@ -25,7 +25,14 @@ export function defaultCapabilityProfile(_platform: string, _variant: string): s
 }
 
 
-/** Historical events without effect metadata stay unspecified; tool success alone is not business confirmation. */
+/** Local memory notices require a completed mutation, never a proposal or unknown outcome. */
+export function memoryMutationNotice(payload: Readonly<Record<string, unknown>>, eventKind: string): string | null {
+  if (eventKind !== "ToolExecutionCompleted" || payload.status === "failed" || payload.presentation === "invalid") return null;
+  const notices: Record<string, string> = { memory_save: "Memory saved", memory_update: "Memory updated", memory_forget: "Memory forgotten · earlier chat history is retained" };
+  return typeof payload.toolName === "string" ? notices[payload.toolName] ?? null : null;
+}
+
+/** Historical events without effect metadata stay unspecified; tool success alone does not confirm external state. */
 export function toolOutcomeView(payload: Readonly<Record<string, unknown>>, eventKind: string): {
   readonly label: string | null; readonly presentation: string | null; readonly evidence: string | null; readonly uncertain: boolean;
 } {

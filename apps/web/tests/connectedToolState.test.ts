@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReviewAction, defaultCapabilityProfile, invocationDecision, requiresUpfrontApproval, toolActivityState, toolOutcomeView } from "../src/features/platforms/connectedToolState";
+import { canReviewAction, defaultCapabilityProfile, invocationDecision, memoryMutationNotice, requiresUpfrontApproval, toolActivityState, toolOutcomeView } from "../src/features/platforms/connectedToolState";
 import type { CapabilityProfile, InvocationReviewView } from "../src/features/platforms/platformApi";
 
 const capability: CapabilityProfile["capabilities"][number] = { id: "assign", version: "1.0.0", kind: "tool", displayName: "Assign", description: "Assign a record", risk: "write", operations: ["execute"] };
@@ -52,4 +52,13 @@ test("invalid presentation and native unknown status do not erase confirmed effe
   assert.equal(view.presentation, "Result schema invalid");
   assert.equal(view.uncertain, false);
   assert.equal(toolOutcomeView({ effect: { state: "unknown" }, presentation: "valid" }, "ToolExecutionCompleted").uncertain, true);
+});
+
+test("memory notices distinguish completed writes from proposed, failed and uncertain writes", () => {
+  const payload = { toolName: "memory_save", status: "completed" };
+  assert.equal(memoryMutationNotice(payload, "ToolExecutionCompleted"), "Memory saved");
+  for (const kind of ["ToolCallRequested", "ToolExecutionStarted", "ToolExecutionUnknown", "ToolExecutionFailed"]) assert.equal(memoryMutationNotice(payload, kind), null);
+  assert.equal(memoryMutationNotice({ ...payload, presentation: "invalid" }, "ToolExecutionCompleted"), null);
+  assert.equal(memoryMutationNotice({ ...payload, status: "failed" }, "ToolExecutionCompleted"), null);
+  assert.match(memoryMutationNotice({ toolName: "memory_forget" }, "ToolExecutionCompleted")!, /earlier chat history is retained/);
 });
