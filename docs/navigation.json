@@ -67,6 +67,8 @@
         "server/src/integrations/README.md",
         "docs/guides/memos-notes.md",
         "docs/guides/capability-management.md",
+        "docs/guides/connected-agent-tools.md",
+        "docs/guides/connected-tool-readiness.md",
         "docs/guides/connection-credentials.md",
         "docs/guides/capability-package-imports.md"
       ]

@@ -175,9 +175,9 @@ Implementation checklist:
 
 Acceptance and minimal checks:
 
-- [ ] One custom-port launch drives a native worker through review preparation; it cannot silently use the default port.
-- [ ] API and Temporal chat become usable while a fixture represents unavailable optional runtime startup.
-- [ ] Restart the selected worker and verify the same pending-review identity can still be inspected. Do not redo a full fault matrix.
+- [x] One custom-port launch drives a native worker through review preparation; it cannot silently use the default port.
+- [x] API and Temporal chat become usable while a fixture represents unavailable optional runtime startup.
+- [x] Restart the selected worker and verify the same pending-review identity can still be inspected. Do not redo a full fault matrix.
 
 Commit checkpoint: `fix(platforms): isolate optional startup and align native tool endpoints` with setup documentation and focused regression coverage.
 
@@ -233,7 +233,7 @@ Implementation checklist:
 - [x] Audit approve/deny/renew paths in Temporal, Restate, LangGraph and Mastra. Change only demonstrated gaps; retain native mechanisms.
 - [x] Distinguish a denied call from workflow failure. Preserve accurate connection, host, model and provider failure categories instead of surfacing only `Activity task failed`.
 - [ ] Project a safe cause chain and actionable message without leaking tokens, private response bodies or local secret paths.
-- [ ] Keep status, response validity and effect certainty independent. Existing adapters may use different terminal statuses for unknown effects; the transcript must explain them consistently without erasing native records.
+- [x] Keep status, response validity and effect certainty independent. Existing adapters may use different terminal statuses for unknown effects; the transcript must explain them consistently without erasing native records.
 - [x] Confirm new turns admit refreshed shared tools while existing run snapshots and pending calls remain frozen. Catalog changes must not silently substitute a schema or connection during approval.
 - [ ] Add or refresh a second source with different tool names and schemas, then use its actual supported operations through the same host and chat UI without native runtime edits.
 - [x] Verify generic argument presentation, model schema exposure, dispatch and result projection with an unfamiliar tool descriptor. No connector-specific conditionals or hardcoded tool lists may be needed.
@@ -260,11 +260,11 @@ Implementation checklist:
 - [x] Add a new tool or refresh a changed schema and verify that a subsequent turn sees the new descriptor, while existing run/review snapshots remain unchanged. Use a controlled connector fixture for this check rather than installing many providers.
 - [x] Include skill discovery/loading in one suitable task, recording the skill version and showing that its instructions do not grant new tools or permissions.
 - [x] Record one exact free model ID, provider, parameters and current zero-price catalog observation. Use the same settings across comparable trials. If unavailable, mark the trial blocked/error; never silently substitute a paid or different model.
-- [ ] Use disposable targets with a unique platform/trial marker and agreed workspace or destination. No incidental assignment, invitations, mentions, notifications or automatic cleanup unless separately requested.
+- [x] Use disposable targets with a unique platform/trial marker and agreed workspace or destination. No incidental assignment, invitations, mentions, notifications or automatic cleanup unless separately requested.
 - [ ] Use the actual frontend to approve proposed account mutations. Automated fixture approvals remain clearly labeled scripted checks.
-- [ ] Retain real model decisions, review identities, tool arguments in protected evidence, provider IDs, receipts and independent verification results. Public summaries contain bounded metadata without personal provider content.
-- [ ] Keep failed attempts, refusals, rate limits and runtime errors visible. Interpret model decision failures separately from harness faults.
-- [ ] Stop the trial on unknown effects and reconcile by stable provider identity/marker before any fresh create. A new generated call ID does not make a repeated write safe.
+- [x] Retain real model decisions, review identities, tool arguments in protected evidence, provider IDs, receipts and independent verification results. Public summaries contain bounded metadata without personal provider content.
+- [x] Keep failed attempts, refusals, rate limits and runtime errors visible. Interpret model decision failures separately from harness faults.
+- [x] Stop the trial on unknown effects and reconcile by stable provider identity/marker before any fresh create. A new generated call ID does not make a repeated write safe.
 
 Generic prompts, filled with a selected service and operations it actually supports:
 
@@ -289,11 +289,18 @@ Acceptance matrix:
 
 | Variant | Dynamic discovery and read | Approved action + verification | Supported follow-up + verification | Denial leaves provider unchanged | Inline review verified | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Temporal baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
-| Restate baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
-| LangGraph baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
-| Mastra baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
-| Vercel Workflows baseline | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| Temporal baseline | [x] | [x] | [x] | [x] | [ ] Human observation pending | Nemotron five-stage pass |
+| Restate baseline | [x] | [x] | [x] Effect/read observed; final response failed | [ ] | [ ] | Nemotron and Cohere partial trials |
+| LangGraph baseline | [x] | [x] | [x] | [x] | [ ] | Cohere five-stage pass |
+| Mastra baseline | [x] | [x] | [x] | [x] | [ ] | Cohere error-stage failure |
+| Vercel Workflows baseline | [x] | [x] Effect/read observed; final response rate-limited | [ ] | [ ] | Cohere partial trial |
+
+Every row uses the controlled MCP dispatch board and independent HTTP handbook.
+Checked tool behaviors indicate observed calls and independently inspected effects,
+not a complete passing conversation or real-account/browser proof. Ordered supplemental
+audits confirm post-mutation reads. The full five-stage task currently passes only
+Temporal and LangGraph. Browser fixture coverage is shared; actual human observation
+remains separate and pending.
 
 Use one disposable target per platform where mutations apply and one successful pass through these behaviors. Run the cross-source discovery/schema check once per shared implementation; do not multiply every connector by every platform. Record the chosen sources and operations in each matrix row. A missing provider operation is not applicable; do not count it as a passing test. The selected write-capable source must still establish the approval/verification/denial behaviors across the five platforms.
 
@@ -303,10 +310,10 @@ Commit checkpoint: reusable acceptance procedure and bounded result summaries; l
 
 ### 6. Closeout and reproducible contributor path
 
-- [ ] Update local setup, platform semantics and chat usage docs with actual behavior and limitations. Correct relevant legacy business-agent/profile instructions where they conflict with current UX; do not rewrite unrelated historical experiments.
-- [ ] Publish a readiness table separating service reachable, tools exposed, tool execution observed, review continuation observed and recovery verified.
-- [ ] Preserve tool catalog/source versions, model parameters, context strategy, timestamps, native identities and evidence links for each trial.
-- [ ] Record nonpriority runtimes as not validated in this phase. Inngest, DBOS, Hatchet, Trigger.dev and hosted deployment have separate dependency/credential work; do not mark them tool-ready from a green health endpoint.
+- [x] Update local setup, platform semantics and chat usage docs with actual behavior and limitations. Correct relevant legacy business-agent/profile instructions where they conflict with current UX; do not rewrite unrelated historical experiments.
+- [x] Publish a readiness table separating service reachable, tools exposed, tool execution observed, review continuation observed and recovery verified.
+- [x] Preserve tool catalog/source versions, model parameters, context strategy, timestamps, native identities and evidence links for each trial.
+- [x] Record nonpriority runtimes as not validated in this phase. Inngest, DBOS, Hatchet, Trigger.dev and hosted deployment have separate dependency/credential work; do not mark them tool-ready from a green health endpoint.
 - [ ] Run final relevant typechecks/builds once after integration, regenerate docs, inspect staged changes for secrets/unrelated files, and commit the closeout.
 - [ ] Complete the audit below before declaring implementation finished.
 
@@ -350,7 +357,7 @@ Add only focused tests for new startup behavior, transcript projection and the n
 
 ## Current position
 
-Milestones 1 and 2 have verified implementation checkpoints. Native end-to-end startup/recovery and real-model acceptance still require the checks left open above. Milestone 3 is committed and verified through actual native fixture execution. Milestones 4 and 5 are in progress. The five-platform real-model matrix is not yet established. The goal remains active.
+Milestones 1 and 2 have verified implementation checkpoints, with their remaining UX/launcher observations explicitly open. Milestone 3 is committed and verified through actual native fixture execution. Milestones 4 and 5 have retained live evidence for all five platforms, but full task acceptance passes only Temporal and LangGraph. The implementation is in verification and closeout; actual human frontend observation and the remaining task stages are outstanding. The goal remains active.
 
 ### Evidence ledger
 
@@ -373,7 +380,23 @@ Milestones 1 and 2 have verified implementation checkpoints. Native end-to-end s
 - `3406731`: approval-card outcome labels now use each call's own evidence. A later unknown effect cannot relabel an earlier completed/denied action; unfinished terminal calls show stopped without claiming rollback. Four static rendering checks and web typecheck passed. No browser automation was performed.
 - Human frontend observation is pending for actual free-model Temporal run `7e3120a8-56dd-4f5b-9335-cc36ae44d2c6`, exact request `f391f775-b1fe-4451-86a7-ed14865a5f40` revision 1. Its proposal targets fictional namespace `cap-chat-manual-20261010`, record `cedar`, owner `Morgan`, expected revision 1; provider effect count was zero before asking the user. It was deliberately not automatically approved. Frontend proxy/API access confirms the pending record, but is not visual proof.
 - `2dd269c`: actual management rediscovery schema-change check passed once. A changed MCP descriptor is published for later admission while the original run snapshot retains its old schema.
+- `25d575d` and the readiness checkpoint: contributor docs explain refreshed shared chat capabilities, exact inline review lifecycle, five native boundaries, setup and unvalidated variants. Documentation generation and local links passed. The normal chat has no profile selector; advanced management/experiment profiles remain available.
+- `79eb4ad`: approved-stage verification now requires a retrieval completion after the final successful mutation, not merely two reads. Server typecheck passed. Separate ordered audits of all three original reports confirm every originally passing approved stage meets ordering; original failures and reports remain unchanged.
+- `69ef363`: Vercel classifies provider errors as retained workflow result data and disables automatic model-step retries. Server build and 19 focused Vercel checks passed, including actual local World rate-limit and transport failures with exactly one dispatch and no exposed private body. The native workflow may complete with a failed agent result; both statuses remain recorded. Original live trials used the pre-fix SDK retry policy and are not retroactively improved.
+- `e1568ea`: chat keeps explicit confirmed effects separate from invalid response presentation, even when the normalized event reports an unknown result. Ten targeted rendering/outcome checks and web typecheck passed. Safe phase/code/category projection exists for known failures; unexpected SDK failures retain a generic safe fallback. Full arbitrary cause-chain presentation remains unverified.
+- Actual isolated readiness observation: API `/ready` returned ready, Temporal health reachable and Hatchet unavailable with retained startup error. Temporal real-model calls/reviews reached capability host port 4322. The six selected Temporal native checks include pending-review reconstruction across worker restart. This establishes core/native availability without making every optional runtime ready.
 - Comparable Nemotron trial completed at `2026-10-10T12:08:25.879Z`; report `lab/runs/.connected-proof/connected-b527de87-5b0f-492e-ba68-e96285f90e87/summary.json`. Exact model `nvidia/nemotron-3.5-lightning:free`, fresh zero-price observation, no fallback, 2048 output tokens. Temporal passed retrieval, assignment, correction, denial and missing-record error. Mastra passed the first three stages but produced plaintext confirmation at denial. LangGraph produced planning text without required retrieval calls. Restate passed retrieval and assignment; correction saved the requested owner but omitted the required verification read despite claiming it. Vercel passed retrieval but produced plaintext confirmation instead of the assignment tool proposal. These failures establish incomplete model behavior, not full platform acceptance. The separate Gemma comparison retains unchanged criteria and is in progress.
+- The separate Gemma comparison is now terminal: all five platforms received provider HTTP 429 before task completion. Report `connected-94ccd090-5e0b-4756-8574-80c4d5f0ba7d` retains this availability failure; Vercel's pre-fix four SDK attempts are explicitly recorded. No Retry-After evidence was retained, so no cooldown is inferred.
+- The separate Cohere comparison is terminal in `connected-01d0222c-3e1e-498a-8b81-46ce35308765`: LangGraph passed all five stages; Mastra passed retrieval, assignment, correction and denial but queried the wrong key in the error stage. Restate performed and verified correction before an empty final provider response; Vercel performed and verified assignment before final-request rate limiting. These are partial observations with known effects, not successful complete conversations. No further model trials were launched after availability failures.
+- Owned Vercel service was restarted after the verified model-error fix, retaining its local World store, host port 4322 and timeout controls. Health and readiness report ready; no model request was made just to check restart. API 4322 and frontend 5173 remain the isolated fixture environment for the pending human proposal. User-owned API 4318 was left untouched; restore normal frontend routing only after that proposal is observed or explicitly abandoned.
+
+### Remaining completion work
+
+- Obtain the pending actual frontend observation and retained-decision/result observation. Do not automatically decide the manual request or bypass the browser tool's URL restriction.
+- Complete the still-unobserved Restate/Vercel live denial and Vercel follow-up behaviors when a free provider is available. Preserve original task failures; do not turn fixture-native proof into real-model acceptance.
+- Resolve or explicitly scope the remaining UX scroll/focus observation and full safe cause-chain presentation. Known failure phase/code/category handling is verified; arbitrary SDK causes remain a generic safe fallback.
+- Complete launcher ownership/selected-required-service failure observation without disturbing the unrelated normal API. Existing endpoint and optional startup checks are already verified.
+- Restore ordinary frontend routing safely after the isolated human walkthrough, then perform the final definition-of-done audit. The goal has not been marked complete.
 
 The initial architecture table above records the baseline before implementation, not current readiness. Remaining checks and the final acceptance matrix are authoritative for completion.
 

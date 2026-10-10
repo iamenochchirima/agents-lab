@@ -7,6 +7,8 @@ file storage. Core agents have no native filesystem workspace.
 
 The [compatibility matrix](connected-tool-compatibility.md) lists the exact HTTP,
 MCP, authentication, approval and retained-evidence subset, with verified limits.
+The [readiness checkpoint](connected-tool-readiness.md) separates native checks,
+real-model task observations and remaining frontend verification.
 
 ## Start the development services
 
