@@ -70,3 +70,13 @@ No listener lookup or arbitrary PID replacement is supported. A hung start or
 failed replacement fails the acceptance run; successful service startup alone is
 not acceptance evidence. This fixture does not run indefinitely in the background
 or establish guarantees for an unacknowledged external effect.
+
+If observation aborts before a stage reaches its normal grading boundary (for
+example, an unexpected proposal), the observer marks the stage failed and retains
+an `*-abort.json` record. It requests cancellation once, then independently reads
+the native run and fixture state even if that request fails. The record separates
+cancellation errors, native status and provider-read errors; available native
+snapshots are also saved in the usual stage artifact. These are immediate
+observations after the cancellation attempt. A running snapshot does not establish
+termination, and an observed terminal state does not roll back prior effects.
+Original cohort reports are not rewritten by this change.

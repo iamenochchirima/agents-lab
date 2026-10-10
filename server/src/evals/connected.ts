@@ -1,3 +1,4 @@
+import { observeConnectedAbort } from './connected-abort-evidence.js';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
@@ -183,7 +184,6 @@ async function main() {
         const decided = new Set<string>();
         while (['queued', 'running', 'suspended'].includes(run.status)) {
           if (Date.now() > deadline) {
-            await json(`${api}/api/runs/${run.runId}/cancel`, { reason: 'Controlled connected acceptance deadline' });
             throw new Error('Observation deadline; cancellation requested, provider state retained for reconciliation');
           }
           const actions: InvocationReviewView[] = (await json(`${api}/api/runs/${run.runId}/actions`)).actions;
@@ -272,7 +272,21 @@ async function main() {
       outcome.verdict = 'fail'; outcome.error = error instanceof Error ? error.message : 'Observation failed';
       const latest = outcome.stages.at(-1);
       if (latest?.runId && !latest.nativeStatus) {
-        try { latest.interruption = await json(`${api}/api/runs/${latest.runId}/cancel`, { reason: 'Controlled observer stopped before further fixture authorization' }); } catch { latest.cancellationUnconfirmed = true; }
+        latest.verdict = 'fail'; latest.observerError = outcome.error;
+        const abort = await observeConnectedAbort({
+          cancel: () => json(`${api}/api/runs/${latest.runId}/cancel`, { reason: 'Controlled observer stopped before further fixture authorization' }),
+          inspect: () => json(`${api}/api/runs/${latest.runId}`),
+          readProviderState: () => json(stateUrl(namespace)),
+        });
+        latest.abortEvidence = abort; latest.interruption = abort.cancellation.response;
+        latest.cancellationUnconfirmed = abort.cancellationConfirmed !== true;
+        if (Object.hasOwn(abort, 'providerState')) latest.after = abort.providerState;
+        if (abort.native) {
+          latest.nativeStatus = abort.native.status; latest.error = abort.native.result?.error; latest.output = abort.native.result?.output;
+          latest.failureCategory = abort.native.result?.error?.failureKind ?? 'observer-abort';
+          await writeFile(join(directory, `${platform}-${latest.id}.json`), JSON.stringify(abort.native, null, 2) + '\n');
+        }
+        await writeFile(join(directory, `${platform}-${latest.id}-abort.json`), JSON.stringify(abort, null, 2) + '\n');
       }
     }
     await save();
