@@ -224,3 +224,14 @@ and zero retries remain enforced immediately before dispatch. A real pinned nati
 SDK tool loop with mocked HTTP responses verifies two requests, one calculator
 effect, correlated call ID and usage. The previous explicit streaming rejection
 was a harness incompatibility, before provider dispatch, rather than model quality.
+
+Dynamic skill activation is projected from persisted session state before every
+native request. A loader's JSON tool result differs from the authority-free
+`Previously loaded skill ...` activation text. If that text is absent, the adapter
+adds it as protected **user** context before budgeting/compaction, with skill ID,
+version, digest, `trust: untrusted` and `authority: none` in private provenance.
+It grants no tool permissions or system authority. Existing copies are recognized
+and protected without repeated injection. The regression executes the actual
+skill loader, persists activation during an admitted turn, compacts away the
+completed loader group, and verifies the procedure and provenance remain in the
+next native request projection.
