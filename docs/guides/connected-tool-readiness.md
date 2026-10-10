@@ -10,9 +10,9 @@ service does not establish that an agent will complete a task.
 | --- | --- | --- | --- | --- | --- |
 | Temporal | Yes | Yes | Yes, assignment and correction | Six selected checks passed | Passed with Nemotron |
 | LangGraph | Yes | Yes | Yes, assignment and correction | Included in the 14-check existing-platform suite | Passed with Cohere |
-| Mastra | Yes | Yes | Yes, assignment and correction | Included in the 14-check existing-platform suite | Incomplete; Cohere queried the wrong record in the error stage |
-| Restate | Yes | Yes | Yes, assignment and correction | Included in the 14-check existing-platform suite | Incomplete; Cohere verified the correction, then returned an empty final response |
-| Vercel Workflows | Yes | Yes | Yes, assignment | Five actual local World/host checks passed | Incomplete; Cohere verified the assignment, then a final model request was rate-limited |
+| Mastra | Yes | Yes | Yes, assignment and correction | Included in the 14-check existing-platform suite | Required behaviors observed; missing-record stage corrected in a separate Cohere continuation |
+| Restate | Yes | Yes | Yes, assignment and correction | Included in the 14-check existing-platform suite | Required behaviors observed across trials and explicit continuations; original correction/error failures retained |
+| Vercel Workflows | Yes | Yes | Yes, assignment and correction | Five actual local World/host checks passed | Required behaviors observed; original final-request rate limit retained separately from continuation |
 
 The sources were a fictional MCP dispatch board and a separately configured HTTP
 handbook. The imported skill, tool names and schemas were scenario declarations;
@@ -66,17 +66,50 @@ explain how to reproduce these observations. Original reports are retained;
 supplemental ordered-verification audits check that a verification read follows the
 mutation rather than accepting two reads performed before it.
 
+Corrective continuations reuse the exact source model and session, independently
+check current provider state and never replay confirmed mutations. They establish
+remaining behaviors, not an initial full-workflow pass. Only Temporal and LangGraph
+passed all five stages in an initial trial.
+
+Commit `4eb9841` requires durable receipt fingerprints to match the exact declared
+namespace/key and structured returned state, with verification after the effect or
+denial. Supplemental audits retained original reports and downgraded a Restate error
+that requested `release` rather than `missing`. A subsequent error-only observation
+requested the exact missing key and passed without changing provider state. Vercel's
+extra typo read is retained; its final verification read targets the correct record.
+Some model denial prose invents a policy or permission cause. The enforced denial and
+saved state are verified; narrative accuracy is not established by that behavior check.
+
+Additional evidence directories:
+
+- `connected-2959e6f4-a4df-4ae2-af8d-b2f50dd11076`: Restate denial continuation; original wrong-key error retained and downgraded by audit.
+- `connected-a59365be-c56a-4edd-927c-98f95f930a76`: Mastra error and Vercel correction/denial/error continuations.
+- `connected-360f8f68-92e2-47e3-94d7-bb852f8a64d3`: exact missing-key Restate corrective observation.
+
 ## Frontend and remaining limits
 
 Four browser fixture cases exercised approvals inside assistant turns, pending
-refresh, denial, retained history and decision retries. Focused rendering checks
-cover safe metadata, call-specific outcomes and focus restoration when a focused
-exact-review control disappears. Assistant messages include concise failure guidance
-and expandable phase/code/category details from allowlisted records. Arbitrary SDK
-cause messages, provider bodies and secret paths are never rendered. These checks
-do not establish visual layout, scroll behavior or responsive focus handling. A real-model frontend walkthrough
-for the current controlled proposal is still pending. The browser control tool
-rejected the local URL, so API inspection is not presented as visual evidence.
+refresh, denial, retained history and decision retries. Direct supported in-app
+browser access subsequently recovered. The actual free-model Temporal chat was
+verified through pending refresh, approval, a read-only next turn, keyboard denial
+and retained history. Independent provider inspection confirmed one saved change
+and no change after denial. The user also reported approving the earlier proposal
+inside chat; its retained decision and post-mutation read corroborate that report.
+
+Existing real-model review histories were inspected in the actual frontend on all
+five platforms. Cards appear inside the owning assistant article, outside the
+configuration sidebar. Non-Temporal decisions were scripted fixture decisions in
+these runs; inspecting their histories does not claim fresh human clicks on every
+platform. Evidence: `.connected-proof/browser-direct-20261010` and
+`.connected-proof/manual-chat-20261010`.
+
+A 390px browser check exposed conversation grid overflow; commit `5dfdd3a` bounded
+the grid column and wrapped bubble text. The same conversation was rechecked with
+no chat/card horizontal overflow, alongside a 1280px check. Keyboard decisions and
+focus-restoration policy checks passed; native focus edge cases were not exhaustively
+measured. Failure details render allowlisted phase/code/category records, with a
+safe generic fallback for unclassified adapter errors and confirmed effects shown
+separately. Arbitrary SDK cause messages, provider bodies and secret paths are excluded.
 
 The control plane remained ready and Temporal executed tools while optional Hatchet
 startup was unavailable. Native calls used the isolated API on port 4322, including

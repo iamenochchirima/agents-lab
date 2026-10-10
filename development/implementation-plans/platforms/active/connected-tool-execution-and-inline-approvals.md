@@ -188,11 +188,11 @@ Implementation checklist:
 - [x] Extract review polling and decision state from sidebar presentation. Use existing review APIs and a run-keyed controller with cancellation on conversation changes.
 - [x] Project assistant text, tool activities, approval cards and results in recorded turn order. Do not persist a second copy of authoritative approvals inside message text.
 - [x] Audit persisted session history and run lookup. Restore the relevant run IDs on refresh; if missing, add a bounded read-only session/run listing using existing indexes and safe projections.
-- [ ] Render the approval UX above, including multiple calls, retained decisions, expiry, renewal, cancellation and unknown outcomes.
+- [x] Render the approval UX above, including multiple calls, retained decisions, expiry, renewal, cancellation and unknown outcomes.
 - [x] Move exact reviews, legacy grant prompts and applicable workflow pause controls out of the sidebar. Keep sidebar inspection read-only.
 - [x] Keep composer state legible while a run waits: show `Waiting for approval`, allow Stop, and preserve draft text. Do not launch another conflicting session turn.
 - [x] Refetch persisted review state after uncertain submission and reuse existing decision IDs. Avoid independent polling loops for every card.
-- [ ] Preserve stable scroll and focus when cards change, with responsive layout and safe argument rendering.
+- [x] Preserve stable scroll and focus when cards change, with responsive layout and safe argument rendering. Direct keyboard/browser checks and focused restoration-policy tests cover this scope; native focus edge cases were not exhaustively measured.
 
 Acceptance and minimal checks:
 
@@ -235,7 +235,7 @@ Implementation checklist:
 - [x] Project a safe cause chain and actionable message without leaking tokens, private response bodies or local secret paths. Known codes and native status are allowlisted; arbitrary SDK causes retain a generic fallback, rather than exposing their raw text.
 - [x] Keep status, response validity and effect certainty independent. Existing adapters may use different terminal statuses for unknown effects; the transcript must explain them consistently without erasing native records.
 - [x] Confirm new turns admit refreshed shared tools while existing run snapshots and pending calls remain frozen. Catalog changes must not silently substitute a schema or connection during approval.
-- [ ] Add or refresh a second source with different tool names and schemas, then use its actual supported operations through the same host and chat UI without native runtime edits.
+- [x] Add or refresh a second source with different tool names and schemas, then use its actual supported operations through the same host and chat UI without native runtime edits.
 - [x] Verify generic argument presentation, model schema exposure, dispatch and result projection with an unfamiliar tool descriptor. No connector-specific conditionals or hardcoded tool lists may be needed.
 
 Acceptance and minimal checks:
@@ -261,7 +261,7 @@ Implementation checklist:
 - [x] Include skill discovery/loading in one suitable task, recording the skill version and showing that its instructions do not grant new tools or permissions.
 - [x] Record one exact free model ID, provider, parameters and current zero-price catalog observation. Use the same settings across comparable trials. If unavailable, mark the trial blocked/error; never silently substitute a paid or different model.
 - [x] Use disposable targets with a unique platform/trial marker and agreed workspace or destination. No incidental assignment, invitations, mentions, notifications or automatic cleanup unless separately requested.
-- [ ] Use the actual frontend to approve proposed account mutations. Automated fixture approvals remain clearly labeled scripted checks.
+- [x] Use the actual frontend to approve proposed connected mutations on the declared disposable target. Direct browser decisions used a fictional source as permitted by this procedure; personal-account mutations remain outside this phase. Automated fixture decisions are separately labeled scripted checks.
 - [x] Retain real model decisions, review identities, tool arguments in protected evidence, provider IDs, receipts and independent verification results. Public summaries contain bounded metadata without personal provider content.
 - [x] Keep failed attempts, refusals, rate limits and runtime errors visible. Interpret model decision failures separately from harness faults.
 - [x] Stop the trial on unknown effects and reconcile by stable provider identity/marker before any fresh create. A new generated call ID does not make a repeated write safe.
@@ -289,18 +289,19 @@ Acceptance matrix:
 
 | Variant | Dynamic discovery and read | Approved action + verification | Supported follow-up + verification | Denial leaves provider unchanged | Inline review verified | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| Temporal baseline | [x] | [x] | [x] | [x] | [ ] Human observation pending | Nemotron five-stage pass |
-| Restate baseline | [x] | [x] | [x] Effect/read observed; final response failed | [ ] | [ ] | Nemotron and Cohere partial trials |
-| LangGraph baseline | [x] | [x] | [x] | [x] | [ ] | Cohere five-stage pass |
-| Mastra baseline | [x] | [x] | [x] | [x] | [ ] | Cohere error-stage failure |
-| Vercel Workflows baseline | [x] | [x] Effect/read observed; final response rate-limited | [ ] | [ ] | Cohere partial trial |
+| Temporal baseline | [x] | [x] | [x] | [x] | [x] Direct approve/deny, refresh/history | Nemotron five-stage pass |
+| Restate baseline | [x] | [x] | [x] Effect/read observed; original final response failed | [x] | [x] Retained history inspected | Initial trials plus separate corrected continuations |
+| LangGraph baseline | [x] | [x] | [x] | [x] | [x] Retained history inspected | Cohere five-stage pass |
+| Mastra baseline | [x] | [x] | [x] | [x] | [x] Retained history inspected | Original error failure plus corrective continuation |
+| Vercel Workflows baseline | [x] | [x] Effect/read observed; original final response rate-limited | [x] | [x] | [x] Retained history inspected | Initial trial plus corrective continuation |
 
 Every row uses the controlled MCP dispatch board and independent HTTP handbook.
 Checked tool behaviors indicate observed calls and independently inspected effects,
 not a complete passing conversation or real-account/browser proof. Ordered supplemental
 audits confirm post-mutation reads. The full five-stage task currently passes only
-Temporal and LangGraph. Browser fixture coverage is shared; actual human observation
-remains separate and pending.
+Temporal and LangGraph. Browser fixture coverage is shared. Actual Temporal chat decisions/refresh/next-turn
+behavior and retained card placement on all five platforms are now observed; the
+non-Temporal decisions remain scripted fixture decisions.
 
 Use one disposable target per platform where mutations apply and one successful pass through these behaviors. Run the cross-source discovery/schema check once per shared implementation; do not multiply every connector by every platform. Record the chosen sources and operations in each matrix row. A missing provider operation is not applicable; do not count it as a passing test. The selected write-capable source must still establish the approval/verification/denial behaviors across the five platforms.
 
@@ -357,7 +358,7 @@ Add only focused tests for new startup behavior, transcript projection and the n
 
 ## Current position
 
-Milestones 1–4 have committed implementation and focused verification. Actual isolated launcher failure and bounded safe failure presentation are verified. Real-model continuations now exercise the remaining task stages; their verification-call targets are being audited separately from model narrative accuracy. Only Temporal and LangGraph passed an initial full task. Actual human frontend observation, responsive scroll/focus observation and ordinary routing restoration remain outstanding. The goal remains active.
+Milestones 1–5 have committed implementation and focused verification, including exact-target receipt audits and direct browser checks. Required tool behaviors are observed across initial trials and explicit corrective continuations; only Temporal and LangGraph passed an initial full task. Model narrative inaccuracies and original failures remain recorded. Ordinary routing restoration and the final closeout audit remain outstanding. The goal remains active.
 
 ### Evidence ledger
 
@@ -378,41 +379,43 @@ Milestones 1–4 have committed implementation and focused verification. Actual 
 - `93ce4a9`: reusable generic connected-task driver and scenario with independent MCP/HTTP sources, an imported skill, provider-state verification, strict local fixture decision scope, durable call/error/denial observations and fresh retained zero-price catalog metadata. A real MCP schema refresh check passed and proved prior descriptors remain frozen. The five-platform real-model trial is in progress; no pass is claimed yet. Manual Temporal trials demonstrated real tool reads and, on follow-up, actual skill loading, but the selected model claimed a review pause without submitting the mutation tool call. Their empty review lists and unchanged provider state establish that no actionable review or effect occurred. These remain model-behavior failures, not frontend acceptance. Earlier timeouts, omitted skill loads and a driver argument-projection defect remain recorded with a posthoc incomplete-observation audit.
 
 - `3406731`: approval-card outcome labels now use each call's own evidence. A later unknown effect cannot relabel an earlier completed/denied action; unfinished terminal calls show stopped without claiming rollback. Four static rendering checks and web typecheck passed. No browser automation was performed.
-- Human frontend observation is pending for actual free-model Temporal run `7e3120a8-56dd-4f5b-9335-cc36ae44d2c6`, exact request `f391f775-b1fe-4451-86a7-ed14865a5f40` revision 1. Its proposal targets fictional namespace `cap-chat-manual-20261010`, record `cedar`, owner `Morgan`, expected revision 1; provider effect count was zero before asking the user. It was deliberately not automatically approved. Frontend proxy/API access confirms the pending record, but is not visual proof.
+- At the initial checkpoint, human frontend observation was pending for actual free-model Temporal run `7e3120a8-56dd-4f5b-9335-cc36ae44d2c6`, exact request `f391f775-b1fe-4451-86a7-ed14865a5f40` revision 1. Its proposal targets fictional namespace `cap-chat-manual-20261010`, record `cedar`, owner `Morgan`, expected revision 1; provider effect count was zero before asking the user. It was deliberately not automatically approved. Frontend proxy/API access confirmed the pending record, not visual placement. Later user/direct-browser observations are recorded below.
 - `2dd269c`: actual management rediscovery schema-change check passed once. A changed MCP descriptor is published for later admission while the original run snapshot retains its old schema.
 - `25d575d` and the readiness checkpoint: contributor docs explain refreshed shared chat capabilities, exact inline review lifecycle, five native boundaries, setup and unvalidated variants. Documentation generation and local links passed. The normal chat has no profile selector; advanced management/experiment profiles remain available.
 - `79eb4ad`: approved-stage verification now requires a retrieval completion after the final successful mutation, not merely two reads. Server typecheck passed. Separate ordered audits of all three original reports confirm every originally passing approved stage meets ordering; original failures and reports remain unchanged.
 - `69ef363`: Vercel classifies provider errors as retained workflow result data and disables automatic model-step retries. Server build and 19 focused Vercel checks passed, including actual local World rate-limit and transport failures with exactly one dispatch and no exposed private body. The native workflow may complete with a failed agent result; both statuses remain recorded. Original live trials used the pre-fix SDK retry policy and are not retroactively improved.
 - `e1568ea`: chat keeps explicit confirmed effects separate from invalid response presentation, even when the normalized event reports an unknown result. Ten targeted rendering/outcome checks and web typecheck passed. Safe phase/code/category projection exists for known failures; unexpected SDK failures retain a generic safe fallback. Full arbitrary cause-chain presentation remains unverified.
 - Actual isolated readiness observation: API `/ready` returned ready, Temporal health reachable and Hatchet unavailable with retained startup error. Temporal real-model calls/reviews reached capability host port 4322. The six selected Temporal native checks include pending-review reconstruction across worker restart. This establishes core/native availability without making every optional runtime ready.
-- Comparable Nemotron trial completed at `2026-10-10T12:08:25.879Z`; report `lab/runs/.connected-proof/connected-b527de87-5b0f-492e-ba68-e96285f90e87/summary.json`. Exact model `nvidia/nemotron-3.5-lightning:free`, fresh zero-price observation, no fallback, 2048 output tokens. Temporal passed retrieval, assignment, correction, denial and missing-record error. Mastra passed the first three stages but produced plaintext confirmation at denial. LangGraph produced planning text without required retrieval calls. Restate passed retrieval and assignment; correction saved the requested owner but omitted the required verification read despite claiming it. Vercel passed retrieval but produced plaintext confirmation instead of the assignment tool proposal. These failures establish incomplete model behavior, not full platform acceptance. The separate Gemma comparison retains unchanged criteria and is in progress.
+- Comparable Nemotron trial completed at `2026-10-10T12:08:25.879Z`; report `lab/runs/.connected-proof/connected-b527de87-5b0f-492e-ba68-e96285f90e87/summary.json`. Exact model `nvidia/nemotron-3.5-lightning:free`, fresh zero-price observation, no fallback, 2048 output tokens. Temporal passed retrieval, assignment, correction, denial and missing-record error. Mastra passed the first three stages but produced plaintext confirmation at denial. LangGraph produced planning text without required retrieval calls. Restate passed retrieval and assignment; correction saved the requested owner but omitted the required verification read despite claiming it. Vercel passed retrieval but produced plaintext confirmation instead of the assignment tool proposal. These failures establish incomplete model behavior, not full platform acceptance. The separate Gemma comparison retained unchanged criteria; its terminal availability result is recorded below.
 - The separate Gemma comparison is now terminal: all five platforms received provider HTTP 429 before task completion. Report `connected-94ccd090-5e0b-4756-8574-80c4d5f0ba7d` retains this availability failure; Vercel's pre-fix four SDK attempts are explicitly recorded. No Retry-After evidence was retained, so no cooldown is inferred.
-- The separate Cohere comparison is terminal in `connected-01d0222c-3e1e-498a-8b81-46ce35308765`: LangGraph passed all five stages; Mastra passed retrieval, assignment, correction and denial but queried the wrong key in the error stage. Restate performed and verified correction before an empty final provider response; Vercel performed and verified assignment before final-request rate limiting. These are partial observations with known effects, not successful complete conversations. No further model trials were launched after availability failures.
+- The separate Cohere comparison is terminal in `connected-01d0222c-3e1e-498a-8b81-46ce35308765`: LangGraph passed all five stages; Mastra passed retrieval, assignment, correction and denial but queried the wrong key in the error stage. Restate performed and verified correction before an empty final provider response; Vercel performed and verified assignment before final-request rate limiting. These are partial observations with known effects, not successful complete conversations. That comparison stopped on its recorded failures; the separately scoped continuations below retain corrective feedback and source-model identity.
 - Owned Vercel service was restarted after the verified model-error fix, retaining its local World store, host port 4322 and timeout controls. Health and readiness report ready; no model request was made just to check restart. API 4322 and frontend 5173 remain the isolated fixture environment for the pending human proposal. User-owned API 4318 was left untouched; restore normal frontend routing only after that proposal is observed or explicitly abandoned.
 - `62c3da3`: launcher replacement follows explicit instance ownership through watcher ancestry and matches worker endpoint, namespace, queue, run/context roots and capability host. Unknown owners require explicit stopping; different queues and process-group siblings remain alive. Three isolated fixture checks and Bash syntax passed. Linux `/proc` is required for automatic ownership inspection; unreadable metadata fails closed.
 - `affb7a2`: actual isolated required-service failure exposed cleanup overwriting the exit status. Cleanup now captures it before resetting traps; readiness also stops promptly on an owned child exit. Original failure returned 0; fixed launch returned 1, named the Restate log and left all isolated ports/processes cleared. Protected normal/test APIs, Temporal and the manual-review worker remained alive, with review still pending. Evidence: `lab/runs/.connected-proof/launcher-required-failure-f9cdd382/verification.json`, including retained before/after logs. No model calls occurred. Bash syntax, three fixture checks and docs generation passed.
 
 - `908a2bf` and `5a239c0`: bounded continuation support validates source scenario, session model, independent provider state and confirmed effects before admitting another turn. It rejects manual-review namespaces and replaying already-applied changes. Two focused safety checks and server typecheck passed. Original reports and failed verdicts remain unchanged.
-- `2c01ecd`: exact-review cards preserve their identity across revision changes and restore focus after a focused decision control disappears, without stealing focus from another control or scrolling the page. Seven focused policy/rendering checks and web typecheck passed. Responsive layout and actual focus/scroll observation remain pending.
+- `2c01ecd`: exact-review cards preserve their identity across revision changes and restore focus after a focused decision control disappears, without stealing focus from another control or scrolling the page. Seven focused policy/rendering checks and web typecheck passed. Responsive layout was subsequently inspected and fixed as recorded below; native focus edge cases are outside the minimal observation scope.
 - `90baaa1` and `ece8147`: assistant messages now include concise failure guidance and expandable safe phase/code/category details derived only from known codes and native status. Four rendering/redaction checks and web typecheck passed; secret paths, arbitrary cause messages and provider bodies are not projected. Confirmed effects remain distinct from response failure.
+
+- Human reported “done, it approved in chat” for Temporal run `7e3120a8-56dd-4f5b-9335-cc36ae44d2c6`. Retained review decision sequence 13 precedes mutation sequence 17 and verification read sequence 25; provider state is Morgan/revision 2/effect count 1, with release constraints unchanged. Both native and agent result completed. Local evidence: `.connected-proof/manual-chat-20261010`. Direct refresh/history and responsive checks subsequently completed as recorded below.
+
+- `4eb9841`: exact target/state verification requires matching admitted call receipt fingerprints and returned state at the correct sequence. One focused regression and server typecheck passed. Supplemental audits preserve original reports, including the downgraded Restate wrong-key error. Its exact missing-key corrective observation passes in `connected-360f8f68-92e2-47e3-94d7-bb852f8a64d3`, with effect count unchanged. Other credited targets remain valid; Vercel's extra typo read and unsupported denial narrative remain recorded.
+- Direct browser access recovered on the same supported in-app surface. Temporal pending refresh, approval/post-read, read-only next turn, keyboard denial and retained card history passed; provider state independently confirms no denied mutation. Retained cards were inspected inside assistant turns on all five platforms, outside configuration. Evidence: `.connected-proof/browser-direct-20261010`. Historical non-Temporal decisions were scripted, not clicked in this browser check.
+- `5dfdd3a`: actual 390px browser verification exposed chat grid overflow. Bounded column sizing and message wrapping fix it; recheck found no chat/card horizontal overflow. A 1280px view was also inspected. Web typecheck passed. Focus-policy checks complement keyboard observations; native focus edge cases remain outside this minimal test scope.
 
 ### Remaining completion work
 
-- Obtain the pending actual frontend observation and retained-decision/result observation. Do not automatically decide the manual request or bypass the browser tool's URL restriction.
-- Finish the verification-target audit of corrective continuations. Preserve initial failures and corrective feedback as separate observations; do not interpret continuation passes as initial full-task acceptance.
-- Observe responsive scroll/focus behavior in the actual frontend. Removed exact-review controls restore focus only when focus would otherwise be lost; focused policy checks are not visual proof. Bounded safe failure details are implemented and verified; arbitrary SDK causes retain a generic safe fallback.
-- Launcher ownership and required-service failure observations are complete. Do not repeat them merely to broaden coverage.
-- Restore ordinary frontend routing safely after the isolated human walkthrough, then perform the final definition-of-done audit. The goal has not been marked complete.
+- Restore ordinary frontend/backend routing safely after isolated acceptance, preserving unrelated processes and recorded evidence.
+- Run the final relevant build/typecheck and definition-of-done audit. Do not repeat completed native failure matrices or successful model stages.
 
 The initial architecture table above records the baseline before implementation, not current readiness. Remaining checks and the final acceptance matrix are authoritative for completion.
 
 Credentials and selected test-team identity are live-run prerequisites, not blockers to planning or fixture/native implementation. Obtain reviewer decisions through the chat cards during real trials. Keep the plan updated with the commit and observed evidence for each completed milestone.
 
-### Open verification limitation
+### Verification boundaries
 
-The computer-use tool currently rejects access to the local Lab tab under its URL
-security policy, including a prohibition on alternate browser/CDP workarounds.
-The earlier successful browser fixture evidence remains valid for its scope.
-The actual free-model connected-task frontend walkthrough still requires a user
-reviewer once the isolated acceptance services are ready. API/native verification
-can continue independently and must not be called a human frontend walkthrough.
+The earlier local-URL browser rejection no longer blocks verification: supported
+in-app access recovered and direct browser evidence is retained. This does not
+change the scope of earlier fixture checks or turn historical scripted decisions
+into human clicks. Personal-account mutations and hosted deployments remain outside
+this phase; model narrative accuracy is reported separately from enforced tool behavior.
