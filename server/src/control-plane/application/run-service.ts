@@ -140,6 +140,10 @@ export class RunService {
       throw new RunnerUnavailableError(request.platform, request.variant, registration ? "planned" : "unknown");
     }
 
+    if (effectiveRequest.execution && !runner.supportedExecutionModes?.includes(effectiveRequest.execution.mode)) {
+      throw new InvalidRunRequestError(`Execution mode ${effectiveRequest.execution.mode} is not supported by ${effectiveRequest.platform}/${effectiveRequest.variant}.`);
+    }
+
     const draftManifest = buildRunManifest(effectiveRequest, {
       serverVersion: this.dependencies.config.serverVersion,
       platformConfig: runner.manifestConfiguration(),

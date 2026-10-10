@@ -87,7 +87,10 @@ authority and provider receipts remain part of the run evidence.
 
 For the five baseline platforms, **Run options → Allow longer tasks** opts the
 next turn into sustained execution with a retained deadline and limits of 24 model
-rounds and 48 tool calls. It is off by default. Run details show the last recorded
+rounds and 48 tool calls. It is off by default. The API rejects this mode before session/run admission for
+variants that do not declare sustained execution support. Platform health responses
+expose `supportedExecutionModes`; missing/empty support retains ordinary bounded
+execution. Run details show the last recorded
 phase, model round, distinct completed tool calls and deadline. These are observed
 records, not a completion percentage. Context compaction can make additional model
 requests within a round. **Stop requested** remains visible until native execution

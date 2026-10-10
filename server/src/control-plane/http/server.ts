@@ -63,6 +63,7 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
       platforms: platforms.map((platform) => ({
         platform: platform.platform,
         variant: platform.variant,
+        supportedExecutionModes: platform.runner?.supportedExecutionModes ?? [],
         reachable: platform.connectivity.reachable,
         message: platform.connectivity.message,
       })),
@@ -82,6 +83,7 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     return reply.send({
       platform: platform.platform,
       variant: platform.variant,
+      supportedExecutionModes: platform.runner?.supportedExecutionModes ?? [],
       reachable: platform.connectivity.reachable,
       message: platform.connectivity.message,
     });

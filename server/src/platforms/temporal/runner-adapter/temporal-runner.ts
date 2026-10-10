@@ -48,6 +48,7 @@ export class TemporalRunnerUnavailableError extends Error {
  * workflow implementation details are exposed to the HTTP layer.
  */
 export class TemporalBaselineRunner implements PlatformRunner {
+  readonly supportedExecutionModes = ["sustained"] as const;
   readonly platform = "temporal" as const;
   readonly variant = "baseline" as const;
 

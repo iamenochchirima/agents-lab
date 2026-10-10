@@ -87,6 +87,7 @@ export class RestateRunnerUnavailableError extends Error {
 
 /** Keeps Restate's ingress and Admin APIs behind the generic Lab runner port. */
 export class RestateBaselineRunner implements PlatformRunner {
+  readonly supportedExecutionModes = ["sustained"] as const;
   readonly platform = "restate" as const;
   readonly variant = "baseline" as const;
 

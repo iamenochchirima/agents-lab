@@ -62,6 +62,7 @@ export class VercelWorkflowsRunnerUnavailableError extends Error {
 
 /** Keeps Workflow's native run API behind the Lab runner port. */
 export class VercelWorkflowsBaselineRunner implements PlatformRunner {
+  readonly supportedExecutionModes = ["sustained"] as const;
   readonly platform = VERCEL_WORKFLOWS_PLATFORM;
   readonly variant = VERCEL_WORKFLOWS_VARIANT;
 

@@ -62,6 +62,7 @@ class LangGraphServiceHttpError extends Error {
  * native thread/checkpoint state into the small TypeScript runner interface.
  */
 export class LangGraphBaselineRunner implements PlatformRunner {
+  readonly supportedExecutionModes = ["sustained"] as const;
   readonly platform = "langgraph" as const;
   readonly variant = "baseline" as const;
 

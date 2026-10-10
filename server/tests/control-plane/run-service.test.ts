@@ -31,6 +31,7 @@ import type {
 class FakeRunner implements PlatformRunner {
   readonly platform = "temporal" as const;
   readonly variant = "baseline" as const;
+  supportedExecutionModes?: readonly "sustained"[];
   state: "running" | "completed" | "failed" | "cancelled" = "completed";
   unavailable = false;
   unavailableOnFirstInspection = false;
@@ -983,5 +984,21 @@ test("native cancellation exceptions preserve unknown state and safe control evi
     assert.ok(retained);
     assert.deepEqual(retained.payload, { operation: "cancel", outcome: "unconfirmed", nativeErrorType: "Error" });
     assert.equal(JSON.stringify(snapshot.events).includes("secret-token"), false);
+  });
+});
+
+
+test("execution mode admission rejects unsupported variants without state, preserving legacy and declared support", async () => {
+  await withService(async (service, _store, runner, root) => {
+    const request = { platform: "temporal", variant: "baseline", sessionId: "execution-session", clientTurnId: "execution-turn", task: { kind: "prompt" as const, prompt: "Perform a bounded task." }, model: { provider: "fake", model: "fake-success" } };
+    await assert.rejects(service.createRun({ ...request, execution: { mode: "sustained" } }), /Execution mode sustained is not supported/);
+    assert.equal(runner.startCalls, 0);
+    assert.deepEqual(await readdir(root), [], "unsupported execution cannot admit evidence or context");
+    const legacy = await service.createRun(request);
+    assert.equal(legacy.manifest.execution, undefined);
+    runner.supportedExecutionModes = ["sustained"];
+    const admitted = await service.createRun({ ...request, clientTurnId: "sustained-turn", execution: { mode: "sustained" } });
+    assert.equal(admitted.manifest.execution?.mode, "sustained");
+    assert.equal(runner.startCalls, 2);
   });
 });

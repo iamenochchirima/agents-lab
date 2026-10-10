@@ -43,6 +43,10 @@ export class DeferredPlatformRunner implements PlatformRunner {
     });
   }
 
+  get supportedExecutionModes(): PlatformRunner["supportedExecutionModes"] {
+    return (this.runner ?? this.unavailable).supportedExecutionModes;
+  }
+
   manifestConfiguration(): Readonly<Record<string, unknown>> {
     return (this.runner ?? this.unavailable).manifestConfiguration();
   }

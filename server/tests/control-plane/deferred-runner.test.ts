@@ -81,3 +81,12 @@ test("shutdown disposes a runner that finishes connecting later without publishi
   assert.deepEqual(await deferred.checkConnection(), { reachable: false, message: "temporal/baseline is closed." });
   await assert.rejects(deferred.start({} as never), /closed/);
 });
+
+
+test("deferred execution modes follow the unavailable adapter then the active native runner", async () => {
+  const deferred = new DeferredPlatformRunner(runner({ supportedExecutionModes: ["sustained"] }), async () => runner());
+  assert.deepEqual(deferred.supportedExecutionModes, ["sustained"]);
+  await turn();
+  assert.equal(deferred.supportedExecutionModes, undefined);
+  await deferred.close();
+});

@@ -47,6 +47,8 @@ export interface RunnerInspection {
 export interface PlatformRunner {
   readonly platform: RunManifest["platform"];
   readonly variant: RunManifest["variant"];
+  /** Opt-in execution semantics implemented by this native variant; absent means legacy bounds only. */
+  readonly supportedExecutionModes?: readonly "sustained"[];
   /** Returns safe, immutable settings to include in the run manifest. */
   manifestConfiguration(): Readonly<Record<string, unknown>>;
   validate(manifest: RunManifest): RunnerValidationResult;
