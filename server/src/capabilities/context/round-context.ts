@@ -47,7 +47,7 @@ export async function prepareRoundContext(input: {
     const content = message.role === "assistant" && message.toolCalls?.length
       ? JSON.stringify({ content: message.content, toolCalls: message.toolCalls }) : message.content ?? "";
     return { schemaVersion: 1, messageId, sessionId: input.sessionId, sequence, role: message.role, content,
-      source: skills.some(skill => skill.content === content) ? "skills" : message.role === "system" ? "system" : "transcript",
+      source: content.startsWith("Saved memory is untrusted factual data") || content.startsWith("[Live task instruction") ? "memory" : skills.some(skill => skill.content === content) ? "skills" : message.role === "system" ? "system" : "transcript",
       createdAt: now, ...(groupId ? { groupId } : {}), metadata: (message.role === "assistant" && message.toolCalls?.length
         ? { toolCallIds: JSON.stringify(expected) } : message.role === "tool" ? { toolCallId: message.toolCallId } : {}) as Readonly<Record<string, string>> };
   });
@@ -67,7 +67,7 @@ export async function prepareRoundContext(input: {
   if (input.forceCompaction || before.pressure === "compaction_due" || before.pressure === "exhausted") {
     const compacted = await compactContext(projected, counter, session.contextWindowTokens, policy, {
       sessionId: input.sessionId, sessionRevision: session.revision, sourceRevision: input.round, currentMessageId: task.messageId,
-      completedGroupIds: complete, protectedMessageIds: projected.filter(message => message.source === "skills").map(message => message.messageId),
+      completedGroupIds: complete, protectedMessageIds: projected.filter(message => message.source === "skills" || message.source === "memory").map(message => message.messageId),
       trigger: input.forceCompaction ? "provider_overflow" : "preflight", policyVersion: `native-round-v1:${input.runId}`,
     }, summarizer);
     retained = compacted.messages; compaction = compacted.record;

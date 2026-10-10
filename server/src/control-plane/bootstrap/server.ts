@@ -37,6 +37,10 @@ import { CapabilityAdminSessions } from "../../capabilities/management/admin-ses
 import { registerCapabilityManagement } from "../http/capability-management.js";
 import { capabilityWorkspaceRoot } from "../../capabilities/extensions/runtime.js";
 
+import { AgentStateStore, createAgentMemoryTools } from "../../capabilities/agent-state/index.js";
+import { TaskInteractionStore, taskInteractionContribution, registerInternalInteraction } from "../../capabilities/interaction/index.js";
+import { registerAgentState } from "../http/agent-state.js";
+
 export interface ControlPlaneRuntime {
   readonly app: FastifyInstance;
   readonly config: ServerConfig;
@@ -104,7 +108,14 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   const defaultPackages = join(capabilityWorkspaceRoot(), "server/capability-packages/example.json");
   const packagePath = process.env.AGENTLAB_CAPABILITY_PACKAGES ?? (existsSync(defaultPackages) ? defaultPackages : undefined);
   const managementRoot = resolve(capabilityWorkspaceRoot(), process.env.AGENTLAB_CAPABILITY_STATE_ROOT ?? "lab/state/capabilities");
-  const management = await CapabilityManagement.create({ root: managementRoot, seedPath: packagePath,
+  const agentState = new AgentStateStore(resolve(managementRoot, "../agent-state"));
+  const interaction = new TaskInteractionStore(config.runsRoot);
+  const applicationTools = [...createAgentMemoryTools(agentState, async execution => {
+    const manifest = await evidence.readManifest(execution.runId);
+    if (manifest.context.turnId !== execution.turnId) throw new Error("Memory turn identity mismatch.");
+    return { namespace: manifest.context.memoryNamespace ?? "workspace-local", enabled: manifest.context.memoryEnabled !== false };
+  }), taskInteractionContribution()];
+  const management = await CapabilityManagement.create({ root: managementRoot, seedPath: packagePath, applicationTools,
     legacyOAuthRoot: join(config.contextRoot, ".oauth-secrets"), connectedEnabled: config.connectedCapabilitiesEnabled });
   const capabilities = createPackageCapabilityCatalog(management.loaded, config.connectedCapabilitiesEnabled);
   const reviews = new InvocationReviewStore(config.runsRoot);
@@ -113,7 +124,7 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
   // Reconstruct retained hosted implementations after attaching live owners. Run
   // admission keeps its recorded catalog while new frontend edits publish atomically.
   await management.reload();
-  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities, reviews,
+  const service = new RunService({ config, context, evidence, modelMetadata: modelCatalog, registry, capabilities, reviews, agentState, interaction,
     renewReview: async (runId: string, requestId: string) => {
       const previous = await reviews.get(runId, requestId);
       const renewed = await host.prepare({ runId, turnId: previous.turnId, catalogRevision: previous.catalogRevision, call: previous.call });
@@ -122,7 +133,10 @@ export async function createControlPlaneRuntime(config = loadServerConfig()): Pr
     },
   });
   const app = buildControlPlaneServer({ config, modelCatalog, service, evidence, registry, capabilities });
+  host.setInteraction(interaction);
   host.register(app);
+  await registerInternalInteraction(app, interaction, evidence);
+  registerAgentState(app, agentState, service, trustedFrontendOrigins(config.api.origin));
   app.get("/api/capability-packages", async (_request, reply) => reply.send({ packages: management.loaded.packages }));
   const adminSessions = await CapabilityAdminSessions.create(trustedFrontendOrigins(config.api.origin));
   registerCapabilityManagement(app, management, adminSessions);

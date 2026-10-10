@@ -31,6 +31,10 @@ export interface ManifestOptions {
     readonly turnId?: string;
     readonly clientTurnId?: string;
     readonly snapshotId?: string;
+    readonly identityRevision?: number;
+    readonly memoryNamespace?: string;
+    readonly memoryEnabled?: boolean;
+    readonly memoryRecordIds?: readonly string[];
   };
 }
 
@@ -88,6 +92,7 @@ function deepFreeze<T>(value: T): Readonly<T> {
 export function validateRunRequest(request: RunRequest): void {
   try { validateExecutionRequest(request.execution); }
   catch (error) { throw new InvalidRunRequestError(error instanceof Error ? error.message : "Invalid execution policy."); }
+  if (request.memory !== undefined && (typeof request.memory.enabled !== "boolean" || Object.keys(request.memory).some(key => key !== "enabled"))) throw new InvalidRunRequestError("Memory requires an enabled boolean.");
   if (!isIdentifier(request.platform, "platform") || !isIdentifier(request.variant, "variant")) {
     throw new InvalidRunRequestError("platform and variant must use lowercase letters, numbers, and hyphens.");
   }

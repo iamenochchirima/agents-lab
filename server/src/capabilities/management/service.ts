@@ -28,6 +28,8 @@ export class CapabilitySetupRequired extends Error {}
 export interface CapabilityManagementOptions {
   root: string; seedPath?: string; legacyOAuthRoot?: string; environment?: NodeJS.ProcessEnv;
   connectedEnabled?: boolean;
+  /** Application capabilities survive managed connector catalog refresh. */
+  applicationTools?: readonly HostedToolContribution[];
 }
 /** Application owner for validated records, secret bindings and catalog publication.
  * Browser payloads must pass managed record validation before source construction.
@@ -487,6 +489,21 @@ export class CapabilityManagement {
       grants: [...autoProfile.grants, ...localSafe.grants],
       availableSkills,
     });
+    const applicationTools = this.options.applicationTools ?? [];
+    loaded.tools.push(...applicationTools);
+    for (let index = 0; index < loaded.profiles.length; index++) {
+      const profile = loaded.profiles[index]!;
+      if (profile.id !== CONNECTED_AGENT_PROFILE_ID) continue;
+      loaded.profiles[index] = { ...profile,
+        policy: { ...profile.policy, allowedCapabilityIds: [...profile.policy.allowedCapabilityIds, ...applicationTools.map(tool => tool.descriptor.definition.name)],
+          allowedRiskClasses: [...new Set<CapabilityRisk>([...profile.policy.allowedRiskClasses, "pure", "read", "write"])] },
+        grants: [...profile.grants, ...applicationTools.map(({ descriptor }) => ({ schemaVersion: 1 as const,
+          capabilityId: descriptor.definition.name, version: descriptor.source.version, enabled: true,
+          allowedOperations: ["execute"], approvalMode: "none" as const,
+          timeoutMs: descriptor.definition.limits.timeoutMs, maxInputBytes: descriptor.definition.limits.maxArgumentBytes,
+          maxOutputBytes: descriptor.definition.limits.maxResultBytes }))],
+      };
+    }
     return loaded;
   }
   credentialBinding(connection: ManagedConnectionRecord, purpose = 'connection-auth'): CredentialBinding { return { ownerId: connection.owner, connectionId: connection.ref, resource: connection.resource, purpose }; }

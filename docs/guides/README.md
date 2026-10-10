@@ -16,3 +16,5 @@ Guides should state prerequisites, commands, expected output, cleanup, and commo
 - [Manage agent capabilities](capability-management.md) connects MCP services, imports skills and bundles, and composes saved profiles from the frontend.
 - [Connection credentials](connection-credentials.md) explains encrypted storage, recovery and key rotation.
 - [Capability package imports](capability-package-imports.md) defines portable skill imports and the versioned Lab bundle format.
+
+- [Agent identity, memory and live instructions](agent-identity-memory.md) covers shared settings, explicit recall and inline task collaboration.

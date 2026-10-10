@@ -65,7 +65,12 @@ export class ContextService {
 
     const currentMessage = transcript.find((message) => message.messageId === turns.userMessageId);
     if (!currentMessage) throw new Error(`Context turn has no user message: ${turnId}`);
-    const messages = contextMessagesForSession(session, transcript, turns.turnId, options.capabilityInventory, this.now());
+    const memoryMessages: ContextMessage[] = turns.memoryContext?.content ? [{
+      schemaVersion: 1, messageId: `memory-${turns.turnId}`, sessionId, sequence: 0,
+      role: "user", source: "memory", content: turns.memoryContext.content, createdAt: turns.createdAt,
+      metadata: { authority: "none", trust: "data", namespace: turns.memoryContext.namespace, revision: String(turns.memoryContext.revision) },
+    }] : [];
+    const messages = contextMessagesForSession(session, transcript, turns.turnId, options.capabilityInventory, this.now(), memoryMessages);
     const policy = policyFromSession(session);
     const initialBudget = calculateContextBudget(session.contextWindowTokens, this.tokenCounter.count(messages), policy);
     if (initialBudget.pressure === "unknown") {
@@ -173,16 +178,18 @@ function contextMessagesForSession(
   turnId?: string,
   capabilityInventory?: CapabilityInventorySnapshot,
   createdAt = session.createdAt,
+  memoryMessages: readonly ContextMessage[] = [],
 ): readonly ContextMessage[] {
   const skills = [...(session.skillContexts ?? []), ...(session.activeSkillContexts ?? [])];
   const skillMessages: ContextMessage[] = skills.map((skill, index) => skillMessage(session, skill, index + 1, index >= session.skillContexts.length));
   const capabilityMessage = capabilityInventory && turnId ? [inventoryMessage(session, turnId, capabilityInventory, skillMessages.length + 1, createdAt)] : [];
-  const offset = skillMessages.length + capabilityMessage.length;
+  const offset = skillMessages.length + capabilityMessage.length + memoryMessages.length;
   if (offset === 0) return [systemMessage(session), ...transcript];
   return [
     systemMessage(session),
     ...skillMessages,
     ...capabilityMessage,
+    ...memoryMessages,
     ...transcript.map((message) => ({ ...message, sequence: message.sequence + offset })),
   ];
 }

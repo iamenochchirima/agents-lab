@@ -13,3 +13,5 @@ Start with:
   skills, tools, connections, approvals, and native platform ownership.
 - [Extensible capabilities](extensible-capabilities.md), which describes package
   contributions, native projections, source execution and retained call receipts.
+
+- [Agent identity, memory and live interaction](agent-identity-memory-interaction.md) describes scoped state and native input lifecycle.

@@ -13,6 +13,8 @@ import { capabilityHostKeyPath } from "./runtime.js";
 import { InvocationReviewStore, argumentDigest } from "../reviews/store.js";
 import type { InvocationReviewView } from "../reviews/contracts.js";
 
+import type { TaskInteractionStore } from "../interaction/store.js";
+
 const safeId = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 type ValidatedCall = Extract<ReturnType<ToolRegistry["validateCall"]>, { accepted: true }>;
 interface PendingReceipt {
@@ -39,6 +41,8 @@ export class CapabilityHost {
   // already admitted an older source. Historical bindings are reconstructed by
   // the management repository on restart; live authority checks still apply.
   private readonly contributions = new Map<string, HostedToolContribution>();
+  private interaction?: TaskInteractionStore;
+  setInteraction(store: TaskInteractionStore): void { this.interaction = store; }
   private readonly inFlight = new Map<string, { fingerprint: string; promise: Promise<ToolExecutionResult> }>();
 
   constructor(
@@ -227,29 +231,37 @@ export class CapabilityHost {
       await this.finish(path, pending, result);
       return result;
     }
-    const gate = await this.reviews.locked(input.runId, async () => {
-      const snapshot = await this.evidence.readSnapshot(input.runId);
-      if (snapshot.result || snapshot.events.some(event => event.kind === "RunCancellationRequested")) return failure("TOOL_CANCELLED", "The run is terminal or cancellation has been requested.", "cancelled");
-      if (validated.definition.approvalMode === "invocation") {
-        try {
-          const descriptor = snapshot.manifest.capabilities!.toolCatalog!.tools.find(tool => tool.definition.name === input.call.name)!;
-          await this.reviews.claim(input.runId, input.call.toolCallId, argumentDigest(validated.call.arguments), descriptor.source.digest, input.catalogRevision);
-        } catch { return failure("TOOL_EXECUTION_FAILED", "This exact invocation requires current approval before execution."); }
-      }
-      return null;
-    });
-    if (gate) { await this.finish(path, pending, gate); return gate; }
     const connectionResults: ConnectionResult[] = [];
-    const result = await registry.execute(validated, {
-      runId: input.runId,
-      turnId: input.turnId,
-      sessionId,
-      signal,
-      onConnectionResult: connection => { connectionResults.push(connection); },
-      ...(this.sessions && sessionId ? {
-        onSkillActivated: async skill => { await this.sessions!.activateSkill(sessionId, input.turnId, skill); },
-      } : {}),
-    });
+    const dispatch = async () => {
+      if (this.interaction && await this.interaction.hasPendingSteering(input.runId)) return { failure: failure("TOOL_INPUT_PENDING", "New task instructions arrived before dispatch. Read them and reconsider this call.") };
+      return this.reviews.locked(input.runId, async () => {
+        const snapshot = await this.evidence.readSnapshot(input.runId);
+        if (snapshot.result || snapshot.events.some(event => event.kind === "RunCancellationRequested")) return { failure: failure("TOOL_CANCELLED", "The run is terminal or cancellation has been requested.", "cancelled") };
+        if (validated.definition.approvalMode === "invocation") {
+          try {
+            const descriptor = snapshot.manifest.capabilities!.toolCatalog!.tools.find(tool => tool.definition.name === input.call.name)!;
+            await this.reviews.claim(input.runId, input.call.toolCallId, argumentDigest(validated.call.arguments), descriptor.source.digest, input.catalogRevision);
+          } catch { return { failure: failure("TOOL_EXECUTION_FAILED", "This exact invocation requires current approval before execution.") }; }
+        }
+        // Start the operation while holding the dispatch gate, then release the
+        // gate before awaiting I/O so the user can still send instructions.
+        return { operation: registry.execute(validated, {
+        runId: input.runId,
+        turnId: input.turnId,
+        sessionId,
+        toolCallId: input.call.toolCallId,
+        toolRound: input.call.round,
+        signal,
+        onConnectionResult: connection => { connectionResults.push(connection); },
+        ...(this.sessions && sessionId ? {
+          onSkillActivated: async skill => { await this.sessions!.activateSkill(sessionId, input.turnId, skill); },
+        } : {}),
+        }) };
+      });
+    };
+    const gate = this.interaction ? await this.interaction.locked(input.runId, dispatch) : await dispatch();
+    if ("failure" in gate && gate.failure) { await this.finish(path, pending, gate.failure); return gate.failure; }
+    const result = await gate.operation!;
     try {
       await this.finish(path, pending, result, connectionResults);
       if (validated.definition.approvalMode === "invocation") await this.reviews.finish(input.runId, input.call.toolCallId);

@@ -104,7 +104,7 @@ function compactableCandidates(messages: readonly ContextMessage[], options: Con
   const protectedIds = new Set([options.currentMessageId, ...(options.protectedMessageIds ?? [])]);
   const protectedGroups = new Set(messages.filter(message => protectedIds.has(message.messageId)).map(message => message.groupId ?? message.messageId));
   for (const message of selected ? messages : messages.slice(0, currentIndex)) {
-    if (message.role === "system" || message.role === "developer" || message.source === "skills" || message.source === "compaction-summary") continue;
+    if (message.role === "system" || message.role === "developer" || message.source === "skills" || message.source === "memory" || message.source === "compaction-summary") continue;
     const groupId = message.groupId ?? message.messageId;
     if (protectedGroups.has(groupId) || selected && !selected.has(groupId)) continue;
     const group = groups.get(groupId) ?? [];

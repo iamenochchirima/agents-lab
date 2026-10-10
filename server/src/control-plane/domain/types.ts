@@ -69,6 +69,7 @@ export interface RunCapabilities {
 }
 
 export interface RunRequest {
+  readonly memory?: { readonly enabled: boolean };
   readonly execution?: RunExecutionRequest;
   readonly platform: string;
   readonly variant: string;
@@ -107,6 +108,10 @@ export interface RunManifest {
   };
   readonly context: {
     readonly systemInstruction: string;
+    readonly identityRevision?: number;
+    readonly memoryNamespace?: string;
+    readonly memoryEnabled?: boolean;
+    readonly memoryRecordIds?: readonly string[];
     readonly sessionId?: string;
     readonly turnId?: string;
     readonly clientTurnId?: string;

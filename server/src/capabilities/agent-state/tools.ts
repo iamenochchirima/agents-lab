@@ -19,7 +19,7 @@ export function createAgentMemoryTools(store: AgentStateStore, resolveBinding: (
     ["memory_forget", "Forget a saved memory when explicitly requested. Removes it from future recall, but retained transcripts and run evidence remain.", { id, expectedRevision: { type: "integer", minimum: 1 } }, ["id", "expectedRevision"], true],
   ] as const;
   return declarations.map(([name, description, properties, required, write]) => {
-    const definition: ToolDefinition = { schemaVersion: 1, name, description, inputSchema: { type: "object", properties, required, additionalProperties: false }, riskClass: write ? "write" : "read", executionKind: "in_process", approvalMode: "automatic", failurePolicy: "feedback", limits: { maxArgumentBytes: 8192, maxResultBytes: 131072, timeoutMs: 5000 }, supportedContent: ["text", "json"] };
+    const definition: ToolDefinition = { schemaVersion: 1, name, description, inputSchema: JSON.parse(JSON.stringify({ type: "object", properties, required, additionalProperties: false })), riskClass: write ? "write" : "read", executionKind: "in_process", approvalMode: "automatic", failurePolicy: "feedback", limits: { maxArgumentBytes: 8192, maxResultBytes: 131072, timeoutMs: 5000 }, supportedContent: ["text", "json"] };
     const digest = createHash("sha256").update(JSON.stringify(definition)).digest("hex");
     return { descriptor: { definition, source: { id: "agent-state-memory", version: "1.0.0", digest }, execution: { kind: "hosted", key: `agent-state:${name}` }, failurePolicy: "feedback" }, implementation: {
       definition,

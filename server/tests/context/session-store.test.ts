@@ -321,3 +321,23 @@ test("a snapshot repairs its revision ledger after an interrupted ledger append"
     assert.match(await readFile(join(root, session.sessionId, "context-revisions.jsonl"), "utf8"), /snapshot-ledger-repair/);
   });
 });
+
+
+test("consumed live inputs persist once in order before final output and survive reopening", async () => {
+  await withStore(async (store, root) => {
+    const session = await store.create({ platform: "temporal", variant: "baseline", model: "test", systemInstruction: "Answer directly.", contextWindowTokens: 1000, reservedOutputTokens: 100, safetyMarginTokens: 10, compactionThresholdPercent: 20 });
+    const admitted = await store.admitTurn(session.sessionId, "run-live", "Assign the owner.");
+    const inputs = [{ inputId: "steer", sequence: 2, content: "Use Casey instead." }, { inputId: "reply", sequence: 1, content: "Morgan", question: "Which owner?" }];
+    await store.retainTaskInputs(session.sessionId, admitted.turn.turnId, inputs);
+    await new ContextSessionStore(root).retainTaskInputs(session.sessionId, admitted.turn.turnId, inputs);
+    await store.settleTurn(session.sessionId, admitted.turn.turnId, { status: "completed", output: "Casey is the owner." });
+    const reopened = new ContextSessionStore(root);
+    const transcript = await reopened.readTranscript(session.sessionId);
+    assert.deepEqual(transcript.map(item => item.content), ["Assign the owner.", "Answer to agent question: Which owner?\nMorgan", "Use Casey instead.", "Casey is the owner."]);
+    assert.deepEqual(transcript.map(item => item.sequence), [1, 2, 3, 4]);
+    await reopened.retainTaskInputs(session.sessionId, admitted.turn.turnId, inputs);
+    assert.equal((await reopened.readTranscript(session.sessionId)).length, 4);
+    const next = await reopened.admitTurn(session.sessionId, "run-next", "Who is the owner?");
+    assert.equal(next.transcript[2].content, "Use Casey instead.");
+  });
+});

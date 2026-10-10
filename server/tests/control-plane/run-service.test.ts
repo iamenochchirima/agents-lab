@@ -1,3 +1,4 @@
+import { AgentStateStore } from "../../src/capabilities/agent-state/store.js";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -268,7 +269,7 @@ class ContextOverflowRunner implements PlatformRunner {
 
 async function withService(
   run: (service: RunService, store: RunEvidenceStore, runner: FakeRunner, root: string) => Promise<void>,
-  options: { readonly allowOpenRouter?: boolean; readonly modelMetadata?: ModelMetadataResolver; readonly capabilities?: CapabilityCatalog } = {},
+  options: { readonly allowOpenRouter?: boolean; readonly modelMetadata?: ModelMetadataResolver; readonly capabilities?: CapabilityCatalog; readonly agentState?: boolean } = {},
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "agentlab-run-service-"));
   try {
@@ -280,7 +281,7 @@ async function withService(
       ...(options.allowOpenRouter ? { AGENTLAB_ALLOWED_MODEL_PROVIDERS: "fake,openrouter" } : {}),
     }, "/repo");
     const context = new ContextService(new ContextSessionStore(config.contextRoot, config.context), new CharacterTokenEstimator());
-    const service = new RunService({ config, context, evidence: store, modelMetadata: options.modelMetadata, capabilities: options.capabilities, registry: new PlatformRegistry([runner]) });
+    const service = new RunService({ config, context, evidence: store, ...(options.agentState ? { agentState: new AgentStateStore(join(root, "agent-state")) } : {}), modelMetadata: options.modelMetadata, capabilities: options.capabilities, registry: new PlatformRegistry([runner]) });
     await run(service, store, runner, root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1001,4 +1002,41 @@ test("execution mode admission rejects unsupported variants without state, prese
     assert.equal(admitted.manifest.execution?.mode, "sustained");
     assert.equal(runner.startCalls, 2);
   });
+});
+
+
+test("identity stays fixed per session while scoped memory recall is refreshed only for new turns", async () => {
+  await withService(async (service, _evidence, runner, root) => {
+    runner.state = "running";
+    const state = new AgentStateStore(join(root, "agent-state"));
+    const identity = await state.getIdentity();
+    const memory = await state.saveMemory("workspace-local", { operationId: "save-fixture", expectedRevision: 0, kind: "preference", title: "Fixture style", content: "Use concise bullet points.", provenance: { source: "fixture" } });
+    const request = { platform: "temporal", variant: "baseline", sessionId: "identity-session", task: { kind: "prompt" as const, prompt: "Hello" }, model: { provider: "fake", model: "fake-success", contextWindowTokens: 8192 } };
+    const first = await service.createRun(request);
+    assert.equal(first.manifest.context.identityRevision, identity.revision);
+    assert.deepEqual(first.manifest.context.memoryRecordIds, [memory.id]);
+    const sessions = new ContextSessionStore(join(root, "sessions"));
+    const context = new ContextService(sessions, new CharacterTokenEstimator());
+    const projected = await context.prepareTurn(request.sessionId, first.manifest.context.turnId!, { summarize: async () => "unused" });
+    const recalled = projected.snapshot.messages.find(message => message.source === "memory");
+    assert.equal(recalled?.role, "user"); assert.equal(recalled?.metadata?.authority, "none");
+    assert.ok(recalled?.content.includes("Use concise bullet points."));
+    runner.state = "completed"; await service.getRun(first.runId);
+    await state.updateIdentity({ name: "Updated fixture identity", purpose: identity.purpose, style: identity.style, initiative: identity.initiative, behavior: identity.behavior }, { operationId: "identity-edit", expectedRevision: identity.revision });
+    await state.forgetMemory("workspace-local", memory.id, { operationId: "forget-fixture", expectedRevision: memory.revision });
+    const retained = await service.createRun({ ...request, memory: { enabled: false } });
+    assert.equal(retained.manifest.context.identityRevision, identity.revision);
+    assert.equal(retained.manifest.context.systemInstruction, first.manifest.context.systemInstruction);
+    assert.deepEqual(retained.manifest.context.memoryRecordIds, []);
+    assert.equal(retained.manifest.context.memoryEnabled, false);
+    const fresh = await service.createRun({ ...request, sessionId: "fresh-identity-session" });
+    assert.equal(fresh.manifest.context.identityRevision, identity.revision + 1);
+    assert.ok(fresh.manifest.context.systemInstruction.includes("Updated fixture identity"));
+    assert.deepEqual(fresh.manifest.context.memoryRecordIds, []);
+    const isolated = await service.createRun({ ...request, sessionId: "isolated-identity-session", comparisonId: "comparison-fixture" });
+    assert.match(isolated.manifest.context.memoryNamespace!, /^experiment-/);
+    await assert.rejects(service.createRun({ ...request, comparisonId: "comparison-fixture" }), /Memory scope changed/);
+    await assert.rejects(service.createRun({ ...request, sessionId: "isolated-identity-session", comparisonId: "different-comparison" }), /Memory scope changed/);
+    assert.equal((await sessions.readSnapshot(request.sessionId, projected.snapshot.snapshotId)).messages.find(message => message.source === "memory")?.content, recalled?.content);
+  }, { agentState: true });
 });

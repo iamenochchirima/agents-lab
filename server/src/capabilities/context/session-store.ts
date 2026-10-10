@@ -23,6 +23,8 @@ export interface ContextSession {
   readonly variant: string;
   readonly model: string;
   readonly systemInstruction: string;
+  readonly identityRevision?: number;
+  readonly memoryNamespace?: string;
   /** Validated context-only skill projections selected before admission. */
   readonly skillContexts: readonly UntrustedSkillContextText[];
   /** Procedures/resources actually loaded through admitted skill tools. */
@@ -46,6 +48,8 @@ export interface CreateContextSessionInput {
   readonly variant: string;
   readonly model: string;
   readonly systemInstruction: string;
+  readonly identityRevision?: number;
+  readonly memoryNamespace?: string;
   readonly skillContexts?: readonly UntrustedSkillContextText[];
   readonly contextWindowTokens: number | null;
   readonly reservedOutputTokens: number;
@@ -69,6 +73,8 @@ export interface ContextTurn {
   readonly assistantMessageId: string | null;
   readonly sessionRevision: number;
   readonly contextSnapshotId: string | null;
+  /** Immutable data projection admitted before native dispatch. */
+  readonly memoryContext?: { readonly content: string; readonly namespace: string; readonly recordIds: readonly string[]; readonly revision: number; readonly enabled: boolean };
   readonly output: string | null;
   readonly error: string | null;
   readonly createdAt: string;
@@ -149,6 +155,8 @@ export class ContextSessionStore {
         variant: input.variant,
         model: input.model,
         systemInstruction: input.systemInstruction,
+        ...(input.identityRevision !== undefined ? { identityRevision: input.identityRevision } : {}),
+        ...(input.memoryNamespace ? { memoryNamespace: input.memoryNamespace } : {}),
         skillContexts: Object.freeze([...(input.skillContexts ?? [])]),
         activeSkillContexts: [],
         contextWindowTokens: input.contextWindowTokens,
@@ -557,6 +565,43 @@ export class ContextSessionStore {
     for (const record of pending) {
       await atomicWriteText(record.path, record.contents);
     }
+  }
+
+  /** Retain consumed live instructions for later turns without rewriting frozen requests. */
+  async retainTaskInputs(sessionId: string, turnId: string, inputs: readonly { readonly inputId: string; readonly content: string; readonly sequence: number; readonly question?: string }[]): Promise<void> {
+    if (!inputs.length) return;
+    await this.serialized(sessionId, async () => this.withLock(sessionId, async () => {
+      const session = await this.read(sessionId);
+      const turn = (await this.readTurnRecords(sessionId)).find(item => item.turnId === turnId);
+      if (!turn) throw new ContextSessionConflictError(`Context turn was not found: ${turnId}`);
+      const transcript = await this.readTranscript(sessionId);
+      const known = new Set(transcript.map(message => message.messageId));
+      // Mirror consumed instructions before final output. Rejected or merely delivered
+      // inputs never become conversation history; retries reuse stable message IDs.
+      if (["completed", "failed", "cancelled"].includes(turn.status)) return;
+      let revision = Math.max(session.revision, transcript.at(-1)?.sequence ?? 0);
+      const messages: ContextMessage[] = [];
+      for (const input of [...inputs].sort((a, b) => a.sequence - b.sequence)) {
+        const messageId = `task-input-${input.inputId}`;
+        if (known.has(messageId)) continue;
+        known.add(messageId);
+        messages.push({ schemaVersion: 1, messageId, sessionId, sequence: ++revision,
+          role: "user", source: "transcript", createdAt: new Date().toISOString(),
+          content: input.question ? `Answer to agent question: ${input.question}\n${input.content}` : input.content,
+          metadata: { turnId, inputId: input.inputId, inputSequence: String(input.sequence) } });
+      }
+      if (!messages.length && session.revision === revision) return;
+      await this.writeSessionRecords(sessionId, [
+        ...(messages.length ? [{ path: join(this.sessionDirectory(sessionId), "transcript.jsonl"), contents: [...transcript, ...messages].map(serializeJsonLine).join(""), transcript: true }] : []),
+        { path: this.sessionPath(sessionId), value: { ...session, revision }, replace: true },
+      ], session);
+    }));
+  }
+
+  /** Freeze recall before dispatch. A retried admission reuses the original data. */
+  async retainTurnMemory(sessionId: string, turnId: string, memory: NonNullable<ContextTurn["memoryContext"]>): Promise<ContextTurn> {
+    if (Buffer.byteLength(memory.content, "utf8") > 32_768) throw new ContextSessionLimitError("session", 32_768, Buffer.byteLength(memory.content, "utf8"));
+    return this.updateTurn(sessionId, turnId, turn => turn.memoryContext ? turn : { ...turn, memoryContext: memory });
   }
 
   private async updateTurn(sessionId: string, turnId: string, update: (turn: ContextTurn) => ContextTurn): Promise<ContextTurn> {

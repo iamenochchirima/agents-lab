@@ -319,6 +319,7 @@ function parseRunRequest(body: unknown): RunRequest {
   if ("experiment" in body && body.experiment !== undefined) {
     throw new InvalidApiRequestError("experiments are not supported by this run path yet.");
   }
+  if (body.memory !== undefined && (!isRecord(body.memory) || typeof body.memory.enabled !== "boolean" || Object.keys(body.memory).some(key => key !== "enabled"))) throw new InvalidApiRequestError("memory requires an enabled boolean.");
   const selection = parseRunSelection(body.selection);
   try { validateExecutionRequest(body.execution); }
   catch (error) { throw new InvalidApiRequestError(error instanceof Error ? error.message : "Invalid execution policy."); }
@@ -330,6 +331,7 @@ function parseRunRequest(body: unknown): RunRequest {
     sessionId: body.sessionId,
     clientTurnId: body.clientTurnId,
     ...(body.execution ? { execution: body.execution } : {}),
+    ...(body.memory ? { memory: body.memory as { enabled: boolean } } : {}),
     task: { kind: "prompt", prompt: body.task.prompt },
     model: {
       provider: body.model.provider,
