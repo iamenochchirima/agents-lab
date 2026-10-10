@@ -1,7 +1,7 @@
 # Native long-running agents across the five priority platforms
 
 Status: implementing; execution authorized and goal started 2026-10-10.
-Planning validation: documentation generation and local links passed; no runtime or model tests performed.
+Validation: native restart/review/deadline checks passed; larger free-model and final browser acceptance are in progress.
 Prepared: 2026-10-10. Baseline commit: `116b670`.
 
 ## Goal and expected outcome
@@ -115,11 +115,11 @@ Order is intentional. Shared contracts precede adapter integration; native recov
 
 ### 1. Execution policy, progress and continuation contract
 
-- [ ] Inventory actual timeout/counter semantics across the five baselines and record a native mapping table.
-- [ ] Add the versioned admitted policy and safe progress/wait projection; retain old manifest behavior.
-- [ ] Persist absolute deadlines and counter interpretation without changing default interactive behavior.
-- [ ] Define safe recovery eligibility from native checkpoint and host receipt state, including unsafe pending model/tool outcomes.
-- [ ] Prove the pinned Mastra durable-agent API can persist/recover original calls; record compatibility gaps before migration.
+- [x] Inventory actual timeout/counter semantics across the five baselines and record a native mapping table.
+- [x] Add the versioned admitted policy and safe progress/wait projection; retain old manifest behavior.
+- [x] Persist absolute deadlines and counter interpretation without changing default interactive behavior.
+- [x] Define safe recovery eligibility from native checkpoint and host receipt state, including unsafe pending model/tool outcomes.
+- [x] Prove the pinned Mastra durable-agent API can persist/recover original calls; record compatibility gaps before migration.
 
 Acceptance: each adapter has an explicit implementation mapping; unsupported recovery is visible, and old runs remain readable.
 Validation: one focused contract test covering invalid bounds, backward compatibility and restart-stable deadline; one Mastra compatibility probe. Server typecheck.
@@ -127,11 +127,11 @@ Commit: `feat(platforms): define native long-running execution policy`.
 
 ### 2. Reliable review delivery and background reconciliation
 
-- [ ] Persist decision-delivery intent and attempt/acceptance state without another approval database.
-- [ ] Reconcile pending delivery on startup and bounded background passes using the original decision identity.
-- [ ] Reject delivery to cancelled, terminal or stale-revision actions; recheck connection authority before effect dispatch without blocking denial feedback.
-- [ ] Track active runs and settle terminal sessions without depending on an open browser.
-- [ ] Expose pending/unconfirmed delivery and native uncertainty safely through existing run/action views.
+- [x] Persist decision-delivery intent and attempt/acceptance state without another approval database.
+- [x] Reconcile pending delivery on startup and bounded background passes using the original decision identity.
+- [x] Reject delivery to cancelled, terminal or stale-revision actions; recheck connection authority before effect dispatch without blocking denial feedback.
+- [x] Track active runs and settle terminal sessions without depending on an open browser.
+- [x] Expose pending/unconfirmed delivery and native uncertainty safely through existing run/action views.
 
 Acceptance: API loss between decision persistence and native delivery does not lose approval or create another action; native completion settles the original turn while the browser is absent.
 Validation: one restart/duplicate-delivery integration case, one cancellation/stale-delivery regression using existing review fixtures. Server typecheck.
@@ -139,11 +139,11 @@ Commit: `feat(control-plane): recover native decision delivery and run observati
 
 ### 3. Temporal and Restate sustained execution
 
-- [ ] Apply task deadlines and counters through existing Workflow/Activity and journaled handler boundaries.
-- [ ] Emit durable progress and native wait identities at completed model/tool boundaries.
-- [ ] Preserve model/tool identities, review revision and active skills across worker/service replacement.
-- [ ] Verify native timers/deadlines and idempotent review delivery; preserve existing unknown-outcome behavior.
-- [ ] Update stale platform semantics documents to match current loops and actual guarantees.
+- [x] Apply task deadlines and counters through existing Workflow/Activity and journaled handler boundaries.
+- [x] Emit durable progress and native wait identities at completed model/tool boundaries.
+- [x] Preserve model/tool identities, review revision and active skills across worker/service replacement.
+- [x] Verify native timers/deadlines and idempotent review delivery; preserve existing unknown-outcome behavior.
+- [x] Update stale platform semantics documents to match current loops and actual guarantees.
 
 Acceptance: both complete the same multi-step task after a wait and process replacement; completed effects are not repeated.
 Validation: extend one existing native acceptance path per platform with a retained review wait and restart; verify effect count independently. Reuse existing heartbeat/unknown receipt checks.
@@ -151,12 +151,12 @@ Commits: `feat(temporal): retain sustained task progress and deadlines`; `feat(r
 
 ### 4. LangGraph safe active-run recovery
 
-- [ ] Retain admitted requests, graph/checkpoint identity, deadline and counters for platform-local recovery.
-- [ ] Implement single-owner local scheduling of recoverable graph runs at service startup, including persisted cancellation.
-- [ ] Resume saved safe graph state rather than replaying the user prompt or regenerating completed calls.
-- [ ] Keep effects outside replayed approval nodes. Resolve complete host receipts under the same call identity.
-- [ ] Leave unresolved dispatched model/tool outcomes in reconciliation-required state; never recover every incomplete run blindly.
-- [ ] Report recovery eligibility/reason in existing diagnostics and document the local single-process limitation.
+- [x] Retain admitted requests, graph/checkpoint identity, deadline and counters for platform-local recovery.
+- [x] Implement single-owner local scheduling of recoverable graph runs at service startup, including persisted cancellation.
+- [x] Resume saved safe graph state rather than replaying the user prompt or regenerating completed calls.
+- [x] Keep effects outside replayed approval nodes. Resolve complete host receipts under the same call identity.
+- [x] Leave unresolved dispatched model/tool outcomes in reconciliation-required state; never recover every incomplete run blindly.
+- [x] Report recovery eligibility/reason in existing diagnostics and document the local single-process limitation.
 
 Acceptance: a safe interruption resumes from the last graph checkpoint; an uncertain external effect stops visibly; original review interruption remains deliverable.
 Validation: targeted Python service/checkpointer restart case plus one unresolved-receipt case. Existing native review tests remain the baseline.
@@ -164,11 +164,11 @@ Commit: `feat(langgraph): recover safe retained graph executions`.
 
 ### 5. Mastra native durable baseline
 
-- [ ] Wrap the existing Agent/tools/model with the verified durable SDK API and existing storage.
-- [ ] Register capabilities before native recovery; retain durable run IDs and implementation identity.
-- [ ] Recover eligible runs on startup through SDK methods under one local owner; recheck host receipt and authority before effects.
-- [ ] Map native durable events, abort/resume and counters to existing evidence/review contracts.
-- [ ] Preserve exact-action review UX and imported skills; keep the separate workflow composition honestly documented.
+- [x] Wrap the existing Agent/tools/model with the verified durable SDK API and existing storage.
+- [x] Register capabilities before native recovery; retain durable run IDs and implementation identity.
+- [x] Recover eligible runs on startup through SDK methods under one local owner; recheck host receipt and authority before effects.
+- [x] Map native durable events, abort/resume and counters to existing evidence/review contracts.
+- [x] Preserve exact-action review UX and imported skills; keep the separate workflow composition honestly documented.
 
 Acceptance: native SDK state survives an interruption between steps; original approval resumes its original tool call; an unknown effect is not redispatched.
 Validation: one durable-run restart scenario extended to same-call approval, plus pending-effect recovery refusal. No dependency upgrade unless the compatibility gate establishes necessity and documents it.
@@ -176,11 +176,11 @@ Commit: `feat(mastra): persist and recover native durable agent runs`.
 
 ### 6. Vercel and cross-platform within-run context
 
-- [ ] Add budget checks and native compaction steps to the existing Vercel workflow as context grows.
-- [ ] Verify the other four check context between model rounds; fill concrete gaps using their native effect boundaries.
-- [ ] Preserve paired tool groups, skill provenance, summary revision and counters after compaction/restart.
-- [ ] Apply Vercel task deadlines/progress through existing steps/hooks/World recovery; retain model/dispatch retry controls.
-- [ ] Correct stale retry documentation; retain local World versus hosted deployment distinctions.
+- [x] Add budget checks and native compaction steps to the existing Vercel workflow as context grows.
+- [x] Verify the other four check context between model rounds; fill concrete gaps using their native effect boundaries.
+- [x] Preserve paired tool groups, skill provenance, summary revision and counters after compaction/restart.
+- [x] Apply Vercel task deadlines/progress through existing steps/hooks/World recovery; retain model/dispatch retry controls.
+- [x] Correct stale retry documentation; retain local World versus hosted deployment distinctions.
 
 Acceptance: a task that crosses a deliberately small context threshold completes with intact call pairing and retained summary state; replay does not create a second summary or mutation effect.
 Validation: one controlled compaction/restart case using small context bounds and existing fixtures, plus server typecheck. No large-token spending to reach a threshold.
@@ -241,14 +241,37 @@ Personal-account writes require an explicitly agreed disposable target and the e
 
 ## Current position and open questions
 
-Current position: milestone 1 in progress. Shared execution-policy admission and native compatibility/recovery work started in parallel. No new live acceptance claimed yet.
+Current position: native implementation milestones 1–6 are complete. The five-platform real-model task and direct browser acceptance remain in progress. The plan remains active until those observations are recorded.
 
-Execution should start with milestone 1 and the Mastra compatibility probe, then reliable delivery, followed by independent adapter work. The first full vertical proof should use Temporal, followed by the other four under the same scenario and controls.
+Native checks are recorded below. Free-model trials use isolated connected records, reference data and an imported skill with retained wait/restart controls.
 
-Open implementation checks, not blockers to planning: exact pinned Mastra durable snapshot/review behavior; which LangGraph checkpoint transitions safely establish no unacknowledged model dispatch; existing adapter duplicate-resume acknowledgment behavior; native deadline mapping without changing old-run semantics. Record concrete results before marking their checklist items complete.
+Measured limits: LangGraph recovery is locally single-owned and refuses uncertain dispatch. Mastra active recovery conservatively refuses external-dispatch barriers; exact suspended review resumes remain supported after prior reads. Its pinned SDK requires the documented public snapshot-pruning compatibility workaround. Vercel results establish local World behavior, not hosted deployment guarantees. One hung adapter inspection can stall the common non-overlapping observation pass; broader supervision remains deferred.
 
 ## Execution evidence ledger
 
 - Shared policy admission: focused contract check passed; server typecheck passed. Sustained requests retain an absolute deadline and model timeout; legacy manifests have no new execution policy. Native enforcement is being integrated independently.
 
 - Retained continuation: 26 focused existing/new checks passed, including replacement control-plane delivery with the same call/decision, cancelled delivery refusal and unattended conversation settlement. Server typecheck passed. Native adapter restart acceptance remains separate work.
+
+### Implemented native mapping
+
+| Platform | Deadline and progress | Recovery owner |
+| --- | --- | --- |
+| Temporal | Absolute Workflow deadline, bounded Activities and review conditions, retained round/effect counters. | Native replay of completed Activities and original review signal. |
+| Restate | Journaled rounds, durable review timeout and bounded I/O inside `ctx.run`. | Native journal and original durable promise. |
+| LangGraph | Persisted deadline/counters and waiting deadline watcher. | Local single owner of eligible SQLite graph checkpoints. |
+| Mastra | DurableAgent storage/counters and native cancellation on waiting deadline. | SDK recovery with a local ownership lock and conservative dispatch barrier. |
+| Vercel Workflows | Native bounded steps, deadline/hook race and retained compaction/progress. | Local World durable steps and hooks. |
+
+### Verified implementation commits
+
+- `e024426`: admitted versioned execution policy; focused contract and server typecheck.
+- `ac7a109`: retained review delivery and unattended settlement; 26 focused checks.
+- `c990aa7`: Temporal native deadlines/progress and common within-round context projection.
+- `f5eccb5`: Restate native deadlines/progress/compaction. Temporal/Restate native acceptance: 12 checks passed, including wait, owned process replacement, denial/cancel, and zero-effect deadline expiry. Proof: `lab/runs/.review-proof/native-review-e42f7c09-06ab-42dc-803d-fb4dee04049b/summary.json`; separate 60-second wait proof: `native-review-4614bb0f-6983-40e6-8d4e-a7487bdb1dba`.
+- `5ff8187`, `9339023`, `5514481`: LangGraph safe checkpoint recovery, inspectable eligibility and suspended/restarted deadline checks. Targeted native, Python and adapter checks passed; unknown effects refuse recovery.
+- `4a54e66`, `c08cab8`: Mastra DurableAgent and native waiting deadlines; 48 suite checks, five additional owner/recovery checks and seven sustained native review checks passed. Proof: `lab/runs/.review-proof/native-review-61599ffa-5947-4a1b-8219-396194c9a448/summary.json`. Failed probes retained separately.
+- `f13a343`, `0eec01f`: complete-tool-group compaction and Vercel native retained steps/deadlines. Controlled compaction/restart retains one summary and two mutation effects.
+- `24d31b6`, `b42fb53`: sustained-task chat option/progress and supported-mode admission. Focused frontend/control-plane checks passed.
+- `81d33a2`, `004ebbe`: six-record connected scenario, disposable source/reference fixtures, imported skill and owned-restart evidence contract. Seven focused checks passed.
+- Direct browser: Temporal sustained free-model run `def4816a-10c8-4f5b-b24c-060bddd6fee6` selected the calculator and observed 42 from 17 + 25; two model rounds, one completed tool and the admitted deadline. This is a UI smoke observation, not the larger task verdict.

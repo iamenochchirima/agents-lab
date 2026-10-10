@@ -718,7 +718,7 @@ function ChatRunDetails({ error, events, onNewChat, run }: { error: string | nul
           {progress.deadlineAt && <div><dt>Task deadline</dt><dd>{new Date(progress.deadlineAt).toLocaleString()}</dd></div>}
           <div><dt>Projection</dt><dd>{run.projection.state === "stale" ? "Stale" : "Current"}</dd></div>
           <div><dt>Events</dt><dd>{events.length}</dd></div>
-          <div><dt>Tools</dt><dd>{toolEvents.length}</dd></div>
+          <div><dt>Tool events</dt><dd>{toolEvents.length}</dd></div>
         </dl>
         {native && nativePlatform && <NativeRunDetails native={native} platform={nativePlatform} variant={run.manifest.variant} />}
         <McpConnectionDetails events={events} />
