@@ -87,3 +87,9 @@ ownership boundary.
 - [`runner-adapter/`](runner-adapter/README.md) — the server/Temporal client seam.
 - [`variants/`](variants/README.md) — variants built on Temporal.
 - [`variants/baseline/`](variants/baseline/README.md) — the first intentionally narrow variant.
+
+The deterministic `fake-eval-behaviour` fixture reads its bounded directive from the
+retained original user task if live steering becomes the Activity's latest-user
+`prompt` projection. It never reads fixture directives from assistant or external tool
+messages. This keeps question cancellation tests reproducible without changing the
+production model request or fabricating a response to a cancelled question.

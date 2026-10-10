@@ -17,7 +17,11 @@ export class FakeModelAdapter implements ModelAdapter {
       usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } };
 
     if (input.model === "fake-eval-behaviour") {
-      const match = input.prompt.match(/\[eval-behaviour:([A-Za-z0-9_-]+)\]/);
+      // The Activity projects the latest user message into prompt. Live steering
+      // can replace that convenience field while the original fixture task remains
+      // in messages. Never read directives from assistant or external tool content.
+      const directivePattern = /\[eval-behaviour:([A-Za-z0-9_-]+)\]/;
+      const match = input.prompt.match(directivePattern) ?? input.messages?.find(message => message.role === "user" && directivePattern.test(message.content ?? ""))?.content?.match(directivePattern);
       if (!match) throw new Error("A behaviour eval requires a bounded directive.");
       const directive = JSON.parse(Buffer.from(match[1]!, "base64url").toString("utf8")) as {
         action: "complete" | "tool" | "provider-error" | "malformed" | "slow" | "context";
