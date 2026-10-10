@@ -218,3 +218,8 @@ before following their instructions. Preloaded instructions are already in
 context. This guidance comes from the admitted inventory and does not grant tool
 permissions or replace the exact callable schemas. A model skipping a requested
 loader remains an observed model behavior, rather than a successful skill trial.
+
+Package-backed capability profiles are admitted by Temporal, Restate, LangGraph,
+Mastra baseline and Vercel Workflows baseline. Each uses its own native execution
+and review mechanism; this declaration permits admission and does not establish
+identical recovery guarantees or real-provider acceptance.

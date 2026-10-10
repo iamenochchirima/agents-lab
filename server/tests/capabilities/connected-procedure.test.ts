@@ -31,7 +31,7 @@ test("skill resource executes through an authorized connected provider, never th
     const loaded = await loadCapabilityPackages(path, {connections});
     for (const tool of loaded.tools) if (tool.close) closes.add(tool.close);
     const catalog = createPackageCapabilityCatalog(loaded);
-    assert.deepEqual(catalog.get("business-summary-agent")!.supportedVariants, ["mastra/baseline", "langgraph/baseline", "temporal/baseline", "restate/baseline"]);
+    assert.deepEqual(catalog.get("business-summary-agent")!.supportedVariants, ["mastra/baseline", "langgraph/baseline", "temporal/baseline", "restate/baseline", "vercel-workflows/baseline"]);
     assert.deepEqual(catalog.get("business-summary-agent")!.policy.allowedConnectionRefs, ["conn_procedures_local"]);
     const registry = new ToolRegistry({enabledNames: loaded.tools.map(tool => tool.descriptor.definition.name)});
     for (const tool of loaded.tools) registry.register(tool.implementation);

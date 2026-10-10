@@ -22,7 +22,7 @@ export function createPackageCapabilityCatalog(packages: LoadedCapabilityPackage
   }));
   const profiles = packages.profiles.map(profile => ({
     ...profile,
-    supportedVariants: ["mastra/baseline", "langgraph/baseline", "temporal/baseline", "restate/baseline"],
+    supportedVariants: ["mastra/baseline", "langgraph/baseline", "temporal/baseline", "restate/baseline", "vercel-workflows/baseline"],
     availableSkills: profile.availableSkills ?? packages.packages
       .filter(pkg => pkg.tools.some(name => profile.grants.some(grant => grant.capabilityId === name)))
       .flatMap(pkg => pkg.skills.map(skill => ({ id: `${pkg.id}:${skill.name}`, version: pkg.version, ...skill }))),
