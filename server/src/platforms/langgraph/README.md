@@ -153,3 +153,10 @@ the user instruction, preserving assistant/tool message pairing. Clarification a
 and live instructions remain user constraints across native context compaction.
 A wake notification carries identity only; the graph reads the retained input from the
 shared authenticated interaction host. Delivery retries do not create another run.
+
+Frozen tool descriptors carry the capability host's resolved approval mode. The native
+validator honors `automatic` and routes `invocation` through exact action review;
+`tool_grant` and legacy writes still require the admitted tool grant. Every mode retains
+argument validation and host dispatch checks. This includes explicit memory operations
+configured for automatic admission; write risk alone does not replace their resolved
+per-tool policy.

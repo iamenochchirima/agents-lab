@@ -8,7 +8,7 @@ from threading import Thread
 import pytest
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from variants.baseline.graph import ModelConfig, build_baseline_graph
+from variants.baseline.graph import ModelConfig, ToolCall, build_baseline_graph, validate_catalog_call
 from variants.baseline.hosted_tools import catalog_tools, validate_arguments
 
 
@@ -29,7 +29,8 @@ def test_catalog_does_not_silently_drop_tools_and_validates_full_schema():
     assert validate_arguments(value, {"document": "alpha", "unexpected": True})[0] == "INVALID_ARGUMENTS"
 
 
-def test_new_hosted_tool_runs_in_native_graph_without_name_switch(tmp_path: Path):
+@pytest.mark.parametrize("risk, approval", [("read", None), ("write", "automatic"), ("external", "automatic")])
+def test_new_hosted_tool_runs_in_native_graph_without_name_switch(tmp_path: Path, risk, approval):
     requests = []
     class Host(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -44,6 +45,9 @@ def test_new_hosted_tool_runs_in_native_graph_without_name_switch(tmp_path: Path
     thread = Thread(target=server.serve_forever, daemon=True); thread.start()
     key_file = tmp_path / "host.key"; key_file.write_text("f" * 64)
     value = descriptor()
+    value["definition"]["riskClass"] = risk
+    if approval is not None:
+        value["definition"]["approvalMode"] = approval
     directive = base64.urlsafe_b64encode(json.dumps({"action": "tool", "toolName": value["definition"]["name"], "input": {"document": "alpha"}, "output": "finished"}).encode()).decode().rstrip("=")
     events = []
     try:
@@ -131,3 +135,21 @@ def test_equivalent_json_text_structure_is_projected_once_with_raw_evidence_unch
     assert result["structuredContent"] == structured and result["contentBlocks"] == blocks
     distinct = {"content": '{"owner":"Avery","constraints":[1,1,{"blocked":true}]}', "structuredContent": structured}
     assert project_model_content(distinct)[0].count("\n") == 1
+
+
+@pytest.mark.parametrize("risk", ["write", "external"])
+@pytest.mark.parametrize("approval", [None, "tool_grant", "automatic", "invocation"])
+def test_resolved_approval_mode_keeps_grants_and_schema_checks(risk, approval):
+    value = descriptor()
+    value["definition"]["riskClass"] = risk
+    if approval is not None:
+        value["definition"]["approvalMode"] = approval
+    call = ToolCall("original-call", value["definition"]["name"], {"document": "alpha"})
+    rejected = validate_catalog_call(call, value, [], 1)
+    if approval in {"automatic", "invocation"}:
+        assert rejected is None
+    else:
+        assert rejected[0] == "APPROVAL_REQUIRED"
+    assert validate_catalog_call(call, value, [call.name], 1) is None
+    invalid = ToolCall(call.tool_call_id, call.name, {"document": "alpha", "unexpected": True})
+    assert validate_catalog_call(invalid, value, [call.name], 1)[0] == "INVALID_ARGUMENTS"

@@ -1134,7 +1134,8 @@ def validate_catalog_call(call: ToolCall, descriptor: dict[str, Any], approved_t
     if round_number < 1:
         return "INVALID_ROUND", "Tool call round must be positive."
     definition = descriptor["definition"]
-    if definition.get("approvalMode") != "invocation" and definition["riskClass"] in {"external", "write"} and call.name not in approved_tools:
+    # Honor the host-resolved per-tool policy while retaining schema and dispatch gates.
+    if definition.get("approvalMode") not in {"automatic", "invocation"} and definition["riskClass"] in {"external", "write"} and call.name not in approved_tools:
         return "APPROVAL_REQUIRED", "The selected tool requires an explicit approval."
     return validate_arguments(descriptor, call.arguments)
 
