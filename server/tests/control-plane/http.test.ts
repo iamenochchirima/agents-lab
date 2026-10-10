@@ -130,6 +130,19 @@ function referenceFor(manifest: RunManifest): PlatformExecutionReference {
   };
 }
 
+test("conversation history reports missing sessions and rejects invalid page bounds", async () => {
+  await withApp(async (app) => {
+    const missing = await app.inject({ method: "GET", url: "/api/sessions/missing-conversation/runs" });
+    assert.equal(missing.statusCode, 404);
+    assert.equal(missing.json().error.code, "SESSION_NOT_FOUND");
+    for (const limit of ["101", "0", "NaN", "1.5"]) {
+      const invalid = await app.inject({ method: "GET", url: `/api/sessions/missing-conversation/runs?limit=${limit}` });
+      assert.equal(invalid.statusCode, 400);
+      assert.equal(invalid.json().error.code, "INVALID_REQUEST");
+    }
+  });
+});
+
 test("oversized retained run configuration returns a clear limit error before dispatch", async () => {
   await withApp(async (app, runner) => {
     runner.manifestConfiguration = () => ({ providerMetadata: "x".repeat(1024 * 1024) });

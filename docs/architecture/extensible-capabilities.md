@@ -186,6 +186,16 @@ inference or effects. The unfinished context turn stays occupied while waiting.
 Cancellation, decisions and final dispatch reservation share a single-host lock.
 See the [review contract](../../server/src/capabilities/reviews/README.md).
 
+Chat history is restored through `GET /api/sessions/:sessionId/runs`. The endpoint
+returns retained turns in admission order, with the latest 50 runs by default and
+a maximum page size of 100. `beforeTurnId` retrieves earlier turns; `hasMore` and
+`nextBeforeTurnId` describe the next page. It reads the session's existing turn
+ledger instead of scanning unrelated runs. Run projections use the same safe
+view as individual run inspection; review records remain in the action API and
+are never inferred from assistant text. Unknown sessions return 404, and invalid
+page bounds or a cursor from another session return 400. Reading history does
+not admit a new turn or dispatch a provider action.
+
 Mastra persists SDK suspended snapshots in LibSQL. LangGraph uses a dedicated
 checkpointed approval node and `Command(resume=...)`. Temporal waits on a workflow
 signal and heartbeats source Activities. Restate waits on a call/revision-specific

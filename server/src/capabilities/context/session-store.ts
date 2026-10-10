@@ -370,6 +370,12 @@ export class ContextSessionStore {
     return turns.find((turn) => turn.turnId === turnId) ?? null;
   }
 
+  /** Retained turn order is independent of completion time or compaction. */
+  async listTurns(sessionId: string): Promise<readonly ContextTurn[]> {
+    await this.read(sessionId);
+    return (await this.readTurnRecords(sessionId)).sort((left, right) => left.sessionRevision - right.sessionRevision);
+  }
+
   async settleTurn(
     sessionId: string,
     turnId: string,

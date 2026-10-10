@@ -10,7 +10,7 @@ import { trustedFrontendOrigins } from "../bootstrap/frontend-origins.js";
 import { EvidenceLimitError, EvidenceNotFoundError, isAllowlistedEvidenceFile, type EvidenceFileName, RunEvidenceStore } from "../application/evidence-store.js";
 import { RunNotFoundError, RunService, RunnerUnavailableError, RunnerConnectionUnavailableError, RunnerCancellationUnconfirmedError } from "../application/run-service.js";
 import { InvalidRunRequestError } from "../domain/manifest.js";
-import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError } from "../../capabilities/context/session-store.js";
+import { ContextSessionBusyError, ContextSessionConflictError, ContextSessionLimitError, ContextSessionNotFoundError } from "../../capabilities/context/session-store.js";
 import type { PlatformRegistry } from "../application/platform-registry.js";
 import type { RunCapabilities, RunRequest, RunSelection } from "../domain/types.js";
 import type { RunView } from "../application/run-service.js";
@@ -175,6 +175,13 @@ export function buildControlPlaneServer(dependencies: ControlPlaneServerDependen
     } catch (error) {
       return sendError(reply, error);
     }
+  });
+
+  app.get<{ Params: { sessionId: string }; Querystring: { limit?: string; beforeTurnId?: string } }>("/api/sessions/:sessionId/runs", async (request, reply) => {
+    try {
+      const limit = request.query.limit === undefined ? 50 : Number(request.query.limit);
+      return reply.send(await dependencies.service.sessionRuns(request.params.sessionId, limit, request.query.beforeTurnId));
+    } catch (error) { return sendError(reply, error); }
   });
 
   app.get<{ Params: { runId: string } }>("/api/runs/:runId", async (request, reply) => {
@@ -505,6 +512,9 @@ function sendError(reply: FastifyReply, error: unknown) {
   }
   if (error instanceof RunNotFoundError || error instanceof EvidenceNotFoundError) {
     return reply.code(404).send({ error: { code: "RUN_NOT_FOUND", message: "Run or evidence was not found." } });
+  }
+  if (error instanceof ContextSessionNotFoundError) {
+    return reply.code(404).send({ error: { code: "SESSION_NOT_FOUND", message: "Conversation was not found." } });
   }
   if (error instanceof RunnerCancellationUnconfirmedError) {
     return reply.code(503).send({ error: { code: "RUN_CANCELLATION_UNCONFIRMED", message: error.message } });

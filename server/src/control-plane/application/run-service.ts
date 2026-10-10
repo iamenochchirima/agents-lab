@@ -22,7 +22,7 @@ import type { ContextProjection } from "../../capabilities/context/contracts.js"
 import { InvocationReviewStore, InvocationReviewError, validateDecision } from "../../capabilities/reviews/store.js";
 import type { InvocationDecision, InvocationResumeInput, InvocationReviewView } from "../../capabilities/reviews/contracts.js";
 import { calculateContextBudget } from "../../capabilities/context/budget.js";
-import { ContextSessionNotFoundError } from "../../capabilities/context/session-store.js";
+import { ContextSessionConflictError, ContextSessionNotFoundError } from "../../capabilities/context/session-store.js";
 import { ContextService } from "../../capabilities/context/context-service.js";
 import type { CapabilityCatalog } from "../../capabilities/catalog.js";
 
@@ -32,6 +32,7 @@ const CONTEXT_CAPABLE_VARIANTS: ReadonlySet<string> = new Set([
   "langgraph/baseline",
   "mastra/baseline",
   "mastra/workflow",
+  "vercel-workflows/baseline",
 ]);
 
 export class RunNotFoundError extends Error {
@@ -104,6 +105,27 @@ export class RunService {
   private readonly contextRecoveryInFlight = new Map<string, Promise<PlatformExecutionReference | null>>();
 
   constructor(private readonly dependencies: RunServiceDependencies) {}
+
+  /** Restore a bounded transcript page from retained turn identities, never a global run scan. */
+  async sessionRuns(sessionId: string, limit = 50, beforeTurnId?: string): Promise<{
+    readonly runs: readonly RunView[]; readonly hasMore: boolean; readonly nextBeforeTurnId: string | null;
+  }> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new InvalidRunRequestError("History limit must be between 1 and 100.");
+    if (!this.dependencies.context) throw new ContextSessionNotFoundError(sessionId);
+    const turns = await this.dependencies.context.sessions.listTurns(sessionId);
+    const end = beforeTurnId === undefined ? turns.length : turns.findIndex(turn => turn.turnId === beforeTurnId);
+    if (end < 0) throw new InvalidRunRequestError("History cursor does not belong to this session.");
+    const start = Math.max(0, end - limit);
+    const page = turns.slice(start, end);
+    const runs: RunView[] = [];
+    // Sequential inspection avoids issuing a burst of native recovery requests.
+    for (const turn of page) {
+      const run = await this.getRun(turn.runId);
+      if (run.manifest.context.sessionId !== sessionId) throw new ContextSessionConflictError("Retained run does not belong to this session.");
+      runs.push(run);
+    }
+    return { runs, hasMore: start > 0, nextBeforeTurnId: start > 0 ? page[0].turnId : null };
+  }
 
   async createRun(request: RunRequest): Promise<RunView> {
     validateRunRequest(request);

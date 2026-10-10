@@ -286,6 +286,26 @@ async function withService(
   }
 }
 
+test("session history restores retained turns in bounded chronological pages", async () => {
+  await withService(async (service) => {
+    const request = { platform: "temporal", variant: "baseline", sessionId: "session-history",
+      task: { kind: "prompt" as const, prompt: "First turn" }, model: { provider: "fake", model: "fake-success" } };
+    const first = await service.createRun(request);
+    const second = await service.createRun({ ...request, task: { kind: "prompt", prompt: "Second turn" } });
+    const third = await service.createRun({ ...request, task: { kind: "prompt", prompt: "Third turn" } });
+    const latest = await service.sessionRuns(request.sessionId, 2);
+    assert.deepEqual(latest.runs.map(run => run.runId), [second.runId, third.runId]);
+    assert.equal(latest.hasMore, true);
+    assert.equal(latest.nextBeforeTurnId, second.manifest.context.turnId);
+    const older = await service.sessionRuns(request.sessionId, 2, latest.nextBeforeTurnId!);
+    assert.deepEqual(older.runs.map(run => run.runId), [first.runId]);
+    assert.equal(older.hasMore, false);
+    assert.equal(older.nextBeforeTurnId, null);
+    await assert.rejects(() => service.sessionRuns(request.sessionId, 101), /History limit/);
+    await assert.rejects(() => service.sessionRuns(request.sessionId, 2, "another-session-turn"), /does not belong/);
+  });
+});
+
 test("client turn keys replay one durable run and reject a changed prompt", async () => {
   await withService(async (service, _store, runner) => {
     const request = {
