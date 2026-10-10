@@ -9,7 +9,7 @@ import { argumentDigest } from '../../src/capabilities/reviews/store.js';
 import type { RunView } from '../../src/control-plane/application/run-service.js';
 import type { InvocationReviewView } from '../../src/capabilities/reviews/contracts.js';
 
-const scenario: Scenario = JSON.parse(await readFile(new URL('../../../lab/scenarios/sustained-connected-review/scenario.json', import.meta.url), 'utf8').catch(() => readFile('../lab/scenarios/sustained-connected-review/scenario.json', 'utf8')));
+const scenario: Scenario = JSON.parse(await readFile(new URL('../../../lab/scenarios/sustained-connected-review/scenario.json', import.meta.url), 'utf8').catch(() => readFile(new URL('../../../../lab/scenarios/sustained-connected-review/scenario.json', import.meta.url), 'utf8')));
 const namespace = 'cap-sustained-test';
 const action = (args: Record<string, unknown>) => ({ requestId: 'review-1', revision: 1, call: { name: 'record_correct', toolCallId: 'original-call', round: 2 }, displayArguments: args }) as InvocationReviewView;
 

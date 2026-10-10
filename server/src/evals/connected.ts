@@ -193,6 +193,8 @@ async function main() {
             const decision = fixtureReviewDecision(scenario, stage, action, namespace);
             if (stage.reviewRules && record.reviews.some((review: any) => review.arguments.key === (action.displayArguments as any).key)) throw new Error('A record was proposed twice; no repeated mutation was authorized');
             if (scenario.sustained && !record.wait) {
+              run = await json(`${api}/api/runs/${run.runId}`);
+              if (!run.executionReference?.executionId) throw new Error('Pending review lacks an established native execution identity');
               const waitStartedAt = new Date().toISOString();
               record.wait = { startedAt: waitStartedAt, requestId: action.requestId, revision: action.revision, toolCallId: action.call.toolCallId,
                 argumentDigest: action.argumentDigest, nativeBefore: run.executionReference, statusBefore: run.status };
