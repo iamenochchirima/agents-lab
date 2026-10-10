@@ -42,6 +42,20 @@ export async function restartOwnedNative(input) {
   }, body: JSON.stringify(input) }, 180000);
 }
 
+/** Re-discover an owned endpoint even when its URL was registered before. Restate
+ * retains endpoint metadata separately from service process code; skipping this
+ * step can leave a newly added shared input handler unreachable after restart.
+ * Force refresh preserves the existing endpoint identity and durable journals.
+ */
+export async function refreshRestateDeployment(adminUrl, endpoint) {
+  const response = await fetch(`${adminUrl}/deployments`, {method: 'POST', headers: {'content-type': 'application/json'},
+    body: JSON.stringify({uri: endpoint, force: true}), signal: AbortSignal.timeout(5000)});
+  if (!response.ok) { await response.body?.cancel(); return false; }
+  const deployment = await response.json();
+  const service = deployment.services?.find(value => value.name === 'AgentLabRestateBaseline');
+  return ['run', 'progress', 'reviewDecision', 'taskInput'].every(name => service?.handlers?.some(handler => handler.name === name));
+}
+
 async function launch() {
   // Explicit ports fail closed; no existing listener is stopped or re-registered.
   for (const port of [4324, 5174, 19197, 19198, 8081, 9071, 19522, 29081, 22025, 9095]) await assertFreePort(port);
@@ -130,19 +144,27 @@ async function launch() {
         const before = await json(`${api}/api/runs/${encodeURIComponent(input.runId)}`);
         if (before.manifest.platform !== input.platform || before.executionReference?.executionId !== input.executionReference?.executionId) throw new Error('Original native identity does not match');
         const originalActions = await json(`${api}/api/runs/${input.runId}/actions`);
-        if (!originalActions.actions.some(action => action.requestId === input.action.requestId && action.revision === input.action.revision && action.call.toolCallId === input.action.toolCallId && action.status === 'pending')) throw new Error('Original pending review does not match');
+        if (input.question) {
+          const interaction = await json(`${api}/api/runs/${input.runId}/inputs`);
+          if (!interaction.questions.some(question => question.questionId === input.question.questionId && question.toolCallId === input.question.toolCallId && question.status === 'pending')) throw new Error('Original pending question does not match');
+        } else if (!input.action || !originalActions.actions.some(action => action.requestId === input.action.requestId && action.revision === input.action.revision && action.call.toolCallId === input.action.toolCallId && action.status === 'pending')) throw new Error('Original pending review does not match');
         const startedAt = new Date().toISOString();
         const oldPid = await stop(name); const replacement = await start(name);
+        if (name === 'restate') await until(() => refreshRestateDeployment('http://127.0.0.1:9071', 'http://127.0.0.1:29081'), 'replaced Restate deployment metadata');
         await until(async () => {
           const health = await json(`${api}/api/platforms/${input.platform}/health`);
           if (!health.reachable) return false;
           const current = await json(`${api}/api/runs/${input.runId}`);
+          if (current.executionReference?.executionId !== before.executionReference.executionId) return false;
+          if (input.question) {
+            const interaction = await json(`${api}/api/runs/${input.runId}/inputs`);
+            return interaction.questions.some(question => question.questionId === input.question.questionId && question.toolCallId === input.question.toolCallId && question.status === 'pending');
+          }
           const actions = await json(`${api}/api/runs/${input.runId}/actions`);
-          return current.executionReference?.executionId === before.executionReference.executionId && actions.actions.some(action =>
-            action.requestId === input.action.requestId && action.revision === input.action.revision && action.call.toolCallId === input.action.toolCallId && action.status === 'pending');
+          return actions.actions.some(action => action.requestId === input.action.requestId && action.revision === input.action.revision && action.call.toolCallId === input.action.toolCallId && action.status === 'pending');
         }, `${input.platform} original review after replacement`);
         const storagePath = { temporal: join(root, 'runs'), restate: join(root, 'restate'), langgraph: join(root, 'langgraph'), 'vercel-workflows': join(root, 'vercel'), mastra: join(root, 'sessions') }[input.platform];
-        const evidence = { platform: input.platform, runId: input.runId, ...input.action, owner, oldPid, newPid: replacement.pid, startedAt, completedAt: new Date().toISOString(), storagePath, storageRetained: true, nativeExecutionId: before.executionReference.executionId };
+        const evidence = { platform: input.platform, runId: input.runId, ...(input.action ?? input.question), owner, oldPid, newPid: replacement.pid, startedAt, completedAt: new Date().toISOString(), storagePath, storageRetained: true, nativeExecutionId: before.executionReference.executionId };
         await writeFile(join(root, `restart-${input.runId}.json`), JSON.stringify(evidence, null, 2));
         response.setHeader('content-type', 'application/json'); response.end(JSON.stringify(evidence));
       } finally { restarting = false; }
@@ -158,7 +180,7 @@ async function launch() {
     await start('fixture'); await until(() => json(`${fixtureUrl}/health`), 'fictional fixture');
     await start('restate-server'); await until(async () => (await fetch('http://127.0.0.1:9071/health', { signal: AbortSignal.timeout(5000) })).ok, 'isolated Restate server');
     await start('restate');
-    await until(async () => { const existing = await json('http://127.0.0.1:9071/deployments'); if (JSON.stringify(existing).includes('http://127.0.0.1:29081')) return true; const result = await fetch('http://127.0.0.1:9071/deployments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uri: 'http://127.0.0.1:29081' }), signal: AbortSignal.timeout(5000) }); return result.ok; }, 'isolated Restate deployment');
+    await until(() => refreshRestateDeployment('http://127.0.0.1:9071', 'http://127.0.0.1:29081'), 'isolated Restate deployment metadata');
     for (const name of ['temporal', 'langgraph', 'vercel-workflows', 'api']) await start(name);
     await until(async () => {
       const response = await fetch(`${api}/health`, { signal: AbortSignal.timeout(5000) }); const health = await response.json();
