@@ -4,7 +4,11 @@ This scenario asks one native run to compare six fictional release records with 
 
 The hypothesis is that a native platform can retain the original task and exact pending call during a 65-second approval wait and an owned service/worker replacement, then continue the same run to a verified result. This measures a local retained wait and controlled restart, not days of operation or exactly-once external effects. Model failures and unknown outcomes remain failures in the saved report.
 
-Use the existing connected fixture and register this directory's `packages.json` with the `connected-agent` profile. It supplies the collection MCP source, separate release-reference HTTP source and local skill. Run the observer from `server`:
+From `server`, start `pnpm dev:connected-fixture` (restart an already owned fixture to discover the collection tools). Its default address is `http://127.0.0.1:19196`; it stores disposable namespaces beneath `lab/runs/.connected-fixture`.
+
+Start an isolated control plane with `AGENTLAB_API_PORT=4322`, `AGENTLAB_CAPABILITY_HOST_URL=http://127.0.0.1:4322`, `AGENTLAB_CAPABILITY_PACKAGES=<absolute-repo>/lab/scenarios/sustained-connected-review/packages.json`, `AGENTLAB_CAPABILITY_STATE_ROOT=lab/runs/.sustained-connected-proof/management`, and `AGENTLAB_CONNECTED_CAPABILITIES_ENABLED=true`. Use a fresh isolated management root: changing the seed path does not replace already retained package/profile records. The seed makes the collection MCP source, separate release-reference HTTP source and local skill available through `connected-agent`. The relative skill root resolves against `packages.json`.
+
+Give the control plane and native workers the same absolute run/context roots and host endpoint; follow the platform setup guide and preserve unrelated services. Then run the observer from `server`:
 
 ```sh
 pnpm eval:connected -- --api http://127.0.0.1:4322 --platforms langgraph --scenario ../lab/scenarios/sustained-connected-review/scenario.json --restart-hook /absolute/path/to/owned-native-restart.mjs

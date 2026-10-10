@@ -46,3 +46,11 @@ This is a read-only snapshot of recovery safety; it cannot start a second worker
 for an already active execution. Running state and checkpoints can advance while
 an operator reads it. `unknown` owners keep the attention status even when they
 have checkpoint rows, because storage alone cannot resolve their external outcome.
+
+
+For a sustained run paused at action review, a service-owned timer persists the
+native failed outcome at the original absolute deadline, without inspection or
+review delivery. Startup reinstalls the timer using the retained deadline. A
+late resume is rejected. The interrupt checkpoint remains forensic evidence;
+the terminal execution row prevents further graph dispatch. The control-plane
+observer can then settle the retained context turn from the native outcome.

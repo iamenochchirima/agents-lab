@@ -4,6 +4,7 @@ No model network call is made. The test retains the native graph/checkpoint and
 isolates only the shared-host source transport and scripted model decision.
 """
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -98,3 +99,58 @@ def test_pending_review_survives_service_restart_and_resumes_without_reinference
             else:
                 assert any(event["kind"] == "ToolCallRejected" and event["payload"]["code"] == "INVOCATION_DENIED" for event in inspection["events"])
             assert client.post(endpoint + "/resume", json=decision, headers=headers).status_code == 409
+
+
+@pytest.mark.parametrize("restart", [False, True])
+def test_suspended_deadline_settles_without_decision_or_inspection(tmp_path: Path, restart: bool):
+    key = tmp_path / "host.key"
+    key.write_text("a" * 64)
+    config = ServiceConfig(state_dir=tmp_path / "native", capability_host_key_file=key)
+    calls = {"model": 0, "effects": 0}
+    review = {"schemaVersion": 1, "requestId": "review-call-a", "revision": 1,
+              "runId": "deadline-review", "status": "pending", "call": {"toolCallId": "call-a", "name": "business_adjust"}}
+    def model(*args):
+        calls["model"] += 1
+        return ModelResponse(None, [ToolCall("call-a", "business_adjust", {"amount": 500})], empty_usage())
+    def execute(*args, **kwargs):
+        calls["effects"] += 1
+        raise AssertionError("Expired review must never dispatch the mutation")
+    payload = {"runId": "deadline-review", "threadId": "deadline-review", "prompt": "Adjust.", "systemInstruction": "Use tools.", "model": {"provider": "fake", "model": "fake-success"},
+               "tools": {"enabledNames": ["business_adjust"], "approvedNames": [], "maxRounds": 6, "maxCalls": 8},
+               "toolCatalog": {"schemaVersion": 1, "revision": "catalog-review", "tools": [{"definition": {"schemaVersion": 1, "name": "business_adjust", "description": "Adjust fixture.", "riskClass": "write", "executionKind": "connection", "approvalMode": "invocation", "inputSchema": {"type": "object", "properties": {"amount": {"type": "integer"}}, "required": ["amount"], "additionalProperties": False}, "limits": {"maxArgumentBytes": 1024, "maxResultBytes": 4096, "timeoutMs": 5000}}, "source": {"id": "business", "version": "1.0.0", "digest": "fixture"}, "execution": {"kind": "hosted", "key": "business:adjust"}, "failurePolicy": "feedback"}]}}
+    payload["execution"] = {"schemaVersion": 1, "mode": "sustained", "modelTimeoutMs": 500,
+        "deadlineAt": (datetime.now(timezone.utc) + timedelta(milliseconds=600)).isoformat()}
+    execution_id = "langgraph:deadline-review"
+    endpoint = f"/v1/runs/{execution_id}"
+    with patch("variants.baseline.graph.complete_model", side_effect=model), patch("variants.baseline.graph.prepare_hosted", return_value=review), patch("variants.baseline.graph.execute_hosted", side_effect=execute):
+        app = create_app(config)
+        with TestClient(app) as client:
+            assert client.post("/v1/runs", json=payload).status_code == 202
+            for _ in range(100):
+                record = app.state.service.store.get(execution_id)
+                if record["status"] == "suspended": break
+                time.sleep(.005)
+            assert record["status"] == "suspended"
+            checkpoint_id = record["checkpoint_id"]
+            assert checkpoint_id
+            if not restart:
+                # No inspection, review delivery or cancel request drives expiry.
+                time.sleep(.7)
+                assert app.state.service.store.get(execution_id)["status"] == "failed"
+        if restart:
+            app = create_app(config)
+            with TestClient(app):
+                time.sleep(.7)
+                assert app.state.service.store.get(execution_id)["status"] == "failed"
+        app = create_app(config)
+        with TestClient(app) as client:
+            inspection = client.get(endpoint).json()
+            assert inspection["status"] == "failed"
+            assert inspection["result"]["error"]["code"] == "EXECUTION_DEADLINE_EXCEEDED"
+            assert inspection["result"]["error"]["failureKind"] == "timeout"
+            assert calls == {"model": 1, "effects": 0}
+            assert len([event for event in inspection["events"] if event["kind"] == "RunFailed"]) == 1
+            assert not any(event["kind"] == "RunResumed" for event in inspection["events"])
+            decision = {"kind": "invocation_review", "requestId": "review-call-a", "revision": 1, "decisionId": "late", "toolCallId": "call-a", "decision": "approved"}
+            assert client.post(endpoint + "/resume", json=decision, headers={"authorization": "Bearer " + "a" * 64}).status_code == 409
+            assert app.state.service.store.get(execution_id)["checkpoint_id"] == checkpoint_id
