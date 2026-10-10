@@ -42,7 +42,7 @@ one-page fixture checks cursor bounds, response mapping and provider request IDs
 | HTTP replies | Bounded JSON and incrementally decoded SSE; only the correlated final result/error completes a call | SSE returns before stream EOF. Progress consumes the byte budget and is retained separately in source-attempt diagnostics (32 notifications, 512-character messages, omitted count); unrelated envelopes cannot complete the call. No independent long-lived server notification stream or stream replay. |
 | Current metadata | Protocol/client metadata, method/name routing headers and valid `x-mcp-header` primitive properties with encoded values | Unsafe, duplicate and unsupported composition/array annotations exclude the declaration. Unsupported interactive results fail explicitly. |
 | Session cleanup | Legacy session headers retained within each owned client; best-effort bounded DELETE on close | Fresh client per hosted invocation. Lost cleanup acknowledgement does not establish remote session expiry. |
-| Results | Bounded content blocks and structured content retained in canonical results/receipts | Native model projection supports text, JSON and textual resources. Retained image/audio blocks do not imply native multimedia model input. |
+| Results | Bounded content blocks and structured content retained in canonical results/receipts | Native model projection supports text, JSON and textual resources. Equivalent JSON text/structured representations are sent once; distinct blocks and raw receipts remain intact. Retained image/audio blocks do not imply native multimedia model input. |
 
 The [MCP adapter contract](../../server/src/capabilities/integrations/mcp/README.md)
 describes dispatch and result semantics. Local checks cover paginated discovery,

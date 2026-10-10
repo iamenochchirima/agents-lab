@@ -3,6 +3,7 @@ import type { ToolExecutionResult } from "./contracts.js";
 /** Text-only native tool messages preserve supported text and structured JSON.
  * Other content is retained as evidence with an explicit unsupported marker;
  * it must never be reported as having been perceived by a text-only model.
+ * Equivalent JSON text/structured representations are sent once; raw evidence is unchanged.
  * Pure code is safe to run within a durable workflow's deterministic boundary.
  */
 export function projectToolResult(result: ToolExecutionResult): { content: string; unsupportedContent: string[] } {
@@ -16,7 +17,9 @@ export function projectToolResult(result: ToolExecutionResult): { content: strin
     else if (block.type === "resource_link") texts.push(JSON.stringify({ resourceLink: block.uri, name: block.name }));
     else unsupported.add(typeof block.type === "string" ? block.type : "unknown");
   }
-  if (result.structuredContent !== undefined) texts.push(JSON.stringify(result.structuredContent));
+  if (result.structuredContent !== undefined && !texts.some(text => containsEquivalentJson(text, result.structuredContent))) {
+    texts.push(JSON.stringify(result.structuredContent));
+  }
   const unsupportedContent = [...unsupported].sort();
   if (unsupportedContent.length) texts.push(`Unsupported tool content retained in evidence: ${unsupportedContent.join(", ")}.`);
   return { content: texts.join("\n"), unsupportedContent };
@@ -32,4 +35,18 @@ export function toolResultEvidence(result: ToolExecutionResult): Record<string, 
     ...(result.contentBlocks ? { contentBlocks: result.contentBlocks } : {}),
     modelProjection: { mode: "text", unsupportedContent: projection.unsupportedContent },
   };
+}
+
+
+/** Compare JSON values, not formatting/object key order; never collapse distinct text blocks. */
+function containsEquivalentJson(text: string, structured: unknown): boolean {
+  try { return jsonEquivalent(JSON.parse(text), structured); } catch { return false; }
+}
+function jsonEquivalent(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) return Array.isArray(left) && Array.isArray(right) &&
+    left.length === right.length && left.every((value, index) => jsonEquivalent(value, right[index]));
+  const a = left as Record<string, unknown>, b = right as Record<string, unknown>;
+  return Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && jsonEquivalent(a[key], b[key]));
 }

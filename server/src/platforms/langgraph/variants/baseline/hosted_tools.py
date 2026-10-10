@@ -202,8 +202,28 @@ def project_model_content(result: dict[str, Any]) -> tuple[str, list[str]]:
             texts.append(json.dumps({"resourceLink": block.get("uri"), "name": block.get("name")}, separators=(",", ":")))
         else:
             unsupported.append(str(block.get("type", "unknown")) if isinstance(block, dict) else "invalid")
-    if "structuredContent" in result:
+    if "structuredContent" in result and not any(_equivalent_json_text(text, result["structuredContent"]) for text in texts):
         texts.append(json.dumps(result["structuredContent"], separators=(",", ":")))
     if unsupported:
         texts.append("Unsupported tool content retained in evidence: " + ", ".join(sorted(set(unsupported))) + ".")
     return "\n".join(texts), sorted(set(unsupported))
+
+
+def _equivalent_json_text(text: str, structured: Any) -> bool:
+    """Deduplicate only an equivalent JSON representation; raw receipts stay unchanged."""
+    def invalid_constant(value: str) -> None:
+        raise ValueError(value)
+    try:
+        return _json_equivalent(json.loads(text, parse_constant=invalid_constant), structured)
+    except (ValueError, TypeError):
+        return False
+
+
+def _json_equivalent(left: Any, right: Any) -> bool:
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, dict) or isinstance(right, dict):
+        return isinstance(left, dict) and isinstance(right, dict) and left.keys() == right.keys() and all(_json_equivalent(value, right[key]) for key, value in left.items())
+    if isinstance(left, list) or isinstance(right, list):
+        return isinstance(left, list) and isinstance(right, list) and len(left) == len(right) and all(_json_equivalent(a, b) for a, b in zip(left, right))
+    return left == right

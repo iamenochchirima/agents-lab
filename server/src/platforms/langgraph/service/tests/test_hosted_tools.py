@@ -118,3 +118,16 @@ def test_text_projection_preserves_json_and_resources_without_claiming_image_per
     assert result["contentBlocks"][1]["data"] == "fictional-image"
     assert project_model_content({"content": "raw source envelope", "structuredContent": {"owner": "Avery"}}) == ("raw source envelope\n{\"owner\":\"Avery\"}", [])
     assert project_model_content({"content": "legacy text"}) == ("legacy text", [])
+
+
+def test_equivalent_json_text_structure_is_projected_once_with_raw_evidence_unchanged():
+    from variants.baseline.hosted_tools import project_model_content
+    structured = {"owner": "Avery", "constraints": [True, 1, {"blocked": True}]}
+    text = ' {"constraints":[true,1,{"blocked":true}],"owner":"Avery"} '
+    blocks = [{"type": "text", "text": text}, {"type": "text", "text": "Separate explanation."}]
+    result = {"content": text, "structuredContent": structured, "contentBlocks": blocks}
+    assert project_model_content(result) == (text + "\nSeparate explanation.", [])
+    assert project_model_content({"content": text, "structuredContent": structured}) == (text, [])
+    assert result["structuredContent"] == structured and result["contentBlocks"] == blocks
+    distinct = {"content": '{"owner":"Avery","constraints":[1,1,{"blocked":true}]}', "structuredContent": structured}
+    assert project_model_content(distinct)[0].count("\n") == 1
