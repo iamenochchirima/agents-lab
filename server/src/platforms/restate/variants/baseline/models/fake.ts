@@ -18,7 +18,10 @@ export class FakeRestateModel implements ModelAdapter {
       usage: { inputTokens: 100, outputTokens: 20, totalTokens: 120 } };
 
     if (input.model === "fake-eval-behaviour") {
-      const match = input.prompt.match(/\[eval-behaviour:([A-Za-z0-9_-]+)\]/);
+      // Live steering can replace the latest-user convenience prompt while the
+      // original fixture task remains retained. External content is not a directive.
+      const directivePattern = /\[eval-behaviour:([A-Za-z0-9_-]+)\]/;
+      const match = input.prompt.match(directivePattern) ?? input.messages?.find(message => message.role === "user" && directivePattern.test(message.content ?? ""))?.content?.match(directivePattern);
       if (!match) throw new Error("A behaviour eval requires a bounded directive.");
       const directive = JSON.parse(Buffer.from(match[1]!, "base64url").toString("utf8")) as {
         action: "complete" | "tool" | "provider-error" | "malformed" | "slow" | "context";

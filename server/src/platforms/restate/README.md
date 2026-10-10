@@ -118,3 +118,9 @@ Set `AGENTLAB_CONTEXT_ROOT` to the same absolute directory in the driver and
 service, and `AGENTLAB_LOCAL_FIXTURE_URL` to the eval fixture endpoint when using
 connected-tool probes. Preserve the native data directory until inspecting or
 reconciling any unfinished workflow.
+
+The deterministic `fake-eval-behaviour` fixture can read its bounded directive from the
+retained original user task when live steering replaces the latest-user `prompt`
+projection. Assistant and external tool messages cannot provide fixture directives.
+This parity correction affects synthetic lifecycle tests only. It does not establish
+the cause of earlier real-provider failures or change their retained verdicts.

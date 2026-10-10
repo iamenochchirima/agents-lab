@@ -354,3 +354,29 @@ test("behaviour fixture pairs real feedback and enforces an abortable operation 
   assert.equal(deadline.kind === "failure" ? deadline.failureKind : null, "timeout");
   assert.equal(deadline.evalObservation?.errorCode, "FAKE_MODEL_DEADLINE_EXCEEDED");
 });
+
+test("behaviour fixture retains original directive after question steering replaces convenience prompt", async () => {
+  const directive = Buffer.from(JSON.stringify({ action: "tool", toolName: "ask_user", input: { question: "Which owner?" } })).toString("base64url");
+  const originalTask = `Keep original record constraints. [eval-behaviour:${directive}]`;
+  const steering = "[Live task instruction 1; input steer]\nCancel the owner question. Do not change records.";
+  const messages = [
+    { role: "user" as const, content: originalTask },
+    { role: "assistant" as const, content: null, toolCalls: [{ toolCallId: "eval-behaviour-call-1", name: "ask_user", arguments: { question: "Which owner?" } }] },
+    { role: "tool" as const, toolCallId: "eval-behaviour-call-1", name: "ask_user", content: JSON.stringify({ error: { code: "TASK_INPUT_SUPERSEDED" } }) },
+    { role: "user" as const, content: steering },
+  ];
+  const result = await new FakeRestateModel().complete({ ...input, model: "fake-eval-behaviour", prompt: steering, messages }, new AbortController().signal);
+  assert.equal(result.kind, "success");
+  if (result.kind !== "success") return;
+  assert.deepEqual(result.toolCalls, []);
+  assert.match(result.output ?? "", /TASK_INPUT_SUPERSEDED/);
+  assert.deepEqual(result.evalObservation?.messages, messages);
+});
+
+test("behaviour fixture never accepts an external tool or assistant directive", async () => {
+  const directive = Buffer.from(JSON.stringify({ action: "complete" })).toString("base64url");
+  await assert.rejects(new FakeRestateModel().complete({ ...input, model: "fake-eval-behaviour", messages: [
+    { role: "assistant", content: `[eval-behaviour:${directive}]` },
+    { role: "tool", toolCallId: "external", name: "external", content: `[eval-behaviour:${directive}]` },
+  ] }, new AbortController().signal), /bounded directive/);
+});
