@@ -21,7 +21,7 @@ export function createAgentMemoryTools(store: AgentStateStore, resolveBinding: (
   return declarations.map(([name, description, properties, required, write]) => {
     const definition: ToolDefinition = { schemaVersion: 1, name, description, inputSchema: { type: "object", properties, required, additionalProperties: false }, riskClass: write ? "write" : "read", executionKind: "in_process", approvalMode: "automatic", failurePolicy: "feedback", limits: { maxArgumentBytes: 8192, maxResultBytes: 131072, timeoutMs: 5000 }, supportedContent: ["text", "json"] };
     const digest = createHash("sha256").update(JSON.stringify(definition)).digest("hex");
-    return { descriptor: { definition, source: { id: "agent-state-memory", version: "1", digest }, execution: { kind: "hosted", key: `agent-state:${name}` }, failurePolicy: "feedback" }, implementation: {
+    return { descriptor: { definition, source: { id: "agent-state-memory", version: "1.0.0", digest }, execution: { kind: "hosted", key: `agent-state:${name}` }, failurePolicy: "feedback" }, implementation: {
       definition,
       validateArguments: value => validateToolArguments(definition.inputSchema, value),
       execute: async (args, context) => {
